@@ -11,6 +11,7 @@
   "assign_thread",
   "attach_memory_block",
   "attenuate_token",
+  "delegate_token",
   "begin_artifact_multipart",
   "cancel_wait",
   "cast_vote",

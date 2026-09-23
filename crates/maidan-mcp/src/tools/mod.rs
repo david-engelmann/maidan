@@ -173,6 +173,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_room"
         | "parse_maidan_uri"
         | "attenuate_token" => Ok(WORKSPACE_READ),
+        "delegate_token" => Ok(WORKSPACE_READ),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -848,6 +849,7 @@ pub async fn dispatch(
         "get_room" => room::get_room(store, auth, args).await,
         "set_workspace_handle" => room::set_workspace_handle(store, auth, args).await,
         "attenuate_token" => room::attenuate_token(store, auth, args).await,
+        "delegate_token" => room::delegate_token(store, auth, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }

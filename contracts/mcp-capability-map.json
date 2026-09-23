@@ -11,6 +11,7 @@
   "assign_thread": "thread:transition",
   "attach_memory_block": "workspace:write",
   "attenuate_token": "workspace:read",
+  "delegate_token": "workspace:read",
   "begin_artifact_multipart": "artifact:upload",
   "cancel_wait": "thread:transition",
   "cast_vote": "workspace:write",

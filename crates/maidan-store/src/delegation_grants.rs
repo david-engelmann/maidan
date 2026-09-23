@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Utc};
-use maidan_types::NewDelegationGrant;
+use maidan_types::{NewApiToken, NewDelegationGrant, DELEGATED_TOKEN_MAX_TTL_SECS};
 
 use crate::StoreError;
 
@@ -41,4 +41,36 @@ pub(crate) fn validate_new(
         ));
     }
     Ok((capabilities.into_iter().collect(), purpose.to_owned()))
+}
+
+pub(crate) fn validate_exchange(
+    new: &NewApiToken,
+    grant_capabilities: &[String],
+    now: DateTime<Utc>,
+) -> Result<DateTime<Utc>, StoreError> {
+    let expires_at = new
+        .expires_at
+        .ok_or_else(|| StoreError::InvalidInput("delegated tokens require an expiry".into()))?;
+    if expires_at <= now
+        || expires_at > now + chrono::Duration::seconds(DELEGATED_TOKEN_MAX_TTL_SECS)
+    {
+        return Err(StoreError::InvalidInput(
+            "delegated token expiry must be in the future and no more than one hour away".into(),
+        ));
+    }
+    if new.capabilities.is_empty() {
+        return Err(StoreError::InvalidInput(
+            "delegated token must include at least one capability".into(),
+        ));
+    }
+    if let Some(capability) = new
+        .capabilities
+        .iter()
+        .find(|capability| !grant_capabilities.contains(capability))
+    {
+        return Err(StoreError::InvalidInput(format!(
+            "capability {capability} exceeds delegation grant"
+        )));
+    }
+    Ok(expires_at)
 }

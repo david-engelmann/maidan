@@ -25,7 +25,7 @@ pub use authorization::{
 };
 pub use capability::*;
 pub use capability_set::{
-    attenuate, attenuate_expiry, expand_set, held_sets, is_named_set, named_sets,
+    attenuate, attenuate_expiry, delegated_expiry, expand_set, held_sets, is_named_set, named_sets,
     progressive_grant, CapabilitySet, AGENT_WORKER, HUMAN_ADMIN,
 };
 pub use context::AuthContext;

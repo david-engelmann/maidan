@@ -1759,6 +1759,12 @@
   },
   {
     "method": "POST",
+    "path": "/tokens/delegate",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/workspaces/{wid}/share-tickets",
     "capability": "token:admin",
     "surface": "http"

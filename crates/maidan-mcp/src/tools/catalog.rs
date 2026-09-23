@@ -63,6 +63,20 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "delegate_token",
+            "description": "Exchange a durable delegation grant for a short-lived token acting as its subject. The token defaults to 15 minutes, cannot exceed one hour or its grant/parent bearer, and is limited to the intersection of grant and delegate capabilities.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "grant_id": {"type": "string", "format": "uuid"},
+                    "capabilities": {"type": "array", "items": {"type": "string"}},
+                    "expires_at": {"type": "string", "format": "date-time"},
+                    "label": {"type": "string"}
+                },
+                "required": ["grant_id"]
+            }
+        }),
+        json!({
             "name": "open_dm_conversation",
             "description": "Open or fetch a 1:1 DM conversation between two workspace members.",
             "inputSchema": {

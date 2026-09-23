@@ -7,8 +7,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, BlockedReason, ChannelId,
-    ContentBlock, EgressSurface, EmailDeliveryMode, EventKind, MemberId, MemberKind, RefSide,
-    RelationKind, ShareTicket, ThreadId, WebhookSubscriptionId, WorkspaceId,
+    ContentBlock, DelegationGrantId, EgressSurface, EmailDeliveryMode, EventKind, MemberId,
+    MemberKind, RefSide, RelationKind, ShareTicket, ThreadId, WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -1282,6 +1282,18 @@ pub struct AttenuateToken {
     pub label: Option<String>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DelegateToken {
+    pub grant_id: uuid::Uuid,
+    /// Optional further attenuation. Empty uses the intersection of the
+    /// grant and the delegate's current authority.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub label: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CapabilitySetView {
     pub name: String,
@@ -1367,6 +1379,13 @@ pub struct MintApiTokenResponse {
     pub capabilities: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub quotas: Vec<maidan_types::TokenQuota>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DelegateTokenResponse {
+    pub grant_id: DelegationGrantId,
+    pub delegate_id: MemberId,
+    pub token: MintApiTokenResponse,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

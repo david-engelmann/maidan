@@ -66,9 +66,28 @@ pub async fn revoke(
     workspace_id: WorkspaceId,
     id: DelegationGrantId,
 ) -> Result<bool, StoreError> {
-    let result = sqlx::query("UPDATE maidan_delegation_grants SET revoked_at=NOW() WHERE id=$1 AND workspace_id=$2 AND revoked_at IS NULL")
-        .bind(id.0).bind(workspace_id.0).execute(pool).await?;
-    Ok(result.rows_affected() == 1)
+    let now = chrono::Utc::now();
+    let mut tx = pool.begin().await?;
+    let result = sqlx::query("UPDATE maidan_delegation_grants SET revoked_at=$3 WHERE id=$1 AND workspace_id=$2 AND revoked_at IS NULL")
+        .bind(id.0).bind(workspace_id.0).bind(now).execute(&mut *tx).await?;
+    if result.rows_affected() != 1 {
+        return Ok(false);
+    }
+    sqlx::query(
+        "WITH RECURSIVE subtree AS (
+             SELECT id FROM maidan_api_tokens WHERE delegation_grant_id = $1
+             UNION
+             SELECT t.id FROM maidan_api_tokens t JOIN subtree s ON t.parent_token_id = s.id
+         )
+         UPDATE maidan_api_tokens SET revoked_at = $2
+         WHERE id IN (SELECT id FROM subtree) AND revoked_at IS NULL",
+    )
+    .bind(id.0)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(true)
 }
 
 fn row_to_grant(row: &sqlx::postgres::PgRow) -> Result<DelegationGrant, StoreError> {

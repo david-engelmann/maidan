@@ -533,6 +533,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/tokens/:id", delete(routes::revoke_api_token))
         .route("/tokens/attenuate", post(routes::attenuate_api_token))
+        .route("/tokens/delegate", post(routes::delegate_api_token))
         .route(
             "/workspaces/:wid/share-tickets",
             post(routes::create_share_ticket).get(routes::list_share_tickets),

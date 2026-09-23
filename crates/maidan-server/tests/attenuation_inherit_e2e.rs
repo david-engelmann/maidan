@@ -10,12 +10,14 @@ use std::{
     sync::{atomic::AtomicI64, Arc},
 };
 
+use chrono::{Duration as ChronoDuration, Utc};
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewApiToken, NewApp, NewAppInstallation, NewMember, NewWorkspace, TokenQuota,
+    MemberKind, NewApiToken, NewApp, NewAppInstallation, NewDelegationGrant, NewMember,
+    NewWorkspace, TokenQuota,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -225,6 +227,154 @@ async fn a_derived_token_inherits_the_parents_quotas() {
     );
     // And it is reported back, so the holder can see what it got.
     assert_eq!(derived["quotas"][0]["capability"], capability::MESSAGE_POST);
+}
+
+#[tokio::test]
+async fn delegated_tokens_are_bounded_and_die_with_the_grant() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let subject = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "subject".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let delegate = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "delegate".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let other = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "other".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let grant = store
+        .create_delegation_grant(NewDelegationGrant {
+            workspace_id: ws.id,
+            subject_id: subject.id,
+            delegate_id: delegate.id,
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::MESSAGE_POST.into(),
+            ],
+            purpose: "cover incident".into(),
+            authorized_by: subject.id,
+            expires_at: Utc::now() + ChronoDuration::hours(2),
+        })
+        .await
+        .unwrap();
+
+    let mint_delegate = async |member_id| {
+        let secret = TokenSecret::generate();
+        store
+            .create_api_token(NewApiToken {
+                workspace_id: ws.id,
+                member_id,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: None,
+                capabilities: vec![capability::WORKSPACE_READ.into()],
+                expires_at: None,
+            })
+            .await
+            .unwrap();
+        secret
+    };
+    let delegate_secret = mint_delegate(delegate.id).await;
+    let other_secret = mint_delegate(other.id).await;
+
+    let wrong = client
+        .post(format!("{base}/tokens/delegate"))
+        .bearer_auth(other_secret.as_str())
+        .json(&json!({ "grant_id": grant.id.0 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), StatusCode::FORBIDDEN);
+
+    let too_long = client
+        .post(format!("{base}/tokens/delegate"))
+        .bearer_auth(delegate_secret.as_str())
+        .json(&json!({
+            "grant_id": grant.id.0,
+            "expires_at": Utc::now() + ChronoDuration::hours(1) + ChronoDuration::minutes(1)
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(too_long.status(), StatusCode::BAD_REQUEST);
+
+    let exchanged: Value = client
+        .post(format!("{base}/tokens/delegate"))
+        .bearer_auth(delegate_secret.as_str())
+        .json(&json!({ "grant_id": grant.id.0 }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(exchanged["token"]["member_id"], subject.id.0.to_string());
+    assert_eq!(
+        exchanged["token"]["capabilities"],
+        json!([capability::WORKSPACE_READ])
+    );
+    let delegated_secret = exchanged["token"]["secret"].as_str().unwrap();
+
+    let child: Value = client
+        .post(format!("{base}/tokens/attenuate"))
+        .bearer_auth(delegated_secret)
+        .json(&json!({ "capabilities": [capability::WORKSPACE_READ] }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let child_secret = child["secret"].as_str().unwrap();
+    assert_eq!(
+        client
+            .get(format!("{base}/workspaces/{}", ws.id.0))
+            .bearer_auth(child_secret)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    assert!(store
+        .revoke_delegation_grant(ws.id, grant.id)
+        .await
+        .unwrap());
+    for secret in [delegated_secret, child_secret] {
+        assert_eq!(
+            client
+                .get(format!("{base}/workspaces/{}", ws.id.0))
+                .bearer_auth(secret)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
 }
 
 /// Revoking a token kills everything derived from it, and the derived

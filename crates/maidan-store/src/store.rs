@@ -2159,6 +2159,17 @@ pub trait TokenStore: Send + Sync {
         new: NewApiToken,
         parent_token_id: ApiTokenId,
     ) -> Result<ApiToken, StoreError>;
+    /// Mint a short-lived token for a grant's subject. The store atomically
+    /// verifies that the grant is live, belongs to the delegate/workspace, and
+    /// outlives the token. `parent_token_id` links bearer exchanges into the
+    /// existing revocation tree; sessions pass `None`.
+    async fn create_delegated_api_token(
+        &self,
+        new: NewApiToken,
+        grant_id: DelegationGrantId,
+        delegate_id: MemberId,
+        parent_token_id: Option<ApiTokenId>,
+    ) -> Result<ApiToken, StoreError>;
 
     /// Revoke a token **and every token derived from it**.
     ///

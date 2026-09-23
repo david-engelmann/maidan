@@ -317,6 +317,17 @@ member **skills** (`/members/:id/skills`, MCP `add_member_skill` /
 `list_member_skills`) are self-scoped, and share-ticket ownership comes from
 the authenticated issuer rather than a caller-supplied member id.
 
+The exchange half is now defined: `POST /tokens/delegate` and MCP
+`delegate_token` accept a durable `grant_id`, optional further-attenuated
+`capabilities`, optional `expires_at`, and optional `label`. Only the named
+delegate may exchange a live grant. The returned bearer acts as the grant's
+subject, defaults to 15 minutes, cannot exceed one hour or the grant/caller
+expiry, and carries only capabilities held by both the grant and delegate.
+Grant revocation invalidates direct exchanged tokens and every attenuation
+descendant. Administrative grant create/list/revoke surfaces land later in the
+same `v411.0.0` cluster, so this exchange is not yet independently bootstrap-able
+through a public protocol.
+
 Named sets (`maidan.agent.worker`, `maidan.human.admin`) are mint-time
 recipes, not stored capability strings. `POST …/tokens` accepts
 `capability_set` and may restrict further. A holder derives a weaker

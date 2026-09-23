@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{DelegationGrantId, MemberId, WorkspaceId};
 
+pub const DELEGATED_TOKEN_DEFAULT_TTL_SECS: i64 = 15 * 60;
+pub const DELEGATED_TOKEN_MAX_TTL_SECS: i64 = 60 * 60;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DelegationGrant {
