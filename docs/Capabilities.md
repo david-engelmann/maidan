@@ -3,6 +3,18 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v407.0.0 — executable surface and hero-loop contracts
+
+Four implementation PRs (#965/#966/#967/#968) close Wave 4 row #39 by
+turning cross-surface compatibility claims into ordinary CI evidence.
+
+| Change | Where |
+|--------|-------|
+| **Independent UI contract:** route templates are derived from embedded JavaScript, mounted `/ui/api` methods from the Axum router, and public operations from OpenAPI. Drift fails without a browser or copied manifest; the first run exposed four live group-DM operations missing from both OpenAPI and the capability map. | `crates/maidan-server/tests/ui_fetch_openapi_contract.rs`, `crates/maidan-server/src/{app,openapi}.rs`, `contracts/http-capability-map.json` |
+| **Exhaustive event-producer disposition:** all 29 `EventKind` values name whether REST, MCP, both, or an internal worker can produce them and cite executable evidence. The audit repaired MCP artifact uploads so their metadata, access ref, durable `ArtifactUpserted`, and live publish follow the atomic REST path. | `contracts/event-surface-disposition.json`, `crates/maidan-types/tests/event_surface_disposition_contract.rs`, `crates/maidan-mcp/src/tools/artifact.rs` |
+| **Signed-session live hero loop:** the same browser session authenticates an acknowledged workspace WebSocket, creates a channel and thread through `/ui/api`, posts without a bearer, observes the exact durable event, and reads the message back. | `crates/maidan-server/tests/ui_channels_e2e.rs` |
+| **Portable wire goldens:** normalized fixtures make signed-export and snapshot/catch-up changes reviewable while preserving protocol ids, JSON types, relationships, arrays, enums, LSNs, and field presence. Only generated UUIDs, timestamps, hashes, keys, and signatures are placeholders. | `crates/maidan-server/tests/portable_frame_goldens.rs`, `crates/maidan-server/tests/fixtures/` |
+
 ## v406.0.0 — published boot proof and real loopback OIDC
 
 Three implementation PRs (#957/#961/#959) close Wave 4 row #37. The release
