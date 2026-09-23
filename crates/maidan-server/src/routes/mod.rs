@@ -87,6 +87,32 @@ pub(crate) fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) ->
 /// as any member in its workspace (unchanged); `bypass` (auth disabled / tests)
 /// is unrestricted. This centralizes the guard that previously lived only on
 /// `post_message`.
+/// Personal state — inbox, notification preferences, delivery address, follows,
+/// push subscriptions — belongs to one member, and a token acts as one member.
+///
+/// Distinct from [`ensure_acting_member`], which guards *work attribution*: an
+/// orchestrator posting a message or claiming a thread on behalf of the agents
+/// it runs is the product working as designed, and stays open to any bearer.
+/// Rewriting another member's delivery address is not that; it is how their
+/// digest mail gets redirected.
+///
+/// So: self, or the explicitly-granted [`capability::MEMBER_IMPERSONATE`],
+/// which is audited at the point of use and never in `default_minted`.
+pub(crate) fn ensure_own_personal_state(auth: &AuthContext, claimed: MemberId) -> ApiResult<()> {
+    if auth.bypass || claimed == auth.member_id {
+        return Ok(());
+    }
+    if auth.has_capability(maidan_auth::capability::MEMBER_IMPERSONATE) {
+        tracing::info!(
+            actor = %auth.member_id.0,
+            subject = %claimed.0,
+            "member.impersonate"
+        );
+        return Ok(());
+    }
+    Err(ApiError::Forbidden("member_id is not yours".into()))
+}
+
 pub(crate) fn ensure_acting_member(auth: &AuthContext, claimed: MemberId) -> ApiResult<()> {
     if !auth.bypass && auth.token_id.is_none() && claimed != auth.member_id {
         return Err(ApiError::Forbidden(

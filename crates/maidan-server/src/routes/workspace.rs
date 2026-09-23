@@ -889,9 +889,14 @@ pub async fn list_events(
         .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?;
     }
     Ok(Json(
-        crate::delivery::list_events_for_shape(state.store.as_ref(), &shape, after_id, q.limit)
-            .await
-            .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?,
+        crate::delivery::list_events_for_shape(
+            state.store.as_ref(),
+            &shape,
+            after_id,
+            q.limit.clamp(1, 500),
+        )
+        .await
+        .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?,
     ))
 }
 

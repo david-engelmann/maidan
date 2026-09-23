@@ -8,7 +8,7 @@ use axum::{
 use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
 use maidan_types::*;
 
-use super::{cap, ensure_acting_member, ensure_workspace, ApiResult};
+use super::{cap, ensure_acting_member, ensure_own_personal_state, ensure_workspace, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
@@ -84,11 +84,11 @@ pub async fn list_mentions_for_member(
     // orchestrator (model), so this is a strict no-op for every current caller.
     // It matches the sibling notification handlers and pins a session to self
     // IF these are ever also session-mounted under `/ui/api` (the pattern).
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(
         state
             .store
-            .list_mentions_for_member(MemberId(id), q.limit)
+            .list_mentions_for_member(MemberId(id), q.limit.clamp(1, 500))
             .await?,
     ))
 }
@@ -103,9 +103,12 @@ pub async fn get_member_inbox(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
     // Defensive self-only. See list_mentions_for_member.
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(
-        state.store.list_member_inbox(MemberId(id), q.limit).await?,
+        state
+            .store
+            .list_member_inbox(MemberId(id), q.limit.clamp(1, 500))
+            .await?,
     ))
 }
 
@@ -121,7 +124,7 @@ pub async fn mark_member_inbox_read(
     // Defensive self-only. `advance_inbox_last_read_at` is a per-member write;
     // bearer-only route today (act-as-any → no-op), guards a future session
     // mount.
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     state
         .store
         .advance_inbox_last_read_at(MemberId(id), body.read_through)
@@ -141,7 +144,7 @@ pub async fn list_member_notifications(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     let limit = q.limit.clamp(1, 500);
     Ok(Json(
         state
@@ -165,7 +168,7 @@ pub async fn list_member_notifications_grouped(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     let limit = q.limit.clamp(1, 500);
     let notes = state
         .store
@@ -187,7 +190,7 @@ pub async fn list_member_decisions(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     let since = q
         .since
         .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(7));
@@ -212,7 +215,7 @@ pub async fn get_member_manager_digest(
     let member_id = MemberId(id);
     let member = state.store.get_member(member_id).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, member_id)?;
+    ensure_own_personal_state(&auth, member_id)?;
     let since = q
         .since
         .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(7));
@@ -233,7 +236,7 @@ pub async fn member_unread_notification_count(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     let count = state.store.unread_notification_count(MemberId(id)).await?;
     Ok(Json(UnreadCount { count }))
 }
@@ -249,7 +252,7 @@ pub async fn mark_member_notification_read(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     if !state
         .store
         .mark_notification_read(MemberId(id), NotificationId(nid))
@@ -273,7 +276,7 @@ pub async fn snooze_member_notification(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     if !state
         .store
         .snooze_notification(MemberId(id), NotificationId(nid), body.until)
@@ -294,7 +297,7 @@ pub async fn mark_all_member_notifications_read(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     let cleared = state
         .store
         .mark_all_notifications_read(MemberId(id))
@@ -314,7 +317,7 @@ pub async fn set_member_notification_pref(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(
         state
             .store
@@ -332,7 +335,7 @@ pub async fn list_member_notification_prefs(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(
         state.store.list_notification_prefs(MemberId(id)).await?,
     ))
@@ -349,7 +352,7 @@ pub async fn follow_member_channel(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, body.channel_id).await?;
     state
         .store
@@ -367,7 +370,7 @@ pub async fn unfollow_member_channel(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     if state
         .store
         .unfollow_channel(MemberId(id), ChannelId(cid))
@@ -388,7 +391,7 @@ pub async fn list_member_channel_follows(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(state.store.list_channel_follows(MemberId(id)).await?))
 }
 
@@ -403,7 +406,7 @@ pub async fn follow_member_thread(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, body.thread_id).await?;
     state
         .store
@@ -421,7 +424,7 @@ pub async fn unfollow_member_thread(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     if state
         .store
         .unfollow_thread(MemberId(id), ThreadId(tid))
@@ -442,7 +445,7 @@ pub async fn list_member_thread_follows(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(state.store.list_thread_follows(MemberId(id)).await?))
 }
 
@@ -458,7 +461,7 @@ pub async fn follow_member_occupancy(
     let follower_id = MemberId(id);
     let follower = state.store.get_member(follower_id).await?;
     ensure_workspace(&auth, follower.workspace_id)?;
-    ensure_acting_member(&auth, follower_id)?;
+    ensure_own_personal_state(&auth, follower_id)?;
     if follower_id == body.followed_member_id {
         return Err(ApiError::BadRequest("a member cannot follow itself".into()));
     }
@@ -483,7 +486,7 @@ pub async fn unfollow_member_occupancy(
     let follower_id = MemberId(id);
     let follower = state.store.get_member(follower_id).await?;
     ensure_workspace(&auth, follower.workspace_id)?;
-    ensure_acting_member(&auth, follower_id)?;
+    ensure_own_personal_state(&auth, follower_id)?;
     if state
         .store
         .unfollow_member(follower_id, MemberId(followed_id))
@@ -557,7 +560,7 @@ pub async fn set_member_email(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     let email = body.email.trim();
     if !email.contains('@') || email.len() < 3 {
         return Err(ApiError::BadRequest("email must be a valid address".into()));
@@ -576,7 +579,7 @@ pub async fn get_member_email(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     match state.store.get_member_email(MemberId(id)).await? {
         Some(e) => Ok(Json(e)),
         None => Err(ApiError::NotFound),
@@ -593,7 +596,7 @@ pub async fn delete_member_email(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     if state.store.delete_member_email(MemberId(id)).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -613,7 +616,7 @@ pub async fn set_member_delivery_mode(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     state
         .store
         .set_delivery_mode(MemberId(id), body.mode)
@@ -631,7 +634,7 @@ pub async fn get_member_delivery_mode(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     let mode = state.store.get_delivery_mode(MemberId(id)).await?;
     Ok(Json(DeliveryModeView { mode }))
 }
@@ -650,7 +653,7 @@ pub async fn get_member_waiting(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     let sla = q.sla_secs.filter(|&s| s > 0).unwrap_or(86_400);
     let assigned = state
         .store
@@ -692,7 +695,7 @@ pub async fn register_push_subscription(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     if body.endpoint.trim().is_empty()
         || body.keys.p256dh.trim().is_empty()
         || body.keys.auth.trim().is_empty()
@@ -722,7 +725,7 @@ pub async fn list_push_subscriptions(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     Ok(Json(
         state.store.list_push_subscriptions(MemberId(id)).await?,
     ))
@@ -738,7 +741,7 @@ pub async fn delete_push_subscription(
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
     ensure_workspace(&auth, member.workspace_id)?;
-    ensure_acting_member(&auth, MemberId(id))?;
+    ensure_own_personal_state(&auth, MemberId(id))?;
     if state
         .store
         .delete_push_subscription(MemberId(id), PushSubscriptionId(sub_id))

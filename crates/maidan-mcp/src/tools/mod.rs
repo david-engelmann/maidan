@@ -265,6 +265,130 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
     }
 }
 
+/// Personal state belongs to one member, and a token acts as one member.
+///
+/// Every member tool takes a caller-supplied `member_id`, and until this gate
+/// existed none of them checked it: an ordinary `workspace:read` token could
+/// read any member's inbox or rewrite any member's delivery address — including
+/// a member in another workspace, since the channel gate below never looks at
+/// `member_id` and so no workspace check ran either.
+///
+/// The rule is self-scoping: a token acts on the personal state of the member
+/// it was minted for. Orchestration — one process attributing work to the
+/// agents it runs — is the one legitimate exception, so it is a capability
+/// granted on purpose ([`capability::MEMBER_IMPERSONATE`]) rather than a
+/// property of being broad, and it is audited at the point of use.
+///
+/// Enforced here rather than in the 25 handlers because a rule spread across 25
+/// call sites is a rule the 26th tool forgets. Every member tool, present and
+/// future, passes through this function.
+///
+/// **One message for both refusals.** "Not your member" and "not in your
+/// workspace" are indistinguishable on purpose — a different error for the
+/// second would confirm that a member id exists on this instance.
+async fn enforce_member_self_scope(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    name: &str,
+    args: &Value,
+) -> Result<(), McpError> {
+    if auth.bypass || !MEMBER_SCOPED_TOOLS.contains(&name) {
+        return Ok(());
+    }
+    let Some(claimed) = args
+        .get("member_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<uuid::Uuid>().ok())
+        .map(maidan_types::MemberId)
+    else {
+        // Absent or malformed: the handler's own decode error is clearer than
+        // anything this gate could say.
+        return Ok(());
+    };
+
+    if claimed == auth.member_id {
+        return Ok(());
+    }
+
+    if auth.has_capability(maidan_auth::capability::MEMBER_IMPERSONATE) {
+        // Same-workspace still applies: impersonation is an in-tenant
+        // orchestration grant, not a cross-tenant one.
+        let member = server
+            .store
+            .get_member(claimed)
+            .await
+            .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
+        if member.workspace_id != auth.workspace_id {
+            return Err(McpError::Forbidden("member_id is not yours".to_string()));
+        }
+        tracing::info!(
+            actor = %auth.member_id.0,
+            subject = %claimed.0,
+            tool = name,
+            "member.impersonate"
+        );
+        return Ok(());
+    }
+
+    Err(McpError::Forbidden("member_id is not yours".to_string()))
+}
+
+/// Tools whose `member_id` argument names whose personal state is being touched.
+/// Adding a member tool without adding it here is caught by
+/// `every_member_tool_is_self_scoped`.
+const MEMBER_SCOPED_TOOLS: &[&str] = &[
+    "list_mentions",
+    "get_inbox",
+    "mark_inbox_read",
+    "get_waiting_inbox",
+    "list_notifications",
+    "get_unread_count",
+    "list_notifications_grouped",
+    "list_buried_decisions",
+    "mark_notification_read",
+    "snooze_notification",
+    "set_notification_pref",
+    "list_notification_prefs",
+    "set_delivery_mode",
+    "get_delivery_mode",
+    "set_member_email",
+    "get_member_email",
+    "delete_member_email",
+    "follow_channel",
+    "unfollow_channel",
+    "list_channel_follows",
+    "follow_thread",
+    "unfollow_thread",
+    "list_thread_follows",
+    "unfollow_member",
+    "list_member_follows",
+    // `member_id` here is the *follower* — the one acting. `followed_member_id`
+    // is the target and is deliberately not gated: following someone is not an
+    // act on their state. Guard the actor, not the target.
+    "follow_member",
+    // Whose mentions / notifications the caller is parked on.
+    "wait_for_mention",
+    "wait_for_notification",
+    // The digest *rolls up* other members, but `member_id` is the manager whose
+    // digest it is — reading someone else's is reading their reports' state.
+    // Cross-member rollup is the feature; cross-member access is not.
+    "get_manager_digest",
+];
+
+/// Member tools whose `member_id` names *work* state rather than personal
+/// state, and which are cross-member **by design**.
+///
+/// Occupancy is who holds which task — a team surface, and the whole reason the
+/// occupancy view exists. It already enforces workspace scoping in its handler;
+/// self-scoping it would delete the feature rather than secure it.
+///
+/// Listed rather than omitted so that "not gated" is a decision with a reason
+/// attached, and a new tool cannot land in the gap between the two lists.
+/// Referenced only by the guard below — the gate itself needs no list of what
+/// it does *not* cover.
+#[cfg(test)]
+const MEMBER_WORK_STATE_TOOLS: &[&str] = &["get_member_occupancy"];
+
 /// Pre-dispatch per-channel authorization for point-access content tools.
 /// Bypass callers pass through; DM tools rely on their own participant checks
 /// (the `__dm__` channel is exempt in `ensure_*`); aggregate reads
@@ -434,6 +558,7 @@ pub async fn dispatch(
     name: &str,
     args: &Value,
 ) -> Result<Value, McpError> {
+    enforce_member_self_scope(server, auth, name, args).await?;
     enforce_channel_access(server, auth, name, args).await?;
     let store = &server.store;
     let artifacts = &server.artifacts;
@@ -740,5 +865,84 @@ mod catalog_filter_tests {
         );
         let names = tool_names(&catalog_for(&auth));
         assert_eq!(names, vec!["search_messages".to_string()]);
+    }
+}
+
+#[cfg(test)]
+mod self_scope_tests {
+    use super::*;
+
+    /// The gate is a list, and a list drifts. Every tool dispatched to the
+    /// `member::` module touches one member's personal state, so every one of
+    /// them belongs in `MEMBER_SCOPED_TOOLS` — this reads the dispatch arms out
+    /// of this file's own source and says which are missing, so the 26th member
+    /// tool cannot be added without either listing it or deleting this test.
+    #[test]
+    fn every_member_tool_is_self_scoped() {
+        let source = include_str!("mod.rs");
+        let dispatched: Vec<&str> = source
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                let (name, rest) = line.strip_prefix('"')?.split_once("\" => ")?;
+                rest.trim_start().starts_with("member::").then_some(name)
+            })
+            .collect();
+
+        assert!(
+            dispatched.len() > 20,
+            "expected to find the member dispatch arms; found {} — the parse broke, \
+             not the gate",
+            dispatched.len()
+        );
+
+        let missing: Vec<&str> = dispatched
+            .iter()
+            .copied()
+            .filter(|name| {
+                !MEMBER_SCOPED_TOOLS.contains(name) && !MEMBER_WORK_STATE_TOOLS.contains(name)
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "member tools in neither list: {missing:?}. Add to MEMBER_SCOPED_TOOLS if the \
+             member_id names whose personal state is touched, or to \
+             MEMBER_WORK_STATE_TOOLS — with a reason — if it is team-visible work state."
+        );
+
+        // Neither list may claim a tool the other has.
+        let both: Vec<&&str> = MEMBER_SCOPED_TOOLS
+            .iter()
+            .filter(|n| MEMBER_WORK_STATE_TOOLS.contains(n))
+            .collect();
+        assert!(
+            both.is_empty(),
+            "listed as both scoped and work-state: {both:?}"
+        );
+    }
+
+    /// The gate reads one argument: `member_id`. A tool listed as
+    /// member-scoped whose schema calls that argument something else would
+    /// sail through the gate — listed, and ungated. Nothing else would notice.
+    #[test]
+    fn every_scoped_tool_declares_the_argument_the_gate_reads() {
+        let catalog = include_str!("catalog.rs");
+        let wrong: Vec<&str> = MEMBER_SCOPED_TOOLS
+            .iter()
+            .copied()
+            .filter(|name| {
+                let Some(start) = catalog.find(&format!("\"name\": \"{name}\"")) else {
+                    return true;
+                };
+                let rest = &catalog[start + 8..];
+                let end = rest.find("\"name\": \"").map_or(rest.len(), |i| i);
+                !rest[..end].contains("\"member_id\"")
+            })
+            .collect();
+        assert!(
+            wrong.is_empty(),
+            "listed in MEMBER_SCOPED_TOOLS but their schema has no `member_id`: {wrong:?} — \
+             the gate cannot find the argument it is meant to check"
+        );
     }
 }

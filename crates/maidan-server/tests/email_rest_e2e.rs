@@ -146,3 +146,92 @@ async fn set_get_delete_member_email() {
         .unwrap();
     assert_eq!(after.status(), StatusCode::NOT_FOUND);
 }
+
+/// D-5 on the HTTP surface. Before this, `ensure_acting_member` only bound a
+/// *session* caller to its own member — a bearer skipped the check entirely, so
+/// an ordinary `workspace:read` token could point any member's digest mail
+/// wherever it liked.
+#[tokio::test]
+async fn a_bearer_cannot_rewrite_another_members_delivery_address() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+
+    let ws = store
+        .create_workspace(NewWorkspace { name: "d5".into() })
+        .await
+        .unwrap();
+    let mk = |handle: &'static str| {
+        let store = store.clone();
+        let ws = ws.id;
+        async move {
+            store
+                .create_member(NewMember {
+                    workspace_id: ws,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Human,
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let caller = mk("caller").await;
+    let victim = mk("victim").await;
+    let tok = mint(store.as_ref(), ws.id, caller.id).await;
+
+    let state = AppState::new(
+        store.clone(),
+        Arc::new(LocalFsStore::new(dir.path())),
+        Arc::new(InMemoryBus::with_capacity(16)),
+        search,
+        Arc::new(maidan_search::HashV1Provider),
+        false, // auth ENABLED
+        false,
+        FederationRuntime::new(true, None),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, router(state)).await.unwrap() });
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+    let bearer = format!("Bearer {tok}");
+
+    // Its own address: allowed.
+    let own = client
+        .put(format!("{base}/members/{}/email", caller.id.0))
+        .header("Authorization", &bearer)
+        .json(&json!({ "email": "caller@example.com" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(own.status(), StatusCode::OK);
+
+    // Somebody else's: refused.
+    let other = client
+        .put(format!("{base}/members/{}/email", victim.id.0))
+        .header("Authorization", &bearer)
+        .json(&json!({ "email": "attacker@evil.test" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(other.status(), StatusCode::FORBIDDEN);
+
+    // And nothing was written.
+    assert!(
+        store.get_member_email(victim.id).await.unwrap().is_none(),
+        "a refused request must not have written"
+    );
+}
