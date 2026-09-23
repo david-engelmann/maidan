@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [410.0.0] — 2026-09-23
+
+Post-gate hardening (Phase XXIV). **Wave 4 row #41: accountable usage and
+bounded authorization evidence.** Three implementation PRs (#988/#989/#991)
+plus the close record complete #984.
+
+- **410.1–410.2** add `PayerStamp`, `UsageReported`, and a dual-backend usage
+  ledger. A claim-fenced, idempotent transaction binds the ledger row, budget
+  accumulation, durable event, and over-budget claim failure/DLQ outcome.
+- **410.3** exposes the same accountable write over REST and MCP. Reporter and
+  payer come from authenticated authority and workspace ownership, exact
+  retries return the original outcome without another event, and forged
+  identity, conflicting reuse, and stale leases fail closed.
+- **410.4** adds one content-free authorization record used by REST and MCP,
+  fixed-cardinality aggregate metrics, 1-in-64 sampled denial warnings, and a
+  promtool-tested sustained denial-rate alert. Denials do not write durable
+  audit rows.
+
 ## [409.0.0] — 2026-09-23
 
 Post-gate hardening (Phase XXIV). **Wave 4 row #40: searchable,

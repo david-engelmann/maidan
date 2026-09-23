@@ -136,3 +136,4 @@ PR review credit; external contributors.
 - [[Cluster 407]] — Executable UI/event surfaces, signed-session live hero loop, and portable-frame goldens. Wave 4 row #39 complete; released as **`v407.0.0`**.
 - [[Cluster 408]] — Full-audit remediation across authorization, egress, deployment, UI/docs presentation, and advisory-only land-gate measurement. Released as **`v408.0.0`**.
 - [[Cluster 409]] — Searchable, tag-honest release stream. Wave 4 row #40 complete; released as **`v409.0.0`**.
+- [[Cluster 410]] — Accountable usage ledger and bounded authorization evidence. Wave 4 row #41 complete; released as **`v410.0.0`**.
