@@ -1345,8 +1345,8 @@ deltas all point the same way: the ops-debt numbers grew in a single day.
 
 | ID | Disposition | Reason |
 |----|-------------|--------|
-| **D-5** | **shipped — #964** | Both surfaces self-scope personal state; `member:impersonate` is separate, workspace-bound, and audited. Work attribution remains orchestrator-controlled |
-| **F-46** | **shipped — #964** | Every confirmed client-provided SQL limit is clamped before it reaches the store |
+| **D-5** | **shipped — #964, #996** | Both surfaces self-scope personal state. `member:impersonate` is separate and workspace-bound, but its use is **logged via `tracing`, not written to `maidan_audit`** — "audited" overstated it. #996 closed the two surfaces #964 missed (member skills, share-ticket `owner_id`). "Work attribution remains orchestrator-controlled" was true when written. It is now **rejected** — see the round-2 directive below |
+| **F-46** | **shipped — #964, #996** | #964 clamped seven endpoints; it missed `transition_limit` (thread + workspace context) and the MCP `search_messages` twin, which #996 closed with `clamp_context_transition_limit` and `clamp_search_limit`. Complete as of #996 |
 | **F-47** | **shipped — #973** | One DNS-pinned, no-redirect egress client rejects non-public and metadata destinations across every operator-controlled outbound HTTP surface |
 | **F-49** | **shipped — #973** | Base Kubernetes liveness now uses the shallow endpoint, matching Helm |
 | **F-50** | **shipped — #973** | Trusted proxy hops are explicit and default to zero; client attribution starts from the socket |
@@ -1354,7 +1354,7 @@ deltas all point the same way: the ops-debt numbers grew in a single day.
 | **UI P1 ×4** | **shipped — #974** | Loading, refreshed approvals, actionable errors, and meaningful empty states are contract-checked |
 | **Docs rendering** | **shipped — #975** | Mermaid, flattened links, social metadata, and the edit affordance are fixed and guarded |
 | **Branding §6** | **shipped — #975** | Locked Sweep Reach assets, palette, `/ui` header, social card, and screenshots ship together |
-| **F-52** | **adapt — after A/B** | 111 env vars is worse than filed and growing. But the fix is not "move them into `config.rs`" — it is *fail loudly on an unknown `MAIDAN_*` var*, which catches the typo class without a 111-field struct |
+| **F-52** | **adapt — after A/B** | **79 unique** names reached through `env::var("MAIDAN_…")`, growing (77→79 since `f5f50adf`), **plus 6 `MAIDAN_JEV_*` read through a `get` closure in `land_gate_advisor.rs` that the literal pattern misses — 85 in total.** The "111" in an earlier draft mixed counting methods and is retracted. Stating the method matters here: a var read indirectly is exactly the one an audit undercounts, and the fix — fail loudly on an unknown `MAIDAN_*` — has to cover both paths. But the fix is not "move them into `config.rs`" — it is *fail loudly on an unknown `MAIDAN_*` var*, which catches the typo class without a 111-field struct |
 | **F-58** | **fold into B.1** | Hand-rolled `host_of` is the same parsing weakness the SSRF guard has to fix anyway |
 | **F-51** | **defer** | One uncached query per authenticated response is real but unmeasured. Measure with the existing loadgen harness before optimising |
 | **F-55** | **defer** | SQLite backup is `cp` of one file while the WAL is checkpointed. Worth a runbook paragraph, not a cluster |
@@ -1366,9 +1366,12 @@ deltas all point the same way: the ops-debt numbers grew in a single day.
 
 ### Jev (J-01…J-08)
 
-Status re-checked first, as directed: **no longer waitlisted.** GA since
-2026-09-20 at `POST https://api.typesafe.ai/v1/systemone`, $0.042/M input,
-output free, $5 credit on signup. The posture's first blocker is gone.
+Status re-checked, then **corrected 2026-09-23**: TypeSafe left stealth on
+2026-09-15 into *early access behind a waitlist*. No source confirms a
+2026-09-20 GA — the 2026-09-18 OpenRouter listing is third-party availability,
+not GA. Verified and still good: **$0.042/M input, output free**. The
+`POST /v1/systemone` endpoint is single-source and unconfirmed. **J-01 is gated
+on waitlist access**, not unblocked.
 
 | ID | Disposition | Reason |
 |----|-------------|--------|
@@ -1487,8 +1490,14 @@ preserve Cluster 182's write-amplification decision. Delegation needs exactly
 that shape plus a subject and a `grant_id`. So 411.5 extends 410's lane with
 the second identity rather than adding a parallel audit path — and the
 "denied attempts are written too" requirement in the delegation design must be
-reconciled with 410's bounded-observability decision, not assumed over it.
-**If those conflict, 410's decision wins and 411 records why.**
+reconciled with 410's bounded-observability decision.
+
+**Correction 2026-09-23.** An earlier draft said "if those conflict, 410's
+decision wins and 411 records why." That was mine to observe, not mine to
+decide. It pre-authorised reversing a directive David had already taken, and
+Cluster 411's plan duly lists "durable rows for every authorization denial" as
+a non-goal — the other agent read the sentence and acted on it. Withdrawn; the
+question moves to "Still David's call" below.
 
 | Slice | Result |
 |---|---|
@@ -1581,6 +1590,63 @@ intentional divergence has to be declared rather than discovered later.
 time. Tiers 2 and 3 wait for schema stability near 1.0 — a dialect abstraction
 built while migrations land every cluster will be rebuilt.
 
+### Round-2 audit reconciliation (2026-09-23)
+
+A second audit reviewed the round-2 work at `c69bd3c6` and scored it 55/100 on
+the grounds that three criticals had plans and no code. **That was accurate when
+measured and is now partly overtaken**: #996 closed four of its findings —
+share-ticket `owner_id` is bound to `auth.member_id`, member skills carry
+`ensure_own_personal_state`, and `clamp_context_transition_limit` /
+`clamp_search_limit` closed the F-46 residuals. Cluster 411 delegation work is
+in flight. Re-score against `main`, not against the snapshot.
+
+Four self-contradictions it found were real, all introduced by me, and all now
+fixed above. The Jev intro restated a GA claim the corrections table had
+retracted three paragraphs earlier. The D-5, F-46 and F-52 disposition rows each
+still told the round-1 story that the round-2 section contradicts. **The cause
+is worth recording: I corrected by appending a new section rather than by
+editing the rows the new section contradicted.** A reader who hits the table
+first gets the old answer, and both answers sit in one file. Corrections must
+edit the original claim, not sit beside it.
+
+Still open, tracked here rather than left to a re-audit:
+
+- **`web_push` is an unguarded member-controlled egress.**
+  `POST /members/:id/push-subscriptions` accepts any endpoint URL, checking only
+  that it is non-empty. `VapidWebPushSender::send` then POSTs to it with a bare
+  client that follows redirects. `grep egress crates/maidan-server/src/{web_push.rs,routes/member.rs}`
+  returns nothing. A member can register `http://169.254.169.254/…`. Blind SSRF
+  — the payload is encrypted and no response is returned — but real, and the
+  exact class #973 closed everywhere else. Fix at registration with
+  `validate_egress_target`, or send through `client_for`. **F-47 is therefore
+  not fully closed**, and the F-47 row's "every operator-controlled outbound
+  surface" is accurate only because this surface is member-controlled.
+- **Impersonator workspace-binding is asymmetric.** The MCP gate bounds an
+  impersonator to its own workspace; the HTTP helper does not do so itself and
+  relies on each route having called `ensure_workspace` first. Moot once 411.6
+  retires the capability, but until then the invariant lives in two places at
+  two strengths.
+- **Three code doc-comments still say "audited"** — `capability.rs:63`,
+  `tools/mod.rs:280`, and the `ensure_own_personal_state` comment in
+  `routes/mod.rs`, which additionally describes the rejected act-as-any model as
+  "the product working as designed". `capability.rs:54` claims "Every other
+  member surface is self-scoped… that is the whole of the rule", which was false
+  until #996 and is now true. #980 corrected the four published pages and missed
+  the code, which is where a developer looks first. 411.6 rewrites this file
+  when it retires the capability; fold the wording fix in there rather than
+  churning it twice.
+- **411.4 has a confirmed sequencing hazard.** `static/index.html` posts a
+  caller-chosen `author_id` in four places, sourced from a user-typed "Actor ID"
+  field. `CreateShareTicket` carries `#[serde(deny_unknown_fields)]`, so
+  stripping `owner_id` returns 400 to the existing UI; `CreateMessage` has no
+  such attribute, so `author_id` would be silently ignored instead. **Fix the
+  `/ui` compose flows before 411.4 strips the fields.** `SetThreadOwner.owner_id`
+  looks deliberate — assigning an accountable party, not impersonation — and
+  should be carved out rather than stripped.
+- **Legacy `/members/:id/mentions` and `/inbox`** carry comments admitting their
+  personal-state gate is "a strict no-op for every current caller". 411.6 should
+  take them strict-self with no carve-out; the plan does not say so today.
+
 ### Still David's call
 
 - ~~**F-54 / API versioning.**~~ **Decided 2026-09-23: no `/v1`, and no
@@ -1592,6 +1658,32 @@ built while migrations land every cluster will be rebuilt.
 - ~~**F-48 rejection.**~~ **Decided 2026-09-23: deferred, with the target
   architecture specified above.** Not a rejection — a scheduled fix with a
   measured design and one part (Tier 3) rejected on the merits.
+- **Durable audit for delegated denials — the consequential open item.** The
+  decided design says every delegated action writes a durable dual-identity row
+  *including denied attempts*. Cluster 410's evidence lane instead keeps denials
+  as bounded operational evidence: `maidan-auth/src/authorization.rs` increments
+  a counter and emits `tracing::warn!` at `DENIAL_LOG_SAMPLE_RATE = 64`, so **63
+  of every 64 denied attempts survive only as a metric carrying no principal**,
+  and `subject`/`grant_id` are reserved but still `None`.
+
+  Cluster 182's precedent for keeping denials out of `maidan_audit` was about
+  *anonymous, attacker-controlled* request floods amplifying writes without
+  bound. A delegated denial is a different population: an authenticated delegate
+  on a short-lived credential tied to a named grant — bounded, attributable,
+  revocable. The 182 rationale is weaker here, and the cost is concrete: a rogue
+  delegate's probing cannot be reconstructed afterwards.
+
+  **Recommendation: reaffirm the directive** — durable dual-identity rows for
+  delegated denials, keeping sampled observability for ordinary authorization
+  denials where 182's reasoning still holds. If you would rather accept the
+  downgrade, say so, and 411 records it as your decision rather than an agent's
+  inference.
+
+- **411.6 retirement sequencing.** The plan retires `member:impersonate` last,
+  after 411.3 ships its replacement, rather than "outright" as decided — current
+  enforcement depends on the capability existing, so removing it first leaves
+  cross-member action with no path at all. Confirm the deviation is acceptable.
+
 - **F-43 branch protection.** Pending-maintainer. Nothing for an agent to do.
 
 ## Docs & presentation audit dispositions (2026-09-17)
