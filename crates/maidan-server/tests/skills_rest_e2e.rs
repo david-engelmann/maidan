@@ -327,17 +327,40 @@ async fn an_agent_cannot_grant_itself_a_governance_skill() {
             capability::WORKSPACE_READ.into(),
             capability::WORKSPACE_WRITE.into(),
             capability::CHANNEL_ADMIN.into(),
-            capability::MEMBER_IMPERSONATE.into(),
         ],
     )
     .await;
     assert_eq!(
-        grant(admin_token, agent.id, "land_gate").await,
+        grant(admin_token.clone(), agent.id, "land_gate").await,
         StatusCode::NO_CONTENT,
-        "channel:admin may widen who approves"
+        "channel:admin may widen who approves — on someone else, with no act-as-any"
     );
     let skills = store.list_member_skills(agent.id).await.unwrap();
     assert!(skills.iter().any(|s| s.skill == "land_gate"));
+
+    // And take it away again, without the holder's cooperation. Revoking
+    // approval authority from a misbehaving agent must not depend on the agent.
+    let revoked = client
+        .delete(format!("{base}/members/{}/skills/land_gate", agent.id.0))
+        .bearer_auth(admin_token.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(revoked.status(), StatusCode::NO_CONTENT);
+    assert!(!store
+        .list_member_skills(agent.id)
+        .await
+        .unwrap()
+        .iter()
+        .any(|s| s.skill == "land_gate"));
+
+    // Admin authority over governance is not authority over routing tags: those
+    // stay the member's own.
+    assert_eq!(
+        grant(admin_token.clone(), agent.id, "python").await,
+        StatusCode::FORBIDDEN,
+        "a routing tag is personal state, even to an admin"
+    );
 
     // And the grant is audited, because it is now a privileged operation.
     let audit = store

@@ -30,8 +30,7 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |
 | `search:query` | GET workspace search |
 | `event:subscribe` | WebSocket `/ws/subscribe` (token in subscribe frame) |
-| `member:impersonate` | Act on **another member's** personal state — inbox, notification prefs, delivery address, follows, push subscriptions — on HTTP and MCP alike. Every member surface is otherwise self-scoped: a token reads and writes the personal state of the member it was minted for and no one else's. Granted on purpose (never in `default_minted`), logged at the point of use via `tracing` — not yet a durable audit row. Work attribution — posting or claiming *as* a member — is a separate thing and needs no capability |
-| `channel:admin` | Channel membership (`GET`/`POST /channels/:cid/members`, `DELETE …/members/:mid`) and per-thread review controls (`DELETE /threads/:id/land-gate`, `…/review-requirement`, `…/reviewers/:member_id`) |
+| `channel:admin` | Channel membership (`GET`/`POST /channels/:cid/members`, `DELETE …/members/:mid`); granting and revoking **governance** skills (`land_gate`, `review`) on another member via `/members/:id/skills`; and per-thread review controls (`DELETE /threads/:id/land-gate`, `…/review-requirement`, `…/reviewers/:member_id`) |
 | `secret:read` | `GET /workspaces/:wid/secrets`, `POST /workspaces/:wid/secrets/:name/resolve` |
 | `secret:admin` | `POST /workspaces/:wid/secrets`, `DELETE /workspaces/:wid/secrets/:name` |
 | `audit:read-global` | `GET /operator/audit` — cross-workspace audit read |

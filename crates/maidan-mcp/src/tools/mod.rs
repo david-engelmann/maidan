@@ -278,24 +278,20 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
 /// `member_id` and so no workspace check ran either.
 ///
 /// The rule is self-scoping: a token acts on the personal state of the member
-/// it was minted for. Orchestration — one process attributing work to the
-/// agents it runs — is the one legitimate exception, so it is a capability
-/// granted on purpose ([`capability::MEMBER_IMPERSONATE`]) rather than a
-/// property of being broad, and it is audited at the point of use.
+/// it was minted for, with no override. An orchestrator acting for one of its
+/// agents holds a delegated token for that agent, whose `member_id` *is* the
+/// agent — so it passes as itself, and the delegate is durably recorded as the
+/// actor on every use.
 ///
 /// Enforced here rather than in the 25 handlers because a rule spread across 25
 /// call sites is a rule the 26th tool forgets. Every member tool, present and
 /// future, passes through this function.
 ///
-/// **One message for both refusals.** "Not your member" and "not in your
-/// workspace" are indistinguishable on purpose — a different error for the
-/// second would confirm that a member id exists on this instance.
-async fn enforce_member_self_scope(
-    server: &crate::server::McpServer,
-    auth: &AuthContext,
-    name: &str,
-    args: &Value,
-) -> Result<(), McpError> {
+/// **One refusal, deliberately.** Another member in your workspace and a member
+/// in someone else's workspace both fail the same equality check and get the
+/// same error. Anything more specific would confirm that a member id exists on
+/// this instance.
+fn enforce_member_self_scope(auth: &AuthContext, name: &str, args: &Value) -> Result<(), McpError> {
     if auth.bypass || !MEMBER_SCOPED_TOOLS.contains(&name) {
         return Ok(());
     }
@@ -313,33 +309,6 @@ async fn enforce_member_self_scope(
     if claimed == auth.member_id {
         return Ok(());
     }
-
-    if maidan_auth::require_observed_capability(
-        auth,
-        maidan_auth::AuthorizationSurface::Mcp,
-        maidan_auth::capability::MEMBER_IMPERSONATE,
-    )
-    .is_ok()
-    {
-        // Same-workspace still applies: impersonation is an in-tenant
-        // orchestration grant, not a cross-tenant one.
-        let member = server
-            .store
-            .get_member(claimed)
-            .await
-            .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
-        if member.workspace_id != auth.workspace_id {
-            return Err(McpError::Forbidden("member_id is not yours".to_string()));
-        }
-        tracing::info!(
-            actor = %auth.member_id.0,
-            subject = %claimed.0,
-            tool = name,
-            "member.impersonate"
-        );
-        return Ok(());
-    }
-
     Err(McpError::Forbidden("member_id is not yours".to_string()))
 }
 
@@ -386,7 +355,6 @@ const MEMBER_SCOPED_TOOLS: &[&str] = &[
     "list_dm_conversations",
     // Declared skills control which work the routing loop may assign. They are
     // personal capability state, not a workspace-wide directory entry.
-    "add_member_skill",
     "list_member_skills",
 ];
 
@@ -410,6 +378,14 @@ const MEMBER_WORK_STATE_TOOLS: &[&str] = &[
 
 /// Tools where `member_id` is the object of an administrative or routing
 /// action, not the caller identity. Those arguments remain legitimate targets.
+/// Tools whose `member_id` is personal state *or* an administrative target
+/// depending on another argument, so the decision is made in the handler where
+/// that argument is visible. `add_member_skill`: a routing tag is the member's
+/// own declaration and only they may set it; a governance skill is authority an
+/// operator confers on someone else under `channel:admin`.
+#[cfg(test)]
+const MEMBER_ARGUMENT_SCOPED_TOOLS: &[&str] = &["add_member_skill"];
+
 #[cfg(test)]
 const MEMBER_TARGET_TOOLS: &[&str] = &[
     "add_channel_member",
@@ -589,7 +565,7 @@ pub async fn dispatch(
     name: &str,
     args: &Value,
 ) -> Result<Value, McpError> {
-    enforce_member_self_scope(server, auth, name, args).await?;
+    enforce_member_self_scope(auth, name, args)?;
     enforce_channel_access(server, auth, name, args).await?;
     let store = &server.store;
     let artifacts = &server.artifacts;
@@ -937,12 +913,13 @@ mod self_scope_tests {
                 !MEMBER_SCOPED_TOOLS.contains(name)
                     && !MEMBER_WORK_STATE_TOOLS.contains(name)
                     && !MEMBER_TARGET_TOOLS.contains(name)
+                    && !MEMBER_ARGUMENT_SCOPED_TOOLS.contains(name)
             })
             .collect();
         assert!(
             missing.is_empty(),
             "member_id tools left unclassified: {missing:?}. Classify the argument as \
-             personal state, team-visible work state, or a target."
+             personal state, team-visible work state, a target, or argument-dependent."
         );
 
         // No tool may be claimed by more than one semantic class.
@@ -950,6 +927,7 @@ mod self_scope_tests {
             MEMBER_SCOPED_TOOLS,
             MEMBER_WORK_STATE_TOOLS,
             MEMBER_TARGET_TOOLS,
+            MEMBER_ARGUMENT_SCOPED_TOOLS,
         ];
         let both: Vec<&&str> = classes
             .iter()

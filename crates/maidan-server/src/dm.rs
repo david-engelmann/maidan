@@ -142,10 +142,12 @@ pub async fn get_dm_conversation(
         .get_dm_conversation(DmConversationId(id))
         .await?;
     ensure_workspace(&auth, dm.workspace_id)?;
-    // A **session** caller must be a participant to read a DM's metadata
-    // (roster + thread). Bearer = orchestrator (act-as-any); bypass exempt —
-    // consistent with the write anti-spoofing guard (202).
-    if !auth.bypass && auth.token_id.is_none() {
+    // Only a participant may read a DM's metadata. The roster says who is
+    // talking to whom privately, which is as sensitive as the messages. This
+    // used to apply to sessions only and let any bearer through; an
+    // orchestrator acting for a participant now holds a delegated token that
+    // *is* that participant.
+    if !auth.bypass {
         ensure_dm_participant(&dm, auth.member_id)?;
     }
     Ok(Json(dm))

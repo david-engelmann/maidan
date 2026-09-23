@@ -864,13 +864,13 @@ mod tests {
         }
     }
 
-    /// The carve-out has to work, and has to stay in-tenant. An orchestrator
-    /// granted `member:impersonate` attributes work to the agents it runs —
-    /// inside its own workspace. Cross-tenant stays refused for the same reason
-    /// it is refused without the capability.
+    /// An orchestrator acting for one of its agents holds a delegated token for
+    /// that agent. The token *is* the agent: it may touch the agent's personal
+    /// state, not a stranger's in another tenant — and not the orchestrator's
+    /// own either, because a delegated token is its subject, not both parties.
     #[tokio::test]
-    async fn member_impersonate_permits_in_tenant_but_never_cross_tenant() {
-        use maidan_auth::capability::{MEMBER_IMPERSONATE, WORKSPACE_READ};
+    async fn a_delegated_token_acts_as_its_subject_and_no_one_else() {
+        use maidan_auth::capability::WORKSPACE_READ;
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -918,11 +918,13 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::from_token(
+        let auth = AuthContext::from_delegated_token(
             maidan_types::ApiTokenId(uuid::Uuid::new_v4()),
             orchestrator.id,
+            worker.id,
             ws_a.id,
-            vec![WORKSPACE_READ.to_string(), MEMBER_IMPERSONATE.to_string()],
+            maidan_types::DelegationGrantId(uuid::Uuid::new_v4()),
+            vec![WORKSPACE_READ.to_string()],
         );
 
         server
@@ -932,24 +934,32 @@ mod tests {
                 &json!({ "member_id": worker.id.0, "email": "worker@example.com" }),
             )
             .await
-            .expect("impersonation covers a member of the caller's own workspace");
+            .expect("a delegated token acts as its subject");
 
-        let err = server
-            .call_tool(
-                &auth,
-                "set_member_email",
-                &json!({ "member_id": stranger.id.0, "email": "attacker@evil.test" }),
-            )
-            .await
-            .expect_err("impersonation is an in-tenant grant, not a cross-tenant one");
-        assert!(
-            matches!(err, McpError::Forbidden(_)),
-            "expected Forbidden, got {err:?}"
-        );
-        assert!(
-            store.get_member_email(stranger.id).await.unwrap().is_none(),
-            "a refused call must not have written"
-        );
+        for (target, why) in [
+            (stranger.id, "a member of another tenant"),
+            (
+                orchestrator.id,
+                "the delegate itself — the token is the subject, not both",
+            ),
+        ] {
+            let err = server
+                .call_tool(
+                    &auth,
+                    "set_member_email",
+                    &json!({ "member_id": target.0, "email": "attacker@evil.test" }),
+                )
+                .await
+                .expect_err(why);
+            assert!(
+                matches!(err, McpError::Forbidden(_)),
+                "{why}: expected Forbidden, got {err:?}"
+            );
+            assert!(
+                store.get_member_email(target).await.unwrap().is_none(),
+                "{why}: a refused call must not have written"
+            );
+        }
     }
 
     #[tokio::test]

@@ -291,9 +291,13 @@ Read this before the long narrative below, which is a point-in-time record and
   time-boxed cross-org share tickets, 406 published-image boot proof + real
   loopback OIDC, 407 executable surface + hero-loop contracts, 408 full-audit
   remediation (member self-scoping, egress guard, `/ui` P1, brand), 409 the
-  tag-honest release stream. **410 (PayerStamp ledger + authorization audit
-  lane) is in flight**; **411 (delegated authority) is planned** and rejects
-  408's ambient work-attribution model — see [`docs/Open Work.md`](docs/Open%20Work.md).
+  tag-honest release stream, 410 the PayerStamp usage ledger and authorization
+  evidence lane (`v410.0.0`). **411 (delegated authority) is complete through
+  411.6, close pending**: every token acts as exactly one member, acting for
+  another means a delegation grant exchanged for a short-lived token that *is*
+  that member, and every delegated use — refusals included — is durably
+  recorded with actor, subject and grant. `member:impersonate` no longer exists,
+  and `capability_set::no_capability_grants_act_as_any` fails if it returns.
 - **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
   several items deliberately recorded as *decisions* rather than fixed. Do not
   guess at them: self-approval laundering, `Maidan-Room-LSN` scoping, the

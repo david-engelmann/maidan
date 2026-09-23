@@ -30,18 +30,34 @@ pub(super) async fn add_member_skill(
     if a.skill.trim().is_empty() {
         return Err(McpError::InvalidParams("skill must not be empty".into()));
     }
-    // The REST twin's ratchet, and it has to be here rather than in the static
-    // `required_capability` arm: whether this call widens who may approve
-    // depends on the *argument*, not the tool. A governance skill is what a
-    // gate reads as authority, so granting one needs `channel:admin` — which
-    // `maidan.agent.worker` does not carry.
-    if is_governance_skill(&a.skill) && !auth.bypass {
-        maidan_auth::require_observed_capability(
-            auth,
-            maidan_auth::AuthorizationSurface::Mcp,
-            CHANNEL_ADMIN,
-        )
-        .map_err(McpError::from)?;
+    // The REST twin's split, and it has to live here rather than in the
+    // pre-dispatch gate: whether `member_id` is the caller's own state or an
+    // administrative target depends on the *skill* argument, not the tool. A
+    // routing tag is the member's own declaration. A governance skill is what a
+    // gate reads as authority, so granting one is an operator conferring it on
+    // someone else — `channel:admin`, which `maidan.agent.worker` does not carry.
+    if !auth.bypass {
+        let target = MemberId(a.member_id);
+        if is_governance_skill(&a.skill) {
+            maidan_auth::require_observed_capability(
+                auth,
+                maidan_auth::AuthorizationSurface::Mcp,
+                CHANNEL_ADMIN,
+            )
+            .map_err(McpError::from)?;
+            // The gate that no longer covers this tool was also what kept the
+            // grant inside the caller's workspace. Same refusal either way, so
+            // this does not reveal whether the member exists.
+            let member = store
+                .get_member(target)
+                .await
+                .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
+            if member.workspace_id != auth.workspace_id {
+                return Err(McpError::Forbidden("member_id is not yours".to_string()));
+            }
+        } else if target != auth.member_id {
+            return Err(McpError::Forbidden("member_id is not yours".to_string()));
+        }
     }
     store
         .add_member_skill(MemberId(a.member_id), a.skill.trim())

@@ -245,25 +245,61 @@ async fn follow_unfollow_and_list_channel() {
         .unwrap();
     assert_eq!(not_mine.status(), StatusCode::FORBIDDEN);
 
-    // The orchestrator case this used to assert still works — it is now asked
-    // for by name rather than inherited from `workspace:read`.
-    let impersonator = mint_with(
+    // The orchestrator case still works, through the one path that exists for
+    // it: an admin grants the orchestrator authority to act for the colleague,
+    // and the orchestrator exchanges that grant for a token that *is* the
+    // colleague. It then passes self-scoping as itself, and the use is recorded
+    // with the orchestrator as actor.
+    let admin = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "admin".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let admin_tok = mint_with(
         store.as_ref(),
         ws.id,
-        member.id,
-        vec![
-            capability::WORKSPACE_READ.into(),
-            capability::MEMBER_IMPERSONATE.into(),
-        ],
+        admin.id,
+        vec![capability::TOKEN_ADMIN.into()],
     )
     .await;
-    let act_as_any = client
+    let grant: Value = client
+        .post(format!("{base}/workspaces/{}/delegation-grants", ws.id.0))
+        .header("Authorization", format!("Bearer {admin_tok}"))
+        .json(&json!({
+            "subject_id": followed_mid,
+            "delegate_id": mid,
+            "capabilities": [capability::WORKSPACE_READ],
+            "purpose": "read the colleague's digest on their behalf",
+            "expires_at": chrono::Utc::now() + chrono::Duration::hours(1),
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let exchanged: Value = client
+        .post(format!("{base}/tokens/delegate"))
+        .header("Authorization", &bearer)
+        .json(&json!({ "grant_id": grant["id"] }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let delegated = exchanged["token"]["secret"].as_str().unwrap();
+    let on_their_behalf = client
         .get(format!("{base}/members/{followed_mid}/manager-digest"))
-        .header("Authorization", format!("Bearer {impersonator}"))
+        .header("Authorization", format!("Bearer {delegated}"))
         .send()
         .await
         .unwrap();
-    assert_eq!(act_as_any.status(), StatusCode::OK);
+    assert_eq!(on_their_behalf.status(), StatusCode::OK);
 
     let self_follow = client
         .post(format!("{base}/members/{mid}/member-follows"))

@@ -179,3 +179,69 @@ async fn non_participant_cannot_tail_a_dm() {
         .unwrap();
     assert_eq!(ok.status(), StatusCode::OK, "a participant may tail the DM");
 }
+
+/// Reading a DM's metadata tells you who is talking to whom privately, which is
+/// as sensitive as the messages. The participant check used to apply only to
+/// session callers, so any bearer holding `workspace:read` could list the roster
+/// of every DM and group DM in its workspace. It applies to every caller now.
+#[tokio::test]
+async fn a_bearer_cannot_read_the_roster_of_a_dm_it_is_not_in() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+    let ws = ctx
+        .store
+        .create_workspace(NewWorkspace {
+            name: "acme".into(),
+        })
+        .await
+        .unwrap();
+    let alice = mk_member(ctx.store.as_ref(), ws.id, "alice").await;
+    let bob = mk_member(ctx.store.as_ref(), ws.id, "bob").await;
+    let dave = mk_member(ctx.store.as_ref(), ws.id, "dave").await;
+    let carol = mk_member(ctx.store.as_ref(), ws.id, "carol").await; // outsider
+
+    let dm = ctx
+        .store
+        .open_dm_conversation(ws.id, alice, bob)
+        .await
+        .unwrap();
+    let group = ctx
+        .store
+        .open_group_dm_conversation(ws.id, &[alice, bob, dave], None)
+        .await
+        .unwrap();
+
+    let carol_tok = mint_subscriber(ctx.store.as_ref(), ws.id, carol).await;
+    let alice_tok = mint_subscriber(ctx.store.as_ref(), ws.id, alice).await;
+
+    for (path, what) in [
+        (format!("{base}/dm/{}", dm.id.0), "a 1:1 DM"),
+        (format!("{base}/group-dms/{}", group.id.0), "a group DM"),
+    ] {
+        let outsider = ctx
+            .client
+            .get(&path)
+            .bearer_auth(&carol_tok)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            outsider.status(),
+            StatusCode::FORBIDDEN,
+            "a non-participant bearer must not read the roster of {what}"
+        );
+
+        let participant = ctx
+            .client
+            .get(&path)
+            .bearer_auth(&alice_tok)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            participant.status(),
+            StatusCode::OK,
+            "a participant still reads {what}"
+        );
+    }
+}

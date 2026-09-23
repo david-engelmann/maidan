@@ -75,9 +75,8 @@ pub async fn get_group_dm(
         .get_group_dm_conversation(GroupDmConversationId(id))
         .await?;
     ensure_workspace(&auth, group.workspace_id)?;
-    // A session caller must be a participant to read a group DM's metadata;
-    // bearer = orchestrator (act-as-any); bypass exempt.
-    if !auth.bypass && auth.token_id.is_none() && !group.member_ids.contains(&auth.member_id) {
+    // Only a participant may read a group DM's roster — see `get_dm`.
+    if !auth.bypass && !group.member_ids.contains(&auth.member_id) {
         return Err(ApiError::Forbidden(
             "member is not a participant in this group DM".into(),
         ));
