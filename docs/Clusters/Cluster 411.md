@@ -44,7 +44,7 @@
 | 411.1 | #996 | Close the confirmed D-5 holes: member-skill self-scope, auth-bound share-ticket ownership, context/search clamps, and argument-keyed MCP identity drift coverage |
 | 411.2 | #997 | `maidan_delegation_grants` models, migrations, and both store backends; no protocol surface |
 | 411.3 | #999 | REST `POST /tokens/delegate` + MCP `delegate_token`, bounded lifetime, capability intersection, and revocation cascade |
-| 411.4 | planned | Breaking removal of caller-chosen acting-identity fields; derive ordinary identity solely from authentication |
+| 411.4 | #1000 | Breaking removal of caller-chosen acting-identity fields; derive ordinary identity solely from authentication |
 | 411.5 | planned | Grant create/list/revoke surfaces and actor + subject + `grant_id` authorization evidence |
 | 411.6 | planned | Remove `member:impersonate` and add capability-vocabulary/set absence contracts |
 | 411.close | close record | Ledgers, retrospective, and `v411.0.0` tag |
