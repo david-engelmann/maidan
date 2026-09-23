@@ -6,7 +6,7 @@
 
 Snapshot: 2026-08-25. Code facts from the local tree (`SUPPORTED_PROTOCOL_VERSIONS`, `POST /a2a/v1/rpc`, Agent Card). Market facts from AAIF / Linux Foundation / MCP spec `2026-07-28` / A2A v1.0. Re-scan before you quote numbers in a blog post.
 
-**MCP `2026-07-28` shipped (Hardening J3).** The server negotiates the current
+**MCP `2026-07-28` is current.** The server negotiates the current
 `2026-07-28` revision — stateless Streamable HTTP (no `Mcp-Session-Id`) + SEP-2243 `Mcp-Method`/`Mcp-Name`
 routing headers — and still accepts `2024-11-05` for older clients. See [Required protocol upgrades](#required-protocol-upgrades).
 
