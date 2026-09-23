@@ -301,7 +301,7 @@ pub async fn create_user(
     crate::audit::record(
         &state,
         maidan_types::NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "scim.user.create".into(),
             target_kind: Some("member".into()),
             target_id: Some(member.id.0),
@@ -578,7 +578,7 @@ pub async fn delete_user(
             crate::audit::record(
                 &state,
                 maidan_types::NewAuditEvent {
-                    actor_id: Some(auth.member_id),
+                    actor_id: Some(auth.actor_id),
                     action: "scim.user.delete".into(),
                     target_kind: Some("member".into()),
                     target_id: Some(member_id.0),

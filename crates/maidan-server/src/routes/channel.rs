@@ -223,7 +223,7 @@ pub async fn add_channel_member(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "channel_member.add".into(),
             target_kind: Some("channel".into()),
             target_id: Some(channel.id.0),
@@ -264,7 +264,7 @@ pub async fn remove_channel_member(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "channel_member.remove".into(),
             target_kind: Some("channel".into()),
             target_id: Some(channel.id.0),

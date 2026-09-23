@@ -141,7 +141,7 @@ pub async fn revoke_app_installation(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "app_installation.revoke".into(),
             target_kind: Some("app_installation".into()),
             target_id: Some(installation_id.0),
@@ -205,7 +205,7 @@ pub async fn mint_app_token(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "app_token.mint".into(),
             target_kind: Some("api_token".into()),
             target_id: Some(record.id.0),

@@ -177,7 +177,14 @@ pub async fn record_delegated_authorization(
             "grant_id": grant_id.0,
         }),
     };
-    if let Err(err) = store.append_audit(event).await {
+    // Written after the request's scope has ended — this runs once the
+    // response exists, so the outcome is known. It re-enters the scope so the
+    // row records the delegate as actor and the member as subject, like every
+    // other audit row, instead of falling back to "the actor acted for itself".
+    let written =
+        maidan_store::attribution::with_attribution(auth.attribution(), store.append_audit(event))
+            .await;
+    if let Err(err) = written {
         tracing::error!(
             target: "audit",
             %err,

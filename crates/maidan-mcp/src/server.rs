@@ -381,7 +381,23 @@ impl McpServer {
         }))
     }
 
+    /// Every MCP write passes through here, whatever the transport, so this is
+    /// where tool calls take on the caller's attribution. Over HTTP the auth
+    /// middleware has already set the same value; stdio has no middleware, so
+    /// without this its writes would read as the system's.
     async fn tools_call(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
+        maidan_store::attribution::with_attribution(
+            auth.attribution(),
+            self.tools_call_unscoped(params, auth),
+        )
+        .await
+    }
+
+    async fn tools_call_unscoped(
+        &self,
+        params: &Value,
+        auth: &AuthContext,
+    ) -> Result<Value, McpError> {
         let name = params
             .get("name")
             .and_then(|v| v.as_str())
@@ -1065,6 +1081,101 @@ mod tests {
         assert!(
             matches!(err, McpError::Forbidden(_)),
             "expected Forbidden, got {err:?}"
+        );
+    }
+
+    /// MCP over stdio never passes through the HTTP auth middleware, so the
+    /// scope `tools_call` sets is the only thing attributing its writes. This
+    /// calls the server directly, as stdio does.
+    #[tokio::test]
+    async fn an_mcp_tool_call_attributes_what_it_writes() {
+        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "w".into() })
+            .await
+            .unwrap();
+        let mut ids = Vec::new();
+        for handle in ["orchestrator", "worker"] {
+            ids.push(
+                store
+                    .create_member(NewMember {
+                        workspace_id: ws.id,
+                        handle: handle.into(),
+                        display_name: None,
+                        kind: MemberKind::Agent,
+                    })
+                    .await
+                    .unwrap()
+                    .id,
+            );
+        }
+        let (orchestrator, worker) = (ids[0], ids[1]);
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "general".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let grant = DelegationGrantId(uuid::Uuid::new_v4());
+        let borrowed = AuthContext::from_delegated_token(
+            ApiTokenId(uuid::Uuid::new_v4()),
+            orchestrator,
+            worker,
+            ws.id,
+            grant,
+            vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()],
+        );
+        server
+            .call_tool(
+                &borrowed,
+                "post_message",
+                &json!({ "thread_id": thread.id.0, "body": "via stdio" }),
+            )
+            .await
+            .expect("post as the worker");
+
+        let posted = store
+            .list_events_after(ws.id, 0, 100)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|e| e.kind == EventKind::MessagePosted)
+            .expect("a MessagePosted event");
+        assert_eq!(
+            posted.attribution(),
+            Some(Attribution {
+                actor_id: orchestrator,
+                subject_id: worker,
+                grant_id: Some(grant),
+            })
         );
     }
 

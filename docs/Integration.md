@@ -344,7 +344,35 @@ a short-lived token that *is* the agent.
    It carries only capabilities that both the grant and the delegate hold.
 
 Every request made with that token leaves a durable record naming who acted, on
-whose behalf, and under which grant — for refusals as well as successes. Those
+whose behalf, and under which grant — for refusals as well as successes.
+
+### Reading who did something
+
+Every event written during a request carries an `attribution` object inside its
+payload:
+
+```json
+"attribution": {
+  "actor_id":   "…the member that actually acted…",
+  "subject_id": "…the member it acted for…",
+  "grant_id":   "…present only when delegated…"
+}
+```
+
+A member acting for itself has `actor_id == subject_id` and no `grant_id`. A
+delegated action has the delegate as `actor_id`, the member it acted for as
+`subject_id`, and the grant it used. An event with no `attribution` was written
+by background work — a scheduled sweep, a retention pass, a federated event
+arriving from a peer — rather than by any member's request.
+
+Attribution is part of the hashed payload, so it is covered by the event chain:
+`GET /workspaces/{wid}/events/verify` fails if anyone rewrites who did
+something. Audit rows carry the same three fields as `actor_id`, `subject_id`
+and `grant_id`.
+
+The displayed author of a message stays the member it was posted for — a message
+an orchestrator posts for an agent is the agent's message. Attribution is what
+records that the orchestrator wrote it. Those
 refusals are recorded in full rather than sampled, because their volume is
 bounded by a grant you issued and can revoke. `GET /me` and MCP `whoami` return
 `actor_id`, `member_id` (the subject) and `delegation_grant_id`, so a client can

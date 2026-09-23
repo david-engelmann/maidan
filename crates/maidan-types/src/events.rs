@@ -41,6 +41,15 @@ pub struct StoredEvent {
 }
 
 impl StoredEvent {
+    /// Who wrote this event and on whose behalf, read from the payload where it
+    /// is stored under the event hash. `None` for background work and for events
+    /// written before attribution existed.
+    pub fn attribution(&self) -> Option<crate::Attribution> {
+        self.payload
+            .get("attribution")
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+    }
+
     /// Chain fields a peer verifies without trusting the host.
     pub fn link(&self) -> crate::event_chain::EventLink {
         crate::event_chain::EventLink {

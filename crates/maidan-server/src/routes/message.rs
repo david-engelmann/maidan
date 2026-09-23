@@ -349,7 +349,7 @@ pub async fn purge_message(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "message.purge".into(),
             target_kind: Some("message".into()),
             target_id: Some(id),

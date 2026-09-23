@@ -115,6 +115,17 @@ impl AuthContext {
         }
     }
 
+    /// Who is acting and for whom, for recording against whatever this request
+    /// writes. `None` when auth is bypassed: there is no real principal, so
+    /// claiming one — the nil member — would be recording a fiction.
+    pub fn attribution(&self) -> Option<maidan_types::Attribution> {
+        (!self.bypass).then_some(maidan_types::Attribution {
+            actor_id: self.actor_id,
+            subject_id: self.member_id,
+            grant_id: self.delegation_grant_id,
+        })
+    }
+
     pub fn has_capability(&self, cap: &str) -> bool {
         self.bypass || self.capabilities.iter().any(|c| c == cap)
     }

@@ -51,11 +51,23 @@ pub fn auth_disabled_from_env() -> bool {
         && !crate::config::is_production()
 }
 
+/// Run the rest of the request as its authenticated caller, so that everything
+/// it writes records who acted and on whose behalf. Every path out of the auth
+/// middlewares goes through here; a bypassed request carries no principal and
+/// records none.
+async fn run_as(req: Request, next: Next) -> Response {
+    let attribution = req
+        .extensions()
+        .get::<AuthContext>()
+        .and_then(AuthContext::attribution);
+    maidan_store::attribution::with_attribution(attribution, next.run(req)).await
+}
+
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
     if state.auth_disabled {
         let auth = auth_disabled_context(&state, req.headers()).await;
         req.extensions_mut().insert(auth);
-        return next.run(req).await;
+        return run_as(req, next).await;
     }
 
     let bearer = req
@@ -75,7 +87,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             let method = req.method().clone();
             let path = req.uri().path().to_owned();
             req.extensions_mut().insert(ctx.clone());
-            let response = next.run(req).await;
+            let response = run_as(req, next).await;
             if !path.starts_with("/mcp") {
                 let outcome = if matches!(response.status().as_u16(), 401 | 403 | 404) {
                     AuthorizationOutcome::Denied
@@ -97,7 +109,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             Ok(peer) => {
                 let workspace_id = peer.workspace_id;
                 req.extensions_mut().insert(PeerContext(peer));
-                tag_room(next.run(req).await, workspace_id)
+                tag_room(run_as(req, next).await, workspace_id)
             }
             Err(_) => {
                 record_authentication_denial(req.uri().path());
@@ -151,14 +163,14 @@ pub async fn session_or_bearer_middleware(
     if state.auth_disabled {
         let auth = auth_disabled_context(&state, req.headers()).await;
         req.extensions_mut().insert(auth);
-        return next.run(req).await;
+        return run_as(req, next).await;
     }
 
     if let Some(secret) = bearer_from_headers(req.headers()) {
         if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
             let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(ctx);
-            return tag_room(next.run(req).await, workspace_id);
+            return tag_room(run_as(req, next).await, workspace_id);
         }
     }
 
@@ -176,7 +188,7 @@ pub async fn session_or_bearer_middleware(
             let workspace_id = session.workspace_id;
             req.extensions_mut().insert(session);
             req.extensions_mut().insert(ctx);
-            tag_room(next.run(req).await, workspace_id)
+            tag_room(run_as(req, next).await, workspace_id)
         }
         Err(err) => {
             record_authentication_denial(req.uri().path());
@@ -194,14 +206,14 @@ pub async fn ui_session_or_bearer_middleware(
     if state.auth_disabled {
         let auth = auth_disabled_context(&state, req.headers()).await;
         req.extensions_mut().insert(auth);
-        return next.run(req).await;
+        return run_as(req, next).await;
     }
 
     if let Some(secret) = bearer_from_headers(req.headers()) {
         if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
             let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(ctx);
-            return tag_room(next.run(req).await, workspace_id);
+            return tag_room(run_as(req, next).await, workspace_id);
         }
     }
 
@@ -221,7 +233,7 @@ pub async fn ui_session_or_bearer_middleware(
             let workspace_id = session.workspace_id;
             req.extensions_mut().insert(session);
             req.extensions_mut().insert(ctx);
-            tag_room(next.run(req).await, workspace_id)
+            tag_room(run_as(req, next).await, workspace_id)
         }
         Err(err) => {
             record_authentication_denial(req.uri().path());

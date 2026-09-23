@@ -159,7 +159,7 @@ pub async fn import_workspace(
                     state
                         .store
                         .append_audit(NewAuditEvent {
-                            actor_id: Some(auth.member_id),
+                            actor_id: Some(auth.actor_id),
                             action: "workspace.import".into(),
                             target_kind: Some("workspace".into()),
                             target_id: Some(flat.workspace.id.0),
@@ -184,7 +184,7 @@ pub async fn import_workspace(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "workspace.import".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(workspace_id.0),
@@ -623,7 +623,7 @@ pub async fn purge_workspace(
     state
         .store
         .append_audit(NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "workspace.purge".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(workspace_id.0),
@@ -663,7 +663,7 @@ pub async fn erase_workspace(
     state
         .store
         .append_audit(NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "workspace.erase".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(workspace_id.0),
@@ -724,7 +724,7 @@ pub async fn place_legal_hold(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "legal_hold.place".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(workspace_id.0),
@@ -749,7 +749,7 @@ pub async fn lift_legal_hold(
         crate::audit::record(
             &state,
             NewAuditEvent {
-                actor_id: Some(auth.member_id),
+                actor_id: Some(auth.actor_id),
                 action: "legal_hold.lift".into(),
                 target_kind: Some("workspace".into()),
                 target_id: Some(workspace_id.0),

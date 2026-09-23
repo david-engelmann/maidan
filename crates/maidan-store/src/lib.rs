@@ -4,6 +4,7 @@
 //! and SQLite implementations backed by `sqlx`.
 
 pub mod a2a;
+pub mod attribution;
 pub mod automation_deliveries;
 mod delegation_grants;
 pub mod dialect;

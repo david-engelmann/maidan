@@ -51,7 +51,7 @@ pub async fn add_member_skill(
         crate::audit::record(
             &state,
             NewAuditEvent {
-                actor_id: Some(auth.member_id),
+                actor_id: Some(auth.actor_id),
                 action: "member_skill.grant_governance".into(),
                 target_kind: Some("member".into()),
                 target_id: Some(member.id.0),

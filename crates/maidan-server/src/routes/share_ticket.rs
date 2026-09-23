@@ -41,7 +41,7 @@ pub async fn create_share_ticket(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "share_ticket.create".into(),
             target_kind: Some("share_ticket".into()),
             target_id: Some(ticket.id.0),
@@ -104,7 +104,7 @@ pub async fn revoke_share_ticket(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "share_ticket.revoke".into(),
             target_kind: Some("share_ticket".into()),
             target_id: Some(ticket_id.0),

@@ -154,7 +154,7 @@ pub(super) async fn attenuate_token(
     // response-only secret to an audit hiccup.
     if let Err(err) = store
         .append_audit(maidan_types::NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "token.mint".into(),
             target_kind: Some("api_token".into()),
             target_id: Some(record.id.0),
@@ -262,7 +262,7 @@ pub(super) async fn delegate_token(
         .await?;
     if let Err(err) = store
         .append_audit(maidan_types::NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "token.delegate".into(),
             target_kind: Some("api_token".into()),
             target_id: Some(record.id.0),

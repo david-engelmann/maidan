@@ -52,7 +52,7 @@ pub async fn allow_egress_target(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "egress_target.allow".into(),
             target_kind: Some("egress_target".into()),
             target_id: Some(target.id.0),
@@ -102,7 +102,7 @@ pub async fn revoke_egress_target(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "egress_target.revoke".into(),
             target_kind: Some("egress_target".into()),
             target_id: Some(tid),
