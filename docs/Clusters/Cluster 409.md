@@ -22,7 +22,7 @@
 |-------|----|--------|
 | 409.1 | #979 | Release-record contract in CI and tag-time release gate |
 | 409.2 | #982 | Searchable release surface and published-vs-HEAD guidance |
-| 409.close | close record | Ledgers, retrospective, and `v409.0.0` tag |
+| 409.close | #983 | Ledgers, retrospective, and `v409.0.0` tag |
 
 ## Non-goals
 
