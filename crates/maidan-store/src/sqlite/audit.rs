@@ -96,3 +96,14 @@ fn row_to_audit(row: &sqlx::sqlite::SqliteRow) -> Result<AuditEvent, StoreError>
         metadata,
     })
 }
+
+/// [`append_on`], counting a failure before it aborts the caller's
+/// transaction — the write an authority change makes with its record (D-A).
+pub(crate) async fn append_counted(
+    conn: &mut sqlx::SqliteConnection,
+    new: NewAuditEvent,
+) -> Result<AuditEvent, StoreError> {
+    append_on(conn, new)
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())
+}

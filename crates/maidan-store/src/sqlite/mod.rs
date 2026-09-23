@@ -192,6 +192,14 @@ impl WorkspaceStore for SqliteStore {
     ) -> Result<DelegationPolicy, StoreError> {
         delegation_grants::set_policy(&self.pool, workspace_id, max_grant_days).await
     }
+    async fn set_delegation_policy_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        max_grant_days: Option<i64>,
+        audit: crate::AuditFor<DelegationPolicy>,
+    ) -> Result<DelegationPolicy, StoreError> {
+        delegation_grants::set_policy_audited(&self.pool, workspace_id, max_grant_days, audit).await
+    }
     async fn set_workspace_handle(
         &self,
         workspace_id: WorkspaceId,
@@ -2540,6 +2548,21 @@ impl ShareTicketStore for SqliteStore {
     ) -> Result<bool, StoreError> {
         share_tickets::allows_artifact(&self.pool, id, sha256, now).await
     }
+    async fn create_share_ticket_audited(
+        &self,
+        new: NewShareTicket,
+        audit: crate::AuditFor<ShareTicket>,
+    ) -> Result<ShareTicket, StoreError> {
+        share_tickets::create_audited(&self.pool, new, audit).await
+    }
+    async fn revoke_share_ticket_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ShareTicketId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        share_tickets::revoke_audited(&self.pool, workspace_id, id, audit).await
+    }
 }
 
 #[async_trait]
@@ -2571,6 +2594,21 @@ impl DelegationGrantStore for SqliteStore {
         id: DelegationGrantId,
     ) -> Result<bool, StoreError> {
         delegation_grants::revoke(&self.pool, workspace_id, id).await
+    }
+    async fn create_delegation_grant_audited(
+        &self,
+        new: NewDelegationGrant,
+        audit: crate::AuditFor<DelegationGrant>,
+    ) -> Result<DelegationGrant, StoreError> {
+        delegation_grants::create_audited(&self.pool, new, audit).await
+    }
+    async fn revoke_delegation_grant_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: DelegationGrantId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        delegation_grants::revoke_audited(&self.pool, workspace_id, id, audit).await
     }
 }
 

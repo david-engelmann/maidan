@@ -9,9 +9,17 @@ use crate::{delegation_grants, StoreError};
 const COLUMNS: &str = "id, workspace_id, subject_id, delegate_id, capabilities, purpose, authorized_by, expires_at, revoked_at, created_at";
 
 pub async fn create(pool: &PgPool, new: NewDelegationGrant) -> Result<DelegationGrant, StoreError> {
+    let mut conn = pool.acquire().await?;
+    create_on(&mut conn, new).await
+}
+
+pub(crate) async fn create_on(
+    conn: &mut sqlx::PgConnection,
+    new: NewDelegationGrant,
+) -> Result<DelegationGrant, StoreError> {
     let now = chrono::Utc::now();
     let (capabilities, purpose) = delegation_grants::validate_new(&new, now)?;
-    let policy = get_policy(pool, new.workspace_id).await?;
+    let policy = get_policy_on(&mut *conn, new.workspace_id).await?;
     delegation_grants::check_grant_ceiling(new.expires_at, now, policy.max_grant_days)?;
     let encoded = serde_json::to_string(&capabilities)?;
     let scope_valid: bool = sqlx::query_scalar(
@@ -27,7 +35,7 @@ pub async fn create(pool: &PgPool, new: NewDelegationGrant) -> Result<Delegation
     .bind(new.subject_id.0)
     .bind(new.delegate_id.0)
     .bind(new.authorized_by.0)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     if !scope_valid {
         return Err(StoreError::InvalidInput(
@@ -43,7 +51,7 @@ pub async fn create(pool: &PgPool, new: NewDelegationGrant) -> Result<Delegation
     ))
     .bind(id.0).bind(new.workspace_id.0).bind(new.subject_id.0).bind(new.delegate_id.0)
     .bind(encoded).bind(purpose).bind(new.authorized_by.0).bind(new.expires_at)
-    .fetch_one(pool).await?;
+    .fetch_one(&mut *conn).await?;
     row_to_grant(&row)
 }
 
@@ -72,8 +80,17 @@ pub async fn revoke(
     workspace_id: WorkspaceId,
     id: DelegationGrantId,
 ) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    revoke_on(&mut conn, workspace_id, id).await
+}
+
+pub(crate) async fn revoke_on(
+    conn: &mut sqlx::PgConnection,
+    workspace_id: WorkspaceId,
+    id: DelegationGrantId,
+) -> Result<bool, StoreError> {
     let now = chrono::Utc::now();
-    let mut tx = pool.begin().await?;
+    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let result = sqlx::query("UPDATE maidan_delegation_grants SET revoked_at=$3 WHERE id=$1 AND workspace_id=$2 AND revoked_at IS NULL")
         .bind(id.0).bind(workspace_id.0).bind(now).execute(&mut *tx).await?;
     if result.rows_affected() != 1 {
@@ -116,11 +133,19 @@ pub async fn get_policy(
     pool: &PgPool,
     workspace_id: WorkspaceId,
 ) -> Result<DelegationPolicy, StoreError> {
+    let mut conn = pool.acquire().await?;
+    get_policy_on(&mut conn, workspace_id).await
+}
+
+pub(crate) async fn get_policy_on(
+    conn: &mut sqlx::PgConnection,
+    workspace_id: WorkspaceId,
+) -> Result<DelegationPolicy, StoreError> {
     let days: Option<i64> = sqlx::query_scalar(
         "SELECT max_grant_days FROM maidan_delegation_policies WHERE workspace_id = $1",
     )
     .bind(workspace_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?;
     Ok(DelegationPolicy {
         workspace_id,
@@ -137,6 +162,15 @@ pub async fn set_policy(
     workspace_id: WorkspaceId,
     max_grant_days: Option<i64>,
 ) -> Result<DelegationPolicy, StoreError> {
+    let mut conn = pool.acquire().await?;
+    set_policy_on(&mut conn, workspace_id, max_grant_days).await
+}
+
+pub(crate) async fn set_policy_on(
+    conn: &mut sqlx::PgConnection,
+    workspace_id: WorkspaceId,
+    max_grant_days: Option<i64>,
+) -> Result<DelegationPolicy, StoreError> {
     match max_grant_days {
         Some(days) => {
             delegation_grants::validate_ceiling(days)?;
@@ -149,15 +183,58 @@ pub async fn set_policy(
             .bind(workspace_id.0)
             .bind(days)
             .bind(chrono::Utc::now())
-            .execute(pool)
+            .execute(&mut *conn)
             .await?;
         }
         None => {
             sqlx::query("DELETE FROM maidan_delegation_policies WHERE workspace_id = $1")
                 .bind(workspace_id.0)
-                .execute(pool)
+                .execute(&mut *conn)
                 .await?;
         }
     }
-    get_policy(pool, workspace_id).await
+    get_policy_on(&mut *conn, workspace_id).await
+}
+
+/// [`create`], with its audit row in the same transaction (D-A).
+pub async fn create_audited(
+    pool: &PgPool,
+    new: NewDelegationGrant,
+    audit: crate::AuditFor<DelegationGrant>,
+) -> Result<DelegationGrant, StoreError> {
+    let mut tx = pool.begin().await?;
+    let grant = create_on(&mut tx, new).await?;
+    super::audit::append_counted(&mut tx, audit(&grant)).await?;
+    tx.commit().await?;
+    Ok(grant)
+}
+
+/// [`revoke`], with its audit row in the same transaction. Revoking is
+/// idempotent and so is its record: `audit` is written whether or not the
+/// grant was still live.
+pub async fn revoke_audited(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    id: DelegationGrantId,
+    audit: maidan_types::NewAuditEvent,
+) -> Result<bool, StoreError> {
+    let mut tx = pool.begin().await?;
+    let revoked = revoke_on(&mut tx, workspace_id, id).await?;
+    super::audit::append_counted(&mut tx, audit).await?;
+    tx.commit().await?;
+    Ok(revoked)
+}
+
+/// [`set_policy`], with its audit row in the same transaction.
+pub async fn set_policy_audited(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    max_grant_days: Option<i64>,
+    audit: crate::AuditFor<DelegationPolicy>,
+) -> Result<DelegationPolicy, StoreError> {
+    let mut tx = pool.begin().await?;
+    let policy = set_policy_on(&mut tx, workspace_id, max_grant_days).await?;
+    super::audit::append_counted(&mut tx, audit(&policy)).await?;
+    tx.commit().await?;
+    Ok(policy)
 }

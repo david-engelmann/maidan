@@ -343,37 +343,35 @@ pub(super) async fn create_delegation_grant(
             ));
         }
     }
+    let actor = auth.actor_id;
     let grant = store
-        .create_delegation_grant(NewDelegationGrant {
-            workspace_id,
-            subject_id,
-            delegate_id,
-            capabilities: a.capabilities,
-            purpose: a.purpose,
-            authorized_by: auth.actor_id,
-            expires_at: a.expires_at,
-        })
-        .await?;
-    if let Err(err) = store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "delegation_grant.create".into(),
-            target_kind: Some("delegation_grant".into()),
-            target_id: Some(grant.id.0),
-            metadata: json!({
-                "workspace_id": workspace_id.0,
-                "subject_id": grant.subject_id.0,
-                "delegate_id": grant.delegate_id.0,
-                "capabilities": grant.capabilities.clone(),
-                "expires_at": grant.expires_at,
-                "purpose": grant.purpose.clone(),
-                "surface": "mcp",
+        .create_delegation_grant_audited(
+            NewDelegationGrant {
+                workspace_id,
+                subject_id,
+                delegate_id,
+                capabilities: a.capabilities,
+                purpose: a.purpose,
+                authorized_by: auth.actor_id,
+                expires_at: a.expires_at,
+            },
+            Box::new(move |grant| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "delegation_grant.create".into(),
+                target_kind: Some("delegation_grant".into()),
+                target_id: Some(grant.id.0),
+                metadata: json!({
+                    "workspace_id": workspace_id.0,
+                    "subject_id": grant.subject_id.0,
+                    "delegate_id": grant.delegate_id.0,
+                    "capabilities": grant.capabilities.clone(),
+                    "expires_at": grant.expires_at,
+                    "purpose": grant.purpose.clone(),
+                    "surface": "mcp",
+                }),
             }),
-        })
-        .await
-    {
-        tracing::warn!(error = %err, "audit.write_failed");
-    }
+        )
+        .await?;
     Ok(content_json(&grant))
 }
 
@@ -417,26 +415,24 @@ pub(super) async fn revoke_delegation_grant(
         return Err(McpError::NotFound);
     }
     store
-        .revoke_delegation_grant(workspace_id, grant_id)
+        .revoke_delegation_grant_audited(
+            workspace_id,
+            grant_id,
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "delegation_grant.revoke".into(),
+                target_kind: Some("delegation_grant".into()),
+                target_id: Some(grant_id.0),
+                metadata: json!({
+                    "workspace_id": workspace_id.0,
+                    "subject_id": existing.subject_id.0,
+                    "delegate_id": existing.delegate_id.0,
+                    "surface": "mcp",
+                }),
+            },
+        )
         .await?;
     let grant = store.get_delegation_grant(grant_id).await?;
-    if let Err(err) = store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "delegation_grant.revoke".into(),
-            target_kind: Some("delegation_grant".into()),
-            target_id: Some(grant.id.0),
-            metadata: json!({
-                "workspace_id": workspace_id.0,
-                "subject_id": grant.subject_id.0,
-                "delegate_id": grant.delegate_id.0,
-                "surface": "mcp",
-            }),
-        })
-        .await
-    {
-        tracing::warn!(error = %err, "audit.write_failed");
-    }
     Ok(content_json(&grant))
 }
 
@@ -738,24 +734,23 @@ pub(super) async fn set_delegation_policy(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SetDelegationPolicyArgs = serde_json::from_value(args.clone())?;
+    let (actor, workspace_id) = (auth.actor_id, auth.workspace_id);
     let policy = store
-        .set_delegation_policy(auth.workspace_id, a.max_grant_days)
-        .await?;
-    let recorded = store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "delegation_policy.set".into(),
-            target_kind: Some("workspace".into()),
-            target_id: Some(auth.workspace_id.0),
-            metadata: json!({
-                "max_grant_days": policy.max_grant_days,
-                "is_default": policy.is_default,
+        .set_delegation_policy_audited(
+            workspace_id,
+            a.max_grant_days,
+            Box::new(move |policy| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "delegation_policy.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: json!({
+                    "max_grant_days": policy.max_grant_days,
+                    "is_default": policy.is_default,
+                }),
             }),
-        })
-        .await;
-    if let Err(err) = recorded {
-        tracing::warn!(error = %err, "audit.write_failed");
-    }
+        )
+        .await?;
     Ok(content_json(&policy))
 }
 

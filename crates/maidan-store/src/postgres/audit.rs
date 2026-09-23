@@ -89,3 +89,14 @@ fn row_to_audit(row: &sqlx::postgres::PgRow) -> AuditEvent {
         metadata: row.get::<serde_json::Value, _>("metadata"),
     }
 }
+
+/// [`append_on`], counting a failure before it aborts the caller's
+/// transaction — the write an authority change makes with its record (D-A).
+pub(crate) async fn append_counted(
+    conn: &mut sqlx::PgConnection,
+    new: NewAuditEvent,
+) -> Result<AuditEvent, StoreError> {
+    append_on(conn, new)
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())
+}

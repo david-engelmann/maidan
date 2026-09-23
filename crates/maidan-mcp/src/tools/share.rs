@@ -26,38 +26,42 @@ pub(super) async fn create_share_ticket(
 ) -> Result<Value, McpError> {
     let a: CreateArgs = serde_json::from_value(args.clone())?;
     let secret = ShareTicketSecret::generate();
+    let (actor, workspace_id) = (auth.actor_id, auth.workspace_id);
+    // The store rejects any SHA that is not lowercase hex, so the distinct
+    // inputs are exactly what a successful create stores.
+    let artifact_count = a
+        .artifact_shas
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
     let ticket = server
         .store
-        .create_share_ticket(NewShareTicket {
-            workspace_id: auth.workspace_id,
-            channel_id: ChannelId(a.channel_id),
-            owner_id: auth.member_id,
-            created_by: auth.member_id,
-            token_hash: hash_secret(secret.as_str()),
-            expires_at: a.expires_at,
-            artifact_shas: a.artifact_shas,
-        })
+        .create_share_ticket_audited(
+            NewShareTicket {
+                workspace_id,
+                channel_id: ChannelId(a.channel_id),
+                owner_id: auth.member_id,
+                created_by: auth.member_id,
+                token_hash: hash_secret(secret.as_str()),
+                expires_at: a.expires_at,
+                artifact_shas: a.artifact_shas,
+            },
+            Box::new(move |ticket| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "share_ticket.create".into(),
+                target_kind: Some("share_ticket".into()),
+                target_id: Some(ticket.id.0),
+                metadata: json!({
+                    "workspace_id": workspace_id.0,
+                    "channel_id": ticket.channel_id.0,
+                    "owner_id": ticket.owner_id.0,
+                    "expires_at": ticket.expires_at,
+                    "artifact_count": artifact_count,
+                }),
+            }),
+        )
         .await?;
     let artifact_shas = server.store.list_share_ticket_artifacts(ticket.id).await?;
-    if let Err(err) = server
-        .store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "share_ticket.create".into(),
-            target_kind: Some("share_ticket".into()),
-            target_id: Some(ticket.id.0),
-            metadata: json!({
-                "workspace_id": auth.workspace_id.0,
-                "channel_id": ticket.channel_id.0,
-                "owner_id": ticket.owner_id.0,
-                "expires_at": ticket.expires_at,
-                "artifact_count": artifact_shas.len(),
-            }),
-        })
-        .await
-    {
-        tracing::warn!(error = %err, "audit.write_failed");
-    }
     Ok(content_json(&json!({
         "ticket": ticket,
         "artifact_shas": artifact_shas,
@@ -94,23 +98,20 @@ pub(super) async fn revoke_share_ticket(
     let ticket_id = ShareTicketId(a.ticket_id);
     if !server
         .store
-        .revoke_share_ticket(auth.workspace_id, ticket_id)
+        .revoke_share_ticket_audited(
+            auth.workspace_id,
+            ticket_id,
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "share_ticket.revoke".into(),
+                target_kind: Some("share_ticket".into()),
+                target_id: Some(ticket_id.0),
+                metadata: json!({ "workspace_id": auth.workspace_id.0 }),
+            },
+        )
         .await?
     {
         return Err(McpError::InvalidParams("share ticket not found".into()));
-    }
-    if let Err(err) = server
-        .store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "share_ticket.revoke".into(),
-            target_kind: Some("share_ticket".into()),
-            target_id: Some(ticket_id.0),
-            metadata: json!({ "workspace_id": auth.workspace_id.0 }),
-        })
-        .await
-    {
-        tracing::warn!(error = %err, "audit.write_failed");
     }
     Ok(content_json(&json!({ "revoked": true })))
 }

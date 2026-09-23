@@ -18,6 +18,11 @@ const UNAUDITED: &[&str] = &[
     ".create_attenuated_api_token(",
     ".create_delegated_api_token(",
     ".revoke_api_token(",
+    ".create_delegation_grant(",
+    ".revoke_delegation_grant(",
+    ".create_share_ticket(",
+    ".revoke_share_ticket(",
+    ".set_delegation_policy(",
 ];
 
 fn rust_files(path: &Path, out: &mut Vec<PathBuf>) {
