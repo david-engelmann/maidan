@@ -875,12 +875,40 @@ pub struct BusEnvelope {
     pub log_id: i64,
     #[serde(flatten)]
     pub event: Event,
+    /// Who acted and for whom, as the stored event records it. Parsing a
+    /// stored payload into an [`Event`] drops it — `attribution` is not a field
+    /// of any event — so it travels beside the event, and a live subscriber
+    /// sees the same principal a replay does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<crate::Attribution>,
 }
 
 impl BusEnvelope {
     /// For tests and direct bus use without a backing event log row.
     pub fn synthetic(event: Event) -> Self {
-        Self { log_id: 0, event }
+        Self {
+            log_id: 0,
+            event,
+            attribution: None,
+        }
+    }
+
+    /// The envelope for a stored event's payload, attribution included. Every
+    /// path from the log to the bus goes through here.
+    pub fn from_stored_payload(
+        log_id: i64,
+        payload: serde_json::Value,
+    ) -> Result<Self, serde_json::Error> {
+        // Lenient, like [`StoredEvent::attribution`]: a malformed value is a
+        // chain-verification finding, not a reason to stall the live stream.
+        let attribution = payload
+            .get("attribution")
+            .and_then(|value| serde_json::from_value(value.clone()).ok());
+        Ok(Self {
+            log_id,
+            event: serde_json::from_value(payload)?,
+            attribution,
+        })
     }
 }
 
@@ -1071,7 +1099,11 @@ mod filter_tests {
             workspace: sample_workspace(ws_id),
         };
         assert!(EventFilter::all().matches(&event));
-        assert!(EventFilter::all().matches_envelope(&BusEnvelope { log_id: 1, event }));
+        assert!(EventFilter::all().matches_envelope(&BusEnvelope {
+            log_id: 1,
+            event,
+            attribution: None
+        }));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Items delivered on a bus subscription stream.
 
-use maidan_types::{BusEnvelope, Event};
+use maidan_types::BusEnvelope;
 
 /// A filtered bus subscription yields events and may surface lag.
 #[derive(Debug, Clone)]
@@ -10,10 +10,4 @@ pub enum BusItem {
     Lagged {
         skipped: u64,
     },
-}
-
-impl BusItem {
-    pub fn event(log_id: i64, event: Event) -> Self {
-        Self::Event(Box::new(BusEnvelope { log_id, event }))
-    }
 }

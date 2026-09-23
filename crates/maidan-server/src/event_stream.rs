@@ -8,7 +8,7 @@ use std::sync::{
 use futures::StreamExt;
 use maidan_bus::BusItem;
 use maidan_store::Store;
-use maidan_types::{inject_type, BusEnvelope, Event, EventFilter, StoredEvent};
+use maidan_types::{inject_type, BusEnvelope, EventFilter, StoredEvent};
 use serde::Serialize;
 use tokio::sync::mpsc;
 
@@ -81,11 +81,7 @@ pub struct ReplayHint {
 }
 
 pub fn envelope_from_stored(stored: &StoredEvent) -> Result<BusEnvelope, serde_json::Error> {
-    let event: Event = serde_json::from_value(stored.payload.clone())?;
-    Ok(BusEnvelope {
-        log_id: stored.id,
-        event,
-    })
+    BusEnvelope::from_stored_payload(stored.id, stored.payload.clone())
 }
 
 pub fn replay_truncated_payload(
@@ -135,6 +131,9 @@ struct LeanFrame<'a> {
     thread_id: Option<uuid::Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     member_id: Option<uuid::Uuid>,
+    /// Kept in the pointer: who acted is part of "something happened".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    attribution: Option<maidan_types::Attribution>,
 }
 
 /// Serialize an event frame for a subscriber — the full flattened envelope, or
@@ -150,6 +149,7 @@ fn frame_payload(envelope: &BusEnvelope, lean: bool) -> Result<String, serde_jso
             channel_id: e.channel_id().map(|c| c.0),
             thread_id: e.thread_id().map(|t| t.0),
             member_id: e.member_id().map(|m| m.0),
+            attribution: envelope.attribution,
         })
     } else {
         let mut value = serde_json::to_value(envelope)?;
@@ -536,6 +536,7 @@ pub async fn attach_watermark(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use maidan_types::Event;
 
     #[test]
     fn replay_truncated_payload_includes_limit_and_watermark() {
@@ -555,7 +556,11 @@ mod tests {
             thread_id: maidan_types::ThreadId(uuid::Uuid::from_u128(3)),
             produced_by: maidan_types::MemberId(uuid::Uuid::from_u128(4)),
         };
-        let envelope = BusEnvelope { log_id: 9, event };
+        let envelope = BusEnvelope {
+            log_id: 9,
+            event,
+            attribution: None,
+        };
         let full: serde_json::Value =
             serde_json::from_str(&frame_payload(&envelope, false).unwrap()).unwrap();
         assert_eq!(full["$type"], "maidan.event.thread_result_set/1");

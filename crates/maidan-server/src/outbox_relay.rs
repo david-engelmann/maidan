@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use maidan_bus::EventBus;
 use maidan_store::OutboxBackend;
-use maidan_types::{BusEnvelope, Event};
+use maidan_types::BusEnvelope;
 use metrics::counter;
 use tracing::warn;
 
@@ -206,8 +206,7 @@ impl OutboxRelay {
         log_id: i64,
         payload: serde_json::Value,
     ) -> Result<(), maidan_store::StoreError> {
-        let event: Event = serde_json::from_value(payload)?;
-        let envelope = BusEnvelope { log_id, event };
+        let envelope = BusEnvelope::from_stored_payload(log_id, payload)?;
         self.bus
             .publish(envelope)
             .await

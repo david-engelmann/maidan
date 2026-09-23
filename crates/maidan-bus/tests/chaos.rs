@@ -136,6 +136,7 @@ async fn notify_floor_survives_periodic_listener_kills_under_load() {
         bus.publish(BusEnvelope {
             log_id: stored.id,
             event,
+            attribution: None,
         })
         .await
         .unwrap();

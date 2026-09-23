@@ -274,6 +274,7 @@ pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
     let envelope = BusEnvelope {
         log_id: stored.id,
         event,
+        attribution: stored.attribution(),
     };
     if let Err(err) = state.bus.publish(envelope).await {
         tracing::warn!(error = %err, "bus publish failed");
@@ -318,12 +319,8 @@ pub(crate) async fn publish_stored(state: &AppState, stored: StoredEvent) {
         return;
     }
     // In-memory / notify bus: hydrate the event from the stored payload.
-    match serde_json::from_value::<Event>(stored.payload) {
-        Ok(event) => {
-            let envelope = BusEnvelope {
-                log_id: stored.id,
-                event,
-            };
+    match BusEnvelope::from_stored_payload(stored.id, stored.payload) {
+        Ok(envelope) => {
             if let Err(err) = state.bus.publish(envelope).await {
                 tracing::warn!(error = %err, "bus publish failed");
             }

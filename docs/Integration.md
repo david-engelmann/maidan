@@ -374,6 +374,10 @@ delegated action has the delegate as `actor_id`, the member it acted for as
 by background work — a scheduled sweep, a retention pass, a federated event
 arriving from a peer — rather than by any member's request.
 
+Live frames carry the same object at the top level — WebSocket and MCP SSE, full
+and lean — so a subscriber can tell a delegated post from a direct one without
+refetching the event.
+
 Attribution is part of the hashed payload, so it is covered by the event chain:
 `GET /workspaces/{wid}/events/verify` fails if anyone rewrites who did
 something. Audit rows carry the same three fields as `actor_id`, `subject_id`

@@ -18,7 +18,7 @@
 use crate::sharded::ShardedBroadcast;
 use async_trait::async_trait;
 use futures::StreamExt;
-use maidan_types::{BusEnvelope, Event, EventFilter};
+use maidan_types::{BusEnvelope, EventFilter};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgListener;
 use sqlx::PgPool;
@@ -263,9 +263,7 @@ async fn hydrate_envelope(pool: &PgPool, log_id: i64) -> Result<BusEnvelope, Bus
 }
 
 fn envelope_from_stored(stored: maidan_types::StoredEvent) -> Result<BusEnvelope, BusError> {
-    let log_id = stored.id;
-    let event: Event = serde_json::from_value(stored.payload)?;
-    Ok(BusEnvelope { log_id, event })
+    Ok(BusEnvelope::from_stored_payload(stored.id, stored.payload)?)
 }
 
 /// Drain every event with `id > from_exclusive` from the log onto the local

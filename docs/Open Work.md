@@ -1659,14 +1659,16 @@ Still open, tracked here rather than left to a re-audit:
   now proven by disabling it alone and watching only its own test fail — eight
   mutations over REST and both stores, two more over MCP, all caught.
 
-- **Open after 411.8: live frames do not carry attribution.** Every durable
-  record does — event payloads (`GET /workspaces/{wid}/events`, catch-up,
-  snapshots) and audit rows. But WebSocket and MCP-SSE frames are built from the
-  parsed `Event` on the bus envelope `{log_id, event}`, and parsing drops the
-  payload's `attribution` key. A live subscriber therefore cannot tell a
-  delegated post from a direct one without refetching the event. The fix is to
-  carry attribution on the bus envelope across every bus implementation. It is
-  a display gap, not an audit gap: nothing is lost, only not pushed.
+- **Closed by 411.12: live frames did not carry attribution.** Every durable
+  record did, but WebSocket and MCP-SSE frames were built from an `Event` parsed
+  out of the stored payload, and parsing dropped the payload's `attribution`
+  key. The bus envelope now carries it beside the event
+  (`BusEnvelope::from_stored_payload`, the one path from log to bus), so full
+  and lean frames on both transports name actor, subject and grant. Two MCP
+  tools kept private copies of the bus-notify step; they now share the one
+  that carries attribution. Test:
+  `attribution_e2e::a_live_frame_names_who_acted_and_for_whom`, direct and
+  delegated, full and lean.
 - **Found during 411.8, fixed in 411.9: any ordinary token could destroy the
   record.** `purge_workspace` and `erase_workspace` required only
   `workspace:write`, which `maidan.agent.worker` and `default_minted` both

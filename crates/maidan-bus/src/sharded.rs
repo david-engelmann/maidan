@@ -116,6 +116,7 @@ mod tests {
                     tombstoned_at: None,
                 },
             },
+            attribution: None,
         }
     }
 
