@@ -360,6 +360,47 @@
     "to_state": "closed",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.usage_reported/1": {
+    "$type": "maidan.event.usage_reported/1",
+    "budget": {
+      "created_at": "2023-11-14T22:13:20Z",
+      "max_tokens": 1000,
+      "max_turns": 10,
+      "max_usd_micros": 100,
+      "max_wall_secs": null,
+      "thread_id": "00000000-0000-0000-0000-000000000004",
+      "updated_at": "2023-11-14T22:13:20Z",
+      "used_tokens": 130,
+      "used_turns": 1,
+      "used_usd_micros": 2
+    },
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "usage_reported",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "stamp": {
+      "claim_lease_id": "00000000-0000-0000-0000-00000000000c",
+      "model": "provider/model",
+      "payer": "00000000-0000-0000-0000-000000000001",
+      "price_snapshot": {
+        "cache_read_usd_micros_per_million": 1000,
+        "cache_write_usd_micros_per_million": 5000,
+        "input_usd_micros_per_million": 10000,
+        "output_usd_micros_per_million": 20000
+      },
+      "reporter": "00000000-0000-0000-0000-000000000002",
+      "tokens": {
+        "cache_read": 10,
+        "cache_write": 0,
+        "input": 100,
+        "output": 20
+      },
+      "usd_micros": 2
+    },
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "turns": 1,
+    "usage_report_id": "00000000-0000-0000-0000-00000000000b",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.vote_cast/1": {
     "$type": "maidan.event.vote_cast/1",
     "kind": "vote_cast",

@@ -214,6 +214,45 @@ fn sample_event(kind: EventKind) -> Event {
             reason: "tokens".into(),
             thread: thread(),
         },
+        EventKind::UsageReported => Event::UsageReported {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            usage_report_id: id(11),
+            stamp: maidan_types::PayerStamp {
+                payer: workspace_id,
+                reporter: member_id,
+                claim_lease_id: maidan_types::ClaimLeaseId(id(12)),
+                model: "provider/model".into(),
+                tokens: maidan_types::TokenUsage {
+                    input: 100,
+                    output: 20,
+                    cache_read: 10,
+                    cache_write: 0,
+                },
+                usd_micros: 2,
+                price_snapshot: maidan_types::PriceSnapshot {
+                    input_usd_micros_per_million: 10_000,
+                    output_usd_micros_per_million: 20_000,
+                    cache_read_usd_micros_per_million: 1_000,
+                    cache_write_usd_micros_per_million: 5_000,
+                },
+            },
+            turns: 1,
+            budget: maidan_types::ThreadBudget {
+                thread_id,
+                max_tokens: Some(1_000),
+                max_usd_micros: Some(100),
+                max_turns: Some(10),
+                max_wall_secs: None,
+                used_tokens: 130,
+                used_usd_micros: 2,
+                used_turns: 1,
+                created_at: occurred_at,
+                updated_at: occurred_at,
+            },
+        },
         EventKind::ThreadLanded => Event::ThreadLanded {
             occurred_at,
             workspace_id,
@@ -388,6 +427,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::BlockedResolved
             | EventKind::ClaimExpired
             | EventKind::ClaimFailed
+            | EventKind::UsageReported
             | EventKind::ThreadLanded
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped

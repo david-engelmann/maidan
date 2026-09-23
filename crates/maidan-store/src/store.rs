@@ -333,6 +333,27 @@ pub trait BudgetStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait UsageLedgerStore: Send + Sync {
+    /// Accept one claim-fenced usage heartbeat. Exact retries return the
+    /// original ledger outcome with no events; conflicting retries fail.
+    async fn report_accounted_usage(
+        &self,
+        new: &NewUsageLedgerEntry,
+    ) -> Result<(UsageLedgerEntry, Vec<StoredEvent>), StoreError>;
+    /// One completed idempotent report, or `None` when the id is unknown.
+    async fn get_usage_ledger_entry(
+        &self,
+        usage_report_id: uuid::Uuid,
+    ) -> Result<Option<UsageLedgerEntry>, StoreError>;
+    /// Completed reports for a thread, newest first.
+    async fn list_thread_usage_ledger(
+        &self,
+        thread_id: ThreadId,
+        limit: i64,
+    ) -> Result<Vec<UsageLedgerEntry>, StoreError>;
+}
+
+#[async_trait]
 pub trait ApprovalGateStore: Send + Sync {
     /// A durable human-approval gate: `create` opens a `Pending` gate,
     /// `resolve` compare-and-sets it to accept/decline/cancel (a second answer
@@ -2521,6 +2542,7 @@ pub trait Store:
     + ThreadSteerStore
     + ThreadLineageStore
     + BudgetStore
+    + UsageLedgerStore
     + ApprovalGateStore
     + GlossaryStore
     + NotificationStore
@@ -2576,6 +2598,7 @@ impl<
             + ThreadSteerStore
             + ThreadLineageStore
             + BudgetStore
+            + UsageLedgerStore
             + ApprovalGateStore
             + GlossaryStore
             + NotificationStore

@@ -76,6 +76,7 @@ mod threads;
 mod token_quotas;
 mod tokens;
 mod unclaimable;
+mod usage_ledger;
 mod votes;
 mod waits;
 mod webhooks;
@@ -651,6 +652,31 @@ impl BudgetStore for PostgresStore {
         limit: i64,
     ) -> Result<Vec<DlqEntry>, StoreError> {
         dlq::list_for_channel(self.read_pool(), channel_id, limit).await
+    }
+}
+
+#[async_trait]
+impl UsageLedgerStore for PostgresStore {
+    async fn report_accounted_usage(
+        &self,
+        new: &NewUsageLedgerEntry,
+    ) -> Result<(UsageLedgerEntry, Vec<StoredEvent>), StoreError> {
+        budget::report_accounted_usage(&self.pool, new).await
+    }
+
+    async fn get_usage_ledger_entry(
+        &self,
+        usage_report_id: uuid::Uuid,
+    ) -> Result<Option<UsageLedgerEntry>, StoreError> {
+        usage_ledger::get(self.read_pool(), usage_report_id).await
+    }
+
+    async fn list_thread_usage_ledger(
+        &self,
+        thread_id: ThreadId,
+        limit: i64,
+    ) -> Result<Vec<UsageLedgerEntry>, StoreError> {
+        usage_ledger::list_for_thread(self.read_pool(), thread_id, limit).await
     }
 }
 
