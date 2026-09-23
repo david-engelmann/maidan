@@ -1658,31 +1658,33 @@ Still open, tracked here rather than left to a re-audit:
 - ~~**F-48 rejection.**~~ **Decided 2026-09-23: deferred, with the target
   architecture specified above.** Not a rejection — a scheduled fix with a
   measured design and one part (Tier 3) rejected on the merits.
-- **Durable audit for delegated denials — the consequential open item.** The
-  decided design says every delegated action writes a durable dual-identity row
-  *including denied attempts*. Cluster 410's evidence lane instead keeps denials
-  as bounded operational evidence: `maidan-auth/src/authorization.rs` increments
-  a counter and emits `tracing::warn!` at `DENIAL_LOG_SAMPLE_RATE = 64`, so **63
-  of every 64 denied attempts survive only as a metric carrying no principal**,
-  and `subject`/`grant_id` are reserved but still `None`.
+- ~~**Durable audit for delegated denials.**~~ **DECIDED 2026-09-23 by David:
+  keep the real record.** In his words: *"we essentially want the real permanent
+  record of everything, we want data that accurately and granularly describes
+  reality. We should know who and on whose behalf, and be able to track that or
+  audit it."*
 
-  Cluster 182's precedent for keeping denials out of `maidan_audit` was about
-  *anonymous, attacker-controlled* request floods amplifying writes without
-  bound. A delegated denial is a different population: an authenticated delegate
-  on a short-lived credential tied to a named grant — bounded, attributable,
-  revocable. The 182 rationale is weaker here, and the cost is concrete: a rogue
-  delegate's probing cannot be reconstructed afterwards.
+  So sampling is not acceptable for delegated activity. What that means against
+  the code as it stands:
 
-  **Recommendation: reaffirm the directive** — durable dual-identity rows for
-  delegated denials, keeping sampled observability for ordinary authorization
-  denials where 182's reasoning still holds. If you would rather accept the
-  downgrade, say so, and 411 records it as your decision rather than an agent's
-  inference.
+  | | Today | Needed |
+  |---|---|---|
+  | Token exchange | **Already right** — `routes/token.rs` writes a durable `token.delegate` row carrying `delegate_id`, `subject_member_id` and `grant_id` | no change |
+  | A delegated token *being used* | **Not attributable.** `AuthContext` carries no `grant_id`, so a post or claim made with a delegated token is indistinguishable from an ordinary one | thread the grant through `AuthContext`, so every action knows its subject and grant |
+  | A delegated attempt being **refused** | **Sampled.** `authorization.rs` keeps 1 in 64 and the metric carries no principal | durable row per refusal, with actor, subject and grant |
 
-- **411.6 retirement sequencing.** The plan retires `member:impersonate` last,
-  after 411.3 ships its replacement, rather than "outright" as decided — current
-  enforcement depends on the capability existing, so removing it first leaves
-  cross-member action with no path at all. Confirm the deviation is acceptable.
+  The bounded-flood reasoning that justified sampling still applies to
+  *anonymous* refusals, where an unauthenticated stranger can generate them
+  without limit. It does not apply to delegated ones: those come from a named
+  agent holding a short-lived, revocable grant, so the volume is bounded by
+  something we issued. Keep sampling for the anonymous case; make the delegated
+  case durable.
+
+- **411.6 retirement sequencing — DECIDED 2026-09-23: build, convert, then
+  deprecate.** David: *"you can build, convert then depreciate, that's totally
+  fine."* The replacement ships first, callers move across, and only then does
+  the old act-as-any capability go. No gap where nothing can act on a member's
+  behalf.
 
 - **F-43 branch protection.** Pending-maintainer. Nothing for an agent to do.
 

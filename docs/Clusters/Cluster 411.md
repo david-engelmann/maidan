@@ -14,10 +14,16 @@
   capability sets; no exchange can widen authority.
 - Revoking a grant invalidates every token minted from it, including attenuated
   descendants, using the existing token-revocation cascade.
-- Allowed delegated decisions carry actor, subject, and `grant_id` through the
-  Cluster 410 authorization-evidence lane. Denials remain bounded operational
-  evidence rather than durable per-attempt audit rows, preserving the Cluster
-  182/410 write-amplification decision.
+- Delegated decisions carry actor, subject, and `grant_id` — allowed **and
+  refused** alike — and a refused one is written durably, not sampled.
+  **Revised 2026-09-23 on David's decision:** an earlier draft kept denials as
+  bounded operational evidence, on the Cluster 182/410 write-amplification
+  reasoning. That reasoning covers *anonymous* refusals, which an
+  unauthenticated stranger can generate without limit. A delegated refusal comes
+  from a named agent holding a short-lived, revocable grant, so its volume is
+  bounded by something we issued. Sampling at 1-in-64 with no principal in the
+  metric would leave a misbehaving delegate unreconstructable, which is the
+  opposite of the point. Anonymous denials keep their sampled lane.
 
 ## Vocabulary decisions
 
@@ -60,6 +66,6 @@
 - Subject-consent UI, multi-party approval, resource-level conditions, or a
   general policy language.
 - Long-lived delegated tokens or capability union.
-- Durable rows for every authorization denial.
+- Durable rows for every *anonymous* authorization denial — those keep the sampled lane. Delegated denials are durable; see the contract above.
 - Compatibility shims for the caller-chosen acting-identity fields; the repo is
   pre-1.0 and the removal is intentionally breaking.
