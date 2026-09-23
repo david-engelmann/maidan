@@ -1,12 +1,13 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    BudgetLimits, BudgetPatch, ChannelId, Event, MemberId, NewDlqEntry, StoredEvent, ThreadBudget,
-    ThreadId, UsageDelta, UsageReport, WorkspaceId,
+    BudgetLimits, BudgetPatch, ChannelId, Event, MemberId, NewDlqEntry, NewUsageLedgerEntry,
+    PayerStamp, StoredEvent, ThreadBudget, ThreadId, UsageDelta, UsageLedgerEntry, UsageReport,
+    WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use super::{dlq, events, threads};
+use super::{dlq, events, threads, usage_ledger};
 use crate::error::StoreError;
 
 const COLS: &str = "thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
@@ -191,6 +192,146 @@ pub async fn report_usage(
         },
         stored,
     ))
+}
+
+/// Claim-fenced, idempotent usage accounting. The reservation row owns the
+/// economic idempotency key; every other mutation shares this transaction.
+pub async fn report_accounted_usage(
+    pool: &PgPool,
+    new: &NewUsageLedgerEntry,
+) -> Result<(UsageLedgerEntry, Vec<StoredEvent>), StoreError> {
+    new.validate().map_err(StoreError::InvalidInput)?;
+    let mut tx = pool.begin().await?;
+    let ctx = sqlx::query(
+        "SELECT t.assignee_id, t.claim_lease_id, t.work_started_at,
+                t.channel_id, c.workspace_id
+         FROM maidan_threads t JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE t.id = $1 AND t.tombstoned_at IS NULL FOR UPDATE",
+    )
+    .bind(new.thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let workspace_id = WorkspaceId(ctx.get::<Uuid, _>("workspace_id"));
+    let channel_id = ChannelId(ctx.get::<Uuid, _>("channel_id"));
+
+    if !usage_ledger::reserve_in_tx(&mut tx, new, workspace_id).await? {
+        let existing = usage_ledger::get_in_tx(&mut tx, new.usage_report_id)
+            .await?
+            .ok_or_else(|| StoreError::Conflict("usage report id was not readable".into()))?;
+        if existing.stamp.payer != workspace_id || !existing.matches_request(new) {
+            return Err(StoreError::Conflict(
+                "usage_report_id was already used for different content".into(),
+            ));
+        }
+        tx.commit().await?;
+        return Ok((existing, Vec::new()));
+    }
+
+    let assignee = ctx.get::<Option<Uuid>, _>("assignee_id").map(MemberId);
+    let lease = ctx.get::<Option<Uuid>, _>("claim_lease_id");
+    if assignee != Some(new.reporter) || lease != Some(new.claim_lease_id.0) {
+        return Err(StoreError::Conflict(
+            "usage reporter is not the active holder of this claim lease".into(),
+        ));
+    }
+
+    let token_total = new.tokens.total().map_err(StoreError::InvalidInput)?;
+    let budget = add_usage_in_tx(
+        &mut tx,
+        new.thread_id,
+        UsageDelta {
+            tokens: token_total,
+            usd_micros: new.usd_micros,
+            turns: new.turns,
+        },
+    )
+    .await?;
+    let stamp = PayerStamp {
+        payer: workspace_id,
+        reporter: new.reporter,
+        claim_lease_id: new.claim_lease_id,
+        model: new.model.trim().to_owned(),
+        tokens: new.tokens,
+        usd_micros: new.usd_micros,
+        price_snapshot: new.price_snapshot,
+    };
+    let usage = Event::UsageReported {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id: new.thread_id,
+        usage_report_id: new.usage_report_id,
+        stamp,
+        turns: new.turns,
+        budget: budget.clone(),
+    };
+    let usage_stored = events::append_in_tx(&mut tx, &usage).await?;
+
+    let wall = ctx
+        .get::<Option<DateTime<Utc>>, _>("work_started_at")
+        .map(|started| (Utc::now() - started).num_seconds());
+    let (stopped, reason, failed) = if let Some(reason) = budget.exceeded(wall) {
+        let row = sqlx::query(
+            "UPDATE maidan_threads
+             SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = now()
+             WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3
+             RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+        )
+        .bind(new.thread_id.0)
+        .bind(new.reporter.0)
+        .bind(new.claim_lease_id.0)
+        .fetch_one(&mut *tx)
+        .await?;
+        let thread = threads::row_to_thread(&row)?;
+        let reason = reason.as_str().to_owned();
+        let failed = events::append_in_tx(
+            &mut tx,
+            &Event::ClaimFailed {
+                occurred_at: Utc::now(),
+                workspace_id,
+                channel_id,
+                thread_id: new.thread_id,
+                member_id: new.reporter,
+                reason: reason.clone(),
+                thread,
+            },
+        )
+        .await?;
+        dlq::record_in_tx(
+            &mut tx,
+            &NewDlqEntry {
+                workspace_id,
+                channel_id,
+                thread_id: new.thread_id,
+                member_id: new.reporter,
+                reason: reason.clone(),
+                used_tokens: budget.used_tokens,
+                used_usd_micros: budget.used_usd_micros,
+                used_turns: budget.used_turns,
+            },
+        )
+        .await?;
+        (true, Some(reason), Some(failed))
+    } else {
+        (false, None, None)
+    };
+    let entry = usage_ledger::finish_in_tx(
+        &mut tx,
+        new.usage_report_id,
+        &budget,
+        stopped,
+        reason.as_deref(),
+        usage_stored.id,
+        failed.as_ref().map(|event| event.id),
+    )
+    .await?;
+    tx.commit().await?;
+    let mut emitted = vec![usage_stored];
+    if let Some(failed) = failed {
+        emitted.push(failed);
+    }
+    Ok((entry, emitted))
 }
 
 fn row_to_budget(row: &sqlx::postgres::PgRow) -> ThreadBudget {

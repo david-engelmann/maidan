@@ -206,7 +206,7 @@ pub(crate) async fn ingest_envelope(
     if !event.kind().federatable() {
         return Ok(IngestOutcome::SkippedNotFederatable);
     }
-    event = remap_event_workspace(event, peer.workspace_id);
+    event = remap_event_workspace(event, peer.workspace_id)?;
     let Some(log_id) = publish(state, event).await else {
         return Err(ApiError::Internal("event log append failed".into()));
     };
@@ -243,9 +243,9 @@ fn event_from_stored(stored: &maidan_types::StoredEvent) -> ApiResult<Event> {
         .map_err(|e| ApiError::BadRequest(format!("invalid event payload: {e}")))
 }
 
-fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
+fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<Event> {
     use Event::*;
-    match event {
+    Ok(match event {
         WorkspaceCreated {
             occurred_at,
             mut workspace,
@@ -698,7 +698,15 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> Event {
             label,
             updated_by,
         },
-    }
+        // Economic payer evidence is local-only. The ingest allowlist rejects
+        // it before this remapper; retain an explicit second boundary so a
+        // future call site cannot accidentally project it across workspaces.
+        UsageReported { .. } => {
+            return Err(ApiError::BadRequest(
+                "usage_reported is not federatable".into(),
+            ));
+        }
+    })
 }
 
 fn federation_err(err: FederationError) -> ApiError {
@@ -882,7 +890,7 @@ mod remap_tests {
             workspace_id: remote,
             member,
         };
-        match remap_event_workspace(event, local) {
+        match remap_event_workspace(event, local).expect("federatable member event") {
             Event::MemberJoined {
                 workspace_id,
                 member,

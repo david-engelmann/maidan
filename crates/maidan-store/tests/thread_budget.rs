@@ -4,8 +4,9 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    BudgetLimits, BudgetReason, ChannelId, EventKind, MemberKind, NewChannel, NewDlqEntry,
-    NewMember, NewThread, NewWorkspace, ThreadId, UsageDelta,
+    BudgetLimits, BudgetReason, ChannelId, ClaimLeaseId, EventKind, MemberKind, NewChannel,
+    NewDlqEntry, NewMember, NewThread, NewUsageLedgerEntry, NewWorkspace, PriceSnapshot, ThreadId,
+    TokenUsage, UsageDelta,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -352,12 +353,174 @@ async fn run_enforce_suite(store: &dyn Store) {
     );
 }
 
+async fn run_accounted_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "accounted".into(),
+        })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "metered-agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "metered-work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("metered task".into()),
+        })
+        .await
+        .expect("thread");
+    store
+        .set_thread_budget(
+            thread.id,
+            BudgetLimits {
+                max_tokens: Some(1_500_000),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("budget");
+    let claimed = store
+        .claim_thread(thread.id, member.id)
+        .await
+        .expect("claim");
+    assert!(claimed.claimed);
+    let lease = claimed.thread.claim_lease_id.expect("claim lease");
+    let price = PriceSnapshot {
+        input_usd_micros_per_million: 10,
+        ..Default::default()
+    };
+    let first = NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        thread_id: thread.id,
+        reporter: member.id,
+        claim_lease_id: lease,
+        model: "provider/model".into(),
+        tokens: TokenUsage {
+            input: 1_000_000,
+            ..Default::default()
+        },
+        usd_micros: 10,
+        price_snapshot: price,
+        turns: 1,
+    };
+    let (accepted, events) = store
+        .report_accounted_usage(&first)
+        .await
+        .expect("first report");
+    assert!(!accepted.stopped);
+    assert_eq!(accepted.stamp.payer, ws.id);
+    assert_eq!(accepted.budget.used_tokens, 1_000_000);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].kind, EventKind::UsageReported);
+
+    let (retried, retry_events) = store
+        .report_accounted_usage(&first)
+        .await
+        .expect("exact retry");
+    assert_eq!(retried, accepted);
+    assert!(retry_events.is_empty(), "retry emits nothing");
+    assert_eq!(
+        store
+            .get_thread_budget(thread.id)
+            .await
+            .expect("budget")
+            .expect("budget row")
+            .used_tokens,
+        1_000_000,
+        "retry cannot double-charge"
+    );
+
+    let mut conflict = first.clone();
+    conflict.model = "provider/other".into();
+    assert!(matches!(
+        store.report_accounted_usage(&conflict).await,
+        Err(StoreError::Conflict(_))
+    ));
+    let mut stale = first.clone();
+    stale.usage_report_id = uuid::Uuid::new_v4();
+    stale.claim_lease_id = ClaimLeaseId::new();
+    assert!(matches!(
+        store.report_accounted_usage(&stale).await,
+        Err(StoreError::Conflict(_))
+    ));
+    assert!(store
+        .get_usage_ledger_entry(stale.usage_report_id)
+        .await
+        .expect("stale lookup")
+        .is_none());
+
+    let second = NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        tokens: TokenUsage {
+            input: 600_000,
+            ..Default::default()
+        },
+        usd_micros: 6,
+        ..first.clone()
+    };
+    let (stopped, stop_events) = store
+        .report_accounted_usage(&second)
+        .await
+        .expect("stopping report");
+    assert!(stopped.stopped);
+    assert_eq!(stopped.reason.as_deref(), Some("tokens"));
+    assert_eq!(
+        stop_events
+            .iter()
+            .map(|event| event.kind)
+            .collect::<Vec<_>>(),
+        vec![EventKind::UsageReported, EventKind::ClaimFailed]
+    );
+    assert_eq!(
+        store
+            .get_thread(thread.id)
+            .await
+            .expect("thread")
+            .assignee_id,
+        None
+    );
+    let ledger = store
+        .list_thread_usage_ledger(thread.id, 10)
+        .await
+        .expect("ledger");
+    assert_eq!(ledger.len(), 2);
+    assert!(ledger
+        .iter()
+        .any(|entry| entry.usage_report_id == first.usage_report_id));
+    assert!(ledger
+        .iter()
+        .any(|entry| entry.usage_report_id == second.usage_report_id));
+}
+
+#[tokio::test]
+async fn accounted_usage_is_idempotent_and_claim_fenced() {
+    run_accounted_suite(&sqlite().await).await;
+}
+
 #[tokio::test]
 async fn thread_budget_set_get_accumulate_and_exceed_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
     run_patch_suite(&store).await;
     run_enforce_suite(&store).await;
+    run_accounted_suite(&store).await;
 }
 
 #[tokio::test]
@@ -394,6 +557,7 @@ async fn thread_budget_set_get_accumulate_and_exceed_postgres() {
     run_suite(&store).await;
     run_patch_suite(&store).await;
     run_enforce_suite(&store).await;
+    run_accounted_suite(&store).await;
 }
 
 /// A patch changes only the dimensions it names.

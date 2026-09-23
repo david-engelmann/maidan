@@ -139,6 +139,7 @@ const POSTGRES_UP_V98: &str = include_str!("../../../migrations/postgres/0098_to
 const POSTGRES_UP_V99: &str = include_str!("../../../migrations/postgres/0099_tap_cursor.sql");
 const POSTGRES_UP_V100: &str = include_str!("../../../migrations/postgres/0100_member_follows.sql");
 const POSTGRES_UP_V101: &str = include_str!("../../../migrations/postgres/0101_share_tickets.sql");
+const POSTGRES_UP_V102: &str = include_str!("../../../migrations/postgres/0102_usage_ledger.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -253,6 +254,7 @@ const SQLITE_UP_V97: &str = include_str!("../../../migrations/sqlite/0097_token_
 const SQLITE_UP_V98: &str = include_str!("../../../migrations/sqlite/0098_tap_cursor.sql");
 const SQLITE_UP_V99: &str = include_str!("../../../migrations/sqlite/0099_member_follows.sql");
 const SQLITE_UP_V100: &str = include_str!("../../../migrations/sqlite/0100_share_tickets.sql");
+const SQLITE_UP_V101: &str = include_str!("../../../migrations/sqlite/0101_usage_ledger.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -407,6 +409,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 99, POSTGRES_UP_V99).await?;
     apply_postgres(pool, 100, POSTGRES_UP_V100).await?;
     apply_postgres(pool, 101, POSTGRES_UP_V101).await?;
+    apply_postgres(pool, 102, POSTGRES_UP_V102).await?;
     Ok(())
 }
 
@@ -522,6 +525,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 98, SQLITE_UP_V98).await?;
     apply_sqlite(pool, 99, SQLITE_UP_V99).await?;
     apply_sqlite(pool, 100, SQLITE_UP_V100).await?;
+    apply_sqlite(pool, 101, SQLITE_UP_V101).await?;
     Ok(())
 }
 

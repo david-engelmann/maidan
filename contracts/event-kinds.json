@@ -25,6 +25,7 @@
   "thread_result_set",
   "thread_spawn_denied",
   "thread_state_changed",
+  "usage_reported",
   "vote_cast",
   "wait_timed_out",
   "workspace_created"

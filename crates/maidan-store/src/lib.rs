@@ -72,7 +72,7 @@ pub use store::{
     NotificationStore, OAuthCodeStore, PeerStore, PresenceDigestStore, ProjectorLinkStore,
     ReferenceStore, ReindexStore, SessionStore, ShareTicketStore, SkillStore, SlashCommandStore,
     SocialStore, TaskScheduleStore, ThreadDepStore, ThreadLineageStore, ThreadResultStore,
-    ThreadStore, TokenStore, WebhookStore, WorkspaceStore,
+    ThreadStore, TokenStore, UsageLedgerStore, WebhookStore, WorkspaceStore,
 };
 
 /// Everything a store caller usually wants in one import.

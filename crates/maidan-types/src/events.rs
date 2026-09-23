@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::*;
 use crate::models::*;
+use crate::PayerStamp;
 
 /// Row in the persistent `maidan_events` log (Cluster D.6).
 ///
@@ -99,6 +100,7 @@ pub enum EventKind {
     BlockedResolved,
     ClaimExpired,
     ClaimFailed,
+    UsageReported,
     ThreadLanded,
     WaitTimedOut,
     ScheduleSkipped,
@@ -133,6 +135,7 @@ impl EventKind {
             Self::BlockedResolved => "blocked_resolved",
             Self::ClaimExpired => "claim_expired",
             Self::ClaimFailed => "claim_failed",
+            Self::UsageReported => "usage_reported",
             Self::ThreadLanded => "thread_landed",
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
@@ -167,6 +170,7 @@ impl EventKind {
             "blocked_resolved" => Some(Self::BlockedResolved),
             "claim_expired" => Some(Self::ClaimExpired),
             "claim_failed" => Some(Self::ClaimFailed),
+            "usage_reported" => Some(Self::UsageReported),
             "thread_landed" => Some(Self::ThreadLanded),
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
@@ -226,6 +230,7 @@ impl EventKind {
         Self::BlockedResolved,
         Self::ClaimExpired,
         Self::ClaimFailed,
+        Self::UsageReported,
         Self::ThreadLanded,
         Self::WaitTimedOut,
         Self::ScheduleSkipped,
@@ -292,6 +297,9 @@ impl EventKind {
             // A budget-exhaustion / run failure is a locally-derived signal
             // (this deployment's budget accounting); a peer must not inject one.
             Self::ClaimFailed => false,
+            // Usage is an economic record derived from this deployment's
+            // authenticated claim holder and price evidence.
+            Self::UsageReported => false,
             // A "landed" fact is derived from *this* deployment's GitHub
             // projector webhook; a peer must not inject one for our threads.
             Self::ThreadLanded => false,
@@ -440,6 +448,18 @@ pub enum Event {
         /// `tokens` | `usd` | `turns` | `wall`.
         reason: String,
         thread: Thread,
+    },
+    /// One accepted, idempotent model-usage heartbeat. The PayerStamp binds
+    /// price evidence and token tiers to the authenticated active claim.
+    UsageReported {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        usage_report_id: uuid::Uuid,
+        stamp: PayerStamp,
+        turns: i64,
+        budget: ThreadBudget,
     },
     /// The GitHub PR linked to a thread was **merged** — the work landed. A
     /// derived fact projected from an inbound `pull_request` (`action=closed`,
@@ -653,6 +673,7 @@ impl Event {
             Self::BlockedResolved { .. } => EventKind::BlockedResolved,
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
+            Self::UsageReported { .. } => EventKind::UsageReported,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
@@ -687,6 +708,7 @@ impl Event {
             | Self::BlockedResolved { occurred_at, .. }
             | Self::ClaimExpired { occurred_at, .. }
             | Self::ClaimFailed { occurred_at, .. }
+            | Self::UsageReported { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
@@ -721,6 +743,7 @@ impl Event {
             | Self::BlockedResolved { workspace_id, .. }
             | Self::ClaimExpired { workspace_id, .. }
             | Self::ClaimFailed { workspace_id, .. }
+            | Self::UsageReported { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
@@ -751,6 +774,7 @@ impl Event {
             | Self::BlockedResolved { channel_id, .. }
             | Self::ClaimExpired { channel_id, .. }
             | Self::ClaimFailed { channel_id, .. }
+            | Self::UsageReported { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
@@ -778,6 +802,7 @@ impl Event {
             Self::BlockedResolved { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
+            Self::UsageReported { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
@@ -820,6 +845,7 @@ impl Event {
             Self::BlockedResolved { resolved_by, .. } => Some(*resolved_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
             Self::ClaimFailed { member_id, .. } => Some(*member_id),
+            Self::UsageReported { stamp, .. } => Some(stamp.reporter),
             Self::ThreadSpawnDenied { member_id, .. } => *member_id,
             Self::MentionRecorded { member_id, .. }
             | Self::VoteCast { member_id, .. }
@@ -1093,6 +1119,7 @@ mod kind_tests {
                 | EventKind::BlockedResolved
                 | EventKind::ClaimExpired
                 | EventKind::ClaimFailed
+                | EventKind::UsageReported
                 | EventKind::ThreadLanded
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
@@ -1176,6 +1203,7 @@ mod kind_tests {
             EventKind::ThreadSpawnDenied,
             EventKind::ProjectorMisconfigured,
             EventKind::MemoryBlockUpdated,
+            EventKind::UsageReported,
         ];
         for &kind in EventKind::ALL {
             let expected = !non_federatable.contains(&kind);
