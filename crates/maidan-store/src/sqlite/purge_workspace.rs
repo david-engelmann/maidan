@@ -87,21 +87,52 @@ pub async fn purge(
         .execute(pool)
         .await?;
 
-    let artifact_shas: Vec<String> = sqlx::query_scalar(
-        "SELECT sha256 FROM maidan_artifacts
-         WHERE uploaded_by IN (SELECT id FROM maidan_members WHERE workspace_id = ?)",
+    // Artifacts are content-addressed and shared: one row and one blob per
+    // sha, whoever uploaded it first, and per-workspace access lives in
+    // `maidan_artifact_refs` (Cluster 204). So a workspace's purge drops its own
+    // references and destroys an artifact only when no other workspace still
+    // references it. Deleting by `uploaded_by` — as this used to — destroyed
+    // another tenant's content whenever it had uploaded the same bytes after
+    // this workspace did, and left this workspace's copy behind when the other
+    // tenant had uploaded first.
+    let mut tx = pool.begin().await?;
+    let referenced: Vec<String> = sqlx::query_scalar(
+        "DELETE FROM maidan_artifact_refs WHERE workspace_id = ? RETURNING sha256",
     )
     .bind(workspace_id.0)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
-
-    let artifacts_removed = sqlx::query(
+    let mut artifact_shas = Vec::new();
+    for sha in referenced {
+        let removed = sqlx::query(
+            "DELETE FROM maidan_artifacts WHERE sha256 = ?
+             AND NOT EXISTS (SELECT 1 FROM maidan_artifact_refs WHERE sha256 = ?)",
+        )
+        .bind(&sha)
+        .bind(&sha)
+        .execute(&mut *tx)
+        .await?;
+        if removed.rows_affected() > 0 {
+            artifact_shas.push(sha);
+        }
+    }
+    // An artifact nobody references is readable by nobody; if this workspace's
+    // members uploaded it, it goes too, so an erasure leaves none of their
+    // content behind.
+    let unreferenced: Vec<String> = sqlx::query_scalar(
         "DELETE FROM maidan_artifacts
-         WHERE uploaded_by IN (SELECT id FROM maidan_members WHERE workspace_id = ?)",
+         WHERE uploaded_by IN (SELECT id FROM maidan_members WHERE workspace_id = ?)
+           AND NOT EXISTS (
+             SELECT 1 FROM maidan_artifact_refs r WHERE r.sha256 = maidan_artifacts.sha256
+           )
+         RETURNING sha256",
     )
     .bind(workspace_id.0)
-    .execute(pool)
+    .fetch_all(&mut *tx)
     .await?;
+    artifact_shas.extend(unreferenced);
+    tx.commit().await?;
+    let artifacts_removed = artifact_shas.len() as u64;
 
     Ok(WorkspacePurgeResult {
         workspace_id,
@@ -111,7 +142,7 @@ pub async fn purge(
         references_removed: references_removed.rows_affected(),
         api_tokens_revoked: api_tokens_revoked.rows_affected(),
         events_removed: events_removed.rows_affected(),
-        artifacts_removed: artifacts_removed.rows_affected(),
+        artifacts_removed,
         artifact_shas,
         occurred_at: now,
     })
