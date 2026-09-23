@@ -84,6 +84,13 @@ impl AuthContext {
         }
     }
 
+    /// A borrowed context acts as `subject_id` on behalf of `actor_id`.
+    ///
+    /// Authority capabilities are dropped here, not merely refused when a grant
+    /// is created: this is the one place a borrowed context is built, so filtering
+    /// in the constructor makes it impossible for one to hold `token:admin` or any
+    /// other authority capability — whatever the grant or token row says, and
+    /// from whichever call site.
     pub fn from_delegated_token(
         token_id: ApiTokenId,
         actor_id: MemberId,
@@ -92,6 +99,10 @@ impl AuthContext {
         delegation_grant_id: DelegationGrantId,
         capabilities: Vec<String>,
     ) -> Self {
+        let capabilities = capabilities
+            .into_iter()
+            .filter(|capability| crate::capability::is_delegatable(capability))
+            .collect();
         Self {
             token_id: Some(token_id),
             actor_id,

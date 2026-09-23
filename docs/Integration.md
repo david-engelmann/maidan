@@ -327,9 +327,18 @@ a short-lived token that *is* the agent.
    capabilities it covers, an expiry, and a free-text purpose — the purpose is
    required. `POST /workspaces/{wid}/delegation-grants`, or MCP
    `create_delegation_grant`.
+
+   A grant can only lend **work**: `workspace:read`, `workspace:write`,
+   `message:post`, `thread:transition`, `artifact:upload`, `search:query` and
+   `event:subscribe`. Anything that hands out authority — `token:admin`,
+   `channel:admin`, the secret, federation and operator capabilities — is
+   refused. The reason is that borrowed authority is short-lived and revocable,
+   and a token minted with borrowed `token:admin` would be neither.
 2. The delegate exchanges it: `POST /tokens/delegate` or MCP `delegate_token`,
    passing the `grant_id` and optionally a narrower capability list, an earlier
-   expiry and a label. Only the named delegate can exchange a live grant.
+   expiry and a label. Only the named delegate can exchange a live grant, and it
+   has to do so with its own token: a borrowed token cannot exchange anything.
+   Delegation is one hop, so there is never a chain to untangle.
 3. The token that comes back acts as the subject. It lasts 15 minutes by default
    and never more than an hour, or past the grant's or the caller's own expiry.
    It carries only capabilities that both the grant and the delegate hold.
@@ -341,8 +350,10 @@ bounded by a grant you issued and can revoke. `GET /me` and MCP `whoami` return
 `actor_id`, `member_id` (the subject) and `delegation_grant_id`, so a client can
 check what authority it is actually holding.
 
-Revoking a grant kills every token exchanged from it, and every token derived
-from those. List grants with `GET /workspaces/{wid}/delegation-grants` or
+A borrowed token can be narrowed further with `POST /tokens/attenuate`, and the
+narrower token is still borrowed — it carries the same grant and names the same
+delegate. Revoking a grant kills every token exchanged from it, and every token
+derived from those. List grants with `GET /workspaces/{wid}/delegation-grants` or
 `list_delegation_grants`; revoke one with
 `DELETE /workspaces/{wid}/delegation-grants/{grant_id}` or
 `revoke_delegation_grant`.

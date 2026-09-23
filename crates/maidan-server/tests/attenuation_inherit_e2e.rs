@@ -16,7 +16,7 @@ use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewApiToken, NewApp, NewAppInstallation, NewDelegationGrant, NewMember,
+    MemberId, MemberKind, NewApiToken, NewApp, NewAppInstallation, NewDelegationGrant, NewMember,
     NewWorkspace, TokenQuota,
 };
 use reqwest::StatusCode;
@@ -620,5 +620,302 @@ async fn a_derived_token_dies_with_its_parent() {
         StatusCode::UNAUTHORIZED,
         "the cascade must be transitive — a one-level kill is the same leak \
          one generation down"
+    );
+}
+
+/// Shared setup for the escalation tests: an admin, an orchestrator that itself
+/// holds `token:admin` (so every refusal is about the *borrowed* token, not the
+/// orchestrator lacking a capability), and two agents.
+struct Escalation {
+    base: String,
+    client: reqwest::Client,
+    store: Arc<dyn Store>,
+    ws: maidan_types::WorkspaceId,
+    orchestrator: MemberId,
+    worker: MemberId,
+    third: MemberId,
+    admin_tok: String,
+    orch_tok: String,
+}
+
+async fn escalation_setup() -> Escalation {
+    let (addr, client, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let mut ids = Vec::new();
+    for (handle, kind) in [
+        ("admin", MemberKind::Human),
+        ("orchestrator", MemberKind::Agent),
+        ("worker", MemberKind::Agent),
+        ("third", MemberKind::Agent),
+    ] {
+        ids.push(
+            store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    let mint = |member_id: MemberId, caps: Vec<String>| {
+        let store = store.clone();
+        async move {
+            let secret = TokenSecret::generate();
+            store
+                .create_api_token(NewApiToken {
+                    workspace_id: ws.id,
+                    member_id,
+                    app_installation_id: None,
+                    token_hash: hash_secret(secret.as_str()),
+                    label: None,
+                    capabilities: caps,
+                    expires_at: None,
+                })
+                .await
+                .unwrap();
+            secret.as_str().to_string()
+        }
+    };
+    let admin_tok = mint(ids[0], vec![capability::TOKEN_ADMIN.into()]).await;
+    let orch_tok = mint(
+        ids[1],
+        vec![
+            capability::WORKSPACE_READ.into(),
+            capability::TOKEN_ADMIN.into(),
+        ],
+    )
+    .await;
+    Escalation {
+        base: format!("http://{addr}"),
+        client,
+        store,
+        ws: ws.id,
+        orchestrator: ids[1],
+        worker: ids[2],
+        third: ids[3],
+        admin_tok,
+        orch_tok,
+    }
+}
+
+impl Escalation {
+    fn grants_url(&self) -> String {
+        format!("{}/workspaces/{}/delegation-grants", self.base, self.ws.0)
+    }
+
+    async fn grant_over_rest(
+        &self,
+        subject: MemberId,
+        delegate: MemberId,
+        caps: &[&str],
+    ) -> reqwest::Response {
+        self.client
+            .post(self.grants_url())
+            .bearer_auth(&self.admin_tok)
+            .json(&json!({
+                "subject_id": subject.0,
+                "delegate_id": delegate.0,
+                "capabilities": caps,
+                "purpose": "run the worker",
+                "expires_at": Utc::now() + ChronoDuration::hours(1),
+            }))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn exchange(&self, bearer: &str, grant_id: &Value) -> reqwest::Response {
+        self.client
+            .post(format!("{}/tokens/delegate", self.base))
+            .bearer_auth(bearer)
+            .json(&json!({ "grant_id": grant_id }))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    /// A borrowed token for `worker`, held by the orchestrator, lent work only.
+    async fn borrowed_worker_token(&self) -> String {
+        let grant: Value = self
+            .grant_over_rest(
+                self.worker,
+                self.orchestrator,
+                &[capability::WORKSPACE_READ],
+            )
+            .await
+            .json()
+            .await
+            .unwrap();
+        let exchanged: Value = self
+            .exchange(&self.orch_tok, &grant["id"])
+            .await
+            .json()
+            .await
+            .unwrap();
+        exchanged["token"]["secret"].as_str().unwrap().to_string()
+    }
+}
+
+/// A grant lends the ability to do work, never the means to hand out more.
+#[tokio::test]
+async fn a_grant_cannot_lend_authority() {
+    let e = escalation_setup().await;
+    for authority in [
+        capability::TOKEN_ADMIN,
+        capability::CHANNEL_ADMIN,
+        capability::SECRET_READ,
+        capability::OPERATOR_GLOBAL,
+    ] {
+        let refused = e
+            .grant_over_rest(e.worker, e.orchestrator, &[authority])
+            .await;
+        assert_eq!(
+            refused.status(),
+            StatusCode::BAD_REQUEST,
+            "a grant must not carry {authority}"
+        );
+    }
+}
+
+/// The route refuses such a grant, but a grant can also arrive through the store
+/// — created before that guard existed, or by import. This one carries
+/// `token:admin`, and the borrowed token must still not wield it: a token minted
+/// under it would not descend from the grant and would outlive its revocation.
+#[tokio::test]
+async fn a_borrowed_context_never_holds_authority() {
+    let e = escalation_setup().await;
+    let grant = e
+        .store
+        .create_delegation_grant(NewDelegationGrant {
+            workspace_id: e.ws,
+            subject_id: e.worker,
+            delegate_id: e.orchestrator,
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::TOKEN_ADMIN.into(),
+            ],
+            purpose: "pre-dates the guard".into(),
+            authorized_by: e.orchestrator,
+            expires_at: Utc::now() + ChronoDuration::hours(1),
+        })
+        .await
+        .unwrap();
+    let exchanged: Value = e
+        .exchange(&e.orch_tok, &json!(grant.id.0))
+        .await
+        .json()
+        .await
+        .unwrap();
+    let borrowed = exchanged["token"]["secret"].as_str().unwrap().to_string();
+
+    let minted = e
+        .client
+        .post(format!(
+            "{}/workspaces/{}/members/{}/tokens",
+            e.base, e.ws.0, e.worker.0
+        ))
+        .bearer_auth(&borrowed)
+        .json(&json!({ "capabilities": [capability::WORKSPACE_READ] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        minted.status(),
+        StatusCode::FORBIDDEN,
+        "a borrowed token must not mint standing tokens, whatever its grant says"
+    );
+}
+
+/// Delegation is one hop: a borrowed token cannot exchange any grant at all.
+///
+/// Two cases, because two protections are involved. The first is the one only
+/// the one-hop rule stops: the orchestrator's *own* second grant, where the
+/// delegate check passes — the delegate really is the orchestrator — but the
+/// token presenting it is borrowed, so the new token's lineage would run through
+/// a borrowed one. The second is the chain: the worker's grant to act as
+/// `third`, which would make the orchestrator `third` while every record named
+/// the worker as the one who did it.
+#[tokio::test]
+async fn delegation_is_one_hop() {
+    let e = escalation_setup().await;
+    let borrowed = e.borrowed_worker_token().await;
+
+    let orchestrators_own: Value = e
+        .grant_over_rest(e.third, e.orchestrator, &[capability::WORKSPACE_READ])
+        .await
+        .json()
+        .await
+        .unwrap();
+    let from_borrowed = e.exchange(&borrowed, &orchestrators_own["id"]).await;
+    assert_eq!(
+        from_borrowed.status(),
+        StatusCode::FORBIDDEN,
+        "a borrowed token must not exchange even its own delegate's grant"
+    );
+
+    let worker_to_third: Value = e
+        .grant_over_rest(e.third, e.worker, &[capability::WORKSPACE_READ])
+        .await
+        .json()
+        .await
+        .unwrap();
+    let chained = e.exchange(&borrowed, &worker_to_third["id"]).await;
+    assert_eq!(
+        chained.status(),
+        StatusCode::FORBIDDEN,
+        "a borrowed token must not chain into its subject's grant"
+    );
+}
+
+/// A narrowed child of a borrowed token stays borrowed: the store copies the
+/// parent's grant onto it. This already worked and had no test. If it stopped —
+/// the child coming out as an ordinary token — every later use would read as the
+/// worker acting alone, and the record of who is really acting would be shed.
+#[tokio::test]
+async fn a_narrowed_borrowed_token_stays_borrowed() {
+    let e = escalation_setup().await;
+    let borrowed = e.borrowed_worker_token().await;
+    let resp = e
+        .client
+        .post(format!("{}/tokens/attenuate", e.base))
+        .bearer_auth(&borrowed)
+        .json(&json!({ "capabilities": [capability::WORKSPACE_READ] }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "narrowing must be allowed"
+    );
+    let child: Value = resp.json().await.unwrap();
+    let child = child["secret"].as_str().unwrap().to_string();
+
+    let me: Value = e
+        .client
+        .get(format!("{}/me", e.base))
+        .bearer_auth(&child)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        me["actor_id"],
+        e.orchestrator.0.to_string(),
+        "the child must still name the orchestrator as the one acting"
+    );
+    assert_eq!(me["member_id"], e.worker.0.to_string());
+    assert!(
+        !me["delegation_grant_id"].is_null(),
+        "the child must still carry the grant it was borrowed under"
     );
 }

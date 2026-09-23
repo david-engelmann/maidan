@@ -66,6 +66,31 @@ const KNOWN: &[&str] = &[
     SECRET_ADMIN,
 ];
 
+/// Capabilities that describe *doing work* — reading, writing, posting, moving a
+/// task forward, uploading, searching, subscribing. These are the only ones a
+/// delegation grant can carry.
+///
+/// Everything else is authority over authority: minting tokens and grants,
+/// managing membership and governance, secrets, federation, and cross-tenant
+/// reads. Lending any of those lets borrowed, short-lived, revocable power be
+/// turned into standing power — a token minted under `token:admin` is not a
+/// descendant of the grant and outlives its revocation. So delegation carries
+/// work and never the means to hand out more.
+const DELEGATABLE: &[&str] = &[
+    WORKSPACE_READ,
+    WORKSPACE_WRITE,
+    MESSAGE_POST,
+    THREAD_TRANSITION,
+    ARTIFACT_UPLOAD,
+    SEARCH_QUERY,
+    EVENT_SUBSCRIBE,
+];
+
+/// Whether a capability may be carried by a delegation grant. See [`DELEGATABLE`].
+pub fn is_delegatable(capability: &str) -> bool {
+    DELEGATABLE.contains(&capability)
+}
+
 /// Every known capability — the superuser set for a bootstrap/root token
 /// (`maidan init`). Scoped tokens are minted from it thereafter.
 pub fn all() -> Vec<String> {
@@ -131,4 +156,48 @@ pub fn validate_subset(granted: &[String], requested: &[String]) -> Result<(), S
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Everything that is not work. Listed so a new capability is a decision,
+    /// not a default: it must land in exactly one of the two lists.
+    const AUTHORITY: &[&str] = &[
+        TOKEN_ADMIN,
+        CHANNEL_ADMIN,
+        SECRET_READ,
+        SECRET_ADMIN,
+        FEDERATION_INGEST,
+        FEDERATION_ADMIN,
+        AUDIT_READ_GLOBAL,
+        OPERATOR_GLOBAL,
+    ];
+
+    #[test]
+    fn every_capability_is_classified_as_work_or_authority() {
+        for cap in KNOWN {
+            let work = DELEGATABLE.contains(cap);
+            let authority = AUTHORITY.contains(cap);
+            assert!(
+                work ^ authority,
+                "{cap} must be classified as exactly one of work (delegatable) or \
+                 authority — work={work}, authority={authority}"
+            );
+        }
+        for cap in DELEGATABLE.iter().chain(AUTHORITY) {
+            assert!(
+                KNOWN.contains(cap),
+                "{cap} is classified but not a known capability"
+            );
+        }
+    }
+
+    #[test]
+    fn no_authority_capability_is_delegatable() {
+        for cap in AUTHORITY {
+            assert!(!is_delegatable(cap), "{cap} must never be delegatable");
+        }
+    }
 }
