@@ -33,6 +33,49 @@ tests:
                 Denial rate is 2/s over 5m. Inspect the
                 sampled content-free authorization warnings by surface and action.
 
+  # A single failed audit write pages: the change went through unrecorded.
+  - interval: 1m
+    input_series:
+      - series: maidan_audit_write_failures_total
+        values: "0 0 0 1 1 1 1 1"
+    alert_rule_test:
+      - alertname: MaidanAuditWriteFailures
+        eval_time: 1m
+        exp_alerts: []
+      - alertname: MaidanAuditWriteFailures
+        eval_time: 5m
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              slo: permanent_record
+            exp_annotations:
+              summary: Audit rows are failing to write
+              description: |
+                1 audit write(s) failed in the last 5m; the
+                changes they record went through without their record. Search the
+                logs for audit.write_failed.
+
+  - interval: 1m
+    input_series:
+      - series: maidan_event_append_failures_total
+        values: "0 0 0 1 1 1 1 1"
+    alert_rule_test:
+      - alertname: MaidanEventAppendFailures
+        eval_time: 1m
+        exp_alerts: []
+      - alertname: MaidanEventAppendFailures
+        eval_time: 5m
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              slo: permanent_record
+            exp_annotations:
+              summary: Events are being lost after their change committed
+              description: |
+                1 event(s) lost in the last 5m after retries;
+                their domain rows committed without them. Search the logs for
+                event.append_failed.
+
   # Recording rule: queue fill ratio is depth / clamp_min(capacity, 1).
   - interval: 1m
     input_series:

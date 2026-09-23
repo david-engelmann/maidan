@@ -2944,6 +2944,7 @@ dependencies = [
  "maidan-fsm",
  "maidan-search",
  "maidan-types",
+ "metrics",
  "serde",
  "serde_json",
  "sqlx",

@@ -701,6 +701,15 @@ pub async fn register_push_subscription(
             "endpoint, keys.p256dh, and keys.auth are required".into(),
         ));
     }
+    // The endpoint is where the server will POST, so it is an outbound target
+    // like a webhook. Without this a member could point delivery at an
+    // internal address and have the server call it on every notification.
+    // Push services are HTTPS by definition (RFC 8030).
+    let endpoint = maidan_auth::validate_egress_target(&body.endpoint)
+        .map_err(|error| ApiError::BadRequest(format!("endpoint: {error}")))?;
+    if endpoint.scheme() != "https" {
+        return Err(ApiError::BadRequest("endpoint must be https".into()));
+    }
     let sub = state
         .store
         .add_push_subscription(NewPushSubscription {

@@ -308,8 +308,11 @@ Read this before the long narrative below, which is a point-in-time record and
   consecutive `main` commits is a break, not a flake: diagnose it first.
 - **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
   several items deliberately recorded as *decisions* rather than fixed. Do not
-  guess at them: `Maidan-Room-LSN` scoping, the search-indexer cursor, and how
-  far to take MCP argument strictness. (Self-approval was one; it is decided —
+  guess at them: `Maidan-Room-LSN` scoping, the search-indexer cursor, how far
+  to take MCP argument strictness. (The round-3 three are decided — D-A
+  authority changes write their audit row in the change's own transaction, D-B
+  a per-workspace grant-lifetime ceiling defaulting to 90 days, D-C two-way
+  delegated-capability intersection — see Open Work.) (Self-approval was one; it is decided —
   approvals may be borrowed, never self-approved — see
   [`docs/Decisions.md`](docs/Decisions.md).)
 

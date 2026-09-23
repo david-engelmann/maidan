@@ -12,6 +12,8 @@
 - A delegated token lasts 15 minutes by default and never more than one hour.
   Its authority is the intersection of the grant, delegate, and subject
   capability sets; no exchange can widen authority.
+  *(Superseded 2026-09-23 by decision D-C: the contract is grant ∩ delegate ∩
+  request. Members carry no capabilities, so a subject term named nothing.)*
 - Revoking a grant invalidates every token minted from it, including attenuated
   descendants, using the existing token-revocation cascade.
 - Delegated decisions carry actor, subject, and `grant_id` — allowed **and

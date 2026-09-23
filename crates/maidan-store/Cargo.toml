@@ -13,6 +13,7 @@ description = "Storage abstraction + Postgres/SQLite implementations for Maidan.
 maidan-fsm = { path = "../maidan-fsm" }
 maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true
+metrics = "0.24"
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true

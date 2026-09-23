@@ -89,6 +89,15 @@ pub(crate) fn delegate_acting_for(
         .map(|a| a.actor_id)
 }
 
+/// Count an audit row that failed to write. Audit writes are best-effort — the
+/// change they record has usually committed already — so a failure is otherwise
+/// visible only as a log line, and a record that silently stops being written is
+/// exactly what an operator must be paged for. Counted here, in the one place
+/// every audit write passes through, so no call site can forget.
+pub(crate) fn count_audit_write_failure() {
+    metrics::counter!("maidan_audit_write_failures_total").increment(1);
+}
+
 fn mark_recorded() {
     let _ = SCOPE.try_with(|scope| scope.recorded.store(true, Ordering::Relaxed));
 }

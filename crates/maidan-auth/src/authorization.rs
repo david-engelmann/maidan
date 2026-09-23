@@ -89,13 +89,6 @@ impl AuthorizationDecision {
         }
     }
 
-    /// Attach delegation identity without changing the record or metric shape.
-    pub const fn with_delegation(mut self, subject: MemberId, grant_id: Uuid) -> Self {
-        self.subject = Some(subject);
-        self.grant_id = Some(grant_id);
-        self
-    }
-
     pub fn record(self) {
         counter!(
             "maidan_authorization_decisions_total",

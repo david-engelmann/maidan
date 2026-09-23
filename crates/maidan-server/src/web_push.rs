@@ -221,18 +221,18 @@ pub trait WebPushSender: Send + Sync {
 
 /// The production sender: VAPID-authorized, aes128gcm-encrypted POST to the push
 /// service (RFC 8030 + 8291 + 8292).
+///
+/// The endpoint is member-supplied, so every send goes through the outbound
+/// trust boundary ([`crate::egress_http::client_for`]): resolved to public
+/// addresses, pinned to them, and never redirected. Registration refuses a
+/// literal internal address; this catches a hostname that resolves to one.
 pub struct VapidWebPushSender {
     config: WebPushConfig,
-    client: reqwest::Client,
 }
 
 impl VapidWebPushSender {
     pub fn new(config: WebPushConfig) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
-        Self { config, client }
+        Self { config }
     }
 }
 
@@ -245,9 +245,12 @@ impl WebPushSender for VapidWebPushSender {
         let body = encrypt_payload(&sub.p256dh, &sub.auth, &as_secret, &salt, payload)?;
         let auth =
             vapid_authorization(&self.config, &sub.endpoint, chrono::Utc::now().timestamp())?;
-        let resp = self
-            .client
-            .post(&sub.endpoint)
+        let (client, endpoint) = crate::egress_http::client_for(&sub.endpoint)
+            .await
+            .map_err(WebPushError::Http)?;
+        let resp = client
+            .post(endpoint)
+            .timeout(Duration::from_secs(10))
             .header("Authorization", auth)
             .header("Content-Encoding", "aes128gcm")
             .header("Content-Type", "application/octet-stream")
