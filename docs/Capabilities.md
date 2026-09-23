@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v410.0.0](https://github.com/david-engelmann/maidan/releases/tag/v410.0.0) — accountable usage and bounded authorization evidence
+
+Three implementation PRs (#988/#989/#991) close Wave 4 row #41 with an
+idempotent economic ledger and a shared, content-free authorization signal.
+
+| Change | Where |
+|--------|-------|
+| **One accountable usage write:** `PayerStamp` binds model, tiered tokens, immutable price snapshot, integer micro-USD charge, workspace payer, authenticated reporter, and active claim lease. An accepted report atomically inserts one ledger row, accumulates the budget, appends `UsageReported`, and, when over budget, releases/fails the claim and dead-letters the work. Exact retries return the original result; conflicts and stale leases change nothing. | `crates/maidan-{types,store}/`, Postgres 0102 / SQLite 0101 |
+| **REST/MCP parity without caller-selected identity:** `POST /threads/:id/usage` and MCP `report_usage` derive reporter from authentication and payer from the thread workspace. Both publish the same stored events and expose the same formula and fencing semantics. | `crates/maidan-{server,mcp}/`, `docs/{Integration,Result Delivery}.md` |
+| **Bounded authorization evidence:** REST and MCP capability decisions share a record containing principal, action, outcome, and resource identity. Prometheus labels use only closed vocabularies; every denial reaches the aggregate counter, detailed warnings are sampled 1-in-64, and a tested sustained-rate alert fires without creating attacker-controlled durable audit rows. | `crates/maidan-auth/src/authorization.rs`, `docs/alerts/`, `docs/Operations.md` |
+
 ## [v409.0.0](https://github.com/david-engelmann/maidan/releases/tag/v409.0.0) — searchable, tag-honest release stream
 
 Two implementation PRs (#979/#982) close Wave 4 row #40 by making the release
