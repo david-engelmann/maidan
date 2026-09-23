@@ -1748,6 +1748,28 @@ Still open, tracked here rather than left to a re-audit:
   approval-gate answer — whose earlier values are overwritten; those want
   domain records carrying the decision, and belong with 411.10.
 
+- **Found 2026-09-23 by the backlog reconciliation, fixed: purging a workspace
+  destroyed another workspace's artifacts.** Artifacts are content-addressed and
+  shared — one `maidan_artifacts` row and one blob per sha, owned by whoever
+  uploaded it first, with per-workspace access in `maidan_artifact_refs`
+  (Cluster 204). Purge and erase deleted every row *uploaded by* the workspace's
+  members, then their blobs. So if a second workspace had uploaded the same
+  bytes, the first one's purge destroyed them, leaving the second a reference
+  to nothing. The reverse also held: a workspace whose copy had been uploaded
+  first by someone else kept it after its own erasure. Purge now drops the
+  workspace's references and destroys an artifact only when none remain, in
+  one transaction (Postgres locks the row against a racing upload). The blob
+  is deleted only if the row is still gone afterwards. Unreferenced rows this
+  workspace uploaded go too. Tests: `workspace_purge_shared_artifacts` (both
+  backends) and `purging_one_workspace_never_destroys_another_workspaces_artifact`;
+  the old deletion fails both. Every existing purge test used one workspace,
+  the same "single-tenant tests can't see two-tenant bugs" shape as the
+  Cursor-run audit.
+  **Follow-up, open:** the shared row keeps the *first* uploader's
+  `uploaded_by`, so a second workspace reading the artifact's metadata sees a
+  member id from another tenant. It is an opaque id, but it is still a
+  cross-tenant leak; metadata should show the caller's own uploader, or none.
+
 - **Found during 411.6: `member:impersonate` was doing two jobs.** It covered an
   orchestrator acting *as* an agent, which delegation replaces, but also an
   operator granting a governance skill (`land_gate`) *to* an agent — which

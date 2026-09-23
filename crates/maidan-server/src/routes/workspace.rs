@@ -626,15 +626,7 @@ pub async fn purge_workspace(
     state.store.get_workspace(workspace_id).await?;
     ensure_not_under_legal_hold(&state, workspace_id).await?;
     let mut result = state.store.purge_workspace_messages(workspace_id).await?;
-    let mut artifact_blobs_deleted = 0u64;
-    for sha_hex in &result.artifact_shas {
-        let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
-            continue;
-        };
-        if state.artifacts.delete(&sha).await.is_ok() {
-            artifact_blobs_deleted += 1;
-        }
-    }
+    let artifact_blobs_deleted = delete_orphaned_blobs(&state, &result.artifact_shas).await;
     result.artifact_shas.clear();
     state
         .store
@@ -658,6 +650,27 @@ pub async fn purge_workspace(
     let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
     state.mcp.publish_resource_uris(uris).await;
     Ok(Json(result))
+}
+
+/// Delete the blobs a purge orphaned — shas no workspace references any more.
+///
+/// The store decides orphanhood inside its transaction; this runs after it, so
+/// a workspace that uploaded the same bytes in between must not lose them. A
+/// blob whose artifact row exists again is kept.
+async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) -> u64 {
+    let mut deleted = 0u64;
+    for sha_hex in shas {
+        let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
+            continue;
+        };
+        if state.store.get_artifact_by_sha(sha_hex).await.is_ok() {
+            continue;
+        }
+        if state.artifacts.delete(&sha).await.is_ok() {
+            deleted += 1;
+        }
+    }
+    deleted
 }
 
 pub async fn erase_workspace(
@@ -689,15 +702,7 @@ pub async fn erase_workspace(
         })
         .await?;
     let mut result = state.store.erase_workspace(workspace_id).await?;
-    let mut artifact_blobs_deleted = 0u64;
-    for sha_hex in &result.purge.artifact_shas {
-        let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
-            continue;
-        };
-        if state.artifacts.delete(&sha).await.is_ok() {
-            artifact_blobs_deleted += 1;
-        }
-    }
+    let artifact_blobs_deleted = delete_orphaned_blobs(&state, &result.purge.artifact_shas).await;
     let _ = artifact_blobs_deleted;
     result.purge.artifact_shas.clear();
     let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
