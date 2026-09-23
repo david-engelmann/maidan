@@ -133,3 +133,4 @@ PR review credit; external contributors.
 - [[Cluster 404]] — Member occupancy follows and notification-derived manager digest. Wave 2 row #28 complete; released as **`v404.0.0`**.
 - [[Cluster 405]] — Time-boxed cross-organization incident sharing. Wave 2 row #26 complete; released as **`v405.0.0`**.
 - [[Cluster 406]] — Published GHCR boot proof and real loopback OIDC. Wave 4 row #37 complete; released as **`v406.0.0`**.
+- [[Cluster 407]] — Executable UI/event surfaces, signed-session live hero loop, and portable-frame goldens. Wave 4 row #39 complete; released as **`v407.0.0`**.

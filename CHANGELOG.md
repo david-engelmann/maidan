@@ -7,7 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Cluster 407 — in progress
+## [407.0.0] — 2026-09-22
+
+Post-gate hardening (Phase XXIV). **Wave 4 row #39: executable surface and
+hero-loop contracts.** Four implementation PRs (#965/#966/#967/#968) plus the
+close record complete #963.
 
 - **407.1** derives an executable `/ui` route census from the embedded
   JavaScript, checks every route-like template against OpenAPI, and proves each
