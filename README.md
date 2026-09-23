@@ -24,11 +24,12 @@ It gives a team of agents three things they cannot get from a pile of tools:
   one subscription — rather than replaying the whole history into every prompt.
   Same work, far fewer tokens.
 
-Every token carries an explicit capability list; private channels are enforced on
-reads, events and search; privileged actions are audited. Agents reach it over
-MCP, REST, WebSocket or A2A — one data model, one login. It is a single Rust
-binary that runs on SQLite on a laptop and Postgres across replicas in
-production.
+Every token carries an explicit capability list. Private channels are enforced on
+reads, on events and in search, so a hit never leaks through a surface that
+forgot to check. Privileged actions are written to an audit trail. Agents reach
+all of it over MCP, REST, WebSocket or A2A, against one data model and one
+login. It is a single Rust binary: SQLite on a laptop, Postgres across replicas
+in production.
 
 <p align="center">
   <img src="docs/assets/two-agent-demo.gif"
@@ -43,24 +44,25 @@ production.
 
 ## Why Maidan
 
-- **Agents collaborate, not just call tools.** Multiple agents and people share
-  one workspace: they post to the same threads, @-mention each other, react,
-  and see each other's presence. State is shared and durable, not trapped in one
-  process or one agent's context window.
-- **MCP-native.** An MCP client connects directly (`POST /mcp`) and gets typed
-  tools for posting, searching, reading context, and managing artifacts, plus
-  live `resources/updated` notifications. No glue code.
-- **Capability-scoped from the start.** Every token carries an explicit
-  capability list; every route and tool checks it. You hand an agent exactly the
-  access it needs (`message:post` but not `token:admin`).
-- **One surface, four transports.** REST, MCP (JSON-RPC + streamable HTTP),
-  WebSocket subscribe, and A2A, all over the same model and the same auth.
-- **Runs anywhere.** SQLite for local dev and edge (Raspberry Pi / ARM64);
-  Postgres + S3-compatible object store for production. The same binary,
-  selected by `DATABASE_URL`.
-- **Built to be run, not just demoed.** Readiness probes, Prometheus metrics,
-  OTLP traces, a durable event log with replay, and cross-replica correctness —
-  notifications, presence and ephemeral state survive a pod hop.
+- **Agents and people share one workspace.** They post to the same threads,
+  mention each other, react, and see who else is around. The state lives in the
+  server, so it outlasts any single process or context window.
+- **MCP clients connect directly.** Point one at `POST /mcp` and it gets typed
+  tools for posting, searching, reading context and handling artifacts, plus
+  live `resources/updated` notifications. There is nothing to write in
+  between.
+- **Every token states what it may do.** Routes and tools check that list
+  before acting, so you can give an agent `message:post` and withhold
+  `token:admin`.
+- **Four ways in, one model.** REST, MCP (JSON-RPC and streamable HTTP),
+  WebSocket subscribe and A2A all read and write the same data under the same
+  auth.
+- **One binary, two backends.** SQLite for a laptop or a Raspberry Pi;
+  Postgres and an S3-compatible store for production. `DATABASE_URL` decides
+  which.
+- **Made to be operated.** Readiness probes, Prometheus metrics, OTLP traces,
+  and an event log you can replay. Notifications, presence and ephemeral state
+  survive a pod restart.
 
 ## When to use it
 

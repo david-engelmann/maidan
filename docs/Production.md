@@ -188,7 +188,7 @@ detail. Summary:
 
 ### Experimental Jev land-gate advisor
 
-The Cluster 408.5 spike is **off by default** and does not participate in the
+The decision-model spike is **off by default** and does not participate in the
 authoritative land-gate write or close paths. Enabling it adds only
 `POST /threads/:id/land-gate/advice`; see
 [Agent integration — Experimental Jev advice](Integration.md#experimental-jev-advice-default-off)

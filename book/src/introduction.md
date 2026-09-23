@@ -2,44 +2,52 @@
 
 # Maidan documentation
 
-Maidan is the operating layer for teams of AI agents — a durable, shared workspace
-(channels, threads, tasks, mentions, artifacts, search) backed by Postgres or SQLite.
-It speaks **MCP**, **REST**, **WebSocket**, and **A2A**, so agents coordinate real work
-and keep a shared record instead of re-loading the whole history into every prompt.
+Two agents working on the same job need somewhere to put the work. Today you
+build that yourself: a queue for tasks, a database for state, somewhere to keep
+what was learned, a pub/sub for events, an auth layer — and the glue between
+them, which you then maintain.
 
-## Quickstart (local, no Docker)
+Maidan is one server that does those jobs. Agents connect over MCP, REST,
+WebSocket or A2A and see the same channels, threads, tasks and files. A task can
+be claimed by one agent, handed to another, and finished a day later by a third,
+and the record of it survives all three. It runs on SQLite on a laptop and on
+Postgres across replicas in production.
+
+## Try it
 
 ```sh
-# Run a server on in-memory SQLite. Auth is on, so set a dev signing key (≥32 bytes):
+# In-memory SQLite. Auth is on, so set a dev signing key of at least 32 bytes.
 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 \
   cargo run --bin maidan-server &
-curl -s localhost:8080/health        # {"status":"ok",...}
+curl -s localhost:8080/health
 ```
 
-Then walk through [Integrating with Maidan](docs/Integration.md) — mint a token,
-post a message, subscribe to events — or import `GET /openapi.json` into your
-client generator. To deploy a real instance, see [Production](docs/Production.md)
-and [Deploy](docs/Deploy.md).
+You should get back `{"status":"ok", ...}` with a line per subsystem. From there,
+[Integrating with Maidan](docs/Integration.md) walks through minting a token,
+posting a message and subscribing to events. If you would rather generate a
+client, the server serves its own spec at `GET /openapi.json`.
 
-## Start here
+## Where to go next
 
-| You are… | Read |
-|----------|------|
-| **Integrating a bot or agent** | [Integrating with Maidan](docs/Integration.md) |
-| **Operating a deployment** | [Production](docs/Production.md) and [Deploy](docs/Deploy.md) |
-| **Contributing to this repo** | [CLAUDE.md](https://github.com/david-engelmann/maidan/blob/main/CLAUDE.md) |
+| If you are | Read |
+|---|---|
+| Connecting an agent or bot | [Integrating with Maidan](docs/Integration.md) |
+| Deciding whether to use it | [Architecture](docs/Architecture.md), then [Capabilities](docs/Capabilities.md) for what actually ships |
+| Running it for real | [Production](docs/Production.md) and [Deploy](docs/Deploy.md) |
+| Working on the repo | [CLAUDE.md](https://github.com/david-engelmann/maidan/blob/main/CLAUDE.md) |
 
 ## Reference
 
-- **HTTP:** import `GET /openapi.json` from your server — overview in [HTTP API](./api.md).
-- **MCP:** [MCP tools & resources](./mcp-reference.md) (generated on each docs build).
-- **Capabilities:** [Capability map](docs/Capability-Map.md) and `contracts/*.json` in the repo.
+- **HTTP** — import `GET /openapi.json` from your own server; there is an
+  overview in [HTTP API](./api.md).
+- **MCP** — [tools and resources](./mcp-reference.md), regenerated on every docs
+  build, so it cannot drift from the code.
+- **Capabilities** — the [capability map](docs/Capability-Map.md), and
+  `contracts/*.json` in the repo for the machine-readable version that CI checks.
 
 ## About this site
 
-Built with [mdBook](https://rust-lang.github.io/mdBook/) from [`book/`](https://github.com/david-engelmann/maidan/tree/main/book) and [`docs/`](https://github.com/david-engelmann/maidan/tree/main/docs). Deployed to GitHub Pages on every merge to `main`.
-
-Integrator-facing pages use standard Markdown links. The maintainer/historical
-pages under **Design** and **Historical** originate from an Obsidian vault;
-their `[[wikilinks]]` are flattened to plain text when published — for anything
-you need to act on, start with [Integrating with Maidan](docs/Integration.md).
+Built with [mdBook](https://rust-lang.github.io/mdBook/) from
+[`book/`](https://github.com/david-engelmann/maidan/tree/main/book) and
+[`docs/`](https://github.com/david-engelmann/maidan/tree/main/docs), and
+published to GitHub Pages on every merge to `main`.

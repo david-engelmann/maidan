@@ -92,9 +92,9 @@ building enterprise SSO in-tree.
 ## Mail
 
 SMTP only (`MAIDAN_SMTP_HOST`, `MAIDAN_SMTP_FROM`, …). Amazon SES,
-SendGrid, Mailgun, Postfix all work **as SMTP relays**. Delivery is
-best-effort until Hardening / Expansion Bet 4 (`mail_outbox`). There is
-no native SES/SendGrid HTTP driver.
+SendGrid, Mailgun and Postfix all work **as SMTP relays**. Delivery is
+durable: mail goes through the `maidan_mail_outbox` queue, which a background
+worker drains and retries. There is no native SES or SendGrid HTTP driver.
 
 ---
 
