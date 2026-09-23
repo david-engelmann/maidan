@@ -4,7 +4,7 @@
 
 The 2026-09-21 full audit is dispositioned in
 [Open Work](../Open%20Work.md#full-audit-dispositions--adjusted-roadmap-2026-09-22).
-This cluster ships the items dispositioned *adopt* or *adapt*, in the order
+This cluster ships the adopted items admitted to umbrella #971, in the order
 recorded there — chosen to stay clear of the concurrent Cluster 406 work.
 
 ## Contract
@@ -32,7 +32,7 @@ recorded there — chosen to stay clear of the concurrent Cluster 406 work.
 | 408.3 | #974 | `/ui` P1: loading states, approvals refresh, error bodies, empty states |
 | 408.4 | #975 | Docs rendering + the locked branding ship-list |
 | 408.5 | #976 | J-01 land-gate spike, behind a flag, flag-off |
-| 408.close | planned | Ledgers and retrospective |
+| 408.close | #978 | Ledgers and retrospective |
 
 408.3 is UX polish and is deliberately distinct from Cluster 407's `/ui`
 contract coverage in #963, which it builds on.
