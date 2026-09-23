@@ -2718,6 +2718,7 @@ dependencies = [
  "ed25519-dalek",
  "maidan-store",
  "maidan-types",
+ "metrics",
  "serde_json",
  "sha2 0.10.9",
  "sqlx",

@@ -103,6 +103,33 @@ pub fn is_known(cap: &str) -> bool {
     KNOWN.contains(&cap)
 }
 
+pub(crate) const fn is_known_const(cap: &str) -> bool {
+    let mut index = 0;
+    while index < KNOWN.len() {
+        if const_str_eq(KNOWN[index], cap) {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+const fn const_str_eq(left: &str, right: &str) -> bool {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if left[index] != right[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
 pub fn validate_list(caps: &[String]) -> Result<(), String> {
     for cap in caps {
         if !is_known(cap) {

@@ -47,12 +47,16 @@ pub(super) async fn set_review_requirement(
         .map(|r| r.required_count)
         .unwrap_or(0);
     if a.required_count < current && !auth.bypass {
-        auth.require_capability(maidan_auth::capability::CHANNEL_ADMIN)
-            .map_err(|_| {
-                McpError::InvalidParams(
-                    "lowering a review requirement needs the channel:admin capability".into(),
-                )
-            })?;
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::CHANNEL_ADMIN,
+        )
+        .map_err(|_| {
+            McpError::InvalidParams(
+                "lowering a review requirement needs the channel:admin capability".into(),
+            )
+        })?;
     }
     let req = store
         .set_review_requirement(thread_id, a.required_count)

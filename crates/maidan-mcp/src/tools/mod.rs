@@ -310,7 +310,13 @@ async fn enforce_member_self_scope(
         return Ok(());
     }
 
-    if auth.has_capability(maidan_auth::capability::MEMBER_IMPERSONATE) {
+    if maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Mcp,
+        maidan_auth::capability::MEMBER_IMPERSONATE,
+    )
+    .is_ok()
+    {
         // Same-workspace still applies: impersonation is an in-tenant
         // orchestration grant, not a cross-tenant one.
         let member = server

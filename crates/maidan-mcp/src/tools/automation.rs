@@ -28,8 +28,12 @@ pub(super) async fn register_slash_command(
     args: &Value,
 ) -> Result<Value, McpError> {
     if !auth.bypass {
-        auth.require_capability(WORKSPACE_WRITE)
-            .map_err(McpError::from)?;
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            WORKSPACE_WRITE,
+        )
+        .map_err(McpError::from)?;
     }
     let a: RegisterSlashCommandArgs = serde_json::from_value(args.clone())?;
     let workspace_id = WorkspaceId(a.workspace_id);
@@ -116,8 +120,12 @@ pub(super) async fn list_slash_commands(
     args: &Value,
 ) -> Result<Value, McpError> {
     if !auth.bypass {
-        auth.require_capability(WORKSPACE_READ)
-            .map_err(McpError::from)?;
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
     }
     let a: ListSlashCommandsArgs = serde_json::from_value(args.clone())?;
     let workspace_id = WorkspaceId(a.workspace_id);
@@ -189,8 +197,12 @@ pub(super) async fn register_fsm_hook(
     args: &Value,
 ) -> Result<Value, McpError> {
     if !auth.bypass {
-        auth.require_capability(WORKSPACE_WRITE)
-            .map_err(McpError::from)?;
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            WORKSPACE_WRITE,
+        )
+        .map_err(McpError::from)?;
     }
     let a: RegisterFsmHookArgs = serde_json::from_value(args.clone())?;
     let workspace_id = WorkspaceId(a.workspace_id);
@@ -267,8 +279,12 @@ pub(super) async fn list_fsm_hooks(
     args: &Value,
 ) -> Result<Value, McpError> {
     if !auth.bypass {
-        auth.require_capability(WORKSPACE_READ)
-            .map_err(McpError::from)?;
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            WORKSPACE_READ,
+        )
+        .map_err(McpError::from)?;
     }
     let a: ListFsmHooksArgs = serde_json::from_value(args.clone())?;
     let workspace_id = WorkspaceId(a.workspace_id);

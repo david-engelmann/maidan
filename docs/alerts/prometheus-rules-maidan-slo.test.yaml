@@ -14,6 +14,25 @@ rule_files:
 evaluation_interval: 1m
 
 tests:
+  # Every denial reaches the aggregate counter even though detail warnings are
+  # sampled. Sustained rates above one denial/second fire after five minutes.
+  - interval: 1m
+    input_series:
+      - series: 'maidan_authorization_decisions_total{surface="rest",action="workspace:read",outcome="denied",resource="workspace"}'
+        values: "0+120x12"
+    alert_rule_test:
+      - alertname: MaidanAuthorizationDenialsElevated
+        eval_time: 10m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: authorization_denials
+            exp_annotations:
+              summary: Authorization denials elevated
+              description: |
+                Denial rate is 2/s over 5m. Inspect the
+                sampled content-free authorization warnings by surface and action.
+
   # Recording rule: queue fill ratio is depth / clamp_min(capacity, 1).
   - interval: 1m
     input_series:

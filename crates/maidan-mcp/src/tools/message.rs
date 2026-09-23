@@ -328,11 +328,19 @@ pub(super) async fn edit_message(
     let editor_id = MemberId(a.editor_id);
     if !auth.bypass {
         if editor_id == existing.author_id {
-            auth.require_capability(MESSAGE_POST)
-                .map_err(McpError::from)?;
+            maidan_auth::require_observed_capability(
+                auth,
+                maidan_auth::AuthorizationSurface::Mcp,
+                MESSAGE_POST,
+            )
+            .map_err(McpError::from)?;
         } else {
-            auth.require_capability(WORKSPACE_WRITE)
-                .map_err(McpError::from)?;
+            maidan_auth::require_observed_capability(
+                auth,
+                maidan_auth::AuthorizationSurface::Mcp,
+                WORKSPACE_WRITE,
+            )
+            .map_err(McpError::from)?;
         }
     }
     let metadata = match a.metadata {

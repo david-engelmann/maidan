@@ -72,8 +72,13 @@ pub use workspace::*;
 
 pub(crate) type ApiResult<T> = Result<T, ApiError>;
 
-pub(crate) fn cap(auth: &AuthContext, capability: &str) -> ApiResult<()> {
-    auth.require_capability(capability).map_err(Into::into)
+pub(crate) fn cap(auth: &AuthContext, capability: &'static str) -> ApiResult<()> {
+    maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Rest,
+        capability,
+    )
+    .map_err(Into::into)
 }
 
 pub(crate) fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<()> {
@@ -102,7 +107,13 @@ pub(crate) fn ensure_own_personal_state(auth: &AuthContext, claimed: MemberId) -
     if auth.bypass || claimed == auth.member_id {
         return Ok(());
     }
-    if auth.has_capability(maidan_auth::capability::MEMBER_IMPERSONATE) {
+    if maidan_auth::require_observed_capability(
+        auth,
+        maidan_auth::AuthorizationSurface::Rest,
+        maidan_auth::capability::MEMBER_IMPERSONATE,
+    )
+    .is_ok()
+    {
         tracing::info!(
             actor = %auth.member_id.0,
             subject = %claimed.0,
