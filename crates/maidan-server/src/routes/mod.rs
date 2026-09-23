@@ -72,6 +72,14 @@ pub use workspace::*;
 
 pub(crate) type ApiResult<T> = Result<T, ApiError>;
 
+pub(crate) fn clamp_context_transition_limit(limit: i64) -> i64 {
+    if limit > 0 {
+        limit.min(200)
+    } else {
+        50
+    }
+}
+
 pub(crate) fn cap(auth: &AuthContext, capability: &'static str) -> ApiResult<()> {
     maidan_auth::require_observed_capability(
         auth,
@@ -368,8 +376,16 @@ mod publish_tests {
     use maidan_types::*;
     use sqlx::sqlite::SqlitePoolOptions;
 
-    use super::{publish, retry};
+    use super::{clamp_context_transition_limit, publish, retry};
     use crate::state::AppState;
+
+    #[test]
+    fn context_transition_limit_matches_the_public_contract() {
+        assert_eq!(clamp_context_transition_limit(i64::MIN), 50);
+        assert_eq!(clamp_context_transition_limit(0), 50);
+        assert_eq!(clamp_context_transition_limit(50), 50);
+        assert_eq!(clamp_context_transition_limit(i64::MAX), 200);
+    }
 
     #[tokio::test]
     async fn retry_returns_ok_after_transient_failures() {

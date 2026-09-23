@@ -107,6 +107,15 @@ async fn skills_crud_over_http() {
         })
         .await
         .unwrap();
+    let colleague = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "colleague".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
     let channel = store
         .create_channel(NewChannel {
             workspace_id: ws.id,
@@ -173,6 +182,25 @@ async fn skills_crud_over_http() {
         .await
         .unwrap();
     assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+
+    for request in [
+        client
+            .get(format!("{base}/members/{}/skills", colleague.id.0))
+            .header("Authorization", &bearer),
+        client
+            .post(format!("{base}/members/{}/skills", colleague.id.0))
+            .header("Authorization", &bearer)
+            .json(&json!({ "skill": "rust" })),
+        client
+            .delete(format!("{base}/members/{}/skills/rust", colleague.id.0))
+            .header("Authorization", &bearer),
+    ] {
+        assert_eq!(
+            request.send().await.unwrap().status(),
+            StatusCode::FORBIDDEN,
+            "ordinary tokens must not read or rewrite another member's skills"
+        );
+    }
 
     // --- thread required skills ---
     let add = client
@@ -299,6 +327,7 @@ async fn an_agent_cannot_grant_itself_a_governance_skill() {
             capability::WORKSPACE_READ.into(),
             capability::WORKSPACE_WRITE.into(),
             capability::CHANNEL_ADMIN.into(),
+            capability::MEMBER_IMPERSONATE.into(),
         ],
     )
     .await;

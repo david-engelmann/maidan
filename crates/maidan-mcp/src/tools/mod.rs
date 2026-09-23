@@ -340,8 +340,8 @@ async fn enforce_member_self_scope(
 }
 
 /// Tools whose `member_id` argument names whose personal state is being touched.
-/// Adding a member tool without adding it here is caught by
-/// `every_member_tool_is_self_scoped`.
+/// Adding a member tool without classifying it is caught by
+/// `every_member_id_tool_is_classified`.
 const MEMBER_SCOPED_TOOLS: &[&str] = &[
     "list_mentions",
     "get_inbox",
@@ -379,21 +379,63 @@ const MEMBER_SCOPED_TOOLS: &[&str] = &[
     // digest it is — reading someone else's is reading their reports' state.
     // Cross-member rollup is the feature; cross-member access is not.
     "get_manager_digest",
+    "open_dm_conversation",
+    "list_dm_conversations",
+    // Declared skills control which work the routing loop may assign. They are
+    // personal capability state, not a workspace-wide directory entry.
+    "add_member_skill",
+    "list_member_skills",
 ];
 
 /// Member tools whose `member_id` names *work* state rather than personal
 /// state, and which are cross-member **by design**.
 ///
-/// Occupancy is who holds which task — a team surface, and the whole reason the
-/// occupancy view exists. It already enforces workspace scoping in its handler;
-/// self-scoping it would delete the feature rather than secure it.
+/// Occupancy, WIP, and assignment queues describe who holds which task. They
+/// are team surfaces and already enforce workspace/channel access in their
+/// handlers; self-scoping them would delete the feature rather than secure it.
 ///
 /// Listed rather than omitted so that "not gated" is a decision with a reason
 /// attached, and a new tool cannot land in the gap between the two lists.
 /// Referenced only by the guard below — the gate itself needs no list of what
 /// it does *not* cover.
 #[cfg(test)]
-const MEMBER_WORK_STATE_TOOLS: &[&str] = &["get_member_occupancy"];
+const MEMBER_WORK_STATE_TOOLS: &[&str] = &[
+    "get_member_occupancy",
+    "get_member_wip",
+    "list_assigned_threads",
+];
+
+/// Transitional caller-chosen work attribution. Cluster 411 removes these
+/// `member_id` inputs in favor of the authenticated subject; keeping this list
+/// explicit prevents them from being mistaken for unreviewed personal state in
+/// the meantime.
+#[cfg(test)]
+const MEMBER_ACTING_IDENTITY_TOOLS: &[&str] = &[
+    "claim_thread",
+    "claim_next_thread",
+    "renew_claim",
+    "acknowledge_claim",
+    "release_claim",
+    "cast_vote",
+    "add_reaction",
+    "remove_reaction",
+    "pin_message",
+    "unpin_message",
+    "link_slack_channel",
+    "link_github_issue",
+];
+
+/// Tools where `member_id` is the object of an administrative or routing
+/// action, not the caller identity. Those arguments remain legitimate targets.
+#[cfg(test)]
+const MEMBER_TARGET_TOOLS: &[&str] = &[
+    "add_channel_member",
+    "remove_channel_member",
+    "freeze_member",
+    "unfreeze_member",
+    "add_reviewer",
+    "record_mention",
+];
 
 /// Pre-dispatch per-channel authorization for point-access content tools.
 /// Bypass callers pass through; DM tools rely on their own participant checks
@@ -878,52 +920,60 @@ mod catalog_filter_tests {
 mod self_scope_tests {
     use super::*;
 
-    /// The gate is a list, and a list drifts. Every tool dispatched to the
-    /// `member::` module touches one member's personal state, so every one of
-    /// them belongs in `MEMBER_SCOPED_TOOLS` — this reads the dispatch arms out
-    /// of this file's own source and says which are missing, so the 26th member
-    /// tool cannot be added without either listing it or deleting this test.
+    /// The gate is a list, and a list drifts. Classify every MCP schema that
+    /// accepts `member_id`, regardless of which implementation module owns its
+    /// dispatch arm. This catches personal-state tools such as member skills,
+    /// which live outside `member.rs` and escaped the old source-text heuristic.
     #[test]
-    fn every_member_tool_is_self_scoped() {
-        let source = include_str!("mod.rs");
-        let dispatched: Vec<&str> = source
-            .lines()
-            .filter_map(|line| {
-                let line = line.trim();
-                let (name, rest) = line.strip_prefix('"')?.split_once("\" => ")?;
-                rest.trim_start().starts_with("member::").then_some(name)
+    fn every_member_id_tool_is_classified() {
+        let declared: Vec<String> = catalog()
+            .into_iter()
+            .filter_map(|tool| {
+                let name = tool.get("name")?.as_str()?;
+                declared_arguments(name)?
+                    .contains("member_id")
+                    .then(|| name.to_owned())
             })
             .collect();
 
         assert!(
-            dispatched.len() > 20,
-            "expected to find the member dispatch arms; found {} — the parse broke, \
+            declared.len() > 20,
+            "expected broad member_id schema coverage; found {} — the catalog parse broke, \
              not the gate",
-            dispatched.len()
+            declared.len()
         );
 
-        let missing: Vec<&str> = dispatched
+        let missing: Vec<&str> = declared
             .iter()
-            .copied()
+            .map(String::as_str)
             .filter(|name| {
-                !MEMBER_SCOPED_TOOLS.contains(name) && !MEMBER_WORK_STATE_TOOLS.contains(name)
+                !MEMBER_SCOPED_TOOLS.contains(name)
+                    && !MEMBER_WORK_STATE_TOOLS.contains(name)
+                    && !MEMBER_ACTING_IDENTITY_TOOLS.contains(name)
+                    && !MEMBER_TARGET_TOOLS.contains(name)
             })
             .collect();
         assert!(
             missing.is_empty(),
-            "member tools in neither list: {missing:?}. Add to MEMBER_SCOPED_TOOLS if the \
-             member_id names whose personal state is touched, or to \
-             MEMBER_WORK_STATE_TOOLS — with a reason — if it is team-visible work state."
+            "member_id tools left unclassified: {missing:?}. Classify the argument as \
+             personal state, team-visible work state, transitional acting identity, or a target."
         );
 
-        // Neither list may claim a tool the other has.
-        let both: Vec<&&str> = MEMBER_SCOPED_TOOLS
+        // No tool may be claimed by more than one semantic class.
+        let classes = [
+            MEMBER_SCOPED_TOOLS,
+            MEMBER_WORK_STATE_TOOLS,
+            MEMBER_ACTING_IDENTITY_TOOLS,
+            MEMBER_TARGET_TOOLS,
+        ];
+        let both: Vec<&&str> = classes
             .iter()
-            .filter(|n| MEMBER_WORK_STATE_TOOLS.contains(n))
+            .flat_map(|class| class.iter())
+            .filter(|name| classes.iter().filter(|class| class.contains(name)).count() > 1)
             .collect();
         assert!(
             both.is_empty(),
-            "listed as both scoped and work-state: {both:?}"
+            "member_id tools listed in multiple semantic classes: {both:?}"
         );
     }
 

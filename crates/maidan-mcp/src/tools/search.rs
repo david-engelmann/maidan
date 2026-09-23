@@ -50,6 +50,10 @@ fn default_search_limit() -> i64 {
     25
 }
 
+fn clamp_search_limit(limit: i64) -> i64 {
+    limit.clamp(1, 500)
+}
+
 pub(super) async fn search_messages(
     search: &Arc<dyn maidan_search::Search>,
     embedding_provider: &Arc<dyn maidan_search::EmbeddingProvider>,
@@ -59,6 +63,7 @@ pub(super) async fn search_messages(
 ) -> Result<Value, McpError> {
     let a: SearchMessagesArgs = serde_json::from_value(args.clone())?;
     let workspace_id = WorkspaceId(a.workspace_id);
+    let limit = clamp_search_limit(a.limit);
     // Exclude private channels the caller can't see at the query level so they
     // don't crowd out `limit`; the post-filter below is still the
     // authoritative, DM-aware check.
@@ -75,7 +80,7 @@ pub(super) async fn search_messages(
     let hits = match a.mode {
         SearchMessagesMode::Lexical => {
             search
-                .search_messages(workspace_id, &a.query, a.limit, &filters)
+                .search_messages(workspace_id, &a.query, limit, &filters)
                 .await?
         }
         SearchMessagesMode::Semantic => {
@@ -87,7 +92,7 @@ pub(super) async fn search_messages(
                 .as_deref()
                 .unwrap_or_else(|| embedding_provider.model_name());
             search
-                .semantic_search(workspace_id, &embedding, a.limit, &filters, model)
+                .semantic_search(workspace_id, &embedding, limit, &filters, model)
                 .await?
         }
         SearchMessagesMode::Hybrid => {
@@ -106,7 +111,7 @@ pub(super) async fn search_messages(
                     workspace_id,
                     &a.query,
                     &embedding,
-                    a.limit,
+                    limit,
                     &filters,
                     model,
                     weight,
@@ -145,4 +150,16 @@ pub(super) async fn search_messages(
         hits
     };
     Ok(content_json(&hits))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clamp_search_limit;
+
+    #[test]
+    fn search_limit_matches_the_rest_surface() {
+        assert_eq!(clamp_search_limit(i64::MIN), 1);
+        assert_eq!(clamp_search_limit(25), 25);
+        assert_eq!(clamp_search_limit(i64::MAX), 500);
+    }
 }

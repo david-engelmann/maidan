@@ -13,7 +13,7 @@ use maidan_auth::{
 };
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, ApiResult};
+use super::{cap, ensure_own_personal_state, ensure_workspace, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
@@ -29,6 +29,7 @@ pub async fn add_member_skill(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, member.workspace_id)?;
+    ensure_own_personal_state(&auth, member.id)?;
     if body.skill.trim().is_empty() {
         return Err(ApiError::BadRequest("skill must not be empty".into()));
     }
@@ -69,6 +70,7 @@ pub async fn list_member_skills(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, member.workspace_id)?;
+    ensure_own_personal_state(&auth, member.id)?;
     Ok(Json(state.store.list_member_skills(member.id).await?))
 }
 
@@ -80,6 +82,7 @@ pub async fn remove_member_skill(
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, member.workspace_id)?;
+    ensure_own_personal_state(&auth, member.id)?;
     if state.store.remove_member_skill(member.id, &skill).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {

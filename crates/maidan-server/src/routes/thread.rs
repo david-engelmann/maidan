@@ -14,7 +14,10 @@ use maidan_fsm::ThreadAction;
 use maidan_router::resolve_channel_context;
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, observe_spawn_denial, publish_stored, ApiResult};
+use super::{
+    cap, clamp_context_transition_limit, ensure_workspace, observe_spawn_denial, publish_stored,
+    ApiResult,
+};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
@@ -126,11 +129,7 @@ pub async fn get_thread_context(
             } else {
                 100
             },
-            transition_limit: if q.transition_limit > 0 {
-                q.transition_limit
-            } else {
-                50
-            },
+            transition_limit: clamp_context_transition_limit(q.transition_limit),
             message_cursor: q.message_cursor.map(MessageId),
             include_edits: q.include_edits,
             include_glossary: q.include_glossary,
@@ -170,11 +169,7 @@ pub async fn snapshot_thread_context(
             } else {
                 100
             },
-            transition_limit: if q.transition_limit > 0 {
-                q.transition_limit
-            } else {
-                50
-            },
+            transition_limit: clamp_context_transition_limit(q.transition_limit),
             message_cursor: q.message_cursor.map(MessageId),
             include_edits: q.include_edits,
             include_glossary: q.include_glossary,

@@ -1373,7 +1373,6 @@ pub struct MintApiTokenResponse {
 #[serde(deny_unknown_fields)]
 pub struct CreateShareTicket {
     pub channel_id: uuid::Uuid,
-    pub owner_id: uuid::Uuid,
     pub expires_at: DateTime<Utc>,
     #[serde(default)]
     pub artifact_shas: Vec<String>,

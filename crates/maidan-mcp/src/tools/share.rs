@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Utc};
 use maidan_auth::{hash_secret, AuthContext, ShareTicketSecret};
-use maidan_types::{ChannelId, MemberId, NewAuditEvent, NewShareTicket, ShareTicketId};
+use maidan_types::{ChannelId, NewAuditEvent, NewShareTicket, ShareTicketId};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -14,7 +14,6 @@ use crate::error::McpError;
 #[serde(deny_unknown_fields)]
 struct CreateArgs {
     channel_id: uuid::Uuid,
-    owner_id: uuid::Uuid,
     expires_at: DateTime<Utc>,
     #[serde(default)]
     artifact_shas: Vec<String>,
@@ -32,7 +31,7 @@ pub(super) async fn create_share_ticket(
         .create_share_ticket(NewShareTicket {
             workspace_id: auth.workspace_id,
             channel_id: ChannelId(a.channel_id),
-            owner_id: MemberId(a.owner_id),
+            owner_id: auth.member_id,
             created_by: auth.member_id,
             token_hash: hash_secret(secret.as_str()),
             expires_at: a.expires_at,
@@ -191,6 +190,20 @@ mod tests {
             Arc::new(HashV1Provider),
         );
         let admin = AuthContext::from_session(owner.id, ws.id, vec![TOKEN_ADMIN.to_string()]);
+        let forged = server
+            .call_tool(
+                &admin,
+                "create_share_ticket",
+                &json!({
+                    "channel_id": channel.id.0,
+                    "owner_id": uuid::Uuid::new_v4(),
+                    "expires_at": Utc::now() + ChronoDuration::hours(2),
+                }),
+            )
+            .await
+            .expect_err("share-ticket ownership must not come from MCP arguments");
+        assert!(matches!(forged, McpError::InvalidParams(_)));
+
         let created = content(
             server
                 .call_tool(
@@ -198,7 +211,6 @@ mod tests {
                     "create_share_ticket",
                     &json!({
                         "channel_id": channel.id.0,
-                        "owner_id": owner.id.0,
                         "expires_at": Utc::now() + ChronoDuration::hours(2),
                         "artifact_shas": [sha],
                     }),
@@ -209,6 +221,7 @@ mod tests {
         let secret = created["secret"].as_str().unwrap();
         let ticket_id = created["ticket"]["id"].as_str().unwrap();
         assert!(secret.starts_with("maid_share_"));
+        assert_eq!(created["ticket"]["owner_id"], json!(owner.id.0));
         assert!(created["ticket"].get("token_hash").is_none());
 
         let listed = content(

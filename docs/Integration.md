@@ -312,9 +312,10 @@ identity will come from the authenticated caller, never from a request payload,
 and `member:impersonate` is retired. Integrations that drive several members
 from one token should expect to obtain a grant and exchange it per task.
 
-Two current exceptions to "every member surface is self-scoped", both scheduled
-in 411.1: member **skills** (`/members/:id/skills`, MCP `add_member_skill`) and
-share-ticket `owner_id` still accept a caller-chosen member id.
+Cluster 411's preflight closes two gaps before the breaking identity cleanup:
+member **skills** (`/members/:id/skills`, MCP `add_member_skill` /
+`list_member_skills`) are self-scoped, and share-ticket ownership comes from
+the authenticated issuer rather than a caller-supplied member id.
 
 Named sets (`maidan.agent.worker`, `maidan.human.admin`) are mint-time
 recipes, not stored capability strings. `POST …/tokens` accepts
@@ -356,15 +357,15 @@ Content-Type: application/json
 
 {
   "channel_id": "…",
-  "owner_id": "…",
   "expires_at": "2026-09-24T12:00:00Z",
   "artifact_shas": ["{64-lowercase-hex-sha256}"]
 }
 ```
 
-The accountable `owner_id`, channel, creator, and every artifact must belong to
-the same live workspace. Expiry may be at most 48 hours from issuance and a
-ticket may name at most 100 artifacts. The response returns a distinct
+Maidan binds the accountable `owner_id` and creator to the authenticated
+issuer. The channel and every artifact must belong to the same live workspace.
+Expiry may be at most 48 hours from issuance and a ticket may name at most 100
+artifacts. The response returns a distinct
 `maid_share_…` secret **once**; Maidan persists only its SHA-256 hash. List with
 `GET /workspaces/{workspace_id}/share-tickets` and revoke immediately with
 `DELETE /workspaces/{workspace_id}/share-tickets/{ticket_id}`. MCP twins are

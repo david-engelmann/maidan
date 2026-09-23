@@ -35,7 +35,7 @@
 
 | Slice | PR | Result |
 |-------|----|--------|
-| 411.1 | planned | Close the confirmed D-5 holes: member-skill self-scope, auth-bound share-ticket ownership, context/search clamps, and argument-keyed MCP identity drift coverage |
+| 411.1 | #996 | Close the confirmed D-5 holes: member-skill self-scope, auth-bound share-ticket ownership, context/search clamps, and argument-keyed MCP identity drift coverage |
 | 411.2 | planned | `maidan_delegation_grants` models, migrations, and both store backends; no protocol surface |
 | 411.3 | planned | REST `POST /tokens/delegate` + MCP `delegate_token`, bounded lifetime, capability intersection, and revocation cascade |
 | 411.4 | planned | Breaking removal of caller-chosen acting-identity fields; derive ordinary identity solely from authentication |
