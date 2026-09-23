@@ -1,0 +1,65 @@
+# Cluster 411 — grant-backed delegated authority
+
+> Post-gate hardening · target tag `v411.0.0` · umbrella issue #994
+
+## Contract
+
+- An ordinary bearer or session acts only as `auth.member_id`. Acting identity
+  never comes from a REST body, path parameter, query, or MCP argument.
+- Cross-member action has one explicit path: an administrator authorizes a
+  durable delegation grant, then the delegate exchanges it for a short-lived
+  token bound to the grant's subject.
+- A delegated token lasts 15 minutes by default and never more than one hour.
+  Its authority is the intersection of the grant, delegate, and subject
+  capability sets; no exchange can widen authority.
+- Revoking a grant invalidates every token minted from it, including attenuated
+  descendants, using the existing token-revocation cascade.
+- Allowed delegated decisions carry actor, subject, and `grant_id` through the
+  Cluster 410 authorization-evidence lane. Denials remain bounded operational
+  evidence rather than durable per-attempt audit rows, preserving the Cluster
+  182/410 write-amplification decision.
+
+## Vocabulary decisions
+
+- **Actor** is the member presenting authority; **subject** is the member the
+  delegated token represents. They are equal for ordinary calls.
+- A **grant** is the durable consent and policy object. An exchanged token is a
+  short-lived credential derived from it, not the consent record itself.
+- Grant creation is administrator-only in this cluster. Subject-consent UI and
+  resource-level constraints are later work; capability-level scoping ships
+  first.
+- `member:impersonate` is transitional vocabulary, not a second delegation
+  mechanism. It is removed only after the grant-backed replacement works.
+
+## Delivery
+
+| Slice | PR | Result |
+|-------|----|--------|
+| 411.1 | planned | Close the confirmed D-5 holes: member-skill self-scope, auth-bound share-ticket ownership, context/search clamps, and argument-keyed MCP identity drift coverage |
+| 411.2 | planned | `maidan_delegation_grants` models, migrations, and both store backends; no protocol surface |
+| 411.3 | planned | REST `POST /tokens/delegate` + MCP `delegate_token`, bounded lifetime, capability intersection, and revocation cascade |
+| 411.4 | planned | Breaking removal of caller-chosen acting-identity fields; derive ordinary identity solely from authentication |
+| 411.5 | planned | Grant create/list/revoke surfaces and actor + subject + `grant_id` authorization evidence |
+| 411.6 | planned | Remove `member:impersonate` and add capability-vocabulary/set absence contracts |
+| 411.close | close record | Ledgers, retrospective, and `v411.0.0` tag |
+
+## Exit criteria
+
+- No ordinary REST or MCP request can select a different acting member.
+- Delegation is explicit, expiring, capability-intersected, revocable, and
+  attributable to actor, subject, and grant.
+- Grant revocation invalidates direct exchanged tokens and their attenuation
+  descendants.
+- Both stores and both public protocol surfaces have executable parity evidence.
+- Every MCP schema with a `member_id` argument is classified by semantics, so a
+  tool cannot evade the identity guard by living in a different source module.
+- `member:impersonate` no longer exists in the vocabulary or any capability set.
+
+## Non-goals
+
+- Subject-consent UI, multi-party approval, resource-level conditions, or a
+  general policy language.
+- Long-lived delegated tokens or capability union.
+- Durable rows for every authorization denial.
+- Compatibility shims for the caller-chosen acting-identity fields; the repo is
+  pre-1.0 and the removal is intentionally breaking.
