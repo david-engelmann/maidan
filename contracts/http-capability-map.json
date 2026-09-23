@@ -193,6 +193,18 @@
   },
   {
     "method": "GET",
+    "path": "/group-dms/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/group-dms/{id}/messages",
+    "capability": "message:post",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/members/{id}",
     "capability": "workspace:read",
     "surface": "http"
@@ -1215,6 +1227,18 @@
     "method": "POST",
     "path": "/workspaces/{wid}/dm",
     "capability": "message:post",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/group-dms",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/group-dms",
+    "capability": "workspace:read",
     "surface": "http"
   },
   {
