@@ -352,7 +352,12 @@ impl McpServer {
             .ok_or_else(|| McpError::InvalidParams("missing tool name".into()))?;
         if !auth.bypass {
             let cap = tools::required_capability(name)?;
-            auth.require_capability(cap).map_err(McpError::from)?;
+            maidan_auth::require_observed_capability(
+                auth,
+                maidan_auth::AuthorizationSurface::Mcp,
+                cap,
+            )
+            .map_err(McpError::from)?;
         }
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
         let result = tools::dispatch(self, auth, name, &args).await?;
@@ -362,8 +367,12 @@ impl McpServer {
 
     async fn prompts_get(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
         if !auth.bypass {
-            auth.require_capability(maidan_auth::capability::WORKSPACE_READ)
-                .map_err(McpError::from)?;
+            maidan_auth::require_observed_capability(
+                auth,
+                maidan_auth::AuthorizationSurface::Mcp,
+                maidan_auth::capability::WORKSPACE_READ,
+            )
+            .map_err(McpError::from)?;
         }
         let name = params
             .get("name")
@@ -375,8 +384,12 @@ impl McpServer {
 
     async fn resources_read(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
         if !auth.bypass {
-            auth.require_capability(maidan_auth::capability::WORKSPACE_READ)
-                .map_err(McpError::from)?;
+            maidan_auth::require_observed_capability(
+                auth,
+                maidan_auth::AuthorizationSurface::Mcp,
+                maidan_auth::capability::WORKSPACE_READ,
+            )
+            .map_err(McpError::from)?;
         }
         let uri = params
             .get("uri")
@@ -433,8 +446,12 @@ impl McpServer {
         auth: &AuthContext,
     ) -> Result<Value, McpError> {
         if !auth.bypass {
-            auth.require_capability(maidan_auth::capability::WORKSPACE_READ)
-                .map_err(McpError::from)?;
+            maidan_auth::require_observed_capability(
+                auth,
+                maidan_auth::AuthorizationSurface::Mcp,
+                maidan_auth::capability::WORKSPACE_READ,
+            )
+            .map_err(McpError::from)?;
         }
         let uri = params
             .get("uri")
@@ -455,8 +472,12 @@ impl McpServer {
         auth: &AuthContext,
     ) -> Result<Value, McpError> {
         if !auth.bypass {
-            auth.require_capability(maidan_auth::capability::WORKSPACE_READ)
-                .map_err(McpError::from)?;
+            maidan_auth::require_observed_capability(
+                auth,
+                maidan_auth::AuthorizationSurface::Mcp,
+                maidan_auth::capability::WORKSPACE_READ,
+            )
+            .map_err(McpError::from)?;
         }
         let uri = params
             .get("uri")

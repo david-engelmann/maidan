@@ -211,6 +211,10 @@ pub fn init() {
             "maidan_result_deliveries_total",
             "Thread-result delivery dispositions by outcome (enqueued / skipped)"
         );
+        describe_counter!(
+            "maidan_authorization_decisions_total",
+            "Content-free authorization decisions by surface, action, outcome, and resource kind"
+        );
         describe_histogram!(
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"

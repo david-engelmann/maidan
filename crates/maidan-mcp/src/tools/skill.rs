@@ -36,8 +36,12 @@ pub(super) async fn add_member_skill(
     // gate reads as authority, so granting one needs `channel:admin` — which
     // `maidan.agent.worker` does not carry.
     if is_governance_skill(&a.skill) && !auth.bypass {
-        auth.require_capability(CHANNEL_ADMIN)
-            .map_err(McpError::from)?;
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            CHANNEL_ADMIN,
+        )
+        .map_err(McpError::from)?;
     }
     store
         .add_member_skill(MemberId(a.member_id), a.skill.trim())

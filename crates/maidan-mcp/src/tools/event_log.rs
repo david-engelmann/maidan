@@ -81,10 +81,13 @@ pub(super) async fn get_log_snapshot(
 ) -> Result<Value, McpError> {
     let a: SnapshotArgs = serde_json::from_value(args.clone())?;
     let workspace_id = workspace(auth, a.workspace_id)?;
-    if a.include_graph && !auth.bypass && !auth.has_capability(TOKEN_ADMIN) {
-        return Err(McpError::Forbidden(
-            "include_graph requires token:admin".into(),
-        ));
+    if a.include_graph && !auth.bypass {
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            TOKEN_ADMIN,
+        )
+        .map_err(|_| McpError::Forbidden("include_graph requires token:admin".into()))?;
     }
     let snap = build_log_snapshot(store.as_ref(), workspace_id, a.include_graph).await?;
     Ok(content_json(&snap))

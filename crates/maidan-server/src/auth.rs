@@ -8,7 +8,7 @@ use axum::{
 };
 use maidan_auth::{
     capability::{EVENT_SUBSCRIBE, MESSAGE_POST, SEARCH_QUERY, WORKSPACE_READ, WORKSPACE_WRITE},
-    resolve_bearer, resolve_peer_bearer, AuthContext,
+    resolve_bearer, resolve_peer_bearer, AuthContext, AuthorizationDecision, AuthorizationSurface,
 };
 
 use crate::error::ApiError;
@@ -41,6 +41,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         .and_then(parse_bearer);
 
     let Some(secret) = bearer else {
+        record_authentication_denial(req.uri().path());
         return ApiError::Unauthorized.into_response();
     };
 
@@ -56,9 +57,21 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
                 req.extensions_mut().insert(PeerContext(peer));
                 tag_room(next.run(req).await, workspace_id)
             }
-            Err(_) => ApiError::Unauthorized.into_response(),
+            Err(_) => {
+                record_authentication_denial(req.uri().path());
+                ApiError::Unauthorized.into_response()
+            }
         },
     }
+}
+
+fn record_authentication_denial(path: &str) {
+    let surface = if path == "/mcp" || path.starts_with("/mcp/") {
+        AuthorizationSurface::Mcp
+    } else {
+        AuthorizationSurface::Rest
+    };
+    AuthorizationDecision::authentication_denied(surface).record();
 }
 
 /// Attach the resolved room to the response for the Room-LSN layer, which is
@@ -122,7 +135,10 @@ pub async fn session_or_bearer_middleware(
             req.extensions_mut().insert(ctx);
             tag_room(next.run(req).await, workspace_id)
         }
-        Err(err) => err.into_response(),
+        Err(err) => {
+            record_authentication_denial(req.uri().path());
+            err.into_response()
+        }
     }
 }
 
@@ -163,6 +179,9 @@ pub async fn ui_session_or_bearer_middleware(
             req.extensions_mut().insert(ctx);
             tag_room(next.run(req).await, workspace_id)
         }
-        Err(err) => err.into_response(),
+        Err(err) => {
+            record_authentication_denial(req.uri().path());
+            err.into_response()
+        }
     }
 }

@@ -2,6 +2,7 @@
 //! bearer resolution against the store.
 
 pub mod access;
+pub mod authorization;
 pub mod capability;
 pub mod capability_set;
 pub mod context;
@@ -17,6 +18,10 @@ pub use access::{
     ensure_channel_access, ensure_dm_participant, ensure_message_access, ensure_thread_access,
     private_channel_deny_set, resolve_wasi_handler_target, MessageScope, ThreadScope,
     WasiTargetError,
+};
+pub use authorization::{
+    require_capability as require_observed_capability, AuthorizationDecision, AuthorizationOutcome,
+    AuthorizationSurface,
 };
 pub use capability::*;
 pub use capability_set::{

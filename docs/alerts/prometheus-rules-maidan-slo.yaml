@@ -28,6 +28,9 @@ spec:
           # Batched embed queue fill ratio (Cluster 116); clamp avoids div-by-zero
           # when the logging-only indexer reports capacity 0.
           expr: maidan_indexer_queue_depth / clamp_min(maidan_indexer_queue_capacity, 1)
+        - record: maidan_slo:authorization_denial_rate5m
+          expr: |
+            sum(rate(maidan_authorization_decisions_total{outcome="denied"}[5m]))
 
     - name: maidan_slo_alerts
       rules:
@@ -54,6 +57,18 @@ spec:
             description: |
               Failure rate {{ $value | humanize }}/s over 5m.
               Inspect GET /workspaces/:wid/automation/dlq and delivery logs.
+
+        - alert: MaidanAuthorizationDenialsElevated
+          expr: maidan_slo:authorization_denial_rate5m > 1
+          for: 5m
+          labels:
+            severity: warning
+            slo: authorization_denials
+          annotations:
+            summary: Authorization denials elevated
+            description: |
+              Denial rate is {{ $value | humanize }}/s over 5m. Inspect the
+              sampled content-free authorization warnings by surface and action.
 
         - alert: MaidanOutboxPendingHigh
           expr: maidan_slo:outbox_pending > 100

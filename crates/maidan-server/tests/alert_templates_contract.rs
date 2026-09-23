@@ -28,6 +28,7 @@ fn prometheus_slo_rules_reference_exported_metrics() {
         // alertable for far longer.
         "maidan_egress_dead",
         "maidan_mail_dead",
+        "maidan_authorization_decisions_total",
     ];
     for metric in expected {
         assert!(

@@ -38,7 +38,7 @@
 | 410.1 | #988 | Types, dual-backend ledger/idempotency foundation, `UsageReported`, and atomic budget enforcement with stale-lease fencing |
 | 410.2 | folded into 410.1 | The economic write and its enforcement invariant shipped atomically rather than exposing an unfenced intermediate store API |
 | 410.3 | #989 | REST/MCP parity, authenticated reporter and workspace payer derivation, OpenAPI/MCP contracts, public docs |
-| 410.4 | planned | Shared content-free authorization observability lane |
+| 410.4 | #991 | Shared content-free REST/MCP decision records, fixed-cardinality aggregate metric, sampled denial detail, and sustained-rate alert |
 | 410.close | close record | Ledgers, retrospective, and `v410.0.0` tag |
 
 ## Exit criteria

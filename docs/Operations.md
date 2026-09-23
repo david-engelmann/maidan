@@ -461,6 +461,21 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
 4. **Spike in `invalid_payload`** — inspect NOTIFY payloads in logs (`drop notify payload`); legacy full-envelope path still requires valid JSON.
 5. **Subscriber gaps with flat hydrate counters** — use subscribe replay metrics ([[Production#Delivery reliability metrics]]); hydrate failures are listener-side only.
 
+### Authorization-denial troubleshooting (`v410.0.0`)
+
+1. Scrape `maidan_authorization_decisions_total`. Its labels are closed
+   vocabularies: `surface` (`rest|mcp`), capability `action`, `outcome`, and
+   resource *kind*. Principal, workspace, subject, and future delegation grant
+   IDs never become metric labels.
+2. `MaidanAuthorizationDenialsElevated` fires above one denial/second for five
+   minutes. Split the counter by `surface` and `action` to distinguish a stale
+   integration grant from broad credential probing.
+3. Detail warnings are content-free and sampled 1-in-64. They carry identity
+   and resource IDs for correlation, but never request/response bodies,
+   prompts, messages, tool arguments, secrets, or provider payloads.
+4. Denials are not written to `maidan_audit`; this lane is aggregate
+   observability and preserves the bounded-write decision from Cluster 182.
+
 ### `docker compose smoke` fails
 
 - "wait for /health timed out": the maidan-server container didn't
