@@ -1,9 +1,48 @@
-# Capabilities
+# Release stream
 
-A running list of what Maidan can do, by release. Each cluster's retro
-PR prepends a new section so the latest is always at the top.
+This is the canonical, searchable history of what Maidan can do. Use the
+published site's search for a capability name or an exact version such as
+`v408.0.0`; the newest source record is always first.
 
-## v408.0.0 — full-audit remediation
+The two heading forms are deliberate:
+
+- **Linked `vX.Y.Z`** means the Git tag exists. The link opens the immutable
+  GitHub Release with binaries and checksums; its source archives and the
+  tag-matched GHCR images are the released artifacts.
+- **`Cluster X (source record; no vX.0.0 tag)`** means the work exists in Git
+  history but that version was never published. It is not an image or binary
+  you can pull, and this project does not invent tags after the fact.
+
+`main` can contain newer source than the most recent release. For deploys,
+start at the [latest GitHub Release](https://github.com/david-engelmann/maidan/releases/latest),
+pin that exact version across server and CLI images, and follow the
+[release-verification steps](https://github.com/david-engelmann/maidan/blob/main/SECURITY.md#verifying-a-release).
+For unreleased source, use the commit SHA and build it yourself; do not label a
+`main` build with the latest release tag.
+
+Some published tags were folded into adjacent capability records rather than
+given standalone sections. They remain exact-searchable here without
+duplicating their release notes:
+
+| Published tag | What it records |
+|---------------|-----------------|
+| [v56.0.0](https://github.com/david-engelmann/maidan/releases/tag/v56.0.0) | SQLite delivery cursors and outbox replay |
+| [v57.0.0](https://github.com/david-engelmann/maidan/releases/tag/v57.0.0) | Installed apps and app-scoped tokens |
+| [v61.0.0](https://github.com/david-engelmann/maidan/releases/tag/v61.0.0) | A2A discovery and push configuration |
+| [v63.0.0](https://github.com/david-engelmann/maidan/releases/tag/v63.0.0) | MCP capability-denial coverage |
+| [v64.0.0](https://github.com/david-engelmann/maidan/releases/tag/v64.0.0) | MCP capability quotas |
+| [v66.0.0](https://github.com/david-engelmann/maidan/releases/tag/v66.0.0) | Maidan well-known discovery document |
+| [v73.0.0](https://github.com/david-engelmann/maidan/releases/tag/v73.0.0) | MCP session-close lifecycle evidence |
+| [v75.0.0](https://github.com/david-engelmann/maidan/releases/tag/v75.0.0) | Production embedding-provider guidance |
+| [v290.0.0](https://github.com/david-engelmann/maidan/releases/tag/v290.0.0) | Cold-cache A2A interop harness fix |
+| [v291.0.0](https://github.com/david-engelmann/maidan/releases/tag/v291.0.0) | Adoption and SDK strategy reconciliation |
+| [v292.0.0](https://github.com/david-engelmann/maidan/releases/tag/v292.0.0) | Current architecture/history split |
+| [v293.0.0](https://github.com/david-engelmann/maidan/releases/tag/v293.0.0) | Public repository metadata and issue templates |
+
+Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
+detailed change log; cluster plans and retros explain how the work was built.
+
+## [v408.0.0](https://github.com/david-engelmann/maidan/releases/tag/v408.0.0) — full-audit remediation
 
 Five implementation PRs (#964/#973/#974/#975/#976) close the adopted set from
 the 2026-09-21 full audit while keeping the experimental model path inert.
@@ -16,7 +55,7 @@ the 2026-09-21 full audit while keeping the experimental model path inert.
 | **Published presentation contract:** Mermaid renders, published links and edit metadata are valid, and the locked mark/favicon/social card/palette agree with `/ui` and the captured docs screenshots. | `book/`, `docs/assets/`, `scripts/check-docs-presentation.sh` |
 | **Measured advice without authority:** a default-off `POST /threads/:id/land-gate/advice` sends an explicit state to TypeSafe, returns raw choice/calibration/latency/usage evidence, and can only recommend. Provider failure never changes the stored gate; the JSONL harness measures independently labelled cases before any graduation decision. | `crates/maidan-server/src/land_gate_advisor.rs`, `scripts/eval-land-gate-advisor.py` |
 
-## v407.0.0 — executable surface and hero-loop contracts
+## [v407.0.0](https://github.com/david-engelmann/maidan/releases/tag/v407.0.0) — executable surface and hero-loop contracts
 
 Four implementation PRs (#965/#966/#967/#968) close Wave 4 row #39 by
 turning cross-surface compatibility claims into ordinary CI evidence.
@@ -28,7 +67,7 @@ turning cross-surface compatibility claims into ordinary CI evidence.
 | **Signed-session live hero loop:** the same browser session authenticates an acknowledged workspace WebSocket, creates a channel and thread through `/ui/api`, posts without a bearer, observes the exact durable event, and reads the message back. | `crates/maidan-server/tests/ui_channels_e2e.rs` |
 | **Portable wire goldens:** normalized fixtures make signed-export and snapshot/catch-up changes reviewable while preserving protocol ids, JSON types, relationships, arrays, enums, LSNs, and field presence. Only generated UUIDs, timestamps, hashes, keys, and signatures are placeholders. | `crates/maidan-server/tests/portable_frame_goldens.rs`, `crates/maidan-server/tests/fixtures/` |
 
-## v406.0.0 — published boot proof and real loopback OIDC
+## [v406.0.0](https://github.com/david-engelmann/maidan/releases/tag/v406.0.0) — published boot proof and real loopback OIDC
 
 Three implementation PRs (#957/#961/#959) close Wave 4 row #37. The release
 path now proves the artifacts consumers pull rather than source-built stand-ins.
@@ -39,7 +78,7 @@ path now proves the artifacts consumers pull rather than source-built stand-ins.
 | **Published-artifact release gate:** after all three GHCR images publish, an isolated consumer smoke pulls immutable tag names, initializes fresh Postgres through the CLI image, boots the server image, checks the exact health version, authenticates with the once-returned bearer, and rejects an anonymous request. GitHub Release creation waits for this gate. | `scripts/release-image-smoke.sh`, `.github/workflows/release.yml` |
 | **Production OIDC path under real cryptography:** a test-only loopback provider exercises discovery, authorization code + S256 PKCE, token exchange, ES256 JWKS validation, member/session creation, and provider logout through `OidcRuntime`. Bad state, nonce, signature, audience, and issuer fail without issuing a session cookie. | `crates/maidan-server/tests/oidc_loopback_e2e.rs` |
 
-## v405.0.0 — time-boxed cross-organization sharing
+## [v405.0.0](https://github.com/david-engelmann/maidan/releases/tag/v405.0.0) — time-boxed cross-organization sharing
 
 Three implementation PRs (#952/#953/#954) close Wave 2 row #26 without
 creating a guest-member or federation model.
@@ -51,7 +90,7 @@ creating a guest-member or federation model.
 | **Separate read-only consumer boundary:** `Authorization: ShareTicket maid_share_…` reaches only four `GET /share/*` routes (manifest, threads, messages, allowlisted artifact bytes). It never constructs an API-token context; invalid, expired, and revoked credentials are indistinguishable; cross-channel and non-allowlisted resources are hidden. | `crates/maidan-server/src/share_consumer.rs`, `crates/maidan-server/tests/share_ticket_consumer_e2e.rs` |
 | **Contract and security record:** OpenAPI classifies `shareTicketAuth` separately, Integration documents issuer and consumer flows, and the threat model records the deliberately narrow residual exposure. | `crates/maidan-server/src/openapi.rs`, `docs/{Integration,Threat-Model}.md` |
 
-## v404.0.0 — member occupancy follows and manager digest
+## [v404.0.0](https://github.com/david-engelmann/maidan/releases/tag/v404.0.0) — member occupancy follows and manager digest
 
 Five implementation PRs (#943/#944/#949/#947/#948) complete the two remaining
 halves of Wave 2 row #28.
@@ -64,7 +103,7 @@ halves of Wave 2 row #28.
 | **Atomic approval signal:** gate creation and its non-federatable `approval_requested` event share one store transaction and the generated event lexicon records the new kind. | `crates/maidan-store/src/{postgres,sqlite}/approval.rs`, `contracts/lexicon/event-kinds.json` |
 | **Manager digest:** REST, MCP, and digest email share per-channel unread `results`/`gates`/`stuck` counts derived from recipient notification rows after `since`; workspace gates use `channel_id: null`. | `crates/maidan-store/src/{postgres,sqlite}/email_digest.rs`, `crates/maidan-server/src/routes/follows.rs`, `crates/maidan-mcp/src/tools/follows.rs` |
 
-## Cluster 403 (pending v403.0.0) — budget changes cannot remove caps by omission
+## Cluster 403 (source record; no `v403.0.0` tag) — budget changes cannot remove caps by omission
 
 Cluster 403 shipped in #916; its close record was backfilled under #940. The
 tag remains maintainer-gated.
@@ -75,7 +114,7 @@ tag remains maintainer-gated.
 | **Partial update is atomic:** REST `PATCH /threads/:id/budget` and MCP `update_thread_budget` use absent = unchanged and `null` = clear. The merge happens in one store transaction on both backends, preserving accumulated usage and avoiding caller-side read-modify-write races. | `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/budget.rs` |
 | **Strictness survived the reshape:** the MCP fields are explicit because `serde(flatten)` was measured to defeat `deny_unknown_fields`; the typo that exposed it is a regression test. | `crates/maidan-mcp/src/tools/budget.rs` |
 
-## v402.0.0 — the search tap: isolate, resume, and schedule the verifier
+## [v402.0.0](https://github.com/david-engelmann/maidan/releases/tag/v402.0.0) — the search tap: isolate, resume, and schedule the verifier
 
 Three PRs (402.1–402.3). The last of the three items the post-Cursor audit
 recorded as **decisions rather than fixes**.
@@ -91,7 +130,7 @@ verifies*): a tamper behind the cursor is no longer noticed by the tap. It was
 only ever noticed when a process happened to restart — not something you could
 schedule or alert on. Whole-chain integrity is now an explicit job.
 
-## v401.0.0 — the two token-and-approval decisions
+## Cluster 401 (source record; no `v401.0.0` tag) — the two token-and-approval decisions
 
 Three PRs (401.1–401.3), closing post-Cursor audit items **P1 #7** and **P1 #8**.
 
@@ -104,7 +143,7 @@ Three PRs (401.1–401.3), closing post-Cursor audit items **P1 #7** and **P1 #8
 ADRs: *Separation of duties reads a worker ledger, not the live assignee* and
 *Revoking a token revokes everything derived from it*.
 
-## v400.0.0 — the reconciled backlog, fixed
+## Cluster 400 (source record; no `v400.0.0` tag) — the reconciled backlog, fixed
 
 Six PRs (400.1–400.6). What the Cluster-399 reconciliation found once every open
 item was re-read against the source rather than trusted.
@@ -121,7 +160,7 @@ item was re-read against the source rather than trusted.
 Also `MAIDAN_HOST_PORT` (8080 is contended, and a publish conflict fails the
 whole `up`) and the quickstart image pinned forward from v312 to v349.
 
-## v399.0.0 — the WASI slash-handler runtime (Wave 3 #36)
+## Cluster 399 (source record; no `v399.0.0` tag) — the WASI slash-handler runtime (Wave 3 #36)
 
 Four PRs (399.1–399.4). Cluster 396 left `SlashHandlerKind::wasi` registrable
 with no runtime behind it — every dispatch returned `wasi_runtime_unavailable`,
@@ -141,7 +180,7 @@ Wall-clock is deliberately absent from the failure vocabulary: no allowlisted
 import blocks, so a guest cannot wait, and fuel bounds compute well under the
 dispatch timeout. A kind that never fires would be a lie.
 
-## v398.0.0 — verification sweep: what was built, tested, and never wired
+## Cluster 398 (source record; no `v398.0.0` tag) — verification sweep: what was built, tested, and never wired
 
 Eight PRs (398.1–398.8) — three more than this section originally recorded.
 Where 397 answered an audit's findings, 398 asked a
@@ -170,7 +209,7 @@ absolute was not), and *"cross-replica correctness"*, whose evidence cited the
 transactional outbox — true, adjacent, and silent on whether the outbox is
 relayed once, which it was not until 398.1.
 
-## v397.0.0 — post-Cursor security audit remediation
+## Cluster 397 (source record; no `v397.0.0` tag) — post-Cursor security audit remediation
 
 Nine PRs (397.1–397.9). Clusters 377–396 were shipped autonomously by a Cursor
 agent; a four-agent audit then found a systematic authorization gap. The run was
@@ -201,7 +240,7 @@ re-verification — a correctness trade, not a perf one). **Handle resolution is
 now decided** (Cluster 398.7): a handle is a display label, not an address — see
 [Decisions.md](Decisions.md).
 
-## v396.0.0 — Wave 3 #36 (partial): WASI slash-handler types
+## Cluster 396 (source record; no `v396.0.0` tag) — Wave 3 #36 (partial): WASI slash-handler types
 
 One PR (396.1). Landed the `SlashHandlerKind::wasi` variant, the invoke/result
 lexicon types and handle validation. **Registrable on both write surfaces, and
@@ -213,7 +252,7 @@ a user can successfully register a handler that can never run.
 |--------|-------|
 | **Types (396.1):** `WASI_INVOKE_TYPE` / `WASI_RESULT_TYPE`, handler-target validation (sha256), lexicon schemas. | `crates/maidan-types/src/{wasi,lexicon}.rs` |
 
-## v395.0.0 — Wave 3 #35: named capability sets + stable `maidan://` URIs
+## Cluster 395 (source record; no `v395.0.0` tag) — Wave 3 #35: named capability sets + stable `maidan://` URIs
 
 Four impl PRs (395.1–395.4) + a retro. Named sets `maidan.agent.worker` / `maidan.human.admin` expand at mint time. Holders derive a weaker token without `token:admin` (Levy/Madden attenuation). Room URIs are `maidan://{workspace_id}/…` with an optional content-hash fragment; a handle rename cannot break stored ids. `GET /.well-known/maidan-room` is scheme-only. **Row #35 is closed.** Do **not** start #36 from this close.
 
@@ -224,7 +263,7 @@ Four impl PRs (395.1–395.4) + a retro. Named sets `maidan.agent.worker` / `mai
 | **Store (395.3):** `maidan_workspace_handles` (pg 0093 / sqlite 0092). | `crates/maidan-store/src/{postgres,sqlite}/workspace_handles.rs` |
 | **REST + MCP (395.4):** mint `capability_set`; `POST /tokens/attenuate`; well-known + room card + handle; MCP twins. | `crates/maidan-server/src/routes/{token,room}.rs`, `crates/maidan-mcp/src/tools/room.rs` |
 
-## v394.0.0 — Wave 3 #34: tombstone explorer, backlink index, kind census
+## Cluster 394 (source record; no `v394.0.0` tag) — Wave 3 #34: tombstone explorer, backlink index, kind census
 
 Three impl PRs (394.1–394.3) + a retro. Discover deleted messages honestly
 (soft-delete + optional hard-purge reconstructions), query what points at
@@ -237,7 +276,7 @@ is closed.** Do not start #35–36 from this close.
 | **REST (394.2):** `GET /workspaces/:id/tombstones`, `GET /messages/:id/backlinks`, `GET /workspaces/:id/kind-census`. | `crates/maidan-server/src/routes/{workspace,message}.rs` |
 | **MCP (394.3):** `list_tombstones` / `list_message_backlinks` / `get_kind_census`. | `crates/maidan-mcp/src/tools/explorer.rs` |
 
-## v393.0.0 — Wave 3 #33: snapshot catch-up + tap projector contract
+## Cluster 393 (source record; no `v393.0.0` tag) — Wave 3 #33: snapshot catch-up + tap projector contract
 
 Four impl PRs (393.1–393.4) + a retro. A peer that missed a pruned prefix takes a hashed `maidan.event-log.snapshot/1` checkpoint and catches up with `maidan.event-log.catch-up/1` pages (getRepo-shaped, not MST/CAR). Complements Cluster 392 (retained-suffix hash chain). Search is a tap projector and fails loud on a gap or chain break. **Row #33 is closed.** Do not start #34–36 from this close.
 
@@ -248,7 +287,7 @@ Four impl PRs (393.1–393.4) + a retro. A peer that missed a pruned prefix take
 | **REST + MCP (393.3):** `GET /workspaces/:wid/snapshot`, `GET …/events/catch-up`; MCP `get_log_snapshot` / `catch_up_events` / `verify_event_chain`; CursorTooOld `snapshot` href. | `crates/maidan-server/src/routes/workspace.rs`, `crates/maidan-mcp/src/tools/event_log.rs` |
 | **Search tap (393.4):** per-workspace verify on backfill; live waits for history; `Lagged` without a log → `RebuildRequired`. | `crates/maidan-search/src/{tap_projector,indexer}.rs` |
 
-## v392.0.0 — Wave 3 #32: hash-chained log + strong refs
+## Cluster 392 (source record; no `v392.0.0` tag) — Wave 3 #32: hash-chained log + strong refs
 
 Four impl PRs (392.1–392.4) + a retro. Every stored event carries `{id, lsn, prev_hash, content_hash}` (SHA-256, `sha256:<hex>`). Peers detect a rewrite without trusting the host. `claim_next` and A2A citations pin `{uri, content_hash}`. Hashed, not signed; not MST/CAR; `lsn` is the event-log id, not WAL. **Row #32 is closed.** Do not start #33–36 from this close.
 
@@ -259,7 +298,7 @@ Four impl PRs (392.1–392.4) + a retro. Every stored event carries `{id, lsn, p
 | **REST + federation (392.3):** `GET /workspaces/:wid/events/verify` (200 / 409); origin-hash check on ingest. | `crates/maidan-server/src/routes/workspace.rs`, `federation.rs`; pg 0092 / sqlite 0091 |
 | **Strong refs (392.4):** `ClaimedThread.pin` on `claim_next`; A2A `citations`. | `crates/maidan-server/src/routes/thread.rs`, `a2a_agent.rs`; `crates/maidan-a2a/src/protocol.rs` |
 
-## v391.0.0 — Wave 3 #31: signed workspace export
+## Cluster 391 (source record; no `v391.0.0` tag) — Wave 3 #31: signed workspace export
 
 Three impl PRs (391.1–391.3) + a retro. A workspace leaves the host as a signed `maidan.workspace.export/1` envelope a blank GHCR instance can verify without calling the origin. **Tokens die on export** — secrets are omitted; stuffed credential fields fail closed; mint new tokens after import. Operator Ed25519 key (`MAIDAN_EXPORT_SIGNING_KEY`); optional `MAIDAN_EXPORT_VERIFY_KEYS` authenticity pin. Not Room-LSN / not Consistency-Token. **Row #31 is closed.** Do not start #32–36 from this close.
 
@@ -269,7 +308,7 @@ Three impl PRs (391.1–391.3) + a retro. A workspace leaves the host as a signe
 | **REST (391.2):** signed `GET /workspaces/:id/export`, `POST /workspaces/export/verify`, signed `POST /workspaces/import`, `GET /operator/export-public-key`. All `token:admin`. | `crates/maidan-server/src/{export,routes/workspace}.rs` |
 | **MCP (391.3):** `export_workspace` / `verify_workspace_export` / `import_workspace`; shared assemble/flatten. | `crates/maidan-mcp/src/tools/export.rs`, `crates/maidan-store/src/workspace_export.rs` |
 
-## v390.0.0 — Wave 3 #30: EventKind lexicon, `$type`, Room-LSN
+## Cluster 390 (source record; no `v390.0.0` tag) — Wave 3 #30: EventKind lexicon, `$type`, Room-LSN
 
 Four impl PRs (390.1–390.4) + a retro. An EventKind JSON-Schema pack (lexicon analogue) plus `$type` evolution (new fields optional, no renames, unknown ignored, breaking = new type). `Maidan-Room-LSN` is the event-log high-water so clients see projector / broadcast lag — **not** `Maidan-Consistency-Token` (WAL, replica-gated, Cluster 263). Canon snapshot tests over normalized wire shapes. SDK stays 0.1.0. **Row #30 is closed.**
 
@@ -280,7 +319,7 @@ Four impl PRs (390.1–390.4) + a retro. An EventKind JSON-Schema pack (lexicon 
 | **Header (390.3):** always-on `Maidan-Room-LSN` on REST/WS/MCP/A2A; `$type` on live frames; `subscribe_ack.room_lsn`. | `crates/maidan-server/src/{room_lsn,event_stream,ws,mcp_stream}.rs` |
 | **Projectors + SDK (390.4):** webhook `$type` + Room-LSN; four clients `last_room_lsn` (0.1.0). | `crates/maidan-server/src/webhooks.rs`, `sdk/` |
 
-## v388.0.0 — Wave 3 #29: CursorTooOld, projector shapes, Lagged resume
+## Cluster 388 (source record; no `v388.0.0` tag) — Wave 3 #29: CursorTooOld, projector shapes, Lagged resume
 
 Five impl PRs (388.1–388.5) + a retro. A subscribe / backfill cursor that points into a pruned gap **fails loud** (409 `must_refetch`) instead of silently clamping onto the remaining log. Projector shapes `{workspace, channel?, thread?, types[]}` filter HTTP backfill. Internal `BusItem::Lagged` consumers resume from the durable log. The SDK `follow` helper pages REST then cuts over to WS. Cluster 389 shipped first and left this number unused; 388 fills it. **Row #29 is closed.**
 
@@ -292,7 +331,7 @@ Five impl PRs (388.1–388.5) + a retro. A subscribe / backfill cursor that poin
 | **SDK (388.4):** `follow` + `is_cursor_too_old` (Rust / Python / TS / Go). | `sdk/` |
 | **E2e (388.5):** MCP SSE 409. | `crates/maidan-server/tests/cursor_too_old_subscribe_e2e.rs` |
 
-## v389.0.0 — OSS hygiene: de-internalize / land-gate
+## Cluster 389 (source record; no `v389.0.0` tag) — OSS hygiene: de-internalize / land-gate
 
 One impl PR + a retro. The Cluster 385 close-gate keeps its semantics (pointer + pass/fail + green/amber/red; `closed` refuses without a qualifying green pass from a `land_gate`-skilled member ≠ owner/assignee) and is renamed to a public vocabulary any outsider can use. **`land_gate` / `LandGate` / `kind: "land_gate"`** everywhere (types, store table `maidan_thread_land_gate`, REST `/threads/:id/land-gate`, MCP `set/get/require/clear_land_gate`). Waiter examples are `example.review.result/1`; the frozen envelope is `maidan.waiter.result/1`; the delivery backlink is `view_url`. Internal product names (and internal repo selectors) are gone from the public surface. Raspberry Pi (`docs/Pi.md`) is unchanged. **386–387 were already used; 388 left unused.**
 
@@ -301,7 +340,7 @@ One impl PR + a retro. The Cluster 385 close-gate keeps its semantics (pointer +
 | **Rename (389.1):** close-gate public surface → land-gate across types, store, REST, MCP, OpenAPI, contracts, tests. Migrations rewritten in place (greenfield). | `crates/maidan-types/src/land_gate.rs`, `crates/maidan-store/src/{postgres,sqlite}/land_gate.rs`, `crates/maidan-server/src/routes/land_gate.rs`, `crates/maidan-mcp/src/tools/land_gate.rs` |
 | **Scrub:** `example.*` result kinds, `maidan.waiter.result/1`, `view_url`, `example/repo` fixtures; docs/retros rewritten. | `crates/maidan-types/src/waiter.rs`, `docs/{Integration,Result Delivery,Architecture,Open Work}.md` |
 
-## v387.0.0 — Wave 2 #28 (run-lineage half): the producer's `run_id` is the lineage
+## Cluster 387 (source record; no `v387.0.0` tag) — Wave 2 #28 (run-lineage half): the producer's `run_id` is the lineage
 
 *Recorded late.* Three impl PRs (387.1–387.3, #818/#824/#828) plus an Open Work
 note (#829) shipped with **no Capabilities entry, no CHANGELOG entry and no
@@ -321,7 +360,7 @@ undetected in the one surface nobody had written down, and was fixed in Cluster
 **Wave 2 #28 is not closed by this.** Follow-a-member occupancy and the manager
 digest are the remaining halves.
 
-## v386.0.0 — Wave 2 #27: a closed blocked-reason enum
+## Cluster 386 (source record; no `v386.0.0` tag) — Wave 2 #27: a closed blocked-reason enum
 
 Four impl PRs (386.1–386.4) + a retro. An orchestrator parks a thread from dispatch with a **closed** `BlockedReason` (`dag|gate|human|child|quota|unclaimable`) — unlike `result_kind`, a namespaced string. `claim_next` skips a `maidan_thread_blocks` row. Clearing emits `BlockedResolved` (non-federatable). Distinct from Cluster 218 DAG-children-must-be-terminal and Cluster 363's unclaimable park table (`unclaimable` here is vocabulary, not a replacement). **Row #27 is closed.**
 
@@ -332,7 +371,7 @@ Four impl PRs (386.1–386.4) + a retro. An orchestrator parks a thread from dis
 | **Event (386.3):** `BlockedResolved` + `clear_thread_block_with_event` (one tx). | `crates/maidan-types/src/events.rs`, `contracts/event-kinds.json` |
 | **REST/MCP/e2e (386.4):** `PUT`/`GET`/`DELETE /threads/:id/block` + `GET /channels/:cid/blocked`; MCP twins; explicit claim 409; bus observe. | `crates/maidan-server/src/routes/{thread,channel}.rs`, `crates/maidan-mcp/src/tools/thread.rs` |
 
-## v385.0.0 — Wave 2 #25 remainder: LandGate gate pointer + green/amber/red
+## Cluster 385 (source record; no `v385.0.0` tag) — Wave 2 #25 remainder: LandGate gate pointer + green/amber/red
 
 Four impl PRs (385.1–385.4) + a retro. A thread holds `{kind:"land_gate", status:pass|fail, artifact_sha?, land}`. Presence of a row arms the close-gate (no row = vacuous green, Cluster 375 shape). `closed` refuses unless a **green pass** from a `land_gate`-skilled member ≠ owner/assignee. Amber (flags-then-still-engages) is not a land. Fail is always red. Room holds the pointer; an external verifier records pass/fail. Not a CI product / a judge panel. Cluster 384 is P1.1d (closed by this retro). **Row #25 is closed** (383 composition + 385 pointer).
 
@@ -343,7 +382,7 @@ Four impl PRs (385.1–385.4) + a retro. A thread holds `{kind:"land_gate", stat
 | **REST + MCP (385.3):** `PUT`/`GET`/`DELETE /threads/:id/land-gate` + `PUT …/requirement`; tools `set/get/require/clear_land_gate`. | `crates/maidan-server/src/routes/land_gate.rs`, `crates/maidan-mcp/src/tools/land_gate.rs` |
 | **e2e (385.4):** HTTP close-gate + MCP standing; fail stays red. | `crates/maidan-server/tests/land_gate_e2e.rs` |
 
-## v384.0.0 — P1.1d: MCP `transition_thread` twin of the REST FSM
+## Cluster 384 (source record; no `v384.0.0` tag) — P1.1d: MCP `transition_thread` twin of the REST FSM
 
 One impl PR (384.1) + a retro. MCP `transition_thread` advances a thread's FSM (`start_review` / `close` / `archive`) through `transition_thread_with_event` + `publish_stored`. SoD, the required-reviewers close-gate, unresolved `refutes`, and the Cluster-383 critical composition apply identically — no MCP bypass. Terminal transitions emit `ThreadReady` for newly-ready dependents. **P1.1d is closed.** Cluster 385 (LandGate) is independently on `main`. Wave 2 #26–28 / Wave 3/4 are not this work.
 
@@ -352,7 +391,7 @@ One impl PR (384.1) + a retro. MCP `transition_thread` advances a thread's FSM (
 | **MCP `transition_thread` (384.1):** `{thread_id, actor_id, action}` → `transition_thread_with_event` + `publish_stored`; `ThreadReady` on terminal; resource URIs; 5-place wiring + both sorted contracts. `maidan-fsm` is a runtime dep. | `crates/maidan-mcp/src/tools/{thread,mod,catalog}.rs`, `resource_updates.rs`, `contracts/mcp-*.json` |
 | **Tests:** happy path + SoD denial + close-gate refusal; Cluster 383 critical-result e2e now closes via the tool. | `crates/maidan-mcp/src/server.rs` |
 
-## v383.0.0 — Wave 2 #25 composition: critical waiter findings → Cluster-375 `request_changes`
+## Cluster 383 (source record; no `v383.0.0` tag) — Wave 2 #25 composition: critical waiter findings → Cluster-375 `request_changes`
 
 Three impl PRs (383.1–383.3) + a retro. A reviewed `example.review.result/1` whose `findings` contain any `critical` is a `request_changes` from a review-skilled agent. If the thread has no requirement, the adapter arms Cluster-375 `k=1` so `closed` refuses until a third-party human approves. Owner/assignee approvals still do not count (SoD). No new gate machinery. GitHub review `event` stays `COMMENT` (380). **The #25 composition is closed.** The LandGate pointer + green/amber/red vocabulary shipped as Cluster 385.
 
@@ -362,7 +401,7 @@ Three impl PRs (383.1–383.3) + a retro. A reviewed `example.review.result/1` w
 | **Arm k + bus (383.2):** `set_requirement(1)` when unset; `ThreadResultSet` → `arm_critical_review`. Empty `deliver_to` still arms. | `crates/maidan-server/src/{result_delivery,notification_router}.rs` |
 | **Write-path + e2e (383.3):** REST `PUT /threads/:id/result` + MCP `set_thread_result` arm immediately; HTTP/MCP e2e prove close 409 until a human approve. | `crates/maidan-server/src/routes/thread.rs`, `crates/maidan-mcp/src/tools/thread.rs`, `crates/maidan-server/tests/critical_review_e2e.rs` |
 
-## v381.0.0 — Wave 2 #24 facet half: `result_kind` is a namespaced-string list
+## Cluster 381 (source record; no `v381.0.0` tag) — Wave 2 #24 facet half: `result_kind` is a namespaced-string list
 
 Four impl PRs (381.1–381.4) + a retro. 381.4 documented the facet; it is not the retro. Thread results are listed by the **namespaced string** a producer publishes (`example.review.result/1`), not a closed `decision|plan|merge_authorized` enum and not the ADR convention `"kind": "decision"`. The surface is a workspace-scoped list (`GET /workspaces/:id/results` + MCP `list_thread_results`), exact-match, not message-FTS. Omit `result_kind` to list every accessible non-tombstoned result; private-channel rows the caller cannot read are dropped. Cluster 382's `list_channel_closed_results` is untouched. **Row #24 is closed** (382 pack + 381 facet). **The result-delivery arc (377–381) is COMPLETE.** Clusters 380 and 382 stay closed. This close does not start Wave 2 #25.
 
@@ -373,7 +412,7 @@ Four impl PRs (381.1–381.4) + a retro. 381.4 documented the facet; it is not t
 | **MCP (381.3):** `list_thread_results` twin; workspace from the token; 5-place wiring + both sorted contracts. | `crates/maidan-mcp/src/tools/{thread,mod,catalog}.rs` |
 | **Docs (381.4):** Discoverability is the namespaced string; `"kind": "decision"` is not `?result_kind=decision`. | `docs/Result Delivery.md`, `docs/Integration.md` |
 
-## v380.0.0 — inline per-finding PR review comments
+## Cluster 380 (source record; no `v380.0.0` tag) — inline per-finding PR review comments
 
 Three impl PRs (380.1–380.3) + a retro. After a successful Cluster 379 GitHub summary comment, a `reviewed` envelope with `head_sha` and usable findings posts `POST /repos/{repo}/pulls/{n}/reviews` with `commit_id = head_sha` (never the live PR head), `event: COMMENT`, GitHub **RIGHT**, `line` = `line_range.end`. Missing sha / empty findings / non-`reviewed` / Slack skip the review without sinking the summary. 404/422 meter `skipped`; 5xx/auth meter `failed` (replay retries the review). Review errors never `disable_link`. Cluster 379's summary path is unchanged. **Cluster 381 is not unparked** (already open: the `result_kind` facet).
 
@@ -383,7 +422,7 @@ Three impl PRs (380.1–380.3) + a retro. After a successful Cluster 379 GitHub 
 | **Review POST (380.2):** `GithubSender::create_review` after the 379 summary; `event: COMMENT`; cap 100 comments; mention-defused finding bodies; no 379 marker on inline comments. Metric `maidan_github_review_total{outcome}`. | `crates/maidan-server/src/{github.rs,egress_worker.rs,result_delivery.rs}` |
 | **Skip vs fail (380.3):** 404/422 → `{skipped}`; 5xx / rate-limited 403 / 401/403 → `{failed}` + replay; never `disable_link`; dual-surface review only on GitHub; vanished envelope skips the review; projector rows never `create_review`. | `crates/maidan-server/tests/result_delivery_inline_e2e.rs`, `egress_wire_e2e.rs` |
 
-## v382.0.0 — Wave 2 #24 pack half: claimer pack includes accepted decisions
+## Cluster 382 (source record; no `v382.0.0` tag) — Wave 2 #24 pack half: claimer pack includes accepted decisions
 
 Three impl PRs (382.1–382.3) + a retro. The next `claim_next` claimer sees
 in-channel **accepted/closed decisions** as token-lean teasers on the live
@@ -400,7 +439,7 @@ half of row #24** (facet `result_kind` into search) remains **Cluster 381**.
 | **REST pack (382.2):** `AcceptedDecision` teasers on live `ThreadContext` (default on, cap 10, opt-out `include_accepted_decisions=false`). Waiter envelopes only when `reviewed`; opaque JSON on a terminal thread is accepted; withheld on DM / as-of / workspace-nested. | `crates/maidan-types/src/pack.rs`, `crates/maidan-server/src/thread_context.rs` |
 | **MCP twin (382.3):** same field on `get_thread_context` / `snapshot_thread_context` (MCP has its own assembler). Catalog arg default true. | `crates/maidan-mcp/src/context.rs`, `crates/maidan-mcp/src/tools/catalog.rs` |
 
-## v379.0.0 — the result-delivery primitive
+## Cluster 379 (source record; no `v379.0.0` tag) — the result-delivery primitive
 
 Five impl PRs (379.1–379.5) + a retro. Clusters 377 and 378 made projector egress durable, aimable, and repeatable; this is the producer's actual ask. A `maidan.waiter.result/1` envelope written with `set_thread_result` is now fetched, parsed, allowlist-checked per `deliver_to` target, and delivered — GitHub gets `rendered`, Slack gets `summary`, a re-review updates the same object, and the producer reads per-target disposition over REST + MCP. Empty `deliver_to` ⇒ nowhere (valid). Non-`reviewed` ⇒ a Maidan-authored failure notice from `status` alone. **The grammar is frozen** at `maidan.waiter.result/1`. Cluster 380 (inline per-finding comments) is **unparked as next**: `head_sha` is on the fixture; 380.1 still pins the `line_range` frame of reference.
 
@@ -412,7 +451,7 @@ Five impl PRs (379.1–379.5) + a retro. Clusters 377 and 378 made projector egr
 | **Update-in-place (379.4):** stored `external_ref` → `update_*`; GitHub recovery marker `<!-- maidan:result:<thread_id> -->` at byte 0 (reserved inside the 65536-char ceiling). `EgressKind {Projector, Result}` on the outbox (pg 0086 / sqlite 0085) so a projector post to the same issue cannot PATCH the result comment. Result 401/403/404 dead-letters **without** `disable_link`. | `crates/maidan-server/src/{egress_worker.rs,egress_body.rs}`, `crates/maidan-types/src/egress.rs` |
 | **Status + replay (379.5):** `GET /threads/:id/deliveries` (`workspace:read`) + `POST …/deliveries/:did/replay` (`workspace:write`) + MCP `list_result_deliveries` / `replay_result_delivery`. Replay reopens as `pending` without bumping `armed_revision`, enqueues with a synthetic negative `source_log_id`, re-checks the allowlist (unblessed stays skipped). Audit `result_delivery.attempt` / `result_delivery.replay`. | `crates/maidan-server/src/routes/thread.rs`, `crates/maidan-mcp/src/tools/delivery.rs`, `crates/maidan-store/src/result_delivery.rs` |
 
-## v378.0.0 — the egress trust boundary + the sender upgrade
+## Cluster 378 (source record; no `v378.0.0` tag) — the egress trust boundary + the sender upgrade
 
 Three impl PRs (378.1–378.3) + a retro. Cluster 377 made projector egress durable; this makes it **safe to aim** and **safe to repeat**. A destination must be blessed by an operator before Maidan will post to it (**`deliver_to` selects, the allowlist authorizes** — default empty ⇒ deliver nowhere); a sender now says what it created and can edit it later, which is what makes a re-review an update rather than a second comment; and a body arriving on either surface is mention-free, within the surface's ceiling, and in that surface's own markup. **Nothing delivers a result yet** — the last foundation before Cluster 379 wires the primitive.
 
@@ -423,7 +462,7 @@ Three impl PRs (378.1–378.3) + a retro. Cluster 377 made projector egress dura
 | **Sender upgrade (378.2):** `ExternalRef` (`Slack { channel_id, ts }` / `Github { repo, comment_id }`) returned from both `post_*`, plus `SlackSender::update_message` (`chat.update`) and `GithubSender::update_comment` (`PATCH /repos/{repo}/issues/comments/{id}`); `post_message` gained `thread_ts` so a re-delivery replies in-thread. **A post that succeeded is never reported as a failure** — `Ok(None)` means "posted, but not addressable", because an `Err` would make the at-least-once worker retry and leave two comments. | `crates/maidan-server/src/{slack.rs,github.rs,egress_worker.rs}` |
 | **Body projection (378.3):** `egress_body.rs`, pure — a GitHub mention defused by wrapping it in a **code span** (a documented rendering rule, and visible, rather than a zero-width space), Slack's `<!…>`/`<@…>` escaped to `&lt;`, truncation to GitHub's 65536-character ceiling that says so and keeps the backlink, and a **deliberately narrow** GFM→mrkdwn projection. A shared code segmenter keeps all three rules out of fenced diffs. | `crates/maidan-server/src/egress_body.rs` |
 
-## v377.0.0 — durable projector egress (row #38; the result-delivery foundation)
+## Cluster 377 (source record; no `v377.0.0` tag) — durable projector egress (row #38; the result-delivery foundation)
 
 Four impl PRs (377.1–377.4) + a retro. The Slack and GitHub projectors posted inline and best-effort: a transient 502 dropped the message with a log line and nothing else. A projector-bound message is now **enqueued** and delivered by a retry/backoff worker, an auth/config-class failure **disables the link** and announces it rather than retrying forever, and a delivery that exhausts its retries lands in a `token:admin` DLQ an operator can inspect and replay. **Nothing is silently dropped** — the hard prerequisite for the result-delivery arc (378–381), since "recorded and auditable per target" is not implementable on log-and-drop. **A queue, not a new connector:** what the projectors say and where they say it is unchanged.
 
@@ -435,7 +474,7 @@ Four impl PRs (377.1–377.4) + a retro. The Slack and GitHub projectors posted 
 | **`ProjectorMisconfigured` (377.3):** a broken connector credential is a room event (`{workspace, channel?, thread, surface, selector, error}`, non-federatable — a peer has no standing to declare our credentials broken); `error` is the surface's own words. Plus `maidan_egress_deliveries_total{surface,outcome}` (`sent`/`retry`/`dead`/`disabled`/`unroutable`), the queue-level companion to the unchanged per-surface post counters. | `crates/maidan-types/src/events.rs`, `crates/maidan-server/src/metrics.rs`, `contracts/event-kinds.json` |
 | **Operator DLQ (377.4):** `GET /operator/egress/dead` + `POST /operator/egress/dead/{id}/requeue`, both `token:admin` (the Cluster-306 mail-DLQ shape — the queue is cross-workspace) over `DeadEgress` + `list_dead_egress`/`requeue_dead_egress`. A row answers *what failed, where was it going, what did the surface say* without a log dive. | `crates/maidan-server/src/routes/egress_ops.rs`, `crates/maidan-store/src/{postgres,sqlite}/egress_outbox.rs` |
 
-## v376.0.0 — Wave 2 #23: a spawn budget (G6 + G-dev-3 + W3)
+## Cluster 376 (source record; no `v376.0.0` tag) — Wave 2 #23: a spawn budget (G6 + G-dev-3 + W3)
 
 Six impl PRs (376.1–376.6) + a retro. A workspace caps how far an agent family may fan out — `max_children` per parent claim, `max_depth` nesting, `max_tools` per thread — and a spawn past the cap is refused (409 `SpawnRejected`) instead of admitting one more agent onto a late claim; coordination cost grows as n(n−1)/2. Each axis is opt-in (`null` = unlimited). A claim's **external** fan-out is capped too: at most one GitHub issue/PR link. **A budget, not a scheduler.**
 
@@ -449,7 +488,7 @@ Six impl PRs (376.1–376.6) + a retro. A workspace caps how far an agent family
 | **`ThreadSpawnDenied` (376.6):** a refusal is a room event (`{workspace, channel, thread, member, axis, limit, observed}`, non-federatable) from the REST thread-create route, both REST post branches, and the MCP post tool; the gate returns a typed `StoreError::SpawnRejected(SpawnDenial)` so the payload isn't parsed out of a message. | `crates/maidan-types/src/{events.rs,spawn.rs}`, `crates/maidan-server/src/routes/mod.rs`, `crates/maidan-mcp/src/tools/message.rs` |
 | **Integrator docs (376.7):** a "Spawning helpers has a ceiling" section — the three axes, read/set, the non-retryable `409` / `-32602`, that the caps are *lifetime* budgets (a closed child keeps its slot; only a tombstone frees it) not concurrency limits, and the one-GitHub-link-per-claim rule. | `docs/Integration.md` |
 
-## v375.0.0 — Wave 2 #22: required reviewers (G5 + G-dev-5)
+## Cluster 375 (source record; no `v375.0.0` tag) — Wave 2 #22: required reviewers (G5 + G-dev-5)
 
 Four impl PRs (375.1–375.4) + a retro (+ a CI chore, #760). A thread's `closed` transition is gated on `k` distinct **qualifying** approvals (reviewer ≠ owner/assignee — separation of duties — and, when a named set exists, in it) AND no unresolved `refutes` edge. **A gate, not a poll/closer.** Maintainer's design call: a dedicated review store.
 
@@ -460,7 +499,7 @@ Four impl PRs (375.1–375.4) + a retro (+ a CI chore, #760). A thread's `closed
 | **REST (375.3):** `review-requirement` PUT/GET/DELETE, `reviewers` POST/GET + DELETE `:member_id`, `reviews` POST/GET, `review-status` GET (`thread:transition` writes, `workspace:read` reads). | `crates/maidan-server/src/routes/review.rs` |
 | **MCP (375.4):** `set_review_requirement`/`add_reviewer`/`submit_review` + `get_review_status`/`list_reviews`. | `crates/maidan-mcp/src/tools/review.rs` |
 
-## v374.0.0 — P1.1c: the MCP assignment dual-write (the P0)
+## Cluster 374 (source record; no `v374.0.0` tag) — P1.1c: the MCP assignment dual-write (the P0)
 
 One impl PR (374.1) + a retro. Closes the last MCP write-path-parity gap the transactional-outbox migration (205–214) was meant to cover, surfaced by a 2026-09-10 audit. The MCP assignment tools now match REST's crash-consistency — and a reclaim finally emits `ClaimExpired` on the agent-primary surface. No new Wave number (folds under the outbox program).
 
@@ -469,7 +508,7 @@ One impl PR (374.1) + a retro. Closes the last MCP write-path-parity gap the tra
 | **Atomic MCP assignment (374.1):** `assign`/`claim`/`unassign`/`claim_next`/`release_claim` use their `*_with_event` store variants + `publish_stored`; the `publish_assignment` helper is deleted. `claim_next` publishes every returned event → a reclaim emits `ClaimExpired` (dead holder) + `ThreadAssignmentChanged`. | `crates/maidan-mcp/src/tools/thread.rs` |
 | **Conflict mapping (374.1):** `StoreError::Conflict` → `McpError::InvalidParams` (a client error, not `-32603` Internal). | `crates/maidan-mcp/src/error.rs` |
 
-## v373.0.0 — Wave 2 #21: attachable labeled memory as room objects (H11)
+## Cluster 373 (source record; no `v373.0.0` tag) — Wave 2 #21: attachable labeled memory as room objects (H11)
 
 Four impl PRs (373.1–373.4) + a retro. A **memory block** is a Letta-shaped `{label, description, limit, read_only, value}` workspace object attachable to a thread. A parent watches a child's result block **without a nested runtime** via the reactive `MemoryBlockUpdated` event + the MCP `wait_for_memory_block` long-poll. Full rewrite, last-writer-wins — **not a transcript, not RAG**.
 
@@ -480,7 +519,7 @@ Four impl PRs (373.1–373.4) + a retro. A **memory block** is a Letta-shaped `{
 | **MCP (373.3):** label-addressed `create`/`get`/`list`/`set`/`attach`/`detach`/`list_thread` memory-block tools. | `crates/maidan-mcp/src/tools/memory_block.rs` |
 | **Reactive watch (373.4):** `MemoryBlockUpdated` event on set-value (REST + MCP, non-federatable "go fetch" pointer) + MCP `wait_for_memory_block` long-poll. | `crates/maidan-types/src/events.rs`, `crates/maidan-mcp/src/tools/memory_block.rs` |
 
-## v372.0.0 — Wave 2 #20: a freeze-member kill-switch (G17 + B25)
+## Cluster 372 (source record; no `v372.0.0` tag) — Wave 2 #20: a freeze-member kill-switch (G17 + B25)
 
 Four impl PRs (372.1–372.4) + operator docs. An operator (or an orchestrator agent) freezes a compromised/runaway **member**: it drops their leases, `claim_next` refuses them, and they stay frozen until an explicit unfreeze. **Not G4 PAUSE** (which pauses a thread/workspace) — this stops one member.
 
@@ -492,7 +531,7 @@ Four impl PRs (372.1–372.4) + operator docs. An operator (or an orchestrator a
 | **MCP (372.4):** `freeze_member`/`unfreeze_member`/`list_frozen_members` — the first `token:admin` MCP tools. | `crates/maidan-mcp/src/tools/freeze.rs` |
 | **Operator docs:** a "Kill switches" catalog (the freeze API + the `MAIDAN_*` env flags). | `docs/Operations.md` |
 
-## v371.0.0 — Wave 2 #19: secret-ref (G19 + T3)
+## Cluster 371 (source record; no `v371.0.0` tag) — Wave 2 #19: secret-ref (G19 + T3)
 
 Four impl PRs (371.1–371.4). A named secret whose **value never enters the event log** — the log carries a `secret://<name>` reference, the store holds the AEAD-encrypted value, and it's materialized only transiently: a consumer resolves it at exec, or the egress broker substitutes it on the way out to an allowlisted host.
 
@@ -503,7 +542,7 @@ Four impl PRs (371.1–371.4). A named secret whose **value never enters the eve
 | **MCP (371.3):** `list_secrets` / `resolve_secret`; `McpServer` gains an at-rest key set at startup. | `crates/maidan-mcp/src/tools/secret.rs` |
 | **Egress broker (371.4):** substitutes `secret://` refs on a webhook delivery only for hosts on `MAIDAN_SECRET_EGRESS_ALLOWLIST`; a non-allowlisted host gets the literal ref; substitution at send time, never persisted. | `crates/maidan-server/src/secret_broker.rs`, `webhook_worker.rs` |
 
-## v370.0.0 — Wave 2 #18: a recipe / thread-type (G8 + W5 + G-dev-9)
+## Cluster 370 (source record; no `v370.0.0` tag) — Wave 2 #18: a recipe / thread-type (G8 + W5 + G-dev-9)
 
 Five impl PRs (370.1–370.5). A **recipe** is a reusable thread-type blueprint (the Goose-recipe *shape*: params, a definition of done, a retry policy, inline child sub-tasks forming a DAG). Instantiating one builds a parent thread + its DAG children + attaches skills, freezing the recipe bytes into a run snapshot (copy-on-fire). A schedule can seed a run, skipping when the prior run is still in flight. **Not a recipe VM** — a blueprint the room instantiates.
 
@@ -515,7 +554,7 @@ Five impl PRs (370.1–370.5). A **recipe** is a reusable thread-type blueprint 
 | **MCP (370.4):** `create_recipe` / `list_recipes` / `instantiate_recipe`. | `crates/maidan-mcp/src/tools/recipe.rs` |
 | **Scheduled runs (370.5):** `task_schedules.recipe_id` (pg 0075/sqlite 0074); the sweeper instantiates the recipe per firing, or emits `ScheduleSkipped` (new non-federatable EventKind) when the prior run is still in flight. | `crates/maidan-server/src/scheduler.rs`, `crates/maidan-types/src/events.rs` |
 
-## v369.0.0 — Wave 2 #17: an AG-UI door (H1)
+## Cluster 369 (source record; no `v369.0.0` tag) — Wave 2 #17: an AG-UI door (H1)
 
 Two impl PRs (369.1–369.2): a second front-end protocol on the event stream — [AG-UI](https://docs.ag-ui.com), what CopilotKit and agent IDEs speak. A **thread is a run**, so the door is a *view* over the existing resumable bus, not a new runtime. Output direction only (Maidan → AG-UI); the UI→agent input direction is a follow-up.
 
@@ -524,7 +563,7 @@ Two impl PRs (369.1–369.2): a second front-end protocol on the event stream �
 | **Event types + pure mapping (369.1):** `AgUiEvent` (AG-UI wire shape) + `agui_events_for(&Event)` — `ThreadCreated`→`RUN_STARTED`, terminal `ThreadStateChanged`→`RUN_FINISHED`/non-terminal→`STEP_STARTED`, `ClaimFailed`→`RUN_ERROR`, `MessagePosted`→`TEXT_MESSAGE_*` + `TOOL_CALL_*` per content block, `ThreadLanded`→`CUSTOM`. Pure + unit-tested. | `crates/maidan-server/src/agui.rs` |
 | **SSE door (369.2):** `GET /agui/stream` (workspace/channel/thread scoped) emits the mapped frames; reuses `/mcp/stream` bus-subscribe + replay; `Last-Event-ID`/`after_id` resume with per-frame source `id:`; per-event RBAC (`can_access_thread`/`can_access_channel`); off-contract (`event:subscribe` inline, like `/mcp/stream`). | `crates/maidan-server/src/agui_stream.rs`, `app.rs` |
 
-## v368.0.0 — Wave 2 #16: the waiting-on-you inbox
+## Cluster 368 (source record; no `v368.0.0` tag) — Wave 2 #16: the waiting-on-you inbox
 
 A stacked cluster (368.1–368.3, G15/G9): a member-centric aggregate of everything needing their attention — assigned tasks, open gates, unread mentions — one member's queue, each aged against an SLA. Not `@everyone`.
 
@@ -534,7 +573,7 @@ A stacked cluster (368.1–368.3, G15/G9): a member-centric aggregate of everyth
 | **MCP (368.2):** `get_waiting_inbox` over the shared assembler. | `crates/maidan-mcp/src/tools/member.rs` |
 | **`/ui` (368.3):** a "Waiting on you" section atop the Work tab, oldest first, overdue flag, tunable SLA. | `crates/maidan-server/static/index.html` |
 
-## v367.0.0 — Wave 2 #15: the human work console (`/ui`)
+## Cluster 367 (source record; no `v367.0.0` tag) — Wave 2 #15: the human work console (`/ui`)
 
 A stacked `/ui` cluster (367.1–367.3) letting a human inhabit the workplace loop — vanilla, no SPA. All the machinery shipped in Wave 1; this surfaces it.
 
@@ -545,7 +584,7 @@ A stacked `/ui` cluster (367.1–367.3) letting a human inhabit the workplace lo
 | **Looking glass (367.3, B3):** events by kind, thread by id, artifact by sha (404 → not-found), peers — read-only explorer. 1 new `/ui/api` read. | `crates/maidan-server/static/index.html`, `crates/maidan-server/src/app.rs` |
 | Guards: `ui_js_wires_{work,prefs,looking_glass}_tab` static checks + `work.spec.ts` / `glass.spec.ts` Playwright specs. | `crates/maidan-server/tests/ui_js_contract.rs`, `ui-tests/tests/` |
 
-## v366.0.0 — Wave 1 #14: legal hold, OTel gate, web push, SCIM
+## Cluster 366 (source record; no `v366.0.0` tag) — Wave 1 #14: legal hold, OTel gate, web push, SCIM
 
 Four independent tracks (the backlog's "four bullets, not one cluster"), each shipped as its own PR to `main`.
 
@@ -556,7 +595,7 @@ Four independent tracks (the backlog's "four bullets, not one cluster"), each sh
 | **N1 web push (366.3):** `maidan_push_subscriptions` (pg 0071 / sqlite 0070) + VAPID (RFC 8292) + aes128gcm encryption (RFC 8291), RustCrypto (no openssl). Router delivers iff no live WS; `410 Gone` prunes. REST register/list/delete. | `crates/maidan-server/src/web_push.rs`, `crates/maidan-store/src/*/push_subscriptions.rs` |
 | **SCIM-as-OIDC-P3 (366.4):** `/scim/v2/` (ServiceProviderConfig + Users create/read/list-filter/replace/patch/delete); `maidan_scim_users` (pg 0072 / sqlite 0071); deactivation/delete revoke tokens; `token:admin`, outside OpenAPI+map (the `/mcp` precedent). | `crates/maidan-server/src/scim.rs`, `crates/maidan-store/src/*/scim_users.rs` |
 
-## v365.0.0 — fair dispatch (Wave 1 #13 cont.)
+## Cluster 365 (source record; no `v365.0.0` tag) — fair dispatch (Wave 1 #13 cont.)
 
 A stacked cluster (365.1–365.4, G3) giving a thread a **dispatch priority** with **aging**, so `claim_next` is no longer strict FIFO. A high-priority task jumps the queue, but a long-waiting normal task ages one rank per hour until it overtakes newer higher-priority work — priority alone would starve the low end; the aging makes it *fair*. With this, **Wave 1 #13 is complete** (WIP 362 + Unclaimable 363 + wait-edges 364 + fair dispatch 365).
 
@@ -567,7 +606,7 @@ A stacked cluster (365.1–365.4, G3) giving a thread a **dispatch priority** wi
 | **REST (365.3):** `PUT`/`GET /threads/:id/priority`. | `crates/maidan-server/src/routes/thread.rs` |
 | **MCP (365.4):** `set_priority`/`get_priority`. | `crates/maidan-mcp/src/tools/thread.rs` |
 
-## v364.0.0 — wait-edges + on_timeout escalation (Wave 1 #13 cont.)
+## Cluster 364 (source record; no `v364.0.0` tag) — wait-edges + on_timeout escalation (Wave 1 #13 cont.)
 
 A stacked cluster (364.1–364.5, G2/G4) giving a thread a **durable wait timer** with an escalation policy. A thread declares a deadline and an `on_timeout` action; either it is cancelled (the awaited thing happened) or a background sweeper fires it on timeout — reaching the thread's owner and optionally **parking** the thread (reuse of Cluster 363). It steals the Restate/Temporal timer *shape* — it is not a workflow engine, and `on_timeout` **never invents a decision** (reach + park only, the "TimedOut ≠ Decline" rule). With this, **Wave 1 #13 is complete** (WIP 362 + Unclaimable 363 + wait-edges 364).
 
@@ -579,7 +618,7 @@ A stacked cluster (364.1–364.5, G2/G4) giving a thread a **durable wait timer*
 | **REST (364.4):** `PUT`/`DELETE`/`GET /threads/:id/wait`. | `crates/maidan-server/src/routes/thread.rs` |
 | **MCP (364.5):** `set_wait`/`cancel_wait`/`get_wait`. | `crates/maidan-mcp/src/tools/thread.rs` |
 
-## v363.0.0 — Unclaimable (Wave 1 #13 cont.)
+## Cluster 363 (source record; no `v363.0.0` tag) — Unclaimable (Wave 1 #13 cont.)
 
 A stacked cluster (363.1–363.4, G3) letting a thread be **parked from dispatch** with a reason — distinct from blocked-by-deps, blocked-by-gate, and skill-miss. A parked thread stays open but `claim_next` skips it and an explicit `claim` is refused (409), until un-parked.
 
@@ -590,7 +629,7 @@ A stacked cluster (363.1–363.4, G3) letting a thread be **parked from dispatch
 | **REST (363.3):** `PUT`/`DELETE /threads/:id/unclaimable` + `GET /channels/:cid/unclaimable`; explicit `claim` → 409 on a parked thread. | `crates/maidan-server/src/routes/{thread,channel}.rs` |
 | **MCP (363.4):** `mark_unclaimable`/`mark_claimable`/`list_unclaimable` + the claim refusal. | `crates/maidan-mcp/src/tools/thread.rs` |
 
-## v362.0.0 — the WIP limit (Wave 1 #13)
+## Cluster 362 (source record; no `v362.0.0` tag) — the WIP limit (Wave 1 #13)
 
 A stacked cluster (362.1–362.3, G11) giving a workspace a **work-in-progress cap**: the max concurrent **live** claims any one member may hold. An agent can no longer grab unbounded concurrent work; a capped member's `claim_next` finds nothing and an explicit `claim` is refused (409). Counts live claims, never queued-never-started ghosts.
 
@@ -600,7 +639,7 @@ A stacked cluster (362.1–362.3, G11) giving a workspace a **work-in-progress c
 | **REST enforcement + admin (362.2):** `claim_next` → null / `claim` → 409 at the cap (`routes::at_wip_limit`); `PUT`/`GET /workspaces/:wid/wip-limit` + `GET /members/:id/wip`. | `crates/maidan-server/src/routes/{mod,thread,workspace}.rs` |
 | **MCP enforcement + tools (362.3):** same on `claim_thread`/`claim_next_thread`; `set_wip_limit`/`get_wip_limit`/`get_member_wip` tools. | `crates/maidan-mcp/src/tools/thread.rs`, `crates/maidan-mcp/src/tools/{mod,catalog}.rs` |
 
-## v361.0.0 — the landed fact (Wave 1 #12)
+## Cluster 361 (source record; no `v361.0.0` tag) — the landed fact (Wave 1 #12)
 
 A stacked cluster (361.1–361.4, G-dev-7) that **steals the landed fact**: an inbound `pull_request.merged` webhook on a linked PR becomes a durable `ThreadLanded` event, which reaches the accountable owner + followers and can be awaited over MCP. Not an automation product — the fact is recorded; the thread's FSM is not touched.
 
@@ -611,7 +650,7 @@ A stacked cluster (361.1–361.4, G-dev-7) that **steals the landed fact**: an i
 | **Notification reach (361.3):** the router notifies the thread's owner + followers on land (mute-honoring). | `crates/maidan-server/src/notification_router.rs` |
 | **`wait_for_landed` MCP (361.4):** block until a thread's PR lands (`thread_id`/`channel_id`-scoped, `since_log_id` lookback, RBAC-filtered) — the `wait_for_ready` analogue. | `crates/maidan-mcp/src/tools/thread.rs`, `crates/maidan-mcp/src/tools/{mod,catalog}.rs` |
 
-## v360.0.0 — the token-budgeted context pack (Wave 1 #11)
+## Cluster 360 (source record; no `v360.0.0` tag) — the token-budgeted context pack (Wave 1 #11)
 
 A stacked cluster (360.1–360.4, G-dev-1) making the scoped context pack budget itself by **tokens**, not just rows: give it a `token_budget` and it keeps the thread's framing (opening message) and its recent tail, folds the elided middle into an auditable `elision` marker ("Lost in the Middle"), and — for a child task — grounds the pack in its parent's ask and decision.
 
@@ -622,7 +661,7 @@ A stacked cluster (360.1–360.4, G-dev-1) making the scoped context pack budget
 | **Token-budgeted MCP pack (360.3):** `token_budget` on `get_thread_context`/`snapshot_thread_context`/`get_workspace_context`; `elision` on the response + catalog schemas. | `crates/maidan-mcp/src/context.rs`, `crates/maidan-mcp/src/tools/catalog.rs` |
 | **Child grounds (360.4):** `ParentGrounding` (parent's opening ask + latest decision) on a child thread's pack; `include_parent_grounding` (default true). Withheld for cross-channel / DM / tombstoned parents. | `crates/maidan-types/src/pack.rs`, `crates/maidan-server/src/thread_context.rs`, `crates/maidan-mcp/src/context.rs` |
 
-## v359.0.0 — inbox & search depth (Wave 1 #10)
+## Cluster 359 (source record; no `v359.0.0` tag) — inbox & search depth (Wave 1 #10)
 
 A stacked cluster (359.1–359.4, N2 / N5 / N4) making the notification inbox legible — group by thread, snooze the noise, surface the decisions you missed — and search time-scopable.
 
@@ -633,7 +672,7 @@ A stacked cluster (359.1–359.4, N2 / N5 / N4) making the notification inbox le
 | **Inbox grouped by thread (359.3, N5):** `group_notifications_by_thread` (pure) → one group/thread; `GET /members/:id/notifications/grouped` + MCP. | `crates/maidan-types/src/models.rs`, `crates/maidan-server/src/routes/member.rs`, `crates/maidan-mcp/src/tools/member.rs` |
 | **Buried-decisions digest (359.4, N2):** the digest leads with `ThreadResult`s a member missed in followed channels/threads; `Store::buried_decisions_for_member` + `GET /members/:id/decisions` + MCP. | `crates/maidan-store/src/*/email_digest.rs`, `crates/maidan-server/src/digest.rs` |
 
-## v358.0.0 — the budget envelope (Wave 1 #9)
+## Cluster 358 (source record; no `v358.0.0` tag) — the budget envelope (Wave 1 #9)
 
 A stacked cluster (358.1–358.4, T1/T5) giving a task/run a **budget envelope** — token, USD, turn, and wall-clock maxima — that **stops the run** when exceeded, records the stop as a **failure** (not a close), and **dead-letters** it for triage. Over REST + MCP.
 
@@ -646,7 +685,7 @@ A stacked cluster (358.1–358.4, T1/T5) giving a task/run a **budget envelope**
 
 Budget-exhaustion is a claim-level failure, not a new terminal thread state; enforcement is at the report heartbeat (no reaper). Not a billing SKU.
 
-## v357.0.0 — scoped notification mute (Wave 1 #8)
+## Cluster 357 (source record; no `v357.0.0` tag) — scoped notification mute (Wave 1 #8)
 
 A stacked cluster (357.1–357.3, N3) adding a **per-channel** mute with **mention breakthrough** — silence a busy channel's firehose while still getting @mentioned. With Cluster 356.3's per-thread mute, notification mute is now scopeable at kind, channel, and thread granularity.
 
@@ -658,7 +697,7 @@ A stacked cluster (357.1–357.3, N3) adding a **per-channel** mute with **menti
 
 **Deferred (N3 sub-item):** the *projector-kind overlay* (muting by Slack/GitHub projector origin) — a separate design.
 
-## v356.0.0 — the threading cluster (Wave 1 #7)
+## Cluster 356 (source record; no `v356.0.0` tag) — the threading cluster (Wave 1 #7)
 
 A stacked cluster (356.1–356.5, F1 + F2 + F7) making a thread a first-class, titled, navigable object: a parent's replies collapse to per-child summaries, a post floats its thread up an activity-ordered list, a thread can be renamed after creation, and a member can mute one thread without leaving the channel.
 
@@ -672,7 +711,7 @@ A stacked cluster (356.1–356.5, F1 + F2 + F7) making a thread a first-class, t
 
 **Deferred (stretch sub-item of #7):** *Automerge as thread collab* (causal edits on the same titled thread) — the event log stays the log; a separate, larger design.
 
-## v355.0.0 — the owner/steer cluster (Wave 1 #6)
+## Cluster 355 (source record; no `v355.0.0` tag) — the owner/steer cluster (Wave 1 #6)
 
 A stacked cluster (355.1–355.5, W1) giving a task thread a durable **owner** (the accountable party, distinct from the assignee/claimer), enforcing that the claimer cannot land its own owned work, persisting steering guidance across handoffs, and notifying the owner when an owned task gets stuck.
 
@@ -686,7 +725,7 @@ A stacked cluster (355.1–355.5, W1) giving a task thread a durable **owner** (
 
 Owner-governance is opt-in (setting an owner enables SoD); un-owned threads are unrestricted.
 
-## v354.0.0 — the wait contract (Wave 1 #5)
+## Cluster 354 (source record; no `v354.0.0` tag) — the wait contract (Wave 1 #5)
 
 A stacked cluster (354.1–354.3, H4) hardening the `wait_for_*` long-polls. The waits were live-only — a signal that fired between the caller's last drain and the subscribe was silently missed (the drain/subscribe race). They now take an opt-in `since_log_id` lookback that closes the gap, and the surrounding contract (resume, idempotency, evict-on-wait) is written down.
 
@@ -698,7 +737,7 @@ A stacked cluster (354.1–354.3, H4) hardening the `wait_for_*` long-polls. The
 
 Gapless by construction (subscribe-before-lookback), RBAC-preserving, opt-in (omit `since_log_id` for pure-live). No new store surface.
 
-## v353.0.0 — the identity chrome (Wave 1 #4)
+## Cluster 353 (source record; no `v353.0.0` tag) — the identity chrome (Wave 1 #4)
 
 A stacked cluster (353.1–353.4) giving the vanilla `/ui` the human-facing chrome for the 350/351/352 mechanics — what a session can do, where each task's occupant sits, that a token cannot widen its grant — all keyboard-operable to WCAG 2.1 AA. No SPA; every badge and card derives from data the backend already serves (the only backend touch was one additive `WhoAmI` field + one proxy route).
 
@@ -711,7 +750,7 @@ A stacked cluster (353.1–353.4) giving the vanilla `/ui` the human-facing chro
 
 Guarded by four new `ui_js_contract` static checks + four Playwright specs (`session`, `session-chrome`, `attenuation`, `a11y`) + a `ui_session_e2e` Rust test.
 
-## v352.0.0 — the HITL list (Wave 1 #3)
+## Cluster 352 (source record; no `v352.0.0` tag) — the HITL list (Wave 1 #3)
 
 A stacked cluster (352.1–352.4) bringing A2A `tasks/list` up to the live A2A 1.0.0 conformance bar, so an **external** A2A agent can discover a pending Cluster-350 held gate by polling `tasks/list?status=input-required` — the gate it must answer now shows up as an `input-required` task.
 
@@ -724,7 +763,7 @@ A stacked cluster (352.1–352.4) bringing A2A `tasks/list` up to the live A2A 1
 
 Deferred: 352.5 real `nextPageToken` keyset paging (Open Work — needs RBAC-in-query first; the ≤`pageSize` case is already conformant).
 
-## v351.0.0 — the occupancy clocks (Wave 1 #2)
+## Cluster 351 (source record; no `v351.0.0` tag) — the occupancy clocks (Wave 1 #2)
 
 A multi-PR cluster (351.1–351.6): a live picture of where every task-thread's work sits, plus fencing against zombie holders. The centrepiece is **two clocks** — the claim clock (lease) and the working clock (acknowledge) — which separate a claimed-but-idle agent from one actively working.
 
@@ -738,7 +777,7 @@ A multi-PR cluster (351.1–351.6): a live picture of where every task-thread's 
 
 The claim lifecycle is now **claim → acknowledge → renew → release**, every step fenced. The remaining occupancy thickener (G1's formal two-clocks invariant model) is deferred to Program V.
 
-## v350.0.0 — the held gate (durable human approval) (Wave 1 #1)
+## Cluster 350 (source record; no `v350.0.0` tag) — the held gate (durable human approval) (Wave 1 #1)
 
 A multi-PR cluster (350.1–350.8) replacing the blocking MCP elicitation model with a durable, queryable approval gate: an agent asks for approval, gets an async *input-required* handle, and a human answers later over REST or the `/ui` — the answer integrity-checked.
 
@@ -750,7 +789,7 @@ A multi-PR cluster (350.1–350.8) replacing the blocking MCP elicitation model 
 | **A Playwright `/ui` test harness (350.7):** a seed-and-serve Rust example + a `ui-tests/` headless-Chromium project driving the real `/ui` in CI — the first browser test in the repo. | `crates/maidan-server/examples/ui_test_server.rs`, `ui-tests/`, `.github/workflows/ci.yml` |
 | **An Approvals tab in the `/ui` (350.8):** lists + answers pending gates (accept/decline/cancel) — the human elicitation client. | `crates/maidan-server/static/index.html`, `crates/maidan-server/src/app.rs` |
 
-## v349.0.0 — deferred-work wrap-up (audit close-out)
+## [v349.0.0](https://github.com/david-engelmann/maidan/releases/tag/v349.0.0) — deferred-work wrap-up (audit close-out)
 
 A multi-PR cluster (349.1–349.5) closing every remaining deferred item from the post-flagship audit.
 
@@ -764,674 +803,674 @@ A multi-PR cluster (349.1–349.5) closing every remaining deferred item from th
 
 Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-crate assembler hoist (declined), README visual media (needs a recorded asset). **The post-flagship audit program (332–349) is complete.**
 
-## v348.0.0 — batch the notification fan-out mute check (audit P2)
+## [v348.0.0](https://github.com/david-engelmann/maidan/releases/tag/v348.0.0) — batch the notification fan-out mute check (audit P2)
 
 | Change | Where |
 |--------|-------|
 | The follow-up to Cluster 344: a `MessagePosted` fan-out still ran one `is_notification_muted` query per follower (`2 × followers` round-trips). New `Store::filter_muted_members(kind, &[MemberId])` (SQLite dynamic `IN`, Postgres `= ANY`) resolves the muted subset in one query; the fan-out batch-fetches it, meters the suppressed, and writes only the unmuted (concurrently, per 344). `notify`'s insert/email/metric tail extracted into `write_notification` (shared with the mention path). Cuts the fan-out toward `followers + 1` round-trips. A multi-row batch INSERT is a logged further optimization. **Cluster 17 of the post-flagship audit program** | `crates/maidan-store/src/{store.rs,*/notification_prefs.rs,*/mod.rs}`, `crates/maidan-server/src/notification_router.rs` |
 
-## v347.0.0 — projector egress wire-path tests (audit P1.5)
+## [v347.0.0](https://github.com/david-engelmann/maidan/releases/tag/v347.0.0) — projector egress wire-path tests (audit P1.5)
 
 | Change | Where |
 |--------|-------|
 | The production HTTP clients that build the actual projector-egress request (`SlackWebClient` `chat.postMessage`, `GithubApiClient` issue-comment POST) had no test — the egress tests drive mock sender traits. Added a `with_base_url` constructor to each (production `new` targets the real host) so the wire path is testable, and `egress_wire_e2e` drives the real clients against a loopback recorder: exact URL/headers (bearer + GitHub `User-Agent`)/JSON body + success/error decoding (Slack HTTP-200-`{"ok":false}`; GitHub non-2xx → `Api(status)`). Production behaviour unchanged. **Cluster 16 of the post-flagship audit program** | `crates/maidan-server/src/{slack.rs,github.rs}`, `crates/maidan-server/tests/egress_wire_e2e.rs` |
 
-## v346.0.0 — projector link-management REST surface (audit P2)
+## [v346.0.0](https://github.com/david-engelmann/maidan/releases/tag/v346.0.0) — projector link-management REST surface (audit P2)
 
 | Change | Where |
 |--------|-------|
 | The Slack/GitHub projectors shipped ingress + egress + a store link table, but no route ever *created* a link — so the link table could never be populated and the projector egress could never fire (a launch feature that couldn't be turned on). New REST surface: `POST`/`GET /workspaces/:wid/slack-links` + `DELETE /…/slack-links/:slack_channel_id`; `POST`/`GET /workspaces/:wid/github-links` + `DELETE /…/github-links?repo=&issue_number=`. The link's `channel_id`/`workspace_id` are derived from `authorize_thread` (can't disagree with the thread); the caller gives only the external id, thread, and attribution member. `POST`/`DELETE`=`workspace:write`, `GET`=`workspace:read`. Full new-route preflight; `projector_links_e2e` proves the created link is what the egress reverse-lookup reads. **Cluster 15 of the post-flagship audit program** | `crates/maidan-server/src/{slack.rs,github.rs,dto.rs,app.rs,openapi/*}`, `contracts/http-capability-map.json` |
 
-## v345.0.0 — MCP `post_message` slash-command parity (audit P2)
+## [v345.0.0](https://github.com/david-engelmann/maidan/releases/tag/v345.0.0) — MCP `post_message` slash-command parity (audit P2)
 
 | Change | Where |
 |--------|-------|
 | MCP `post_message` ignored registered slash commands while REST ran them. New dependency-inverted `maidan_mcp::SlashDispatcher` trait (implemented by `maidan-server`'s `ServerSlashDispatcher`, attached to the `McpServer` via `set_slash_dispatcher` in `main.rs` — server-binary only, a `OnceLock` field) lets the MCP post path run slash dispatch when a command is registered, merging the same `{slash_command, slash_response}` metadata as REST (Cluster-211 provisional-insert → dispatch → finalizing-edit shape). The MCP no-slash post was also upgraded to the atomic outbox path (`post_message_with_event` + `publish_stored`). Tests/embedders leave the dispatcher unset → skip slash (no `AppState`↔`McpServer` cycle). **Cluster 14 of the post-flagship audit program** | `crates/maidan-mcp/src/{slash_dispatch.rs,server.rs,tools/message.rs,tools/mod.rs,lib.rs}`, `crates/maidan-server/src/{slash_commands.rs,main.rs}` |
 
-## v344.0.0 — bounded-concurrency notification fan-out (audit P2)
+## [v344.0.0](https://github.com/david-engelmann/maidan/releases/tag/v344.0.0) — bounded-concurrency notification fan-out (audit P2)
 
 | Change | Where |
 |--------|-------|
 | The notification router is a serial bus consumer; a `MessagePosted` fanned out to followers in a sequential loop (`2 × followers` store round-trips), so a widely-followed message head-of-line-blocked the whole pipeline. Per-recipient `notify` writes now run with bounded concurrency (`buffer_unordered`, cap 8 — the Cluster-199 pattern) via `fan_out_message_posted`. Behaviour-preserved (same rows; error short-circuits). Batch insert logged as a further optimization. **Cluster 13 of the post-flagship audit program** | `crates/maidan-server/src/notification_router.rs` |
 
-## v343.0.0 — keyset-paginate the channel thread list (audit P2)
+## [v343.0.0](https://github.com/david-engelmann/maidan/releases/tag/v343.0.0) — keyset-paginate the channel thread list (audit P2)
 
 | Change | Where |
 |--------|-------|
 | The last unpaginated list: `GET /channels/:cid/threads` + MCP `list_threads` called unbounded `Store::list_threads(channel_id)`. New `Store::page_threads_for_channel(channel_id, after, limit)` (both backends; keyset `(created_at, id)` ASC, exclusive cursor, `LIMIT` in SQL — channel-scoped twin of `page_threads_for_workspace`) backs `limit` (default 100, clamp 1..=500) + `cursor` on the REST route (`ListThreadsQuery`) and the MCP tool; Postgres routes it via the read replica. Unbounded `list_threads` kept for internal full-list callers. **Cluster 12 of the post-flagship audit program** | `crates/maidan-store/src/{store.rs,sqlite/threads.rs,postgres/threads.rs,*/mod.rs}`, `crates/maidan-server/src/{routes/thread.rs,dto.rs,openapi/paths/api.rs}`, `crates/maidan-mcp/src/tools/{thread.rs,catalog.rs}` |
 
-## v342.0.0 — surface flagship context features to integrators (audit P2)
+## [v342.0.0](https://github.com/david-engelmann/maidan/releases/tag/v342.0.0) — surface flagship context features to integrators (audit P2)
 
 | Change | Where |
 |--------|-------|
 | `Integration.md` documented the context pack but omitted the differentiators, so a promoter/integrator couldn't see them. New "Fidelity & context" subsection covers glossary grounding, as-of replay (time travel, `as_of=<event_log_id>`), context snapshots, lean edits, seed/re-ask, and the tool-call transcript — exact wire surface + MCP-tool parity, verified against `dto.rs`/`app.rs`/`catalog.rs`/`mcp-tool-names.json`. Folded a Cluster-341 miss: `Protocols.md` "tool count is 78" → 85. Docs-only. **Cluster 11 of the post-flagship audit program** | `docs/Integration.md`, `docs/Protocols.md` |
 
-## v341.0.0 — docs accuracy reconciliation (audit P2)
+## [v341.0.0](https://github.com/david-engelmann/maidan/releases/tag/v341.0.0) — docs accuracy reconciliation (audit P2)
 
 | Change | Where |
 |--------|-------|
 | Audit P2 accuracy fixes, each verified against ground-truth code. **A2A gRPC** reconciled to the honest "partial": `Architecture.md` (implied full parity) + `Protocols.md` ("No gRPC binding" — also wrong) now match `Claims.md` — the gRPC `A2AService` exposes `get_task`/`cancel_task`/`list_tasks` only (verified in `a2a_grpc/mod.rs`); send/push/streaming stay JSON-RPC/REST. **Tool-count drift 78 → 85** in the live integrator docs. **Dead GitHub link** `Capability-Map.md` → `Capability%20Map.md`. **README image pin** `v315` → `v339`. Docs-only. **Cluster 10 of the post-flagship audit program** | `docs/{Architecture,Protocols,Framework Integrations,Adoption}.md`, `examples/README.md`, `README.md` |
 
-## v340.0.0 — fetch-once message authorization (audit P1.4c)
+## [v340.0.0](https://github.com/david-engelmann/maidan/releases/tag/v340.0.0) — fetch-once message authorization (audit P1.4c)
 
 | Change | Where |
 |--------|-------|
 | The message-keyed twin of 339, completing audit P1.4. ~12 handlers in `message.rs`/`social.rs` called `resolve_message_chain` (get_message + thread + channel) then an access helper that resolved the same chain again + a redundant `ensure_workspace`. New `maidan_auth::authorize_message` resolves `MessageScope {workspace_id, channel_id, thread_id, message_id}` and authorizes in one pass (via `authorize_thread`); `ensure_message_access` delegates to it. Handlers using the scope (edit/tombstone/purge/seed) call `authorize_message`; the rest (votes/reactions/get/edits/mentions) keep `ensure_message_access`. Message-scoped fetches drop ~5→3. Behaviour-identical. **Cluster 9 of the post-flagship audit program** | `crates/maidan-auth/src/{access.rs,lib.rs}`, `crates/maidan-server/src/routes/{message,social}.rs` |
 
-## v339.0.0 — fetch-once thread authorization (audit P1.4b)
+## [v339.0.0](https://github.com/david-engelmann/maidan/releases/tag/v339.0.0) — fetch-once thread authorization (audit P1.4b)
 
 | Change | Where |
 |--------|-------|
 | ~30 thread-scoped handlers double-fetched thread+channel — `resolve_thread_context` (get_thread + get_channel) then `ensure_thread_access` (the same two fetches again) — plus a redundant `ensure_workspace`. New `maidan_auth::authorize_thread` resolves `ThreadScope {workspace_id, channel_id, thread_id}` and authorizes in one fetch; `ensure_thread_access` delegates to it (rule single-sourced; also drops its own duplicate `get_channel`). Handlers that use the scope call `authorize_thread`; the rest keep only `ensure_thread_access`. Behaviour-identical (404 missing / 403 wrong-ws / 403 no-access, same messages); per-request thread+channel fetches halve on that surface. **Cluster 8 of the post-flagship audit program** | `crates/maidan-auth/src/{access.rs,lib.rs}`, `crates/maidan-server/src/routes/{message,thread,social,skills}.rs` |
 
-## v338.0.0 — post-path mention-routing round-trip reduction (audit P1.4a)
+## [v338.0.0](https://github.com/david-engelmann/maidan/releases/tag/v338.0.0) — post-path mention-routing round-trip reduction (audit P1.4a)
 
 | Change | Where |
 |--------|-------|
 | Every message post (the hottest write path) re-ran `resolve_message_chain` (message→thread→channel→workspace) inside mention routing purely to re-derive a workspace id the caller already had — and did so even for posts with no `@handles`. `publish_routed_mentions` (REST + MCP) now short-circuits on `parse_at_handles(body).is_empty()` (no store work for a plain post) and otherwise routes via `route_mentions_in_message` with the known workspace, dropping the redundant round-trip. Removed the now-unused `route_mentions_for_message`. Behaviour-preserving (mentions still emit `MentionRecorded`). **Cluster 7 of the post-flagship audit program** | `crates/maidan-server/src/routes/mod.rs`, `crates/maidan-mcp/src/tools/message.rs`, `crates/maidan-router/src/{mentions.rs,lib.rs}` |
 
-## v337.0.0 — REST `GET /me` identity endpoint (audit P1.3)
+## [v337.0.0](https://github.com/david-engelmann/maidan/releases/tag/v337.0.0) — REST `GET /me` identity endpoint (audit P1.3)
 
 | Change | Where |
 |--------|-------|
 | The REST twin of Cluster 336's MCP `whoami`, closing agent self-discovery on the HTTP transport. New `GET /me` → `{member_id, workspace_id, capabilities, is_bearer}` reflected from the request's auth (no store access); an agent or `/ui` session with only a base URL + token can discover the `member_id` every member-attributed write requires. `workspace:read`. Full new-route preflight (OpenAPI path + `WhoAmI` schema + capability-map). Audit P1.3 (agent cold-start) now complete across both transports. **Cluster 6 of the post-flagship audit program** | `crates/maidan-server/src/{routes/member.rs,dto.rs,app.rs,openapi/*}`, `contracts/http-capability-map.json` |
 
-## v336.0.0 — agent cold-start: whoami + initialize instructions (audit P1.3)
+## [v336.0.0](https://github.com/david-engelmann/maidan/releases/tag/v336.0.0) — agent cold-start: whoami + initialize instructions (audit P1.3)
 
 | Change | Where |
 |--------|-------|
 | The cheapest adoption unlock: an agent with only a base URL + token couldn't run the hero loop (every hero-loop tool needs its own `member_id`, and MCP `initialize` had no `instructions`). New MCP `whoami` tool → `{member_id, workspace_id, capabilities, is_bearer, bypass}` from auth (`workspace:read`, no store access); `initialize.instructions` now carries a cold-start guide (call `whoami`, then the six-tool hero loop); `AuthContext::capabilities()` accessor. 85 MCP tools. REST `GET /me` twin → Cluster 337. **Cluster 5 of the post-flagship audit program** | `crates/maidan-mcp/src/{tools/whoami.rs,tools/mod.rs,tools/catalog.rs,server.rs}`, `crates/maidan-auth/src/context.rs`, `contracts/mcp-*.json` |
 
-## v335.0.0 — MCP context: batch reads + surface artifacts (audit P1.2)
+## [v335.0.0](https://github.com/david-engelmann/maidan/releases/tag/v335.0.0) — MCP context: batch reads + surface artifacts (audit P1.2)
 
 | Change | Where |
 |--------|-------|
 | The MCP context assembler had a per-message N+1 (refs + edits fetched per message) and omitted artifacts; the REST one batched both + included artifacts. Now `get_thread_context`/`get_thread_context_as_of` use batched shared helpers (`collect_references` `src_id=ANY`, `collect_edit_views` with optional as-of cutoff, `collect_artifacts`) and surface an `artifacts` array — matching REST. Sha extractor shared via `maidan_types::artifact_shas_from_metadata`. REST unchanged (query-count guard green). Full cross-crate assembler hoist deferred (maidan-router `ThreadContext` name collision + utoipa/futures plumbing; maintainability-only, message fold already shared). **Cluster 4 of the post-flagship audit program** | `crates/maidan-types/src/models.rs`, `crates/maidan-mcp/src/context.rs`, `crates/maidan-server/src/thread_context.rs` |
 
-## v334.0.0 — MCP write-path event parity, the rest (audit P1.1b)
+## [v334.0.0](https://github.com/david-engelmann/maidan/releases/tag/v334.0.0) — MCP write-path event parity, the rest (audit P1.1b)
 
 | Change | Where |
 |--------|-------|
 | The 7 remaining event-less MCP write tools now emit domain events (via `McpServer::publish_stored`): `cast_vote`/`add_reaction`/`remove_reaction`/`pin_message`/`unpin_message`/`add_reference` → `*_with_event`; `record_mention` → `record_mention_with_event`; and MCP `post_message`/`post_dm_message` publish `MentionRecorded` per @mentioned member (a shared `publish_routed_mentions` helper). MCP mutations now reach WS/SSE, at-least-once, federation, and the notification router / `wait_for_mention` like REST. **P1.1 (MCP write-path parity) complete** (333 edit + 334 rest). **Cluster 3 of the post-flagship audit program** | `crates/maidan-mcp/src/{tools/social.rs,tools/reference.rs,tools/message.rs,tools/mod.rs}` |
 
-## v333.0.0 — MCP edit_message emits MessageEdited (audit P1.1a)
+## [v333.0.0](https://github.com/david-engelmann/maidan/releases/tag/v333.0.0) — MCP edit_message emits MessageEdited (audit P1.1a)
 
 | Change | Where |
 |--------|-------|
 | Correctness fix (post-flagship audit P1.1a): MCP `edit_message` was event-less (`store.edit_message`), so an MCP edit appended no `MessageEdited` → the flagship as-of replay returned the stale body forever and the embedding indexer never reindexed. Now it calls `edit_message_with_event` (atomic row + event) and the new `McpServer::publish_stored` bus-notify → as-of replay, reindex, and WS/SSE + notification-router all see MCP edits, matching REST. `publish_stored` is the reusable seam for the rest of the MCP write-path migration (Cluster 334). **Cluster 2 of the post-flagship audit program** | `crates/maidan-mcp/src/{server.rs,tools/message.rs,tools/mod.rs}` |
 
-## v332.0.0 — MCP artifact tenant isolation (audit P0.1)
+## [v332.0.0](https://github.com/david-engelmann/maidan/releases/tag/v332.0.0) — MCP artifact tenant isolation (audit P0.1)
 
 | Change | Where |
 |--------|-------|
 | Security fix (post-flagship audit P0.1): the MCP artifact tools now enforce Cluster-204 cross-tenant isolation. `get_artifact_metadata` + the `maidan://artifacts/{sha}` resource read gate on `artifact_ref_exists(auth.workspace_id, sha)` → `NotFound` when absent (no cross-tenant oracle, matching REST); MCP uploads record the per-workspace ref via `record_artifact_ref`; `resources::read` uses `size_bytes` metadata instead of loading the blob. **Cluster 1 of the post-flagship audit program** | `crates/maidan-mcp/src/{tools/artifact.rs,tools/mod.rs,resources.rs,server.rs}` |
 
-## v331.0.0 — flagship arc closeout (decision)
+## [v331.0.0](https://github.com/david-engelmann/maidan/releases/tag/v331.0.0) — flagship arc closeout (decision)
 
 | Change | Where |
 |--------|-------|
 | Docs-only closeout of the fidelity + context flagship arc (319–331). A "Product scope" ADR records the arc complete and **declines** its optional tail (seed `pack`/`prefix` inclusion, a `WorkSeeded` event, the flow/setup template) as composable from shipped primitives — declined, not deferred, with revisit conditions. Open Work / Roadmap marked complete. Clean baseline for a research round. **Cluster 13 (closeout) of the fidelity + context flagship arc** | `docs/Decisions.md`, `docs/Open Work.md`, `docs/Roadmap.md` |
 
-## v330.0.0 — context snapshot MCP tool (flagship arc)
+## [v330.0.0](https://github.com/david-engelmann/maidan/releases/tag/v330.0.0) — context snapshot MCP tool (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | MCP `snapshot_thread_context` — the twin of the 329 REST route: freeze the assembled context pack (live or `as_of`) into the content-addressed artifact store, returning the `Artifact` (`kind=context_snapshot`). `artifact:upload`; reuses `context::get_thread_context` + the modern `upsert_artifact_with_event` + Cluster-204 ref + bus-notify (an MCP-frozen snapshot is fetchable by its workspace, unlike the older MCP artifact tools). Both contracts → 84 tools. Context snapshot is now complete over REST + MCP. **Cluster 12 of the fidelity + context flagship arc** | `crates/maidan-mcp/src/tools/{snapshot.rs,mod.rs,catalog.rs}`, `contracts/mcp-*.json` |
 
-## v329.0.0 — immutable context snapshot artifact (flagship arc)
+## [v329.0.0](https://github.com/david-engelmann/maidan/releases/tag/v329.0.0) — immutable context snapshot artifact (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | `POST /threads/:id/context/snapshot` freezes the assembled context pack (live or `as_of`) into the existing content-addressed artifact store — a tamper-evident, deduped record of exactly what the agent was handed (identical packs share a blob). Returns the `Artifact` (`kind=context_snapshot`, `application/json`); fetchable at `GET /artifacts/:sha`; gated `artifact:upload` + thread access. New `ArtifactKind::ContextSnapshot` + migration pg `0055` / sqlite `0054` widening the artifact-kind `CHECK`. Reuses the artifact store wholesale (no new blob path). **Cluster 11 of the fidelity + context flagship arc** | `crates/maidan-types/src/models.rs`, `crates/maidan-server/src/{routes/thread.rs,app.rs,openapi/*}`, `migrations/{postgres/0055,sqlite/0054}_artifact_kind_context_snapshot.sql`, `contracts/http-capability-map.json` |
 
-## v328.0.0 — seed-from-message MCP tool (flagship arc)
+## [v328.0.0](https://github.com/david-engelmann/maidan/releases/tag/v328.0.0) — seed-from-message MCP tool (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | MCP `seed_from_message` — the twin of the 327 REST route: `{message_id, title, inclusion?, channel_id?}` spawns a titled child thread + a `seeded_from` reference edge (+ a quoting first message for `inclusion=quote`). `workspace:write`; source access via the pre-dispatch gate, target channel checked in-handler. Uses `*_with_event` store methods + a bus-notify of the returned event (atomic log + real-time parity — the MCP analogue of REST `publish_stored`; the first MCP thread-creating tool). Both contracts → 83 tools. **Cluster 10 of the fidelity + context flagship arc** | `crates/maidan-mcp/src/tools/{seed.rs,mod.rs,catalog.rs}`, `contracts/mcp-*.json` |
 
-## v327.0.0 — seed-from-message (flagship arc)
+## [v327.0.0](https://github.com/david-engelmann/maidan/releases/tag/v327.0.0) — seed-from-message (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | The write side of "re-ask": `POST /messages/:id/seed` spawns a titled, claimable child thread from a source message, linked by a `seeded_from` reference edge (new thread → source). `inclusion`: `pointer` (default, edge only) or `quote` (first message quotes the source). Source untouched; N seeds per source; gated `workspace:write` + source read + target-channel write. Reuses existing primitives — no bespoke table, no new event kind (emits `ThreadCreated` + `ReferenceAdded`); lineage is queryable via the Cluster-320 reverse reference query. New `RelationKind::SeededFrom` (controlled vocab → 8). MCP tool follows in 328. **Cluster 9 of the fidelity + context flagship arc** | `crates/maidan-types/src/models.rs`, `crates/maidan-server/src/{routes/message.rs,dto.rs,app.rs,openapi/*}`, `contracts/http-capability-map.json` |
 
-## v326.0.0 — as-of context replay (flagship arc)
+## [v326.0.0](https://github.com/david-engelmann/maidan/releases/tag/v326.0.0) — as-of context replay (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | `GET /threads/:id/context?as_of=<event_id>` (+ MCP `get_thread_context` `as_of` arg) reconstructs a thread as it stood at that event-log id — deterministic over the immutable log, no fresh search. A since-edited message shows its as-of body; a since-tombstoned message reappears (both impossible from current rows). `Store::list_thread_events_through` (both backends) + shared `maidan_types::reconstruct_messages_through` fold `MessagePosted`/`MessageEdited` (full `Message` payloads) + `MessageTombstoned`; additive components cut by the anchor's time; glossary omitted. Serves audit + re-ask-from-before-a-tangent. Unknown id → `404`. **Cluster 8 of the fidelity + context flagship arc** | `crates/maidan-store/src/{store.rs,{postgres,sqlite}/{events,mod}.rs}`, `crates/maidan-types/src/events.rs`, `crates/maidan-server/src/{thread_context.rs,dto.rs,routes/{thread,workspace}.rs}`, `crates/maidan-mcp/src/{context.rs,tools/catalog.rs}` |
 
-## v325.0.0 — agent conventions: decisions, supersession, acks (flagship arc)
+## [v325.0.0](https://github.com/david-engelmann/maidan/releases/tag/v325.0.0) — agent conventions: decisions, supersession, acks (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | The "near-zero-code conventions" half of the arc's confidence-and-conventions item — codified as docs with a convention-proving e2e and **zero new server code** ("a room, not a brain"). `docs/Integration.md` "Agent conventions" documents: **decision records** (ADR-shaped `thread_result` JSON), **supersession** (a `supersedes` reference edge + `status` flip; `GET /references?dst_kind=…&relation=supersedes` = "what replaced this?"), and **grounding acks** (an `ack` vote grounding a message as of its `created_at`, detectably stale once edited later). `decision_convention_e2e` proves the whole trio over the real HTTP API. **Cluster 7 of the fidelity + context flagship arc** | `docs/Integration.md`, `crates/maidan-server/tests/decision_convention_e2e.rs` |
 
-## v324.0.0 — optional vote confidence (flagship arc)
+## [v324.0.0](https://github.com/david-engelmann/maidan/releases/tag/v324.0.0) — optional vote confidence (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | An optional `confidence` weight (0..1) on a vote, so consumers can compute weighted consensus instead of a flat tally. `maidan_votes.confidence` (pg `0054` / sqlite `0053`, nullable); `Vote`/`NewVote` gain `confidence: Option<f64>` (omitted when absent); REST `POST/GET /messages/:id/votes` + MCP `cast_vote`; range validated at the API edge. Re-casting the same `(message, member, kind)` upserts the confidence (count idempotent). **Cluster 6 of the fidelity + context flagship arc** | `migrations/{postgres/0054,sqlite/0053}_vote_confidence.sql`, `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/votes.rs`, `crates/maidan-server/src/{dto.rs,routes/social.rs}`, `crates/maidan-mcp/src/tools/{social,catalog}.rs` |
 
-## v323.0.0 — glossary in the context pack (flagship arc)
+## [v323.0.0](https://github.com/david-engelmann/maidan/releases/tag/v323.0.0) — glossary in the context pack (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | The grounding payoff: `GET /threads/:id/context` + `GET /workspaces/:wid/context` (REST) and the `get_thread_context`/`get_workspace_context` MCP tools now carry a `glossary` field, so an agent's context is grounded in the workspace's shared vocabulary without a second call. New `include_glossary` param, **default `true`**; `skip_serializing_if` empty (byte-neutral when no glossary); the workspace pack carries it once at the top (not repeated per nested thread — `build_workspace_context` dedups). One constant query per pack, so the context query-count independence invariant is unchanged. **Cluster 5 of the fidelity + context flagship arc — the glossary layer (321→322→323) is complete** | `crates/maidan-server/src/{thread_context.rs,dto.rs,routes/{thread,workspace}.rs}`, `crates/maidan-mcp/src/{context.rs,tools/catalog.rs}` |
 
-## v322.0.0 — glossary REST + MCP (flagship arc)
+## [v322.0.0](https://github.com/david-engelmann/maidan/releases/tag/v322.0.0) — glossary REST + MCP (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | The 321 glossary, surfaced: REST `PUT/GET/DELETE /workspaces/:wid/glossary/:term` + `GET /workspaces/:wid/glossary` (list), and MCP `set_glossary_term`/`get_glossary_term`/`list_glossary_terms`. Agents can define, look up, and list a workspace's canonical `term -> definition`. `set` upserts (`workspace:write`, `created_by` = acting member); reads are `workspace:read`; `delete` stays REST-only (the 220/229 precedent). **Cluster 4 of the fidelity + context flagship arc** | `crates/maidan-server/src/{routes/glossary.rs,dto.rs,app.rs,openapi/*}`, `crates/maidan-mcp/src/tools/{glossary.rs,mod.rs,catalog.rs}`, `contracts/{http-capability-map,mcp-*}.json` |
 
-## v321.0.0 — shared glossary foundation (flagship arc)
+## [v321.0.0](https://github.com/david-engelmann/maidan/releases/tag/v321.0.0) — shared glossary foundation (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | A workspace's canonical `term -> definition` (+ aliases) so agents use words the same way — the anti-drift pin and the target of 319's `defines` reference relation. `maidan_glossary_terms` (pg `0053` / sqlite `0052`, `UNIQUE(workspace_id, term)`, aliases as JSONB/TEXT-JSON), `GlossaryTerm`/`NewGlossaryTerm` models, and `Store::{set,get,list,delete}_glossary_term` (both backends; `set` upserts, preserving authorship + bumping `updated_at`). Flat by design — hierarchy is a knowledge-graph product line, out of scope. **Zero-blast-radius store foundation** — no routes/tools yet (322). **Cluster 3 of the fidelity + context flagship arc** | `migrations/{postgres/0053,sqlite/0052}_glossary_terms.sql`, `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{store.rs,migrate.rs,{postgres,sqlite}/{glossary,mod}.rs}` |
 
-## v320.0.0 — reverse-edge + by-type reference queries (flagship arc)
+## [v320.0.0](https://github.com/david-engelmann/maidan/releases/tag/v320.0.0) — reverse-edge + by-type reference queries (flagship arc)
 
 | Change | Where |
 |--------|-------|
 | The traversal payoff for 319's typed relations: `Store::list_references_to` (reverse edge, reuses the existing `idx_references_dst` index — no migration); `GET /references` reshaped to query FROM a source or TO a target + optional `relation` filter (exactly one pair, anchor-gated, same route/cap); new MCP `list_references` tool (MCP could add but not list references). "What refutes X / what references this" is now queryable. **Cluster 2 of the fidelity + context flagship arc** | `crates/maidan-store/src/{store.rs,{postgres,sqlite}/{refs,mod}.rs}`, `crates/maidan-server/src/{dto.rs,routes/reference.rs}`, `crates/maidan-mcp/src/tools/{reference.rs,mod.rs,catalog.rs}`, `contracts/mcp-*.json` |
 
-## v319.0.0 — typed reference relations (flagship arc keystone)
+## [v319.0.0](https://github.com/david-engelmann/maidan/releases/tag/v319.0.0) — typed reference relations (flagship arc keystone)
 
 | Change | Where |
 |--------|-------|
 | `Reference.relation` is now a controlled `RelationKind` (`supports/refutes/defines/depends/duplicates/grounds/supersedes` + `Other(String)` escape) instead of a free string — the same subject→predicate→object shape as IBIS/PROV/ClaimReview, turning the reference graph into a machine-navigable argument/provenance graph. Serializes as the bare snake_case string (wire byte-identical); both store backends bind `as_str()`/parse `from_wire`, column stays TEXT (no migration); REST `CreateReference` + MCP `add_reference` inputs typed; OpenAPI/MCP schemas unchanged (`string`). **Cluster 1 of the fidelity + context flagship arc.** No backwards-compat shim (pre-launch) | `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/{refs,import}.rs`, `crates/maidan-server/src/dto.rs`, `crates/maidan-mcp/src/tools/reference.rs` |
 
-## v318.0.0 — token-pack evidence
+## [v318.0.0](https://github.com/david-engelmann/maidan/releases/tag/v318.0.0) — token-pack evidence
 
 | Change | Where |
 |--------|-------|
 | A number for the "far fewer tokens" claim: `token_pack` measures the scoped context pack vs dumping the whole channel — **~6.8× fewer tokens** (in-process SQLite, 8×40 msgs; scoped pack ~4 951 vs naive ~33 908 tokens), plus ~1.3× from lean edits. Bytes exact, `≈chars/4` tokens, ratio tokenizer-independent; `#[ignore]`d harness + pure estimator unit-tested in CI. `Benchmark.md` gained a "Context-pack token savings" section; `Claims.md` token row → "Shipped + measured" with the evidence link. **Closes the launch-prep leg of the 2026-08-28 sweep (315–318)** | `crates/maidan-server/tests/token_pack.rs`, `docs/Benchmark.md`, `docs/Claims.md` |
 
-## v317.0.0 — Bet 2 MCP snippet pack + two-language lease demo
+## [v317.0.0](https://github.com/david-engelmann/maidan/releases/tag/v317.0.0) — Bet 2 MCP snippet pack + two-language lease demo
 
 | Change | Where |
 |--------|-------|
 | The falsifiable hello-world: a Python SDK worker + a TypeScript SDK worker both `claim_next_thread` on one channel → Maidan hands each task to exactly one (no cross-language double-claim; drained queue → `null`; no LLM); verified end-to-end via `scripts/lease-demo.sh`. MCP client configs for Cursor/Claude (`/mcp/streamable`, bearer, `2026-07-28`). LangChain/AutoGen examples now **filter to the six-tool hero loop** (client-side; catalog stays 78, 8-seam callable) instead of loading all ~78. CI guards the new scripts/configs | `examples/lease_demo/`, `scripts/lease-demo.sh`, `examples/{cursor-mcp,claude-desktop-mcp}.json`, `examples/{langchain,autogen,rest}_maidan.py`, `examples/README.md`, `docs/Framework Integrations.md`, `.github/workflows/ci.yml` |
 
-## v316.0.0 — docs honesty scrub + honest prebuilt-image path
+## [v316.0.0](https://github.com/david-engelmann/maidan/releases/tag/v316.0.0) — docs honesty scrub + honest prebuilt-image path
 
 | Change | Where |
 |--------|-------|
 | Corrected every verified stale/false doc at v315 (Claims.md A2A-gRPC overclaim → "gRPC = task read/cancel/list, no SendMessage"; `mail.rs`/`server.rs`/`Framework Integrations`/`Threat-Model`/`sdk/README`/`Clients`/`Client Testing`/`Promotion`/`AGENTS`/`Integration`/`CLAUDE`/`SECURITY` staleness; README "experimental A2A"→"A2A v1.0"); fixed two more won't-boot commands (`introduction.md` `cargo run` missing session secret; `Pi.md` `docker run` missing the AUTH_DISABLED ack). Added an honest README "Prebuilt image (no clone)" note — **smoke found the planned `docker run … maidan init` impossible** (prod image is distroless, no CLI/shell), so a true one-command no-clone eval is deferred (needs the quickstart image on GHCR). Published the stuck `v300` release draft | `docs/{Claims,Framework Integrations,Threat-Model,Pi,Integration,Clients,Client Testing,Promotion}.md`, `book/src/introduction.md`, `README.md`, `AGENTS.md`, `CLAUDE.md`, `SECURITY.md`, `sdk/README.md`, `crates/maidan-server/src/mail.rs`, `crates/maidan-mcp/src/server.rs` |
 
-## v315.0.0 — pre-launch correctness & DX + research-sweep fold
+## [v315.0.0](https://github.com/david-engelmann/maidan/releases/tag/v315.0.0) — pre-launch correctness & DX + research-sweep fold
 
 | Change | Where |
 |--------|-------|
 | `hash-v1` embedding default warns at boot ("not semantically meaningful; set `MAIDAN_EMBEDDING_PROVIDER`") so a stranger isn't silently served near-random "semantic" hits; fixed the README no-Docker `MAIDAN_SESSION_SECRET` (was 28 bytes, needs ≥32); `event_stream` replay logs a failed delivery-cursor advance instead of `let _ =`; defensive `ensure_acting_member` on the legacy `/members/:id/mentions`+`/inbox` handlers (the audit's "session can read another's inbox" was a **false positive** — bearer-only routes, no `/ui/api` mount; guards future-proof a later mount). Folded the 2026-08-28 research sweep into Open Work (v314 currency + 315–318 + the fidelity/context flagship arc + anti-goals) | `crates/maidan-server/src/{main.rs,event_stream.rs,routes/member.rs}`, `README.md`, `crates/maidan-server/tests/ui_channels_e2e.rs`, `docs/Open Work.md` |
 
-## v314.0.0 — launch honesty: claims sheet, policies, release verification
+## [v314.0.0](https://github.com/david-engelmann/maidan/releases/tag/v314.0.0) — launch honesty: claims sheet, policies, release verification
 
 | Change | Where |
 |--------|-------|
 | Fixed the README headline one-liner (didn't boot: auth on needs a ≥32-byte `MAIDAN_SESSION_SECRET`); published an honest claims sheet mapping every README/site claim → a gate/test/"not yet" (`docs/Claims.md`, on the site + linked from README); added copy-paste keyless-cosign release verification (`SECURITY.md#verifying-a-release`) + a human `CHANGELOG-highlights.md` with a Release-notes template; reconciled `CONTRIBUTING.md` to the solo-maintained/admin-merge/8-required-checks model (Launch L3/L4/L6 + Pre-Public Hardening F2/G5) | `README.md`, `docs/Claims.md`, `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG-highlights.md`, `book/src/SUMMARY.md`, `book/sync-docs.sh` |
 
-## v313.0.0 — default-secure quickstart (launch hardening F4)
+## [v313.0.0](https://github.com/david-engelmann/maidan/releases/tag/v313.0.0) — default-secure quickstart (launch hardening F4)
 
 | Change | Where |
 |--------|-------|
 | The quickstart happy path is token-based, not `AUTH_DISABLED` (Pre-Public Hardening F4 / Launch L1): `compose.quickstart.yaml` runs auth ON (dev `MAIDAN_SESSION_SECRET` + `MAIDAN_BOOTSTRAP=1`), the README mints a bearer token via `maidan init` and runs the two-agent demo with it, and `scripts/quickstart-two-agents.sh` is auth-aware (`MAIDAN_TOKEN`/`MAIDAN_WORKSPACE`). New `compose.quickstart.insecure.yaml` override demotes `AUTH_DISABLED` to a clearly-labelled local-only appendix. Quickstart image bumped `v277.0.0`→`v312.0.0` (re-pinned tarball SHAs; `maidan init` landed in `v279`). Both paths validated end-to-end; CI validates both compose files | `compose.quickstart.yaml`, `compose.quickstart.insecure.yaml`, `docker/Dockerfile.quickstart`, `scripts/quickstart-two-agents.sh`, `README.md`, `docs/Integration.md`, `.github/workflows/ci.yml` |
 
-## v312.0.0 — GitHub projector egress (arc closer)
+## [v312.0.0](https://github.com/david-engelmann/maidan/releases/tag/v312.0.0) — GitHub projector egress (arc closer)
 
 | Change | Where |
 |--------|-------|
 | GitHub egress: `GithubSender` trait + `GithubApiClient` (`POST /repos/{repo}/issues/{n}/comments`, bearer + `User-Agent` + `Accept: application/vnd.github+json`); `route_message_to_github` relays a linked-thread Maidan message to a GitHub issue/PR comment, skipping GitHub-sourced messages (`metadata.github`) for loop safety; hooked into the notification-router `MessagePosted` path beside the Slack egress. `AppState.github_sender`/`attach_github_sender`; `get_github_issue_link_by_thread` store lookup; `maidan_github_egress_total` metric. **Completes the bidirectional GitHub projector (310–312)** and the projector arc (Slack 307–309 + Git 310–312) | `crates/maidan-server/src/{github.rs,notification_router.rs,state.rs,main.rs}` |
 
-## v311.0.0 — GitHub projector: issue links + inbound routing
+## Cluster 311 (source record; no `v311.0.0` tag) — GitHub projector: issue links + inbound routing
 
 | Change | Where |
 |--------|-------|
 | `maidan_github_issue_links` table (pg 0052 / sqlite 0051; PK `(repo, issue_number)`) + `GithubIssueLink` model + store (both backends: link/get/by-thread/list/unlink) — maps a GitHub issue/PR → Maidan channel/thread/member. `github.rs` routes an inbound `issue_comment` on a linked issue into the mapped thread (`"{login}: {body}"`); skips `Bot` comments + stamps `metadata.github` for loop prevention | `crates/maidan-store/src/{postgres,sqlite}/github_links.rs`, `crates/maidan-server/src/github.rs`, `crates/maidan-types/src/models.rs` |
 
-## v310.0.0 — GitHub projector ingress foundation
+## [v310.0.0](https://github.com/david-engelmann/maidan/releases/tag/v310.0.0) — GitHub projector ingress foundation
 
 | Change | Where |
 |--------|-------|
 | Config-gated GitHub projector ingress (a projector, not a bot): `POST /integrations/github/events` (unauthed; GitHub signs `X-Hub-Signature-256`) — signature verification (reuses `webhooks::verify_signature`; GitHub's `sha256=hex(HMAC)` == Maidan's own scheme) + the `ping` setup handshake; `404` when unconfigured, `401` on bad signature. `GithubConfig::from_env` (`MAIDAN_GITHUB_*`) + `AppState.github`/`attach_github` | `crates/maidan-server/src/{github.rs,app.rs,state.rs,main.rs}` |
 
-## v309.0.0 — Slack projector egress (arc closer)
+## [v309.0.0](https://github.com/david-engelmann/maidan/releases/tag/v309.0.0) — Slack projector egress (arc closer)
 
 | Change | Where |
 |--------|-------|
 | Slack egress: `SlackSender` trait + `SlackWebClient` (`chat.postMessage`); `route_message_to_slack` relays a linked-thread Maidan message to Slack, skipping Slack-sourced messages (`metadata.slack`) for loop safety; hooked into the notification-router `MessagePosted` path. `AppState.slack_sender`/`attach_slack_sender`; `get_slack_channel_link_by_thread` store lookup; `maidan_slack_egress_total` metric. **Completes the bidirectional Slack projector (307–309)** | `crates/maidan-server/src/{slack.rs,notification_router.rs,state.rs,main.rs}`, `crates/maidan-store/src/{postgres,sqlite}/slack_links.rs` |
 
-## v308.0.0 — Slack projector: channel links + inbound routing
+## [v308.0.0](https://github.com/david-engelmann/maidan/releases/tag/v308.0.0) — Slack projector: channel links + inbound routing
 
 | Change | Where |
 |--------|-------|
 | `maidan_slack_channel_links` table (pg 0051 / sqlite 0050) + `SlackChannelLink` model + store (both backends: link/get/list/unlink) — maps a Slack channel → Maidan channel/thread/member. `slack.rs` routes an inbound Slack `message` in a linked channel into the mapped thread (`"{user}: {text}"` via `post_message_with_event`); skips bot/subtype + stamps `metadata.slack` for loop prevention | `crates/maidan-store/src/{postgres,sqlite}/slack_links.rs`, `crates/maidan-server/src/slack.rs`, `crates/maidan-types/src/models.rs` |
 
-## v307.0.0 — Slack projector ingress foundation
+## [v307.0.0](https://github.com/david-engelmann/maidan/releases/tag/v307.0.0) — Slack projector ingress foundation
 
 | Change | Where |
 |--------|-------|
 | Config-gated Slack projector ingress (a projector, not a bot — no LLM in Maidan): `POST /integrations/slack/events` (unauthed; Slack signs its own requests) — signature verification (`v0` HMAC-SHA256, ±5-min replay, constant-time) + the Events-API `url_verification` handshake; `404` when unconfigured, `401` on bad signature. `SlackConfig::from_env` (`MAIDAN_SLACK_*`) + `AppState.slack`/`attach_slack` | `crates/maidan-server/src/{slack.rs,app.rs,state.rs,main.rs}` |
 
-## v306.0.0 — mail DLQ ops (arc closer)
+## [v306.0.0](https://github.com/david-engelmann/maidan/releases/tag/v306.0.0) — mail DLQ ops (arc closer)
 
 | Change | Where |
 |--------|-------|
 | `GET /operator/mail/dead` + `POST /operator/mail/dead/{id}/requeue` (`token:admin`) — list dead-lettered notification emails (`DeadMail` view) + requeue one for retry (resets to pending, attempts cleared). Store `list_dead_mail`/`requeue_dead_mail` both backends. **Closes the durable-mail-retry arc (304→306)** | `crates/maidan-server/src/routes/mail_ops.rs`, `crates/maidan-store/src/{postgres,sqlite}/mail_outbox.rs`, `crates/maidan-types/src/models.rs`, `contracts/http-capability-map.json` |
 
-## v305.0.0 — mail-outbox worker + router enqueue
+## [v305.0.0](https://github.com/david-engelmann/maidan/releases/tag/v305.0.0) — mail-outbox worker + router enqueue
 
 | Change | Where |
 |--------|-------|
 | Notification email is durable: the router `enqueue_mail`s (after its suppression checks) instead of a best-effort inline send; a new `mail_worker` background loop drains the outbox with retry (exp backoff 30s→1h) + dead-lettering (8 attempts). Spawned when a transport is configured; tick via `MAIDAN_MAIL_WORKER_TICK_SECS` (default 5s). Multi-replica-safe. Metric outcomes `enqueued`/`sent`/`retry`/`dead` | `crates/maidan-server/src/{mail_worker.rs,notification_router.rs,main.rs}` |
 
-## v304.0.0 — durable mail outbox foundation
+## [v304.0.0](https://github.com/david-engelmann/maidan/releases/tag/v304.0.0) — durable mail outbox foundation
 
 | Change | Where |
 |--------|-------|
 | `maidan_mail_outbox` table (pg 0050 / sqlite 0049) + `MailOutbox`/`NewMailOutbox`/`MailOutboxId` + store (both backends): `enqueue_mail`, `claim_next_due_mail` (atomic leased claim — `FOR UPDATE SKIP LOCKED` / serialized tx; bumps attempts + leases forward), `mark_mail_delivered`, `mark_mail_failed` (reschedule or dead-letter), `count_dead_mail`. Zero-blast-radius foundation for the durable notification-email retry queue | `migrations/{postgres/0050,sqlite/0049}_mail_outbox.sql`, `crates/maidan-store/src/{postgres,sqlite}/mail_outbox.rs`, `crates/maidan-types/src/{models,ids}.rs` |
 
-## v303.0.0 — advertise MCP `2026-07-28` (arc closer)
+## [v303.0.0](https://github.com/david-engelmann/maidan/releases/tag/v303.0.0) — advertise MCP `2026-07-28` (arc closer)
 
 | Change | Where |
 |--------|-------|
 | MCP default flipped to `2026-07-28` (`DEFAULT_PROTOCOL_VERSION`); version-less clients negotiate it, explicit `2024-11-05` still honored. Federation card reports `preferred_protocol_version()`; MCP reference + crate doc describe 2026 (stateless + routing headers). **Closes the MCP `2026-07-28` arc (300–303)** | `crates/maidan-mcp/src/{server.rs,reference.rs,lib.rs}`, `crates/maidan-server/src/federation.rs` |
 | `Integration.md` + `Protocols.md` advertise `2026-07-28` (banner/transport table/how-to/decision tree/J-rows); J2 "temporary honesty" retired | `docs/Integration.md`, `docs/Protocols.md` |
 
-## v302.0.0 — MCP `2026-07-28` routing headers
+## [v302.0.0](https://github.com/david-engelmann/maidan/releases/tag/v302.0.0) — MCP `2026-07-28` routing headers
 
 | Change | Where |
 |--------|-------|
 | SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers on `POST /mcp` + `/mcp/streamable` — optional, but when present must match the body (`Mcp-Method`==method, `Mcp-Name`==tool/prompt name or resource uri) else `400`, so a gateway can route/authorize without parsing JSON (`validate_routing_headers`). Batches skip it; a stray `Mcp-Name` on an unnamed method is ignored | `crates/maidan-server/src/{mcp.rs,mcp_streamable.rs}` |
 
-## v301.0.0 — MCP `2026-07-28` stateless streamable core
+## [v301.0.0](https://github.com/david-engelmann/maidan/releases/tag/v301.0.0) — MCP `2026-07-28` stateless streamable core
 
 | Change | Where |
 |--------|-------|
 | `POST /mcp/streamable` serves a `2026-07-28` request statelessly — inline JSON-RPC, **no `Mcp-Session-Id` minted or required**, regardless of `Accept` (sessions removed in the revision; `is_stateless_request`/`STATELESS_PROTOCOL_VERSION`). The `2024-11-05` SSE-session path is unchanged; live-wait + server→client stay on `GET /mcp/stream`/WS/`wait_for_*` (J3.4). `POST /mcp` was already stateless | `crates/maidan-server/src/{mcp.rs,mcp_streamable.rs}` |
 
-## v300.0.0 — MCP `2026-07-28` version negotiation
+## [v300.0.0](https://github.com/david-engelmann/maidan/releases/tag/v300.0.0) — MCP `2026-07-28` version negotiation
 
 | Change | Where |
 |--------|-------|
 | MCP `initialize` + the `MCP-Protocol-Version` header now negotiate `2026-07-28` additively (`SUPPORTED_PROTOCOL_VERSIONS = ["2026-07-28","2024-11-05"]`); `preferred_protocol_version()` returns a new explicit `DEFAULT_PROTOCOL_VERSION` held at `2024-11-05` so version-less/older clients are unchanged. Opens the J3 arc; default-flip + advertising deferred until the stateless-core + routing headers land | `crates/maidan-mcp/src/server.rs` |
 
-## v299.0.0 — SDK interop CI
+## [v299.0.0](https://github.com/david-engelmann/maidan/releases/tag/v299.0.0) — SDK interop CI
 
 | Change | Where |
 |--------|-------|
 | Report-only `sdk-interop` CI job: boots a source-built server (SQLite, auth disabled) and runs all four SDK black-box suites against it (`scripts/sdk-test.sh` ts→py→go→rust; four toolchains, server build warmed once). `continue-on-error`, not required — proves the clients interop without blocking merges. Closes the SDK loop (294–299) | `.github/workflows/ci.yml` |
 
-## v298.0.0 — SDK release workflow
+## [v298.0.0](https://github.com/david-engelmann/maidan/releases/tag/v298.0.0) — SDK release workflow
 
 | Change | Where |
 |--------|-------|
 | Publish the four SDKs to their registries on per-language tags (`sdk-ts/py/rs/go-vX.Y.Z` → npm/PyPI/crates.io/`sdk/go/vX.Y.Z` re-tag); per-job version guard (tag must match manifest); auth via `NPM_TOKEN`/`PYPI_TOKEN`/`CRATES_TOKEN` repo secrets. All four verified publish-ready by local dry-run | `.github/workflows/sdk-release.yml`, `docs/SDK Release.md` |
 | Gitignore `release_secrets.txt` (never commit tokens) + `sdk/python/.gitignore`; npm `repository.url` polish | `.gitignore`, `sdk/python/.gitignore`, `sdk/typescript/package.json` |
 
-## v297.0.0 — Rust SDK (0.1.0), SDK arc finale
+## [v297.0.0](https://github.com/david-engelmann/maidan/releases/tag/v297.0.0) — Rust SDK (0.1.0), SDK arc finale
 
 | Change | Where |
 |--------|-------|
 | Fourth/final usable language client, to the frozen v1 contract; a **standalone crate** (no `maidan-*` dependency). Service-handle surface (`workspaces()`/`channels()`/`threads()`/`messages()`/`artifacts()`), `claim_next_thread`/`renew_claim`, `subscribe` + `wait_for_{result,mention,ready}`, `MaidanError` (status/body/retry_after, is_conflict/is_forbidden/is_rate_limited/is_transport), responses as `serde_json::Value`, `client.mcp_url` string. Small sync stack (`ureq`+`tungstenite`+`serde_json`; std has no HTTP/TLS). 0.1.0 | `sdk/rust/{Cargo.toml,src/lib.rs,src/subscribe.rs,README.md}` |
 | `cargo test` black-box suite (5/5: hero loop, claim-next, error surfacing, WS subscribe) via the Cluster-294 harness (`scripts/sdk-test.sh rust`); `clippy -D warnings` + `fmt` clean. **Completes the SDK arc (294–297): TS, Python, Go, Rust at 0.1.0** | `sdk/rust/tests/black_box.rs`, `scripts/sdk-test.sh` |
 
-## v296.0.0 — Go SDK (0.1.0)
+## [v296.0.0](https://github.com/david-engelmann/maidan/releases/tag/v296.0.0) — Go SDK (0.1.0)
 
 | Change | Where |
 |--------|-------|
 | Third usable language client, to the frozen v1 contract, **dependency-free (stdlib only)**: REST via `net/http`; `Subscribe` via a small hand-rolled RFC-6455 WebSocket client. Service-struct surface (`Workspaces`/`Channels`/`Threads`/`Messages`/`Artifacts`), `ClaimNextThread`/`RenewClaim`, `Subscribe` + `WaitFor{Result,Mention,Ready}`, `APIError` (Status/Body/RetryAfter, IsConflict/IsForbidden/IsRateLimited), `c.MCPURL` string. Responses as `maidan.M` (unknown fields ignored). 0.1.0 | `sdk/go/{client.go,ws.go,README.md}` |
 | `go test` black-box suite (hero loop, claim-next, error surfacing, WS subscribe) via the Cluster-294 harness (`scripts/sdk-test.sh go`); `go vet` + `gofmt` clean | `sdk/go/client_test.go`, `scripts/sdk-test.sh` |
 
-## v295.0.0 — Python SDK (0.1.0)
+## [v295.0.0](https://github.com/david-engelmann/maidan/releases/tag/v295.0.0) — Python SDK (0.1.0)
 
 | Change | Where |
 |--------|-------|
 | Second usable language client, to the frozen v1 contract, **dependency-free (stdlib only)**: REST via `urllib`; `subscribe` via a small hand-rolled RFC-6455 WebSocket client. snake_case surface (`workspaces`/`channels`/`threads`/`messages`/`artifacts`), `claim_next_thread`/`renew_claim`, `subscribe` + `wait_for_{result,mention,ready}`, `MaidanError` (status/body/retry_after, is_conflict/is_forbidden/is_rate_limited), `client.mcp_url` string. Bumped 0.0.1 → 0.1.0 | `sdk/python/{src/maidan/,pyproject.toml,README.md}` |
 | `pytest` black-box suite (5/5 pass: hero loop, claim-next, error surfacing, WS subscribe) run via the Cluster-294 harness (`scripts/sdk-test.sh python`) | `sdk/python/tests/test_client.py`, `scripts/sdk-test.sh` |
 
-## v294.0.0 — TypeScript SDK (0.1.0)
+## [v294.0.0](https://github.com/david-engelmann/maidan/releases/tag/v294.0.0) — TypeScript SDK (0.1.0)
 
 | Change | Where |
 |--------|-------|
 | First usable language client, to the frozen v1 contract: a dependency-free `Client` (REST + WebSocket) with namespaced methods (`workspaces`/`channels`/`threads`/`messages`/`artifacts`), `claimNextThread`/`renewClaim`, `subscribe` + `waitFor{Result,Mention,Ready}`, `MaidanError` (status/body/retryAfter, isConflict/isForbidden/isRateLimited), full `.d.ts` types (branded IDs), `client.mcpUrl` string. Bumped 0.0.1 → 0.1.0 | `sdk/typescript/{index.js,index.d.ts,package.json,README.md}` |
 | Language-agnostic SDK black-box test harness (build + boot SQLite server + run suite + teardown) + a `node --test` TS suite (5/5 pass: hero loop, claim-next, error surfacing, WS subscribe) | `scripts/sdk-test.sh`, `sdk/typescript/test.mjs` |
 
-## v289.0.0 — A2A interop conformance (compliance arc finale)
+## [v289.0.0](https://github.com/david-engelmann/maidan/releases/tag/v289.0.0) — A2A interop conformance (compliance arc finale)
 
 | Change | Where |
 |--------|-------|
 | A2A conformance client (`examples/a2a_interop.py`, httpx): validates the Agent Card §4.4.1 + JSON-RPC + REST bindings against the spec. Harness `scripts/a2a-interop.sh` (boot + run + teardown) + a report-only `a2a interop` CI job. Live-verified. **Completes the A2A v1.0 arc (282–289): all three transports + negotiation** | `examples/a2a_interop.py`, `scripts/a2a-interop.sh`, `.github/workflows/ci.yml`, `docs/Framework Integrations.md` |
 
-## v288.0.0 — A2A transport negotiation + configurable origin (compliance arc, part 7)
+## [v288.0.0](https://github.com/david-engelmann/maidan/releases/tag/v288.0.0) — A2A transport negotiation + configurable origin (compliance arc, part 7)
 
 | Change | Where |
 |--------|-------|
 | Agent Card advertises transports configurably (§5.2): `MAIDAN_A2A_PUBLIC_ORIGIN` → absolute HTTP interface URLs; `MAIDAN_A2A_GRPC_PUBLIC_ADDR` → a `GRPC` `AgentInterface`. Config in `AppState`, threaded through the well-known card + `GetExtendedAgentCard`. Default card unchanged. Production.md documents A2A deployment | `crates/maidan-server/src/{a2a_agent.rs,state.rs,main.rs}`, `docs/Production.md` |
 
-## v287.0.0 — A2A gRPC binding (compliance arc, part 6)
+## [v287.0.0](https://github.com/david-engelmann/maidan/releases/tag/v287.0.0) — A2A gRPC binding (compliance arc, part 6)
 
 | Change | Where |
 |--------|-------|
 | A2A gRPC binding (§10): tonic `A2AService` (GetTask/CancelTask/ListTasks) on a config-gated port (`MAIDAN_A2A_GRPC_ADDR`), thin adapters over the shared ops; auth from gRPC metadata. Vendored codegen (minimal self-contained proto → local `tonic-prost-build` → committed `generated.rs`, no build-time protoc). Off by default | `crates/maidan-server/src/a2a_grpc/{mod.rs,generated.rs}`, `crates/maidan-server/proto/a2a.proto`, `crates/maidan-server/src/main.rs`, `crates/maidan-server/Cargo.toml` |
 | deny.toml quarantines tonic-server's axum 0.8 duplicate (skip-tree `axum@0.8.9`) | `deny.toml` |
 
-## v286.0.0 — A2A HTTP+JSON/REST binding (compliance arc, part 5)
+## [v286.0.0](https://github.com/david-engelmann/maidan/releases/tag/v286.0.0) — A2A HTTP+JSON/REST binding (compliance arc, part 5)
 
 | Change | Where |
 |--------|-------|
 | A2A REST binding (§11): 9 request/response routes under `/a2a/v1` (`message:send`, `tasks`, `tasks/{id}`, `tasks/{id}:cancel`, push-config CRUD, `extendedAgentCard`) as thin adapters over the JSON-RPC ops (`rest_response` result/error→HTTP). Agent Card advertises the HTTP+JSON interface. Streaming REST deferred | `crates/maidan-server/src/{a2a_agent.rs,app.rs}`, `contracts/http-capability-map.json` |
 
-## v285.0.0 — A2A Agent Card §4.4.1 schema (compliance arc, part 4)
+## [v285.0.0](https://github.com/david-engelmann/maidan/releases/tag/v285.0.0) — A2A Agent Card §4.4.1 schema (compliance arc, part 4)
 
 | Change | Where |
 |--------|-------|
 | Agent Card (`/.well-known/agent-card.json` + `GetExtendedAgentCard`) is now the spec §4.4.1 `AgentCard`: `supportedInterfaces` (`{url, protocolBinding, protocolVersion}`), `capabilities` object, `skills`, `provider`, `defaultInput/OutputModes` — not a flat method list. `protocolVersion` is per-interface (`"1.0"`); URLs host-relative pending a configurable origin | `crates/maidan-server/src/a2a_agent.rs` |
 
-## v284.0.0 — A2A per-task push notification configs (compliance arc, part 3)
+## [v284.0.0](https://github.com/david-engelmann/maidan/releases/tag/v284.0.0) — A2A per-task push notification configs (compliance arc, part 3)
 
 | Change | Where |
 |--------|-------|
 | A2A push configs are now per-task with a stable `configId` (spec model), not one-per-workspace. New `maidan_a2a_task_push_configs` table + `create`/`get`/`list`/`delete` store methods both backends; delivery fans out to all a task's configs | `migrations/{postgres/0049,sqlite/0048}_a2a_task_push_configs.sql`, `crates/maidan-store/src/{store.rs,postgres/a2a.rs,sqlite/a2a.rs,postgres/mod.rs,sqlite/mod.rs}` |
 | `Create`/`Get`/`List`/`Delete` TaskPushNotificationConfig JSON-RPC ops (per-task, RBAC-checked via `ensure_task_workspace_access`); advertised in the Agent Card | `crates/maidan-a2a/src/protocol.rs`, `crates/maidan-server/src/a2a_agent.rs` |
 
-## v283.0.0 — A2A `ListTasks` + `GetExtendedAgentCard` (compliance arc, part 2)
+## [v283.0.0](https://github.com/david-engelmann/maidan/releases/tag/v283.0.0) — A2A `ListTasks` + `GetExtendedAgentCard` (compliance arc, part 2)
 
 | Change | Where |
 |--------|-------|
 | A2A `ListTasks` op: workspace-scoped task list, `contextId`/`pageSize` filters, per-channel RBAC-filtered (drops tasks whose context thread the caller can't read); new `Store::list_a2a_tasks` both backends. Single-page (status filter/pagination deferred) | `crates/maidan-a2a/src/protocol.rs`, `crates/maidan-store/src/{postgres,sqlite}/a2a.rs`, `crates/maidan-server/src/a2a_agent.rs` |
 | A2A `GetExtendedAgentCard` op (shared `agent_card_payload()`); both ops advertised in the Agent Card | `crates/maidan-server/src/a2a_agent.rs` |
 
-## v282.0.0 — A2A v1.0 method names (compliance arc, part 1)
+## [v282.0.0](https://github.com/david-engelmann/maidan/releases/tag/v282.0.0) — A2A v1.0 method names (compliance arc, part 1)
 
 | Change | Where |
 |--------|-------|
 | A2A JSON-RPC method strings canonicalized to the A2A v1.0 spec (§5.3 Method Mapping): `tasks/cancel`→`CancelTask`, `tasks/pushNotificationConfig/{set,get}`→`{Create,Get}TaskPushNotificationConfig`; dropped the non-spec `tasks/resubscribe` alias. `SendMessage`/`SendStreamingMessage`/`GetTask`/`SubscribeToTask` + `TASK_STATE_*` were already spec-correct. First step of the full multi-transport + TCK A2A arc | `crates/maidan-a2a/src/protocol.rs`, `crates/maidan-server/src/a2a_agent.rs`, `docs/Integration.md` |
 
-## v281.0.0 — Published benchmark methodology (launch-readiness P1)
+## [v281.0.0](https://github.com/david-engelmann/maidan/releases/tag/v281.0.0) — Published benchmark methodology (launch-readiness P1)
 
 | Change | Where |
 |--------|-------|
 | Post→observer realtime-propagation latency measurement (`post_to_observer_latency`): times producer-post → WebSocket-observer-receive, reading the event concurrently with the POST. Plus `docs/Benchmark.md` (published): named hardware/commit/backend, reproduction commands, honest caveats. Measured on Apple M3 Max / in-process SQLite: post→observer p50 0.71 ms/p99 1.00 ms; mixed throughput 1 586 ops/s (8 workers) / 666 ops/s (32, single-writer ceiling), 0 errors | `crates/maidan-server/tests/loadgen.rs`, `docs/Benchmark.md`, `book/src/SUMMARY.md`, `book/sync-docs.sh`, `README.md` |
 | Loadgen SQLite target now uses the shipped 1-connection default (was 16 → the write-contention deadlock Cluster 277 fixed) | `crates/maidan-server/tests/loadgen.rs` |
 
-## v280.0.0 — Framework integration recipes (launch-readiness P1)
+## [v280.0.0](https://github.com/david-engelmann/maidan/releases/tag/v280.0.0) — Framework integration recipes (launch-readiness P1)
 
 | Change | Where |
 |--------|-------|
 | Copy-paste, live-verified LangChain / AutoGen / REST recipes: point a framework at Maidan's MCP Streamable HTTP endpoint and load all 78 tools (LangChain `MultiServerMCPClient`, AutoGen `StreamableHttpServerParams`), or use the `httpx` REST client. Guide carries the endpoint/token contract, the `mcp>=1.9,<2` pin, and AutoGen's every-param-needs-a-`type` rule; verified against a live Maidan | `examples/`, `docs/Framework Integrations.md`, `book/src/SUMMARY.md`, `book/sync-docs.sh`, `README.md` |
 | Every MCP catalog tool parameter now declares a JSON-Schema `type` (`set_thread_result.result` was untyped → AutoGen's strict Pydantic converter rejected it) | `crates/maidan-mcp/src/tools/catalog.rs` |
 
-## v279.0.0 — `maidan init` production-safe bootstrap (launch-readiness P0)
+## [v279.0.0](https://github.com/david-engelmann/maidan/releases/tag/v279.0.0) — `maidan init` production-safe bootstrap (launch-readiness P0)
 
 | Change | Where |
 |--------|-------|
 | `maidan init` CLI: one-time first-admin bootstrap (workspace + admin member + all-capabilities token, printed once) through the store; runs migrations, refuses on an already-initialized database. Removes the bootstrap chicken-and-egg so production needs no `AUTH_DISABLED` or public bootstrap routes. New `capability::all()`; documented in Production.md; integration-tested | `crates/maidan-cli/src/main.rs`, `crates/maidan-auth/src/capability.rs`, `crates/maidan-cli/tests/init.rs`, `docs/Production.md` |
 
-## v278.0.0 — One-command quickstart (launch-readiness P0)
+## [v278.0.0](https://github.com/david-engelmann/maidan/releases/tag/v278.0.0) — One-command quickstart (launch-readiness P0)
 
 | Change | Where |
 |--------|-------|
 | `docker compose -f compose.quickstart.yaml up -d --build` + `scripts/quickstart-two-agents.sh` = clean machine → two agents collaborating, no Rust toolchain. Pinned, SHA-verified `v277.0.0` release binary on `ubuntu:24.04`, non-root, SQLite + localfs + loopback + dev auth-disabled ack; demo posts/reads/replies to show durable shared state. Built + run end-to-end locally; CI guards file validity (`compose config` + `bash -n`) | `docker/Dockerfile.quickstart`, `compose.quickstart.yaml`, `scripts/quickstart-two-agents.sh`, `README.md`, `.github/workflows/ci.yml` |
 
-## v277.0.0 — SQLite write-contention fix (launch-readiness P0)
+## [v277.0.0](https://github.com/david-engelmann/maidan/releases/tag/v277.0.0) — SQLite write-contention fix (launch-readiness P0)
 
 | Change | Where |
 |--------|-------|
 | SQLite no longer deadlocks on concurrent writes ("database is locked"). Root cause: single-writer SQLite + sqlx deferred `pool.begin()` on a multi-connection pool → read-then-write upgrade deadlock (`busy_timeout` can't resolve it; a harness showed ~90% of contended writes failing at 8 connections). Fix: SQLite backend defaults to 1 connection (`DEFAULT_SQLITE_MAX_CONNECTIONS`, override `MAIDAN_DB_MAX_CONNECTIONS`); Postgres unaffected. Regression guard `sqlite_write_contention` | `maidan-store/src/lib.rs`, `maidan-server/src/main.rs`, `maidan-store/tests/sqlite_write_contention.rs` |
 
-## v276.0.0 — Runtime version truthfulness (launch-readiness P0)
+## [v276.0.0](https://github.com/david-engelmann/maidan/releases/tag/v276.0.0) — Runtime version truthfulness (launch-readiness P0)
 
 | Change | Where |
 |--------|-------|
 | `/health` (and the binary/image) now report the release tag instead of `0.0.0`. The `MAIDAN_VERSION` override already existed; the release pipeline now sets it on every build path — native binaries (`release.yml`), the aarch64 cross build (`Cross.toml` passthrough), and the server image (`Dockerfile` `ARG`/`ENV` + `build-args`). New `build.rs` `rerun-if-env-changed=MAIDAN_VERSION` prevents a warm cache from shipping a stale version. Cargo `version` stays `0.0.0` (`publish = false`) | `crates/maidan-server/{build.rs,Dockerfile}`, `Cross.toml`, `.github/workflows/release.yml` |
 
-## v275.0.0 — The pitch (docs)
+## [v275.0.0](https://github.com/david-engelmann/maidan/releases/tag/v275.0.0) — The pitch (docs)
 
 | Change | Where |
 |--------|-------|
 | Final tagline + pitch — *"The operating layer for teams of AI agents"* + *"Run your agents as one coordinated team that works from a shared, durable memory and spends only the tokens it needs"* — threaded through README/Integration/Architecture/OpenAPI-description. Body: the gap (glue pile + token waste + lost work) → the combination that closes it (coordinate + durable record + targeted context + scoped access) → outcome (better work, fewer tokens). Access control first-class; em-dashes/AI-voice tells removed from the pitch + README first screen. Supersedes the 274 hook | `README.md`, `docs/{Integration,Architecture}.md`, `openapi/mod.rs` |
 
-## v274.0.0 — Launch positioning + review reconciliation (docs)
+## [v274.0.0](https://github.com/david-engelmann/maidan/releases/tag/v274.0.0) — Launch positioning + review reconciliation (docs)
 
 | Change | Where |
 |--------|-------|
 | New problem-first pitch off "Slack for agents" ("AI agents are brilliant and forgetful…") threaded through README/Integration/Architecture/OpenAPI-description; fixed the broken `AUTH_DISABLED` quickstart command (fails closed since 157); relabeled A2A as an experimental subset + "what Maidan is not"; refreshed Architecture baseline `v179`→`v273`; folded a verified external launch-readiness review into a new Open Work "Public-launch readiness" backlog (version-truthfulness, SQLite first-write lock, quickstart, `maidan init`, LangChain/AutoGen recipes+CI, benchmark, A2A v1.0 compliance, GitHub metadata) | `README.md`, `docs/{Integration,Architecture,Open Work}.md`, `openapi/mod.rs` |
 
-## v273.0.0 — Strategy-pack reconciliation (docs/governance)
+## [v273.0.0](https://github.com/david-engelmann/maidan/releases/tag/v273.0.0) — Strategy-pack reconciliation (docs/governance)
 
 | Change | Where |
 |--------|-------|
 | Committed a separate agent's 8-doc strategy pack (Handoff/Pre-Public Hardening/Path to Impressive/Expansion Bets/Launch/Promotion/Protocols/Providers) after a per-doc accuracy review; restored Open Work.md/Roadmap.md as the single canonical backlog (reverted the "Handoff.md is the backlog" redirect in CLAUDE.md/README) and folded the pack's genuinely-open items into a new "Post-272 forward work" section (MCP `2026-07-28` upgrade, durable mail retry queue, MCP example pack, SDKs, Slack/Git projectors, cleanup nits, launch). Fixed 2 mdbook linkcheck breakers, reframed the unregistered `maidan.world` domain as planned (not live), + same-day staleness. Docs-only | `docs/{Open Work,Roadmap,Handoff,README,Providers,Expansion Bets, …}.md`, `CLAUDE.md` |
 
-## v272.0.0 — Optional deferrals: search replica-reads metric (sweep closes)
+## [v272.0.0](https://github.com/david-engelmann/maidan/releases/tag/v272.0.0) — Optional deferrals: search replica-reads metric (sweep closes)
 
 | Change | Where |
 |--------|-------|
 | `maidan_search_replica_reads_total{outcome}` — the search-side twin of `maidan_replica_reads_total`. `PostgresSearch` gets a metrics-agnostic `SearchReadMetrics` incremented in `read_pool` (replica-only); `main.rs` captures the handle onto `AppState`, `metrics.rs` delta-syncs it. No separate lag gauge (store's poller covers the shared replica). **Closes the optional-deferrals sweep (267–272) + the LSN read-replica program end-to-end** | `maidan-search/src/postgres.rs`, `maidan-server/src/{state.rs,main.rs,metrics.rs}`, `docs/Production.md` |
 
-## v271.0.0 — Optional deferrals: search token-aware read routing
+## [v271.0.0](https://github.com/david-engelmann/maidan/releases/tag/v271.0.0) — Optional deferrals: search token-aware read routing
 
 | Change | Where |
 |--------|-------|
 | `PostgresSearch` routes reads to a replica once caught up to the request's `Maidan-Consistency-Token` — own reader pool + 200 ms replay poller + `read_pool()`; single-sourced via new `maidan_store::postgres::replica_route` (reads the shared `READ_CONSISTENCY` task-local). Lexical + semantic reads route (semantic resolve + query share one pool); embedding writes/DDL/reindex stay primary. Wired at boot on `MAIDAN_DB_REPLICA_URL`; validated vs real streaming replication (`#[ignore]`d `replica_routing`) | `maidan-search/src/postgres.rs`, `maidan-store/src/postgres/mod.rs`, `maidan-server/src/main.rs`, `docs/Production.md` |
 
-## v270.0.0 — Optional deferrals: workspace import (REST)
+## [v270.0.0](https://github.com/david-engelmann/maidan/releases/tag/v270.0.0) — Optional deferrals: workspace import (REST)
 
 | Change | Where |
 |--------|-------|
 | `POST /workspaces/import` (`token:admin`) — write-side inverse of the 187 export over the 269 store. Body = the export bundle (`WorkspaceExport` now `Deserialize`). `?mode=new` (default) remaps every id → fresh workspace; `?mode=restore` preserves ids (409 if it exists, unless `&force=true` erases first). Pure `import::remap` (fresh ids + full FK rewrite) + `import::flatten` unit-tested; route proven e2e | `maidan-server/src/routes/workspace.rs`, `src/import.rs`, `src/export.rs`, `src/dto.rs`, `src/app.rs`, `openapi/`, `contracts/http-capability-map.json` |
 
-## v269.0.0 — Optional deferrals: workspace import (store)
+## [v269.0.0](https://github.com/david-engelmann/maidan/releases/tag/v269.0.0) — Optional deferrals: workspace import (store)
 
 | Change | Where |
 |--------|-------|
 | `WorkspaceImport` bundle type (deserializable mirror of the 187 `WorkspaceExport`) + `Store::import_workspace` — one transaction, all-or-nothing, full-column inserts preserving explicit ids/state/timestamps (an exported bundle round-trips faithfully). Both backends (pg JSONB / sqlite JSON TEXT). Zero-blast-radius store foundation; mode flag + `token:admin` REST route + 409 guard land in 270 | `maidan-types/src/models.rs`, `maidan-store/src/store.rs`, `maidan-store/src/{postgres,sqlite}/import.rs` |
 
-## v268.0.0 — Optional deferrals: MCP email-address tools
+## [v268.0.0](https://github.com/david-engelmann/maidan/releases/tag/v268.0.0) — Optional deferrals: MCP email-address tools
 
 | Change | Where |
 |--------|-------|
 | `set_member_email` / `get_member_email` / `delete_member_email` MCP tools (`workspace:read`, member-scoped) — MCP twins of the 250 REST over the 248 store; `set` light `@` check → `InvalidParams`, `get` → address or `null`, `delete` → `{deleted}`. No new store logic | `maidan-mcp/src/tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v267.0.0 — Optional deferrals: A2A egress content → parts
+## [v267.0.0](https://github.com/david-engelmann/maidan/releases/tag/v267.0.0) — Optional deferrals: A2A egress content → parts
 
 | Change | Where |
 |--------|-------|
 | `message_parts_from_content` (egress inverse of `message_content`) + the A2A agent renders its outbound message from the stored message's canonical content (per-block text projection, mirroring `derive_body`) instead of echoing the request. Closes the federation egress deferral | `maidan-a2a/src/protocol.rs`, `maidan-server/src/a2a_agent.rs` |
 
-## v266.0.0 — Program D (read-replica arc closer): lag gauge + docs
+## [v266.0.0](https://github.com/david-engelmann/maidan/releases/tag/v266.0.0) — Program D (read-replica arc closer): lag gauge + docs
 
 | Change | Where |
 |--------|-------|
 | `maidan_replica_lag_bytes` gauge (poller samples the primary write LSN too → `current − replay`) + a Production.md "Read replicas" section (config, `Maidan-Consistency-Token` contract, routing policy, metrics, test harness). **Closes the LSN read-replica arc (261–266) and Program D** | `maidan-store/src/postgres/mod.rs`, `maidan-server/src/metrics.rs`, `docs/Production.md` |
 
-## v265.0.0 — Program D (read-replica arc): remaining read families + routing metric
+## [v265.0.0](https://github.com/david-engelmann/maidan/releases/tag/v265.0.0) — Program D (read-replica arc): remaining read families + routing metric
 
 | Change | Where |
 |--------|-------|
 | 28 more content/collaboration read delegations routed to `read_pool()` (skills/results/notifications/follows/emails/last-seen/channel-members/dm/group-dm/transitions/queue-depth/schedules/assigned/deps/edits/mentions/inbox/votes/reactions/usage), completing the member-facing read surface. Auth + control-plane/config reads deliberately stay on the primary. `maidan_replica_reads_total{outcome}` via a store-side `ReadRoutingMetrics`. Validated vs real replication | `maidan-store/src/postgres/mod.rs`, `maidan-server/src/{state,main,metrics}.rs` |
 
-## v264.0.0 — Program D (read-replica arc): token ingestion + read routing
+## [v264.0.0](https://github.com/david-engelmann/maidan/releases/tag/v264.0.0) — Program D (read-replica arc): token ingestion + read routing
 
 | Change | Where |
 |--------|-------|
 | `READ_CONSISTENCY` task-local + `with_read_consistency` (GET/HEAD-only scope) + `read_pool()`/pure `route_decision` + a background replay-LSN poller (cached in an atomic) + entity-read delegations routed to the replica once it has replayed past the client's token (else primary). Mutation/background reads stay on the primary. Validated vs real streaming replication; inert without a replica | `maidan-store/src/postgres/mod.rs`, `maidan-server/src/consistency.rs` |
 
-## v263.0.0 — Program D (read-replica arc): consistency token on writes
+## [v263.0.0](https://github.com/david-engelmann/maidan/releases/tag/v263.0.0) — Program D (read-replica arc): consistency token on writes
 
 | Change | Where |
 |--------|-------|
 | `Store::write_lsn()` (Postgres `pg_current_wal_lsn()`, SQLite `None`) + `AppState.read_replica_enabled` + `consistency::middleware` stamping `Maidan-Consistency-Token: <lsn>` on successful mutations when a replica is configured (captured after the handler — safely over-approximating; gated on the replica so no-replica deploys pay nothing). The write half of the causality contract — 264 routes on it | `store.rs`, `postgres/mod.rs`, `sqlite/mod.rs`, `state.rs`, `main.rs`, `consistency.rs`, `app.rs` |
 
-## v262.0.0 — Program D (read-replica arc): reader-pool split (inert)
+## [v262.0.0](https://github.com/david-engelmann/maidan/releases/tag/v262.0.0) — Program D (read-replica arc): reader-pool split (inert)
 
 | Change | Where |
 |--------|-------|
 | `PostgresStore { pool, reader }` + `with_replica_reader` (`new` defaults reader=primary, no ripple to ~62 call sites); `MAIDAN_DB_REPLICA_URL` config + boot wiring (connects a real reader pool, fail-fast on a bad URL, same connection setup as primary). Reads still on the primary — the token-aware selector is a later cluster. Unset → zero behaviour change | `maidan-store/src/postgres/mod.rs`, `maidan-server/src/config.rs`, `main.rs` |
 
-## v261.0.0 — Program D (read-replica arc): LSN primitives + replication harness
+## [v261.0.0](https://github.com/david-engelmann/maidan/releases/tag/v261.0.0) — Program D (read-replica arc): LSN primitives + replication harness
 
 | Change | Where |
 |--------|-------|
 | `Lsn` causality-token type (`u64`-backed, `pg_lsn` parse/display, numeric `Ord`) + CI unit tests; store `current_wal_lsn`/`replica_replay_lsn`/`replica_caught_up`; `scripts/replica-harness.sh` (local pgvector primary + streaming standby); an `#[ignore]`d test validating the helpers against real replication. Validate-first keystone for LSN read-replica routing — inert (no read routed yet) | `maidan-types/src/lsn.rs`, `maidan-store/src/postgres/replication.rs`, `scripts/replica-harness.sh`, `maidan-store/tests/replication.rs` |
 
-## v260.0.0 — Program D: backup / restore + DR runbook
+## [v260.0.0](https://github.com/david-engelmann/maidan/releases/tag/v260.0.0) — Program D: backup / restore + DR runbook
 
 | Change | Where |
 |--------|-------|
 | `scripts/backup.sh` (`pg_dump -Fc` + tar of the localfs artifact root + manifest) + `scripts/restore.sh` (`pg_restore`, refuses a non-empty target without `--force`) + a "Backup & disaster recovery" runbook (coverage, out-of-band secrets, S3-is-durable, RPO/RTO, recovery steps). Operator tools like `loadgen`/`chaos` | `scripts/backup.sh`, `scripts/restore.sh`, `docs/Production.md` |
 
-## v259.0.0 — Program D: chaos / fault-injection harness
+## [v259.0.0](https://github.com/david-engelmann/maidan/releases/tag/v259.0.0) — Program D: chaos / fault-injection harness
 
 | Change | Where |
 |--------|-------|
 | An `#[ignore]`d chaos soak that publishes under load while killing the `LISTEN` backend (`pg_terminate_backend`), asserting no published event is lost — validates the Cluster-258 floor end-to-end (measured: 40/40 delivered across 5 kills). Pure `fault_due` cadence helper unit-tested in CI; the soak is a manual tool like `loadgen` (Docker + timing-sensitive). `scripts/chaos.sh` runner | `crates/maidan-bus/tests/chaos.rs`, `scripts/chaos.sh` |
 
-## v258.0.0 — Program D: event-bus self-healing NOTIFY floor
+## [v258.0.0](https://github.com/david-engelmann/maidan/releases/tag/v258.0.0) — Program D: event-bus self-healing NOTIFY floor
 
 | Change | Where |
 |--------|-------|
 | The PG `LISTEN`/`NOTIFY` bus tracks a high-water `log_id` and back-fills the missed range from the log on a gap (pointer id > `high_water+1`) or reconnect (drain to head) — the optimistic local broadcast no longer silently drops events appended during a `LISTEN` disconnect. Always hydrates the pointer's own id (no skip on `<= high_water`, so a concurrent late lower id isn't lost); batched, best-effort. `list_after_global`/`max_event_id`; `Backfilled` stat + `{result="backfilled"}` metric; `backfill()` heal hook | `maidan-bus/src/postgres.rs`, `maidan-store/src/postgres/events.rs`, `maidan-bus/src/hydrate_stats.rs`, `maidan-server/src/metrics.rs` |
 
-## v257.0.0 — Program C (Arc I): delivery-mode MCP tools
+## [v257.0.0](https://github.com/david-engelmann/maidan/releases/tag/v257.0.0) — Program C (Arc I): delivery-mode MCP tools
 
 | Change | Where |
 |--------|-------|
 | `set_delivery_mode` / `get_delivery_mode` MCP tools (`workspace:read`, member-scoped, no gate arm) — the twins of the 256 REST; `set` parses snake_case `immediate`/`digest` → `InvalidParams` on unknown, both return `{mode}`. Closes the core of Arc I (digest reachable over REST + MCP) | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v256.0.0 — Program C (Arc I): delivery-mode REST
+## [v256.0.0](https://github.com/david-engelmann/maidan/releases/tag/v256.0.0) — Program C (Arc I): delivery-mode REST
 
 | Change | Where |
 |--------|-------|
 | `PUT`/`GET /members/:id/delivery-mode` — set / read a member's email delivery mode (`immediate` or `digest`; `immediate` default), `workspace:read` + self-only. Request DTO wraps `EmailDeliveryMode` so an unknown mode is a `400`. Full new-route preflight | `routes/member.rs`, `dto.rs`, `app.rs`, `openapi/*`, `contracts/http-capability-map.json` |
 
-## v255.0.0 — Program C (Arc I): digest sweeper + router honors digest mode
+## [v255.0.0](https://github.com/david-engelmann/maidan/releases/tag/v255.0.0) — Program C (Arc I): digest sweeper + router honors digest mode
 
 | Change | Where |
 |--------|-------|
 | Router skips the immediate email for a `Digest`-mode member (metered `skipped_digest`) | `notification_router.rs` |
 | Opt-in digest sweeper (`MAIDAN_DIGEST_TICK_SECS`): drains `members_due_for_digest`, emails an unread-count rollup, advances `set_last_digest_at` on success (at-least-once, self-healing); no-op without a transport; not single-flighted (low-harm duplicate — run on one replica for exactly-once) | `digest.rs`, `main.rs`, `lib.rs`, `metrics.rs` |
 
-## v254.0.0 — Program C (Arc I): email digest data model (store foundation)
+## [v254.0.0](https://github.com/david-engelmann/maidan/releases/tag/v254.0.0) — Program C (Arc I): email digest data model (store foundation)
 
 | Change | Where |
 |--------|-------|
 | `EmailDeliveryMode` (`Immediate` default / `Digest`) + `DigestDue` | `maidan-types/src/models.rs` |
 | `maidan_member_delivery_prefs` + `maidan_member_digest_state` tables (pg 0048 / sqlite 0047) + store `set/get_delivery_mode` (default `Immediate`), `set_last_digest_at` (watermark), `members_due_for_digest` (digest-mode members w/ address + unread-since-last-digest, address inline), both backends. The alternative-mode digest data model (immediate OR digest, not both). **Foundation** — unwired | `migrations/*`, `store/*/email_digest.rs` |
 
-## v253.0.0 — Program C (Arc I): presence-aware email routing
+## [v253.0.0](https://github.com/david-engelmann/maidan/releases/tag/v253.0.0) — Program C (Arc I): presence-aware email routing
 
 | Change | Where |
 |--------|-------|
 | WS `/ws/subscribe` touches `last_seen` on presence registration (best-effort, spawned — never blocks the connect) | `ws.rs` |
 | `deliver_notification_email` skips the send when the recipient was seen within `MAIDAN_EMAIL_PRESENCE_WINDOW_SECS` (opt-in; unset/0 = send as before); `maidan_email_delivered_total{outcome="skipped_present"}`; fail-open on a read error. Wires the Cluster-252 store end-to-end | `notification_router.rs`, `metrics.rs` |
 
-## v252.0.0 — Program C (Arc I): durable member last-seen (store foundation)
+## [v252.0.0](https://github.com/david-engelmann/maidan/releases/tag/v252.0.0) — Program C (Arc I): durable member last-seen (store foundation)
 
 | Change | Where |
 |--------|-------|
 | `maidan_member_last_seen` table (pg 0047 / sqlite 0046; `member_id` PK, `last_seen_at`) + store `touch` (upsert `now()`) / `get` → `Option<DateTime<Utc>>`, both backends. The durable presence signal for presence-aware email routing (Cluster 253) — presence is in-memory only today. A separate table (not a member column) to avoid the row ripple; no model type. **Foundation** — unwired | `migrations/*`, `store/*/member_last_seen.rs` |
 
-## v251.0.0 — Program C (Arc I): /ui notification center
+## [v251.0.0](https://github.com/david-engelmann/maidan/releases/tag/v251.0.0) — Program C (Arc I): /ui notification center
 
 | Change | Where |
 |--------|-------|
 | A "Notifications" tab in the `/ui` (list + unread badge + mark-read/read-all + unread-only filter) over four new `/ui/api/members/:id/notifications*` routes reusing the Cluster-239 handlers under the session middleware. `sessionMemberId` = self; no capability-map/OpenAPI churn (`/ui/api` curated subset); `ui_js_contract` green | `app.rs`, `static/index.html` |
 
-## v250.0.0 — Program C (Arc I): member delivery-email REST
+## [v250.0.0](https://github.com/david-engelmann/maidan/releases/tag/v250.0.0) — Program C (Arc I): member delivery-email REST
 
 | Change | Where |
 |--------|-------|
 | `PUT`/`GET`/`DELETE /members/:id/email` — set (opt-in) / read (`404` unset) / clear (opt-out), `workspace:read` + self-only. Makes email opt-in usable over HTTP; light `@` check at the edge, full validation at the transport | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
 
-## v249.0.0 — Program C (Arc I): email delivery wired into the router
+## [v249.0.0](https://github.com/david-engelmann/maidan/releases/tag/v249.0.0) — Program C (Arc I): email delivery wired into the router
 
 | Change | Where |
 |--------|-------|
 | The notification router now delivers a per-recipient notification by email to members with an address (Cluster 248), when an SMTP transport is configured (247). `AppState.mail` + `attach_mail`, built from `SmtpConfig::from_env` in `main.rs`; spawned best-effort (never blocks routing), `maidan_email_delivered_total{outcome}` metric. Presence of an address = opt-in | `state.rs`, `main.rs`, `notification_router.rs`, `metrics.rs` |
 
-## v248.0.0 — Program C (Arc I): member delivery-email store
+## [v248.0.0](https://github.com/david-engelmann/maidan/releases/tag/v248.0.0) — Program C (Arc I): member delivery-email store
 
 | Change | Where |
 |--------|-------|
 | `maidan_member_emails` table (pg 0046 / sqlite 0045; `member_id` PK, `email`, one per member) + `MemberEmail` + store `set`/`get`/`delete`, both backends. Where a member's email notifications go — the recipient-address prerequisite for the SMTP transport. A separate table (not a member column) to avoid the row ripple. **Foundation** — no delivery wiring yet | `migrations/*`, `models.rs`, `store/*/member_emails.rs` |
 
-## v247.0.0 — Program C (Arc I): email/SMTP transport foundation
+## [v247.0.0](https://github.com/david-engelmann/maidan/releases/tag/v247.0.0) — Program C (Arc I): email/SMTP transport foundation
 
 | Change | Where |
 |--------|-------|
 | `MailTransport` trait + `lettre`-backed `SmtpTransport` + `SmtpConfig::from_env` (`MAIDAN_SMTP_*`) — the first off-platform delivery transport, config-gated (no config → no mailer → nothing sent) and unwired. `lettre` on the existing rustls+tokio stack; `cargo deny` green with `0BSD` allowed | `mail.rs`, `lib.rs`, `Cargo.toml`, `deny.toml` |
 
-## v246.0.0 — Program C (Arc H complete): follows MCP tools
+## [v246.0.0](https://github.com/david-engelmann/maidan/releases/tag/v246.0.0) — Program C (Arc H complete): follows MCP tools
 
 | Change | Where |
 |--------|-------|
 | MCP `follow_channel` / `unfollow_channel` / `list_channel_follows` + the thread triple — the twins of Cluster 245's REST, over the shared store (`workspace:read`, member-scoped; `follow_*` gate on target access). **Completes Arc H** (mute 241–243, follows 244–246) over REST + MCP | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v245.0.0 — Program C (Arc H): follows-aware router + follow REST
+## [v245.0.0](https://github.com/david-engelmann/maidan/releases/tag/v245.0.0) — Program C (Arc H): follows-aware router + follow REST
 
 | Change | Where |
 |--------|-------|
 | The router fans `MessagePosted` → channel + thread followers (minus the author, mute-aware) via a shared `notify` helper — following delivers new activity to the inbox | `notification_router.rs` |
 | `POST`/`GET /members/:id/channel-follows` + `DELETE …/:cid` and the thread triple — follow/unfollow/list, `workspace:read` + self-only, follow gated on target access | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
 
-## v244.0.0 — Program C (Arc H): follows/subscription foundation
+## [v244.0.0](https://github.com/david-engelmann/maidan/releases/tag/v244.0.0) — Program C (Arc H): follows/subscription foundation
 
 | Change | Where |
 |--------|-------|
 | `maidan_channel_follows` + `maidan_thread_follows` tables (pg 0045 / sqlite 0044; PK `(member, target)`, reverse index; presence = following) + `ChannelFollow`/`ThreadFollow` + store follow/unfollow/list/`*_followers` (the router's fan-out set), both backends. A member follows a channel or thread to be notified of activity there. **Zero-blast-radius foundation** — no router change/routes yet | `migrations/*`, `models.rs`, `store/*/follows.rs` |
 
-## v243.0.0 — Program C (Arc H): mute-preference MCP tools
+## [v243.0.0](https://github.com/david-engelmann/maidan/releases/tag/v243.0.0) — Program C (Arc H): mute-preference MCP tools
 
 | Change | Where |
 |--------|-------|
 | MCP `set_notification_pref` (upsert a per-`EventKind` mute; `kind` snake_case string) / `list_notification_prefs` — the twins of Cluster 242's REST, over the shared store (`workspace:read`, member-scoped). The mute half of Arc H is now complete over REST + MCP | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v242.0.0 — Program C (Arc H): mute-aware router + preferences REST
+## [v242.0.0](https://github.com/david-engelmann/maidan/releases/tag/v242.0.0) — Program C (Arc H): mute-aware router + preferences REST
 
 | Change | Where |
 |--------|-------|
 | The notification router skips a muted `(member, kind)` (`route_event` consults `is_notification_muted`; `maidan_notifications_suppressed_total{reason}` metric) | `notification_router.rs`, `metrics.rs` |
 | `PUT`/`GET /members/:id/notification-prefs` — set (upsert) / list a member's mutes; `workspace:read`, self-only for sessions (bearer act-as-any) | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
 
-## v241.0.0 — Program C (Arc H): notification mute-preferences foundation
+## [v241.0.0](https://github.com/david-engelmann/maidan/releases/tag/v241.0.0) — Program C (Arc H): notification mute-preferences foundation
 
 | Change | Where |
 |--------|-------|
 | `maidan_notification_prefs` table (pg 0044 / sqlite 0043; PK `(member_id, kind)`, `muted` flag; one row per member × `EventKind`, absent = notify) + `NotificationPref` + store `set_notification_pref` (upsert) / `list_notification_prefs` / `is_notification_muted` (router query), both backends. The routing brain the notification router will consult. **Zero-blast-radius foundation** — no router change/routes yet; opens Arc H | `migrations/*`, `models.rs`, `store/*/notification_prefs.rs` |
 
-## v240.0.0 — Program C (Arc G complete): MCP inbox tools + `wait_for_notification`
+## [v240.0.0](https://github.com/david-engelmann/maidan/releases/tag/v240.0.0) — Program C (Arc G complete): MCP inbox tools + `wait_for_notification`
 
 | Change | Where |
 |--------|-------|
 | MCP `list_notifications` / `get_unread_count` / `mark_notification_read` (`workspace:read`) — the twins of Cluster 239's REST, over the shared store | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 | MCP `wait_for_notification` — block on the member's next notification-worthy event (the general form of `wait_for_mention`; shared `wait_for_member_event` helper). **Closes Arc G** (ledger 237 → router 238 → REST 239 → MCP 240) | `tools/member.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v239.0.0 — Program C (Arc G): REST unified inbox
+## [v239.0.0](https://github.com/david-engelmann/maidan/releases/tag/v239.0.0) — Program C (Arc G): REST unified inbox
 
 | Change | Where |
 |--------|-------|
 | `GET /members/:id/notifications` (list; `unread_only`, `limit`) + `GET …/unread-count` + `POST …/:nid/read` (returns new count) + `POST …/read-all` (`{cleared}`) — all `workspace:read`, **self-only** for sessions (bearer act-as-any). The read side of the Cluster-237 ledger | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
 | `mark_notification_read` recipient-scoped in the store (`(member_id, id)`) — safe-by-construction; `404` for a foreign/unknown id | `store/*/notifications.rs`, `store.rs` |
 
-## v238.0.0 — Program C (Arc G): notification router
+## [v238.0.0](https://github.com/david-engelmann/maidan/releases/tag/v238.0.0) — Program C (Arc G): notification router
 
 | Change | Where |
 |--------|-------|
 | `NotificationRouter` — an always-on, reconnecting event-bus consumer (spawned in `main.rs`, drained on shutdown) that resolves an event to the members it concerns and writes per-recipient rows. Routes `MentionRecorded` → the mentioned member (channel resolved from the thread) | `notification_router.rs`, `lib.rs`, `main.rs` |
 | `create_notification_if_absent` (`ON CONFLICT DO NOTHING`) + `UNIQUE(member_id, source_log_id)` index (pg 0043 / sqlite 0042) — cross-replica/replay-idempotent writes; `maidan_notifications_created_total{kind}` metric | `store/*/notifications.rs`, `migrations/*`, `metrics.rs` |
 
-## v237.0.0 — Program C (Arc G): per-recipient notification ledger
+## [v237.0.0](https://github.com/david-engelmann/maidan/releases/tag/v237.0.0) — Program C (Arc G): per-recipient notification ledger
 
 | Change | Where |
 |--------|-------|
 | `maidan_notifications` table (pg 0042 / sqlite 0041; one row per recipient × source event — `member_id`, `kind`=`EventKind`, `source_log_id` (no FK), denormalized `channel/thread/message/actor`, `read_at` NULL=unread) + `Notification`/`NewNotification` + store CRUD (create / list / mark-read / mark-all / unread-count), both backends. The per-recipient layer a mention's shared row + single cursor can't express. **Zero-blast-radius foundation** — no router/routes yet; opens Program C | `migrations/*`, `models.rs`, `store/*/notifications.rs` |
 
-## v236.0.0 — Program B (Arc F complete, Program B complete): structured-results MCP + `wait_for_result`
+## [v236.0.0](https://github.com/david-engelmann/maidan/releases/tag/v236.0.0) — Program B (Arc F complete, Program B complete): structured-results MCP + `wait_for_result`
 
 | Change | Where |
 |--------|-------|
@@ -1439,398 +1478,398 @@ Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-cra
 | MCP `wait_for_result` (`workspace:read`) — block on a thread's `ThreadResultSet`, return the result payload (or `null` on timeout); the coordination wait, the `wait_for_ready` analogue | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 | MCP `get_dependency_results` (`workspace:read`) — a parent aggregates its dependencies' outputs as `[{thread_id, result}]` (`null` for pending), RBAC-filtered. **Closes Program B** | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v235.0.0 — Program B (Arc F): structured-results REST + `ThreadResultSet` event
+## [v235.0.0](https://github.com/david-engelmann/maidan/releases/tag/v235.0.0) — Program B (Arc F): structured-results REST + `ThreadResultSet` event
 
 | Change | Where |
 |--------|-------|
 | `PUT /threads/:id/result` (`thread:transition`) upserts a task's structured JSON result + `GET /threads/:id/result` (`workspace:read`) reads it back (`404` until produced), both under DM-participant-aware thread RBAC. Wires the Cluster-234 store foundation | `routes/thread.rs`, `dto.rs`, `app.rs`, `openapi/*`, `contracts/http-capability-map.json` |
 | `ThreadResultSet` event on set — a "go fetch" pointer (`{workspace, channel, thread, produced_by}`, no payload inline), observable on WS + MCP-SSE like `ThreadReady`; locally-derived → **non-federatable** (allowlist excludes it with `ArtifactUpserted` + `ThreadReady`) | `maidan-types/src/events.rs`, `federation.rs`, `contracts/event-kinds.json` |
 
-## v234.0.0 — Program B (Arc F): structured-results foundation
+## [v234.0.0](https://github.com/david-engelmann/maidan/releases/tag/v234.0.0) — Program B (Arc F): structured-results foundation
 
 | Change | Where |
 |--------|-------|
 | `maidan_thread_results` table (pg 0041 / sqlite 0040; `thread_id` PK, `result` JSONB/TEXT, `produced_by`, `produced_at`) + `ThreadResult` + `Store::set_thread_result` (upsert) / `get_thread_result`, both backends. A task's structured output; a requester or parent task reads it back. **Zero-blast-radius foundation** — no worker/routes yet | `migrations/*`, `models.rs`, `store/*/thread_results.rs` |
 
-## v233.0.0 — Program B (Arc E complete): capability-registry MCP tools
+## [v233.0.0](https://github.com/david-engelmann/maidan/releases/tag/v233.0.0) — Program B (Arc E complete): capability-registry MCP tools
 
 | Change | Where |
 |--------|-------|
 | MCP `add_member_skill` / `list_member_skills` (`workspace:write`/`read`) + `add_thread_required_skill` / `list_thread_required_skills` (`thread:transition` + channel access / `workspace:read`) over the shared store — the MCP twin of Cluster 232's REST. **Arc E complete**: skill routing surfaced over REST + MCP, enforced in `claim_next` | `tools/skill.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v232.0.0 — Program B (Arc E): capability-registry REST
+## [v232.0.0](https://github.com/david-engelmann/maidan/releases/tag/v232.0.0) — Program B (Arc E): capability-registry REST
 
 | Change | Where |
 |--------|-------|
 | Member-skill CRUD (`POST`/`GET /members/:id/skills`, `DELETE …/:skill`; `workspace:write`/`workspace:read`) + thread required-skill CRUD (`POST`/`GET /threads/:id/required-skills`, `DELETE …/:skill`; `thread:transition` + thread access / `workspace:read`). Drives the Cluster-231 skill routing from outside the store. Full new-route preflight (6 routes) | `routes/skills.rs`, `app.rs`, `openapi/*`, `contracts/http-capability-map.json` |
 
-## v231.0.0 — Program B (Arc E): skill-aware claim
+## [v231.0.0](https://github.com/david-engelmann/maidan/releases/tag/v231.0.0) — Program B (Arc E): skill-aware claim
 
 | Change | Where |
 |--------|-------|
 | `maidan_thread_required_skills` table (pg 0040 / sqlite 0039) + `ThreadRequiredSkill` + store CRUD, **and** `claim_next`/`claim_next_with_event` skip a task whose required skills the claimer lacks (a `NOT EXISTS` clause beside the readiness one; 4 SQL sites, both backends). Set containment — no-requirement tasks claimable by anyone. The existing claim route + `claim_next_thread` MCP become skill-routing for free | `migrations/*`, `models.rs`, `store/*/thread_skills.rs`, `store/*/threads.rs` |
 
-## v230.0.0 — Program B (Arc E): capability-registry foundation
+## [v230.0.0](https://github.com/david-engelmann/maidan/releases/tag/v230.0.0) — Program B (Arc E): capability-registry foundation
 
 | Change | Where |
 |--------|-------|
 | `maidan_member_skills` table (pg 0039 / sqlite 0038) + `MemberSkill` + 3 store methods (add idempotent / remove conditional / list), both backends. Free-form skill tags an agent declares; skill routing (231+) matches a task's required skills by set containment. **Zero-blast-radius foundation** — no worker/routes yet (159/217/226 pattern) | `migrations/*`, `models.rs`, `store/*/member_skills.rs` |
 
-## v229.0.0 — Program B: task-schedule MCP tools
+## [v229.0.0](https://github.com/david-engelmann/maidan/releases/tag/v229.0.0) — Program B: task-schedule MCP tools
 
 | Change | Where |
 |--------|-------|
 | MCP `create_task_schedule` (`workspace:write`, channel-gated) + `list_task_schedules` (`workspace:read`, channel-filtered) over the shared store — so an MCP-only agent schedules its own recurring/one-shot work. The MCP twin of the Cluster 228 REST endpoints; completes the scheduler subsystem (store 226 → worker 227 → REST 228 → MCP 229) | `tools/schedule.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v228.0.0 — Program B: task-schedule REST management API
+## [v228.0.0](https://github.com/david-engelmann/maidan/releases/tag/v228.0.0) — Program B: task-schedule REST management API
 
 | Change | Where |
 |--------|-------|
 | `POST/GET /workspaces/:wid/task-schedules` + `PUT/DELETE /task-schedules/:id` — create/list/pause-resume/delete schedules. Writes gated on `workspace:write` + target-channel access; list on `workspace:read`. `Store::set_task_schedule_active`. Full new-route preflight | `routes/task_schedule.rs`, `app.rs`, `store/*/task_schedules.rs`, `openapi/*`, `contracts/http-capability-map.json` |
 
-## v227.0.0 — Program B: scheduler sweeper worker
+## [v227.0.0](https://github.com/david-engelmann/maidan/releases/tag/v227.0.0) — Program B: scheduler sweeper worker
 
 | Change | Where |
 |--------|-------|
 | Background scheduler sweeper (opt-in `MAIDAN_SCHEDULER_TICK_SECS`): each tick fires due schedules — `Store::claim_next_due_schedule` atomically claims + advances (`FOR UPDATE SKIP LOCKED` on pg, so replicas don't double-fire; recurring re-arms to `now + interval`, one-shot deactivates), then creates the task thread. At-most-once on crash (claim commits first). `maidan_task_schedules_fired_total{outcome}` metric. Off by default | `scheduler.rs`, `main.rs`, `store/*/task_schedules.rs`, `metrics.rs` |
 
-## v226.0.0 — Program B: scheduled/recurring task foundation
+## [v226.0.0](https://github.com/david-engelmann/maidan/releases/tag/v226.0.0) — Program B: scheduled/recurring task foundation
 
 | Change | Where |
 |--------|-------|
 | `maidan_task_schedules` table (pg 0038 / sqlite 0037) + `TaskSchedule`/`NewTaskSchedule` + `TaskScheduleId` + 5 store methods (create/get/list/delete + `due_task_schedules` scan), both backends. A schedule materializes a task thread when due (`interval_secs` NULL = one-shot, positive = recurring). **Zero-blast-radius foundation** — no worker/routes yet (159/217 pattern) | `migrations/*`, `models.rs`, `ids.rs`, `store/*/task_schedules.rs` |
 
-## v225.0.0 — Program B: `get_queue_depth` MCP tool
+## [v225.0.0](https://github.com/david-engelmann/maidan/releases/tag/v225.0.0) — Program B: `get_queue_depth` MCP tool
 
 | Change | Where |
 |--------|-------|
 | MCP `get_queue_depth` (`workspace:read`, channel-gated): `{channel_id}` → `{open, ready, assigned, blocked}` over the shared `Store::channel_queue_depth` — the MCP twin of Cluster 224's REST endpoint, so an MCP-only orchestrator can read queue depth | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v224.0.0 — Program B: channel task-queue depth
+## [v224.0.0](https://github.com/david-engelmann/maidan/releases/tag/v224.0.0) — Program B: channel task-queue depth
 
 | Change | Where |
 |--------|-------|
 | `GET /channels/:cid/queue-depth` (`workspace:read` + channel access) → `{ open, ready, assigned, blocked }`: a point-in-time partition of a channel's open task threads for scaling decisions. `ready` = the `claim_next` predicate; one aggregate query per backend (`Store::channel_queue_depth`); on-demand DB aggregate, not a per-channel metric (Cluster 188 cardinality decision) | `models.rs`, `store/*/threads.rs`, `routes/channel.rs` |
 
-## v223.0.0 — Program B: `wait_for_ready` MCP long-poll
+## [v223.0.0](https://github.com/david-engelmann/maidan/releases/tag/v223.0.0) — Program B: `wait_for_ready` MCP long-poll
 
 | Change | Where |
 |--------|-------|
 | MCP `wait_for_ready` (`workspace:read`): blocks until a task becomes claimable (subscribes to `ThreadReady`), returning the ready thread or `null` on timeout (default 30 s, clamp 1 ms–300 s). Optional `channel_id` scope (access-checked pre-dispatch); else any accessible thread in the workspace, RBAC-filtered per event. The `wait_for_mention` analogue for the DAG; completes the DAG surface end-to-end | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v222.0.0 — Program B: reactive task readiness (`ThreadReady`)
+## [v222.0.0](https://github.com/david-engelmann/maidan/releases/tag/v222.0.0) — Program B: reactive task readiness (`ThreadReady`)
 
 | Change | Where |
 |--------|-------|
 | New `ThreadReady` event: a terminal thread transition that unblocks dependents publishes `ThreadReady { workspace_id, channel_id, thread_id, thread }` for each newly-ready task, so an agent can subscribe (`kinds=thread_ready`) instead of polling `dependencies_satisfied`. Backed by `Store::newly_ready_dependents` (both backends); emitted only on a non-terminal → terminal edge; best-effort; **non-federatable** (locally-derived signal) | `events.rs`, `store/*/thread_deps.rs`, `routes/thread.rs`, `federation.rs`, `contracts/event-kinds.json` |
 
-## v221.0.0 — Program B: task-DAG transitive cycle prevention
+## [v221.0.0](https://github.com/david-engelmann/maidan/releases/tag/v221.0.0) — Program B: task-DAG transitive cycle prevention
 
 | Change | Where |
 |--------|-------|
 | `add_thread_dependency` rejects any edge that would close a cycle (direct or transitive), not just self-loops — a recursive-CTE reachability check before insert, check + insert in one transaction, `InvalidInput` (REST `400` / MCP `InvalidParams`). Both backends; no schema/route/tool/contract change. The task-dependency DAG is now actually acyclic | `store/{sqlite,postgres}/thread_deps.rs` |
 
-## v220.0.0 — Program B: task-dependency DAG MCP tools
+## [v220.0.0](https://github.com/david-engelmann/maidan/releases/tag/v220.0.0) — Program B: task-dependency DAG MCP tools
 
 | Change | Where |
 |--------|-------|
 | MCP `add_thread_dependency` (`thread:transition`; both-thread RBAC + same-workspace) + `list_thread_dependencies` (`workspace:read`; returns `{dependencies, ready}`). Full 5-place wiring (handlers, dispatch, capability, pre-dispatch gate, catalog, both `contracts/mcp-*.json`). Completes the DAG read/write surface over REST + MCP | `tools/thread.rs`, `tools/mod.rs`, `tools/catalog.rs`, `contracts/mcp-*.json` |
 
-## v219.0.0 — Program B: task-dependency DAG management API (REST)
+## [v219.0.0](https://github.com/david-engelmann/maidan/releases/tag/v219.0.0) — Program B: task-dependency DAG management API (REST)
 
 | Change | Where |
 |--------|-------|
 | REST DAG management: `POST/GET /threads/:id/dependencies` (add; list + `ready`), `DELETE /threads/:id/dependencies/:dep_id`, `GET /threads/:id/dependents`. RBAC on both edge threads + same-workspace; `thread:transition` mutations / `workspace:read` reads. Full new-route preflight (OpenAPI paths+schemas, http-capability-map, matrix) | `routes/thread.rs`, `app.rs`, `dto.rs`, `openapi/*` |
 
-## v218.0.0 — Program B: readiness-aware `claim_next`
+## [v218.0.0](https://github.com/david-engelmann/maidan/releases/tag/v218.0.0) — Program B: readiness-aware `claim_next`
 
 | Change | Where |
 |--------|-------|
 | `claim_next` / `claim_next_with_event` (both backends) skip tasks with a non-terminal dependency (a `NOT EXISTS` clause in the candidate subquery/CTE) — the "pull next task" primitive respects the DAG. Existing REST `claim-next` route + MCP `claim_next_thread` tool become dependency-aware with no new API | `store/*/threads.rs` |
 
-## v217.0.0 — Program B: task-dependency DAG (store foundation)
+## [v217.0.0](https://github.com/david-engelmann/maidan/releases/tag/v217.0.0) — Program B: task-dependency DAG (store foundation)
 
 | Change | Where |
 |--------|-------|
 | `maidan_thread_dependencies` edge table (both backends; pg 0037 / sqlite 0036) + `ThreadDependency` model + `ThreadState::is_terminal()` + store methods (add/remove/list-dependencies/list-dependents/dependencies-satisfied — readiness = all deps terminal). Zero-blast-radius foundation (no routes yet); reuses the thread-as-task model. Opens **Program B (agentic orchestration)** | migrations, `store/*/thread_deps.rs` |
 
-## v216.0.0 — Security: RLS spike (deferred); Program A complete
+## [v216.0.0](https://github.com/david-engelmann/maidan/releases/tag/v216.0.0) — Security: RLS spike (deferred); Program A complete
 
 | Change | Where |
 |--------|-------|
 | Row-Level Security assessed as defense-in-depth beneath app-layer RBAC → **deferred** (decision ADR: RLS design, blockers — shared pool/workspace-agnostic Store/SQLite-no-RLS/orchestrator model — and trigger conditions). App-layer RBAC stays authoritative. Concludes **Program A (202–216)** | `docs/Decisions.md` (`## Security`) |
 
-## v215.0.0 — Security: federation ingest trust policy
+## [v215.0.0](https://github.com/david-engelmann/maidan/releases/tag/v215.0.0) — Security: federation ingest trust policy
 
 | Change | Where |
 |--------|-------|
 | `EventKind::federatable()` allowlist (allowlist-by-default via exhaustive match; `ArtifactUpserted` excluded — blobs aren't federated) enforced on ingest (`403` for non-federatable, both push endpoint + pull worker); `MemberJoined` remap now re-scopes the nested `member.workspace_id` to local (no remote-id leak) | `maidan-types/src/events.rs`, `federation.rs` |
 
-## v214.0.0 — Correctness: transactional outbox (references + artifacts; domain migration complete)
+## [v214.0.0](https://github.com/david-engelmann/maidan/releases/tag/v214.0.0) — Correctness: transactional outbox (references + artifacts; domain migration complete)
 
 | Change | Where |
 |--------|-------|
 | `add_reference_with_event` (`ReferenceAdded`, scope-less) + `upsert_artifact_with_event(new, ref_workspace)` — upsert + Cluster-204 access ref + `ArtifactUpserted` in ONE tx (new `record_ref_in_tx`; preserves upsert→ref→event ordering, strengthens 204 isolation). Both upload routes use it. **Completes the domain-mutation outbox migration** — `publish()`'s only remaining caller is the federation relay | `store/*/{refs,artifacts}.rs`, `routes/{reference,artifact}.rs` |
 
-## v213.0.0 — Correctness: transactional outbox (A2A ingest + member/workspace creation)
+## [v213.0.0](https://github.com/david-engelmann/maidan/releases/tag/v213.0.0) — Correctness: transactional outbox (A2A ingest + member/workspace creation)
 
 | Change | Where |
 |--------|-------|
 | A2A ingest post reuses `post_message_with_event(new, None)` (DM-post shape); `create_member_with_event` (`MemberJoined`) + `create_workspace_with_event` (`WorkspaceCreated`) — insert + event in one tx (no scope resolution; the created entity is the subject). Routes use them + `publish_stored`. `publish()` remains only for reference/artifact events (+ federation relay) | `a2a_agent.rs`, `store/*/{members,workspaces}.rs` |
 
-## v212.0.0 — Correctness: transactional outbox (message edit + tombstone)
+## [v212.0.0](https://github.com/david-engelmann/maidan/releases/tag/v212.0.0) — Correctness: transactional outbox (message edit + tombstone)
 
 | Change | Where |
 |--------|-------|
 | `edit_message_with_event` (`MessageEdited`) + `tombstone_message_with_event` (`MessageTombstoned`) — mutation + event in one tx; shared `edit_in_tx` core (with 211's posted variant); tombstone keeps its `NotFound`-on-no-op guard. Routes use them + `publish_stored` → `message.rs` is now `publish()`-free. `publish()` remains only for A2A ingest + member/workspace/reference/artifact (+ federation relay) | `store/*/messages.rs`, `routes/message.rs` |
 
-## v211.0.0 — Correctness: transactional outbox (regular message post)
+## [v211.0.0](https://github.com/david-engelmann/maidan/releases/tag/v211.0.0) — Correctness: transactional outbox (regular message post)
 
 | Change | Where |
 |--------|-------|
 | Regular `post_message` route branches — no-slash → `post_message_with_event` (atomic insert+event); slash → provisional insert, external dispatch, then `edit_message_with_posted_event` (edit + `MessagePosted` of the edited message in one tx, via new `message_edits::append_in_tx`). Closes the message-post hold-out; `publish()` retained for edit/tombstone/A2A/member/workspace/reference/artifact + federation relay | `store/*/{messages,message_edits}.rs`, `routes/message.rs` |
 
-## v210.0.0 — Correctness: transactional outbox (DM / group-DM posts)
+## [v210.0.0](https://github.com/david-engelmann/maidan/releases/tag/v210.0.0) — Correctness: transactional outbox (DM / group-DM posts)
 
 | Change | Where |
 |--------|-------|
 | `post_message_with_event(new, dm_conversation_id)` — message insert + `MessagePosted` in one tx (via `message_scope_in_tx`; `dm_conversation_id` Some for 1:1 / None for group). DM + group-DM post routes use it + `publish_stored`. The regular slash-editing post path is the last `publish()` holdout | `store/*/messages.rs`, `dm.rs`, `group_dm.rs` |
 
-## v209.0.0 — Correctness: transactional outbox (thread assignments)
+## [v209.0.0](https://github.com/david-engelmann/maidan/releases/tag/v209.0.0) — Correctness: transactional outbox (thread assignments)
 
 | Change | Where |
 |--------|-------|
 | `assign/unassign/claim/claim_next_thread_with_event` — assignee change + `ThreadAssignmentChanged` in one tx (reuses 208's `thread_scope_in_tx`; shared `append_assignment_event`); assign/unassign capture previous in-tx (fixes a read-then-write race), claim/claim_next conditional. Routes use them + `publish_stored`; `publish_assignment` helper removed. Completes the thread-scoped outbox batch | `store/*/threads.rs`, `routes/thread.rs` |
 
-## v208.0.0 — Correctness: transactional outbox (thread transitions)
+## [v208.0.0](https://github.com/david-engelmann/maidan/releases/tag/v208.0.0) — Correctness: transactional outbox (thread transitions)
 
 | Change | Where |
 |--------|-------|
 | `transition_thread_with_event` — FSM state change + `ThreadStateChanged` event in one tx, over a new `events::thread_scope_in_tx` resolver (thread-scoped twin of 206's message resolver); the FSM step is extracted into a shared `transition_in_tx` core so the non-event path is unchanged. Route uses it + `publish_stored`. Continues the 205–207 outbox migration | `store/*/{thread_transitions,events}.rs`, `routes/thread.rs` |
 
-## v207.0.0 — Correctness: transactional outbox (pins + mentions)
+## [v207.0.0](https://github.com/david-engelmann/maidan/releases/tag/v207.0.0) — Correctness: transactional outbox (pins + mentions)
 
 | Change | Where |
 |--------|-------|
 | `pin_message_with_event` / `unpin_message_with_event` / `record_mention_with_event` — row + event in one tx over the shared `events::message_scope_in_tx` resolver (pins carry the channel; unpin emits `MessageUnpinned` only when a row was removed); routes use them + `publish_stored`. Continues the 205/206 outbox migration | `store/*/{pins,mentions,events}.rs`, `routes/{social,message}.rs` |
 
-## v206.0.0 — Correctness: transactional outbox (votes + reactions)
+## [v206.0.0](https://github.com/david-engelmann/maidan/releases/tag/v206.0.0) — Correctness: transactional outbox (votes + reactions)
 
 | Change | Where |
 |--------|-------|
 | `cast_vote_with_event` / `add_reaction_with_event` / `remove_reaction_with_event` — row + event in one tx (shared `events::message_scope_in_tx` resolver; remove emits only when a row was removed); routes use them + `publish_stored`. Continues the 205 outbox migration | `store/*/{votes,reactions,events}.rs`, `routes/social.rs` |
 
-## v205.0.0 — Correctness: transactional outbox (foundation)
+## [v205.0.0](https://github.com/david-engelmann/maidan/releases/tag/v205.0.0) — Correctness: transactional outbox (foundation)
 
 | Change | Where |
 |--------|-------|
 | `events::append_in_tx(&mut tx, event)` (both backends) + `create_channel_with_event` / `create_thread_with_event` — insert the domain row **and** append its event (+ outbox) in one transaction (atomic dual-write); routes use them + `publish_stored` for the post-commit bus notify. First step of the multi-cluster transactional-outbox refactor (the 184 deferral); remaining mutations follow | `store/*/{events,channels,threads}.rs`, `routes/{mod,channel,thread}.rs` |
 
-## v204.0.0 — Security: cross-tenant artifact isolation
+## [v204.0.0](https://github.com/david-engelmann/maidan/releases/tag/v204.0.0) — Security: cross-tenant artifact isolation
 
 | Change | Where |
 |--------|-------|
 | `maidan_artifact_refs` (workspace_id, sha256) link table — a ref is written on upload; `get_artifact*` requires a matching ref for the caller's workspace (404 if absent, no existence oracle). Closes cross-tenant blob reads over the deduped store; dedup preserved (two workspaces uploading the same bytes each get a ref). Migration backfills from the uploader's workspace | `migrations/*/…artifact_workspace_refs.sql`, `store/*/artifacts.rs`, `routes/artifact.rs` |
 
-## v203.0.0 — Security: DM/group-DM participation (subscribe + metadata)
+## [v203.0.0](https://github.com/david-engelmann/maidan/releases/tag/v203.0.0) — Security: DM/group-DM participation (subscribe + metadata)
 
 | Change | Where |
 |--------|-------|
 | Subscribe gate: `expand_event_filter` runs `ensure_thread_access` (DM-participant-aware) on the resolved `thread_id` — a non-participant can no longer tail a DM/group-DM via `dm_conversation_id` or `thread_id` (WS + MCP-SSE) | `dm.rs`, `ws.rs`, `mcp_stream.rs` |
 | Metadata reads: `GET /dm/:id` + `/group-dms/:id` require participation for a session caller; `list` is self-only (session). Bearer = orchestrator (act-as-any), bypass unrestricted | `dm.rs`, `group_dm.rs` |
 
-## v202.0.0 — Security: session-bound acting identity (anti-spoofing)
+## [v202.0.0](https://github.com/david-engelmann/maidan/releases/tag/v202.0.0) — Security: session-bound acting identity (anti-spoofing)
 
 | Change | Where |
 |--------|-------|
 | `ensure_acting_member(auth, claimed)` — a **session** caller may only act as its own member; applied to every member-attributed write (post/DM/group-DM/edit/vote/react/pin/unpin/transition/assign/unassign/claim/claim-next/renew). Bearer = act-as-any (unchanged); bypass unrestricted. Closes a session-impersonation vuln | `routes/mod.rs` + all write handlers |
 
-## v201.0.0 — Perf: workspace-sharded event fan-out
+## [v201.0.0](https://github.com/david-engelmann/maidan/releases/tag/v201.0.0) — Perf: workspace-sharded event fan-out
 
 | Change | Where |
 |--------|-------|
 | `ShardedBroadcast` — a publish reaches only the event's workspace shard + a global shard (cross-workspace subscribers), not every subscriber; fan-out is O(relevant) not O(all). Used by `InMemoryBus` + `PostgresBus` local broadcast; shards created on subscribe, pruned on last-receiver-drop. Behavior unchanged (optimization under the existing `EventFilter`) | `crates/maidan-bus/src/sharded.rs` |
 
-## v200.0.0 — Perf + security: filtered-ANN search (RBAC deny in the query)
+## [v200.0.0](https://github.com/david-engelmann/maidan/releases/tag/v200.0.0) — Perf + security: filtered-ANN search (RBAC deny in the query)
 
 | Change | Where |
 |--------|-------|
 | Search excludes the caller's inaccessible private channels **in the query** (`SearchFilters::deny_channels`; SQLite `NOT IN`, Postgres `<> ALL($n)`; lexical + semantic) so a full page of accessible hits is returned instead of a post-filtered short page — DMs stay with the authoritative thread-level post-filter | `maidan-search/src/{sqlite,postgres}.rs` |
 | `maidan_auth::private_channel_deny_set` — the private, non-DM channels the caller isn't a member of; wired into REST `GET …/search` + MCP `search_messages` | `maidan-auth/src/access.rs`, `routes/search.rs`, `tools/search.rs` |
 
-## v199.0.0 — Perf: concurrent workspace-context assembly
+## [v199.0.0](https://github.com/david-engelmann/maidan/releases/tag/v199.0.0) — Perf: concurrent workspace-context assembly
 
 | Change | Where |
 |--------|-------|
 | `build_workspace_context` builds each page thread's context via a bounded `buffered` stream (`CONTEXT_THREAD_CONCURRENCY=8`) instead of a sequential loop — collapses `Σ per-thread` latency toward `ceil(N/8)×`, order + query-count + error semantics unchanged | `crates/maidan-server/src/thread_context.rs` |
 
-## v198.0.0 — Perf: load / soak harness (Arc D opener)
+## [v198.0.0](https://github.com/david-engelmann/maidan/releases/tag/v198.0.0) — Perf: load / soak harness (Arc D opener)
 
 | Change | Where |
 |--------|-------|
 | `scripts/loadgen.sh` + `#[ignore]`d `load_baseline` test — concurrent REST load (post/read/search), reports per-op latency percentiles + throughput; in-process (SQLite) or external (`MAIDAN_LOADGEN_URL`); env-tunable concurrency/iterations/soak-duration; pure nearest-rank percentile math unit-tested in CI | `crates/maidan-server/tests/loadgen.rs`, `scripts/loadgen.sh` |
 
-## v197.0.0 — Agentic: tool-call transcripts (Arc C finale)
+## [v197.0.0](https://github.com/david-engelmann/maidan/releases/tag/v197.0.0) — Agentic: tool-call transcripts (Arc C finale)
 
 | Change | Where |
 |--------|-------|
 | `tool_transcript` — walks a thread's messages, pairs every `ToolUse` with its `ToolResult` by id (order-independent), returns a token-lean `ToolTranscript` (ordered calls + `orphan_results`, drops text/code/body); tombstoned messages skipped | `maidan-types/src/models.rs` |
 | REST `GET /threads/:id/tool-transcript` + MCP `get_tool_transcript` (both `workspace:read`, thread-RBAC, `limit` 1..=500 default 200) | `routes/thread.rs`, `tools/thread.rs` + OpenAPI + contracts |
 
-## v196.0.0 — Agentic: `wait_for_mention` (blocking long-poll)
+## [v196.0.0](https://github.com/david-engelmann/maidan/releases/tag/v196.0.0) — Agentic: `wait_for_mention` (blocking long-poll)
 
 | Change | Where |
 |--------|-------|
 | MCP `wait_for_mention` — subscribes to the event bus filtered to the member's `MentionRecorded` events and blocks until one arrives or `timeout_ms` lapses (default 30 s, clamp 1 ms–300 s); returns the mention or `null`. Live-only (drain existing with `get_inbox` first); RBAC-filtered by `can_access_thread`. Requires `workspace:read` | `crates/maidan-mcp/src/tools/member.rs` + `mod.rs` + `catalog.rs` + both `contracts/mcp-*.json` |
 
-## v195.0.0 — Agentic: handoff notes on thread assignment
+## [v195.0.0](https://github.com/david-engelmann/maidan/releases/tag/v195.0.0) — Agentic: handoff notes on thread assignment
 
 | Change | Where |
 |--------|-------|
 | `assign_thread` (REST `PUT /threads/:id/assignee` + MCP tool) accepts an optional `note`; it rides the `ThreadAssignmentChanged` event to the new assignee + subscribers in real time (event-only, not persisted). Note-less claim/unassign/`claim_next` unchanged | `events.rs` + `dto.rs` + `routes/thread.rs` + `tools/{thread,catalog}.rs` + `federation.rs` |
 
-## v194.0.0 — Agentic: A2A ingest preserves parts as structured content
+## [v194.0.0](https://github.com/david-engelmann/maidan/releases/tag/v194.0.0) — Agentic: A2A ingest preserves parts as structured content
 
 | Change | Where |
 |--------|-------|
 | A2A `POST /a2a/v1/rpc` ingest maps text parts to `ContentBlock::Text` (was `content: None`), so A2A messages carry the same structured content as REST/MCP (Cluster 173); `body` unchanged | `maidan-a2a/src/protocol.rs` + `a2a_agent.rs` |
 
-## v193.0.0 — Agentic: the `roots/list` tool
+## [v193.0.0](https://github.com/david-engelmann/maidan/releases/tag/v193.0.0) — Agentic: the `roots/list` tool
 
 | Change | Where |
 |--------|-------|
 | MCP `list_roots` — server→client `roots/list` over the streamable session; the third `request_client` verb's first organic caller | `crates/maidan-mcp/src/tools/roots.rs` |
 
-## v192.0.0 — Agentic: claim leases + reclaim (dead-agent recovery)
+## [v192.0.0](https://github.com/david-engelmann/maidan/releases/tag/v192.0.0) — Agentic: claim leases + reclaim (dead-agent recovery)
 
 | Change | Where |
 |--------|-------|
 | `claim_next_thread` lease-aware (`lease_secs`; expired lease = reclaimable, no reaper) + `renew_claim` heartbeat (holder-only); `assignment_expires_at` column; REST `POST /threads/:id/claim/renew` + MCP `renew_claim` | `*/threads.rs` + `routes/thread.rs` + `tools/thread.rs` |
 
-## v191.0.0 — Agentic: MCP tools for the assignment read-side
+## [v191.0.0](https://github.com/david-engelmann/maidan/releases/tag/v191.0.0) — Agentic: MCP tools for the assignment read-side
 
 | Change | Where |
 |--------|-------|
 | MCP `claim_next_thread` (channel-gated pre-dispatch) + `list_assigned_threads` (member-scoped, RBAC-filtered aggregate read) | `maidan-mcp/src/tools/thread.rs` + `mod.rs` + `catalog.rs` + contracts |
 
-## v190.0.0 — Agentic: thread-assignment read-side (my-queue + claim-next)
+## [v190.0.0](https://github.com/david-engelmann/maidan/releases/tag/v190.0.0) — Agentic: thread-assignment read-side (my-queue + claim-next)
 
 | Change | Where |
 |--------|-------|
 | `GET /members/:id/assigned-threads` (my work queue, RBAC-filtered) + `POST /channels/:cid/threads/claim-next` (atomically claim oldest unassigned; Postgres `FOR UPDATE SKIP LOCKED`) | `maidan-store/src/*/threads.rs` + `routes/thread.rs` |
 
-## v189.0.0 — SaaS ops: secret-rotation keyring
+## [v189.0.0](https://github.com/david-engelmann/maidan/releases/tag/v189.0.0) — SaaS ops: secret-rotation keyring
 
 | Change | Where |
 |--------|-------|
 | Try-all-keys decrypt keyring — rotate `FEDERATION_ENCRYPTION_KEY` by moving old keys into `FEDERATION_DECRYPT_KEYS` (decrypt fallbacks); no ciphertext-format change, AEAD-safe | `crates/maidan-auth/src/peer_secret.rs` |
 
-## v188.0.0 — SaaS ops: per-workspace usage / metering
+## [v188.0.0](https://github.com/david-engelmann/maidan/releases/tag/v188.0.0) — SaaS ops: per-workspace usage / metering
 
 | Change | Where |
 |--------|-------|
 | `GET /workspaces/:id/usage` (workspace:read) returns live member/channel/thread/message counts (tombstones excluded); a low-cardinality metering basis (on-demand DB aggregate, not per-tenant Prometheus series) | `maidan-types/src/usage.rs` + `maidan-store` + `routes/workspace.rs` |
 
-## v187.0.0 — SaaS ops: workspace export / portability
+## [v187.0.0](https://github.com/david-engelmann/maidan/releases/tag/v187.0.0) — SaaS ops: workspace export / portability
 
 | Change | Where |
 |--------|-------|
 | `GET /workspaces/:id/export` (token:admin) returns the workspace content graph (members, channels+members, threads, messages+edits, pins, references) as one JSON bundle; secrets + ops tables excluded | `crates/maidan-server/src/export.rs` + `routes/workspace.rs` |
 
-## v186.0.0 — SaaS ops: data-retention pruning
+## [v186.0.0](https://github.com/david-engelmann/maidan/releases/tag/v186.0.0) — SaaS ops: data-retention pruning
 
 | Change | Where |
 |--------|-------|
 | Opt-in age retention for the event log (floored at `min_delivery_cursor`), audit trail, and delivery tables; batched background sweeper + `MAIDAN_RETENTION_*` config + `maidan_retention_pruned_total` | `maidan-store/src/{sqlite,postgres}/retention.rs` + `maidan-server/src/retention.rs` |
 
-## v185.0.0 — SaaS ops: Helm hardening (probes, PDB, NetworkPolicy, existingSecret)
+## [v185.0.0](https://github.com/david-engelmann/maidan/releases/tag/v185.0.0) — SaaS ops: Helm hardening (probes, PDB, NetworkPolicy, existingSecret)
 
 | Change | Where |
 |--------|-------|
 | Liveness/startup → shallow `/health/live` (restart-storm fix), readiness → deep `/health/ready`; opt-in `PodDisruptionBudget` (on in prod) + `NetworkPolicy`; `existingSecret` support | `helm/maidan/` |
 
-## v184.0.0 — Correctness: harden the domain-write → event-append dual write
+## [v184.0.0](https://github.com/david-engelmann/maidan/releases/tag/v184.0.0) — Correctness: harden the domain-write → event-append dual write
 
 | Change | Where |
 |--------|-------|
 | `publish()` retries the durable event append on transient errors, splits append-failure (lost event, loud + metered via `maidan_event_append_failures_total`) from benign bus-publish failure | `crates/maidan-server/src/{routes/mod,metrics}.rs` |
 
-## v183.0.0 — Security: default-on rate limit + explicit request body cap
+## [v183.0.0](https://github.com/david-engelmann/maidan/releases/tag/v183.0.0) — Security: default-on rate limit + explicit request body cap
 
 | Change | Where |
 |--------|-------|
 | Built-in global per-client rate limit (1200 req/60s) when `MAIDAN_RATE_LIMIT_MAX` unset (server-binary only; explicit env incl. `0` overrides) | `crates/maidan-server/src/{rate_limit/mod,state,main}.rs` |
 | Explicit env-tunable request body cap (`MAIDAN_MAX_BODY_BYTES`, default 2 MiB); oversized body → `413` | `crates/maidan-server/src/{app,error}.rs` |
 
-## v182.0.0 — Security: audit-log coverage for credential + membership mutations
+## [v182.0.0](https://github.com/david-engelmann/maidan/releases/tag/v182.0.0) — Security: audit-log coverage for credential + membership mutations
 
 | Change | Where |
 |--------|-------|
 | Audit trail now records `token.mint`/`token.revoke` (incl. OIDC first-admin), `app_token.mint`/`app_installation.revoke`, `channel_member.add`/`.remove`, `message.purge` — best-effort writes via `crate::audit::record`; table-level 401/403 denial auditing deliberately excluded (write-amplifier → logs/metrics) | `crates/maidan-server/src/audit.rs` + token/apps/channel/message/session handlers |
 
-## v181.0.0 — Correctness: one EventKind parser, round-trip guarded
+## [v181.0.0](https://github.com/david-engelmann/maidan/releases/tag/v181.0.0) — Correctness: one EventKind parser, round-trip guarded
 
 | Change | Where |
 |--------|-------|
 | Store `parse_kind` (both backends) delegates to the single `EventKind::parse` — no per-backend copy to drift (the Cluster 171 silent-rollback bug class); `EventKind::ALL` + round-trip guard with a compile-time tripwire on new variants | `crates/maidan-types/src/events.rs` + `maidan-store/src/{sqlite,postgres}/events.rs` |
 
-## v180.0.0 — Security: DM-thread access is participant-checked everywhere
+## [v180.0.0](https://github.com/david-engelmann/maidan/releases/tag/v180.0.0) — Security: DM-thread access is participant-checked everywhere
 
 | Change | Where |
 |--------|-------|
 | `ensure_thread_access` is DM-participant-aware (new `ensure_dm_participant` + `can_access_thread`); generic thread/message/social routes + A2A ingress gate on it; search + workspace-context filter per-thread — closes DM read/write/leak via the `__dm__` channel exemption | `crates/maidan-auth/src/access.rs` + route/tool gates |
 
-## v179.0.0 — Security: A2A ingress channel/thread RBAC
+## [v179.0.0](https://github.com/david-engelmann/maidan/releases/tag/v179.0.0) — Security: A2A ingress channel/thread RBAC
 
 | Change | Where |
 |--------|-------|
 | `POST /a2a/v1/rpc` enforces `ensure_channel_access` on post + task-read (closes a private-channel bypass the 160–165 RBAC arc missed) | `crates/maidan-server/src/a2a_agent.rs` |
 
-## v178.0.0 — Token: opt-in lean event frames
+## [v178.0.0](https://github.com/david-engelmann/maidan/releases/tag/v178.0.0) — Token: opt-in lean event frames
 
 | Change | Where |
 |--------|-------|
 | `lean` subscribe flag (WS + MCP SSE) → event frames carry `{log_id, kind, ...ids}` pointers instead of full events | `crates/maidan-server/src/{event_stream,ws,mcp_stream}.rs` |
 
-## v177.0.0 — Token: omit empty message metadata
+## [v177.0.0](https://github.com/david-engelmann/maidan/releases/tag/v177.0.0) — Token: omit empty message metadata
 
 | Change | Where |
 |--------|-------|
 | `Message.metadata` omitted from serialization when empty (`{}`/`null`) — REST, events, MCP, write-acks | `crates/maidan-types/src/models.rs` |
 
-## v176.0.0 — Token: capability-filtered tools/list
+## [v176.0.0](https://github.com/david-engelmann/maidan/releases/tag/v176.0.0) — Token: capability-filtered tools/list
 
 | Change | Where |
 |--------|-------|
 | MCP `tools/list` returns only the tools the caller's capabilities allow (`catalog_for`); bypass sees all | `crates/maidan-mcp/src/tools/mod.rs` |
 
-## v175.0.0 — Token: MCP search snippet_only parity
+## [v175.0.0](https://github.com/david-engelmann/maidan/releases/tag/v175.0.0) — Token: MCP search snippet_only parity
 
 | Change | Where |
 |--------|-------|
 | MCP `search_messages` `snippet_only` (drop bodies, keep snippet) — parity with REST | `crates/maidan-mcp/src/tools/search.rs` |
 
-## v174.0.0 — Agentic: human-in-the-loop approvals
+## [v174.0.0](https://github.com/david-engelmann/maidan/releases/tag/v174.0.0) — Agentic: human-in-the-loop approvals
 
 | Change | Where |
 |--------|-------|
 | MCP `request_approval` — server→client `elicitation/create` HITL gate; returns `{approved, action, content}` | `crates/maidan-mcp/src/tools/approval.rs` |
 
-## v173.0.0 — Agentic: structured message content
+## [v173.0.0](https://github.com/david-engelmann/maidan/releases/tag/v173.0.0) — Agentic: structured message content
 
 | Change | Where |
 |--------|-------|
 | Typed `content` blocks on messages (`text`/`code`/`tool_use`/`tool_result`/`resource_link`), REST + MCP, both backends; `body` derived when omitted | `crates/maidan-types/src/models.rs`, `crates/maidan-store/src/{postgres,sqlite}/messages.rs` |
 | `content` column on `maidan_messages` (pg `0034` JSONB / sqlite `0033` TEXT) | `migrations/*/00xx_message_content.sql` |
 
-## v172.0.0 — Agentic: MCP structured backpressure
+## [v172.0.0](https://github.com/david-engelmann/maidan/releases/tag/v172.0.0) — Agentic: MCP structured backpressure
 
 | Change | Where |
 |--------|-------|
 | Rate-limited `POST /mcp` + `/mcp/streamable` return a JSON-RPC error envelope (`-32029` + `data.retry_after_ms`), still 429 + `Retry-After` | `crates/maidan-server/src/rate_limit/mod.rs` |
 | `McpError::RateLimited { retry_after_ms }` | `crates/maidan-mcp/src/error.rs` |
 
-## v171.0.0 — Agentic: thread task assignment / handoff
+## [v171.0.0](https://github.com/david-engelmann/maidan/releases/tag/v171.0.0) — Agentic: thread task assignment / handoff
 
 | Change | Where |
 |--------|-------|
@@ -1839,20 +1878,20 @@ Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-cra
 | MCP `assign_thread` / `claim_thread` / `unassign_thread` | `crates/maidan-mcp/src/tools/thread.rs` |
 | `ThreadAssignmentChanged` event (prev→new assignee + actor) | `crates/maidan-types/src/events.rs` |
 
-## v170.0.0 — CI/CD: native arm64 release build + trivy image scan
+## [v170.0.0](https://github.com/david-engelmann/maidan/releases/tag/v170.0.0) — CI/CD: native arm64 release build + trivy image scan
 
 | Change | Where |
 |--------|-------|
 | arm64 `maidan-server` image builds on a native `ubuntu-24.04-arm` runner (no QEMU) — kills the ~2 h emulated Rust compile | `.github/workflows/release.yml` |
 | trivy vulnerability scan of the released server image (report-only) | `.github/workflows/release.yml` |
 
-## v169.0.0 — Perf: coalesce optimistic delivery-cursor writes
+## [v169.0.0](https://github.com/david-engelmann/maidan/releases/tag/v169.0.0) — Perf: coalesce optimistic delivery-cursor writes
 
 | Fix | Where |
 |-----|-------|
 | Optimistic subscribe path buffers the delivery cursor (persist per 64 events / 500 ms + flush on stream end) instead of a DB write per event; lag-replay advances once to the batch high-water | `crates/maidan-server/src/event_stream.rs` |
 
-## v168.0.0 — Perf: outbox relay round-trips + tunable broadcast cap
+## [v168.0.0](https://github.com/david-engelmann/maidan/releases/tag/v168.0.0) — Perf: outbox relay round-trips + tunable broadcast cap
 
 | Fix | Where |
 |-----|-------|
@@ -1860,7 +1899,7 @@ Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-cra
 | Env-tunable broadcast capacity `MAIDAN_BUS_BROADCAST_CAP` (event bus + presence/resource notifiers) | `crates/maidan-bus/src/lib.rs` |
 | Hotfix: removed two `unwrap()`s in the webhook worker (Cluster 166) that failed the strict lint | `crates/maidan-server/src/webhook_worker.rs` |
 
-## v167.0.0 — Perf: rate-limiter map eviction + embedding model cache
+## [v167.0.0](https://github.com/david-engelmann/maidan/releases/tag/v167.0.0) — Perf: rate-limiter map eviction + embedding model cache
 
 | Fix | Where |
 |-----|-------|
@@ -1869,7 +1908,7 @@ Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-cra
 
 _Post-gate hardening (Phase XXIV): arc 2 (perf), part 2 — a memory leak + the embedding-upsert round-trip halving. No new gate tag._
 
-## v166.0.0 — Perf: per-connection SQLite pragmas + per-workspace webhook fan-out
+## [v166.0.0](https://github.com/david-engelmann/maidan/releases/tag/v166.0.0) — Perf: per-connection SQLite pragmas + per-workspace webhook fan-out
 
 | Fix | Where |
 |-----|-------|
@@ -1878,7 +1917,7 @@ _Post-gate hardening (Phase XXIV): arc 2 (perf), part 2 — a memory leak + the 
 
 _Post-gate hardening (Phase XXIV): arc 2 (perf + CI/CD), part 1 — a real SQLite correctness bug + the biggest per-event query win. No new gate tag._
 
-## v165.0.0 — Reference authorization (RBAC arc complete)
+## [v165.0.0](https://github.com/david-engelmann/maidan/releases/tag/v165.0.0) — Reference authorization (RBAC arc complete)
 
 | Capability | Where |
 |------------|-------|
@@ -1886,7 +1925,7 @@ _Post-gate hardening (Phase XXIV): arc 2 (perf + CI/CD), part 1 — a real SQLit
 
 _Post-gate hardening (Phase XXIV): final RBAC cluster. References resolve Thread/Message → channel access (also fixes a missing workspace check). **The channel/thread RBAC arc (159–165) is complete.** No new gate tag._
 
-## v164.0.0 — channel:admin membership API (RBAC part F)
+## [v164.0.0](https://github.com/david-engelmann/maidan/releases/tag/v164.0.0) — channel:admin membership API (RBAC part F)
 
 | Capability | Where |
 |------------|-------|
@@ -1895,7 +1934,7 @@ _Post-gate hardening (Phase XXIV): final RBAC cluster. References resolve Thread
 
 _Post-gate hardening (Phase XXIV): sixth RBAC cluster. Makes private channels operational — admins grant/revoke membership. No new gate tag._
 
-## v163.0.0 — Verified WS/MCP subscribe grants (RBAC part E)
+## [v163.0.0](https://github.com/david-engelmann/maidan/releases/tag/v163.0.0) — Verified WS/MCP subscribe grants (RBAC part E)
 
 | Capability | Where |
 |------------|-------|
@@ -1903,7 +1942,7 @@ _Post-gate hardening (Phase XXIV): sixth RBAC cluster. Makes private channels op
 
 _Post-gate hardening (Phase XXIV): fifth RBAC cluster. Closes the private-channel event leak on WS + MCP SSE (asserted grants were previously trusted). No new gate tag._
 
-## v162.0.0 — MCP aggregate-read filtering (RBAC part D)
+## [v162.0.0](https://github.com/david-engelmann/maidan/releases/tag/v162.0.0) — MCP aggregate-read filtering (RBAC part D)
 
 | Capability | Where |
 |------------|-------|
@@ -1911,7 +1950,7 @@ _Post-gate hardening (Phase XXIV): fifth RBAC cluster. Closes the private-channe
 
 _Post-gate hardening (Phase XXIV): fourth RBAC cluster. Closes the MCP aggregate-read leaks; with 160+161 the channel-content read/write vuln is closed on REST + MCP. No new gate tag._
 
-## v161.0.0 — Private-channel access control over MCP (RBAC part C)
+## [v161.0.0](https://github.com/david-engelmann/maidan/releases/tag/v161.0.0) — Private-channel access control over MCP (RBAC part C)
 
 | Capability | Where |
 |------------|-------|
@@ -1920,7 +1959,7 @@ _Post-gate hardening (Phase XXIV): fourth RBAC cluster. Closes the MCP aggregate
 
 _Post-gate hardening (Phase XXIV): third RBAC cluster. Closes the MCP read/write path into private channels (aggregate reads — search / workspace-context / list-channels — filtered next). No new gate tag._
 
-## v160.0.0 — Private-channel access control over REST (RBAC part B)
+## [v160.0.0](https://github.com/david-engelmann/maidan/releases/tag/v160.0.0) — Private-channel access control over REST (RBAC part B)
 
 | Capability | Where |
 |------------|-------|
@@ -1929,7 +1968,7 @@ _Post-gate hardening (Phase XXIV): third RBAC cluster. Closes the MCP read/write
 
 _Post-gate hardening (Phase XXIV): second RBAC cluster. Private channels require a `channel_members` row; public + `__dm__` unchanged; creator auto-added on private create. Closes the workspace-flat read/write vuln on REST. MCP + subscribe + references follow. No new gate tag._
 
-## v159.0.0 — Channel membership model (RBAC part A)
+## [v159.0.0](https://github.com/david-engelmann/maidan/releases/tag/v159.0.0) — Channel membership model (RBAC part A)
 
 | Capability | Where |
 |------------|-------|
@@ -1937,7 +1976,7 @@ _Post-gate hardening (Phase XXIV): second RBAC cluster. Private channels require
 
 _Post-gate hardening (Phase XXIV): first cluster of the flagship channel/thread RBAC. Membership substrate only — additive, no enforcement (Cluster 160), zero behavior change. No new gate tag._
 
-## v158.0.0 — Signed container images (keyless cosign)
+## [v158.0.0](https://github.com/david-engelmann/maidan/releases/tag/v158.0.0) — Signed container images (keyless cosign)
 
 | Capability | Where |
 |------------|-------|
@@ -1945,7 +1984,7 @@ _Post-gate hardening (Phase XXIV): first cluster of the flagship channel/thread 
 
 _Post-gate hardening (Phase XXIV): enterprise-hardening arc part 3. Closes the unsigned-images supply-chain gap; images are verifiable in an admission controller. Runs on the release tag. No new gate tag._
 
-## v157.0.0 — Fail-closed `AUTH_DISABLED`
+## [v157.0.0](https://github.com/david-engelmann/maidan/releases/tag/v157.0.0) — Fail-closed `AUTH_DISABLED`
 
 | Capability | Where |
 |------------|-------|
@@ -1953,7 +1992,7 @@ _Post-gate hardening (Phase XXIV): enterprise-hardening arc part 3. Closes the u
 
 _Post-gate hardening (Phase XXIV): enterprise-hardening arc part 2. Closes the silent-open-door risk (`AUTH_DISABLED` alone in a non-prod/unset-env deployment). Coordinated across compose/helm CI manifests. No new gate tag._
 
-## v156.0.0 — Production-safety defaults (SIGTERM drain + statement timeout)
+## [v156.0.0](https://github.com/david-engelmann/maidan/releases/tag/v156.0.0) — Production-safety defaults (SIGTERM drain + statement timeout)
 
 | Capability | Where |
 |------------|-------|
@@ -1962,7 +2001,7 @@ _Post-gate hardening (Phase XXIV): enterprise-hardening arc part 2. Closes the s
 
 _Post-gate hardening (Phase XXIV): first cluster of the enterprise-hardening arc (from the 5-agent production-readiness sweep). Safe-by-default; both are configurable. No new gate tag._
 
-## v155.0.0 — Sampling-backed `summarize_thread` (first `request_client` caller)
+## [v155.0.0](https://github.com/david-engelmann/maidan/releases/tag/v155.0.0) — Sampling-backed `summarize_thread` (first `request_client` caller)
 
 | Capability | Where |
 |------------|-------|
@@ -1971,7 +2010,7 @@ _Post-gate hardening (Phase XXIV): first cluster of the enterprise-hardening arc
 
 _Post-gate hardening (Phase XXIV): closes arc lane 3 and the three-lane next-arc plan (token efficiency 151+152, live UI 153, request_client 154+155). `request_client` now has a real in-tree caller. No new gate tag._
 
-## v154.0.0 — `request_client` GET-stream delivery
+## [v154.0.0](https://github.com/david-engelmann/maidan/releases/tag/v154.0.0) — `request_client` GET-stream delivery
 
 | Capability | Where |
 |------------|-------|
@@ -1979,7 +2018,7 @@ _Post-gate hardening (Phase XXIV): closes arc lane 3 and the three-lane next-arc
 
 _Post-gate hardening (Phase XXIV): arc lane 3, part 1. Per-session request broadcast + GET-stream merge; POST-leg mpsc/replay untouched. A real caller (sampling-backed `summarize_thread`) arrives in Cluster 155. No new gate tag._
 
-## v153.0.0 — Live-updating `/ui` thread view
+## [v153.0.0](https://github.com/david-engelmann/maidan/releases/tag/v153.0.0) — Live-updating `/ui` thread view
 
 | Capability | Where |
 |------------|-------|
@@ -1987,7 +2026,7 @@ _Post-gate hardening (Phase XXIV): arc lane 3, part 1. Per-session request broad
 
 _Post-gate hardening (Phase XXIV): UI polish (arc lane 2). Routes the WS domain-event frames — previously only Events-tab log lines — into `loadMessages` for the open thread. No backend change._
 
-## v152.0.0 — Lean HTTP context pack + snippet-only search
+## [v152.0.0](https://github.com/david-engelmann/maidan/releases/tag/v152.0.0) — Lean HTTP context pack + snippet-only search
 
 | Capability | Where |
 |------------|-------|
@@ -1996,7 +2035,7 @@ _Post-gate hardening (Phase XXIV): UI polish (arc lane 2). Routes the WS domain-
 
 _Post-gate hardening (Phase XXIV): token-efficiency part 2 (arc item B1), extending Cluster 151's MCP lean reads to REST. Both context-pack surfaces + search now have opt-in token-lean modes. No new gate tag._
 
-## v151.0.0 — Token-efficient lean context reads
+## [v151.0.0](https://github.com/david-engelmann/maidan/releases/tag/v151.0.0) — Token-efficient lean context reads
 
 | Capability | Where |
 |------------|-------|
@@ -2005,7 +2044,7 @@ _Post-gate hardening (Phase XXIV): token-efficiency part 2 (arc item B1), extend
 
 _Post-gate hardening (Phase XXIV): first token-efficiency cluster (arc item B1). Edit bodies were the largest token cost in a context pack; `get_workspace_context` inherits the lean default through its nested packs. MCP-only; the typed HTTP `/threads/:id/context` pack is a deferred follow-up. No new gate tag._
 
-## v150.0.0 — MCP stream thread/member/kind filters
+## [v150.0.0](https://github.com/david-engelmann/maidan/releases/tag/v150.0.0) — MCP stream thread/member/kind filters
 
 | Capability | Where |
 |------------|-------|
@@ -2013,7 +2052,7 @@ _Post-gate hardening (Phase XXIV): first token-efficiency cluster (arc item B1).
 
 _Post-gate hardening (Phase XXIV): completes the MCP-agent-surface pair (149 discover + 150 await mentions). Pure query→filter wiring over the existing `EventFilter`; no new gate tag._
 
-## v149.0.0 — MCP inbox + mention tools
+## [v149.0.0](https://github.com/david-engelmann/maidan/releases/tag/v149.0.0) — MCP inbox + mention tools
 
 | Capability | Where |
 |------------|-------|
@@ -2021,7 +2060,7 @@ _Post-gate hardening (Phase XXIV): completes the MCP-agent-surface pair (149 dis
 
 _Post-gate hardening (Phase XXIV): first of the MCP-agent-surface arc (149–150), from the next-arc research. Closes the gap where an MCP-only agent couldn't see it was @mentioned. No new gate tag._
 
-## v148.0.0 — MCP server→client requests (streamable arc complete)
+## [v148.0.0](https://github.com/david-engelmann/maidan/releases/tag/v148.0.0) — MCP server→client requests (streamable arc complete)
 
 | Capability | Where |
 |------------|-------|
@@ -2030,7 +2069,7 @@ _Post-gate hardening (Phase XXIV): first of the MCP-agent-surface arc (149–150
 
 _Post-gate hardening (Phase XXIV): concludes the MCP streamable spec-completeness arc (145–148) — version negotiation, header, batching, notifications, GET SSE, `Accept`, resumability, and now bidirectional requests. No new gate tag; the backlog item is closed._
 
-## v147.0.0 — MCP streamable resumability (Last-Event-ID)
+## [v147.0.0](https://github.com/david-engelmann/maidan/releases/tag/v147.0.0) — MCP streamable resumability (Last-Event-ID)
 
 | Capability | Where |
 |------------|-------|
@@ -2039,7 +2078,7 @@ _Post-gate hardening (Phase XXIV): concludes the MCP streamable spec-completenes
 
 _Post-gate hardening (Phase XXIV): part 3 of the MCP streamable spec-completeness arc (145–148). Server→client requests (148) remain. No new gate tag._
 
-## v146.0.0 — MCP GET /mcp/streamable SSE + Accept negotiation
+## [v146.0.0](https://github.com/david-engelmann/maidan/releases/tag/v146.0.0) — MCP GET /mcp/streamable SSE + Accept negotiation
 
 | Capability | Where |
 |------------|-------|
@@ -2048,7 +2087,7 @@ _Post-gate hardening (Phase XXIV): part 3 of the MCP streamable spec-completenes
 
 _Post-gate hardening (Phase XXIV): part 2 of the MCP streamable spec-completeness arc (145–148). Resumability (147) and server→client requests (148) remain. No new gate tag._
 
-## v145.0.0 — MCP conformance basics (initialize/version + batching + notifications)
+## [v145.0.0](https://github.com/david-engelmann/maidan/releases/tag/v145.0.0) — MCP conformance basics (initialize/version + batching + notifications)
 
 | Capability | Where |
 |------------|-------|
@@ -2057,7 +2096,7 @@ _Post-gate hardening (Phase XXIV): part 2 of the MCP streamable spec-completenes
 
 _Post-gate hardening (Phase XXIV): first of the MCP streamable spec-completeness arc (145–148). Closes the JSON-RPC/lifecycle conformance gaps; streamable-transport gaps (GET SSE, resumability, server→client requests) follow in 146–148. No new gate tag._
 
-## v144.0.0 — Docs dead-link gate + latent-link cleanup
+## [v144.0.0](https://github.com/david-engelmann/maidan/releases/tag/v144.0.0) — Docs dead-link gate + latent-link cleanup
 
 | Capability | Where |
 |------------|-------|
@@ -2066,7 +2105,7 @@ _Post-gate hardening (Phase XXIV): first of the MCP streamable spec-completeness
 
 _Post-gate hardening (Phase XXIV): the 141 follow-up — turns the doc-nav guarantee into a CI gate and fixes the broken links it surfaced. Backlog docs reconciled (132 audit API + 134–143 UI track). No new gate tag._
 
-## v143.0.0 — Richer message rendering (timestamps + slash results)
+## [v143.0.0](https://github.com/david-engelmann/maidan/releases/tag/v143.0.0) — Richer message rendering (timestamps + slash results)
 
 | Capability | Where |
 |------------|-------|
@@ -2074,7 +2113,7 @@ _Post-gate hardening (Phase XXIV): the 141 follow-up — turns the doc-nav guara
 
 _Post-gate hardening (Phase XXIV): UI-only polish surfacing data already in the message payload; completes the slash loop in the thread view. No new gate tag._
 
-## v142.0.0 — Slash-command registry in the console
+## [v142.0.0](https://github.com/david-engelmann/maidan/releases/tag/v142.0.0) — Slash-command registry in the console
 
 | Capability | Where |
 |------------|-------|
@@ -2082,7 +2121,7 @@ _Post-gate hardening (Phase XXIV): UI-only polish surfacing data already in the 
 
 _Post-gate hardening (Phase XXIV): surfaces the slash-command registry reusing the tested `slash_commands::*` handlers under `/ui/api`; one-time secret display for `http` handlers. Execution stays message-triggered (`/name args`). No new gate tag._
 
-## v141.0.0 — Published docs serve every page (dead-nav fix)
+## [v141.0.0](https://github.com/david-engelmann/maidan/releases/tag/v141.0.0) — Published docs serve every page (dead-nav fix)
 
 | Capability | Where |
 |------------|-------|
@@ -2091,7 +2130,7 @@ _Post-gate hardening (Phase XXIV): surfaces the slash-command registry reusing t
 
 _Post-gate hardening (Phase XXIV): a build-time staging step copies the canonical `docs/*` into `book/src/docs/` so mdBook builds them as real in-site pages; the integration guide is now reachable from the live nav. No new gate tag._
 
-## v140.0.0 — Workspace presence roster in the console
+## [v140.0.0](https://github.com/david-engelmann/maidan/releases/tag/v140.0.0) — Workspace presence roster in the console
 
 | Capability | Where |
 |------------|-------|
@@ -2099,7 +2138,7 @@ _Post-gate hardening (Phase XXIV): a build-time staging step copies the canonica
 
 _Post-gate hardening (Phase XXIV): renders the realtime `presence_snapshot` frames (already on the WS) into a roster; no backend change — presence is WS-only. No new gate tag._
 
-## v139.0.0 — 1:1 direct messages in the console
+## [v139.0.0](https://github.com/david-engelmann/maidan/releases/tag/v139.0.0) — 1:1 direct messages in the console
 
 | Capability | Where |
 |------------|-------|
@@ -2107,7 +2146,7 @@ _Post-gate hardening (Phase XXIV): renders the realtime `presence_snapshot` fram
 
 _Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested `dm::*` handlers under `/ui/api`; the conversation pane reads via the existing thread-messages route (DMs are thread-backed). The exact parallel to group DMs (136). No new gate tag._
 
-## v138.0.0 — Global audit + reindex controls (operator console complete)
+## [v138.0.0](https://github.com/david-engelmann/maidan/releases/tag/v138.0.0) — Global audit + reindex controls (operator console complete)
 
 | Capability | Where |
 |------------|-------|
@@ -2116,7 +2155,7 @@ _Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested `dm::*` h
 
 _Post-gate hardening (Phase XXIV): completes the "Operator" tab (137 + 138). Each control is gated by the cap it actually needs and degrades honestly without a token. No new gate tag._
 
-## v137.0.0 — Deliveries & DLQ in the operator console
+## [v137.0.0](https://github.com/david-engelmann/maidan/releases/tag/v137.0.0) — Deliveries & DLQ in the operator console
 
 | Capability | Where |
 |------------|-------|
@@ -2124,7 +2163,7 @@ _Post-gate hardening (Phase XXIV): completes the "Operator" tab (137 + 138). Eac
 
 _Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested `delivery_ops` handlers under `/ui/api`; list (`workspace:read`) + replay (`workspace:write`) map onto the operator-session caps, so it works on a plain login. No new gate tag._
 
-## v136.0.0 — Group DMs in the operator console
+## [v136.0.0](https://github.com/david-engelmann/maidan/releases/tag/v136.0.0) — Group DMs in the operator console
 
 | Capability | Where |
 |------------|-------|
@@ -2132,7 +2171,7 @@ _Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested `delivery
 
 _Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested group-DM handlers under `/ui/api`; the conversation pane reads via the existing thread-messages route (group DMs are thread-backed). No new gate tag._
 
-## v135.0.0 — Pins in the thread view
+## [v135.0.0](https://github.com/david-engelmann/maidan/releases/tag/v135.0.0) — Pins in the thread view
 
 | Capability | Where |
 |------------|-------|
@@ -2140,7 +2179,7 @@ _Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested group-DM 
 
 _Post-gate hardening (Phase XXIV): pins affordance reusing the tested pin handlers under `/ui/api`. No new gate tag._
 
-## v134.0.0 — Reactions in the operator UI
+## [v134.0.0](https://github.com/david-engelmann/maidan/releases/tag/v134.0.0) — Reactions in the operator UI
 
 | Capability | Where |
 |------------|-------|
@@ -2148,7 +2187,7 @@ _Post-gate hardening (Phase XXIV): pins affordance reusing the tested pin handle
 
 _Post-gate hardening (Phase XXIV): first UI feature on the repaired/guarded base — reuses the tested reaction handlers under `/ui/api`. No new gate tag._
 
-## v133.0.0 — /ui write-path repair + JS guard
+## [v133.0.0](https://github.com/david-engelmann/maidan/releases/tag/v133.0.0) — /ui write-path repair + JS guard
 
 | Capability | Where |
 |------------|-------|
@@ -2156,7 +2195,7 @@ _Post-gate hardening (Phase XXIV): first UI feature on the repaired/guarded base
 
 _Post-gate hardening (Phase XXIV): repaired a shipped-broken, CI-invisible `/ui` write path (4 undefined JS refs) and added a guard so the bug class fails CI. Foundation for the UI feature clusters. No new gate tag._
 
-## v132.0.0 — Global admin audit query API
+## [v132.0.0](https://github.com/david-engelmann/maidan/releases/tag/v132.0.0) — Global admin audit query API
 
 | Capability | Where |
 |------------|-------|
@@ -2164,7 +2203,7 @@ _Post-gate hardening (Phase XXIV): repaired a shipped-broken, CI-invisible `/ui`
 
 _Post-gate hardening (Phase XXIV): exposes the existing cross-workspace `Store::list_audit` behind a new global capability (no org model needed). Completes the 127–132 sweep. No new gate tag._
 
-## v131.0.0 — Delivery-unification verification-close
+## [v131.0.0](https://github.com/david-engelmann/maidan/releases/tag/v131.0.0) — Delivery-unification verification-close
 
 | Capability | Where |
 |------------|-------|
@@ -2172,7 +2211,7 @@ _Post-gate hardening (Phase XXIV): exposes the existing cross-workspace `Store::
 
 _Post-gate hardening (Phase XXIV): docs-only. Verified the unify-delivery item substantially addressed and declined a risky storage-table migration; rationale recorded. No new gate tag._
 
-## v130.0.0 — Test-coverage uplift (observability + MCP)
+## [v130.0.0](https://github.com/david-engelmann/maidan/releases/tag/v130.0.0) — Test-coverage uplift (observability + MCP)
 
 | Capability | Where |
 |------------|-------|
@@ -2181,7 +2220,7 @@ _Post-gate hardening (Phase XXIV): docs-only. Verified the unify-delivery item s
 
 _Post-gate hardening (Phase XXIV): fills the zero-coverage gaps the v126 scan named, via race-free pure-function refactors. No new gate tag._
 
-## v129.0.0 — Hardening: error-visibility + bounded buffers
+## [v129.0.0](https://github.com/david-engelmann/maidan/releases/tag/v129.0.0) — Hardening: error-visibility + bounded buffers
 
 | Capability | Where |
 |------------|-------|
@@ -2191,7 +2230,7 @@ _Post-gate hardening (Phase XXIV): fills the zero-coverage gaps the v126 scan na
 
 _Post-gate hardening (Phase XXIV): the top correctness/robustness findings from the v126 scan. No new gate tag._
 
-## v128.0.0 — A2A delivery robustness
+## [v128.0.0](https://github.com/david-engelmann/maidan/releases/tag/v128.0.0) — A2A delivery robustness
 
 | Capability | Where |
 |------------|-------|
@@ -2200,7 +2239,7 @@ _Post-gate hardening (Phase XXIV): the top correctness/robustness findings from 
 
 _Post-gate hardening (Phase XXIV): the A2A delivery paths were fire-and-forget (no timeout/retry/logging); now bounded, retried, and observable. No new gate tag._
 
-## v127.0.0 — Backlog reconciliation
+## [v127.0.0](https://github.com/david-engelmann/maidan/releases/tag/v127.0.0) — Backlog reconciliation
 
 | Capability | Where |
 |------------|-------|
@@ -2208,7 +2247,7 @@ _Post-gate hardening (Phase XXIV): the A2A delivery paths were fire-and-forget (
 
 _Post-gate hardening (Phase XXIV): docs-only — corrected ~11 phantom (already-shipped) backlog entries + the stale `Open Work` tail, so the remaining-work list matches the code. No new gate tag._
 
-## v126.0.0 — MCP SSE at-least-once parity
+## [v126.0.0](https://github.com/david-engelmann/maidan/releases/tag/v126.0.0) — MCP SSE at-least-once parity
 
 | Capability | Where |
 |------------|-------|
@@ -2216,7 +2255,7 @@ _Post-gate hardening (Phase XXIV): docs-only — corrected ~11 phantom (already-
 
 _Post-gate hardening (Phase XXIV): extends the Cluster 125 at-least-once delivery to the MCP SSE transport — both real-time transports now offer opt-in gap-free delivery. No new gate tag._
 
-## v125.0.0 — At-least-once event delivery
+## [v125.0.0](https://github.com/david-engelmann/maidan/releases/tag/v125.0.0) — At-least-once event delivery
 
 | Capability | Where |
 |------------|-------|
@@ -2225,7 +2264,7 @@ _Post-gate hardening (Phase XXIV): extends the Cluster 125 at-least-once deliver
 
 _Post-gate hardening (Phase XXIV): closes the silent out-of-order delivery gap with an opt-in cursor-driven reconcile mode (time-based stability horizon); the default optimistic low-latency path is unchanged. No new gate tag._
 
-## v124.0.0 — CI / observability loose ends
+## [v124.0.0](https://github.com/david-engelmann/maidan/releases/tag/v124.0.0) — CI / observability loose ends
 
 | Capability | Where |
 |------------|-------|
@@ -2234,7 +2273,7 @@ _Post-gate hardening (Phase XXIV): closes the silent out-of-order delivery gap w
 
 _Post-gate hardening (Phase XXIV): collapses the two overlapping rule validators into one and promotes the Cluster 122/123 observability jobs to required checks. No new gate tag._
 
-## v123.0.0 — OTLP delivery proven end-to-end
+## [v123.0.0](https://github.com/david-engelmann/maidan/releases/tag/v123.0.0) — OTLP delivery proven end-to-end
 
 | Capability | Where |
 |------------|-------|
@@ -2242,7 +2281,7 @@ _Post-gate hardening (Phase XXIV): collapses the two overlapping rule validators
 
 _Post-gate hardening (Phase XXIV): closes the residual observability gap from Cluster 122 — the OTLP export wiring (Cluster 89) is now proven against a running collector, not just an in-process unit test. No new gate tag._
 
-## v122.0.0 — Alert rules executed in CI
+## [v122.0.0](https://github.com/david-engelmann/maidan/releases/tag/v122.0.0) — Alert rules executed in CI
 
 | Capability | Where |
 |------------|-------|
@@ -2251,7 +2290,7 @@ _Post-gate hardening (Phase XXIV): closes the residual observability gap from Cl
 
 _Post-gate hardening (Phase XXIV): closes the "alert exprs never executed" gap from Cluster 121 — which immediately caught a `$value`-rendering bug in `MaidanIndexerQueueSaturated`. Also corrects the OTLP-export status (shipped in Cluster 89). No new gate tag._
 
-## v121.0.0 — Observability & contract completeness
+## [v121.0.0](https://github.com/david-engelmann/maidan/releases/tag/v121.0.0) — Observability & contract completeness
 
 | Capability | Where |
 |------------|-------|
@@ -2261,7 +2300,7 @@ _Post-gate hardening (Phase XXIV): closes the "alert exprs never executed" gap f
 
 _Post-gate hardening (Phase XXIV): closes the OpenAPI-wide capability-map gap (Cluster 69) and extends the Cluster 90 SLO surface to the Cluster 116 indexer metrics. No new gate tag._
 
-## v120.0.0 — Scale product gate (`maidan-scale-1.0`)
+## [v120.0.0](https://github.com/david-engelmann/maidan/releases/tag/v120.0.0) — Scale product gate (`maidan-scale-1.0`)
 
 | Capability | Where |
 |------------|-------|
@@ -2271,7 +2310,7 @@ _Post-gate hardening (Phase XXIV): closes the OpenAPI-wide capability-map gap (C
 
 _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 
-## v119.0.0 — Dependency dedupe & currency
+## [v119.0.0](https://github.com/david-engelmann/maidan/releases/tag/v119.0.0) — Dependency dedupe & currency
 
 | Capability | Where |
 |------------|-------|
@@ -2279,7 +2318,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Dependency currency + duplicate-version policy doc | `docs/Dependencies.md` |
 | Workspace on thiserror 2 | `Cargo.toml` |
 
-## v118.0.0 — Hybrid relevance
+## [v118.0.0](https://github.com/david-engelmann/maidan/releases/tag/v118.0.0) — Hybrid relevance
 
 | Capability | Where |
 |------------|-------|
@@ -2287,7 +2326,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Score fusion (`fuse_hybrid`, `DEFAULT_HYBRID_WEIGHT`) | `crates/maidan-search/src/score.rs`, `traits.rs` |
 | Relevance eval harness | `crates/maidan-search/tests/relevance_eval.rs` |
 
-## v117.0.0 — Pluggable production provider
+## [v117.0.0](https://github.com/david-engelmann/maidan/releases/tag/v117.0.0) — Pluggable production provider
 
 | Capability | Where |
 |------------|-------|
@@ -2295,7 +2334,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Boot-time per-model registration (`Search::ensure_model`) | `crates/maidan-search/src/traits.rs`, `postgres.rs`, `sqlite.rs` |
 | Embedding provider + model-migration guide | `docs/Embeddings.md` |
 
-## v116.0.0 — Batch embedding pipeline
+## [v116.0.0](https://github.com/david-engelmann/maidan/releases/tag/v116.0.0) — Batch embedding pipeline
 
 | Capability | Where |
 |------------|-------|
@@ -2304,7 +2343,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Chunked large-workspace backfill | `crates/maidan-search/src/reindex.rs` |
 | Bounded indexer-lag + throughput metrics | `crates/maidan-server/src/metrics.rs` (`maidan_indexer_queue_depth`, …) |
 
-## v115.0.0 — Module split + `unwrap()` purge
+## [v115.0.0](https://github.com/david-engelmann/maidan/releases/tag/v115.0.0) — Module split + `unwrap()` purge
 
 | Capability | Where |
 |------------|-------|
@@ -2312,28 +2351,28 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Domain-organized HTTP route modules | `crates/maidan-server/src/routes/` |
 | Domain-organized MCP tool modules | `crates/maidan-mcp/src/tools/` |
 
-## v114.0.0 — Coverage uplift + envelope fuzz
+## [v114.0.0](https://github.com/david-engelmann/maidan/releases/tag/v114.0.0) — Coverage uplift + envelope fuzz
 
 | Capability | Where |
 |------------|-------|
 | Full-suite coverage gate (≥ 40% lines) | `.github/workflows/ci.yml` (`coverage` job) |
 | JSON-RPC / MCP / A2A envelope round-trip + fuzz coverage | `maidan-mcp/src/{protocol,error}.rs`, `maidan-a2a/src/protocol.rs` |
 
-## v113.0.0 — Backend parity harness
+## [v113.0.0](https://github.com/david-engelmann/maidan/releases/tag/v113.0.0) — Backend parity harness
 
 | Capability | Where |
 |------------|-------|
 | Migration + store-module lockstep guard (allowlisted) | `maidan-store/tests/backend_parity.rs` |
 | Cross-dialect identity over FSM / edit / reaction surface | `maidan-store/tests/{common/mod.rs,dialect_parity.rs}` |
 
-## v112.0.0 — FSM property tests
+## [v112.0.0](https://github.com/david-engelmann/maidan/releases/tag/v112.0.0) — FSM property tests
 
 | Capability | Where |
 |------------|-------|
 | FSM transition + rank invariants under arbitrary inputs | `maidan-fsm/tests/fsm_properties.rs` |
 | Hierarchical (tree-wide) rank-rule guarantee | `maidan-fsm/tests/fsm_properties.rs` (`locally_valid_tree_is_globally_consistent`) |
 
-## v111.0.0 — `maidan-auth` test suite
+## [v111.0.0](https://github.com/david-engelmann/maidan/releases/tag/v111.0.0) — `maidan-auth` test suite
 
 | Capability | Where |
 |------------|-------|
@@ -2341,126 +2380,126 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Peer-secret AEAD round-trip / tamper / key-parse coverage | `maidan-auth/tests/peer_secret_aead.rs` |
 | Bearer lifecycle (mint / revoke / expire / forge) coverage | `maidan-auth/tests/token_lifecycle.rs` |
 
-## v110.0.0 — Per-workspace fairness
+## [v110.0.0](https://github.com/david-engelmann/maidan/releases/tag/v110.0.0) — Per-workspace fairness
 
 | Capability | Where |
 |------------|-------|
 | Per-workspace request-rate fairness | `rate_limit::middleware`, `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` (key `ws:{wid}`) |
 | Noisy-neighbor regression guard | `tenant_fairness_e2e` |
 
-## v109.0.0 — ANN index tuning + search bench
+## [v109.0.0](https://github.com/david-engelmann/maidan/releases/tag/v109.0.0) — ANN index tuning + search bench
 
 | Capability | Where |
 |------------|-------|
 | Tunable HNSW build + query params | `hnsw::HnswParams`, `ensure_model_postgres`, `PostgresSearch::semantic_search` |
 | Lexical + semantic latency bench + baseline | `maidan-search/benches/search_hot.rs`, `SEARCH_BASELINE.md` |
 
-## v108.0.0 — Adaptive outbox relay
+## [v108.0.0](https://github.com/david-engelmann/maidan/releases/tag/v108.0.0) — Adaptive outbox relay
 
 | Capability | Where |
 |------------|-------|
 | Drain-until-empty + idle backoff relay cadence | `OutboxRelay::run`, `RelayTick`, `backoff_step` |
 | Prompt wake on enqueue (polling-safe mpsc nudge) | `AppState.outbox_nudge`, `OutboxRelay::with_nudge`, `wait_idle_or_nudge` |
 
-## v107.0.0 — Configurable DB pool & timeouts
+## [v107.0.0](https://github.com/david-engelmann/maidan/releases/tag/v107.0.0) — Configurable DB pool & timeouts
 
 | Capability | Where |
 |------------|-------|
 | Env-tunable pool size + acquire timeout | `config::DbConfig`, `main.rs` |
 | Postgres `statement_timeout` (migration-exempt) / SQLite `busy_timeout` | `after_connect` cap, `configure_sqlite_pool_with` |
 
-## v106.0.0 — Bulk context reads
+## [v106.0.0](https://github.com/david-engelmann/maidan/releases/tag/v106.0.0) — Bulk context reads
 
 | Capability | Where |
 |------------|-------|
 | O(1)-query context assembly (no per-row N+1) | `thread_context.rs`, `Store::{list_threads_for_workspace, list_references_from_many, list_message_edits_for_messages}` |
 | Query-count regression guard | `context_query_count_e2e` |
 
-## v105.0.0 — Multi-replica scale-out smoke
+## [v105.0.0](https://github.com/david-engelmann/maidan/releases/tag/v105.0.0) — Multi-replica scale-out smoke
 
 | Capability | Where |
 |------------|-------|
 | Race-free boot migrations under N replicas | `run_postgres_migrations` advisory lock, `concurrent_migrations` test |
 | Tested two-replica topology (shared PG + object store + LB) | `compose.yaml` `scale` profile, `scripts/scale-out-smoke.sh`, CI `scale-out smoke` |
 
-## v104.0.0 — Durable ephemeral state
+## [v104.0.0](https://github.com/david-engelmann/maidan/releases/tag/v104.0.0) — Durable ephemeral state
 
 | Capability | Where |
 |------------|-------|
 | Durable single-use OAuth codes (any-replica exchange) | `maidan_oauth_codes`, `Store::{insert,consume}_oauth_code`, `app_oauth.rs` |
 | Durable reindex job status (any-replica read) | `maidan_reindex_jobs`, `Store::{upsert,get}_reindex_job`, `reindex_ops.rs` |
 
-## v103.0.0 — Distributed presence & roster
+## [v103.0.0](https://github.com/david-engelmann/maidan/releases/tag/v103.0.0) — Distributed presence & roster
 
 | Capability | Where |
 |------------|-------|
 | Cross-replica presence/typing fan-out | `maidan-bus::PresenceNotifier`, `PostgresPresenceNotifier` (`maidan_presence`) |
 | Merged TTL roster across replicas | `PresenceHub` heartbeat + sweep, `AppState::attach_presence_notifier` |
 
-## v102.0.0 — Cross-replica MCP resource notifications
+## [v102.0.0](https://github.com/david-engelmann/maidan/releases/tag/v102.0.0) — Cross-replica MCP resource notifications
 
 | Capability | Where |
 |------------|-------|
 | Cross-process resource-update fan-out | `maidan-bus::ResourceNotifier`, `PostgresResourceNotifier` (`maidan_resource_updated`) |
 | Per-replica notification delivery | `McpServer::spawn_resource_notify_listener`, `AppState::attach_resource_notifier` |
 
-## v101.0.0 — Operator product gate
+## [v101.0.0](https://github.com/david-engelmann/maidan/releases/tag/v101.0.0) — Operator product gate
 
 | Capability | Where |
 |------------|-------|
 | Operator gate e2e | `maidan_operator_gate_e2e.rs` |
 
-## v100.0.0 — mcp-stdio embedded indexer
+## Cluster 100 (source record; no `v100.0.0` tag) — mcp-stdio embedded indexer
 
 | Capability | Where |
 |------------|-------|
 | Stdio + in-process indexer | `maidan-cli` `mcp-stdio`, `McpServer::with_event_bus` |
 
-## v99.0.0 — Presence v2 docs
+## Cluster 99 (source record; no `v99.0.0` tag) — Presence v2 docs
 
 | Capability | Where |
 |------------|-------|
 | Roster + WS presence guide | `docs/Presence and Roster.md` |
 
-## v98.0.0 — Mention webhook router
+## Cluster 98 (source record; no `v98.0.0` tag) — Mention webhook router
 
 | Capability | Where |
 |------------|-------|
 | Workspace mention webhook config | `mention_webhook_id`, `webhooks.rs` |
 
-## v97.0.0 — Group DMs
+## Cluster 97 (source record; no `v97.0.0` tag) — Group DMs
 
 | Capability | Where |
 |------------|-------|
 | Group DM (≥3 members) | migrations 0027/0028, `group_dm.rs` |
 
-## v96.0.0 — /ui tokens & apps
+## Cluster 96 (source record; no `v96.0.0` tag) — /ui tokens & apps
 
 | Capability | Where |
 |------------|-------|
 | List API tokens | `GET .../members/:mid/tokens` |
 | UI token + app install list | `static/index.html` |
 
-## v95.0.0 — /ui search
+## Cluster 95 (source record; no `v95.0.0` tag) — /ui search
 
 | Capability | Where |
 |------------|-------|
 | Faceted search tab | `/ui` search panel + `/ui/api/.../search` |
 
-## v94.0.0 — /ui artifacts
+## Cluster 94 (source record; no `v94.0.0` tag) — /ui artifacts
 
 | Capability | Where |
 |------------|-------|
 | Artifact cards + attach | `renderMessages`, upload flow |
 
-## v93.0.0 — /ui live events
+## Cluster 93 (source record; no `v93.0.0` tag) — /ui live events
 
 | Capability | Where |
 |------------|-------|
 | WS presets + reconnect + session subscribe | `index.html`, `ws.rs` |
 | E2e | `ui_ws_tail_e2e.rs` |
 
-## v92.0.0 — /ui channel browser
+## Cluster 92 (source record; no `v92.0.0` tag) — /ui channel browser
 
 | Capability | Where |
 |------------|-------|
@@ -2468,7 +2507,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Channel browser in static UI | `static/index.html` (`data-ui-version="6"`) |
 | E2e | `ui_channels_e2e.rs` |
 
-## v88.0.0 — Helm production profiles
+## Cluster 88 (source record; no `v88.0.0` tag) — Helm production profiles
 
 | Capability | Where |
 |------------|-------|
@@ -2476,7 +2515,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Profile install guide | `helm/maidan/PROFILES.md` |
 | Profile helm template smoke | `scripts/helm-template-smoke.sh` |
 
-## v90.0.0 — SLO alert templates
+## Cluster 90 (source record; no `v90.0.0` tag) — SLO alert templates
 
 | Capability | Where |
 |------------|-------|
@@ -2484,7 +2523,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Rules validation script | `scripts/check-alert-rules.sh` (superseded the substring-only `validate-prometheus-rules.sh` in `v122.0.0`; now promtool check + unit tests) |
 | Alert/metric contract test | `maidan-server/tests/alert_templates_contract.rs` |
 
-## v89.0.0 — OTLP metrics export
+## Cluster 89 (source record; no `v89.0.0` tag) — OTLP metrics export
 
 | Capability | Where |
 |------------|-------|
@@ -2492,7 +2531,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Example Grafana dashboard | `docs/dashboards/maidan-operator.json` |
 | Helm otel profile enables metrics | `values-profile-otel.yaml` |
 
-## v87.0.0 — Reindex job API
+## Cluster 87 (source record; no `v87.0.0` tag) — Reindex job API
 
 | Capability | Where |
 |------------|-------|
@@ -2500,14 +2539,14 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | `Search::reindex_embeddings` | `maidan-search` Postgres + SQLite |
 | Reindex job e2e | `maidan-server/tests/reindex_job_e2e.rs` |
 
-## v86.0.0 — Per-model embedding query
+## Cluster 86 (source record; no `v86.0.0` tag) — Per-model embedding query
 
 | Capability | Where |
 |------------|-------|
 | `embedding_model` search param | `SearchQuery`, MCP `search_messages`, [[Production]] |
 | Model-scoped semantic HTTP e2e | `search_semantic_e2e.rs` |
 
-## v85.0.0 — sqlite-vec optional
+## Cluster 85 (source record; no `v85.0.0` tag) — sqlite-vec optional
 
 | Capability | Where |
 |------------|-------|
@@ -2515,7 +2554,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | CI linkage proof | `.github/workflows/ci.yml` job `sqlite-vec (optional feature)` |
 | Brute-force SQLite semantic (default) | `SqliteSearch::semantic_search` without feature |
 
-## v84.0.0 — Outbox relay modes
+## Cluster 84 (source record; no `v84.0.0` tag) — Outbox relay modes
 
 | Capability | Where |
 |------------|-------|
@@ -2523,14 +2562,14 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Production outbox guard | `validate_startup` in `outbox_relay`, `MAIDAN_ENV=production` |
 | SQLite outbox on by default | `main.rs` sqlite dialect |
 
-## v83.0.0 — SQLite delivery cursor (ladder close)
+## Cluster 83 (source record; no `v83.0.0` tag) — SQLite delivery cursor (ladder close)
 
 | Capability | Where |
 |------------|-------|
 | SQLite delivery cursor | `maidan_delivery_cursor` migration `0023`, `SqliteStore::get/advance_delivery_cursor` |
 | Cursor parity tests | `maidan-store/tests/delivery_cursor.rs` |
 
-## v82.0.0 — Context pagination
+## Cluster 82 (source record; no `v82.0.0` tag) — Context pagination
 
 | Capability | Where |
 |------------|-------|
@@ -2538,7 +2577,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Paginated workspace context | `GET /workspaces/:id/context` (`thread_cursor`, `next_thread_cursor`) |
 | MCP context cursors | `get_thread_context` / `get_workspace_context` tool args |
 
-## v81.0.0 — Subscribe grants v3
+## Cluster 81 (source record; no `v81.0.0` tag) — Subscribe grants v3
 
 | Capability | Where |
 |------------|-------|
@@ -2546,7 +2585,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Private channel enforcement | `subscribe_grants`, `EventFilter::matches` |
 | MCP stream grants | `GET /mcp/stream?channel_grants=…` |
 
-## v79.0.0 — A2A long-running tasks
+## Cluster 79 (source record; no `v79.0.0` tag) — A2A long-running tasks
 
 | Capability | Where |
 |------------|-------|
@@ -2554,7 +2593,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Subscribe progress | `SubscribeToTask` `statusUpdate` SSE frames |
 | Terminal subscribe guard | JSON-RPC `-32005` |
 
-## v80.0.0 — Delivery ops unified
+## Cluster 80 (source record; no `v80.0.0` tag) — Delivery ops unified
 
 | Capability | Where |
 |------------|-------|
@@ -2562,7 +2601,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Webhook delivery operator store API | `list_webhook_deliveries`, `replay_webhook_delivery` |
 | Automation routes (legacy) | `/workspaces/:wid/automation/deliveries` |
 
-## v77.0.0 — HTTP capability map complete
+## [v77.0.0](https://github.com/david-engelmann/maidan/releases/tag/v77.0.0) — HTTP capability map complete
 
 | Capability | Where |
 |------------|-------|
@@ -2571,14 +2610,14 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | HTTP deny matrix e2e | `http_capability_matrix_e2e.rs` |
 | OpenAPI route parity | `openapi/paths/extensions.rs`, multipart stubs |
 
-## v76.0.0 — Agent observability (`maidan-agent-1.0`)
+## [v76.0.0](https://github.com/david-engelmann/maidan/releases/tag/v76.0.0) — Agent observability (`maidan-agent-1.0`)
 
 | Capability | Where |
 |------------|-------|
 | Agent substrate gate e2e | `agent_substrate_gate_e2e.rs` |
 | Ops runbook | [[Production#Agent observability]] |
 
-## v72.0.0 — A2A task streaming
+## [v72.0.0](https://github.com/david-engelmann/maidan/releases/tag/v72.0.0) — A2A task streaming
 
 | Capability | Where |
 |------------|-------|
@@ -2587,21 +2626,21 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | SubscribeToTask SSE | `POST /a2a/v1/rpc` |
 | Push on task update | Best-effort POST to configured URL |
 
-## v74.0.0 — MCP context export
+## [v74.0.0](https://github.com/david-engelmann/maidan/releases/tag/v74.0.0) — MCP context export
 
 | Capability | Where |
 |------------|-------|
 | `get_thread_context` | MCP `tools/call` |
 | `get_workspace_context` | MCP `tools/call` |
 
-## v71.0.0 — Subscribe contract v2
+## [v71.0.0](https://github.com/david-engelmann/maidan/releases/tag/v71.0.0) — Subscribe contract v2
 
 | Capability | Where |
 |------------|-------|
 | WS filter schema | `contracts/ws-subscribe-filter.schema.json` |
 | EventKind forward-compat | [[Agent Integration]] |
 
-## v70.0.0 — Vault truth pass
+## [v70.0.0](https://github.com/david-engelmann/maidan/releases/tag/v70.0.0) — Vault truth pass
 
 | Capability | Where |
 |------------|-------|
@@ -2609,7 +2648,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Reconciled backlog docs | [[Remaining Work]], [[Open Work]] |
 | Agent integration README pitch | Root `README.md`, [[Agent Integration]] |
 
-## v69.0.0 — Capabilities matrix complete
+## [v69.0.0](https://github.com/david-engelmann/maidan/releases/tag/v69.0.0) — Capabilities matrix complete
 
 | Capability | Where |
 |------------|-------|
@@ -2618,7 +2657,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | HTTP capability contract | `contracts/http-capability-routes.json` |
 | Contract CI | `scripts/check-agent-contract.sh` |
 
-## v68.0.0 — Automation delivery guarantees
+## [v68.0.0](https://github.com/david-engelmann/maidan/releases/tag/v68.0.0) — Automation delivery guarantees
 
 | Capability | Where |
 |------------|-------|
@@ -2628,35 +2667,35 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Slash sync-then-queue | `maidan-server::slash_commands` |
 | FSM async HTTP dispatch | `maidan-server::fsm_hooks` |
 
-## v67.0.0 — Workspace context packages
+## [v67.0.0](https://github.com/david-engelmann/maidan/releases/tag/v67.0.0) — Workspace context packages
 
 | Capability | Where |
 |------------|-------|
 | Workspace context export | `GET /workspaces/:id/context` |
 | Message edits in thread context | `GET /threads/:id/context` |
 
-## v65.0.0 — App install OAuth
+## [v65.0.0](https://github.com/david-engelmann/maidan/releases/tag/v65.0.0) — App install OAuth
 
 | Capability | Where |
 |------------|-------|
 | OAuth authorization code | `POST .../apps/:app_id/oauth/authorize` |
 | Token exchange | `POST /oauth/app/token` |
 
-## v62.0.0 — Subscribe schema + outbox list
+## [v62.0.0](https://github.com/david-engelmann/maidan/releases/tag/v62.0.0) — Subscribe schema + outbox list
 
 | Capability | Where |
 |------------|-------|
 | WS subscribe schema version | `subscribe_ack.schema_version` |
 | List quarantined outbox | `GET /workspaces/:wid/outbox/quarantined` |
 
-## v60.0.0 — MCP streamable session lifecycle
+## [v60.0.0](https://github.com/david-engelmann/maidan/releases/tag/v60.0.0) — MCP streamable session lifecycle
 
 | Capability | Where |
 |------------|-------|
 | Streamable session TTL | `MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS` |
 | Close streamable session | `DELETE /mcp/streamable` |
 
-## v59.0.0 — Agent integration charter
+## [v59.0.0](https://github.com/david-engelmann/maidan/releases/tag/v59.0.0) — Agent integration charter
 
 | Capability | Where |
 |------------|-------|
@@ -2670,14 +2709,14 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Product Ladder 35–58 closed | [[Retros/Product Ladder 35+]] |
 | Checklist sign-off | [[Product Completion Checklist]] at **`v58.0.0`** |
 
-## v58.0.0 — Maidan 2.0 completion gate
+## [v58.0.0](https://github.com/david-engelmann/maidan/releases/tag/v58.0.0) — Maidan 2.0 completion gate
 
 | Capability | Where |
 |------------|-------|
 | Product completion checklist (28–57) | [[Product Completion Checklist]] |
 | Expanded completion gate e2e | `product_completion_gate_e2e.rs` |
 
-## v55.0.0 — Helm production bundle
+## [v55.0.0](https://github.com/david-engelmann/maidan/releases/tag/v55.0.0) — Helm production bundle
 
 | Capability | Where |
 |------------|-------|
@@ -2685,7 +2724,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Stack prod bundle | `helm/maidan-stack/values-prod.yaml` |
 | kind `helm install` CI | `scripts/helm-install-kind-smoke.sh` |
 
-## v54.0.0 — Capability quotas & distributed limits
+## [v54.0.0](https://github.com/david-engelmann/maidan/releases/tag/v54.0.0) — Capability quotas & distributed limits
 
 | Capability | Where |
 |------------|-------|
@@ -2693,7 +2732,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Quota enforcement | `maidan-server::quota` middleware |
 | Redis rate limiter | `MAIDAN_RATE_LIMIT_REDIS_URL` |
 
-## v53.0.0 — Workspace full erasure
+## [v53.0.0](https://github.com/david-engelmann/maidan/releases/tag/v53.0.0) — Workspace full erasure
 
 | Capability | Where |
 |------------|-------|
@@ -2701,7 +2740,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Deep purge + row delete | `Store::erase_workspace` |
 | Pre-delete audit | `workspace.erase` action |
 
-## v52.0.0 — FSM automation hooks
+## [v52.0.0](https://github.com/david-engelmann/maidan/releases/tag/v52.0.0) — FSM automation hooks
 
 | Capability | Where |
 |------------|-------|
@@ -2710,7 +2749,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | HTTP + MCP tool handlers | Reuses `SlashHandlerKind` + webhook signing |
 | MCP registration tools | `register_fsm_hook`, `list_fsm_hooks` |
 
-## v51.0.0 — Slash commands
+## [v51.0.0](https://github.com/david-engelmann/maidan/releases/tag/v51.0.0) — Slash commands
 
 | Capability | Where |
 |------------|-------|
@@ -2719,7 +2758,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | HTTP + MCP tool handlers | `maidan-server::slash_commands` |
 | MCP registration tools | `register_slash_command`, `list_slash_commands` |
 
-## v50.0.0 — Outbound webhooks
+## [v50.0.0](https://github.com/david-engelmann/maidan/releases/tag/v50.0.0) — Outbound webhooks
 
 | Capability | Where |
 |------------|-------|
@@ -2728,7 +2767,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Retry + quarantine queue | `maidan_webhook_deliveries`, `webhook_worker` |
 | `EventKind` subscription filters | `maidan-store::webhooks::kinds_match` |
 
-## v49.0.0 — Agent context export
+## [v49.0.0](https://github.com/david-engelmann/maidan/releases/tag/v49.0.0) — Agent context export
 
 | Capability | Where |
 |------------|-------|
@@ -2736,7 +2775,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | `Store::list_thread_transitions` | `maidan-store` |
 | Artifact discovery via message metadata | `thread_context::artifact_shas_from_metadata` |
 
-## v48.0.0 — Search scale & parity
+## [v48.0.0](https://github.com/david-engelmann/maidan/releases/tag/v48.0.0) — Search scale & parity
 
 | Capability | Where |
 |------------|-------|
@@ -2745,49 +2784,49 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | `maidan_search::sqlite_pool_options()` for vec-enabled pools | `maidan-search`, `maidan-server` SQLite path |
 | Scale guidance (Postgres HNSW prod, SQLite dev) | [[Production]], [[Architecture]] |
 
-## v47.0.0 — Per-model embedding tables
+## [v47.0.0](https://github.com/david-engelmann/maidan/releases/tag/v47.0.0) — Per-model embedding tables
 
 | Capability | Surface |
 |------------|---------|
 | Embedding model registry | `maidan_embedding_models` + `maidan_emb_*` tables |
 | Reindex CLI | `maidan reindex-embeddings` |
 
-## v46.0.0 — Edit history & message UX
+## [v46.0.0](https://github.com/david-engelmann/maidan/releases/tag/v46.0.0) — Edit history & message UX
 
 | Capability | Surface |
 |------------|---------|
 | Message edit history | `maidan_message_edits`, `GET /messages/:id/edits` |
 | UI edited affordance | `/ui` v5 history panel + “edited” on messages |
 
-## v45.0.0 — Admin console
+## [v45.0.0](https://github.com/david-engelmann/maidan/releases/tag/v45.0.0) — Admin console
 
 | Capability | Surface |
 |------------|---------|
 | Operator UI admin | Audit log, purge confirm, federation peers, token revoke |
 | Session admin reads | `GET /ui/api/workspaces/:wid/audit`, `.../peers` |
 
-## v44.0.0 — UI collaboration flows
+## [v44.0.0](https://github.com/david-engelmann/maidan/releases/tag/v44.0.0) — UI collaboration flows
 
 | Capability | Surface |
 |------------|---------|
 | Operator UI v3 | Thread sidebar, compose/edit, artifact upload, faceted search |
 | Session read APIs | `GET /ui/api/channels/:cid/threads`, `.../threads/:tid/messages`, `.../search` |
 
-## v43.0.0 — UI v2 shell
+## [v43.0.0](https://github.com/david-engelmann/maidan/releases/tag/v43.0.0) — UI v2 shell
 
 | Capability | Surface |
 |------------|---------|
 | Operator UI v2 | `/ui` channel sidebar + WS live feed |
 | Session channel list | `GET /ui/api/workspaces/:wid/channels` |
 
-## v42.0.0 — Presence & typing
+## [v42.0.0](https://github.com/david-engelmann/maidan/releases/tag/v42.0.0) — Presence & typing
 
 | Capability | Surface |
 |------------|---------|
 | Ephemeral presence | WS `member_id` + `presence` / `presence_snapshot` frames |
 | Typing indicators | WS `{"type":"typing","thread_id",…,"active"}` fan-out |
 
-## v41.0.0 — Reactions & pins
+## [v41.0.0](https://github.com/david-engelmann/maidan/releases/tag/v41.0.0) — Reactions & pins
 
 | Capability | Surface |
 |------------|---------|
@@ -2795,14 +2834,14 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Thread pins | `POST/GET/DELETE /threads/:id/pins` |
 | MCP reactions & pins | `add_reaction`, `remove_reaction`, `list_reactions`, `pin_message`, `unpin_message`, `list_pins` |
 
-## v40.0.0 — Mention router & inbox
+## [v40.0.0](https://github.com/david-engelmann/maidan/releases/tag/v40.0.0) — Mention router & inbox
 
 | Capability | Surface |
 |------------|---------|
 | Member inbox + unread cursor | `GET /members/:id/inbox`, `POST /members/:id/inbox/read` |
 | `@handle` mention routing | `maidan-router` on HTTP/MCP `post_message` / `post_dm_message` |
 
-## v39.0.0 — Direct messages
+## [v39.0.0](https://github.com/david-engelmann/maidan/releases/tag/v39.0.0) — Direct messages
 
 | Capability | Surface |
 |------------|---------|
@@ -2810,61 +2849,61 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | MCP DM tools | `open_dm_conversation`, `list_dm_conversations`, `post_dm_message` |
 | WS DM filter | `filter.dm_conversation_id` on `/ws/subscribe` and `GET /mcp/stream` |
 
-## v38.0.0 — MCP resource fan-out complete
+## [v38.0.0](https://github.com/david-engelmann/maidan/releases/tag/v38.0.0) — MCP resource fan-out complete
 
 | Capability | Surface |
 |------------|---------|
 | Resource notifications on all HTTP mutations | edit, purge, mention, vote + existing tombstone/FSM |
 
-## v37.0.0 — A2A SendStreamingMessage
+## [v37.0.0](https://github.com/david-engelmann/maidan/releases/tag/v37.0.0) — A2A SendStreamingMessage
 
 | Capability | Surface |
 |------------|---------|
 | A2A streaming task updates | `SendStreamingMessage` on `POST /a2a/v1/rpc` (SSE) |
 
-## v36.0.0 — `mcp-stdio` Postgres
+## [v36.0.0](https://github.com/david-engelmann/maidan/releases/tag/v36.0.0) — `mcp-stdio` Postgres
 
 | Capability | Surface |
 |------------|---------|
 | MCP stdio against Postgres | `maidan mcp-stdio` with `postgres://` `DATABASE_URL` |
 
-## v35.0.0 — MCP streamable bidirectional mux
+## [v35.0.0](https://github.com/david-engelmann/maidan/releases/tag/v35.0.0) — MCP streamable bidirectional mux
 
 | Capability | Surface |
 |------------|---------|
 | Streamable session mux | Follow-up `POST /mcp/streamable` on open `Mcp-Session-Id` → JSON response + SSE push |
 
-## v34.0.0 — MCP streamable session
+## [v34.0.0](https://github.com/david-engelmann/maidan/releases/tag/v34.0.0) — MCP streamable session
 
 | Capability | Surface |
 |------------|---------|
 | Streamable session correlation | `Mcp-Session-Id` on `POST /mcp/streamable` |
 
-## v33.0.0 — MCP resource fan-out (HTTP)
+## [v33.0.0](https://github.com/david-engelmann/maidan/releases/tag/v33.0.0) — MCP resource fan-out (HTTP)
 
 | Capability | Surface |
 |------------|---------|
 | Resource notifications on tombstone / FSM | HTTP + `GET /mcp/notifications` |
 
-## v32.0.0 — Helm umbrella
+## [v32.0.0](https://github.com/david-engelmann/maidan/releases/tag/v32.0.0) — Helm umbrella
 
 | Capability | Surface |
 |------------|---------|
 | Stack Helm chart (server + optional Postgres/MinIO) | `helm/maidan-stack/` |
 
-## v31.0.0 — Workspace artifact purge
+## [v31.0.0](https://github.com/david-engelmann/maidan/releases/tag/v31.0.0) — Workspace artifact purge
 
 | Capability | Surface |
 |------------|---------|
 | Purge artifact metadata + blobs | `POST /workspaces/:id/purge` |
 
-## v30.0.0 — HTTP rate limits
+## [v30.0.0](https://github.com/david-engelmann/maidan/releases/tag/v30.0.0) — HTTP rate limits
 
 | Capability | Surface |
 |------------|---------|
 | Optional global HTTP rate limit | `MAIDAN_RATE_LIMIT_MAX`, `MAIDAN_RATE_LIMIT_WINDOW_SECS` |
 
-## v29.0.0 — Message edit
+## [v29.0.0](https://github.com/david-engelmann/maidan/releases/tag/v29.0.0) — Message edit
 
 | Capability | Surface |
 |------------|---------|
@@ -2872,14 +2911,14 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | MCP message edit | `edit_message` tool |
 | Bus fan-out on edit | `MessageEdited` event |
 
-## v28.0.0 — Privacy complete
+## [v28.0.0](https://github.com/david-engelmann/maidan/releases/tag/v28.0.0) — Privacy complete
 
 | Capability                                              | Surface                              |
 |---------------------------------------------------------|--------------------------------------|
 | Deep workspace purge (messages, embeddings, refs, tokens, events) | `POST /workspaces/:id/purge` |
 | Workspace-scoped audit list                               | `GET /workspaces/:id/audit`          |
 
-## v27.0.0 — MCP streamable HTTP (Product Ladder close)
+## [v27.0.0](https://github.com/david-engelmann/maidan/releases/tag/v27.0.0) — MCP streamable HTTP (Product Ladder close)
 
 | Capability                                              | Surface                              |
 |---------------------------------------------------------|--------------------------------------|
@@ -2888,40 +2927,40 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 
 Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] … [[Retros/Cluster 26.0]]).
 
-## v26.0.0 — Product completion gate
+## Cluster 26 (source record; no `v26.0.0` tag) — Product completion gate
 
 | Capability                                              | Surface                              |
 |---------------------------------------------------------|--------------------------------------|
 | Product completion checklist                            | [[Product Completion Checklist]]     |
 | Completion gate e2e                                     | `product_completion_gate_e2e.rs`     |
 
-## v25.0.0 — Privacy & erasure
+## Cluster 25 (source record; no `v25.0.0` tag) — Privacy & erasure
 
 | Capability                                              | Surface                              |
 |---------------------------------------------------------|--------------------------------------|
 | Workspace message purge + audit                         | `POST /workspaces/:id/purge`         |
 
-## v24.0.0 — Deploy & scale (Helm)
+## Cluster 24 (source record; no `v24.0.0` tag) — Deploy & scale (Helm)
 
 | Capability                                              | Surface                              |
 |---------------------------------------------------------|--------------------------------------|
 | Helm chart (maidan-server)                              | `helm/maidan/`                       |
 | Helm template CI smoke                                  | `scripts/helm-template-smoke.sh`     |
 
-## v23.0.0 — Web UI product
+## Cluster 23 (source record; no `v23.0.0` tag) — Web UI product
 
 | Capability                                              | Surface                              |
 |---------------------------------------------------------|--------------------------------------|
 | Operator UI: events, search, thread FSM, token mint     | `/ui`                                |
 
-## v22.0.0 — Capabilities hardening
+## [v22.0.0](https://github.com/david-engelmann/maidan/releases/tag/v22.0.0) — Capabilities hardening
 
 | Capability                                              | Surface                              |
 |---------------------------------------------------------|--------------------------------------|
 | Documented capability map                               | [[Capability Map]]                   |
 | Denial e2e matrix (HTTP, MCP, A2A, WS)                   | `capability_matrix_e2e.rs`           |
 
-## v21.0.0 — A2A agent transport
+## [v21.0.0](https://github.com/david-engelmann/maidan/releases/tag/v21.0.0) — A2A agent transport
 
 | Capability                                              | Surface                    |
 |---------------------------------------------------------|----------------------------|
@@ -2929,14 +2968,14 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Outbound A2A client                                     | `maidan-a2a::A2aClient`    |
 | Agent card protocol hints                               | `GET /.well-known/maidan.json` |
 
-## v20.0.0 — Message router
+## [v20.0.0](https://github.com/david-engelmann/maidan/releases/tag/v20.0.0) — Message router
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
 | Channel/thread/message hierarchy resolution             | `maidan-router::resolve_*`    |
 | HTTP + MCP use shared router                            | `maidan-server`, `maidan-mcp`   |
 
-## v19.0.0 — S3 multipart artifacts
+## [v19.0.0](https://github.com/david-engelmann/maidan/releases/tag/v19.0.0) — S3 multipart artifacts
 
 | Capability                                              | Surface                              |
 |---------------------------------------------------------|--------------------------------------|
@@ -2944,20 +2983,20 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Multipart artifact HTTP API                             | `/artifacts/multipart`               |
 | Multipart artifact MCP tools                          | `begin_artifact_multipart`, etc.     |
 
-## v18.0.0 — SQLite semantic search
+## [v18.0.0](https://github.com/david-engelmann/maidan/releases/tag/v18.0.0) — SQLite semantic search
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
 | SQLite embedding storage + semantic search              | `maidan-search::SqliteSearch` |
 | HTTP `mode=semantic` on SQLite                          | `GET …/search?mode=semantic`  |
 
-## v17.0.0 — MCP resource fan-out
+## [v17.0.0](https://github.com/david-engelmann/maidan/releases/tag/v17.0.0) — MCP resource fan-out
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
 | Multi-URI fan-out on MCP tool mutations                 | `maidan-mcp::resource_updates` |
 
-## v16.0.0 — MCP HTTP resource notifications
+## [v16.0.0](https://github.com/david-engelmann/maidan/releases/tag/v16.0.0) — MCP HTTP resource notifications
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -2965,21 +3004,21 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Resource notification SSE                               | `GET /mcp/notifications`      |
 | HTTP + stdio `notifications/resources/updated`          | `maidan-mcp` broadcast        |
 
-## v14.0.0 — SQLite transactional outbox
+## [v14.0.0](https://github.com/david-engelmann/maidan/releases/tag/v14.0.0) — SQLite transactional outbox
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
 | SQLite transactional outbox + relay                     | `maidan-store::sqlite::outbox`, `OutboxRelay` |
 | `OutboxBackend` for relay and metrics                     | `maidan-store::outbox`, `AppState` |
 
-## v15.0.0 — MCP resource subscriptions (stdio)
+## [v15.0.0](https://github.com/david-engelmann/maidan/releases/tag/v15.0.0) — MCP resource subscriptions (stdio)
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
 | MCP `resources/subscribe` / `resources/unsubscribe`    | `maidan-mcp::McpServer`       |
 | Resource update notifications on stdio                 | `notifications/resources/updated` |
 
-## v13.0.0 — Delivery contract & subscriber ledger
+## [v13.0.0](https://github.com/david-engelmann/maidan/releases/tag/v13.0.0) — Delivery contract & subscriber ledger
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -2989,7 +3028,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Optional `consumer_id` on subscribe                       | `/ws/subscribe`, `/mcp/stream` |
 | Federation delivery cursor per peer                       | `federation:{peer_id}`        |
 
-## v12.0.0 — Outbox relay hardening
+## [v12.0.0](https://github.com/david-engelmann/maidan/releases/tag/v12.0.0) — Outbox relay hardening
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -2997,7 +3036,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | `MAIDAN_OUTBOX_MAX_ATTEMPTS`                            | `maidan-server` env           |
 | Quarantine / oldest-pending outbox metrics              | `/metrics`                    |
 
-## v11.0.0 — Coverage 11%
+## [v11.0.0](https://github.com/david-engelmann/maidan/releases/tag/v11.0.0) — Coverage 11%
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3005,7 +3044,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Outbox/relay/publish deferral test coverage               | `maidan-store`, `maidan-server`, `maidan-bus::test_support` |
 | Static UI smoke (`GET /ui/`)                            | `maidan-server/tests/ui_static_e2e` |
 
-## v10.0.0 — Transactional outbox (Postgres)
+## [v10.0.0](https://github.com/david-engelmann/maidan/releases/tag/v10.0.0) — Transactional outbox (Postgres)
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3013,21 +3052,21 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Outbox metrics on `/metrics`                            | `maidan_outbox_pending`, `maidan_outbox_relay_total` |
 | Outbox ops guidance                                     | [[Production]], [[Architecture]], [[Decisions]] |
 
-## v9.0.0 — Coverage depth
+## [v9.0.0](https://github.com/david-engelmann/maidan/releases/tag/v9.0.0) — Coverage depth
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
 | CI line-coverage floor at 10.5%                          | `.github/workflows/ci.yml`    |
 | Targeted coverage tests (bus, types, server metrics)      | `maidan-bus`, `maidan-types`, `maidan-server` |
 
-## v8.0.0 — Bus hydrate observability
+## [v8.0.0](https://github.com/david-engelmann/maidan/releases/tag/v8.0.0) — Bus hydrate observability
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
 | `maidan_bus_notify_hydrate_total{result}` on `/metrics` | `maidan-bus::HydrateStats`, `maidan-server::metrics` |
 | Bus hydrate alerting and troubleshooting                | [[Production]], [[Operations]], [[Architecture]] |
 
-## v7.0.0 — Bus pointer delivery
+## [v7.0.0](https://github.com/david-engelmann/maidan/releases/tag/v7.0.0) — Bus pointer delivery
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3036,7 +3075,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Large event publish beyond legacy NOTIFY JSON cap       | Postgres bus + `maidan_events` |
 | Bus pointer delivery ops notes                          | [[Production]], [[Architecture]], [[Decisions]] |
 
-## v6.0.0 — Delivery reliability
+## [v6.0.0](https://github.com/david-engelmann/maidan/releases/tag/v6.0.0) — Delivery reliability
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3045,7 +3084,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Postgres listener health/error gauges                   | `maidan-bus::ListenerHealth`, `/metrics` |
 | Delivery reliability runbook + alert mapping            | [[Production]], [[Operations]], [[Architecture]] |
 
-## v5.0.0 — Coverage & search quality
+## [v5.0.0](https://github.com/david-engelmann/maidan/releases/tag/v5.0.0) — Coverage & search quality
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3056,7 +3095,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Embedding model/dimension on `/health`                  | `maidan-server::health`       |
 | Rank semantics docs (lexical vs semantic)               | [[Architecture]], [[Production]] |
 
-## v4.0.0 — Subscriber continuity
+## [v4.0.0](https://github.com/david-engelmann/maidan/releases/tag/v4.0.0) — Subscriber continuity
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3064,7 +3103,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | `replay_truncated` when replay hits 500 rows            | `maidan-server::event_stream` |
 | Subscribe/resume operator docs                          | [[Production]], [[Architecture]], OpenAPI `info.description` |
 
-## v3.0.0 — Search & subscriber depth
+## [v3.0.0](https://github.com/david-engelmann/maidan/releases/tag/v3.0.0) — Search & subscriber depth
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3072,7 +3111,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | WS/MCP auto-replay on bus lag with workspace filter    | `maidan-server::event_stream`, `/ws/subscribe`, `/mcp/stream` |
 | CI coverage floor (`llvm-cov --fail-under-lines`)      | `.github/workflows/ci.yml`    |
 
-## v2.1.0 — OIDC operator hardening
+## [v2.1.0](https://github.com/david-engelmann/maidan/releases/tag/v2.1.0) — OIDC operator hardening
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3082,7 +3121,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Optional auto-mint after login                          | `MAIDAN_OIDC_AUTO_MINT`, `/ui/?auto_mint=1` |
 | UI copy-to-clipboard for minted admin secret            | `/ui/`                        |
 
-## v2.0.0 — OIDC identities and human sessions
+## [v2.0.0](https://github.com/david-engelmann/maidan/releases/tag/v2.0.0) — OIDC identities and human sessions
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3094,7 +3133,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Browser UI OIDC sign-in + cookie-backed event tail      | `/ui/`, `/ui/api/workspaces/:wid/events` |
 | Mock OIDC for CI (`MAIDAN_OIDC_MOCK=1`)                 | `oidc_e2e.rs`                 |
 
-## v1.4.0 — Auth hardening minor
+## [v1.4.0](https://github.com/david-engelmann/maidan/releases/tag/v1.4.0) — Auth hardening minor
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3102,7 +3141,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | One-shot first-workspace bootstrap enforcement          | `maidan-server::routes`, `maidan-store::Store::count_workspaces` |
 | OIDC runtime design spike and phased plan              | `docs/OIDC.md`, `docs/Decisions.md` |
 
-## v1.3.0 — Semantic search UX minor
+## [v1.3.0](https://github.com/david-engelmann/maidan/releases/tag/v1.3.0) — Semantic search UX minor
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3111,7 +3150,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Embedding provider errors surfaced in semantic queries  | `maidan-server::routes`, `maidan-mcp::tools` |
 | Embedding indexer failures visible on readiness         | `maidan-server::health`, `EmbeddingHandler` |
 
-## v1.2.0 — Search + embeddings minor
+## [v1.2.0](https://github.com/david-engelmann/maidan/releases/tag/v1.2.0) — Search + embeddings minor
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3119,7 +3158,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Lexical search facets (`author`, `channel`, `kind`)       | `GET /workspaces/:wid/search`, MCP `search_messages` |
 | Postgres `websearch_to_tsquery` operator pass-through     | `maidan-search::query`, Postgres `Search` |
 
-## v1.1.0 — Delivery reliability minor
+## [v1.1.0](https://github.com/david-engelmann/maidan/releases/tag/v1.1.0) — Delivery reliability minor
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3130,7 +3169,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | `remote_workspace_id` on federation peers                 | migration 0011, `maidan-a2a::Outbound` |
 | Federation push + pull compose CI smoke                 | `scripts/federation-*.sh`, `compose.yaml` |
 
-## v1.0.0 — Cluster 1.0 complete
+## [v1.0.0](https://github.com/david-engelmann/maidan/releases/tag/v1.0.0) — Cluster 1.0 complete
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3139,7 +3178,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | `MAIDAN_ENV=production` config guard                    | `maidan-server::config`       |
 | Liveness `/health/live` + readiness `/health/ready`     | `maidan-server::health`       |
 
-## v0.7.0 — Cluster H complete
+## [v0.7.0](https://github.com/david-engelmann/maidan/releases/tag/v0.7.0) — Cluster H complete
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3150,7 +3189,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Browser UI `/ui/`                                       | `maidan-server/static`        |
 | `docs/Production.md`                                    | docs                          |
 
-## v0.6.0 — Cluster G complete
+## [v0.6.0](https://github.com/david-engelmann/maidan/releases/tag/v0.6.0) — Cluster G complete
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3161,7 +3200,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Peer CRUD + `/.well-known/maidan.json`                    | `maidan-server`               |
 | `federation:ingest` / `federation:admin` capabilities     | `maidan-auth`                 |
 
-## v0.5.0 — Cluster F complete
+## [v0.5.0](https://github.com/david-engelmann/maidan/releases/tag/v0.5.0) — Cluster F complete
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3174,7 +3213,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | `POST …/members/:mid/tokens` mint (secret once)         | `maidan-server::routes`       |
 | `DELETE /tokens/:id` revoke                               | `maidan-server::routes`       |
 
-## v0.4.0 — Cluster E complete
+## [v0.4.0](https://github.com/david-engelmann/maidan/releases/tag/v0.4.0) — Cluster E complete
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3185,7 +3224,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | MCP `upload_artifact` + `get_artifact_metadata`           | `maidan-mcp::tools`           |
 | MCP `maidan://artifacts/{sha256}` resource                | `maidan-mcp::resources`       |
 
-## v0.3.0 — Cluster D complete
+## [v0.3.0](https://github.com/david-engelmann/maidan/releases/tag/v0.3.0) — Cluster D complete
 
 | Capability                                              | Surface                       |
 |---------------------------------------------------------|-------------------------------|
@@ -3197,7 +3236,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | `GET /workspaces/:wid/events` replay API                  | `maidan-server::routes`       |
 | MCP `prompts/list` + `prompts/get` (`thread_workflow`)    | `maidan-mcp::prompts`         |
 
-## v0.2.0 — Cluster C complete
+## [v0.2.0](https://github.com/david-engelmann/maidan/releases/tag/v0.2.0) — Cluster C complete
 
 | Capability                                                    | Surface                  |
 |---------------------------------------------------------------|--------------------------|
@@ -3211,7 +3250,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | `EventHandler` trait + `LoggingHandler` baseline              | `maidan-search::indexer` |
 | Cross-dialect search parity test                              | `maidan-search/tests`    |
 
-## v0.1.0 — Cluster B complete
+## [v0.1.0](https://github.com/david-engelmann/maidan/releases/tag/v0.1.0) — Cluster B complete
 
 | Capability                                                    | Surface                  |
 |---------------------------------------------------------------|--------------------------|
@@ -3229,7 +3268,7 @@ Clusters **23–26** in the same release integration ([[Retros/Cluster 23.0]] �
 | Cross-arch release binaries (Linux x64/arm64, macOS x64/arm64) on tag push | `.github/workflows/release.yml` |
 | Multi-arch ghcr.io image publish on tag                       | `.github/workflows/release.yml` |
 
-## v0.0.1 — Cluster A complete
+## [v0.0.1](https://github.com/david-engelmann/maidan/releases/tag/v0.0.1) — Cluster A complete
 
 | Capability                                              | Surface                 |
 |---------------------------------------------------------|-------------------------|

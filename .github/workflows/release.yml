@@ -31,6 +31,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+          # The release record distinguishes every real tag from source-only history.
+          fetch-depth: 0
       - name: resolve tag
         id: tag
         run: |

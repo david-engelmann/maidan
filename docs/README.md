@@ -19,6 +19,7 @@ Mermaid fenced blocks. It renders correctly on GitHub, in mdBook, and in editors
 
 | Doc | Audience |
 |-----|----------|
+| [Release stream](Capabilities.md) | Search capabilities and exact versions; distinguishes published tags from source-only records |
 | [Integration.md](Integration.md) | Agents, bots, client apps — **start here** |
 | [Capability Map.md](Capability%20Map.md) | Capability strings + `contracts/*.json` |
 | [Production.md](Production.md) | Probes, env vars, bootstrap, metrics |
@@ -39,7 +40,6 @@ Live API: `GET /openapi.json` on your server.
 | Doc | Purpose |
 |-----|---------|
 | [Architecture.md](Architecture.md) | Components and data flow |
-| [Capabilities.md](Capabilities.md) | What shipped in each release (append-only) |
 | [Decisions.md](Decisions.md) | Architectural decisions (ADRs) |
 | [Conventions.md](Conventions.md) | Branch, commit, PR conventions |
 | [Operations.md](Operations.md) | PR flow, CI, releases |
@@ -96,7 +96,7 @@ docs/
 ├── Protocols.md           wire matrix
 ├── Architecture.md
 ├── Roadmap.md
-├── Capabilities.md
+├── Capabilities.md         public release stream + source-only history
 ├── Capability Map.md
 ├── Conventions.md
 ├── Operations.md
