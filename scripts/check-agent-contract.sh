@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo test -p maidan-types --test event_kinds_contract
+cargo test -p maidan-types --test event_surface_disposition_contract
 cargo test -p maidan-types --test ws_subscribe_filter_schema
 ./scripts/check-mcp-resource-notifications.sh
 cargo test -p maidan-mcp --test tools_catalog_contract

@@ -14,16 +14,6 @@ use serde_json::{json, Value};
 use super::content_json;
 use crate::error::McpError;
 
-/// Record the per-workspace access ref for an artifact so the caller's
-/// workspace can later fetch the deduped blob. Skipped for a bypass caller
-/// (auth disabled). Mirrors the REST upload path (`ref_workspace`).
-async fn record_ref(store: &Arc<dyn Store>, auth: &AuthContext, sha: &str) -> Result<(), McpError> {
-    if !auth.bypass {
-        store.record_artifact_ref(auth.workspace_id, sha).await?;
-    }
-    Ok(())
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct UploadArtifactArgs {
@@ -111,8 +101,7 @@ struct CompleteMultipartArgs {
 }
 
 pub(super) async fn complete_artifact_multipart(
-    store: &Arc<dyn Store>,
-    artifacts: &Arc<dyn ArtifactStore>,
+    server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
@@ -126,24 +115,30 @@ pub(super) async fn complete_artifact_multipart(
             etag: p.etag,
         })
         .collect();
-    let sha = s3_artifacts(artifacts)?
+    let sha = s3_artifacts(&server.artifacts)?
         .complete_multipart_upload(&upload, &parts)
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
-    let bytes = artifacts
+    let bytes = server
+        .artifacts
         .get(&sha)
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
-    let artifact = store
-        .upsert_artifact(NewArtifact {
-            sha256: sha.to_string(),
-            size_bytes: bytes.len() as i64,
-            mime_type: a.mime_type,
-            kind: a.kind,
-            uploaded_by: a.uploaded_by.map(MemberId),
-        })
+    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
+    let (artifact, stored) = server
+        .store
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: sha.to_string(),
+                size_bytes: bytes.len() as i64,
+                mime_type: a.mime_type,
+                kind: a.kind,
+                uploaded_by: a.uploaded_by.map(MemberId),
+            },
+            ref_workspace,
+        )
         .await?;
-    record_ref(store, auth, &sha.to_string()).await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&artifact))
 }
 
@@ -168,8 +163,7 @@ pub(super) async fn abort_artifact_multipart(
 }
 
 pub(super) async fn upload_artifact(
-    store: &Arc<dyn Store>,
-    artifacts: &Arc<dyn ArtifactStore>,
+    server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
@@ -178,20 +172,26 @@ pub(super) async fn upload_artifact(
         .decode(&a.content_base64)
         .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
     let bytes = Bytes::from(raw);
-    let sha = artifacts
+    let sha = server
+        .artifacts
         .put(bytes.clone())
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
-    let artifact = store
-        .upsert_artifact(NewArtifact {
-            sha256: sha.to_string(),
-            size_bytes: bytes.len() as i64,
-            mime_type: a.mime_type,
-            kind: a.kind,
-            uploaded_by: a.uploaded_by.map(MemberId),
-        })
+    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
+    let (artifact, stored) = server
+        .store
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: sha.to_string(),
+                size_bytes: bytes.len() as i64,
+                mime_type: a.mime_type,
+                kind: a.kind,
+                uploaded_by: a.uploaded_by.map(MemberId),
+            },
+            ref_workspace,
+        )
         .await?;
-    record_ref(store, auth, &sha.to_string()).await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(&artifact))
 }
 
