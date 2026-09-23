@@ -306,6 +306,9 @@ Read this before the long narrative below, which is a point-in-time record and
   was red on `main` from #973 to #1005 at the same step while ~30 PRs were
   admin-merged over it. A required check failing at the same step on
   consecutive `main` commits is a break, not a flake: diagnose it first.
+- **The forward plan is the *Launch backlog* at the top of [`docs/Open Work.md`](docs/Open%20Work.md)**
+  (reconciled against code 2026-09-23, Clusters 413–418). Sections below it are
+  history and dispositions; where they disagree, the Launch backlog is right.
 - **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
   several items deliberately recorded as *decisions* rather than fixed. Do not
   guess at them: `Maidan-Room-LSN` scoping, the search-indexer cursor, how far

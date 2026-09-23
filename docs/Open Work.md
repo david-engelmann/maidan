@@ -4,7 +4,109 @@ Aggregate of deferred items across retros plus standing risks — the
 “if I had two hours” backlog. For exhaustive partials and Slack parity,
 see [[Remaining Work]].
 
-Updated at each cluster retro. **Baseline:** Cluster 410, released as **`v410.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314, post-flagship audit 332–349). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), v314 (2026-08-28 sweep), again at **v349** (2026-09-02 splice — the "Forward program" section below folds the workplace-product roadmap + the engineering-canon research round), after **Cluster 403** (2026-09-17), after **Cluster 404** (2026-09-22), for **Cluster 405** (2026-09-22 — Wave 2 row #26 close), for **Cluster 406** (2026-09-22 — Wave 4 row #37 close), for **Cluster 407** (2026-09-22 — Wave 4 row #39 close), after **Cluster 408** (2026-09-23 — full-audit remediation), for **Cluster 409** (2026-09-23 — Wave 4 row #40 close), and for **Cluster 410** (2026-09-23 — Wave 4 row #41 close).
+Updated at each cluster retro. **Baseline:** Cluster 410, released as **`v410.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314, post-flagship audit 332–349). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), v314 (2026-08-28 sweep), again at **v349** (2026-09-02 splice — the "Forward program" section below folds the workplace-product roadmap + the engineering-canon research round), after **Cluster 403** (2026-09-17), after **Cluster 404** (2026-09-22), for **Cluster 405** (2026-09-22 — Wave 2 row #26 close), for **Cluster 406** (2026-09-22 — Wave 4 row #37 close), for **Cluster 407** (2026-09-22 — Wave 4 row #39 close), after **Cluster 408** (2026-09-23 — full-audit remediation), for **Cluster 409** (2026-09-23 — Wave 4 row #40 close), and for **Cluster 410** (2026-09-23 — Wave 4 row #41 close). **Reconciled against code again on 2026-09-23 after Cluster 411 (`v411.0.0`), handler to store; the result is the *Launch backlog* immediately below, which is now the forward plan.**
+
+## Launch backlog — reconciled against code (2026-09-23)
+
+**This is the forward plan.** Everything below was checked against `main` by
+following each handler into the store, middleware or worker behind it. Nothing
+here is listed because an older section of this file says it is open. Where an
+older section disagrees, this one is right, and the older entry is struck
+through or marked in place.
+
+The order is by launch risk: data loss and unbounded growth first, then
+operational safety, then deploy hygiene, then product surface.
+
+### Cluster 413 — the round-3 decisions (David, 2026-09-23)
+
+| Slice | What | Size |
+|---|---|---|
+| ~~413.1~~ | ~~**D-B:** a per-workspace delegation-grant lifetime ceiling, default 90 days~~ **✅ shipped (#1014)** | S |
+| 413.2 | **D-A foundation:** `append_audit_in_tx` on both backends, then tokens: mint, revoke, attenuate, delegated exchange, app-token mint, app-installation revoke | M |
+| 413.3 | **D-A:** grants, share tickets, workspace purge, erase and import, message purge, legal hold. Reads (export, secret resolve) write the row first and release data only if it succeeded | M |
+| 413.4 | **D-A:** governance and membership. Governance-skill grants, review-requirement loosening, reviewer removal, land-gate clear, channel membership, member freeze, SCIM users, egress targets | M |
+
+Each authority-changing store method takes its `NewAuditEvent` as a required
+argument, following the `*_with_event` pattern of Clusters 205–214. The
+unaudited forms leave the trait, so no caller can make the change without its
+record. Tests fail the audit insert (with a trigger) and assert the change did
+not happen.
+
+### Cluster 414 — nothing grows without bound, nothing hangs forever
+
+| Item | Verified state | Size |
+|---|---|---|
+| **An abandoned delivery cursor pins event-log retention forever** | `postgres/retention.rs:9-15` takes `MIN(last_delivered_log_id)` over every cursor, and nothing ever deletes a cursor row | S |
+| **`idle_in_transaction_session_timeout` + `lock_timeout`** | Only `statement_timeout` is set (`main.rs:153-155`). One stuck transaction can hold back vacuum | S |
+| **Replica divergence fence + lag alert** | `route_decision` sends no-token reads to the replica whatever its lag, and a failed poll leaves the cache stale. `maidan_replica_lag_bytes` has no alert | S |
+| **WebSocket frame and message limits** | `ws.rs:155` upgrades with no `max_message_size` or `max_frame_size`, so the 2 MiB REST body cap doesn't apply | S |
+| **MCP per-tool deadline** | `tools_call` has no timeout. DB work is bounded by `statement_timeout`; the rest isn't | S |
+| **Connection ceiling + streamable-session reaper + gauge** | No WS/SSE cap. `prune_expired` runs only inside open/push, with no timer and no active-session gauge | M |
+| **Failed embedding batches are retried** | `embedding_batcher.rs:222-233` counts a failure and drops the batch. Only a reindex recovers it | M |
+| **A lagging presence subscriber gets a fresh snapshot** | `ws.rs:331` answers `Lagged` with `continue`, and the missed diffs are never repaired | S |
+
+### Cluster 415 — deploys are immutable and rolling restarts are safe
+
+| Item | Verified state | Size |
+|---|---|---|
+| **Helm digest pinning** | `deployment.yaml:28` renders `repo:tag`. The `values-prod.yaml` hint would produce the invalid reference `repo:@sha256:…` | S |
+| **`preStop` drain + `terminationGracePeriodSeconds`** | Absent from `helm/` and `k8s/` | S |
+| **trivy blocks on HIGH/CRITICAL** | `release.yml:379` has `exit-code: "0"`, so the scan is report-only | S |
+| **Quickstart pin matches the release** | `Dockerfile.quickstart` and `compose.quickstart.yaml` pin `v402.0.0`; the README says `v411.0.0` | S |
+| **Wave 4 #46: `cosign verify` inline in the README, plus an operator `/status`** | The README only links to SECURITY.md, and no status route exists. The inputs do: readiness, tap cursor vs head, replica lag | S–M |
+
+### Cluster 416 — Wave 4 #44: uuidv7 entity ids
+
+About 78 production `Uuid::new_v4()` calls create entity ids directly, bypassing
+the v7 newtypes. They move to v7. Secret material stays v4: token and
+share-ticket secrets, OAuth codes, session ids, MCP session ids. A contract test
+fails on a new `new_v4()` outside that allowlist. PG16 has no `uuidv7()`, so v7
+is generated app-side. Size M.
+
+### Cluster 417 — disaster recovery that is actually tested
+
+PITR / WAL archiving with a scripted restore drill. `pg_dump` alone gives no
+real recovery point. Size M.
+
+### Cluster 418 — Wave 4 adoption surface
+
+| Item | Verified state | Size |
+|---|---|---|
+| #47 templates | `examples/` exists, but without last-verified / owner / compatibility metadata. Compose recipes for coding-agent and deploy are missing | S |
+| #48 CONTRIBUTING handbook-lite | 76 lines. Nothing on occupying, response standard, ownership, banned claims, or cutting a release | S |
+| #50 Goose / OpenHands claimant | No recipe. It's an MCP config plus a walkthrough of the waiter loop | S |
+| #49 paste → artifact | No paste handler and no `/ui` upload route. Server-minted filenames | M |
+
+### Correctness and hygiene, folded into the nearest cluster
+
+- **Artifact metadata leaks another tenant's `uploaded_by`**, because the shared
+  row keeps the first uploader. A second tenant's upload also overwrites the
+  shared row's `kind` (S, with 414).
+- `book/src/mcp-reference.md` is git-ignored but still tracked (S).
+- Errors and docs cite RFC 7807, which RFC 9457 obsoleted (S).
+- SMTP has no real-client test, although Slack and GitHub do. Test names that
+  overclaim: `slack_egress_e2e`, `github_egress_e2e`, `mail_worker_e2e`,
+  `two_replica_*` (S).
+
+### Verification depth, after launch-critical work
+
+Wave 4 #45: a claimer-crash case in `chaos.rs` (S), and a proptest state machine
+for `claim_next` against the real store (M). Then loom, madsim, the A2A TCK,
+`openapi-lint`, nextest profiles, coverage floors, and a pg-vs-sqlite schema
+diff.
+
+### Already done — the backlog said otherwise
+
+| Entry | Evidence |
+|---|---|
+| Wave 4 #43 presence (snapshot + diffs, outside the log) | `presence.rs:563-622`, `ws.rs:319-321`, `PresenceNotifier`; no presence `EventKind` |
+| Wave 4 #51 ACP | Dispositioned as skipped (`Protocols.md:29,73,87`) |
+| Post-Cursor item 7, self-approval laundering | Closed in 401.2; the ledger is read at `reviews.rs:193` and `thread_transitions.rs:35` |
+| Item 12, log snapshot head | `log_snapshot.rs:46-47` reads the head first |
+| `cap-attenuation` | `POST /tokens/attenuate` (395) plus delegation grants (411) |
+| `agent-toolcall-audit` | Every MCP write is attributed, and unrecorded ones get a `mutation` row (411.11) |
+| Release-time version assertion | `release-image-smoke.sh:46-48,100` |
+| Wave 4 #42 MCP Inspector | Shipped in 412.1 (#1010) |
 
 ## Post-flagship audit program (2026-08-30 full-repo audit — ✅ COMPLETE at v349.0.0)
 
@@ -456,8 +558,8 @@ basis is a self-reported-spend trust hole. Logged as a request in the pinned doc
 39. ~~**B9 + B13 + B4 + B23** — executable UI/OpenAPI and event-producer contracts, a signed-session live hero loop, and portable-frame goldens.~~ **✅ SHIPPED (`v407.0.0`), PRs #965/#966/#967/#968 + close record** ([[Retros/Cluster 407]]). The UI census derives its views from embedded JavaScript, the Axum session proxy, and OpenAPI; every `EventKind` has an evidence-backed REST/MCP/internal disposition; one signed session writes through `/ui/api` and observes the exact durable WebSocket event; normalized goldens lock signed-export and snapshot/catch-up shapes. The audit also repaired MCP artifact uploads that omitted `ArtifactUpserted`. **Row #39 is closed.**
 40. ~~**Capabilities changelog** — an in-repo, search-tied-to-tags release stream (`NEW-changelog-as-product`); honest GHCR-pin-vs-HEAD.~~ **✅ SHIPPED (`v409.0.0`), PRs #979/#982 + close record** ([[Retros/Cluster 409]]). The reader-facing release stream links real tags, labels never-tagged source records, keeps folded releases exact-searchable, and explains tagged artifacts versus newer `main`. Ordinary CI and the pre-publication release gate compare the newest records and image pins with the complete Git tag set. **Row #40 is closed.**
 41. ~~**T2 + T4** — a **PayerStamp** on the event (model, tokens-by-tier, `usd_minor`, `price_snapshot`, payer, `claim_lease_id`) + an audit lane (principal/action/outcome/resource; gen_ai content capture OFF).~~ **✅ SHIPPED (`v410.0.0`), PRs #988/#989/#991 + close record** ([[Retros/Cluster 410]]). Accountable, claim-fenced usage is one idempotent transaction across the ledger, budget, event, and over-budget failure; REST/MCP derive reporter and payer. Authorization decisions share a content-free fixed-label aggregate lane with sampled details and a sustained-rate alert, never a per-denial durable write. **Row #41 is closed.**
-42. **B24** — an **MCP Inspector recipe** as an external verifier `/test` (`NEW-mcp-inspector-ci`; failures feed F3/H12). **In flight — Cluster 412** ([[Clusters/Cluster 412]]). The verifier's first run found that the official TypeScript SDK could not complete a handshake at all: it requests `2025-11-25`, and Maidan offered only `2026-07-28` and `2024-11-05`. It also found that `resources/list` listed templates, and that nullable budget fields used a non-portable array `type`. All four are fixed in 412.1.
-43. **F5** — **presence** = a watch snapshot + diffs, **out of** `maidan_events` (presence in the log is a lie).
+42. **B24** — an **MCP Inspector recipe** as an external verifier `/test` (`NEW-mcp-inspector-ci`; failures feed F3/H12). **✅ Verifier shipped — 412.1 (#1010)** ([[Clusters/Cluster 412]]); the `mcp inspector` CI job runs it on every PR. The verifier's first run found that the official TypeScript SDK could not complete a handshake at all: it requests `2025-11-25`, and Maidan offered only `2026-07-28` and `2024-11-05`. It also found that `resources/list` listed templates, and that nullable budget fields used a non-portable array `type`. All four are fixed in 412.1.
+43. ~~**F5** — **presence** = a watch snapshot + diffs, **out of** `maidan_events` (presence in the log is a lie).~~ **✅ Already true** (reconciled 2026-09-23): `presence_snapshot` on subscribe, then `presence` diff frames (`presence.rs:563-622`, `ws.rs:319-321`), cross-replica via `PresenceNotifier`; no `EventKind` is presence. Residual: a lagging subscriber is not re-snapshotted (Launch backlog, 414).
 44. **uuidv7** — PG18 uuidv7 for new ids (a Store tweak, not N4).
 45. **G1 tests** — the TLA+/loom/madsim model on Wave 1 G1 + an optional claimer-crash on `chaos.rs` (`NEW-madsim-deterministic` / `NEW-loom-interleaving`; proof, not a chaos-mesh product).
 46. **Cosign / cargo-deny verify + `/status` HTML** — make the signed-GHCR verify path a stranger-start README step (`NEW-sbom-provenance` / `NEW-image-digest-pin`); an operator `/status` (phase, backfill %, last cursor, replica lag). SECURITY.md is the public trust page. H15 is not a status page.
@@ -465,7 +567,7 @@ basis is a self-reported-spend trust hole. Logged as a request in the pinned doc
 48. **CONTRIBUTING handbook-lite** — how to occupy, response standard, ownership, banned claims, how a release is cut. Not a handbook site.
 49. **Paste → artifact** — clipboard in `/ui` → `upsert_artifact`; filenames **server-minted** (path-traversal class). Optional operator ICAP before a sha is referenced.
 50. **H6 Goose claimant** — a blessed claimant path (Goose / OpenHands sessions claim **into** Maidan via MCP). We do not ship an agent; adoption after the room is occupiable.
-51. **ACP** — a footnote on H1 (#17): steal cancellation + session/load as the occupant protocol. SKIP as an IDE bridge unless later ranked (AG-UI is the HITL door).
+51. ~~**ACP** — a footnote on H1 (#17): steal cancellation + session/load as the occupant protocol. SKIP as an IDE bridge unless later ranked (AG-UI is the HITL door).~~ **✅ Dispositioned: skipped** (`Protocols.md:29,73,87`).
 
 ### Engineering-canon cross-cutting programs (the hardening/durability/security/compliance/observability/launch layer that thickens the Wave rows)
 
@@ -523,13 +625,13 @@ design; the net-new candidates are named inline in the Wave rows above and detai
   (insta over normalized MCP/A2A/OpenAPI/audit shapes so wire-drift is a reviewed diff).
 
 **Program S — security hardening (security-led; the 4-source flagship + the compliance set):**
-- `cap-attenuation` — macaroon-style strict-subset+expiry token derivation without a `token:admin` round-trip
+- ~~`cap-attenuation`~~ **✅ shipped** (`POST /tokens/attenuate`, Cluster 395; delegation grants, 411) — macaroon-style strict-subset+expiry token derivation without a `token:admin` round-trip
   (a 4-source convergence: Levy object-capability + macaroons + Windley delegation + confused-deputy). `threat-regression-gates`
   (each Threat-Model T-row → a named CI test), `threat-model-delta` (per-PR), `token-ttl-dpop` (TTL + DPoP/mTLS-bound
   tokens, RFC 9449/8705), `mcp-step-up-auth` (audience-bound + step-up for sensitive tools), `mcp-security-scan`
   (scan the 91-tool surface for over-permission/exfil — InjecAgent/ASB), `content-provenance-trust-label` (carry the
   untrusted-external/other-tenant/tool-result label so a consumer sanitizes downstream — Maidan is the injection
-  *carrier, never the sanitizer*; AgentDojo/IPI). `agent-toolcall-audit`.
+  *carrier, never the sanitizer*; AgentDojo/IPI). ~~`agent-toolcall-audit`~~ **✅ effectively shipped** (every MCP write attributed; unrecorded ones get a `mutation` row, 411.11).
 - Supply chain: `image-digest-pin` (deploy the signed digest not the mutable `:tag`), `sbom-provenance` (syft SBOM →
   cosign attestation), `trivy-policy`, `osv-scan` (the four `sdk/*` lockfiles are outside cargo-deny's Rust reach),
   `cargo-vet`, `miri-unsafe`, `rollout-drain` (preStop drain + grace so the v156 SIGTERM drain isn't raced by
@@ -955,7 +1057,7 @@ because the tests assert the happy path of a single tenant.
    operations loosen, not the two named here — the fourth is `DELETE
    …/reviewers/:member_id`, because the approval query is `NOT EXISTS(reviewers)
    OR EXISTS(reviewer in set)`, so emptying the named set widens who may approve.
-   **Still open: self-approval laundering** — both gates test the *live*
+   **~~Still open~~ Closed in 401.2 (item 7 below): self-approval laundering** — both gates test the *live*
    `assignee_id`, so releasing a claim makes the exclusion vacuous and your own
    approval qualifies. Needs a durable record of who did the work; assignment
    history is prunable event-log rows, so there is nothing to read today.
@@ -1047,7 +1149,7 @@ because the tests assert the happy path of a single tenant.
    pointer behind it and strands every later event on `PrevHashMismatch`; the
    pull worker computes its cursor after ingesting rather than before, so a
    refused event is no longer silently skipped past. (pg 0094 / sqlite 0093)
-7. **Self-approval launders through a claim release. OPEN — two halves, and
+7. **Self-approval launders through a claim release. ✅ CLOSED (401.2; delegated form closed in 411.10) — two halves, and
    only one of them is hard.**
 
    **The hard half — foundation shipped (Cluster 401.1), gates not yet wired.**
@@ -1175,7 +1277,7 @@ because the tests assert the happy path of a single tenant.
     > normal message path (laundered). Only the federation-shaped append
     > reproduced `ContentHashMismatch`. A test that has not been run against the
     > broken code is not known to test anything.
-12. **Log snapshots are not point-in-time. OPEN — confirmed, one-line cause.**
+12. **Log snapshots are not point-in-time. ✅ FIXED — `build_log_snapshot` now reads the head before the export (`log_snapshot.rs:46-47`).**
     `build_log_snapshot` (`crates/maidan-store/src/log_snapshot.rs`) assembles
     the domain graph via `build_workspace_export` and reads
     `workspace_event_head` **after** it. The export is many queries, not one
