@@ -34,9 +34,12 @@ release history):
 | `maidan-operator-1.0` | Operator UI, collaboration panels, operator gate e2e |
 
 For the **current release and binaries/images**, see the
-[Releases page](https://github.com/david-engelmann/maidan/releases). For a
-feature-by-feature history, see [CHANGELOG.md](../CHANGELOG.md) and
-[Capabilities.md](Capabilities.md) (maintainer-oriented, append-only).
+[latest GitHub Release](https://github.com/david-engelmann/maidan/releases/latest).
+The public [release stream](Capabilities.md) is searchable by capability or
+exact version and distinguishes a published tag from source that exists only on
+`main`. `main` may be newer; use a commit SHA for an unreleased source build and
+do not label it with the latest release tag. Detailed changes remain in
+[CHANGELOG.md](../CHANGELOG.md).
 
 ---
 

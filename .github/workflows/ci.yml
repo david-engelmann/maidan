@@ -29,6 +29,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Release-stream truth is derived from the real tag set.
+          fetch-depth: 0
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:

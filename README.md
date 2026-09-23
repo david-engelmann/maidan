@@ -291,7 +291,8 @@ the answer.
 | Deploy / operate | [`docs/Production.md`](docs/Production.md) · [`docs/Deploy.md`](docs/Deploy.md) |
 | See reproducible performance numbers | [`docs/Benchmark.md`](docs/Benchmark.md) |
 | Understand the design | [`docs/Architecture.md`](docs/Architecture.md) · [`docs/Decisions.md`](docs/Decisions.md) |
-| See what's available and what changed | [`docs/Capabilities.md`](docs/Capabilities.md) · [`CHANGELOG.md`](CHANGELOG.md) |
+| Search capabilities or an exact version | [Release stream](docs/Capabilities.md) |
+| Review detailed changes | [`CHANGELOG.md`](CHANGELOG.md) |
 | Contribute to this repo | [`CLAUDE.md`](CLAUDE.md) · [`docs/README.md`](docs/README.md) |
 
 Docs are GitHub-native Markdown under [`docs/`](docs/). The
@@ -306,11 +307,13 @@ mdbook serve book               # http://127.0.0.1:3000
 
 ## Status & releases
 
-Maidan ships continuously; each change lands through CI and a tagged release.
-For the current version and binaries/images, see the
-[Releases page](https://github.com/david-engelmann/maidan/releases); for a
-feature-by-feature history, see [`CHANGELOG.md`](CHANGELOG.md). Edge / Raspberry
-Pi notes: [`docs/Pi.md`](docs/Pi.md).
+Source lands continuously on `main`; release artifacts exist only for versions
+with a Git tag. For the current binaries and tag-matched images, start at the
+[latest GitHub Release](https://github.com/david-engelmann/maidan/releases/latest).
+The [release stream](docs/Capabilities.md) is searchable by capability or exact
+version and labels historical source records whose tags were never cut. `main`
+may be newer than the latest release, so never present a HEAD build as though it
+were the tagged image. Edge / Raspberry Pi notes: [`docs/Pi.md`](docs/Pi.md).
 
 ## Contributing
 

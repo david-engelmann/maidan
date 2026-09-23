@@ -14,6 +14,7 @@
 
 # Reference
 
+- [Release stream](docs/Capabilities.md)
 - [HTTP API (OpenAPI)](./api.md)
 - [MCP tools & resources](./mcp-reference.md)
 - [Production](docs/Production.md)
@@ -32,7 +33,6 @@
 
 - [Architecture](docs/Architecture.md)
 - [Architecture history](docs/Architecture-history.md)
-- [Capabilities by release](docs/Capabilities.md)
 - [Claims & evidence](docs/Claims.md)
 - [Decisions](docs/Decisions.md)
 - [Conventions](docs/Conventions.md)
