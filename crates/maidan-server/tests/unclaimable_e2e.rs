@@ -158,7 +158,7 @@ async fn unclaimable_parks_a_thread_from_dispatch() {
             client
                 .post(format!("{base}/threads/{thread}/assignee/claim"))
                 .header("Authorization", &auth)
-                .json(&serde_json::json!({ "member_id": agent.id.0 }))
+                .json(&serde_json::json!({}))
                 .send()
                 .await
                 .unwrap()
@@ -172,7 +172,7 @@ async fn unclaimable_parks_a_thread_from_dispatch() {
     let next: serde_json::Value = client
         .post(format!("{base}/channels/{}/threads/claim-next", ch.id.0))
         .header("Authorization", &auth)
-        .json(&serde_json::json!({ "member_id": agent.id.0 }))
+        .json(&serde_json::json!({}))
         .send()
         .await
         .unwrap()

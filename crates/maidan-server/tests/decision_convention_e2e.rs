@@ -219,7 +219,7 @@ async fn decision_supersession_and_ack_conventions_work_over_the_api() {
     let ack = client
         .post(format!("{base}/messages/{}/votes", msg.id.0))
         .header("Authorization", &bearer)
-        .json(&json!({ "member_id": member.id.0, "kind": "ack", "confidence": 0.9 }))
+        .json(&json!({ "kind": "ack", "confidence": 0.9 }))
         .send()
         .await
         .unwrap();

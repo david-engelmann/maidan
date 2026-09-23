@@ -32,21 +32,17 @@ echo "waiting for ${MAIDAN_A_URL} and ${MAIDAN_B_URL}…"
 wait_health "$MAIDAN_A_URL" "maidan-a"
 wait_health "$MAIDAN_B_URL" "maidan-b"
 
-echo "creating message on A…"
+echo "creating thread on A…"
 ws_a=$(json_post "${MAIDAN_A_URL}/workspaces" -d '{"name":"fed-pull-a"}' | jq -r '.id')
-alice=$(json_post "${MAIDAN_A_URL}/workspaces/${ws_a}/members" \
-  -d '{"handle":"alice","display_name":"Alice","kind":"human"}' | jq -r '.id')
 channel=$(json_post "${MAIDAN_A_URL}/workspaces/${ws_a}/channels" \
   -d '{"name":"general"}' | jq -r '.id')
 thread=$(json_post "${MAIDAN_A_URL}/channels/${channel}/threads" \
   -d '{"title":"federation-pull"}' | jq -r '.id')
-json_post "${MAIDAN_A_URL}/threads/${thread}/messages" \
-  -d "{\"author_id\":\"${alice}\",\"body\":\"hello pull federation\"}" >/dev/null
 
 stored=$(curl -sf "${MAIDAN_A_URL}/workspaces/${ws_a}/events?after_id=0&limit=50" \
-  | jq '[.[] | select(.kind == "message_posted")][0]')
+  | jq '[.[] | select(.kind == "thread_created")][0]')
 if [[ -z "$stored" || "$stored" == "null" ]]; then
-  echo "::error::no message_posted event on A" >&2
+  echo "::error::no thread_created event on A" >&2
   exit 1
 fi
 remote_id=$(echo "$stored" | jq '.id')
@@ -62,7 +58,7 @@ deadline=$((SECONDS + POLL_WAIT_SECS))
 found=0
 while (( SECONDS < deadline )); do
   tail=$(curl -sf "${MAIDAN_B_URL}/workspaces/${ws_b}/events?after_id=0&limit=100")
-  count=$(echo "$tail" | jq '[.[] | select(.kind == "message_posted")] | length')
+  count=$(echo "$tail" | jq '[.[] | select(.kind == "thread_created")] | length')
   if [[ "$count" -ge 1 ]]; then
     found=1
     break
@@ -71,7 +67,7 @@ while (( SECONDS < deadline )); do
 done
 
 if [[ "$found" != "1" ]]; then
-  echo "::error::B did not ingest message_posted from A within ${POLL_WAIT_SECS}s" >&2
+  echo "::error::B did not ingest thread_created from A within ${POLL_WAIT_SECS}s" >&2
   echo "peer_secret prefix: ${peer_secret:0:8}…" >&2
   exit 1
 fi

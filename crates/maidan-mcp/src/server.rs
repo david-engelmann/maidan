@@ -918,7 +918,6 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_denies_non_members_in_private_channels() {
-        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -980,7 +979,10 @@ mod tests {
             Arc::new(HashV1Provider),
         );
 
-        let caps = vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()];
+        let caps = vec![
+            maidan_auth::capability::WORKSPACE_READ.to_string(),
+            maidan_auth::capability::MESSAGE_POST.to_string(),
+        ];
         let bob_auth = AuthContext::from_session(bob.id, ws.id, caps.clone());
         let alice_auth = AuthContext::from_session(alice.id, ws.id, caps);
         let args = json!({ "thread_id": thread.id.0 });
@@ -1134,7 +1136,7 @@ mod tests {
                 .call_tool(
                     &auth,
                     "claim_next_thread",
-                    &json!({ "channel_id": public.id.0, "member_id": agent.id.0 }),
+                    &json!({ "channel_id": public.id.0 }),
                 )
                 .await
                 .unwrap(),
@@ -1185,7 +1187,7 @@ mod tests {
                 .call_tool(
                     &auth,
                     "claim_next_thread",
-                    &json!({ "channel_id": public.id.0, "member_id": agent.id.0 }),
+                    &json!({ "channel_id": public.id.0 }),
                 )
                 .await
                 .unwrap(),
@@ -2786,11 +2788,7 @@ mod tests {
 
         // An explicit claim of the parked thread errors.
         assert!(server
-            .call_tool(
-                &auth,
-                "claim_thread",
-                &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
-            )
+            .call_tool(&auth, "claim_thread", &json!({ "thread_id": t1.id.0 }),)
             .await
             .is_err());
         // claim_next skips t1 and claims t2.
@@ -2799,7 +2797,7 @@ mod tests {
                 .call_tool(
                     &auth,
                     "claim_next_thread",
-                    &json!({ "channel_id": channel.id.0, "member_id": agent.id.0 }),
+                    &json!({ "channel_id": channel.id.0 }),
                 )
                 .await
                 .unwrap(),
@@ -2818,11 +2816,7 @@ mod tests {
         );
         let claimed = body(
             server
-                .call_tool(
-                    &auth,
-                    "claim_thread",
-                    &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
-                )
+                .call_tool(&auth, "claim_thread", &json!({ "thread_id": t1.id.0 }))
                 .await
                 .unwrap(),
         );
@@ -2946,11 +2940,7 @@ mod tests {
         );
 
         assert!(server
-            .call_tool(
-                &auth,
-                "claim_thread",
-                &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
-            )
+            .call_tool(&auth, "claim_thread", &json!({ "thread_id": t1.id.0 }),)
             .await
             .is_err());
         let next = body(
@@ -2958,7 +2948,7 @@ mod tests {
                 .call_tool(
                     &auth,
                     "claim_next_thread",
-                    &json!({ "channel_id": channel.id.0, "member_id": agent.id.0 }),
+                    &json!({ "channel_id": channel.id.0 }),
                 )
                 .await
                 .unwrap(),
@@ -3000,11 +2990,7 @@ mod tests {
         }
         let claimed = body(
             server
-                .call_tool(
-                    &auth,
-                    "claim_thread",
-                    &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
-                )
+                .call_tool(&auth, "claim_thread", &json!({ "thread_id": t1.id.0 }))
                 .await
                 .unwrap(),
         );
@@ -3102,20 +3088,12 @@ mod tests {
 
         // First claim OK; a second explicit claim errors at the cap.
         server
-            .call_tool(
-                &auth,
-                "claim_thread",
-                &json!({ "thread_id": t1.id.0, "member_id": agent.id.0 }),
-            )
+            .call_tool(&auth, "claim_thread", &json!({ "thread_id": t1.id.0 }))
             .await
             .unwrap();
         assert!(
             server
-                .call_tool(
-                    &auth,
-                    "claim_thread",
-                    &json!({ "thread_id": t2.id.0, "member_id": agent.id.0 }),
-                )
+                .call_tool(&auth, "claim_thread", &json!({ "thread_id": t2.id.0 }),)
                 .await
                 .is_err(),
             "a second claim past the WIP cap errors"
@@ -3126,7 +3104,7 @@ mod tests {
                 .call_tool(
                     &auth,
                     "claim_next_thread",
-                    &json!({ "channel_id": channel.id.0, "member_id": agent.id.0 }),
+                    &json!({ "channel_id": channel.id.0 }),
                 )
                 .await
                 .unwrap(),
@@ -3140,11 +3118,7 @@ mod tests {
             .unwrap();
         let claimed = body(
             server
-                .call_tool(
-                    &auth,
-                    "claim_thread",
-                    &json!({ "thread_id": t2.id.0, "member_id": agent.id.0 }),
-                )
+                .call_tool(&auth, "claim_thread", &json!({ "thread_id": t2.id.0 }))
                 .await
                 .unwrap(),
         );
@@ -4526,7 +4500,7 @@ mod tests {
                 .call_tool(
                     &auth,
                     "link_slack_channel",
-                    &json!({ "thread_id": thread.id.0, "slack_channel_id": "C123", "member_id": member.id.0 }),
+                    &json!({ "thread_id": thread.id.0, "slack_channel_id": "C123" }),
                 )
                 .await
                 .unwrap(),
@@ -4567,7 +4541,7 @@ mod tests {
                 .call_tool(
                     &auth,
                     "link_github_issue",
-                    &json!({ "thread_id": thread.id.0, "repo": "o/r", "issue_number": 7, "member_id": member.id.0 }),
+                    &json!({ "thread_id": thread.id.0, "repo": "o/r", "issue_number": 7 }),
                 )
                 .await
                 .unwrap(),
@@ -5300,7 +5274,7 @@ mod tests {
                 .call_tool(
                     &auth1,
                     "claim_next_thread",
-                    &json!({ "channel_id": ch.id.0, "member_id": m1.id.0, "lease_secs": -1 }),
+                    &json!({ "channel_id": ch.id.0, "lease_secs": -1 }),
                 )
                 .await
                 .unwrap(),
@@ -5325,7 +5299,7 @@ mod tests {
                 .call_tool(
                     &auth2,
                     "claim_next_thread",
-                    &json!({ "channel_id": ch.id.0, "member_id": m2.id.0, "lease_secs": 3600 }),
+                    &json!({ "channel_id": ch.id.0, "lease_secs": 3600 }),
                 )
                 .await
                 .unwrap(),
@@ -5576,16 +5550,15 @@ mod tests {
         let owner_auth = AuthContext::from_session(owner.id, ws.id, caps.clone());
         let claimer_auth = AuthContext::from_session(claimer.id, ws.id, caps);
         let tid = json!(thread.id.0);
-        let args = |action: &str, actor: uuid::Uuid| {
+        let args = |action: &str| {
             json!({
                 "thread_id": tid,
-                "actor_id": actor,
                 "action": action,
             })
         };
 
         let unknown = server
-            .call_tool(&owner_auth, "transition_thread", &args("merge", owner.id.0))
+            .call_tool(&owner_auth, "transition_thread", &args("merge"))
             .await;
         assert!(
             matches!(unknown, Err(McpError::InvalidParams(ref m)) if m.contains("unknown action")),
@@ -5601,11 +5574,7 @@ mod tests {
 
         let started = content(
             server
-                .call_tool(
-                    &owner_auth,
-                    "transition_thread",
-                    &args("start_review", owner.id.0),
-                )
+                .call_tool(&owner_auth, "transition_thread", &args("start_review"))
                 .await
                 .unwrap(),
         );
@@ -5631,11 +5600,7 @@ mod tests {
         }
 
         let sod = server
-            .call_tool(
-                &claimer_auth,
-                "transition_thread",
-                &args("close", claimer.id.0),
-            )
+            .call_tool(&claimer_auth, "transition_thread", &args("close"))
             .await;
         assert!(
             matches!(sod, Err(McpError::InvalidParams(ref m)) if m.contains("separation of duties")),
@@ -5644,7 +5609,7 @@ mod tests {
 
         store.set_review_requirement(thread.id, 1).await.unwrap();
         let gated = server
-            .call_tool(&owner_auth, "transition_thread", &args("close", owner.id.0))
+            .call_tool(&owner_auth, "transition_thread", &args("close"))
             .await;
         assert!(
             matches!(gated, Err(McpError::InvalidParams(ref m)) if m.contains("review requirement")),
@@ -5657,7 +5622,7 @@ mod tests {
             .unwrap();
         let closed = content(
             server
-                .call_tool(&owner_auth, "transition_thread", &args("close", owner.id.0))
+                .call_tool(&owner_auth, "transition_thread", &args("close"))
                 .await
                 .unwrap(),
         );
@@ -5952,7 +5917,6 @@ mod tests {
                 "transition_thread",
                 &json!({
                     "thread_id": tid,
-                    "actor_id": owner.id.0,
                     "action": "start_review",
                 }),
             )
@@ -5964,7 +5928,6 @@ mod tests {
                 "transition_thread",
                 &json!({
                     "thread_id": tid,
-                    "actor_id": owner.id.0,
                     "action": "close",
                 }),
             )
@@ -5989,7 +5952,6 @@ mod tests {
                     "transition_thread",
                     &json!({
                         "thread_id": tid,
-                        "actor_id": owner.id.0,
                         "action": "close",
                     }),
                 )
@@ -6006,7 +5968,6 @@ mod tests {
         use std::time::Duration;
 
         use futures::StreamExt;
-        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
         use maidan_bus::{BusItem, InMemoryBus};
 
         let pool = SqlitePoolOptions::new()
@@ -6072,12 +6033,14 @@ mod tests {
         let auth = AuthContext::from_session(
             member.id,
             ws.id,
-            vec![MESSAGE_POST.to_string(), WORKSPACE_READ.to_string()],
+            vec![
+                maidan_auth::capability::MESSAGE_POST.to_string(),
+                maidan_auth::capability::WORKSPACE_READ.to_string(),
+            ],
         );
         let post = |content: Value| {
             let args = json!({
                 "thread_id": thread.id.0,
-                "author_id": member.id.0,
                 "body": "work",
                 "content": content,
             });
@@ -6259,8 +6222,6 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_edit_message_appends_messageedited_event() {
-        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
-
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -6322,14 +6283,17 @@ mod tests {
         let auth = AuthContext::from_session(
             member.id,
             ws.id,
-            vec![MESSAGE_POST.to_string(), WORKSPACE_READ.to_string()],
+            vec![
+                maidan_auth::capability::MESSAGE_POST.to_string(),
+                maidan_auth::capability::WORKSPACE_READ.to_string(),
+            ],
         );
 
         server
             .call_tool(
                 &auth,
                 "edit_message",
-                &json!({ "message_id": msg.id.0, "editor_id": member.id.0, "body": "v2" }),
+                &json!({ "message_id": msg.id.0, "body": "v2" }),
             )
             .await
             .unwrap();
@@ -6439,7 +6403,7 @@ mod tests {
             .call_tool(
                 &auth,
                 "cast_vote",
-                &json!({ "message_id": msg.id.0, "member_id": alice.id.0, "kind": "up" }),
+                &json!({ "message_id": msg.id.0, "kind": "up" }),
             )
             .await
             .unwrap();
@@ -6447,7 +6411,7 @@ mod tests {
             .call_tool(
                 &auth,
                 "add_reaction",
-                &json!({ "message_id": msg.id.0, "member_id": alice.id.0, "emoji": "ship" }),
+                &json!({ "message_id": msg.id.0, "emoji": "ship" }),
             )
             .await
             .unwrap();
@@ -6455,7 +6419,7 @@ mod tests {
             .call_tool(
                 &auth,
                 "remove_reaction",
-                &json!({ "message_id": msg.id.0, "member_id": alice.id.0, "emoji": "ship" }),
+                &json!({ "message_id": msg.id.0, "emoji": "ship" }),
             )
             .await
             .unwrap();
@@ -6465,8 +6429,7 @@ mod tests {
                 "pin_message",
                 &json!({
                     "thread_id": thread.id.0,
-                    "message_id": msg.id.0,
-                    "member_id": alice.id.0
+                    "message_id": msg.id.0
                 }),
             )
             .await
@@ -6477,8 +6440,7 @@ mod tests {
                 "unpin_message",
                 &json!({
                     "thread_id": thread.id.0,
-                    "message_id": msg.id.0,
-                    "member_id": alice.id.0
+                    "message_id": msg.id.0
                 }),
             )
             .await
@@ -6498,7 +6460,7 @@ mod tests {
             .call_tool(
                 &auth,
                 "post_message",
-                &json!({ "thread_id": thread.id.0, "author_id": alice.id.0, "body": "ping @bob" }),
+                &json!({ "thread_id": thread.id.0, "body": "ping @bob" }),
             )
             .await
             .unwrap();
@@ -6630,7 +6592,7 @@ mod tests {
             .call_tool(
                 &auth,
                 "post_message",
-                &json!({ "thread_id": thread.id.0, "author_id": alice.id.0, "body": "/echo hi there" }),
+                &json!({ "thread_id": thread.id.0, "body": "/echo hi there" }),
             )
             .await
             .unwrap();
@@ -6645,7 +6607,7 @@ mod tests {
             .call_tool(
                 &auth,
                 "post_message",
-                &json!({ "thread_id": thread.id.0, "author_id": alice.id.0, "body": "plain message" }),
+                &json!({ "thread_id": thread.id.0, "body": "plain message" }),
             )
             .await
             .unwrap();
@@ -6658,7 +6620,7 @@ mod tests {
             .call_tool(
                 &auth,
                 "post_message",
-                &json!({ "thread_id": thread.id.0, "author_id": alice.id.0, "body": "/unknown x" }),
+                &json!({ "thread_id": thread.id.0, "body": "/unknown x" }),
             )
             .await
             .unwrap();
@@ -7314,7 +7276,15 @@ mod tests {
     #[tokio::test]
     async fn subscribe_and_post_message_emits_resource_updated_notification() {
         let (server, thread_id, member_id) = mk_server().await;
-        let auth = AuthContext::bypass();
+        let member = server.store.get_member(member_id).await.unwrap();
+        let auth = AuthContext::from_session(
+            member_id,
+            member.workspace_id,
+            vec![
+                maidan_auth::capability::MESSAGE_POST.to_string(),
+                maidan_auth::capability::WORKSPACE_READ.to_string(),
+            ],
+        );
         let uri = format!("maidan://threads/{}", thread_id.0);
 
         let subscribe = server
@@ -7334,7 +7304,6 @@ mod tests {
                         "name": "post_message",
                         "arguments": {
                             "thread_id": thread_id.0,
-                            "author_id": member_id.0,
                             "body": "hello"
                         }
                     }),
@@ -7355,7 +7324,15 @@ mod tests {
     #[tokio::test]
     async fn unsubscribe_suppresses_future_notifications() {
         let (server, thread_id, member_id) = mk_server().await;
-        let auth = AuthContext::bypass();
+        let member = server.store.get_member(member_id).await.unwrap();
+        let auth = AuthContext::from_session(
+            member_id,
+            member.workspace_id,
+            vec![
+                maidan_auth::capability::MESSAGE_POST.to_string(),
+                maidan_auth::capability::WORKSPACE_READ.to_string(),
+            ],
+        );
         let uri = format!("maidan://threads/{}", thread_id.0);
 
         let _ = server
@@ -7380,7 +7357,6 @@ mod tests {
                         "name": "post_message",
                         "arguments": {
                             "thread_id": thread_id.0,
-                            "author_id": member_id.0,
                             "body": "hello"
                         }
                     }),

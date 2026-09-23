@@ -1,9 +1,9 @@
-//! Black-box test for the Maidan Rust client against a running server (MAIDAN_URL,
-//! auth disabled). Run via `scripts/sdk-test.sh rust`, which boots a server. Each
+//! Black-box tests against the authenticated server from `scripts/sdk-test.sh`. Each
 //! test skips (returns) when MAIDAN_URL is unset, matching the repo's Docker-skip
 //! convention. These scenarios also exercise the server's REST + WS surface.
 
 use std::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use maidan::Client;
@@ -13,17 +13,22 @@ fn base() -> Option<String> {
     std::env::var("MAIDAN_URL").ok()
 }
 
-// Member creation isn't in the SDK surface (seeded via bootstrap/CLI); seed one
-// over the raw bootstrap route.
+static SEED_ID: AtomicU64 = AtomicU64::new(1);
+
+// Create an isolated queue in the token's bootstrap workspace.
 fn seed(c: &Client, base: &str) -> (Value, Value, Value, Value) {
-    let ws = c.workspaces().create("rust-sdk").unwrap();
-    let wid = ws["id"].as_str().unwrap();
-    let member: Value = ureq::post(&format!("{base}/workspaces/{wid}/members"))
-        .send_json(json!({ "handle": "sdk-agent", "kind": "agent" }))
+    let wid = std::env::var("MAIDAN_WORKSPACE").unwrap();
+    let token = std::env::var("MAIDAN_TOKEN").unwrap();
+    let me: Value = ureq::get(&format!("{base}/me"))
+        .set("authorization", &format!("Bearer {token}"))
+        .call()
         .unwrap()
         .into_json()
         .unwrap();
-    let channel = c.channels().create(wid, "general", false).unwrap();
+    let ws = json!({ "id": wid });
+    let member = json!({ "id": me["member_id"] });
+    let name = format!("rust-sdk-{}", SEED_ID.fetch_add(1, Ordering::Relaxed));
+    let channel = c.channels().create(&wid, &name, false).unwrap();
     let thread = c
         .threads()
         .create(channel["id"].as_str().unwrap(), "kickoff")
@@ -38,14 +43,10 @@ fn hero_loop_post_list_context() {
         return;
     };
     let c = Client::new(&base, std::env::var("MAIDAN_TOKEN").unwrap_or_default());
-    let (_ws, member, _ch, thread) = seed(&c, &base);
+    let (_ws, _member, _ch, thread) = seed(&c, &base);
     let tid = thread["id"].as_str().unwrap();
     c.messages()
-        .post(
-            tid,
-            member["id"].as_str().unwrap(),
-            "hello from the rust sdk",
-        )
+        .post(tid, "hello from the rust sdk")
         .unwrap();
     let msgs = c.messages().list(tid, &[]).unwrap();
     assert!(msgs
@@ -58,13 +59,11 @@ fn hero_loop_post_list_context() {
 
 #[test]
 fn get_result_unset_is_404() {
-    // A full set_result round-trip needs a real produced_by member (auth-enabled;
-    // the server's thread_result_e2e proves it). Under the auth-disabled harness the
-    // acting member is nil, so exercise the result route + client error path.
+    // Exercise the result route and client error path before a result exists.
     let Some(base) = base() else {
         return;
     };
-    let c = Client::new(&base, "");
+    let c = Client::new(&base, std::env::var("MAIDAN_TOKEN").unwrap_or_default());
     let (_ws, _m, _ch, thread) = seed(&c, &base);
     let err = c
         .threads()
@@ -78,7 +77,7 @@ fn errors_surface_status() {
     let Some(base) = base() else {
         return;
     };
-    let c = Client::new(&base, "");
+    let c = Client::new(&base, std::env::var("MAIDAN_TOKEN").unwrap_or_default());
     let err = c
         .threads()
         .get("00000000-0000-0000-0000-000000000000")
@@ -93,13 +92,10 @@ fn claim_returns_the_thread_flattened_not_nested() {
     let Some(base) = base() else {
         return;
     };
-    let c = Client::new(&base, "");
+    let c = Client::new(&base, std::env::var("MAIDAN_TOKEN").unwrap_or_default());
     let (_ws, member, ch, thread) = seed(&c, &base);
     let claim = c
-        .claim_next_thread(
-            ch["id"].as_str().unwrap(),
-            json!({ "member_id": member["id"] }),
-        )
+        .claim_next_thread(ch["id"].as_str().unwrap(), json!({}))
         .unwrap();
     assert!(
         !claim.is_null(),
@@ -123,18 +119,17 @@ fn renew_claim_extends_the_lease_with_the_fencing_token() {
     let Some(base) = base() else {
         return;
     };
-    let c = Client::new(&base, "");
-    let (_ws, member, ch, _t) = seed(&c, &base);
+    let c = Client::new(&base, std::env::var("MAIDAN_TOKEN").unwrap_or_default());
+    let (_ws, _member, ch, _t) = seed(&c, &base);
     let claim = c
         .claim_next_thread(
             ch["id"].as_str().unwrap(),
-            json!({ "member_id": member["id"], "lease_secs": 60 }),
+            json!({ "lease_secs": 60 }),
         )
         .unwrap();
     let renewed = c
         .renew_claim(
             claim["id"].as_str().unwrap(),
-            member["id"].as_str().unwrap(),
             claim["claim_lease_id"].as_str().unwrap(),
             600,
         )
@@ -150,10 +145,10 @@ fn claim_next_returns_null_once_drained() {
     let Some(base) = base() else {
         return;
     };
-    let c = Client::new(&base, "");
-    let (_ws, member, ch, _t) = seed(&c, &base);
+    let c = Client::new(&base, std::env::var("MAIDAN_TOKEN").unwrap_or_default());
+    let (_ws, _member, ch, _t) = seed(&c, &base);
     let cid = ch["id"].as_str().unwrap();
-    let body = json!({ "member_id": member["id"] });
+    let body = json!({});
     c.claim_next_thread(cid, body.clone()).unwrap();
     assert!(c.claim_next_thread(cid, body).unwrap().is_null());
 }
@@ -163,8 +158,8 @@ fn subscribe_delivers_a_message() {
     let Some(base) = base() else {
         return;
     };
-    let c = Client::new(&base, "");
-    let (ws, member, _ch, thread) = seed(&c, &base);
+    let c = Client::new(&base, std::env::var("MAIDAN_TOKEN").unwrap_or_default());
+    let (ws, _member, _ch, thread) = seed(&c, &base);
     let (tx, rx) = mpsc::channel();
     let tid = thread["id"].as_str().unwrap().to_string();
     let sub = c
@@ -179,11 +174,7 @@ fn subscribe_delivers_a_message() {
         .unwrap();
     std::thread::sleep(Duration::from_millis(200)); // let the subscription attach
     c.messages()
-        .post(
-            thread["id"].as_str().unwrap(),
-            member["id"].as_str().unwrap(),
-            "ws ping",
-        )
+        .post(thread["id"].as_str().unwrap(), "ws ping")
         .unwrap();
     let e = rx
         .recv_timeout(Duration::from_secs(10))
@@ -199,17 +190,17 @@ fn provisioning_seeds_a_member_and_mints_a_scoped_token() {
     let Some(base) = base() else {
         return;
     };
-    let c = Client::new(&base, "");
-    let ws = c.workspaces().create("rust-provisioning").unwrap();
-    let wid = ws["id"].as_str().unwrap();
+    let c = Client::new(&base, std::env::var("MAIDAN_TOKEN").unwrap_or_default());
+    let wid = std::env::var("MAIDAN_WORKSPACE").unwrap();
+    let handle = format!("provisioned-{}", SEED_ID.fetch_add(1, Ordering::Relaxed));
 
     let member = c
         .members()
-        .create(wid, "provisioned-agent", "agent", None)
+        .create(&wid, &handle, "agent", None)
         .unwrap();
-    assert_eq!(member["handle"], "provisioned-agent");
+    assert_eq!(member["handle"], handle);
     assert_eq!(member["kind"], "agent");
-    let listed = c.members().list(wid).unwrap();
+    let listed = c.members().list(&wid).unwrap();
     assert!(listed
         .as_array()
         .unwrap()
@@ -219,7 +210,7 @@ fn provisioning_seeds_a_member_and_mints_a_scoped_token() {
     let minted = c
         .tokens()
         .mint(
-            wid,
+            &wid,
             member["id"].as_str().unwrap(),
             &["workspace:read"],
             &maidan::MintOptions {
@@ -235,7 +226,7 @@ fn provisioning_seeds_a_member_and_mints_a_scoped_token() {
 
     let tokens = c
         .tokens()
-        .list(wid, member["id"].as_str().unwrap())
+        .list(&wid, member["id"].as_str().unwrap())
         .unwrap();
     assert!(
         tokens

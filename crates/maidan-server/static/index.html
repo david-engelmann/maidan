@@ -725,7 +725,6 @@
       <section id="panel-thread" class="panel">
         <label>Channel ID <input id="channel-id" /></label>
         <label>Thread ID <input id="thread-id" /></label>
-        <label>Actor <input id="actor-id" /></label>
         <label>FSM
           <select id="fsm-action">
             <option value="start_review">start_review</option>
@@ -805,6 +804,7 @@
       document.getElementById("workspace").value = localStorage.getItem(wsKey) || "";
 
       let sessionMemberId = null;
+      let bearerMemberId = null;
       let wsSocket = null;
       let wsAfterId = 0;
       let wsResumeToken = localStorage.getItem(wsResumeKey) || null;
@@ -891,11 +891,21 @@
         el.className = cls || "";
       }
       function authorId() {
-        return (
-          sessionMemberId ||
-          document.getElementById("actor-id").value.trim() ||
-          null
-        );
+        return token() ? bearerMemberId : sessionMemberId;
+      }
+      async function refreshBearerIdentity() {
+        bearerMemberId = null;
+        if (!token()) return null;
+        try {
+          const res = await fetch(`${base()}/me`, { headers: headers() });
+          if (!res.ok) return null;
+          const identity = await res.json();
+          bearerMemberId = identity.member_id;
+          if (!wid()) document.getElementById("workspace").value = identity.workspace_id;
+          return identity;
+        } catch (_e) {
+          return null;
+        }
       }
       function requireTokenForWrite() {
         if (!token()) {
@@ -1241,14 +1251,12 @@
 
       async function toggleReaction(messageId, emoji, mine, el) {
         if (!requireAuthForWrite()) return;
-        const member = authorId();
-        if (!member) return alert("Sign in or set Actor ID to react");
         try {
           const res = await fetch(apiWritePath(`/messages/${messageId}/reactions`), {
             method: mine ? "DELETE" : "POST",
             headers: headers(true),
             credentials: "include",
-            body: JSON.stringify({ emoji, member_id: member }),
+            body: JSON.stringify({ emoji }),
           });
           if (!res.ok) setStatus(`HTTP ${res.status}`, "err");
         } catch (e) {
@@ -1276,14 +1284,12 @@
 
       async function togglePin(threadId, messageId, pinned) {
         if (!requireAuthForWrite()) return;
-        const member = authorId();
-        if (!member) return alert("Sign in or set Actor ID to pin");
         try {
           const res = await fetch(apiWritePath(`/threads/${threadId}/pins`), {
             method: pinned ? "DELETE" : "POST",
             headers: headers(true),
             credentials: "include",
-            body: JSON.stringify({ message_id: messageId, member_id: member }),
+            body: JSON.stringify({ message_id: messageId }),
           });
           if (!res.ok) {
             setStatus(`HTTP ${res.status}`, "err");
@@ -1306,7 +1312,7 @@
         list.innerHTML = "";
         const me = authorId();
         if (!me) {
-          list.innerHTML = "<li>Sign in or set Actor ID</li>";
+          list.innerHTML = "<li>Sign in or set a valid bearer token</li>";
           return;
         }
         const suffix = `/workspaces/${wid()}/dm?member_id=${encodeURIComponent(me)}`;
@@ -1376,7 +1382,7 @@
       async function openDm() {
         if (!requireAuthForWrite()) return;
         const me = authorId();
-        if (!me) return alert("Sign in or set Actor ID");
+        if (!me) return alert("Sign in or set a valid bearer token");
         const other = document.getElementById("dm-other-id").value.trim();
         if (!other) return alert("Enter the other member's ID");
         if (other === me) return alert("Cannot open a DM with yourself");
@@ -1385,7 +1391,7 @@
             method: "POST",
             headers: headers(true),
             credentials: "include",
-            body: JSON.stringify({ member_id: me, other_member_id: other }),
+            body: JSON.stringify({ other_member_id: other }),
           });
           if (!res.ok) return setStatus(`HTTP ${res.status}`, "err");
           setStatus("DM opened", "ok");
@@ -1398,7 +1404,7 @@
       async function sendDmMessage() {
         if (!requireAuthForWrite()) return;
         const me = authorId();
-        if (!me) return alert("Sign in or set Actor ID");
+        if (!me) return alert("Sign in or set a valid bearer token");
         if (!selectedDm) return alert("Select a DM first");
         const body = document.getElementById("dm-body").value.trim();
         if (!body) return alert("Message body required");
@@ -1407,7 +1413,7 @@
             method: "POST",
             headers: headers(true),
             credentials: "include",
-            body: JSON.stringify({ author_id: me, body }),
+            body: JSON.stringify({ body }),
           });
           if (!res.ok) return setStatus(`HTTP ${res.status}`, "err");
           document.getElementById("dm-body").value = "";
@@ -1422,7 +1428,7 @@
         list.innerHTML = "";
         const me = authorId();
         if (!me) {
-          list.innerHTML = "<li>Sign in or set Actor ID</li>";
+          list.innerHTML = "<li>Sign in or set a valid bearer token</li>";
           return;
         }
         const suffix = `/workspaces/${wid()}/group-dms?member_id=${encodeURIComponent(me)}`;
@@ -1493,7 +1499,7 @@
       async function openGroupDm() {
         if (!requireAuthForWrite()) return;
         const me = authorId();
-        if (!me) return alert("Sign in or set Actor ID");
+        if (!me) return alert("Sign in or set a valid bearer token");
         const ids = document
           .getElementById("gdm-member-ids")
           .value.split(",")
@@ -1520,7 +1526,7 @@
       async function sendGroupDmMessage() {
         if (!requireAuthForWrite()) return;
         const me = authorId();
-        if (!me) return alert("Sign in or set Actor ID");
+        if (!me) return alert("Sign in or set a valid bearer token");
         if (!selectedGdm) return alert("Select a group DM first");
         const body = document.getElementById("gdm-body").value.trim();
         if (!body) return alert("Message body required");
@@ -1529,7 +1535,7 @@
             method: "POST",
             headers: headers(true),
             credentials: "include",
-            body: JSON.stringify({ author_id: me, body }),
+            body: JSON.stringify({ body }),
           });
           if (!res.ok) return setStatus(`HTTP ${res.status}`, "err");
           document.getElementById("gdm-body").value = "";
@@ -1960,7 +1966,7 @@
         const id = authorId();
         if (!id) {
           list.innerHTML =
-            "<li class='muted'>Sign in (session) or set an actor id above.</li>";
+            "<li class='muted'>Sign in or set a valid bearer token.</li>";
           summary.textContent = "";
           return;
         }
@@ -2704,9 +2710,6 @@
           el.textContent = `Signed in · ${body.member_id}`;
           el.className = "ok";
           if (!wid()) document.getElementById("workspace").value = body.workspace_id;
-          if (!document.getElementById("actor-id").value) {
-            document.getElementById("actor-id").value = body.member_id;
-          }
           if (!document.getElementById("token-member").value) {
             document.getElementById("token-member").value = body.member_id;
           }
@@ -3135,8 +3138,6 @@
       document.getElementById("post-message").onclick = async () => {
         if (!requireAuthForWrite()) return;
         if (!selectedThreadId) return alert("Select a thread first");
-        const author = authorId();
-        if (!author) return alert("Sign in or set Actor ID");
         const text = document.getElementById("compose-body").value.trim();
         if (!text) return alert("Message body required");
         persist();
@@ -3146,7 +3147,7 @@
             method: "POST",
             headers: headers(true),
             credentials: "include",
-            body: JSON.stringify({ author_id: author, body: text }),
+            body: JSON.stringify({ body: text }),
           }
         );
         const body = await res.text();
@@ -3176,14 +3177,13 @@
       document.getElementById("edit-message").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const id = document.getElementById("edit-message-id").value.trim();
-        const editor = authorId();
-        if (!id || !editor) return alert("Message ID and actor required");
+        if (!id) return alert("Message ID required");
         const text = document.getElementById("edit-message-body").value.trim();
         persist();
         const res = await fetch(`${base()}/messages/${id}`, {
           method: "PATCH",
           headers: headers(true),
-          body: JSON.stringify({ editor_id: editor, body: text }),
+          body: JSON.stringify({ body: text }),
         });
         const body = await res.text();
         if (!res.ok) {
@@ -3205,10 +3205,8 @@
         const fileInput = document.getElementById("artifact-file");
         if (!fileInput.files || !fileInput.files[0]) return alert("Choose a file");
         const kind = document.getElementById("artifact-kind").value;
-        const uploadedBy = authorId();
         persist();
         const params = new URLSearchParams({ kind });
-        if (uploadedBy) params.set("uploaded_by", uploadedBy);
         const file = fileInput.files[0];
         if (file.type) params.set("mime_type", file.type);
         const res = await fetch(`${base()}/artifacts?${params}`, {
@@ -3226,8 +3224,6 @@
         setOut(artifact);
         const attach = document.getElementById("attach-artifact-next");
         if (attach && attach.checked && selectedThreadId) {
-          const aid = authorId();
-          if (!aid) return alert("Author required to attach artifact to thread");
           const meta = { artifacts: [artifact.sha256] };
           const postPath = apiWritePath(`/threads/${selectedThreadId}/messages`);
           const pres = await fetch(postPath, {
@@ -3235,7 +3231,6 @@
             headers: headers(true),
             credentials: "include",
             body: JSON.stringify({
-              author_id: aid,
               body: `Attached artifact ${artifact.sha256.slice(0, 12)}…`,
               metadata: meta,
             }),
@@ -3261,12 +3256,11 @@
       document.getElementById("transition-thread").onclick = async () => {
         persist();
         const id = document.getElementById("thread-id").value.trim();
-        const actor = document.getElementById("actor-id").value.trim();
         const action = document.getElementById("fsm-action").value;
         const res = await fetch(`${base()}/threads/${id}`, {
           method: "POST",
           headers: headers(true),
-          body: JSON.stringify({ action, actor_id: actor }),
+          body: JSON.stringify({ action }),
         });
         const body = await res.text();
         if (!res.ok) {
@@ -3537,7 +3531,11 @@
         setOut(body ? JSON.parse(body) : { revoked: id });
       };
 
-      refreshSession().then(() => loadChannels());
+      document.getElementById("token").addEventListener("change", async () => {
+        persist();
+        await refreshBearerIdentity();
+      });
+      refreshSession().then(refreshBearerIdentity).then(() => loadChannels());
     </script>
   </body>
 </html>

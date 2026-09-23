@@ -190,7 +190,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
     let start = client
         .post(format!("{base}/threads/{tid}"))
         .header("Authorization", &owner_h)
-        .json(&json!({ "actor_id": owner.id.0, "action": "start_review" }))
+        .json(&json!({ "action": "start_review" }))
         .send()
         .await
         .unwrap();
@@ -199,7 +199,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
     let blocked = client
         .post(format!("{base}/threads/{tid}"))
         .header("Authorization", &owner_h)
-        .json(&json!({ "actor_id": owner.id.0, "action": "close" }))
+        .json(&json!({ "action": "close" }))
         .send()
         .await
         .unwrap();
@@ -227,7 +227,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
     let amber_close = client
         .post(format!("{base}/threads/{tid}"))
         .header("Authorization", &owner_h)
-        .json(&json!({ "actor_id": owner.id.0, "action": "close" }))
+        .json(&json!({ "action": "close" }))
         .send()
         .await
         .unwrap();
@@ -247,7 +247,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
     let self_close = client
         .post(format!("{base}/threads/{tid}"))
         .header("Authorization", &owner_h)
-        .json(&json!({ "actor_id": owner.id.0, "action": "close" }))
+        .json(&json!({ "action": "close" }))
         .send()
         .await
         .unwrap();
@@ -269,7 +269,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
     let closed = client
         .post(format!("{base}/threads/{tid}"))
         .header("Authorization", &owner_h)
-        .json(&json!({ "actor_id": owner.id.0, "action": "close" }))
+        .json(&json!({ "action": "close" }))
         .send()
         .await
         .unwrap();

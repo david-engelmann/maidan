@@ -107,7 +107,7 @@ export declare class Client {
   };
   messages: {
     list(tid: ThreadId, query?: Record<string, string | number>): Promise<any>;
-    post(tid: ThreadId, authorId: MemberId, body: string): Promise<any>;
+    post(tid: ThreadId, body: string): Promise<any>;
   };
   artifacts: {
     upload(bytes: Uint8Array | ArrayBuffer | string, kind: string): Promise<any>;
@@ -120,7 +120,6 @@ export declare class Client {
   /** Holder-only lease heartbeat. */
   renewClaim(
     id: ThreadId,
-    memberId: MemberId,
     claimLeaseId: string,
     leaseSecs?: number,
   ): Promise<any>;

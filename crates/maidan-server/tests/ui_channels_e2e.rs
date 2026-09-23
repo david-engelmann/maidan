@@ -166,7 +166,7 @@ async fn ui_shell_exposes_channel_browser_markers() {
         .text()
         .await
         .expect("html");
-    assert!(html.contains(r#"data-ui-version="7""#));
+    assert!(html.contains(r#"data-ui-version="8""#));
     assert!(html.contains("apiWritePath"));
     assert!(html.contains("requireAuthForWrite"));
     h.server.abort();
@@ -288,7 +288,6 @@ async fn ui_api_signed_session_hero_loop_reaches_the_live_websocket() {
         .post(format!("{base}/ui/api/threads/{thread_id}/messages"))
         .header(reqwest::header::COOKIE, &cookie)
         .json(&json!({
-            "author_id": member_id,
             "body": "posted from ui session api"
         }))
         .send()
@@ -355,17 +354,16 @@ async fn ui_api_signed_session_hero_loop_reaches_the_live_websocket() {
         .send()
         .await
         .expect("spoof post");
-    assert_eq!(wrong_author.status(), StatusCode::FORBIDDEN);
+    assert_eq!(wrong_author.status(), StatusCode::BAD_REQUEST);
 
     ws.close(None).await.ok();
     h.server.abort();
 }
 
-/// The anti-spoofing guard is wired on a *newly-guarded* surface (reactions),
-/// not only on `post_message` — a session caller cannot react as another
-/// member, but may react as itself.
+/// Acting identity fields are rejected at the boundary; the authenticated
+/// member is used for both message authorship and reactions.
 #[tokio::test]
-async fn session_cannot_react_as_another_member() {
+async fn session_identity_is_the_only_message_and_reaction_actor() {
     let h = spawn_oidc().await;
     let base = format!("http://{}", h.addr);
     let wid = h.workspace_id.0;
@@ -413,7 +411,7 @@ async fn session_cannot_react_as_another_member() {
         .client
         .post(format!("{base}/ui/api/threads/{tid}/messages"))
         .header(reqwest::header::COOKIE, &cookie)
-        .json(&json!({ "author_id": member_id, "body": "hi" }))
+        .json(&json!({ "body": "hi" }))
         .send()
         .await
         .expect("message")
@@ -422,7 +420,9 @@ async fn session_cannot_react_as_another_member() {
         .expect("message json");
     let mid = msg["id"].as_str().expect("mid");
 
-    // React as ANOTHER member → 403 (the newly-guarded add_reaction surface).
+    assert_eq!(msg["author_id"], member_id);
+
+    // The removed voter field is an unknown input, even when it names self.
     let spoof = h
         .client
         .post(format!("{base}/ui/api/messages/{mid}/reactions"))
@@ -431,17 +431,17 @@ async fn session_cannot_react_as_another_member() {
         .send()
         .await
         .expect("spoof reaction");
-    assert_eq!(spoof.status(), StatusCode::FORBIDDEN);
+    assert_eq!(spoof.status(), StatusCode::BAD_REQUEST);
 
-    // React as itself → allowed.
+    // With no acting identity in the request, the session member is recorded.
     let ok = h
         .client
         .post(format!("{base}/ui/api/messages/{mid}/reactions"))
         .header(reqwest::header::COOKIE, &cookie)
-        .json(&json!({ "member_id": member_id, "emoji": "👍" }))
+        .json(&json!({ "emoji": "👍" }))
         .send()
         .await
-        .expect("self reaction");
+        .expect("authenticated reaction");
     assert!(ok.status().is_success(), "a session may react as itself");
 
     h.server.abort();
@@ -450,11 +450,10 @@ async fn session_cannot_react_as_another_member() {
 /// The legacy `/members/:id/mentions` + `/inbox` routes live ONLY on the
 /// bearer-only `protected` router, so a browser session cannot reach them — the
 /// audit's "a session can read another member's inbox" was a false positive on
-/// reachability (a bearer is act-as-any by design). This documents that truth:
+/// reachability. This documents that truth:
 /// a session cookie with no bearer gets `401`, never another member's data.
-/// (The handlers still carry a defensive `ensure_acting_member` guarding a
-/// future `/ui/api` session mount — the pattern; its logic is unit-tested in
-/// `routes::ensure_acting_member`.)
+/// The handlers also require self or explicit delegated personal-state access,
+/// guarding any future `/ui/api` session mount.
 #[tokio::test]
 async fn legacy_inbox_and_mentions_are_bearer_only_not_session_reachable() {
     let h = spawn_oidc().await;

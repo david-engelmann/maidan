@@ -408,9 +408,8 @@ func (c *Client) ClaimNextThread(channelID string, body M) (M, error) {
 }
 
 // RenewClaim is the holder-only lease heartbeat.
-func (c *Client) RenewClaim(threadID, memberID, claimLeaseID string, leaseSecs int64) (M, error) {
+func (c *Client) RenewClaim(threadID, claimLeaseID string, leaseSecs int64) (M, error) {
 	return c.postObj("/threads/"+threadID+"/claim/renew", M{
-		"member_id":      memberID,
 		"claim_lease_id": claimLeaseID,
 		"lease_secs":     leaseSecs,
 	})
@@ -427,8 +426,8 @@ func (s *MessagesService) List(threadID string, query url.Values) ([]M, error) {
 	}
 	return decodeArr(raw)
 }
-func (s *MessagesService) Post(threadID, authorID, body string) (M, error) {
-	return s.c.postObj("/threads/"+threadID+"/messages", M{"author_id": authorID, "body": body})
+func (s *MessagesService) Post(threadID, body string) (M, error) {
+	return s.c.postObj("/threads/"+threadID+"/messages", M{"body": body})
 }
 
 // --- Artifacts ---

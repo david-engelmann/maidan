@@ -225,7 +225,7 @@ async fn ui_ws_subscribe_accepts_session_cookie_and_resume_token() {
         .text()
         .await
         .expect("html");
-    assert!(html.contains(r#"data-ui-version="7""#));
+    assert!(html.contains(r#"data-ui-version="8""#));
     assert!(html.contains("ws-preset"));
     assert!(html.contains("ws-auto-reconnect"));
 

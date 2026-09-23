@@ -52,6 +52,7 @@ async fn spawn_with_mcp() -> (
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
+    state.test_identity_header = true;
     let mcp = state.mcp.clone();
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -136,13 +137,13 @@ async fn streamable_post_returns_sse_response_and_resource_notification() {
             "name": "post_message",
             "arguments": {
                 "thread_id": thread_id,
-                "author_id": alice_id,
                 "body": "via streamable"
             }
         }
     });
     let resp2 = client
         .post(format!("{base}/mcp/streamable"))
+        .header("maidan-test-member-id", alice_id)
         .json(&post_body)
         .send()
         .await
@@ -460,10 +461,11 @@ async fn streamable_get_delivers_server_notification() {
     // Trigger an update; it must arrive on the already-open GET stream.
     let _ = client
         .post(format!("{base}/mcp"))
+        .header("maidan-test-member-id", alice_id)
         .json(&json!({
             "jsonrpc":"2.0","id":2,"method":"tools/call",
             "params":{"name":"post_message","arguments":{
-                "thread_id": thread_id, "author_id": alice_id, "body": "hi"}}
+                "thread_id": thread_id, "body": "hi"}}
         }))
         .send()
         .await

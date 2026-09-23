@@ -142,11 +142,16 @@ async fn agui_stream_maps_thread_lifecycle_to_run_events() {
     )
     .await;
     let thread_id = thread["id"].as_str().unwrap().to_string();
-    let _ = post(
-        format!("{base}/threads/{thread_id}/messages"),
-        json!({"author_id": actor_id, "body": "on it"}),
-    )
-    .await;
+    let _ = client
+        .post(format!("{base}/threads/{thread_id}/messages"))
+        .header("maidan-test-member-id", &actor_id)
+        .json(&json!({"body": "on it"}))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
 
     // ThreadCreated → RUN_STARTED; MessagePosted → TEXT_MESSAGE_START/CONTENT/END.
     let frames = collect_frames(resp, 4).await;

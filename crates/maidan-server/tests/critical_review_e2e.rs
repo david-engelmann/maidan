@@ -190,7 +190,7 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
     let start = client
         .post(format!("{base}/threads/{tid}"))
         .header("Authorization", &owner_h)
-        .json(&json!({ "actor_id": owner.id.0, "action": "start_review" }))
+        .json(&json!({ "action": "start_review" }))
         .send()
         .await
         .unwrap();
@@ -199,7 +199,7 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
     let blocked = client
         .post(format!("{base}/threads/{tid}"))
         .header("Authorization", &owner_h)
-        .json(&json!({ "actor_id": owner.id.0, "action": "close" }))
+        .json(&json!({ "action": "close" }))
         .send()
         .await
         .unwrap();
@@ -222,7 +222,7 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
     let closed = client
         .post(format!("{base}/threads/{tid}"))
         .header("Authorization", &owner_h)
-        .json(&json!({ "actor_id": owner.id.0, "action": "close" }))
+        .json(&json!({ "action": "close" }))
         .send()
         .await
         .unwrap();

@@ -13,10 +13,10 @@
 //! use serde_json::json;
 //! # fn main() -> Result<(), maidan::MaidanError> {
 //! let client = Client::new("http://127.0.0.1:8080", "");
-//! let res = client.claim_next_thread("channel-id", json!({"member_id": "m"}))?;
-//! if let Some(thread) = res.get("thread") {
-//!     let tid = thread["id"].as_str().unwrap();
-//!     client.messages().post(tid, "member-id", "on it")?;
+//! let res = client.claim_next_thread("channel-id", json!({}))?;
+//! if !res.is_null() {
+//!     let tid = res["id"].as_str().unwrap();
+//!     client.messages().post(tid, "on it")?;
 //!     client.threads().set_result(tid, json!({"ok": true}))?;
 //! }
 //! # Ok(())
@@ -210,7 +210,6 @@ impl Client {
     pub fn renew_claim(
         &self,
         thread_id: &str,
-        member_id: &str,
         claim_lease_id: &str,
         lease_secs: i64,
     ) -> Result<Value> {
@@ -218,7 +217,6 @@ impl Client {
             "POST",
             &format!("/threads/{thread_id}/claim/renew"),
             Some(&json!({
-                "member_id": member_id,
                 "claim_lease_id": claim_lease_id,
                 "lease_secs": lease_secs,
             })),
@@ -547,11 +545,11 @@ impl Messages<'_> {
             None,
         )
     }
-    pub fn post(&self, thread_id: &str, author_id: &str, body: &str) -> Result<Value> {
+    pub fn post(&self, thread_id: &str, body: &str) -> Result<Value> {
         self.c.send(
             "POST",
             &format!("/threads/{thread_id}/messages"),
-            Some(&json!({ "author_id": author_id, "body": body })),
+            Some(&json!({ "body": body })),
         )
     }
 }

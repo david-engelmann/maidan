@@ -93,7 +93,8 @@ async fn http_mutations_publish_matching_events() {
     // post message -> MessagePosted
     let _msg: serde_json::Value = client
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .json(&json!({"author_id": alice_id, "body": "hi"}))
+        .header("maidan-test-member-id", &alice_id)
+        .json(&json!({"body": "hi"}))
         .send()
         .await
         .unwrap()

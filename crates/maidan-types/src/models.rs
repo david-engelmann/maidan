@@ -1407,9 +1407,9 @@ pub struct OpenGroupDmBody {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PostDmMessage {
-    pub author_id: uuid::Uuid,
     pub body: String,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,

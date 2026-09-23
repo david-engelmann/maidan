@@ -30,8 +30,8 @@ pub struct DmMemberQuery {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OpenDmBody {
-    pub member_id: uuid::Uuid,
     pub other_member_id: uuid::Uuid,
 }
 
@@ -98,15 +98,10 @@ pub async fn open_dm_conversation(
     // same action and REST was the weaker one: a read-scoped token could create
     // a conversation between two arbitrary members.
     //
-    // The ids stay caller-supplied on purpose. A Bearer is the orchestrator and
-    // may act for any member in its workspace, which is how a bot opens a DM on
-    // someone's behalf; what was wrong was the capability, not the act-as-any
-    // model. Whether act-as-any should also narrow here is a separate, open
-    // question that spans fourteen other routes.
     cap(&auth, MESSAGE_POST)?;
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
-    let member_id = MemberId(body.member_id);
+    let member_id = auth.member_id;
     let other = MemberId(body.other_member_id);
     state.store.get_member(member_id).await?;
     state.store.get_member(other).await?;
@@ -127,11 +122,7 @@ pub async fn list_dm_conversations(
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
     let member_id = MemberId(q.member_id);
-    // A **session** caller may only enumerate its OWN DM graph (otherwise a
-    // `/ui` user could list who any member messages). A bearer is the
-    // orchestrator model and may list on behalf of any member (unchanged);
-    // bypass is unrestricted — same rule as member-attributed writes (202).
-    crate::routes::ensure_acting_member(&auth, member_id)?;
+    crate::routes::ensure_own_personal_state(&auth, member_id)?;
     Ok(Json(
         state
             .store
@@ -172,8 +163,7 @@ pub async fn post_dm_message(
         .get_dm_conversation(DmConversationId(id))
         .await?;
     ensure_workspace(&auth, dm.workspace_id)?;
-    let author_id = MemberId(body.author_id);
-    crate::routes::ensure_acting_member(&auth, author_id)?;
+    let author_id = auth.member_id;
     ensure_dm_participant(&dm, author_id)?;
     let metadata = body.metadata.unwrap_or_else(|| serde_json::json!({}));
     let (m, stored) = state

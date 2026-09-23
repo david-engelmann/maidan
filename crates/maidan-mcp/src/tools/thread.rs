@@ -193,7 +193,6 @@ pub(super) async fn get_tool_transcript(
 #[serde(deny_unknown_fields)]
 struct AssignThreadArgs {
     thread_id: uuid::Uuid,
-    actor_id: uuid::Uuid,
     assignee_id: uuid::Uuid,
     /// Optional handoff note for the assignee.
     #[serde(default)]
@@ -204,18 +203,17 @@ struct AssignThreadArgs {
 #[serde(deny_unknown_fields)]
 struct ClaimThreadArgs {
     thread_id: uuid::Uuid,
-    member_id: uuid::Uuid,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct UnassignThreadArgs {
     thread_id: uuid::Uuid,
-    actor_id: uuid::Uuid,
 }
 
 pub(super) async fn assign_thread(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: AssignThreadArgs = serde_json::from_value(args.clone())?;
@@ -225,12 +223,7 @@ pub(super) async fn assign_thread(
     // assignment matches REST's crash-consistency (no dual-write).
     let (thread, stored) = server
         .store
-        .assign_thread_with_event(
-            thread_id,
-            MemberId(a.assignee_id),
-            MemberId(a.actor_id),
-            a.note,
-        )
+        .assign_thread_with_event(thread_id, MemberId(a.assignee_id), auth.member_id, a.note)
         .await?;
     server.publish_stored(&stored).await;
     Ok(content_json(&thread))
@@ -251,11 +244,12 @@ async fn at_wip_limit(
 
 pub(super) async fn claim_thread(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ClaimThreadArgs = serde_json::from_value(args.clone())?;
     let thread_id = ThreadId(a.thread_id);
-    let member_id = MemberId(a.member_id);
+    let member_id = auth.member_id;
     // Unclaimable: a parked thread refuses an explicit claim, just as
     // `claim_next` skips it (the REST 409 analogue).
     if let Some(u) = server.store.get_thread_unclaimable(thread_id).await? {
@@ -296,6 +290,7 @@ pub(super) async fn claim_thread(
 
 pub(super) async fn unassign_thread(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: UnassignThreadArgs = serde_json::from_value(args.clone())?;
@@ -304,7 +299,7 @@ pub(super) async fn unassign_thread(
     // ThreadAssignmentChanged with it.
     let (thread, stored) = server
         .store
-        .unassign_thread_with_event(thread_id, MemberId(a.actor_id))
+        .unassign_thread_with_event(thread_id, auth.member_id)
         .await?;
     server.publish_stored(&stored).await;
     Ok(content_json(&thread))
@@ -314,7 +309,6 @@ pub(super) async fn unassign_thread(
 #[serde(deny_unknown_fields)]
 struct TransitionThreadArgs {
     thread_id: uuid::Uuid,
-    actor_id: uuid::Uuid,
     action: String,
 }
 
@@ -324,6 +318,7 @@ struct TransitionThreadArgs {
 /// gate refusals are `InvalidParams`. Thread access is enforced pre-dispatch.
 pub(super) async fn transition_thread(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: TransitionThreadArgs = serde_json::from_value(args.clone())?;
@@ -336,7 +331,7 @@ pub(super) async fn transition_thread(
     let thread_id = ThreadId(a.thread_id);
     let (result, stored) = server
         .store
-        .transition_thread_with_event(thread_id, MemberId(a.actor_id), action)
+        .transition_thread_with_event(thread_id, auth.member_id, action)
         .await?;
     server.publish_stored(&stored).await;
     // Entering a terminal state can unblock dependents. Same derived
@@ -666,7 +661,6 @@ pub(super) async fn list_assigned_threads(
 #[serde(deny_unknown_fields)]
 struct ClaimNextThreadArgs {
     channel_id: uuid::Uuid,
-    member_id: uuid::Uuid,
     /// Optional lease deadline in seconds; the claim is reclaimable after it
     /// lapses. Omit for a durable claim.
     #[serde(default)]
@@ -678,10 +672,11 @@ struct ClaimNextThreadArgs {
 /// plus a content-addressed pin, or `null` when there is no claimable work.
 pub(super) async fn claim_next_thread(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ClaimNextThreadArgs = serde_json::from_value(args.clone())?;
-    let member_id = MemberId(a.member_id);
+    let member_id = auth.member_id;
     // WIP limit: a capped member is dispatched nothing (null), the same shape
     // as an empty queue.
     let channel = server.store.get_channel(ChannelId(a.channel_id)).await?;
@@ -713,7 +708,6 @@ pub(super) async fn claim_next_thread(
 #[serde(deny_unknown_fields)]
 struct RenewClaimArgs {
     thread_id: uuid::Uuid,
-    member_id: uuid::Uuid,
     claim_lease_id: uuid::Uuid,
     lease_secs: i64,
 }
@@ -725,6 +719,7 @@ struct RenewClaimArgs {
 /// `thread_id` arg).
 pub(super) async fn renew_claim(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: RenewClaimArgs = serde_json::from_value(args.clone())?;
@@ -732,7 +727,7 @@ pub(super) async fn renew_claim(
         .store
         .renew_claim(
             ThreadId(a.thread_id),
-            MemberId(a.member_id),
+            auth.member_id,
             ClaimLeaseId(a.claim_lease_id),
             a.lease_secs,
         )
@@ -744,7 +739,6 @@ pub(super) async fn renew_claim(
 #[serde(deny_unknown_fields)]
 struct AcknowledgeClaimArgs {
     thread_id: uuid::Uuid,
-    member_id: uuid::Uuid,
     claim_lease_id: uuid::Uuid,
 }
 
@@ -753,6 +747,7 @@ struct AcknowledgeClaimArgs {
 /// wins). Thread access is enforced pre-dispatch (the `thread_id` arg).
 pub(super) async fn acknowledge_claim(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: AcknowledgeClaimArgs = serde_json::from_value(args.clone())?;
@@ -760,7 +755,7 @@ pub(super) async fn acknowledge_claim(
         .store
         .acknowledge_claim(
             ThreadId(a.thread_id),
-            MemberId(a.member_id),
+            auth.member_id,
             ClaimLeaseId(a.claim_lease_id),
         )
         .await?;
@@ -771,7 +766,6 @@ pub(super) async fn acknowledge_claim(
 #[serde(deny_unknown_fields)]
 struct ReleaseClaimArgs {
     thread_id: uuid::Uuid,
-    member_id: uuid::Uuid,
     claim_lease_id: uuid::Uuid,
 }
 
@@ -781,10 +775,11 @@ struct ReleaseClaimArgs {
 /// `ThreadAssignmentChanged`.
 pub(super) async fn release_claim(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ReleaseClaimArgs = serde_json::from_value(args.clone())?;
-    let member = MemberId(a.member_id);
+    let member = auth.member_id;
     // Atomic: release + ThreadAssignmentChanged in one tx.
     let (thread, stored) = server
         .store

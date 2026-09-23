@@ -20,8 +20,8 @@ use axum::{
 };
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressKind, EgressTarget, ExternalRef, GithubIssueLink, GithubReviewComment, MemberId,
-    NewEgressOutbox, NewGithubIssueLink, ThreadId, WorkspaceId, GITHUB_REVIEW_EVENT_COMMENT,
+    EgressKind, EgressTarget, ExternalRef, GithubIssueLink, GithubReviewComment, NewEgressOutbox,
+    NewGithubIssueLink, ThreadId, WorkspaceId, GITHUB_REVIEW_EVENT_COMMENT,
 };
 
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
@@ -627,8 +627,8 @@ pub async fn route_message_to_github(
 /// `POST /workspaces/:wid/github-links` — link a GitHub issue/PR to a Maidan
 /// thread so the projector can bridge comments both ways. The link's
 /// `channel_id`/`workspace_id` are derived from resolving the thread; the
-/// caller supplies only `repo` (`owner/name`), `issue_number`, thread, and the
-/// attribution member. `workspace:write` + access to the thread. Upserts.
+/// caller supplies only `repo` (`owner/name`), `issue_number`, and thread.
+/// `workspace:write` + access to the thread. Upserts.
 pub async fn link_github_issue(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -653,7 +653,7 @@ pub async fn link_github_issue(
             workspace_id: scope.workspace_id,
             channel_id: scope.channel_id,
             thread_id: ThreadId(body.thread_id),
-            member_id: MemberId(body.member_id),
+            member_id: auth.member_id,
         })
         .await?;
     Ok((StatusCode::CREATED, Json(link)))

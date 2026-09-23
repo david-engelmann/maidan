@@ -119,7 +119,8 @@ async fn post_message_routes_at_handles_and_skips_plain_posts() {
     // for the target member.
     client
         .post(format!("{base}/threads/{tid}/messages"))
-        .json(&json!({"author_id": author_id, "body": "hey @mentioned please look"}))
+        .header("maidan-test-member-id", &author_id)
+        .json(&json!({"body": "hey @mentioned please look"}))
         .send()
         .await
         .unwrap()
@@ -144,7 +145,8 @@ async fn post_message_routes_at_handles_and_skips_plain_posts() {
     // A plain post → MessagePosted, and no MentionRecorded (the short-circuit).
     client
         .post(format!("{base}/threads/{tid}/messages"))
-        .json(&json!({"author_id": author_id, "body": "just a plain note, no handles"}))
+        .header("maidan-test-member-id", &author_id)
+        .json(&json!({"body": "just a plain note, no handles"}))
         .send()
         .await
         .unwrap()

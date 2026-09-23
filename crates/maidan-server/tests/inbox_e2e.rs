@@ -41,6 +41,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
+    state.test_identity_header = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -113,8 +114,8 @@ async fn at_mention_in_channel_populates_inbox_and_mark_read_clears_unread() {
 
     let post: Value = client
         .post(format!("{base}/threads/{thread_id}/messages"))
+        .header("maidan-test-member-id", alice_id)
         .json(&json!({
-            "author_id": alice_id,
             "body": "hey @bob check this"
         }))
         .send()
@@ -194,10 +195,8 @@ async fn dm_message_with_at_mention_still_routes_to_inbox() {
 
     let dm: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/dm"))
-        .json(&json!({
-            "member_id": a_id,
-            "other_member_id": b_id
-        }))
+        .header("maidan-test-member-id", a_id)
+        .json(&json!({ "other_member_id": b_id }))
         .send()
         .await
         .unwrap()
@@ -211,8 +210,8 @@ async fn dm_message_with_at_mention_still_routes_to_inbox() {
 
     client
         .post(format!("{base}/dm/{dm_id}/messages"))
+        .header("maidan-test-member-id", a_id)
         .json(&json!({
-            "author_id": a_id,
             "body": "dm ping @b"
         }))
         .send()

@@ -28,7 +28,6 @@ pub async fn post_message(
     // `resolve_thread_context` + `ensure_workspace` + `ensure_thread_access`).
     let ctx =
         maidan_auth::authorize_thread(state.store.as_ref(), &auth, ThreadId(thread_id)).await?;
-    super::ensure_acting_member(&auth, MemberId(body.author_id))?;
     // A content-only post derives its searchable `body` from the blocks; an
     // explicit `body` is respected verbatim.
     let content = body.content.clone();
@@ -61,7 +60,7 @@ pub async fn post_message(
         .map(|d| d.id);
     let new_message = NewMessage {
         thread_id: ThreadId(thread_id),
-        author_id: MemberId(body.author_id),
+        author_id: auth.member_id,
         body: post_body,
         metadata: body.metadata.clone(),
         content,
@@ -73,7 +72,7 @@ pub async fn post_message(
     // atomically so the event carries the post-slash message. A post the
     // `max_tools` axis refuses is recorded as `ThreadSpawnDenied` on the way to
     // the 409, on both branches.
-    let author = Some(MemberId(body.author_id));
+    let author = Some(auth.member_id);
     let message = if let Some(parsed) = parsed_slash.filter(|_| slash_will_run) {
         let provisional = state.store.post_message(new_message).await;
         let m = super::observe_spawn_denial(&state, author, provisional).await?;
@@ -84,7 +83,7 @@ pub async fn post_message(
             ctx.workspace_id,
             ctx.channel_id,
             ThreadId(thread_id),
-            MemberId(body.author_id),
+            auth.member_id,
             m.id,
         )
         .await;
@@ -96,7 +95,7 @@ pub async fn post_message(
             .store
             .edit_message_with_posted_event(
                 m.id,
-                MemberId(body.author_id),
+                auth.member_id,
                 EditMessage {
                     body: m.body.clone(),
                     metadata,
@@ -217,8 +216,7 @@ pub async fn edit_message(
     if existing.tombstoned_at.is_some() {
         return Err(ApiError::BadRequest("message is tombstoned".into()));
     }
-    let editor_id = MemberId(body.editor_id);
-    super::ensure_acting_member(&auth, editor_id)?;
+    let editor_id = auth.member_id;
     ensure_message_edit(&auth, editor_id, existing.author_id)?;
     let metadata = body.metadata.unwrap_or(existing.metadata);
     // Omitted content keeps the existing blocks; a content edit with an empty

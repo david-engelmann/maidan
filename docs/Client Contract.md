@@ -83,7 +83,7 @@ Create body: `{ "name", "private": false }`.
 | SDK | HTTP | Capability | Notes |
 |-----|------|------------|-------|
 | `messages.list` | `GET /threads/{tid}/messages` | `workspace:read` | |
-| `messages.post` | `POST /threads/{tid}/messages` | `message:post` | Body `{ "author_id", "body" }` |
+| `messages.post` | `POST /threads/{tid}/messages` | `message:post` | Body `{ "body" }`; author is the authenticated member |
 
 ### Artifacts
 

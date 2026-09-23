@@ -53,21 +53,16 @@ async fn spawn() -> (
     (addr, reqwest::Client::new(), server, store)
 }
 
-async fn mint_token(store: &dyn Store, workspace_id: WorkspaceId) -> String {
-    let member = store
-        .create_member(NewMember {
-            workspace_id,
-            handle: format!("bot-{}", uuid::Uuid::new_v4()),
-            display_name: None,
-            kind: maidan_types::MemberKind::Agent,
-        })
-        .await
-        .unwrap();
+async fn mint_token(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+    member_id: maidan_types::MemberId,
+) -> String {
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
             workspace_id,
-            member_id: member.id,
+            member_id,
             app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
@@ -120,7 +115,7 @@ async fn group_dm_open_post_and_list() {
         })
         .await
         .unwrap();
-    let token = mint_token(store.as_ref(), ws.id).await;
+    let token = mint_token(store.as_ref(), ws.id, a.id).await;
 
     let open = client
         .post(format!("{base}/workspaces/{}/group-dms", ws.id))
@@ -140,7 +135,7 @@ async fn group_dm_open_post_and_list() {
     let msg = client
         .post(format!("{base}/group-dms/{gid}/messages"))
         .header("Authorization", format!("Bearer {token}"))
-        .json(&json!({ "author_id": a.id.0, "body": "hello group" }))
+        .json(&json!({ "body": "hello group" }))
         .send()
         .await
         .unwrap();

@@ -1,7 +1,6 @@
 //! The REST unified inbox — list / unread-count / mark-read / read-all over
 //! `/members/:id/notifications`. Auth ENABLED with a minted bearer token (the
-//! act-as-any orchestrator model; the self-only session guard is unit-tested in
-//! routes::ensure_acting_member).
+//! self/member-impersonation authorization model).
 
 use std::{
     net::SocketAddr,

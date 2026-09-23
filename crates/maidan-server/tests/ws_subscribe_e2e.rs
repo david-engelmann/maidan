@@ -204,7 +204,8 @@ async fn subscribe_filters_by_kind() {
     for body in ["one", "two"] {
         let _: serde_json::Value = client
             .post(format!("{base}/threads/{thread_id}/messages"))
-            .json(&json!({"author_id": alice_id, "body": body}))
+            .header("maidan-test-member-id", &alice_id)
+            .json(&json!({"body": body}))
             .send()
             .await
             .unwrap()

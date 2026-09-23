@@ -47,21 +47,39 @@ async fn spawn() -> (
 }
 
 async fn rpc(client: &reqwest::Client, base: &str, id: u64, method: &str, params: Value) -> Value {
+    rpc_with_member(client, base, id, method, params, None).await
+}
+
+async fn rpc_as(
+    client: &reqwest::Client,
+    base: &str,
+    id: u64,
+    method: &str,
+    params: Value,
+    member_id: &str,
+) -> Value {
+    rpc_with_member(client, base, id, method, params, Some(member_id)).await
+}
+
+async fn rpc_with_member(
+    client: &reqwest::Client,
+    base: &str,
+    id: u64,
+    method: &str,
+    params: Value,
+    member_id: Option<&str>,
+) -> Value {
     let body = json!({
         "jsonrpc": "2.0",
         "id": id,
         "method": method,
         "params": params,
     });
-    client
-        .post(format!("{base}/mcp"))
-        .json(&body)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap()
+    let mut request = client.post(format!("{base}/mcp")).json(&body);
+    if let Some(member_id) = member_id {
+        request = request.header("maidan-test-member-id", member_id);
+    }
+    request.send().await.unwrap().json().await.unwrap()
 }
 
 fn unwrap_tool_text(result: &Value) -> Value {
@@ -137,7 +155,7 @@ async fn full_mcp_flow() {
     let thread_id = th["id"].as_str().unwrap().to_string();
 
     // tools/call: list_channels
-    let resp = rpc(
+    let resp = rpc_as(
         &client,
         &base,
         3,
@@ -146,13 +164,14 @@ async fn full_mcp_flow() {
             "name": "list_channels",
             "arguments": {"workspace_id": workspace_id}
         }),
+        &alice_id,
     )
     .await;
     let channels = unwrap_tool_text(&resp["result"]);
     assert_eq!(channels.as_array().unwrap().len(), 1);
 
     // tools/call: post_message
-    let resp = rpc(
+    let resp = rpc_as(
         &client,
         &base,
         4,
@@ -161,10 +180,10 @@ async fn full_mcp_flow() {
             "name": "post_message",
             "arguments": {
                 "thread_id": thread_id,
-                "author_id": alice_id,
                 "body": "hi from mcp"
             }
         }),
+        &alice_id,
     )
     .await;
     let posted = unwrap_tool_text(&resp["result"]);
@@ -172,7 +191,7 @@ async fn full_mcp_flow() {
     let msg_id = posted["id"].as_str().unwrap().to_string();
 
     // tools/call: edit_message
-    let resp = rpc(
+    let resp = rpc_as(
         &client,
         &base,
         41,
@@ -181,17 +200,17 @@ async fn full_mcp_flow() {
             "name": "edit_message",
             "arguments": {
                 "message_id": msg_id,
-                "editor_id": alice_id,
                 "body": "edited via mcp"
             }
         }),
+        &alice_id,
     )
     .await;
     let edited = unwrap_tool_text(&resp["result"]);
     assert_eq!(edited["body"], "edited via mcp");
 
     // tools/call: list_messages
-    let resp = rpc(
+    let resp = rpc_as(
         &client,
         &base,
         5,
@@ -200,6 +219,7 @@ async fn full_mcp_flow() {
             "name": "list_messages",
             "arguments": {"thread_id": thread_id, "limit": 10}
         }),
+        &alice_id,
     )
     .await;
     let messages = unwrap_tool_text(&resp["result"]);
@@ -260,7 +280,7 @@ async fn full_mcp_flow() {
 
     let artifact_b64 =
         base64::engine::general_purpose::STANDARD.encode(b"artifact body via mcp tool");
-    let resp = rpc(
+    let resp = rpc_as(
         &client,
         &base,
         10,
@@ -272,6 +292,7 @@ async fn full_mcp_flow() {
                 "content_base64": artifact_b64
             }
         }),
+        &alice_id,
     )
     .await;
     let artifact = unwrap_tool_text(&resp["result"]);
@@ -388,7 +409,7 @@ async fn http_resource_subscribe_delivers_sse_notification() {
     .await;
     assert!(subscribe["error"].is_null());
 
-    let _ = rpc(
+    let _ = rpc_as(
         &client,
         &base,
         2,
@@ -397,10 +418,10 @@ async fn http_resource_subscribe_delivers_sse_notification() {
             "name": "post_message",
             "arguments": {
                 "thread_id": thread_id,
-                "author_id": alice_id,
                 "body": "notify me"
             }
         }),
+        alice_id,
     )
     .await;
 
@@ -462,7 +483,8 @@ async fn http_tombstone_emits_resource_updated_sse_notification() {
     let thread_id = th["id"].as_str().unwrap();
     let msg: Value = client
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .json(&json!({"author_id": alice_id, "body": "delete me"}))
+        .header("maidan-test-member-id", alice_id)
+        .json(&json!({"body": "delete me"}))
         .send()
         .await
         .unwrap()
@@ -505,6 +527,7 @@ async fn http_tombstone_emits_resource_updated_sse_notification() {
 
     let resp = client
         .delete(format!("{base}/messages/{msg_id}"))
+        .header("maidan-test-member-id", alice_id)
         .send()
         .await
         .unwrap();
@@ -568,7 +591,8 @@ async fn http_edit_message_emits_resource_updated_sse_notification() {
     let thread_id = th["id"].as_str().unwrap();
     let msg: Value = client
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .json(&json!({"author_id": alice_id, "body": "original"}))
+        .header("maidan-test-member-id", alice_id)
+        .json(&json!({"body": "original"}))
         .send()
         .await
         .unwrap()
@@ -611,7 +635,8 @@ async fn http_edit_message_emits_resource_updated_sse_notification() {
 
     let resp = client
         .patch(format!("{base}/messages/{msg_id}"))
-        .json(&json!({"editor_id": alice_id, "body": "edited"}))
+        .header("maidan-test-member-id", alice_id)
+        .json(&json!({"body": "edited"}))
         .send()
         .await
         .unwrap();

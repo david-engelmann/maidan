@@ -380,7 +380,6 @@ const MEMBER_SCOPED_TOOLS: &[&str] = &[
     // digest it is — reading someone else's is reading their reports' state.
     // Cross-member rollup is the feature; cross-member access is not.
     "get_manager_digest",
-    "open_dm_conversation",
     "list_dm_conversations",
     // Declared skills control which work the routing loop may assign. They are
     // personal capability state, not a workspace-wide directory entry.
@@ -404,26 +403,6 @@ const MEMBER_WORK_STATE_TOOLS: &[&str] = &[
     "get_member_occupancy",
     "get_member_wip",
     "list_assigned_threads",
-];
-
-/// Transitional caller-chosen work attribution. Cluster 411 removes these
-/// `member_id` inputs in favor of the authenticated subject; keeping this list
-/// explicit prevents them from being mistaken for unreviewed personal state in
-/// the meantime.
-#[cfg(test)]
-const MEMBER_ACTING_IDENTITY_TOOLS: &[&str] = &[
-    "claim_thread",
-    "claim_next_thread",
-    "renew_claim",
-    "acknowledge_claim",
-    "release_claim",
-    "cast_vote",
-    "add_reaction",
-    "remove_reaction",
-    "pin_message",
-    "unpin_message",
-    "link_slack_channel",
-    "link_github_issue",
 ];
 
 /// Tools where `member_id` is the object of an administrative or routing
@@ -618,9 +597,9 @@ pub async fn dispatch(
         "add_channel_member" => channel::add_channel_member(store, args).await,
         "list_channel_members" => channel::list_channel_members(store, args).await,
         "remove_channel_member" => channel::remove_channel_member(store, args).await,
-        "open_dm_conversation" => channel::open_dm_conversation(store, args).await,
+        "open_dm_conversation" => channel::open_dm_conversation(store, auth, args).await,
         "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
-        "post_dm_message" => message::post_dm_message(server, args).await,
+        "post_dm_message" => message::post_dm_message(server, auth, args).await,
         "list_threads" => thread::list_threads(store, args).await,
         "list_child_threads" => thread::list_child_threads(store, args).await,
         "list_recently_active_threads" => thread::list_recently_active_threads(store, args).await,
@@ -634,10 +613,10 @@ pub async fn dispatch(
         "report_usage" => budget::report_usage(server, auth, args).await,
         "list_dlq" => budget::list_dlq(store, args).await,
         "get_tool_transcript" => thread::get_tool_transcript(store, args).await,
-        "assign_thread" => thread::assign_thread(server, args).await,
-        "claim_thread" => thread::claim_thread(server, args).await,
-        "unassign_thread" => thread::unassign_thread(server, args).await,
-        "transition_thread" => thread::transition_thread(server, args).await,
+        "assign_thread" => thread::assign_thread(server, auth, args).await,
+        "claim_thread" => thread::claim_thread(server, auth, args).await,
+        "unassign_thread" => thread::unassign_thread(server, auth, args).await,
+        "transition_thread" => thread::transition_thread(server, auth, args).await,
         "list_assigned_threads" => thread::list_assigned_threads(store, auth, args).await,
         "set_wip_limit" => thread::set_wip_limit(store, auth, args).await,
         "get_wip_limit" => thread::get_wip_limit(store, auth, args).await,
@@ -657,10 +636,10 @@ pub async fn dispatch(
         "get_wait" => thread::get_wait(store, args).await,
         "set_priority" => thread::set_priority(store, auth, args).await,
         "get_priority" => thread::get_priority(store, args).await,
-        "claim_next_thread" => thread::claim_next_thread(server, args).await,
-        "renew_claim" => thread::renew_claim(server, args).await,
-        "acknowledge_claim" => thread::acknowledge_claim(server, args).await,
-        "release_claim" => thread::release_claim(server, args).await,
+        "claim_next_thread" => thread::claim_next_thread(server, auth, args).await,
+        "renew_claim" => thread::renew_claim(server, auth, args).await,
+        "acknowledge_claim" => thread::acknowledge_claim(server, auth, args).await,
+        "release_claim" => thread::release_claim(server, auth, args).await,
         "add_thread_dependency" => thread::add_thread_dependency(store, auth, args).await,
         "list_thread_dependencies" => thread::list_thread_dependencies(store, args).await,
         "list_mentions" => member::list_mentions(store, args).await,
@@ -765,12 +744,12 @@ pub async fn dispatch(
         "edit_message" => message::edit_message(server, auth, args).await,
         "seed_from_message" => seed::seed_from_message(server, auth, args).await,
         "record_mention" => message::record_mention(server, args).await,
-        "cast_vote" => social::cast_vote(server, args).await,
-        "add_reaction" => social::add_reaction(server, args).await,
-        "remove_reaction" => social::remove_reaction(server, args).await,
+        "cast_vote" => social::cast_vote(server, auth, args).await,
+        "add_reaction" => social::add_reaction(server, auth, args).await,
+        "remove_reaction" => social::remove_reaction(server, auth, args).await,
         "list_reactions" => social::list_reactions(store, args).await,
-        "pin_message" => social::pin_message(server, args).await,
-        "unpin_message" => social::unpin_message(server, args).await,
+        "pin_message" => social::pin_message(server, auth, args).await,
+        "unpin_message" => social::unpin_message(server, auth, args).await,
         "list_pins" => social::list_pins(store, args).await,
         "add_reference" => reference::add_reference(server, args).await,
         "list_references" => reference::list_references(store, args).await,
@@ -951,21 +930,19 @@ mod self_scope_tests {
             .filter(|name| {
                 !MEMBER_SCOPED_TOOLS.contains(name)
                     && !MEMBER_WORK_STATE_TOOLS.contains(name)
-                    && !MEMBER_ACTING_IDENTITY_TOOLS.contains(name)
                     && !MEMBER_TARGET_TOOLS.contains(name)
             })
             .collect();
         assert!(
             missing.is_empty(),
             "member_id tools left unclassified: {missing:?}. Classify the argument as \
-             personal state, team-visible work state, transitional acting identity, or a target."
+             personal state, team-visible work state, or a target."
         );
 
         // No tool may be claimed by more than one semantic class.
         let classes = [
             MEMBER_SCOPED_TOOLS,
             MEMBER_WORK_STATE_TOOLS,
-            MEMBER_ACTING_IDENTITY_TOOLS,
             MEMBER_TARGET_TOOLS,
         ];
         let both: Vec<&&str> = classes

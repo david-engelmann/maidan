@@ -11,9 +11,6 @@
 # `maidan init` prints both the admin bearer token and the workspace id; content
 # operations (channel/thread/message) are authenticated with the token.
 #
-# Local-only path — if you layered compose.quickstart.insecure.yaml (auth disabled),
-# run with no MAIDAN_TOKEN and the script seeds its own workspace unauthenticated.
-#
 # Override the target URL with MAIDAN_URL.
 set -euo pipefail
 
@@ -25,20 +22,13 @@ for cmd in curl jq; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd" >&2; exit 1; }
 done
 
-# Auth header is present only in token mode; empty array in insecure mode.
-AUTH=()
-if [ -n "$TOKEN" ]; then
-  AUTH=(-H "authorization: Bearer ${TOKEN}")
-  if [ -z "$WORKSPACE_IN" ]; then
-    echo "MAIDAN_TOKEN is set but MAIDAN_WORKSPACE is not." >&2
-    echo "Run 'maidan init --workspace demo' and pass the printed workspace id as" >&2
-    echo "MAIDAN_WORKSPACE (the admin token already owns that workspace)." >&2
-    exit 1
-  fi
-  echo "auth: bearer token (default-secure path)"
-else
-  echo "auth: DISABLED (local-only path — layer compose.quickstart.insecure.yaml)"
+if [ -z "$TOKEN" ] || [ -z "$WORKSPACE_IN" ]; then
+  echo "MAIDAN_TOKEN and MAIDAN_WORKSPACE are required." >&2
+  echo "Run 'maidan init --workspace demo' and pass the printed values." >&2
+  exit 1
 fi
+AUTH=(-H "authorization: Bearer ${TOKEN}")
+echo "auth: bearer token (member-bound workers)"
 
 post() {
   # post <path> <json-body>  -> response body. The ${AUTH[@]+…} guard keeps an empty
@@ -47,6 +37,13 @@ post() {
 }
 get() {
   curl -fsS ${AUTH[@]+"${AUTH[@]}"} "${BASE_URL}$1"
+}
+post_as() {
+  curl -fsS -H 'content-type: application/json' -H "authorization: Bearer $1" \
+    -X POST "${BASE_URL}$2" --data "$3"
+}
+get_as() {
+  curl -fsS -H "authorization: Bearer $1" "${BASE_URL}$2"
 }
 
 echo "waiting for Maidan at ${BASE_URL} ..."
@@ -59,38 +56,35 @@ if [ "${ready:-0}" != "1" ]; then
   exit 1
 fi
 
-# In secure mode `maidan init` already created the workspace; reuse it. In insecure mode
-# there is no token yet, so seed a fresh workspace over the bootstrap route.
-if [ -n "$TOKEN" ]; then
-  workspace="$WORKSPACE_IN"
-else
-  workspace=$(post /workspaces '{"name":"two-agent-demo"}' | jq -er '.id')
-fi
+workspace="$WORKSPACE_IN"
 
 # The two agent members are seeded over the bootstrap route (open in both quickstart
 # modes: auth-disabled, or MAIDAN_BOOTSTRAP=1 with auth on).
 planner=$(post "/workspaces/${workspace}/members" '{"handle":"planner","kind":"agent"}' | jq -er '.id')
 reviewer=$(post "/workspaces/${workspace}/members" '{"handle":"reviewer","kind":"agent"}' | jq -er '.id')
+worker_caps='{"capabilities":["workspace:read","message:post"]}'
+planner_token=$(post "/workspaces/${workspace}/members/${planner}/tokens" "$worker_caps" | jq -er '.secret')
+reviewer_token=$(post "/workspaces/${workspace}/members/${reviewer}/tokens" "$worker_caps" | jq -er '.secret')
 channel=$(post "/workspaces/${workspace}/channels" '{"name":"coordination"}' | jq -er '.id')
 thread=$(post "/channels/${channel}/threads" '{"title":"launch-plan"}' | jq -er '.id')
 
 # Agent A (planner) posts a request into the shared thread.
-post "/threads/${thread}/messages" \
-  "$(jq -cn --arg a "$planner" '{author_id:$a, body:"Reviewer: what is the highest-risk item on the launch checklist?"}')" \
+post_as "$planner_token" "/threads/${thread}/messages" \
+  '{"body":"Reviewer: what is the highest-risk item on the launch checklist?"}' \
   >/dev/null
 
 echo
 echo "reviewer reads the shared thread:"
-get "/threads/${thread}/context" | jq '.messages[] | {author_id, body}'
+get_as "$reviewer_token" "/threads/${thread}/context" | jq '.messages[] | {author_id, body}'
 
 # Agent B (reviewer) reads the thread above, then replies into the same durable thread.
-post "/threads/${thread}/messages" \
-  "$(jq -cn --arg a "$reviewer" '{author_id:$a, body:"Highest risk is first-run onboarding: the quickstart must work from a clean machine."}')" \
+post_as "$reviewer_token" "/threads/${thread}/messages" \
+  '{"body":"Highest risk is first-run onboarding: the quickstart must work from a clean machine."}' \
   >/dev/null
 
 echo
 echo "planner reads the reply (both messages are durable shared state):"
-get "/threads/${thread}/context" | jq '.messages[] | {author_id, body}'
+get_as "$planner_token" "/threads/${thread}/context" | jq '.messages[] | {author_id, body}'
 
 echo
 echo "demo resources:"

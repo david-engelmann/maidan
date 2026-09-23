@@ -8,7 +8,7 @@
 //! `workspace:write` + thread access; lists/unlinks are workspace-scoped.
 
 use maidan_auth::AuthContext;
-use maidan_types::{MemberId, NewGithubIssueLink, NewSlackChannelLink, ThreadId};
+use maidan_types::{NewGithubIssueLink, NewSlackChannelLink, ThreadId};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -21,7 +21,6 @@ use crate::server::McpServer;
 struct LinkSlackArgs {
     thread_id: uuid::Uuid,
     slack_channel_id: String,
-    member_id: uuid::Uuid,
 }
 
 #[derive(Deserialize)]
@@ -36,7 +35,6 @@ struct LinkGithubArgs {
     thread_id: uuid::Uuid,
     repo: String,
     issue_number: i64,
-    member_id: uuid::Uuid,
 }
 
 #[derive(Deserialize)]
@@ -61,7 +59,7 @@ pub(super) async fn link_slack_channel(
             workspace_id: scope.workspace_id,
             channel_id: scope.channel_id,
             thread_id: ThreadId(a.thread_id),
-            member_id: MemberId(a.member_id),
+            member_id: auth.member_id,
         })
         .await?;
     Ok(content_json(&link))
@@ -114,7 +112,7 @@ pub(super) async fn link_github_issue(
             workspace_id: scope.workspace_id,
             channel_id: scope.channel_id,
             thread_id: ThreadId(a.thread_id),
-            member_id: MemberId(a.member_id),
+            member_id: auth.member_id,
         })
         .await?;
     Ok(content_json(&link))

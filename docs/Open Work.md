@@ -650,17 +650,13 @@ Small, verified code fixes. Cleared as NOT findings (stale docs narration, verif
 the `subscribe_grants` self-assertion, the DM generic-route participant gap, and single-tx
 dual-write atomicity are all **closed** — see the standing-risks corrections below.
 
-- **legacy `/members/:id/mentions` + `/inbox` self-only — ✅ DONE, but the "live defect" was a
-  FALSE POSITIVE on verification.** The audit flagged these (`routes/member.rs`) as missing
-  `ensure_acting_member` → "a session can read another member's inbox." **On verification the routes
-  are mounted ONLY on the bearer-only `protected` router (`auth::middleware`, no session cookie
-  accepted → a session gets `401`); there is no `/ui/api` mount** (unlike the notification handlers,
-  which Cluster 251 *did* session-mount — that's why *their* guard is load-bearing). The only callers
-  are bearers, which are **act-as-any by design** (the 202/203 model). So there is no
-  session-exploitable gap. Still added the three `ensure_acting_member` guards as **defensive
-  consistency** (strict no-op for current callers; pins a session to self IF these are ever
-  `/ui/api`-mounted like 251). Test: `legacy_inbox_and_mentions_are_bearer_only_not_session_reachable`
-  (documents the 401 reachability truth); guard logic unit-tested in `ensure_acting_member`.
+- **legacy `/members/:id/mentions` + `/inbox` self-only — ✅ CLOSED by Cluster 411.4.** Cluster 315
+  correctly established that browser sessions could not reach these bearer-only routes, but its
+  conclusion that ordinary bearers could act as any member was superseded by the Cluster 411
+  directive. The routes now use `ensure_own_personal_state`: ordinary credentials are self-only,
+  and the transitional `member:impersonate` escape remains only until 411.6 removes it. Test:
+  `legacy_inbox_and_mentions_are_bearer_only_not_session_reachable` still documents the routing
+  boundary; the personal-state guard tests document the identity boundary.
 - **`hash-v1` embedding default boots with no warning** (`main.rs:247-251`) — "semantic search"
   silently returns near-random results if `MAIDAN_EMBEDDING_PROVIDER` is unset. `warn!` at boot.
   (Repo's own K5.)
@@ -1890,7 +1886,7 @@ Three things landed differently from the plan above, and each is worth keeping:
 
 ## Standing risks (still open)
 
-- **Channel/thread authorization** — **CLOSED** (arc 159–165): enforced on read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and references. Historical detail: for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). Surfaces: MCP **point-access** tools enforced (**161**); MCP **aggregate** reads filtered (**162**); WS/MCP subscribe grants verified against membership (**163**); `reference.rs` gated (**165**); the `channel:admin` membership-management API shipped (**164**); the **A2A JSON-RPC ingress** (`POST /a2a/v1/rpc`) now channel-gated on post + task-read (**179**). DM generic-route participant gap **CLOSED (180)** — `ensure_thread_access` → `ensure_dm_participant` (verified `maidan-auth/src/access.rs`); subscribe-grant self-assertion **CLOSED** (grants verified against `channel_is_member`, `subscribe_grants.rs`). Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`; ADR in Decisions.md, Cluster 216). Legacy `/members/:id/mentions` + `/inbox` self-only: **assessed in 315 — the "session can read another's inbox" concern was a FALSE POSITIVE** (bearer-only routes, no `/ui/api` mount → sessions get 401; bearers are act-as-any by design). Defensive `ensure_acting_member` guards added anyway (no-op today; future-proofs a `/ui/api` mount).
+- **Channel/thread authorization** — **CLOSED** (arc 159–165): enforced on read/write (REST+MCP), events (WS+MCP SSE), management (`channel:admin`), and references. Historical detail: for REST (**160**): `channel_members` (**159**) + `ensure_channel_access` gate every REST content route + search + workspace-context (private channels need a membership row; public + `__dm__` unchanged; creator auto-added). Surfaces: MCP **point-access** tools enforced (**161**); MCP **aggregate** reads filtered (**162**); WS/MCP subscribe grants verified against membership (**163**); `reference.rs` gated (**165**); the `channel:admin` membership-management API shipped (**164**); the **A2A JSON-RPC ingress** (`POST /a2a/v1/rpc`) now channel-gated on post + task-read (**179**). DM generic-route participant gap **CLOSED (180)** — `ensure_thread_access` → `ensure_dm_participant` (verified `maidan-auth/src/access.rs`); subscribe-grant self-assertion **CLOSED** (grants verified against `channel_is_member`, `subscribe_grants.rs`). Optional Postgres RLS defense-in-depth deferred (needs a per-connection GUC refactor on the shared `PgPool`; ADR in Decisions.md, Cluster 216). Legacy `/members/:id/mentions` + `/inbox` are self-scoped by `ensure_own_personal_state` as of Cluster 411.4; Cluster 315's bearer act-as-any conclusion is superseded by the Cluster 411 directive.
 - **At-most-once event bus (default path)** — transactional outbox (**10**), quarantine (**12**), HTTP outbox replay (**56**); NOTIFY duplicates/gaps possible on the optimistic path. **Mitigated:** opt-in `at_least_once` reconcile delivery (WebSocket **125**, MCP SSE **126**) is gap-free + at-least-once per `consumer_id`.
 - **Bootstrap / `AUTH_DISABLED`** — high-impact misconfiguration. **Mitigated:** fail-closed (**157**) — `AUTH_DISABLED` needs the explicit `MAIDAN_ALLOW_INSECURE_NO_AUTH` ack and refuses boot otherwise (and always in production); compile-time strip (**91**) removes the path entirely in hardened (`--no-default-features`) builds.
 - **Indexer staleness** — opt-in `INDEXER_STALE_SECS`.

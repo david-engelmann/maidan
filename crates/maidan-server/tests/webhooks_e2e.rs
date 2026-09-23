@@ -114,6 +114,7 @@ async fn spawn() -> Harness {
         None,
     );
     state.webhooks = WebhookRuntime::new(webhook_test_key());
+    state.test_identity_header = true;
     let indexer = Indexer::new(bus.clone(), Arc::new(LoggingHandler::default()))
         .spawn_with_heartbeat(state.indexer_last_event_unix_ms.clone());
     let webhook_worker = WebhookWorker::spawn(state.clone());
@@ -241,7 +242,8 @@ async fn webhook_delivers_signed_event_on_message_posted() {
     let msg = h
         .client
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .json(&json!({ "author_id": author_id, "body": "hello webhook" }))
+        .header("maidan-test-member-id", &author_id)
+        .json(&json!({ "body": "hello webhook" }))
         .send()
         .await
         .unwrap();
@@ -395,7 +397,8 @@ async fn revoke_webhook_stops_delivery() {
     let _ = h
         .client
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .json(&json!({ "author_id": author_id, "body": "first" }))
+        .header("maidan-test-member-id", &author_id)
+        .json(&json!({ "body": "first" }))
         .send()
         .await
         .unwrap();
@@ -413,7 +416,8 @@ async fn revoke_webhook_stops_delivery() {
     let _ = h
         .client
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .json(&json!({ "author_id": author_id, "body": "second" }))
+        .header("maidan-test-member-id", author_id)
+        .json(&json!({ "body": "second" }))
         .send()
         .await
         .unwrap();

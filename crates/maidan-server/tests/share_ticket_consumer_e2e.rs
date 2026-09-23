@@ -193,7 +193,6 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
         .header("authorization", format!("Bearer {admin}"))
         .json(&json!({
             "channel_id": incident.id.0,
-            "owner_id": owner.id.0,
             "expires_at": Utc::now() + ChronoDuration::hours(1),
             "artifact_shas": [allowed_sha],
         }))
@@ -363,7 +362,6 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
         .header("authorization", format!("Bearer {admin}"))
         .json(&json!({
             "channel_id": incident.id.0,
-            "owner_id": owner.id.0,
             "expires_at": Utc::now() + ChronoDuration::seconds(1),
             "artifact_shas": [],
         }))

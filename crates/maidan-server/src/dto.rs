@@ -52,16 +52,14 @@ pub struct CreateThread {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TransitionThread {
-    pub actor_id: uuid::Uuid,
     pub action: String,
 }
 
-/// Assign / hand off a thread to a member. `actor_id` records who performed the
-/// assignment (carried on the emitted event).
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AssignThread {
-    pub actor_id: uuid::Uuid,
     pub assignee_id: uuid::Uuid,
     /// Optional handoff note for the assignee.
     #[serde(default)]
@@ -85,14 +83,13 @@ pub struct RenameThread {
 /// Atomically claim an unassigned thread for a member. The claimer is both the
 /// actor and the assignee.
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct ClaimThread {
-    pub member_id: uuid::Uuid,
-}
+#[serde(deny_unknown_fields)]
+pub struct ClaimThread {}
 
 /// Claim the next unassigned/expired thread in a channel.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ClaimNextThread {
-    pub member_id: uuid::Uuid,
     /// Optional lease deadline in seconds; the claim is reclaimable after it
     /// lapses. Omit for a durable claim.
     #[serde(default)]
@@ -104,8 +101,8 @@ pub struct ClaimNextThread {
 /// claiming response's `Thread.claim_lease_id`; a stale holder whose claim was
 /// reclaimed presents an outdated token and is rejected.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RenewClaim {
-    pub member_id: uuid::Uuid,
     pub claim_lease_id: uuid::Uuid,
     pub lease_secs: i64,
 }
@@ -114,16 +111,16 @@ pub struct RenewClaim {
 /// its fencing token; the working clock (`work_started_at`) is stamped once and
 /// preserved on re-acknowledge.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AcknowledgeClaim {
-    pub member_id: uuid::Uuid,
     pub claim_lease_id: uuid::Uuid,
 }
 
 /// Release a claim (graceful handoff): the current holder returns the thread to
 /// the queue by presenting its fencing token.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReleaseClaim {
-    pub member_id: uuid::Uuid,
     pub claim_lease_id: uuid::Uuid,
 }
 
@@ -339,15 +336,13 @@ pub struct ThreadDependenciesView {
     pub ready: bool,
 }
 
-/// Clear a thread's assignee. `actor_id` records who unassigned it.
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct UnassignThread {
-    pub actor_id: uuid::Uuid,
-}
+#[serde(deny_unknown_fields)]
+pub struct UnassignThread {}
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateMessage {
-    pub author_id: uuid::Uuid,
     #[serde(default)]
     pub body: String,
     #[serde(default)]
@@ -359,8 +354,8 @@ pub struct CreateMessage {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EditMessageRequest {
-    pub editor_id: uuid::Uuid,
     #[serde(default)]
     pub body: String,
     #[serde(default)]
@@ -376,8 +371,8 @@ pub struct CreateMention {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateVote {
-    pub member_id: uuid::Uuid,
     pub kind: String,
     /// Optional confidence weight, by convention in `0..=1`, for weighted
     /// consensus. Omit to state no confidence.
@@ -400,21 +395,21 @@ pub struct SeedFromMessage {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateReaction {
-    pub member_id: uuid::Uuid,
     pub emoji: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct RemoveReaction {
-    pub member_id: uuid::Uuid,
     pub emoji: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PinMessage {
     pub message_id: uuid::Uuid,
-    pub member_id: uuid::Uuid,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -941,8 +936,8 @@ pub struct DeliveryModeView {
 }
 
 /// The caller's own identity: who this token/session acts as, in which
-/// workspace, with what capabilities. `is_bearer` = an acts-as-any bearer token
-/// vs a pinned session. `known_capabilities` is the full capability vocabulary,
+/// workspace, with what capabilities. `is_bearer` distinguishes a bearer token
+/// from a session. `known_capabilities` is the full capability vocabulary,
 /// so a client can render what the caller *cannot* do (vocabulary − granted) —
 /// the capability card. A declared "allowed-tools" list is not a
 /// grant; this is the real set.
@@ -957,15 +952,14 @@ pub struct WhoAmI {
     pub capability_sets: Vec<String>,
 }
 
-/// Link a Slack channel to a Maidan thread. The link's
-/// `channel_id`/`workspace_id` are derived from the thread, so only the Slack
-/// channel id, thread, and the member relayed messages are attributed to are
-/// given.
+/// Link a Slack channel to a Maidan thread. The link's channel and workspace
+/// are derived from the thread; relayed messages are attributed to the
+/// authenticated member.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct LinkSlackChannel {
     pub slack_channel_id: String,
     pub thread_id: uuid::Uuid,
-    pub member_id: uuid::Uuid,
 }
 
 /// Bless an external destination for egress. `selector` must be an **id**: a
@@ -982,11 +976,11 @@ pub struct AllowEgressTarget {
 /// Link a GitHub issue/PR to a Maidan thread. `repo` is the `owner/name` full
 /// name; `channel_id`/`workspace_id` are derived from the thread.
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct LinkGithubIssue {
     pub repo: String,
     pub issue_number: i64,
     pub thread_id: uuid::Uuid,
-    pub member_id: uuid::Uuid,
 }
 
 /// Query for `DELETE /workspaces/:wid/github-links` — `repo` carries a slash
@@ -1001,10 +995,10 @@ pub struct UnlinkGithubQuery {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[serde(deny_unknown_fields)]
 pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,
     pub mime_type: Option<String>,
-    pub uploaded_by: Option<uuid::Uuid>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -1037,12 +1031,12 @@ pub struct MultipartPartInput {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CompleteMultipartArtifact {
     pub object_key: String,
     pub parts: Vec<MultipartPartInput>,
     pub kind: ArtifactKind,
     pub mime_type: Option<String>,
-    pub uploaded_by: Option<uuid::Uuid>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

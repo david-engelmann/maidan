@@ -178,14 +178,13 @@ async fn post_message_without_capability_returns_403() {
     )
     .await;
     let ws = workspace_id.0.to_string();
-    let member = member_id.0.to_string();
     let (_, thread_id) = seed_thread(&h, &bearer, &ws).await;
 
     let resp = h
         .client
         .post(format!("{}/threads/{thread_id}/messages", h.base()))
         .header("Authorization", format!("Bearer {bearer}"))
-        .json(&json!({"author_id": member, "body": "hi"}))
+        .json(&json!({"body": "hi"}))
         .send()
         .await
         .unwrap();
@@ -209,14 +208,13 @@ async fn post_message_with_message_post_succeeds() {
     )
     .await;
     let ws = workspace_id.0.to_string();
-    let member = member_id.0.to_string();
     let (_, thread_id) = seed_thread(&h, &bearer, &ws).await;
 
     let resp = h
         .client
         .post(format!("{}/threads/{thread_id}/messages", h.base()))
         .header("Authorization", format!("Bearer {bearer}"))
-        .json(&json!({"author_id": member, "body": "hi"}))
+        .json(&json!({"body": "hi"}))
         .send()
         .await
         .unwrap();

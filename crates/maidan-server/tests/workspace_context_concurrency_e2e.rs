@@ -151,7 +151,7 @@ async fn workspace_context_builds_each_thread_with_its_own_messages() {
         ctx.client
             .post(format!("{base}/threads/{tid}/messages"))
             .header("Authorization", bearer(&tok))
-            .json(&json!({"author_id": alice.id.0, "body": body}))
+            .json(&json!({"body": body}))
             .send()
             .await
             .unwrap();

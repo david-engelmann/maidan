@@ -91,7 +91,8 @@ async fn transition_thread_publishes_thread_state_changed() {
 
     let updated: serde_json::Value = client
         .post(format!("{base}/threads/{thread_id}"))
-        .json(&json!({"actor_id": actor_id, "action": "start_review"}))
+        .header("maidan-test-member-id", actor_id)
+        .json(&json!({"action": "start_review"}))
         .send()
         .await
         .unwrap()
@@ -121,7 +122,8 @@ async fn transition_thread_publishes_thread_state_changed() {
 
     let conflict = client
         .post(format!("{base}/threads/{thread_id}"))
-        .json(&json!({"actor_id": actor_id, "action": "archive"}))
+        .header("maidan-test-member-id", actor_id)
+        .json(&json!({"action": "archive"}))
         .send()
         .await
         .unwrap();

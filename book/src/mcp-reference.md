@@ -8,7 +8,7 @@ Auto-generated from `maidan-mcp` `tools/list`, `resources/list`, and `prompts/li
 - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)
 - **Streamable HTTP:** `POST /mcp/streamable` — `2026-07-28` is stateless (send `MCP-Protocol-Version: 2026-07-28`; a single JSON-RPC response, no `Mcp-Session-Id`; optional SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers). A `2024-11-05` request keeps the SSE-session model (first request opens the SSE + `Mcp-Session-Id`; follow-ups with that id are pushed to the session). Live-wait/server→client ride `GET /mcp/stream`
 - **SSE:** `GET /mcp/stream` for workspace event stream replay/live
-- **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications)
+- **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications). Set `MAIDAN_MCP_TOKEN`: it scopes every tool the process serves, and without it the command refuses unless `--allow-insecure-no-auth` is passed
 
 Bearer token required unless `AUTH_DISABLED=1`.
 
@@ -25,7 +25,7 @@ Bearer token required unless `AUTH_DISABLED=1`.
 
 ### `whoami`
 
-Return the caller's own identity: member_id, workspace_id, capabilities, and whether the token is a bearer (acts-as-any) vs a pinned session. Call this first — every hero-loop tool needs your member_id.
+Return the caller's own identity: member_id, workspace_id, capabilities, capability_sets the caller fully holds, and whether the token is a bearer (acts-as-any) vs a pinned session. Call this first — every hero-loop tool needs your member_id.
 
 **Capability:** `workspace:read`
 
@@ -36,19 +36,158 @@ Return the caller's own identity: member_id, workspace_id, capabilities, and whe
 }
 ```
 
+### `list_capability_sets`
+
+List named capability sets (maidan.agent.worker, maidan.human.admin) and the atomic capabilities each expands to at mint time.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {},
+  "type": "object"
+}
+```
+
+### `parse_maidan_uri`
+
+Parse a hierarchical maidan:// room URI (workspace UUID authority, then channels, threads, messages). The authority must be a workspace UUID, not a handle. Optional sha256 fragment is a content hash. MCP thread resource URIs and event pins are rejected.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "uri": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "uri"
+  ],
+  "type": "object"
+}
+```
+
+### `get_room`
+
+Get the authenticated room card for a workspace: stable UUID URI plus the current handle alias. A handle rename does not change the URI.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
+### `set_workspace_handle`
+
+Set or rename a workspace handle alias. Stored ids and maidan:// URIs keep using the workspace UUID. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "handle": {
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "handle"
+  ],
+  "type": "object"
+}
+```
+
+### `attenuate_token`
+
+Derive a weaker API token from the caller's grant without token:admin (Levy/Madden attenuation). capabilities must be a non-empty subset of what the caller holds. A derived expires_at cannot outlive the parent bearer. Returns the new token secret once.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "capabilities": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "label": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "capabilities"
+  ],
+  "type": "object"
+}
+```
+
+### `delegate_token`
+
+Exchange a durable delegation grant for a short-lived token acting as its subject. The token defaults to 15 minutes, cannot exceed one hour or its grant/parent bearer, and is limited to the intersection of grant and delegate capabilities.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "capabilities": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "grant_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "label": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "grant_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `open_dm_conversation`
 
-Open or fetch a 1:1 DM conversation between two workspace members.
+Open or fetch a 1:1 DM conversation between the authenticated member and another workspace member.
 
 **Capability:** `message:post`
 
 ```json
 {
   "properties": {
-    "member_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "other_member_id": {
       "format": "uuid",
       "type": "string"
@@ -60,7 +199,6 @@ Open or fetch a 1:1 DM conversation between two workspace members.
   },
   "required": [
     "workspace_id",
-    "member_id",
     "other_member_id"
   ],
   "type": "object"
@@ -102,10 +240,6 @@ Post a message in a DM conversation.
 ```json
 {
   "properties": {
-    "author_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "body": {
       "description": "plain text; omit when sending typed content (body is derived from it)",
       "type": "string"
@@ -127,7 +261,6 @@ Post a message in a DM conversation.
   },
   "required": [
     "dm_conversation_id",
-    "author_id",
     "body"
   ],
   "type": "object"
@@ -401,7 +534,7 @@ Unmute a channel you previously muted. Returns unmuted=false if it was not muted
 
 ### `set_thread_budget`
 
-Set (upsert) a thread's budget envelope — any of max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs. Omitted dimensions are unbounded. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.
+REPLACE a thread's whole budget envelope. Every dimension must be stated — max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs — and null means no cap on that dimension. Omitting one is an error rather than a silent removal, because a removed cap never binds and the run it should have stopped keeps going. Use update_thread_budget to change some dimensions and leave the rest alone. An unrecognized key is rejected rather than ignored. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.
 
 **Capability:** `thread:transition`
 
@@ -421,6 +554,57 @@ Set (upsert) a thread's budget envelope — any of max_tokens, max_usd_micros ($
     "max_wall_secs": {
       "description": "wall-clock budget vs the working clock",
       "type": "integer"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "max_tokens",
+    "max_usd_micros",
+    "max_turns",
+    "max_wall_secs"
+  ],
+  "type": "object"
+}
+```
+
+### `update_thread_budget`
+
+Change only the budget dimensions you name, leaving the rest as they are. An omitted dimension is untouched; an explicit null clears that cap. Use this to raise or lower one limit without restating the others — set_thread_budget replaces the whole envelope. An unrecognized key is rejected rather than ignored.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "max_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "max_turns": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "max_usd_micros": {
+      "description": "USD in micros ($1 = 1000000)",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "max_wall_secs": {
+      "description": "wall-clock budget vs the working clock",
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "thread_id": {
       "format": "uuid",
@@ -457,33 +641,107 @@ A thread's budget envelope with accumulated usage, or null if none is set.
 
 ### `report_usage`
 
-Report incremental resource usage against a thread's budget — your run's heartbeat. If it pushes a claimed thread over budget, the run is STOPPED (claim released + claim_failed event + DLQ) and the response's stopped/reason say so. Report as you go so a runaway run is caught early.
+Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. Tiered tokens + the immutable price snapshot must calculate to usd_micros. A binding cap atomically stops the run.
 
 **Capability:** `thread:transition`
 
 ```json
 {
+  "additionalProperties": false,
   "properties": {
+    "claim_lease_id": {
+      "description": "active claim fencing token",
+      "format": "uuid",
+      "type": "string"
+    },
+    "model": {
+      "maxLength": 255,
+      "minLength": 1,
+      "type": "string"
+    },
+    "price_snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_read_usd_micros_per_million": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cache_write_usd_micros_per_million": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "input_usd_micros_per_million": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "output_usd_micros_per_million": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "input_usd_micros_per_million",
+        "output_usd_micros_per_million",
+        "cache_read_usd_micros_per_million",
+        "cache_write_usd_micros_per_million"
+      ],
+      "type": "object"
+    },
     "thread_id": {
       "format": "uuid",
       "type": "string"
     },
     "tokens": {
-      "default": 0,
-      "type": "integer"
+      "additionalProperties": false,
+      "properties": {
+        "cache_read": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cache_write": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "input": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "output": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "input",
+        "output",
+        "cache_read",
+        "cache_write"
+      ],
+      "type": "object"
     },
     "turns": {
       "default": 0,
       "type": "integer"
     },
+    "usage_report_id": {
+      "description": "globally unique idempotency key",
+      "format": "uuid",
+      "type": "string"
+    },
     "usd_micros": {
-      "default": 0,
-      "description": "USD in micros ($1 = 1000000)",
+      "description": "validated USD charge in micros ($1 = 1000000)",
+      "minimum": 0,
       "type": "integer"
     }
   },
   "required": [
-    "thread_id"
+    "thread_id",
+    "usage_report_id",
+    "claim_lease_id",
+    "model",
+    "tokens",
+    "usd_micros",
+    "price_snapshot"
   ],
   "type": "object"
 }
@@ -552,11 +810,6 @@ Assign or hand off a thread/task to a member, optionally with a handoff note del
 ```json
 {
   "properties": {
-    "actor_id": {
-      "description": "member performing the assignment",
-      "format": "uuid",
-      "type": "string"
-    },
     "assignee_id": {
       "description": "member to assign the thread to",
       "format": "uuid",
@@ -573,7 +826,6 @@ Assign or hand off a thread/task to a member, optionally with a handoff note del
   },
   "required": [
     "thread_id",
-    "actor_id",
     "assignee_id"
   ],
   "type": "object"
@@ -589,19 +841,13 @@ Atomically claim an unassigned thread for a member. Returns {thread, claimed}; c
 ```json
 {
   "properties": {
-    "member_id": {
-      "description": "member claiming the thread",
-      "format": "uuid",
-      "type": "string"
-    },
     "thread_id": {
       "format": "uuid",
       "type": "string"
     }
   },
   "required": [
-    "thread_id",
-    "member_id"
+    "thread_id"
   ],
   "type": "object"
 }
@@ -616,9 +862,29 @@ Clear a thread's assignee.
 ```json
 {
   "properties": {
-    "actor_id": {
-      "description": "member performing the unassignment",
+    "thread_id": {
       "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `transition_thread`
+
+Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. Returns the updated thread.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "action": {
+      "description": "start_review, close, or archive",
       "type": "string"
     },
     "thread_id": {
@@ -628,7 +894,7 @@ Clear a thread's assignee.
   },
   "required": [
     "thread_id",
-    "actor_id"
+    "action"
   ],
   "type": "object"
 }
@@ -852,6 +1118,102 @@ The parked (unclaimable) threads in a channel (G3), newest first — for triage.
 }
 ```
 
+### `set_thread_block`
+
+Set (upsert) an explicit dispatch block on a thread (G14): claim_next skips it and an explicit claim is refused, until cleared. reason is the closed enum dag|gate|human|child|quota|unclaimable — not a free string. Distinct from DAG-children-must-be-terminal. Requires thread:transition.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "reason": {
+      "enum": [
+        "dag",
+        "gate",
+        "human",
+        "child",
+        "quota",
+        "unclaimable"
+      ],
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "reason"
+  ],
+  "type": "object"
+}
+```
+
+### `get_thread_block`
+
+The thread's explicit dispatch block, or null when unblocked (G14). Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `clear_thread_block`
+
+Clear an explicit dispatch block (G14). Emits BlockedResolved so waiters can observe the unblock. {cleared} is false when it was not blocked. Requires thread:transition.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_blocked_threads`
+
+The explicitly blocked threads in a channel (G14), newest first — for triage. Distinct from queue-depth blocked (unfinished DAG deps).
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "channel_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "channel_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_wip_limit`
 
 Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.
@@ -887,6 +1249,57 @@ This workspace's WIP limit (max concurrent live claims per member), or null when
 }
 ```
 
+### `set_spawn_budget`
+
+Set this workspace's spawn budget (G6): how far an agent family may fan out. max_children caps the direct child threads per parent, max_depth the thread nesting, max_tools the tool calls recorded on one thread. A full replace — an omitted or null axis is unlimited, so calling with no arguments clears the budget; 0 freezes an axis. Keep the caps small: coordination cost grows quadratically in the number of agents. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "max_children": {
+      "description": "max direct child threads per parent; null = unlimited",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "max_depth": {
+      "description": "max thread nesting depth (a root thread is depth 1); null = unlimited",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "max_tools": {
+      "description": "max tool calls recorded on one thread; null = unlimited",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}
+```
+
+### `get_spawn_budget`
+
+This workspace's spawn budget as {max_children, max_depth, max_tools}; a null axis is unlimited. Read it before spawning helpers to see how much fan-out is left.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {},
+  "type": "object"
+}
+```
+
 ### `get_member_wip`
 
 A member's current live-claim count against the workspace WIP limit ({live_claims, limit}) — for backpressure decisions before claiming more work.
@@ -910,7 +1323,7 @@ A member's current live-claim count against the workspace WIP limit ({live_claim
 
 ### `claim_next_thread`
 
-Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Returns the claimed thread, or null when there is no claimable work.
+Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.
 
 **Capability:** `thread:transition`
 
@@ -924,16 +1337,10 @@ Atomically claim the oldest claimable thread in a channel for a member (claimabl
     "lease_secs": {
       "description": "optional lease deadline in seconds; the claim is reclaimable after it lapses (omit for a durable claim)",
       "type": "integer"
-    },
-    "member_id": {
-      "description": "member to claim the thread for",
-      "format": "uuid",
-      "type": "string"
     }
   },
   "required": [
-    "channel_id",
-    "member_id"
+    "channel_id"
   ],
   "type": "object"
 }
@@ -957,11 +1364,6 @@ Extend a claimed thread's lease (heartbeat). Only the current assignee holding t
       "description": "new lease deadline in seconds from now",
       "type": "integer"
     },
-    "member_id": {
-      "description": "the current assignee",
-      "format": "uuid",
-      "type": "string"
-    },
     "thread_id": {
       "format": "uuid",
       "type": "string"
@@ -969,7 +1371,6 @@ Extend a claimed thread's lease (heartbeat). Only the current assignee holding t
   },
   "required": [
     "thread_id",
-    "member_id",
     "claim_lease_id",
     "lease_secs"
   ],
@@ -991,11 +1392,6 @@ Acknowledge a claimed thread and start its working clock (work_started_at): the 
       "format": "uuid",
       "type": "string"
     },
-    "member_id": {
-      "description": "the current assignee",
-      "format": "uuid",
-      "type": "string"
-    },
     "thread_id": {
       "format": "uuid",
       "type": "string"
@@ -1003,7 +1399,6 @@ Acknowledge a claimed thread and start its working clock (work_started_at): the 
   },
   "required": [
     "thread_id",
-    "member_id",
     "claim_lease_id"
   ],
   "type": "object"
@@ -1024,11 +1419,6 @@ Release a claim (graceful handoff): the current holder returns the thread to the
       "format": "uuid",
       "type": "string"
     },
-    "member_id": {
-      "description": "the current assignee",
-      "format": "uuid",
-      "type": "string"
-    },
     "thread_id": {
       "format": "uuid",
       "type": "string"
@@ -1036,7 +1426,6 @@ Release a claim (graceful handoff): the current holder returns the thread to the
   },
   "required": [
     "thread_id",
-    "member_id",
     "claim_lease_id"
   ],
   "type": "object"
@@ -1134,6 +1523,95 @@ A channel's occupancy as {open, queued, claimed, working, blocked}: the two-cloc
 }
 ```
 
+### `set_thread_lineage`
+
+Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "parent_run_id": {
+      "description": "the producer's run identifier (e.g. waiter envelope run_id)",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "parent_run_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_thread_lineage`
+
+Read a thread's run lineage (parent_run_id + set_at), or null if none has been set.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_run_threads`
+
+List threads in the caller's workspace that share a producer parent_run_id, oldest first. Nested children given the same value are included. Private-channel rows the caller cannot access are omitted. F7 mute is not consulted.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "parent_run_id": {
+      "description": "the producer's run identifier",
+      "type": "string"
+    }
+  },
+  "required": [
+    "parent_run_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_run_occupancy`
+
+Nested occupancy for a producer run as {parent_run_id, open, queued, claimed, working, blocked}: the two-clocks partition of every open workspace thread that shares parent_run_id. F7 mute is orthogonal (a muted nested thread still counts). Unknown / unused run returns zeros.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "parent_run_id": {
+      "description": "the producer's run identifier",
+      "type": "string"
+    }
+  },
+  "required": [
+    "parent_run_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_thread_result`
 
 Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.
@@ -1176,6 +1654,77 @@ Read a task's structured result, or null if none has been produced yet.
   },
   "required": [
     "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_thread_results`
+
+List thread results in the caller's workspace, newest first. Optional result_kind is an exact-match facet on the namespaced string (e.g. example.review.result/1), not a closed enum. Private-channel rows the caller cannot access are omitted.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "limit": {
+      "default": 50,
+      "maximum": 500,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "result_kind": {
+      "description": "exact namespaced result_kind (e.g. example.review.result/1); omit to list every accessible result",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `list_result_deliveries`
+
+List per-target delivery status for a thread's structured result (disposition, external reference, last error). Empty means the result was not routed anywhere, which is valid. workspace:read + thread access.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `replay_result_delivery`
+
+Re-enqueue one result delivery onto the egress outbox. Re-checks the workspace allowlist (an unblessed target stays skipped). Does not bump armed_revision. workspace:write + thread access.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "delivery_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "delivery_id"
   ],
   "type": "object"
 }
@@ -1636,6 +2185,300 @@ List the frozen members in the caller's workspace (member_id, frozen_at, frozen_
 }
 ```
 
+### `create_share_ticket`
+
+Issue a read-only cross-organization ticket for one channel and an explicit artifact allowlist. Ownership is bound to the authenticated member. Lifetime is capped at 48 hours; the secret is returned once and only its hash is stored. Requires token:admin.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "properties": {
+    "artifact_shas": {
+      "items": {
+        "pattern": "^[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "maxItems": 100,
+      "type": "array"
+    },
+    "channel_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "channel_id",
+    "expires_at"
+  ],
+  "type": "object"
+}
+```
+
+### `list_share_tickets`
+
+List share tickets and their explicit artifact scopes in the caller's workspace. Secrets are never returned after creation. Requires token:admin.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "properties": {},
+  "type": "object"
+}
+```
+
+### `revoke_share_ticket`
+
+Immediately revoke a share ticket in the caller's workspace. Requires token:admin.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "properties": {
+    "ticket_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ticket_id"
+  ],
+  "type": "object"
+}
+```
+
+### `export_workspace`
+
+Export a workspace as a signed maidan.workspace.export/1 envelope. Tokens die on export: API tokens and secrets are omitted. A blank instance can verify the file without calling this host. Requires token:admin and MAIDAN_EXPORT_SIGNING_KEY.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "properties": {
+    "workspace_id": {
+      "description": "defaults to the caller's workspace",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `verify_workspace_export`
+
+Verify a signed workspace export without importing it. Fail-closed on tamper, a bad signature, stuffed secret fields, or a public key outside MAIDAN_EXPORT_VERIFY_KEYS when that pin is set. An empty pin checks integrity against the embedded key only. Requires token:admin.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "properties": {
+    "envelope": {
+      "description": "the signed envelope; you may also pass the envelope fields at the top level",
+      "type": "object"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `import_workspace`
+
+Verify then import a signed workspace export. mode new remaps ids into a fresh workspace; restore keeps original ids and fails if that workspace exists unless force is true. Tokens die on export: mint new tokens after import. Requires token:admin.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "properties": {
+    "envelope": {
+      "description": "the signed maidan.workspace.export/1 envelope",
+      "type": "object"
+    },
+    "force": {
+      "description": "erase an existing workspace when mode is restore",
+      "type": "boolean"
+    },
+    "mode": {
+      "description": "defaults to new",
+      "enum": [
+        "new",
+        "restore"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "envelope"
+  ],
+  "type": "object"
+}
+```
+
+### `get_log_snapshot`
+
+Hashed event-log snapshot for this workspace (getRepo-shaped, not MST/CAR). Header plus graph_hash is workspace:read. Pass include_graph true for the domain graph; that requires token:admin. Complements hash-chain verify of the retained suffix: this covers a pruned prefix so a peer can resume without trusting the host for history it never saw.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "include_graph": {
+      "description": "include the domain graph; requires token:admin (default false)",
+      "type": "boolean"
+    },
+    "workspace_id": {
+      "description": "defaults to the caller's workspace",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `catch_up_events`
+
+Since-LSN catch-up page after a snapshot (or a prior page). Events have id greater than after_lsn, hash-chain checked from the predecessor. A pruned-gap cursor fails closed and names the snapshot path to refetch; a broken chain fails closed. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "after_lsn": {
+      "description": "exclusive cursor; 0 starts from the retained floor",
+      "type": "integer"
+    },
+    "limit": {
+      "description": "page size, 1 to 500, default 100",
+      "type": "integer"
+    },
+    "workspace_id": {
+      "description": "defaults to the caller's workspace",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `verify_event_chain`
+
+Verify the retained event-log hash chain for a workspace. Returns the chain report when intact; fails closed on a splice or rewrite. Twin of GET /workspaces/{id}/events/verify. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "workspace_id": {
+      "description": "defaults to the caller's workspace",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `list_tombstones`
+
+Tombstone and deletion explorer for this workspace. Soft-deleted messages (body already cleared) plus, when include_purged is true, hard-purged reconstructions from MessageTombstoned events. Private-channel and DM rows the caller cannot access are omitted. Twin of GET /workspaces/{id}/tombstones. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "channel_id": {
+      "description": "optional channel scope; gated when present",
+      "format": "uuid",
+      "type": "string"
+    },
+    "include_purged": {
+      "description": "reconstruct hard-deleted rows from MessageTombstoned (default false)",
+      "type": "boolean"
+    },
+    "limit": {
+      "description": "page size, 1 to 500, default 100",
+      "type": "integer"
+    },
+    "thread_id": {
+      "description": "optional thread scope; gated when present",
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "defaults to the caller's workspace",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `list_message_backlinks`
+
+Incoming pointers at a message: RelationKind reverse edges plus pins, reactions, and votes. Mentions are outgoing and omitted. Works on a retained tombstone; fails not-found after hard purge. Twin of GET /messages/{id}/backlinks. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_kind_census`
+
+EventKind counts for a workspace, optionally narrowed to a channel or thread. Inaccessible private channels are excluded from the totals. Twin of GET /workspaces/{id}/kind-census. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "channel_id": {
+      "description": "optional channel scope; gated when present",
+      "format": "uuid",
+      "type": "string"
+    },
+    "thread_id": {
+      "description": "optional thread scope; gated when present",
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "defaults to the caller's workspace",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
 ### `create_memory_block`
 
 Create a labeled memory block — a Letta-shaped shared object {label, description, limit, read_only, value} in the workspace that a thread can attach to (a room object). It is how a parent watches a child's result block without a nested runtime: not a transcript, not RAG. Concurrent-safe on the label (re-creating a label returns the existing block). The caller owns it.
@@ -1936,6 +2779,109 @@ Read a thread's review standing: required_count, approvals (distinct qualifying)
 List a thread's review decisions (reviewer, decision, note).
 
 **Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `set_land_gate`
+
+Record a land-gate pointer on a thread: status pass or fail, optional artifact_sha, optional land green/amber/red. The room holds the pointer; an external verifier records pass/fail. A qualifying green pass (land-gate-skilled member who is not the implementer) is required to close once the gate is armed. Amber is flags-then-still-engages and is not a land. Requires thread:transition. The caller must have declared the land_gate skill.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "artifact_sha": {
+      "type": "string"
+    },
+    "land": {
+      "enum": [
+        "green",
+        "amber",
+        "red"
+      ],
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail"
+      ],
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "status"
+  ],
+  "type": "object"
+}
+```
+
+### `get_land_gate`
+
+Read a thread's land-gate standing: required, pointer, land (green/amber/red), landable. No pointer is vacuous green. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `require_land_gate`
+
+Arm the land-gate close-gate on a thread without a pointer yet so closed refuses until a qualifying green pass arrives. Idempotent. Requires thread:transition.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `clear_land_gate`
+
+Clear a thread's land-gate pointer and requirement. Requires thread:transition.
+
+**Capability:** `channel:admin`
 
 ```json
 {
@@ -2321,6 +3267,33 @@ A member's buried decisions — task results (decisions) produced by someone els
       "minimum": 1,
       "type": "integer"
     },
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "since": {
+      "description": "default 7 days ago",
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_manager_digest`
+
+Compose this member's unread followed-member lifecycle notifications since an instant (default 7 days ago) into per-channel result, gate, and stuck counts. This is a notification view, not analytics.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
     "member_id": {
       "format": "uuid",
       "type": "string"
@@ -2762,6 +3735,106 @@ List the threads a member follows.
 }
 ```
 
+### `follow_member`
+
+Follow another same-workspace member's work occupancy. Self-follow is rejected.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "followed_member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "member_id": {
+      "description": "the follower",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "member_id",
+    "followed_member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_member_occupancy`
+
+Get a member's live occupancy: ephemeral presence plus assigned non-terminal threads visible to the caller.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `unfollow_member`
+
+Stop following another member's work occupancy (removed=false if not following).
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "followed_member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "member_id": {
+      "description": "the follower",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "member_id",
+    "followed_member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_member_follows`
+
+List the member-occupancy subscriptions owned by a member.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `list_messages`
 
 List messages in a thread.
@@ -2791,17 +3864,13 @@ List messages in a thread.
 
 ### `post_message`
 
-Post a message to a thread on behalf of a member.
+Post a message to a thread as the authenticated member.
 
 **Capability:** `message:post`
 
 ```json
 {
   "properties": {
-    "author_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "body": {
       "description": "plain text; omit when sending typed content (body is derived from it)",
       "type": "string"
@@ -2823,7 +3892,6 @@ Post a message to a thread on behalf of a member.
   },
   "required": [
     "thread_id",
-    "author_id",
     "body"
   ],
   "type": "object"
@@ -2889,10 +3957,6 @@ Edit a message body (author needs message:post; others need workspace:write).
       },
       "type": "array"
     },
-    "editor_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "message_id": {
       "format": "uuid",
       "type": "string"
@@ -2903,7 +3967,6 @@ Edit a message body (author needs message:post; others need workspace:write).
   },
   "required": [
     "message_id",
-    "editor_id",
     "body"
   ],
   "type": "object"
@@ -2954,10 +4017,6 @@ Cast a vote on a message (e.g. approve, request-changes, emoji). Optional confid
     "kind": {
       "type": "string"
     },
-    "member_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "message_id": {
       "format": "uuid",
       "type": "string"
@@ -2965,7 +4024,6 @@ Cast a vote on a message (e.g. approve, request-changes, emoji). Optional confid
   },
   "required": [
     "message_id",
-    "member_id",
     "kind"
   ],
   "type": "object"
@@ -2984,10 +4042,6 @@ Add an emoji reaction to a message.
     "emoji": {
       "type": "string"
     },
-    "member_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "message_id": {
       "format": "uuid",
       "type": "string"
@@ -2995,7 +4049,6 @@ Add an emoji reaction to a message.
   },
   "required": [
     "message_id",
-    "member_id",
     "emoji"
   ],
   "type": "object"
@@ -3014,10 +4067,6 @@ Remove an emoji reaction from a message.
     "emoji": {
       "type": "string"
     },
-    "member_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "message_id": {
       "format": "uuid",
       "type": "string"
@@ -3025,7 +4074,6 @@ Remove an emoji reaction from a message.
   },
   "required": [
     "message_id",
-    "member_id",
     "emoji"
   ],
   "type": "object"
@@ -3062,10 +4110,6 @@ Pin a message to a thread.
 ```json
 {
   "properties": {
-    "member_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "message_id": {
       "format": "uuid",
       "type": "string"
@@ -3077,8 +4121,7 @@ Pin a message to a thread.
   },
   "required": [
     "thread_id",
-    "message_id",
-    "member_id"
+    "message_id"
   ],
   "type": "object"
 }
@@ -3093,10 +4136,6 @@ Unpin a message from a thread.
 ```json
 {
   "properties": {
-    "member_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "message_id": {
       "format": "uuid",
       "type": "string"
@@ -3108,8 +4147,7 @@ Unpin a message from a thread.
   },
   "required": [
     "thread_id",
-    "message_id",
-    "member_id"
+    "message_id"
   ],
   "type": "object"
 }
@@ -3247,10 +4285,6 @@ Store bytes in the artifact substrate and register metadata.
     },
     "mime_type": {
       "type": "string"
-    },
-    "uploaded_by": {
-      "format": "uuid",
-      "type": "string"
     }
   },
   "required": [
@@ -3351,10 +4385,6 @@ Finish multipart upload, content-address bytes, and register artifact metadata.
       "type": "array"
     },
     "upload_id": {
-      "type": "string"
-    },
-    "uploaded_by": {
-      "format": "uuid",
       "type": "string"
     }
   },
@@ -3458,6 +4488,8 @@ Full-text, semantic, or hybrid search over a workspace's messages. Returns ranke
     },
     "limit": {
       "default": 25,
+      "maximum": 500,
+      "minimum": 1,
       "type": "integer"
     },
     "mode": {
@@ -3640,6 +4672,11 @@ Pack thread messages, edits, references, FSM history, and the workspace glossary
       "description": "Event-log id: reconstruct the thread as it stood at that point (as-of replay). Omit for the live pack.",
       "type": "integer"
     },
+    "include_accepted_decisions": {
+      "default": true,
+      "description": "Attach in-channel accepted/closed decisions (token-lean teasers) so a fresh claimer sees what the channel already decided. Waiter envelopes appear only when status is reviewed; result_kind is a namespaced string (e.g. example.review.result/1), not a closed enum. Withheld on DM channels. Set false for the leanest pack.",
+      "type": "boolean"
+    },
     "include_edits": {
       "default": false,
       "description": "Include full body_before/body_after on each edit (heavy); default returns edit metadata only.",
@@ -3694,6 +4731,11 @@ Freeze the assembled context pack (live or as_of) into the content-addressed art
     "as_of": {
       "description": "Event-log id: freeze the thread as it stood at that point. Omit for the live pack.",
       "type": "integer"
+    },
+    "include_accepted_decisions": {
+      "default": true,
+      "description": "Attach in-channel accepted decisions before freezing (see get_thread_context).",
+      "type": "boolean"
     },
     "include_edits": {
       "default": false,
@@ -3834,17 +4876,13 @@ Poll a durable approval gate by id. Returns the gate — state is pending until 
 
 ### `link_slack_channel`
 
-Link a Slack channel to a Maidan thread so the projector bridges messages both ways. The workspace/channel are resolved from the thread; you supply the Slack channel id and the member inbound Slack messages are attributed to. Requires workspace:write + access to the thread.
+Link a Slack channel to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.
 
 **Capability:** `workspace:write`
 
 ```json
 {
   "properties": {
-    "member_id": {
-      "format": "uuid",
-      "type": "string"
-    },
     "slack_channel_id": {
       "type": "string"
     },
@@ -3855,8 +4893,7 @@ Link a Slack channel to a Maidan thread so the projector bridges messages both w
   },
   "required": [
     "thread_id",
-    "slack_channel_id",
-    "member_id"
+    "slack_channel_id"
   ],
   "type": "object"
 }
@@ -3898,7 +4935,7 @@ Remove a Slack channel link in your workspace. Returns {unlinked: bool} (false i
 
 ### `link_github_issue`
 
-Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both ways. The workspace/channel are resolved from the thread; you supply repo (owner/name), issue_number, and the member inbound GitHub comments are attributed to. Requires workspace:write + access to the thread.
+Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.
 
 **Capability:** `workspace:write`
 
@@ -3907,10 +4944,6 @@ Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both
   "properties": {
     "issue_number": {
       "type": "integer"
-    },
-    "member_id": {
-      "format": "uuid",
-      "type": "string"
     },
     "repo": {
       "description": "owner/name",
@@ -3924,8 +4957,7 @@ Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both
   "required": [
     "thread_id",
     "repo",
-    "issue_number",
-    "member_id"
+    "issue_number"
   ],
   "type": "object"
 }

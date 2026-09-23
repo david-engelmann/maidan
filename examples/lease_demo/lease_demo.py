@@ -23,11 +23,13 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+import uuid
 
 from maidan import Client
 
 BASE = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080")
 TOKEN = os.environ.get("MAIDAN_TOKEN")
+WORKSPACE = os.environ.get("MAIDAN_WORKSPACE")
 HERE = pathlib.Path(__file__).resolve().parent
 
 
@@ -36,11 +38,10 @@ def thread_id(claim):
     return claim.get("id") if isinstance(claim, dict) else None
 
 
-def post(path: str, body: dict):
+def post(path: str, body: dict, token: str):
     """Call a lifecycle route that is outside the deliberately small SDK v1 surface."""
     headers = {"content-type": "application/json"}
-    if TOKEN:
-        headers["authorization"] = f"Bearer {TOKEN}"
+    headers["authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
         f"{BASE}{path}",
         data=json.dumps(body).encode("utf-8"),
@@ -72,18 +73,22 @@ def worker_result(stdout: str) -> dict:
 
 
 def main() -> int:
-    c = Client(BASE, TOKEN)
+    admin = Client(BASE, TOKEN)
 
-    # --- setup: a workspace, two agent members, a channel, two open tasks ---
-    ws = c.workspaces.create("lease-demo")["id"]
-    planner = c.members.create(ws, "planner")["id"]
-    reviewer = c.members.create(ws, "reviewer")["id"]
-    channel = c.channels.create(ws, "coordination")["id"]
-    c.threads.create(channel, "task-1: audit the login flow")
-    c.threads.create(channel, "task-2: benchmark the search path")
+    # --- setup: two member-bound workers, one channel, two open tasks ---
+    assert WORKSPACE, "MAIDAN_WORKSPACE is required"
+    planner = admin.members.create(WORKSPACE, "planner")["id"]
+    reviewer = admin.members.create(WORKSPACE, "reviewer")["id"]
+    worker_caps = ["workspace:read", "thread:transition"]
+    planner_token = admin.tokens.mint(WORKSPACE, planner, worker_caps)["secret"]
+    reviewer_token = admin.tokens.mint(WORKSPACE, reviewer, worker_caps)["secret"]
+    planner_client = Client(BASE, planner_token)
+    channel = admin.channels.create(WORKSPACE, "coordination")["id"]
+    admin.threads.create(channel, "task-1: audit the login flow")
+    admin.threads.create(channel, "task-2: benchmark the search path")
 
     # --- the race: Python worker A and TypeScript worker B claim the same queue ---
-    claim_a = c.claim_next_thread(channel, {"member_id": planner, "lease_secs": 120})
+    claim_a = planner_client.claim_next_thread(channel, {"lease_secs": 120})
     claim_a_id = thread_id(claim_a)
     assert claim_a_id, "python worker should claim an open task"
     lease_a = claim_a.get("claim_lease_id")
@@ -93,12 +98,30 @@ def main() -> int:
     try:
         acknowledged = post(
             f"/threads/{claim_a_id}/claim/acknowledge",
-            {"member_id": planner, "claim_lease_id": lease_a},
+            {"claim_lease_id": lease_a},
+            planner_token,
         )
         assert acknowledged.get("work_started_at"), "acknowledge must start the working clock"
-        usage = post(f"/threads/{claim_a_id}/usage", {"tokens": 120, "turns": 1})
+        usage = post(
+            f"/threads/{claim_a_id}/usage",
+            {
+                "usage_report_id": str(uuid.uuid4()),
+                "claim_lease_id": lease_a,
+                "model": "demo-model",
+                "tokens": {"input": 120, "output": 0, "cache_read": 0, "cache_write": 0},
+                "usd_micros": 0,
+                "price_snapshot": {
+                    "input_usd_micros_per_million": 0,
+                    "output_usd_micros_per_million": 0,
+                    "cache_read_usd_micros_per_million": 0,
+                    "cache_write_usd_micros_per_million": 0,
+                },
+                "turns": 1,
+            },
+            planner_token,
+        )
         assert usage.get("stopped") is False, f"unexpected budget stop: {usage}"
-        renewed = c.renew_claim(claim_a_id, planner, lease_a, 300)
+        renewed = planner_client.renew_claim(claim_a_id, lease_a, 300)
         assert renewed.get("assignment_expires_at"), "renew must preserve a finite lease"
         print("[python worker]     acknowledged, reported usage, renewed")
 
@@ -110,7 +133,7 @@ def main() -> int:
                 **os.environ,
                 "MAIDAN_URL": BASE,
                 "MAIDAN_CHANNEL": channel,
-                "MAIDAN_MEMBER": reviewer,
+                "MAIDAN_TOKEN": reviewer_token,
             },
             capture_output=True,
             text=True,
@@ -132,7 +155,8 @@ def main() -> int:
     finally:
         released = post(
             f"/threads/{claim_a_id}/claim/release",
-            {"member_id": planner, "claim_lease_id": lease_a},
+            {"claim_lease_id": lease_a},
+            planner_token,
         )
         assert released.get("assignee_id") is None, "release must return the task to the queue"
         print("[python worker]     released claim on exit")
