@@ -47,8 +47,9 @@ pub async fn create_attenuated(
     let capabilities = serde_json::to_string(&new.capabilities)?;
     let row = sqlx::query(
         "INSERT INTO maidan_api_tokens
-            (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities, created_at, expires_at, parent_token_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities, created_at, expires_at, parent_token_id, delegation_grant_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                 (SELECT delegation_grant_id FROM maidan_api_tokens WHERE id = ?))
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
                    created_at, expires_at, revoked_at",
     )
@@ -62,9 +63,69 @@ pub async fn create_attenuated(
     .bind(now)
     .bind(new.expires_at)
     .bind(parent_token_id.0)
+    .bind(parent_token_id.0)
     .fetch_one(pool)
     .await
     .map_err(map_token_err)?;
+    row_to_token(&row)
+}
+
+pub async fn create_delegated(
+    pool: &SqlitePool,
+    new: NewApiToken,
+    grant_id: maidan_types::DelegationGrantId,
+    delegate_id: MemberId,
+    parent_token_id: Option<ApiTokenId>,
+) -> Result<ApiToken, StoreError> {
+    let grant_capabilities_json: String = sqlx::query_scalar(
+        "SELECT capabilities FROM maidan_delegation_grants
+         WHERE id=?1 AND workspace_id=?2 AND subject_id=?3 AND delegate_id=?4",
+    )
+    .bind(grant_id.0)
+    .bind(new.workspace_id.0)
+    .bind(new.member_id.0)
+    .bind(delegate_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let grant_capabilities: Vec<String> = serde_json::from_str(&grant_capabilities_json)?;
+    let expires_at =
+        crate::delegation_grants::validate_exchange(&new, &grant_capabilities, Utc::now())?;
+    let id = Uuid::new_v4();
+    let now = Utc::now();
+    let capabilities = serde_json::to_string(&new.capabilities)?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_api_tokens
+            (id, workspace_id, member_id, app_installation_id, token_hash, label,
+             capabilities, created_at, expires_at, parent_token_id, delegation_grant_id)
+         SELECT ?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, ?8, ?9, g.id
+         FROM maidan_delegation_grants g
+         WHERE g.id = ?10 AND g.workspace_id = ?2 AND g.subject_id = ?3
+           AND g.delegate_id = ?11 AND g.revoked_at IS NULL
+           AND datetime(g.expires_at) >= datetime(?8)
+           AND (?9 IS NULL OR EXISTS (
+               SELECT 1 FROM maidan_api_tokens p
+               WHERE p.id = ?9 AND p.workspace_id = ?2 AND p.member_id = ?11
+                 AND p.revoked_at IS NULL
+                 AND (p.expires_at IS NULL OR datetime(p.expires_at) >= datetime(?8))))
+         RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label,
+                   capabilities, created_at, expires_at, revoked_at",
+    )
+    .bind(id)
+    .bind(new.workspace_id.0)
+    .bind(new.member_id.0)
+    .bind(&new.token_hash)
+    .bind(new.label.as_deref())
+    .bind(&capabilities)
+    .bind(now)
+    .bind(expires_at)
+    .bind(parent_token_id.map(|id| id.0))
+    .bind(grant_id.0)
+    .bind(delegate_id.0)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_token_err)?
+    .ok_or(StoreError::NotFound)?;
     row_to_token(&row)
 }
 
@@ -95,6 +156,14 @@ pub async fn get_active_by_hash(
            AND revoked_at IS NULL
            AND (expires_at IS NULL OR expires_at > ?)
            AND (
+             delegation_grant_id IS NULL
+             OR EXISTS (
+               SELECT 1 FROM maidan_delegation_grants g
+               WHERE g.id = maidan_api_tokens.delegation_grant_id
+                 AND g.revoked_at IS NULL AND datetime(g.expires_at) > datetime(?)
+             )
+           )
+           AND (
              app_installation_id IS NULL
              OR EXISTS (
                SELECT 1 FROM maidan_app_installations i
@@ -103,6 +172,7 @@ pub async fn get_active_by_hash(
            )",
     )
     .bind(token_hash)
+    .bind(now)
     .bind(now)
     .fetch_optional(pool)
     .await?

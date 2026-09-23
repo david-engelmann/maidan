@@ -65,3 +65,18 @@ pub fn list_capability_sets() {}
     responses((status = 201, body = MintApiTokenResponse))
 )]
 pub fn attenuate_api_token() {}
+
+#[utoipa::path(
+    post,
+    path = "/tokens/delegate",
+    tag = "tokens",
+    request_body = DelegateToken,
+    responses(
+        (status = 201, description = "Short-lived token bound to the delegation grant", body = DelegateTokenResponse),
+        (status = 400, description = "Invalid capability scope or expiry"),
+        (status = 401, description = "Grant expired or revoked"),
+        (status = 403, description = "Wrong delegate or workspace")
+    ),
+    security(("bearerAuth" = ["workspace:read"]))
+)]
+pub fn delegate_api_token() {}

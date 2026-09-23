@@ -303,3 +303,100 @@ pub async fn attenuate_api_token(
         }),
     ))
 }
+
+/// Exchange a durable grant for a short-lived bearer that acts as its subject.
+/// The result is the intersection of grant scope, the delegate's current
+/// authority, and any explicit further attenuation in the request.
+pub async fn delegate_api_token(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiJson(body): ApiJson<DelegateToken>,
+) -> ApiResult<(StatusCode, Json<DelegateTokenResponse>)> {
+    cap(&auth, WORKSPACE_READ)?;
+    let grant_id = DelegationGrantId(body.grant_id);
+    let grant = state.store.get_delegation_grant(grant_id).await?;
+    ensure_workspace(&auth, grant.workspace_id)?;
+    if grant.delegate_id != auth.member_id {
+        return Err(ApiError::Forbidden(
+            "delegation grant belongs to a different delegate".into(),
+        ));
+    }
+    let now = Utc::now();
+    if grant.revoked_at.is_some() || grant.expires_at <= now {
+        return Err(ApiError::Unauthorized);
+    }
+    let held = holder_grant(&auth);
+    let requested = if body.capabilities.is_empty() {
+        grant
+            .capabilities
+            .iter()
+            .filter(|capability| held.contains(capability))
+            .cloned()
+            .collect()
+    } else {
+        body.capabilities
+    };
+    let capabilities = maidan_auth::attenuate(&grant.capabilities, &requested)
+        .and_then(|caps| maidan_auth::attenuate(&held, &caps))
+        .map_err(ApiError::BadRequest)?;
+    let parent_expiry = parent_expires_at(state.store.as_ref(), &auth).await?;
+    let expires_at =
+        maidan_auth::delegated_expiry(grant.expires_at, parent_expiry, body.expires_at, now)
+            .map_err(ApiError::BadRequest)?;
+
+    let secret = TokenSecret::generate();
+    let record = state
+        .store
+        .create_delegated_api_token(
+            NewApiToken {
+                workspace_id: grant.workspace_id,
+                member_id: grant.subject_id,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: body.label,
+                capabilities: capabilities.clone(),
+                expires_at: Some(expires_at),
+            },
+            grant.id,
+            auth.member_id,
+            auth.token_id,
+        )
+        .await?;
+
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "token.delegate".into(),
+            target_kind: Some("api_token".into()),
+            target_id: Some(record.id.0),
+            metadata: serde_json::json!({
+                "workspace_id": record.workspace_id.0,
+                "delegate_id": auth.member_id.0,
+                "subject_member_id": record.member_id.0,
+                "grant_id": grant.id.0,
+                "capabilities": record.capabilities.clone(),
+                "expires_at": record.expires_at,
+                "parent_token_id": auth.token_id.map(|id| id.0),
+            }),
+        },
+    )
+    .await;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(DelegateTokenResponse {
+            grant_id: grant.id,
+            delegate_id: auth.member_id,
+            token: MintApiTokenResponse {
+                id: record.id,
+                secret: secret.as_str().to_owned(),
+                workspace_id: record.workspace_id,
+                member_id: record.member_id,
+                capabilities: record.capabilities,
+                expires_at: record.expires_at,
+                quotas: Vec::new(),
+            },
+        }),
+    ))
+}

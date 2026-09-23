@@ -44,8 +44,9 @@ pub async fn create_attenuated(
     let capabilities = serde_json::to_string(&new.capabilities)?;
     let row = sqlx::query(
         "INSERT INTO maidan_api_tokens
-            (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities, expires_at, parent_token_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities, expires_at, parent_token_id, delegation_grant_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+                 (SELECT delegation_grant_id FROM maidan_api_tokens WHERE id = $9))
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
                    created_at, expires_at, revoked_at",
     )
@@ -61,6 +62,63 @@ pub async fn create_attenuated(
     .fetch_one(pool)
     .await
     .map_err(map_token_err)?;
+    row_to_token(&row)
+}
+
+pub async fn create_delegated(
+    pool: &PgPool,
+    new: NewApiToken,
+    grant_id: maidan_types::DelegationGrantId,
+    delegate_id: MemberId,
+    parent_token_id: Option<ApiTokenId>,
+) -> Result<ApiToken, StoreError> {
+    let grant_capabilities_json: String = sqlx::query_scalar(
+        "SELECT capabilities FROM maidan_delegation_grants
+         WHERE id=$1 AND workspace_id=$2 AND subject_id=$3 AND delegate_id=$4",
+    )
+    .bind(grant_id.0)
+    .bind(new.workspace_id.0)
+    .bind(new.member_id.0)
+    .bind(delegate_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let grant_capabilities: Vec<String> = serde_json::from_str(&grant_capabilities_json)?;
+    let expires_at =
+        crate::delegation_grants::validate_exchange(&new, &grant_capabilities, Utc::now())?;
+    let id = Uuid::new_v4();
+    let capabilities = serde_json::to_string(&new.capabilities)?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_api_tokens
+            (id, workspace_id, member_id, app_installation_id, token_hash, label,
+             capabilities, expires_at, parent_token_id, delegation_grant_id)
+         SELECT $1, $2, $3, NULL, $4, $5, $6, $7, $8, g.id
+         FROM maidan_delegation_grants g
+         WHERE g.id = $9 AND g.workspace_id = $2 AND g.subject_id = $3
+           AND g.delegate_id = $10 AND g.revoked_at IS NULL
+           AND g.expires_at >= $7
+           AND ($8 IS NULL OR EXISTS (
+               SELECT 1 FROM maidan_api_tokens p
+               WHERE p.id = $8 AND p.workspace_id = $2 AND p.member_id = $10
+                 AND p.revoked_at IS NULL
+                 AND (p.expires_at IS NULL OR p.expires_at >= $7)))
+         RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label,
+                   capabilities, created_at, expires_at, revoked_at",
+    )
+    .bind(id)
+    .bind(new.workspace_id.0)
+    .bind(new.member_id.0)
+    .bind(&new.token_hash)
+    .bind(new.label.as_deref())
+    .bind(&capabilities)
+    .bind(expires_at)
+    .bind(parent_token_id.map(|id| id.0))
+    .bind(grant_id.0)
+    .bind(delegate_id.0)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_token_err)?
+    .ok_or(StoreError::NotFound)?;
     row_to_token(&row)
 }
 
@@ -86,6 +144,14 @@ pub async fn get_active_by_hash(pool: &PgPool, token_hash: &str) -> Result<ApiTo
          WHERE token_hash = $1
            AND revoked_at IS NULL
            AND (expires_at IS NULL OR expires_at > NOW())
+           AND (
+             delegation_grant_id IS NULL
+             OR EXISTS (
+               SELECT 1 FROM maidan_delegation_grants g
+               WHERE g.id = maidan_api_tokens.delegation_grant_id
+                 AND g.revoked_at IS NULL AND g.expires_at > NOW()
+             )
+           )
            AND (
              app_installation_id IS NULL
              OR EXISTS (

@@ -2382,6 +2382,16 @@ impl TokenStore for SqliteStore {
         tokens::create_attenuated(&self.pool, new, parent_token_id).await
     }
 
+    async fn create_delegated_api_token(
+        &self,
+        new: NewApiToken,
+        grant_id: DelegationGrantId,
+        delegate_id: MemberId,
+        parent_token_id: Option<ApiTokenId>,
+    ) -> Result<ApiToken, StoreError> {
+        tokens::create_delegated(&self.pool, new, grant_id, delegate_id, parent_token_id).await
+    }
+
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
         tokens::revoke(&self.pool, id).await
     }

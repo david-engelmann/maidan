@@ -428,6 +428,12 @@ fn apply_route_defaults(
             "label": "deny-matrix"
         }));
     }
+    if path == "/tokens/delegate" && method == "POST" {
+        return b.json(&json!({
+            "grant_id": f.workspace,
+            "capabilities": [capability::WORKSPACE_READ]
+        }));
+    }
     if path.ends_with("/handle") && method == "PUT" {
         return b.json(&json!({ "handle": "cap-matrix" }));
     }

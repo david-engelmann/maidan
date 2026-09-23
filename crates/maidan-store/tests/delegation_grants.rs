@@ -2,7 +2,7 @@
 
 use chrono::{Duration as ChronoDuration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewDelegationGrant, NewMember, NewWorkspace};
+use maidan_types::{MemberKind, NewApiToken, NewDelegationGrant, NewMember, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
@@ -83,6 +83,83 @@ async fn run_suite(store: &dyn Store) {
         .is_empty());
 
     for invalid in [
+        NewApiToken {
+            workspace_id: ws.id,
+            member_id: subject.id,
+            app_installation_id: None,
+            token_hash: "c".repeat(64),
+            label: None,
+            capabilities: vec!["token:admin".into()],
+            expires_at: Some(Utc::now() + ChronoDuration::minutes(15)),
+        },
+        NewApiToken {
+            workspace_id: ws.id,
+            member_id: subject.id,
+            app_installation_id: None,
+            token_hash: "d".repeat(64),
+            label: None,
+            capabilities: vec!["member:read".into()],
+            expires_at: Some(Utc::now() + ChronoDuration::hours(2)),
+        },
+    ] {
+        assert!(store
+            .create_delegated_api_token(invalid, grant.id, delegate.id, None)
+            .await
+            .is_err());
+    }
+
+    let direct_hash = "a".repeat(64);
+    let direct = store
+        .create_delegated_api_token(
+            NewApiToken {
+                workspace_id: ws.id,
+                member_id: subject.id,
+                app_installation_id: None,
+                token_hash: direct_hash.clone(),
+                label: Some("delegated".into()),
+                capabilities: vec!["member:read".into()],
+                expires_at: Some(Utc::now() + ChronoDuration::minutes(15)),
+            },
+            grant.id,
+            delegate.id,
+            None,
+        )
+        .await
+        .expect("delegated token");
+    let child_hash = "b".repeat(64);
+    let child = store
+        .create_attenuated_api_token(
+            NewApiToken {
+                workspace_id: ws.id,
+                member_id: subject.id,
+                app_installation_id: None,
+                token_hash: child_hash.clone(),
+                label: Some("delegated child".into()),
+                capabilities: vec!["member:read".into()],
+                expires_at: direct.expires_at,
+            },
+            direct.id,
+        )
+        .await
+        .expect("attenuated child");
+    assert_eq!(
+        store
+            .get_active_api_token_by_hash(&direct_hash)
+            .await
+            .unwrap()
+            .id,
+        direct.id
+    );
+    assert_eq!(
+        store
+            .get_active_api_token_by_hash(&child_hash)
+            .await
+            .unwrap()
+            .id,
+        child.id
+    );
+
+    for invalid in [
         NewDelegationGrant {
             workspace_id: ws.id,
             subject_id: subject.id,
@@ -146,6 +223,26 @@ async fn run_suite(store: &dyn Store) {
         .unwrap());
     assert!(store
         .get_delegation_grant(grant.id)
+        .await
+        .unwrap()
+        .revoked_at
+        .is_some());
+    assert!(store
+        .get_active_api_token_by_hash(&direct_hash)
+        .await
+        .is_err());
+    assert!(store
+        .get_active_api_token_by_hash(&child_hash)
+        .await
+        .is_err());
+    assert!(store
+        .get_api_token(direct.id)
+        .await
+        .unwrap()
+        .revoked_at
+        .is_some());
+    assert!(store
+        .get_api_token(child.id)
         .await
         .unwrap()
         .revoked_at

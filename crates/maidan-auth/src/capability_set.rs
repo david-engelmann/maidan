@@ -173,6 +173,39 @@ pub fn attenuate_expiry(
     Ok(parent)
 }
 
+/// Resolve a delegated token's bounded expiry. Omission means 15 minutes;
+/// callers may request less, never more than one hour, the grant, or their
+/// current bearer. Sessions have no parent-token ceiling.
+pub fn delegated_expiry(
+    grant_expires_at: DateTime<Utc>,
+    parent_expires_at: Option<DateTime<Utc>>,
+    requested: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> Result<DateTime<Utc>, String> {
+    let default_expiry =
+        now + chrono::Duration::seconds(maidan_types::DELEGATED_TOKEN_DEFAULT_TTL_SECS);
+    let expires_at = requested.unwrap_or_else(|| {
+        let mut expiry = default_expiry.min(grant_expires_at);
+        if let Some(parent) = parent_expires_at {
+            expiry = expiry.min(parent);
+        }
+        expiry
+    });
+    if expires_at <= now {
+        return Err("expires_at must be in the future".into());
+    }
+    if expires_at > now + chrono::Duration::seconds(maidan_types::DELEGATED_TOKEN_MAX_TTL_SECS) {
+        return Err("delegated token lifetime cannot exceed one hour".into());
+    }
+    if expires_at > grant_expires_at {
+        return Err("expires_at cannot exceed the delegation grant".into());
+    }
+    if parent_expires_at.is_some_and(|parent| expires_at > parent) {
+        return Err("expires_at cannot exceed the delegate bearer".into());
+    }
+    Ok(expires_at)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,6 +235,42 @@ mod tests {
             assert!(admin.contains(cap), "{cap} missing from admin");
         }
         assert!(admin.len() > worker.len());
+    }
+
+    #[test]
+    fn delegated_expiry_defaults_and_obeys_every_ceiling() {
+        let now = Utc::now();
+        let grant = now + Duration::hours(2);
+        assert_eq!(
+            delegated_expiry(grant, None, None, now).unwrap(),
+            now + Duration::minutes(15)
+        );
+        assert_eq!(
+            delegated_expiry(now + Duration::minutes(5), None, None, now).unwrap(),
+            now + Duration::minutes(5)
+        );
+        assert!(delegated_expiry(grant, None, Some(now + Duration::hours(1)), now).is_ok());
+        assert!(delegated_expiry(
+            grant,
+            None,
+            Some(now + Duration::hours(1) + Duration::seconds(1)),
+            now
+        )
+        .is_err());
+        assert!(delegated_expiry(
+            now + Duration::minutes(5),
+            None,
+            Some(now + Duration::minutes(6)),
+            now
+        )
+        .is_err());
+        assert!(delegated_expiry(
+            grant,
+            Some(now + Duration::minutes(5)),
+            Some(now + Duration::minutes(6)),
+            now
+        )
+        .is_err());
     }
 
     #[test]

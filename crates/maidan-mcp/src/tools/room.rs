@@ -181,6 +181,108 @@ pub(super) async fn attenuate_token(
     })))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DelegateTokenArgs {
+    grant_id: uuid::Uuid,
+    #[serde(default)]
+    capabilities: Vec<String>,
+    #[serde(default)]
+    expires_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    label: Option<String>,
+}
+
+pub(super) async fn delegate_token(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: DelegateTokenArgs = serde_json::from_value(args.clone())?;
+    let grant = store
+        .get_delegation_grant(maidan_types::DelegationGrantId(a.grant_id))
+        .await?;
+    auth.ensure_workspace(grant.workspace_id)?;
+    if grant.delegate_id != auth.member_id {
+        return Err(McpError::Forbidden(
+            "delegation grant belongs to a different delegate".into(),
+        ));
+    }
+    let now = Utc::now();
+    if grant.revoked_at.is_some() || grant.expires_at <= now {
+        return Err(McpError::Unauthorized);
+    }
+    let held = holder_grant(auth);
+    let requested = if a.capabilities.is_empty() {
+        grant
+            .capabilities
+            .iter()
+            .filter(|capability| held.contains(capability))
+            .cloned()
+            .collect()
+    } else {
+        a.capabilities
+    };
+    let capabilities = maidan_auth::attenuate(&grant.capabilities, &requested)
+        .and_then(|caps| maidan_auth::attenuate(&held, &caps))
+        .map_err(McpError::InvalidParams)?;
+    let parent_expiry = match auth.token_id {
+        Some(id) => store.get_api_token(id).await?.expires_at,
+        None => None,
+    };
+    let expires_at =
+        maidan_auth::delegated_expiry(grant.expires_at, parent_expiry, a.expires_at, now)
+            .map_err(McpError::InvalidParams)?;
+    let secret = TokenSecret::generate();
+    let record = store
+        .create_delegated_api_token(
+            NewApiToken {
+                workspace_id: grant.workspace_id,
+                member_id: grant.subject_id,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: a.label,
+                capabilities: capabilities.clone(),
+                expires_at: Some(expires_at),
+            },
+            grant.id,
+            auth.member_id,
+            auth.token_id,
+        )
+        .await?;
+    if let Err(err) = store
+        .append_audit(maidan_types::NewAuditEvent {
+            actor_id: Some(auth.member_id),
+            action: "token.delegate".into(),
+            target_kind: Some("api_token".into()),
+            target_id: Some(record.id.0),
+            metadata: json!({
+                "workspace_id": record.workspace_id.0,
+                "delegate_id": auth.member_id.0,
+                "subject_member_id": record.member_id.0,
+                "grant_id": grant.id.0,
+                "capabilities": record.capabilities.clone(),
+                "expires_at": record.expires_at,
+                "surface": "mcp",
+                "parent_token_id": auth.token_id.map(|id| id.0),
+            }),
+        })
+        .await
+    {
+        tracing::warn!(error = %err, "audit.write_failed");
+    }
+    Ok(content_json(&json!({
+        "grant_id": grant.id.0,
+        "delegate_id": auth.member_id.0,
+        "id": record.id.0,
+        "secret": secret.as_str(),
+        "workspace_id": record.workspace_id.0,
+        "member_id": record.member_id.0,
+        "capabilities": record.capabilities,
+        "expires_at": record.expires_at,
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,7 +291,9 @@ mod tests {
     use maidan_auth::{AGENT_WORKER, HUMAN_ADMIN};
     use maidan_search::HashV1Provider;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
-    use maidan_types::{MemberKind, NewMember, NewWorkspace, ROOM_DISCOVERY_TYPE, ROOM_TYPE};
+    use maidan_types::{
+        MemberKind, NewDelegationGrant, NewMember, NewWorkspace, ROOM_DISCOVERY_TYPE, ROOM_TYPE,
+    };
     use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::server::McpServer;
@@ -358,6 +462,51 @@ mod tests {
             .await
             .unwrap_err();
         assert!(amp.to_string().contains("exceeds holder grant"), "{amp}");
+
+        let subject = store
+            .create_member(NewMember {
+                workspace_id: ws,
+                handle: "subject".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let grant = store
+            .create_delegation_grant(NewDelegationGrant {
+                workspace_id: ws,
+                subject_id: subject.id,
+                delegate_id: member,
+                capabilities: vec![WORKSPACE_READ.into(), MESSAGE_POST.into()],
+                purpose: "mcp exchange".into(),
+                authorized_by: subject.id,
+                expires_at: Utc::now() + chrono::Duration::hours(2),
+            })
+            .await
+            .unwrap();
+        let delegated = content(
+            &server
+                .call_tool(
+                    &reader,
+                    "delegate_token",
+                    &json!({ "grant_id": grant.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(delegated["member_id"], json!(subject.id.0));
+        assert_eq!(delegated["capabilities"], json!([WORKSPACE_READ]));
+        let delegated_secret = delegated["secret"].as_str().unwrap();
+        let resolved = maidan_auth::resolve_bearer(store.as_ref(), delegated_secret)
+            .await
+            .unwrap();
+        assert_eq!(resolved.member_id, subject.id);
+        assert!(store.revoke_delegation_grant(ws, grant.id).await.unwrap());
+        assert!(
+            maidan_auth::resolve_bearer(store.as_ref(), delegated_secret)
+                .await
+                .is_err()
+        );
 
         // Discovery type is the public document; tools never leak a tenant list.
         let doc = maidan_types::RoomDiscovery::document();
