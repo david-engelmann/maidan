@@ -451,3 +451,37 @@ fn ui_js_wires_waiting_inbox() {
         "the waiting-on-you section must exist"
     );
 }
+
+#[test]
+fn ui_js_wires_honest_async_states_and_live_approvals() {
+    let s = script(HTML);
+    for helper in [
+        "function setLoading(",
+        "function clearLoading(",
+        "async function responseError(",
+        "function renderState(",
+    ] {
+        assert!(s.contains(helper), "the UI must define {helper}");
+    }
+    assert!(
+        s.contains("problem.detail || problem.error || problem.message || problem.title"),
+        "API problem details must survive into the visible error"
+    );
+    assert!(
+        s.contains("panel.classList.contains(\"active\")")
+            && s.contains("loadApprovals(false)")
+            && s.contains("kind === \"approval_requested\""),
+        "the visible approvals queue must poll and react to live gate events"
+    );
+    for message in [
+        "No channels yet. Create one above",
+        "No threads in this channel. Create one above",
+        "No messages yet. Start the conversation below",
+        "You're caught up — no pending approval gates",
+    ] {
+        assert!(
+            s.contains(message),
+            "the UI must retain the actionable empty state: {message}"
+        );
+    }
+}

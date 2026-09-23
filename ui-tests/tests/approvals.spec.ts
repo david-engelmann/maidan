@@ -41,3 +41,30 @@ test("the Approvals tab lists a pending gate and resolves it on Accept", async (
   await row.locator("button.gate-accept").click();
   await expect(row).toHaveCount(0);
 });
+
+test("the visible Approvals tab discovers a new gate without manual refresh", async ({ page, request }) => {
+  await page.goto("/ui/");
+  await page.fill("#workspace", fx.workspace_id);
+  await page.fill("#token", fx.token);
+  await page.click('.tabs button[data-tab="approvals"]');
+  await expect(page.locator("#approval-list li.approval-row").first()).toBeVisible();
+
+  const prompt = `Auto-refresh ${Date.now()}?`;
+  const mcp = await request.post(`${fx.base_url}/mcp`, {
+    headers: { Authorization: `Bearer ${fx.token}`, "Content-Type": "application/json" },
+    data: {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "request_approval",
+        arguments: { prompt, thread_id: fx.thread_id },
+      },
+    },
+  });
+  expect(mcp.ok()).toBeTruthy();
+
+  await expect(
+    page.locator("#approval-list li.approval-row").filter({ hasText: prompt }),
+  ).toBeVisible({ timeout: 7000 });
+});
