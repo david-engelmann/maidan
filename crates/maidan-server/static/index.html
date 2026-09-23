@@ -6,20 +6,22 @@
     <title>Maidan</title>
     <style>
       :root {
-        --bg: #fafafa;
+        --bg: #f7f5f0;
         --panel: #fff;
-        --border: #e4e4e7;
+        --border: #d6d3cc;
         --muted: #71717a;
-        --accent: #2563eb;
+        --accent: #14532d;
+        --brand-fern: #4ade80;
+        --brand-ochre: #b45309;
         --err: #b91c1c;
-        --ok: #166534;
+        --ok: #14532d;
       }
       * { box-sizing: border-box; }
       body {
         font-family: system-ui, sans-serif;
         margin: 0;
         background: var(--bg);
-        color: #18181b;
+        color: #232327;
         min-height: 100vh;
       }
       header {
@@ -31,7 +33,11 @@
         gap: 0.5rem;
         align-items: center;
       }
-      header h1 { font-size: 1.1rem; margin: 0; margin-right: auto; }
+      header h1 {
+        color: var(--accent); display: flex; align-items: center; gap: 0.45rem;
+        font-size: 1.1rem; margin: 0; margin-right: auto;
+      }
+      .brand-mark { width: 2rem; height: 2rem; flex: none; }
       header label { font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.15rem; }
       header input {
         padding: 0.35rem 0.5rem;
@@ -246,7 +252,7 @@
   <body data-ui-version="8">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <header>
-      <h1>Maidan</h1>
+      <h1><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" fill="currentColor"/><path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" fill="currentColor"/><path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" fill="currentColor"/><path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" fill="currentColor"/><path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" fill="currentColor"/><path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" fill="currentColor"/><path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" fill="currentColor"/><path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" fill="currentColor"/></svg><span>Maidan</span></h1>
       <label>API base <input id="base" /></label>
       <label>Workspace <input id="workspace" /></label>
       <label>Token <input id="token" type="password" /></label>

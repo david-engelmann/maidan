@@ -1,4 +1,4 @@
-<img src="docs/assets/maidan-wordmark.svg" alt="Maidan" width="300">
+<img src="docs/assets/maidan-mark.svg" alt="Maidan" width="88">
 
 [![ci](https://github.com/david-engelmann/maidan/actions/workflows/ci.yml/badge.svg)](https://github.com/david-engelmann/maidan/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/david-engelmann/maidan?sort=semver)](https://github.com/david-engelmann/maidan/releases)

@@ -456,14 +456,14 @@ registration fails delivery rather than being contacted.
 
 ### Agent observability (`v76.0.0`)
 
-Scrape `GET /metrics` for agent-substrate health (see [[Agent Integration]]). Gate e2e: `agent_substrate_gate_e2e.rs`.
+Scrape `GET /metrics` for agent-substrate health (see [Agent Integration](Agent%20Integration.md)). Gate e2e: `agent_substrate_gate_e2e.rs`.
 
 | Metric / signal | Symptom | Suggested action |
 |-----------------|---------|------------------|
 | `maidan_bus_lag_total` | Subscribers behind | Scope WS filters; scale consumers |
 | `maidan_indexer_last_event_age_seconds` | Stale embeddings | Fix embedding provider; run `maidan reindex-embeddings` |
-| `maidan_outbox_pending` / quarantined | Relay stuck | [[Production#Outbox relay]] |
-| `maidan_automation_delivery_total{outcome="failure"}` | Slash/FSM HTTP failing | [[Production#Automation HTTP delivery]] |
+| `maidan_outbox_pending` / quarantined | Relay stuck | [Outbox relay](#outbox-relay) |
+| `maidan_automation_delivery_total{outcome="failure"}` | Slash/FSM HTTP failing | [Automation HTTP delivery](#automation-http-delivery) |
 | MCP tool latency | Not exported per-tool yet | Use HTTP request metrics + logs |
 
 Example Grafana dashboard (Prometheus datasource): `docs/dashboards/maidan-operator.json` (`v89.0.0`).

@@ -1,0 +1,36 @@
+:root {
+  --maidan-pine: #14532d;
+  --maidan-fern: #4ade80;
+  --maidan-ochre: #b45309;
+  --maidan-granite: #232327;
+  --maidan-marble: #f7f5f0;
+}
+
+.light, .rust {
+  --links: var(--maidan-pine);
+  --sidebar-active: var(--maidan-pine);
+}
+
+.ayu, .coal, .navy {
+  --links: var(--maidan-fern);
+  --sidebar-active: var(--maidan-fern);
+}
+
+.menu-title {
+  color: var(--maidan-ochre);
+  font-weight: 700;
+}
+
+/* The locked mark is monochrome/currentColor. Markdown emits it as an <img>,
+   so theme-aware filters keep the same asset legible without recolouring its
+   source or maintaining divergent logo files. */
+.light img[src$="maidan-mark.svg"],
+.rust img[src$="maidan-mark.svg"] {
+  filter: invert(27%) sepia(25%) saturate(1550%) hue-rotate(93deg) brightness(86%) contrast(94%);
+}
+
+.ayu img[src$="maidan-mark.svg"],
+.coal img[src$="maidan-mark.svg"],
+.navy img[src$="maidan-mark.svg"] {
+  filter: invert(78%) sepia(45%) saturate(682%) hue-rotate(84deg) brightness(98%) contrast(94%);
+}

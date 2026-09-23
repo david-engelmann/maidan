@@ -29,7 +29,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 src_docs="$repo_root/book/src/docs"
 
 rm -rf "$src_docs"
-mkdir -p "$src_docs/Gates" "$src_docs/Clusters" "$src_docs/Retros"
+mkdir -p "$src_docs/Gates" "$src_docs/Clusters" "$src_docs/Retros" "$src_docs/assets"
 
 # Curated set — exactly the pages referenced by book/src/SUMMARY.md. The rest of
 # docs/ (most Clusters/, Retros/, Tracks/, Gates/) is maintainer history and
@@ -50,6 +50,8 @@ done
 cp "$repo_root/docs/Gates/maidan-scale-1.0.md" "$src_docs/Gates/maidan-scale-1.0.md"
 cp "$repo_root/docs/Clusters/Cluster A.md"      "$src_docs/Clusters/Cluster-A.md"
 cp "$repo_root/docs/Retros/README.md"           "$src_docs/Retros/README.md"
+cp "$repo_root/docs/assets/maidan-mark.svg"     "$src_docs/assets/maidan-mark.svg"
+cp "$repo_root/docs/assets/maidan-social.png"   "$src_docs/assets/maidan-social.png"
 
 export GH="https://github.com/david-engelmann/maidan/blob/main"
 export GHTREE="https://github.com/david-engelmann/maidan/tree/main"

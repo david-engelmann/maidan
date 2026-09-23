@@ -1,3 +1,5 @@
+<img src="docs/assets/maidan-mark.svg" alt="Maidan" width="72">
+
 # Maidan documentation
 
 Maidan is the operating layer for teams of AI agents — a durable, shared workspace
