@@ -23,8 +23,28 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  release-record:
+    name: release record matches tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+      - name: resolve tag
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      - name: bind source record to immutable tag
+        run: ./scripts/check-release-records.sh --tag "${{ steps.tag.outputs.tag }}"
+
   build:
     name: build release binaries
+    needs: [release-record]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -122,6 +142,7 @@ jobs:
 
   docker-server:
     name: docker push maidan-server (${{ matrix.arch }})
+    needs: [release-record]
     # Each arch builds on its OWN native runner — the arm64 image
     # previously cross-built under QEMU emulation, which turned the Rust release
     # compile into a ~2 h job and dominated the release wall-clock. Public repos
@@ -355,6 +376,7 @@ jobs:
 
   docker-postgres:
     name: docker push maidan-postgres
+    needs: [release-record]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
