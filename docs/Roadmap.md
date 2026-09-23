@@ -33,6 +33,18 @@ tags; they raise the bar each time they ship.
 
 ## Current cluster
 
+**Now (2026-09-23):** Cluster 411 (delegated authority) is closed on `main`, and
+412.1 (the external MCP verifier) has shipped. The forward plan is the
+**Launch backlog** at the top of [Open Work.md](Open%20Work.md), reconciled
+against code:
+- **413:** the round-3 decisions (grant ceiling; authority audits inside their
+  transactions).
+- **414:** bounded growth and timeouts.
+- **415:** immutable deploys.
+- **416:** uuidv7.
+- **417:** a tested DR drill.
+- **418:** Wave 4 adoption.
+
 Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**–**`v1.4.0`** are complete.
 
 Post-1.0 work is organized in [Post-1.0.md](Post-1.0.md) and [Tracks/README.md](Tracks/README.md).
