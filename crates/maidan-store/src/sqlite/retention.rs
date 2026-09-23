@@ -6,11 +6,16 @@ use sqlx::SqlitePool;
 
 use crate::error::StoreError;
 
-pub async fn min_delivery_cursor(pool: &SqlitePool) -> Result<Option<i64>, StoreError> {
-    let row: Option<(Option<i64>,)> =
-        sqlx::query_as("SELECT MIN(last_delivered_log_id) FROM maidan_delivery_cursor")
-            .fetch_optional(pool)
-            .await?;
+pub async fn min_delivery_cursor(
+    pool: &SqlitePool,
+    advanced_since: DateTime<Utc>,
+) -> Result<Option<i64>, StoreError> {
+    let row: Option<(Option<i64>,)> = sqlx::query_as(
+        "SELECT MIN(last_delivered_log_id) FROM maidan_delivery_cursor WHERE updated_at >= ?",
+    )
+    .bind(advanced_since)
+    .fetch_optional(pool)
+    .await?;
     Ok(row.and_then(|r| r.0))
 }
 

@@ -76,6 +76,28 @@ tests:
                 their domain rows committed without them. Search the logs for
                 event.append_failed.
 
+  # Past 64 MiB of WAL for five minutes, the replica has lost its untokened reads.
+  - interval: 1m
+    input_series:
+      - series: maidan_replica_lag_bytes
+        values: "0 100000000 100000000 100000000 100000000 100000000 100000000 100000000"
+    alert_rule_test:
+      - alertname: MaidanReplicaLagHigh
+        eval_time: 3m
+        exp_alerts: []
+      - alertname: MaidanReplicaLagHigh
+        eval_time: 7m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: replica_lag
+            exp_annotations:
+              summary: Read replica lagging
+              description: |
+                The read replica is 95.37MiB of WAL behind the
+                primary. Reads that carry no consistency token have moved to the
+                primary until it catches up.
+
   # Recording rule: queue fill ratio is depth / clamp_min(capacity, 1).
   - interval: 1m
     input_series:

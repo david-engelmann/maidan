@@ -6,11 +6,16 @@ use sqlx::PgPool;
 
 use crate::error::StoreError;
 
-pub async fn min_delivery_cursor(pool: &PgPool) -> Result<Option<i64>, StoreError> {
-    let row: (Option<i64>,) =
-        sqlx::query_as("SELECT MIN(last_delivered_log_id) FROM maidan_delivery_cursor")
-            .fetch_one(pool)
-            .await?;
+pub async fn min_delivery_cursor(
+    pool: &PgPool,
+    advanced_since: DateTime<Utc>,
+) -> Result<Option<i64>, StoreError> {
+    let row: (Option<i64>,) = sqlx::query_as(
+        "SELECT MIN(last_delivered_log_id) FROM maidan_delivery_cursor WHERE updated_at >= $1",
+    )
+    .bind(advanced_since)
+    .fetch_one(pool)
+    .await?;
     Ok(row.0)
 }
 

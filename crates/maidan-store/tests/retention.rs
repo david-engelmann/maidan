@@ -76,8 +76,20 @@ async fn run_retention_suite(store: &dyn Store) {
         .advance_delivery_cursor("consumer-x", m2.workspace_id, old_a)
         .await
         .expect("advance");
-    let floor = store.min_delivery_cursor().await.expect("min").unwrap();
+    let floor = store
+        .min_delivery_cursor(cutoff_30d)
+        .await
+        .expect("min")
+        .unwrap();
     assert_eq!(floor, old_a, "floor is the lowest cursor watermark");
+    // A cursor that has not advanced since the cutoff no longer holds the
+    // floor: an abandoned consumer id must not stop pruning forever.
+    let later = chrono::Utc::now() + chrono::Duration::days(1);
+    assert_eq!(
+        store.min_delivery_cursor(later).await.expect("stale"),
+        None,
+        "a cursor idle since before `advanced_since` does not pin retention"
+    );
     // Age matches both, but the floor caps id at old_a: old_a goes, old_b stays.
     let pruned2 = store
         .prune_events(cutoff_30d, floor, 5_000)
@@ -127,7 +139,7 @@ async fn run_retention_suite(store: &dyn Store) {
     );
 
     // No durable consumer → floor is None (prune purely by age).
-    let fresh_store_cursor = store.min_delivery_cursor().await.expect("min2");
+    let fresh_store_cursor = store.min_delivery_cursor(cutoff_30d).await.expect("min2");
     assert!(fresh_store_cursor.is_some(), "cursor set earlier persists");
 }
 
@@ -135,7 +147,11 @@ async fn run_retention_suite(store: &dyn Store) {
 async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
     let store = sqlite().await;
     // No cursors yet → None.
-    assert_eq!(store.min_delivery_cursor().await.expect("min0"), None);
+    let long_ago = chrono::Utc::now() - chrono::Duration::days(365);
+    assert_eq!(
+        store.min_delivery_cursor(long_ago).await.expect("min0"),
+        None
+    );
     run_retention_suite(&store).await;
 }
 

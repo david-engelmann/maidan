@@ -173,6 +173,31 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "whoami",
 ];
 
+/// How long a tool call may run before it is abandoned. Without one, a call
+/// stuck on anything other than the database — which `statement_timeout`
+/// bounds — held its connection and its client forever. Long-poll tools block
+/// by design and bound themselves at five minutes, so they get that plus slack;
+/// so do the bulk tools, whose work grows with the workspace. A call past its
+/// deadline is dropped, which rolls back any transaction it had open rather
+/// than leaving it half-applied.
+pub fn deadline(name: &str) -> std::time::Duration {
+    if name.starts_with("wait_for_") || BULK_TOOLS.contains(&name) {
+        LONG_POLL_TOOL_DEADLINE
+    } else {
+        TOOL_DEADLINE
+    }
+}
+
+const TOOL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+/// Tools whose work scales with the workspace rather than the request.
+const BULK_TOOLS: &[&str] = &[
+    "export_workspace",
+    "get_log_snapshot",
+    "import_workspace",
+    "verify_event_chain",
+];
+const LONG_POLL_TOOL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(330);
+
 pub fn is_read_only(name: &str) -> bool {
     READ_ONLY_TOOLS.binary_search(&name).is_ok()
 }
@@ -1106,6 +1131,33 @@ mod read_only_tests {
     fn taking_data_out_is_recorded_like_a_change() {
         for name in ["export_workspace", "resolve_secret"] {
             assert!(!is_read_only(name), "{name} must leave a record");
+        }
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    /// Every long-poll tool's own bound (five minutes) fits inside its deadline,
+    /// so the deadline never cuts a legitimate wait short.
+    #[test]
+    fn a_long_poll_tool_outlasts_its_own_wait_bound() {
+        let names: Vec<String> = catalog()
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(String::from))
+            .collect();
+        for bulk in BULK_TOOLS {
+            assert!(names.iter().any(|n| n == bulk), "{bulk} is not a tool");
+        }
+        for tool in catalog() {
+            let name = tool["name"].as_str().unwrap_or_default();
+            let limit = deadline(name);
+            if name.starts_with("wait_for_") || BULK_TOOLS.contains(&name) {
+                assert!(limit > std::time::Duration::from_secs(300), "{name}");
+            } else {
+                assert_eq!(limit, TOOL_DEADLINE, "{name}");
+            }
         }
     }
 }

@@ -16,6 +16,11 @@ const SESSION_BUFFER: usize = 256;
 /// replay on reconnect. Bounded like the live buffer.
 const SESSION_LOG_CAP: usize = 256;
 
+/// The most sessions held at once. Opening one more evicts the least recently
+/// touched, so an abandoned-session pile-up costs bounded memory and never
+/// turns a live client away.
+const MAX_SESSIONS: usize = 10_000;
+
 struct SessionEntry {
     tx: tokio::sync::mpsc::Sender<(u64, String)>,
     last_touch: Instant,
@@ -59,13 +64,32 @@ impl StreamableSessionRegistry {
         guard.retain(|_, entry| entry.last_touch.elapsed() < ttl);
     }
 
+    /// Drop expired sessions and return how many remain. Expiry used to run
+    /// only as a side effect of open / lookup / push, so a server that stopped
+    /// receiving MCP traffic kept every dead session forever; the server's
+    /// metrics tick now calls this, and reports the count.
+    pub async fn reap(&self) -> usize {
+        self.prune_expired().await;
+        self.sessions.lock().await.len()
+    }
+
     /// Open a new session and return the SSE consumer side. Each item is the
     /// `(event_id, payload)` pair; the transport renders the id as the SSE
     /// `id:` field so a client can resume with `Last-Event-ID`.
     pub async fn open(&self, id: String) -> tokio::sync::mpsc::Receiver<(u64, String)> {
         self.prune_expired().await;
         let (tx, rx) = tokio::sync::mpsc::channel(SESSION_BUFFER);
-        self.sessions.lock().await.insert(
+        let mut sessions = self.sessions.lock().await;
+        if sessions.len() >= MAX_SESSIONS {
+            let stalest = sessions
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_touch)
+                .map(|(id, _)| id.clone());
+            if let Some(stalest) = stalest {
+                sessions.remove(&stalest);
+            }
+        }
+        sessions.insert(
             id,
             SessionEntry {
                 tx,

@@ -46,6 +46,16 @@ pub struct DbConfig {
     /// connection indefinitely; boot migrations exempt themselves. Set
     /// `MAIDAN_DB_STATEMENT_TIMEOUT_MS=0` to restore the uncapped behavior.
     pub statement_timeout_ms: u64,
+    /// Postgres `idle_in_transaction_session_timeout` in ms; `0` disables it.
+    /// Defaults to 60 000. A connection left idle inside an open transaction
+    /// holds its locks and its snapshot, which blocks vacuum for the whole
+    /// cluster; this ends it instead of waiting for someone to notice.
+    pub idle_in_transaction_timeout_ms: u64,
+    /// Postgres `lock_timeout` in ms; `0` disables it. Defaults to 10 000, so
+    /// a request that queues behind a held lock fails fast rather than piling
+    /// up behind it until `statement_timeout`. Boot migrations exempt
+    /// themselves.
+    pub lock_timeout_ms: u64,
     /// SQLite `busy_timeout` in ms (default 5000, as before).
     pub busy_timeout_ms: u64,
 }
@@ -56,12 +66,31 @@ impl Default for DbConfig {
             max_connections: None,
             acquire_timeout_secs: 30,
             statement_timeout_ms: 30_000,
+            idle_in_transaction_timeout_ms: 60_000,
+            lock_timeout_ms: 10_000,
             busy_timeout_ms: 5000,
         }
     }
 }
 
 impl DbConfig {
+    /// The `SET` statements every pooled Postgres connection runs on connect.
+    /// Each timeout is set only when non-zero; `0` leaves the server default.
+    pub fn postgres_session_settings(&self) -> Vec<String> {
+        [
+            ("statement_timeout", self.statement_timeout_ms),
+            (
+                "idle_in_transaction_session_timeout",
+                self.idle_in_transaction_timeout_ms,
+            ),
+            ("lock_timeout", self.lock_timeout_ms),
+        ]
+        .into_iter()
+        .filter(|(_, ms)| *ms > 0)
+        .map(|(name, ms)| format!("SET {name} = {ms}"))
+        .collect()
+    }
+
     /// Parse from a generic lookup so the logic is unit-testable without
     /// touching the process environment.
     fn from_lookup(get: impl Fn(&'static str) -> Option<String>) -> Result<Self, ConfigError> {
@@ -85,6 +114,13 @@ impl DbConfig {
                 .unwrap_or(default.acquire_timeout_secs),
             statement_timeout_ms: num::<u64>("MAIDAN_DB_STATEMENT_TIMEOUT_MS", &get)?
                 .unwrap_or(default.statement_timeout_ms),
+            idle_in_transaction_timeout_ms: num::<u64>(
+                "MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS",
+                &get,
+            )?
+            .unwrap_or(default.idle_in_transaction_timeout_ms),
+            lock_timeout_ms: num::<u64>("MAIDAN_DB_LOCK_TIMEOUT_MS", &get)?
+                .unwrap_or(default.lock_timeout_ms),
             busy_timeout_ms: num::<u64>("MAIDAN_DB_BUSY_TIMEOUT_MS", &get)?
                 .unwrap_or(default.busy_timeout_ms),
         })
@@ -278,7 +314,31 @@ mod tests {
         assert_eq!(cfg.max_connections, None); // dialect default (pg 16 / sqlite 8)
         assert_eq!(cfg.acquire_timeout_secs, 30);
         assert_eq!(cfg.statement_timeout_ms, 30_000); // 30 s cap by default
+        assert_eq!(cfg.idle_in_transaction_timeout_ms, 60_000);
+        assert_eq!(cfg.lock_timeout_ms, 10_000);
         assert_eq!(cfg.busy_timeout_ms, 5000);
+    }
+
+    /// Every pooled connection is bounded three ways by default, so neither a
+    /// runaway query, a transaction left open, nor a queue behind a held lock
+    /// can pin a connection — or, for the open transaction, hold back vacuum.
+    #[test]
+    fn a_pooled_connection_is_bounded_by_default() {
+        assert_eq!(
+            DbConfig::default().postgres_session_settings(),
+            vec![
+                "SET statement_timeout = 30000",
+                "SET idle_in_transaction_session_timeout = 60000",
+                "SET lock_timeout = 10000",
+            ]
+        );
+        let unbounded = DbConfig {
+            statement_timeout_ms: 0,
+            idle_in_transaction_timeout_ms: 0,
+            lock_timeout_ms: 0,
+            ..DbConfig::default()
+        };
+        assert!(unbounded.postgres_session_settings().is_empty());
     }
 
     #[test]
@@ -294,9 +354,13 @@ mod tests {
             ("MAIDAN_DB_MAX_CONNECTIONS", "32"),
             ("MAIDAN_DB_ACQUIRE_TIMEOUT_SECS", "5"),
             ("MAIDAN_DB_STATEMENT_TIMEOUT_MS", "15000"),
+            ("MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS", "0"),
+            ("MAIDAN_DB_LOCK_TIMEOUT_MS", "2500"),
             ("MAIDAN_DB_BUSY_TIMEOUT_MS", "10000"),
         ]))
         .unwrap();
+        assert_eq!(cfg.idle_in_transaction_timeout_ms, 0);
+        assert_eq!(cfg.lock_timeout_ms, 2500);
         assert_eq!(cfg.max_connections, Some(32));
         assert_eq!(cfg.acquire_timeout_secs, 5);
         assert_eq!(cfg.statement_timeout_ms, 15000);

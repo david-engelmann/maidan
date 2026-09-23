@@ -2632,8 +2632,11 @@ impl DeliveryCursorStore for SqliteStore {
         delivery_cursor::advance_cursor(&self.pool, consumer_id, workspace_id, log_id).await
     }
 
-    async fn min_delivery_cursor(&self) -> Result<Option<i64>, StoreError> {
-        retention::min_delivery_cursor(&self.pool).await
+    async fn min_delivery_cursor(
+        &self,
+        advanced_since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<i64>, StoreError> {
+        retention::min_delivery_cursor(&self.pool, advanced_since).await
     }
 
     async fn prune_events(

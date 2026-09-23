@@ -471,7 +471,15 @@ impl McpServer {
             .map_err(McpError::from)?;
         }
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
-        let result = tools::dispatch(self, auth, name, &args).await?;
+        let deadline = tools::deadline(name);
+        let result = tokio::time::timeout(deadline, tools::dispatch(self, auth, name, &args))
+            .await
+            .map_err(|_| {
+                McpError::Internal(format!(
+                    "tool {name} exceeded its {}s deadline",
+                    deadline.as_secs()
+                ))
+            })??;
         self.queue_resource_updates(name, &args, &result).await;
         Ok(result)
     }

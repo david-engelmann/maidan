@@ -124,6 +124,11 @@ pub struct AppState {
     pub subscribe_resume_ttl_secs: u64,
     /// Ephemeral presence/typing fan-out for WebSocket subscribers.
     pub presence: Arc<PresenceHub>,
+    /// Live `/ws/subscribe` connections, for the ceiling and the gauge.
+    pub ws_connections: Arc<std::sync::atomic::AtomicUsize>,
+    /// The most concurrent subscriber connections accepted
+    /// (`MAIDAN_MAX_WS_CONNECTIONS`, default 10 000); past it, upgrades get 503.
+    pub max_ws_connections: usize,
     /// Optional Redis backend for global and per-token rate limits.
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
     /// Apply a built-in global per-client rate limit when
@@ -249,6 +254,12 @@ impl AppState {
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
             presence,
+            ws_connections: Arc::default(),
+            max_ws_connections: std::env::var("MAIDAN_MAX_WS_CONNECTIONS")
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .filter(|n: &usize| *n > 0)
+                .unwrap_or(10_000),
             rate_limit_redis: None,
             rate_limit_default_on: false,
             indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),

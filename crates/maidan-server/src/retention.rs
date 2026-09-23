@@ -71,9 +71,10 @@ pub async fn sweep_once(store: &Arc<dyn Store>, cfg: &RetentionConfig) {
     let now = chrono::Utc::now();
 
     if let Some(days) = cfg.events_days {
-        // Floor at the lowest durable-delivery watermark; unbounded when there
-        // are no at-least-once consumers.
-        let max_id = match store.min_delivery_cursor().await {
+        // Floor at the lowest watermark among durable consumers still
+        // advancing within the retention window; unbounded when there are none.
+        let events_cutoff = cutoff(now, days);
+        let max_id = match store.min_delivery_cursor(events_cutoff).await {
             Ok(v) => v.unwrap_or(i64::MAX),
             Err(err) => {
                 tracing::warn!(error = %err, "retention: min_delivery_cursor failed; skipping events");
@@ -81,7 +82,7 @@ pub async fn sweep_once(store: &Arc<dyn Store>, cfg: &RetentionConfig) {
             }
         };
         let deleted = prune_loop("events", cfg.batch, |limit| {
-            store.prune_events(cutoff(now, days), max_id, limit)
+            store.prune_events(events_cutoff, max_id, limit)
         })
         .await;
         record("events", deleted);

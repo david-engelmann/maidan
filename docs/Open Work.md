@@ -34,16 +34,18 @@ not happen.
 
 ### Cluster 414 — nothing grows without bound, nothing hangs forever
 
+414.1 ships everything below except retrying failed embeddings, which is 414.2.
+
 | Item | Verified state | Size |
 |---|---|---|
-| **An abandoned delivery cursor pins event-log retention forever** | `postgres/retention.rs:9-15` takes `MIN(last_delivered_log_id)` over every cursor, and nothing ever deletes a cursor row | S |
-| **`idle_in_transaction_session_timeout` + `lock_timeout`** | Only `statement_timeout` is set (`main.rs:153-155`). One stuck transaction can hold back vacuum | S |
-| **Replica divergence fence + lag alert** | `route_decision` sends no-token reads to the replica whatever its lag, and a failed poll leaves the cache stale. `maidan_replica_lag_bytes` has no alert | S |
-| **WebSocket frame and message limits** | `ws.rs:155` upgrades with no `max_message_size` or `max_frame_size`, so the 2 MiB REST body cap doesn't apply | S |
-| **MCP per-tool deadline** | `tools_call` has no timeout. DB work is bounded by `statement_timeout`; the rest isn't | S |
-| **Connection ceiling + streamable-session reaper + gauge** | No WS/SSE cap. `prune_expired` runs only inside open/push, with no timer and no active-session gauge | M |
+| ~~**An abandoned delivery cursor pins event-log retention forever**~~ **✅ 414.1** | `postgres/retention.rs:9-15` takes `MIN(last_delivered_log_id)` over every cursor, and nothing ever deletes a cursor row | S |
+| ~~**`idle_in_transaction_session_timeout` + `lock_timeout`**~~ **✅ 414.1** | Only `statement_timeout` is set (`main.rs:153-155`). One stuck transaction can hold back vacuum | S |
+| ~~**Replica divergence fence + lag alert**~~ **✅ 414.1** | `route_decision` sends no-token reads to the replica whatever its lag, and a failed poll leaves the cache stale. `maidan_replica_lag_bytes` has no alert | S |
+| ~~**WebSocket frame and message limits**~~ **✅ 414.1** | `ws.rs:155` upgrades with no `max_message_size` or `max_frame_size`, so the 2 MiB REST body cap doesn't apply | S |
+| ~~**MCP per-tool deadline**~~ **✅ 414.1** | `tools_call` has no timeout. DB work is bounded by `statement_timeout`; the rest isn't | S |
+| ~~**Connection ceiling + streamable-session reaper + gauge**~~ **✅ 414.1** | No WS/SSE cap. `prune_expired` runs only inside open/push, with no timer and no active-session gauge | M |
 | **Failed embedding batches are retried** | `embedding_batcher.rs:222-233` counts a failure and drops the batch. Only a reindex recovers it | M |
-| **A lagging presence subscriber gets a fresh snapshot** | `ws.rs:331` answers `Lagged` with `continue`, and the missed diffs are never repaired | S |
+| ~~**A lagging presence subscriber gets a fresh snapshot**~~ **✅ 414.1** | `ws.rs:331` answers `Lagged` with `continue`, and the missed diffs are never repaired | S |
 
 ### Cluster 415 — deploys are immutable and rolling restarts are safe
 

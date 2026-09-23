@@ -147,12 +147,46 @@ enum ClientWsFrame {
     Typing { thread_id: Uuid, active: bool },
 }
 
+/// The largest frame or message a subscriber may send. Clients send only a
+/// subscribe frame and small presence/typing frames, so this is generous; the
+/// transport default (64 MiB) would let one frame bypass the request-body
+/// limit every REST route is held to.
+pub const MAX_CLIENT_WS_MESSAGE_BYTES: usize = 64 * 1024;
+
+/// Holds one slot in the connection count for as long as the socket lives.
+struct ConnectionSlot(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Drop for ConnectionSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 pub async fn subscribe(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| run(socket, state, headers))
+) -> axum::response::Response {
+    // Long-lived connections were uncapped: each holds a task, buffers and a
+    // bus subscription, so enough of them exhaust the process. Past the
+    // ceiling a client is told to come back rather than degrading everyone.
+    let count = state.ws_connections.clone();
+    if count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= state.max_ws_connections {
+        count.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "subscriber connection limit reached; retry later",
+        )
+            .into_response();
+    }
+    let slot = ConnectionSlot(count);
+    ws.max_message_size(MAX_CLIENT_WS_MESSAGE_BYTES)
+        .max_frame_size(MAX_CLIENT_WS_MESSAGE_BYTES)
+        .on_upgrade(move |socket| async move {
+            let _slot = slot;
+            run(socket, state, headers).await
+        })
+        .into_response()
 }
 
 async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
@@ -321,16 +355,21 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
                 state.presence.register(workspace_id, member_id);
             let _ = text_tx.send(snapshot).await;
             let ephemeral_tx = text_tx.clone();
+            let hub = state.presence.clone();
             tokio::spawn(async move {
                 loop {
-                    match ephemeral_rx.recv().await {
-                        Ok(msg) => {
-                            if ephemeral_tx.send(msg).await.is_err() {
-                                break;
-                            }
+                    let frame = match ephemeral_rx.recv().await {
+                        Ok(msg) => msg,
+                        // Diffs were dropped, so the client's roster is wrong
+                        // in a way no later diff repairs. A fresh snapshot
+                        // supersedes everything missed.
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                            hub.snapshot(workspace_id)
                         }
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    };
+                    if ephemeral_tx.send(frame).await.is_err() {
+                        break;
                     }
                 }
             });
