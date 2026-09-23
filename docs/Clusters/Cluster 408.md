@@ -28,8 +28,8 @@ recorded there — chosen to stay clear of the concurrent Cluster 406 work.
 | Slice | PR | Result |
 |-------|----|--------|
 | 408.1 | #964 | Member self-scoping (D-5) + client `limit` bounds (F-46) |
-| 408.2 | current | SSRF egress guard (F-47, F-58), probe targets (F-49), proxy-hop trust (F-50), pinned image tags (F-56) |
-| 408.3 | planned | `/ui` P1: loading states, approvals refresh, error bodies, empty states |
+| 408.2 | #973 | SSRF egress guard (F-47, F-58), probe targets (F-49), proxy-hop trust (F-50), pinned image tags (F-56) |
+| 408.3 | current | `/ui` P1: loading states, approvals refresh, error bodies, empty states |
 
 408.3 is UX polish and is deliberately distinct from Cluster 407's `/ui` work
 (#963), which is contract coverage. If 407 lands first, 408.3 builds on it.

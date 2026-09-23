@@ -243,7 +243,7 @@
       .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
     </style>
   </head>
-  <body data-ui-version="7">
+  <body data-ui-version="8">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <header>
       <h1>Maidan</h1>
@@ -808,6 +808,7 @@
       let pinnedIds = new Set();
       let selectedGdm = null;
       let selectedDm = null;
+      let approvalsLoading = false;
 
       function base() {
         return baseInput.value.replace(/\/$/, "");
@@ -835,6 +836,39 @@
       function setStatus(msg, cls) {
         document.getElementById("status").textContent = msg;
         document.getElementById("status").className = cls || "";
+      }
+      function renderState(el, message, cls = "muted") {
+        el.replaceChildren();
+        const state = document.createElement(el.matches("ul, ol") ? "li" : "div");
+        state.textContent = message;
+        state.className = cls;
+        el.appendChild(state);
+      }
+      function setLoading(el, message = "Loading…") {
+        el.setAttribute("aria-busy", "true");
+        renderState(el, message);
+      }
+      function clearLoading(el) {
+        el.removeAttribute("aria-busy");
+      }
+      async function responseError(res, prefix = "") {
+        let detail = "";
+        try {
+          const raw = await res.text();
+          if (raw) {
+            try {
+              const problem = JSON.parse(raw);
+              detail = problem.detail || problem.error || problem.message || problem.title || "";
+            } catch (_e) {
+              detail = raw;
+            }
+          }
+        } catch (_e) {
+          /* The status is still useful when the response body cannot be read. */
+        }
+        detail = String(detail).replace(/\s+/g, " ").trim().slice(0, 500);
+        const lead = prefix ? `${prefix}: ` : "";
+        return `${lead}HTTP ${res.status}${detail ? ` — ${detail}` : ""}`;
       }
       function setOut(obj) {
         document.getElementById("out").textContent =
@@ -881,25 +915,25 @@
 
       async function loadThreads() {
         const list = document.getElementById("thread-list");
-        list.innerHTML = "";
         if (!selectedChannelId) {
-          list.innerHTML = "<li class='muted'>Select a channel</li>";
+          renderState(list, "Select a channel to see its threads.");
           return;
         }
+        setLoading(list, "Loading threads…");
         persist();
         try {
           const res = await fetch(
             uiReadPath(`/channels/${selectedChannelId}/threads`),
             { headers: headers(), credentials: "include" }
           );
-          const body = await res.text();
           if (!res.ok) {
-            list.innerHTML = `<li class='err'>HTTP ${res.status}</li>`;
+            renderState(list, await responseError(res), "err");
             return;
           }
-          const threads = JSON.parse(body);
+          const threads = await res.json();
+          list.innerHTML = "";
           if (!threads.length) {
-            list.innerHTML = "<li class='muted'>No threads</li>";
+            renderState(list, "No threads in this channel. Create one above to start work.");
             return;
           }
           const gates = await fetchPendingGatesByThread();
@@ -923,7 +957,9 @@
             list.appendChild(li);
           });
         } catch (e) {
-          list.innerHTML = `<li class='err'>${escapeHtml(String(e))}</li>`;
+          renderState(list, String(e), "err");
+        } finally {
+          clearLoading(list);
         }
       }
 
@@ -987,26 +1023,27 @@
 
       async function loadMessages() {
         const box = document.getElementById("message-list");
-        box.innerHTML = "";
         if (!selectedThreadId) {
-          box.textContent = "Select a thread";
+          renderState(box, "Select a thread to read its messages.");
           return;
         }
+        setLoading(box, "Loading messages…");
         persist();
         const url = token()
           ? `${base()}/threads/${selectedThreadId}/messages?limit=50`
           : uiReadPath(`/threads/${selectedThreadId}/messages?limit=50`);
         try {
           const res = await fetch(url, { headers: headers(), credentials: "include" });
-          const body = await res.text();
           if (!res.ok) {
-            box.textContent = `HTTP ${res.status}`;
+            renderState(box, await responseError(res), "err");
             return;
           }
           await loadPins(selectedThreadId);
-          renderMessages(JSON.parse(body), box);
+          renderMessages(await res.json(), box);
         } catch (e) {
-          box.textContent = String(e);
+          renderState(box, String(e), "err");
+        } finally {
+          clearLoading(box);
         }
       }
 
@@ -1055,7 +1092,7 @@
       function renderMessages(messages, box) {
         box.innerHTML = "";
         if (!messages.length) {
-          box.textContent = "No messages yet";
+          renderState(box, "No messages yet. Start the conversation below.");
           return;
         }
         messages.forEach((m) => {
@@ -2400,33 +2437,41 @@
         }
       }
 
-      async function loadApprovals() {
+      async function loadApprovals(showLoading = true) {
         const list = document.getElementById("approval-list");
         const ws = document.getElementById("workspace").value.trim();
         if (!ws) {
-          list.classList.add("muted");
-          list.innerHTML = "<li>Set a workspace id above, then refresh.</li>";
+          renderState(list, "Set a workspace ID above to watch pending approvals.");
           return;
         }
-        const res = await fetch(uiReadPath(`/workspaces/${ws}/approval-gates`), {
-          headers: headers(),
-          credentials: "include",
-        });
-        if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
-          list.classList.add("muted");
-          list.innerHTML = `<li>HTTP ${res.status}</li>`;
-          return;
+        if (approvalsLoading) return;
+        approvalsLoading = true;
+        if (showLoading) setLoading(list, "Checking for pending approvals…");
+        try {
+          const res = await fetch(uiReadPath(`/workspaces/${ws}/approval-gates`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            const message = await responseError(res, "Could not load approvals");
+            setStatus(message, "err");
+            renderState(list, message, "err");
+            return;
+          }
+          renderApprovals(await res.json());
+        } catch (e) {
+          renderState(list, String(e), "err");
+        } finally {
+          approvalsLoading = false;
+          clearLoading(list);
         }
-        renderApprovals(await res.json());
       }
 
       function renderApprovals(views) {
         const list = document.getElementById("approval-list");
         list.innerHTML = "";
         if (!views.length) {
-          list.classList.add("muted");
-          list.innerHTML = "<li>No pending approval gates.</li>";
+          renderState(list, "You're caught up — no pending approval gates.");
           return;
         }
         list.classList.remove("muted");
@@ -2459,7 +2504,7 @@
           body: JSON.stringify({ request_state: requestState, action }),
         });
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          setStatus(await responseError(res, `Could not ${action} gate`), "err");
           return;
         }
         setStatus(`gate ${action}ed`, "ok");
@@ -2627,6 +2672,15 @@
       }
       initTablist();
 
+      // Approval gates are a human-in-the-loop queue, not a manual-refresh
+      // report. Keep the visible panel fresh without polling a hidden tab.
+      setInterval(() => {
+        const panel = document.getElementById("panel-approvals");
+        if (panel.classList.contains("active") && document.visibilityState === "visible") {
+          loadApprovals(false);
+        }
+      }, 5000);
+
       async function refreshSession() {
         const el = document.getElementById("session-status");
         try {
@@ -2664,11 +2718,11 @@
 
       async function loadChannels() {
         const list = document.getElementById("channel-list");
-        list.innerHTML = "";
         if (!wid()) {
-          list.innerHTML = "<li class='muted'>Set workspace ID</li>";
+          renderState(list, "Set a workspace ID to load channels.");
           return;
         }
+        setLoading(list, "Loading channels…");
         persist();
         const t = token();
         const url =
@@ -2677,14 +2731,14 @@
             : uiReadPath(`/workspaces/${wid()}/channels`);
         try {
           const res = await fetch(url, { headers: headers(), credentials: "include" });
-          const body = await res.text();
           if (!res.ok) {
-            list.innerHTML = `<li class='err'>HTTP ${res.status}</li>`;
+            renderState(list, await responseError(res, "Could not load channels"), "err");
             return;
           }
-          const channels = JSON.parse(body);
+          const channels = await res.json();
+          list.innerHTML = "";
           if (!channels.length) {
-            list.innerHTML = "<li class='muted'>No channels</li>";
+            renderState(list, "No channels yet. Create one above to open the workspace.");
             return;
           }
           channels.forEach((ch) => {
@@ -2710,7 +2764,9 @@
             list.appendChild(li);
           });
         } catch (e) {
-          list.innerHTML = `<li class='err'>${escapeHtml(String(e))}</li>`;
+          renderState(list, String(e), "err");
+        } finally {
+          clearLoading(list);
         }
       }
 
@@ -2857,6 +2913,12 @@
             wsAfterId = Math.max(wsAfterId, v.log_id);
             const kind = v.kind || "?";
             appendLive(`[${v.log_id}] ${kind}`);
+            if (kind === "approval_requested") {
+              if (document.getElementById("panel-approvals").classList.contains("active")) {
+                loadApprovals(false);
+              }
+              loadThreads();
+            }
             if (liveFrameTargetsOpenThread(v)) scheduleLiveRefresh();
             return;
           }
