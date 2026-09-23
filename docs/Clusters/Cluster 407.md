@@ -20,7 +20,7 @@
 
 | Slice | PR | Result |
 |-------|----|--------|
-| 407.1 | pending | `/ui` fetch templates ↔ OpenAPI/session-proxy contract |
+| 407.1 | #965 | `/ui` fetch templates ↔ OpenAPI/session-proxy contract |
 | 407.2 | pending | Exhaustive `EventKind` × REST/MCP disposition |
 | 407.3 | pending | Signed-session `/ui` hero loop with live WS observation |
 | 407.4 | pending | Normalized workspace-export and event-frame golden fixtures |
