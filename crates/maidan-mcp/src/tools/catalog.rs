@@ -1001,16 +1001,15 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "create_share_ticket",
-            "description": "Issue a read-only cross-organization ticket for one channel and an explicit artifact allowlist. Lifetime is capped at 48 hours; the secret is returned once and only its hash is stored. Requires token:admin.",
+            "description": "Issue a read-only cross-organization ticket for one channel and an explicit artifact allowlist. Ownership is bound to the authenticated member. Lifetime is capped at 48 hours; the secret is returned once and only its hash is stored. Requires token:admin.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid"},
-                    "owner_id": {"type": "string", "format": "uuid", "description": "accountable internal member"},
                     "expires_at": {"type": "string", "format": "date-time"},
                     "artifact_shas": {"type": "array", "maxItems": 100, "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
                 },
-                "required": ["channel_id", "owner_id", "expires_at"]
+                "required": ["channel_id", "expires_at"]
             }
         }),
         json!({
@@ -2052,7 +2051,7 @@ pub fn catalog() -> Vec<Value> {
                         "enum": ["lexical", "semantic", "hybrid"],
                         "default": "lexical"
                     },
-                    "limit": {"type": "integer", "default": 25},
+                    "limit": {"type": "integer", "default": 25, "minimum": 1, "maximum": 500},
                     "snippet_only": {"type": "boolean", "default": false, "description": "Drop full message body from each hit (keep only the snippet) to save tokens."},
                     "author_id": {"type": "string", "format": "uuid"},
                     "channel_id": {"type": "string", "format": "uuid"},

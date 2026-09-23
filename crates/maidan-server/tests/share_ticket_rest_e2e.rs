@@ -123,12 +123,26 @@ async fn share_ticket_operator_lifecycle_is_scoped_and_secret_safe() {
     .await;
     let auth =
         |req: reqwest::RequestBuilder| req.header("authorization", format!("Bearer {admin}"));
+    let forged_owner = auth(
+        client
+            .post(format!("{base}/workspaces/{}/share-tickets", ws.id.0))
+            .json(&json!({
+                "channel_id": channel.id.0,
+                "owner_id": uuid::Uuid::new_v4(),
+                "expires_at": Utc::now() + ChronoDuration::hours(24),
+                "artifact_shas": [sha.clone()],
+            })),
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(forged_owner.status(), StatusCode::BAD_REQUEST);
+
     let create = auth(
         client
             .post(format!("{base}/workspaces/{}/share-tickets", ws.id.0))
             .json(&json!({
                 "channel_id": channel.id.0,
-                "owner_id": owner.id.0,
                 "expires_at": Utc::now() + ChronoDuration::hours(24),
                 "artifact_shas": [sha],
             })),
@@ -141,6 +155,7 @@ async fn share_ticket_operator_lifecycle_is_scoped_and_secret_safe() {
     let ticket_id = created["ticket"]["id"].as_str().unwrap();
     let secret = created["secret"].as_str().unwrap();
     assert!(secret.starts_with("maid_share_"));
+    assert_eq!(created["ticket"]["owner_id"], json!(owner.id.0));
     assert_eq!(created["artifact_shas"], json!([sha]));
     assert!(created["ticket"].get("token_hash").is_none());
 

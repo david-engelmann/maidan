@@ -690,14 +690,14 @@ mod tests {
     /// D-5: a member tool must not mutate personal state that is not the
     /// caller's — and must not reach outside the caller's workspace at all.
     ///
-    /// The member tools take `(store, args)` with no `auth`, and the
-    /// pre-dispatch gate only resolves `channel_id` / `thread_id` /
-    /// `message_id`, so a caller-supplied `member_id` reaches the store
-    /// unchecked on both axes. `set_member_email` is the sharp one: the address
-    /// it writes is where that member's digest mail goes.
+    /// Individual handlers do not consistently need `auth`, so the shared
+    /// pre-dispatch identity gate owns this invariant. `set_member_email` is
+    /// the sharp example: the address it writes is where that member's digest
+    /// mail goes. Member skills prove the guard covers tools outside
+    /// `tools/member.rs` too.
     #[tokio::test]
     async fn a_member_tool_cannot_mutate_another_members_personal_state() {
-        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
+        use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -753,7 +753,11 @@ mod tests {
             maidan_types::ApiTokenId(uuid::Uuid::new_v4()),
             attacker.id,
             ws_a.id,
-            vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()],
+            vec![
+                WORKSPACE_READ.to_string(),
+                WORKSPACE_WRITE.to_string(),
+                MESSAGE_POST.to_string(),
+            ],
         );
 
         // Own state: allowed.
@@ -765,6 +769,14 @@ mod tests {
             )
             .await
             .expect("a member may set their own delivery address");
+        server
+            .call_tool(
+                &auth,
+                "add_member_skill",
+                &json!({ "member_id": attacker.id.0, "skill": "rust" }),
+            )
+            .await
+            .expect("a member may declare their own routing skill");
 
         // A colleague's state: refused.
         let err = server
@@ -779,6 +791,18 @@ mod tests {
             matches!(err, McpError::Forbidden(_)),
             "expected Forbidden, got {err:?}"
         );
+        for tool in ["add_member_skill", "list_member_skills"] {
+            let args = if tool == "add_member_skill" {
+                json!({ "member_id": same_tenant_victim.id.0, "skill": "rust" })
+            } else {
+                json!({ "member_id": same_tenant_victim.id.0 })
+            };
+            let err = server
+                .call_tool(&auth, tool, &args)
+                .await
+                .expect_err("a token must not inspect or rewrite another member's skills");
+            assert!(matches!(err, McpError::Forbidden(_)), "{tool}: {err:?}");
+        }
 
         // Another tenant's state: refused, and indistinguishably so — a
         // different error here would confirm the member exists.

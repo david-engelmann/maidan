@@ -17,7 +17,7 @@ use maidan_types::*;
 
 #[cfg(feature = "bootstrap")]
 use super::publish_stored;
-use super::{cap, ensure_workspace, ApiResult};
+use super::{cap, clamp_context_transition_limit, ensure_workspace, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::federation::PeerContext;
@@ -553,11 +553,7 @@ pub async fn get_workspace_context(
         } else {
             100
         },
-        transition_limit: if q.transition_limit > 0 {
-            q.transition_limit
-        } else {
-            50
-        },
+        transition_limit: clamp_context_transition_limit(q.transition_limit),
         message_cursor: None,
         include_edits: q.include_edits,
         include_glossary: q.include_glossary,

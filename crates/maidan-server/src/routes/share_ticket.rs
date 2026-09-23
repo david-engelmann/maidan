@@ -8,9 +8,7 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::{capability::TOKEN_ADMIN, hash_secret, AuthContext, ShareTicketSecret};
-use maidan_types::{
-    ChannelId, MemberId, NewAuditEvent, NewShareTicket, ShareTicketId, WorkspaceId,
-};
+use maidan_types::{ChannelId, NewAuditEvent, NewShareTicket, ShareTicketId, WorkspaceId};
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::{CreateShareTicket, MintShareTicketResponse, ShareTicketResponse};
@@ -32,7 +30,7 @@ pub async fn create_share_ticket(
         .create_share_ticket(NewShareTicket {
             workspace_id,
             channel_id: ChannelId(body.channel_id),
-            owner_id: MemberId(body.owner_id),
+            owner_id: auth.member_id,
             created_by: auth.member_id,
             token_hash: hash_secret(secret.as_str()),
             expires_at: body.expires_at,
