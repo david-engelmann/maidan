@@ -2233,6 +2233,31 @@ pub trait ShareTicketStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait DelegationGrantStore: Send + Sync {
+    /// Persist a reviewable grant after validating its members, capability
+    /// subset, purpose, and expiry. This storage foundation does not itself
+    /// authorize requests or mint delegated credentials.
+    async fn create_delegation_grant(
+        &self,
+        new: NewDelegationGrant,
+    ) -> Result<DelegationGrant, StoreError>;
+    async fn get_delegation_grant(
+        &self,
+        id: DelegationGrantId,
+    ) -> Result<DelegationGrant, StoreError>;
+    async fn list_delegation_grants(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<DelegationGrant>, StoreError>;
+    /// Revoke a grant in its workspace. Returns whether this call changed it.
+    async fn revoke_delegation_grant(
+        &self,
+        workspace_id: WorkspaceId,
+        id: DelegationGrantId,
+    ) -> Result<bool, StoreError>;
+}
+
+#[async_trait]
 pub trait PeerStore: Send + Sync {
     async fn create_peer(&self, new: NewPeer) -> Result<Peer, StoreError>;
     async fn get_peer(&self, id: PeerId) -> Result<Peer, StoreError>;
@@ -2577,6 +2602,7 @@ pub trait Store:
     + ReindexStore
     + TokenStore
     + ShareTicketStore
+    + DelegationGrantStore
     + PeerStore
     + DeliveryCursorStore
     + WebhookStore
@@ -2633,6 +2659,7 @@ impl<
             + ReindexStore
             + TokenStore
             + ShareTicketStore
+            + DelegationGrantStore
             + PeerStore
             + DeliveryCursorStore
             + WebhookStore

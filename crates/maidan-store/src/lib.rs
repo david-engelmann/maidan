@@ -5,6 +5,7 @@
 
 pub mod a2a;
 pub mod automation_deliveries;
+mod delegation_grants;
 pub mod dialect;
 pub mod dm;
 pub mod embeddings_purge;
@@ -67,12 +68,12 @@ pub use workspace_export::build_workspace_export;
 // them all via the super-trait.
 pub use store::{
     A2aStore, AppStore, ArtifactMetaStore, AssignmentStore, AutomationStore, ChannelStore,
-    DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore, GlossaryStore,
-    IntegrityStore, MailStore, MemberStore, MentionInboxStore, MessageStore, MetaStore,
-    NotificationStore, OAuthCodeStore, PeerStore, PresenceDigestStore, ProjectorLinkStore,
-    ReferenceStore, ReindexStore, SessionStore, ShareTicketStore, SkillStore, SlashCommandStore,
-    SocialStore, TaskScheduleStore, ThreadDepStore, ThreadLineageStore, ThreadResultStore,
-    ThreadStore, TokenStore, UsageLedgerStore, WebhookStore, WorkspaceStore,
+    DelegationGrantStore, DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore,
+    GlossaryStore, IntegrityStore, MailStore, MemberStore, MentionInboxStore, MessageStore,
+    MetaStore, NotificationStore, OAuthCodeStore, PeerStore, PresenceDigestStore,
+    ProjectorLinkStore, ReferenceStore, ReindexStore, SessionStore, ShareTicketStore, SkillStore,
+    SlashCommandStore, SocialStore, TaskScheduleStore, ThreadDepStore, ThreadLineageStore,
+    ThreadResultStore, ThreadStore, TokenStore, UsageLedgerStore, WebhookStore, WorkspaceStore,
 };
 
 /// Everything a store caller usually wants in one import.
