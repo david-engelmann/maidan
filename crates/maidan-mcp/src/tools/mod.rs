@@ -582,7 +582,7 @@ pub async fn dispatch(
         "set_thread_budget" => budget::set_thread_budget(store, args).await,
         "update_thread_budget" => budget::update_thread_budget(store, args).await,
         "get_thread_budget" => budget::get_thread_budget(store, args).await,
-        "report_usage" => budget::report_usage(server, args).await,
+        "report_usage" => budget::report_usage(server, auth, args).await,
         "list_dlq" => budget::list_dlq(store, args).await,
         "get_tool_transcript" => thread::get_tool_transcript(store, args).await,
         "assign_thread" => thread::assign_thread(server, args).await,

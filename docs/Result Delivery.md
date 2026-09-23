@@ -473,10 +473,14 @@ All three are now carried.
    deliberately does not fold an agent-declared cost out of a result payload into
    its own billing basis. The exact contract:
 
-   - **Cost, tokens, turns are reported.** `report_usage {thread_id, tokens,
-     usd_micros, turns}` — MCP, or `POST /threads/:id/usage`. `usd_micros` is
-     integer USD micros (`$1 = 1_000_000`); money never crosses the wire as a
-     float. There is **no `cost_usd` argument** — convert at the edge.
+   - **Cost, tiered tokens, and turns are reported.** `report_usage` carries a
+     unique `usage_report_id`, the active `claim_lease_id`, model, explicit
+     input/output/cache-read/cache-write tokens, the matching immutable price
+     snapshot, integer `usd_micros`, and turns — over MCP or
+     `POST /threads/:id/usage`. Exact retries are idempotent; conflicting reuse
+     and stale leases fail before charging. The reporter and payer are derived,
+     never caller-selected. Money never crosses the wire as a float, and there
+     is **no `cost_usd` argument** — convert at the edge.
    - **Wall time is *not* reported — it is derived.** There is no
      `duration_secs`/`wall_secs` argument and there will not be one: a
      self-reported clock is the same trust hole as a self-reported cost, and

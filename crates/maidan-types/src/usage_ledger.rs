@@ -92,6 +92,41 @@ pub struct PayerStamp {
     pub price_snapshot: PriceSnapshot,
 }
 
+/// Caller-supplied economic evidence for one retry-safe usage heartbeat.
+///
+/// The thread comes from the REST path or MCP tool envelope. The reporter and
+/// payer are deliberately absent: Maidan derives them from authentication and
+/// the resolved thread.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct AccountedUsageRequest {
+    pub usage_report_id: uuid::Uuid,
+    pub claim_lease_id: ClaimLeaseId,
+    pub model: String,
+    pub tokens: TokenUsage,
+    pub usd_micros: i64,
+    pub price_snapshot: PriceSnapshot,
+    #[serde(default)]
+    pub turns: i64,
+}
+
+impl AccountedUsageRequest {
+    pub fn into_new(self, thread_id: ThreadId, reporter: MemberId) -> NewUsageLedgerEntry {
+        NewUsageLedgerEntry {
+            usage_report_id: self.usage_report_id,
+            thread_id,
+            reporter,
+            claim_lease_id: self.claim_lease_id,
+            model: self.model,
+            tokens: self.tokens,
+            usd_micros: self.usd_micros,
+            price_snapshot: self.price_snapshot,
+            turns: self.turns,
+        }
+    }
+}
+
 /// Input to the store's idempotent accounted-usage operation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

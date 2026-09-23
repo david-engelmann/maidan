@@ -649,16 +649,26 @@ clear. To change only selected dimensions, use `update_thread_budget` (REST
 partial merge is atomic, so two callers changing different dimensions do not
 need a read-modify-write sequence.
 
-`report_usage {thread_id, tokens?, usd_micros?, turns?}` adds to the thread's
-running total and answers `{budget, stopped, reason}`. Report as you go rather
-than once at the end: this call is where a runaway run gets caught. If your report
-pushes a *claimed* thread past any bound of its budget (`set_thread_budget`), the
-server releases your claim, emits `ClaimFailed`, and dead-letters the run — then
-`stopped` is `true` and `reason` names the dimension that bound. A hard stop is
-not a success; don't follow one with a result.
+`report_usage` takes `thread_id`, a globally unique `usage_report_id`, the
+current `claim_lease_id`, `model`, four explicit token tiers (`input`, `output`,
+`cache_read`, `cache_write`), their four snapshotted micro-USD-per-million
+rates, the resulting `usd_micros`, and optional `turns`. Maidan verifies
+`usd_micros = ceil(sum(tokens × rate) / 1_000_000)`. It derives the reporter
+from authentication and the payer from the thread; neither identity is a caller
+field.
+
+Keep `usage_report_id` stable across a transport retry. The exact same request
+returns its original ledger outcome without charging or emitting again; reuse
+with different economic content fails. A stale `claim_lease_id` also fails
+before totals change. The response is the durable ledger entry, including its
+PayerStamp, accumulated `budget`, `stopped`, and `reason`. Report as you go:
+this call is where a runaway run gets caught. If a report crosses a bound, the
+same transaction releases the claim, emits `UsageReported` then `ClaimFailed`,
+and dead-letters the run. A hard stop is not a success; don't follow one with a
+result.
 
 **There is no wall-clock argument, and you should not invent one.** You report
-three dimensions — `tokens`, `usd_micros`, `turns`. Wall time is the fourth, and
+three dimensions — tiered `tokens`, `usd_micros`, and `turns`. Wall time is the fourth, and
 the server derives it from `work_started_at` against the budget's `max_wall_secs`
 at the moment you report. Two things follow. A thread you never acknowledged has
 no working clock, so its wall bound can never bind. And wall time is only ever
