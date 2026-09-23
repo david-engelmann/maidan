@@ -9,8 +9,9 @@ const fx = fixtures();
 // other pending gate.
 test("the Approvals tab lists a pending gate and resolves it on Accept", async ({ page, request }) => {
   const prompt = `Ship build ${Date.now()}?`;
+  // The agent asks; the operator answers. No one accepts their own request.
   const mcp = await request.post(`${fx.base_url}/mcp`, {
-    headers: { Authorization: `Bearer ${fx.token}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${fx.requester_token}`, "Content-Type": "application/json" },
     data: {
       jsonrpc: "2.0",
       id: 1,
