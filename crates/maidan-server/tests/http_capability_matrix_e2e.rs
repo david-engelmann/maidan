@@ -495,7 +495,25 @@ fn apply_route_defaults(
         return b.json(&json!({ "max_tokens": 1000 }));
     }
     if path == "/threads/{id}/usage" && method == "POST" {
-        return b.json(&json!({ "tokens": 1 }));
+        return b.json(&json!({
+            "usage_report_id": uuid::Uuid::new_v4(),
+            "claim_lease_id": uuid::Uuid::nil(),
+            "model": "capability-matrix/test",
+            "tokens": {
+                "input": 1,
+                "output": 0,
+                "cache_read": 0,
+                "cache_write": 0
+            },
+            "usd_micros": 0,
+            "price_snapshot": {
+                "input_usd_micros_per_million": 0,
+                "output_usd_micros_per_million": 0,
+                "cache_read_usd_micros_per_million": 0,
+                "cache_write_usd_micros_per_million": 0
+            },
+            "turns": 1
+        }));
     }
     if path == "/threads/{id}/assignee/claim" && method == "POST" {
         return b.json(&json!({ "member_id": f.member }));
