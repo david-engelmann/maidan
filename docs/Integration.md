@@ -293,9 +293,19 @@ whether or not that member exists, so no membership is leaked. Driving several
 members from one token needs `member:impersonate`, granted explicitly at mint,
 refused across workspaces even when held, and logged at every use.
 
-Posting or claiming *as* a member is **not** covered by this. Work attribution
-is the orchestrator model and needs no extra capability; an agent runner that
-posts on behalf of its workers is unaffected.
+Posting or claiming *as* a member is **not** covered by this today. Work
+attribution is currently the orchestrator model and needs no extra capability;
+an agent runner that posts on behalf of its workers is unaffected.
+
+**This is changing.** Ambient act-as-any on ordinary tokens is being replaced by
+explicit delegation grants plus short-lived exchanged tokens (Cluster 410):
+identity will come from the authenticated caller, never from a request payload,
+and `member:impersonate` is retired. Integrations that drive several members
+from one token should expect to obtain a grant and exchange it per task.
+
+Two current exceptions to "every member surface is self-scoped", both scheduled
+in 410.1: member **skills** (`/members/:id/skills`, MCP `add_member_skill`) and
+share-ticket `owner_id` still accept a caller-chosen member id.
 
 Named sets (`maidan.agent.worker`, `maidan.human.admin`) are mint-time
 recipes, not stored capability strings. `POST …/tokens` accepts

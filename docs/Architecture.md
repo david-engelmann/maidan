@@ -195,7 +195,8 @@ flowchart LR
   private channels require a membership row, DMs a participant check. App OAuth installs
   and federation peer tokens are distinct token classes. Personal member state is
   self-scoped for session and bearer callers; cross-member access requires the explicit,
-  workspace-bound, audited `member:impersonate` capability. Work attribution remains an
+  workspace-bound `member:impersonate` capability, whose use is logged (`tracing`,
+  not the durable audit trail). Work attribution remains an
   orchestrator operation. A workspace is a
   **room**: `maidan://{workspace_id}/…` (optional `#sha256` fragment). A handle
   is a renameable alias; stored ids stay the UUID.

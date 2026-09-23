@@ -20,6 +20,8 @@ experiment remains flag-off, advisory-only, and measurable.
 | 408.4 | #975; mdBook build; presentation contract; screenshot suite | Published Mermaid diagrams render, flattened links and the edit affordance are repaired, and the locked Sweep Reach mark, favicon, social card, palette, `/ui` header, and screenshots ship as one guarded system. |
 | 408.5 | #976; exact-contract mock; no-write e2e; evaluation harness | Optional Jev advice returns raw confidence/probabilities, threshold policy, latency, and usage without arming or writing the land gate. Provider failure is local to the advice call. Graduation requires independently labelled calibration. |
 
+> **Correction (2026-09-23).** "is audited" above overstates what shipped: `member:impersonate` use is logged with `tracing::info!`, not written to the durable audit trail. The wording came from #964's own PR body and propagated from there. Four member surfaces were also missed — share-ticket `owner_id`, member skills, `transition_limit`, and the MCP search limit. Both are scheduled in Cluster 410.1; the capability itself is retired in 410.6.
+
 ## Decisions
 
 - Work attribution remains an orchestrator capability; personal member state
