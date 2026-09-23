@@ -17,7 +17,9 @@ record.** Twelve implementation PRs (#996/#997/#999/#1000/#1001/#1002/#1003/
 - **411.1–411.3** close the confirmed D-5 gaps and add delegation grants,
   exchanged via `POST /tokens/delegate` / MCP `delegate_token` for a
   short-lived token (15 min default, 1 h max) that *is* the subject, carrying
-  only capabilities the grant and the delegate both hold. Revoking a grant kills
+  only capabilities the grant and the delegate both hold (members carry no
+  capabilities of their own, so the subject is not consulted; whether to bound
+  grants by the subject is an open decision). Revoking a grant kills
   every token exchanged from it.
 - **411.4 (breaking)** removes every caller-chosen acting-identity field from
   REST and MCP; identity comes only from authentication.
