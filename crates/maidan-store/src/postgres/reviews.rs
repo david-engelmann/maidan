@@ -33,6 +33,7 @@ fn row_to_review(row: &sqlx::postgres::PgRow) -> Result<ThreadReview, StoreError
         reviewer_id: MemberId(row.get::<Uuid, _>("reviewer_id")),
         decision,
         note: row.get::<Option<String>, _>("note"),
+        actor_id: row.get::<Option<Uuid>, _>("actor_id").map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
     })
@@ -132,16 +133,19 @@ pub async fn submit_review(
     note: Option<&str>,
 ) -> Result<ThreadReview, StoreError> {
     let row = sqlx::query(
-        "INSERT INTO maidan_thread_reviews (thread_id, reviewer_id, decision, note, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, NOW(), NOW())
+        "INSERT INTO maidan_thread_reviews
+             (thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id)
+         VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)
          ON CONFLICT (thread_id, reviewer_id) DO UPDATE SET
-             decision = excluded.decision, note = excluded.note, updated_at = NOW()
-         RETURNING thread_id, reviewer_id, decision, note, created_at, updated_at",
+             decision = excluded.decision, note = excluded.note, updated_at = NOW(),
+             actor_id = excluded.actor_id
+         RETURNING thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id",
     )
     .bind(thread_id.0)
     .bind(reviewer_id.0)
     .bind(decision.as_str())
     .bind(note)
+    .bind(crate::attribution::delegate_acting_for(reviewer_id).map(|m| m.0))
     .fetch_one(pool)
     .await?;
     row_to_review(&row)
@@ -152,7 +156,7 @@ pub async fn list_reviews(
     thread_id: ThreadId,
 ) -> Result<Vec<ThreadReview>, StoreError> {
     let rows = sqlx::query(
-        "SELECT thread_id, reviewer_id, decision, note, created_at, updated_at
+        "SELECT thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id
          FROM maidan_thread_reviews WHERE thread_id = $1 ORDER BY created_at",
     )
     .bind(thread_id.0)
@@ -189,6 +193,16 @@ pub async fn review_status(pool: &PgPool, thread_id: ThreadId) -> Result<ReviewS
              SELECT 1 FROM maidan_thread_workers w
              WHERE w.thread_id = r.thread_id AND w.member_id = r.reviewer_id
            )
+           -- Nor may whoever actually submitted it: a delegate that owns or
+           -- worked the thread cannot approve it with a reviewer's borrowed token.
+           AND (r.actor_id IS NULL OR (
+             (t.owner_id IS NULL OR r.actor_id <> t.owner_id)
+             AND (t.assignee_id IS NULL OR r.actor_id <> t.assignee_id)
+             AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_workers wa
+               WHERE wa.thread_id = r.thread_id AND wa.member_id = r.actor_id
+             )
+           ))
            AND (
              NOT EXISTS (SELECT 1 FROM maidan_thread_reviewers rv WHERE rv.thread_id = $1)
              OR EXISTS (SELECT 1 FROM maidan_thread_reviewers rv

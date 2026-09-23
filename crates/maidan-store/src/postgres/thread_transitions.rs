@@ -35,6 +35,16 @@ async fn review_gate_in_tx(
                   SELECT 1 FROM maidan_thread_workers w
                   WHERE w.thread_id = r.thread_id AND w.member_id = r.reviewer_id
                 )
+                -- Nor may whoever actually submitted it: a delegate that owns or
+                -- worked the thread cannot approve it with a reviewer's borrowed token.
+                AND (r.actor_id IS NULL OR (
+                  (t.owner_id IS NULL OR r.actor_id <> t.owner_id)
+                  AND (t.assignee_id IS NULL OR r.actor_id <> t.assignee_id)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM maidan_thread_workers wa
+                    WHERE wa.thread_id = r.thread_id AND wa.member_id = r.actor_id
+                  )
+                ))
                 AND (NOT EXISTS (SELECT 1 FROM maidan_thread_reviewers rv WHERE rv.thread_id = $1)
                      OR EXISTS (SELECT 1 FROM maidan_thread_reviewers rv
                                 WHERE rv.thread_id = $1 AND rv.member_id = r.reviewer_id))

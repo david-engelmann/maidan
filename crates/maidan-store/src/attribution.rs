@@ -76,6 +76,19 @@ pub fn current_attribution() -> Option<Attribution> {
     SCOPE.try_with(|scope| scope.attribution).ok()
 }
 
+/// The member actually acting in this request, when it is not `subject` — a
+/// delegate using a token borrowed from `subject`. `None` for a member acting
+/// for itself, for work outside a request, and for a request acting on some
+/// *other* member (an orchestrator assigning a thread to a worker has not
+/// worked it).
+pub(crate) fn delegate_acting_for(
+    subject: maidan_types::MemberId,
+) -> Option<maidan_types::MemberId> {
+    current_attribution()
+        .filter(|a| a.subject_id == subject && a.actor_id != subject)
+        .map(|a| a.actor_id)
+}
+
 fn mark_recorded() {
     let _ = SCOPE.try_with(|scope| scope.recorded.store(true, Ordering::Relaxed));
 }

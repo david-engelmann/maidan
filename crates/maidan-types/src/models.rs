@@ -884,6 +884,13 @@ pub struct ApprovalGate {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub content: Option<serde_json::Value>,
     pub resolved_by: Option<MemberId>,
+    /// The delegate that actually opened the gate for `requested_by`, when one
+    /// did. `None`: `requested_by` opened it itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_actor_id: Option<MemberId>,
+    /// The delegate that actually answered it for `resolved_by`, when one did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_actor_id: Option<MemberId>,
     pub created_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
 }

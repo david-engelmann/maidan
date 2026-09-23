@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::error::StoreError;
 
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
-     content, resolved_by, created_at, resolved_at";
+     content, resolved_by, requested_actor_id, resolved_actor_id, created_at, resolved_at";
 
 /// Open a new `Pending` approval gate. See the SQLite twin. `schema` binds
 /// directly to the JSONB column.
@@ -27,8 +27,9 @@ async fn create_in_tx(
     let id = ApprovalGateId::new();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_approval_gates
-             (id, workspace_id, thread_id, requested_by, prompt, schema, state)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+             (id, workspace_id, thread_id, requested_by, prompt, schema, state,
+              requested_actor_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
          RETURNING {GATE_COLUMNS}"
     ))
     .bind(id.0)
@@ -37,6 +38,7 @@ async fn create_in_tx(
     .bind(gate.requested_by.0)
     .bind(&gate.prompt)
     .bind(gate.schema.as_ref())
+    .bind(crate::attribution::delegate_acting_for(gate.requested_by).map(|m| m.0))
     .fetch_one(&mut **tx)
     .await?;
     Ok(row_to_gate(&row))
@@ -116,7 +118,8 @@ pub async fn resolve(
 ) -> Result<Option<ApprovalGate>, StoreError> {
     let row = sqlx::query(&format!(
         "UPDATE maidan_approval_gates
-         SET state = $2, content = $3, resolved_by = $4, resolved_at = now()
+         SET state = $2, content = $3, resolved_by = $4, resolved_at = now(),
+             resolved_actor_id = $5
          WHERE id = $1 AND state = 'pending'
          RETURNING {GATE_COLUMNS}"
     ))
@@ -124,6 +127,7 @@ pub async fn resolve(
     .bind(state.as_str())
     .bind(content)
     .bind(resolved_by.0)
+    .bind(crate::attribution::delegate_acting_for(resolved_by).map(|m| m.0))
     .fetch_optional(pool)
     .await?;
     Ok(row.as_ref().map(row_to_gate))
@@ -141,6 +145,12 @@ fn row_to_gate(row: &sqlx::postgres::PgRow) -> ApprovalGate {
             .unwrap_or(ApprovalGateState::Pending),
         content: row.get::<Option<serde_json::Value>, _>("content"),
         resolved_by: row.get::<Option<Uuid>, _>("resolved_by").map(MemberId),
+        requested_actor_id: row
+            .get::<Option<Uuid>, _>("requested_actor_id")
+            .map(MemberId),
+        resolved_actor_id: row
+            .get::<Option<Uuid>, _>("resolved_actor_id")
+            .map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         resolved_at: row.get::<Option<DateTime<Utc>>, _>("resolved_at"),
     }

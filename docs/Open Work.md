@@ -1649,7 +1649,7 @@ Still open, tracked here rather than left to a re-audit:
   | A grant could lend `token:admin`, and a token minted under it is not a grant descendant, so it outlives revocation | **Real — fixed in 411.7** |
   | Exchange authorised on the acted-as identity, so a borrowed token could use its subject's grants and erase the real actor from the chain | **Real — fixed in 411.7** |
   | 25 of 31 privileged audit writes record the subject as the actor; no domain event carries the delegate | **Real — fixed in 411.8** |
-  | A delegate can approve its own work by acting as a reviewer | **Real — 411.10, awaiting the maintainer** |
+  | A delegate can approve its own work by acting as a reviewer | **Real — decided (borrowable, never self-approved) and fixed in 411.10** |
   | Narrowing a borrowed token produces an ordinary token and sheds the record | **Wrong.** The store's attenuated insert copies the parent's grant. Pinned by a test on both backends |
   | A borrowed token's validity rests only on the revocation cascade | **Wrong.** The active-token lookup itself requires the grant to be live. Pinned by a test that kills the grant without touching the token row |
 
@@ -1659,6 +1659,19 @@ Still open, tracked here rather than left to a re-audit:
   now proven by disabling it alone and watching only its own test fail — eight
   mutations over REST and both stores, two more over MCP, all caught.
 
+- **Fixed in 411.10: approvals could be laundered through delegation.** A
+  delegated token is its subject, so the review count, the close gate's copy of
+  it, and the land gate's standing and enforcement — the four surfaces the
+  401.2 release-laundering fix patched — compared only the subject. An
+  orchestrator could claim a thread as the worker and approve it as the
+  reviewer. The maintainer decided approvals stay borrowable but never
+  self-approved ([Decisions.md](Decisions.md), *Approvals may be borrowed, never
+  self-approved*). The actor is now recorded on the worker ledger and on each
+  attestation, and every exclusion tests it. Approval gates, separately, had no
+  self-approval rule at all; accepting your own request is now refused.
+  Tests: `attestation_e2e` (five, REST and MCP) and `attestation_actors` (both
+  backends, including the close-time copies); eleven SQLite and nine Postgres
+  mutations, each caught.
 - **Closed by 411.12: live frames did not carry attribution.** Every durable
   record did, but WebSocket and MCP-SSE frames were built from an `Event` parsed
   out of the stored payload, and parsing dropped the payload's `attribution`

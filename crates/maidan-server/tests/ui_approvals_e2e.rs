@@ -111,11 +111,22 @@ async fn ui_api_lists_and_answers_an_approval_gate() {
         })
         .await
         .unwrap();
+    // The agent that asked, not the operator answering: no one accepts their
+    // own request.
+    let agent = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "deployer".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
     let gate = store
         .create_approval_gate(&NewApprovalGate {
             workspace_id: ws.id,
             thread_id: Some(thread.id),
-            requested_by: human.id,
+            requested_by: agent.id,
             prompt: "Ship it?".into(),
             schema: None,
         })
