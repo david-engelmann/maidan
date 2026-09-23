@@ -42,6 +42,19 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v411.0.0](https://github.com/david-engelmann/maidan/releases/tag/v411.0.0) — delegated authority
+
+Twelve implementation PRs (#996–#1008) make acting for someone else explicit,
+bounded and on the record, and make the record complete.
+
+| Change | Where |
+|--------|-------|
+| **One member per token; delegation is explicit.** No request selects its acting identity. An orchestrator exchanges a delegation grant for a short-lived token that *is* the agent (15 min default, 1 h max), carrying only capabilities the grant and the delegate both hold. The subject is not consulted, because members carry no capabilities of their own. Whether to bound grants by the subject is an open decision (see Open Work). Revoking the grant kills every token exchanged from it. `member:impersonate` is gone. | `crates/maidan-auth/`, `POST /tokens/delegate`, MCP `delegate_token`, `/workspaces/:wid/delegation-grants` |
+| **Delegation lends work, never authority.** Every capability is classified as work or authority. Grants lend only work, a borrowed context never holds authority, and exchange is one hop. | `crates/maidan-auth/src/capability.rs` |
+| **Every record names who acted, for whom, under which grant:** inside each event's hashed payload (a rewrite breaks the chain), on every audit row, and on live WebSocket and MCP-SSE frames. A successful change that records nothing itself gets an attributed `mutation` audit row, so completeness doesn't depend on each handler. | `crates/maidan-store/src/attribution.rs`, `crates/maidan-server/src/auth.rs`, `docs/Integration.md` |
+| **Destroying or rewriting the record needs authority.** Purge and erase need `token:admin`, tombstoning another member's message needs `channel:admin`, and only a message's author can edit it. | `routes/{workspace,message}.rs` |
+| **Approvals may be borrowed, never self-approved.** The acting delegate is recorded on the worker ledger, reviews, land-gate passes and approval gates, and every separation-of-duties check tests it. Nobody accepts their own approval gate. | `crates/maidan-store/src/{sqlite,postgres}/`, Postgres 0106 / SQLite 0105, `docs/Decisions.md` |
+
 ## [v410.0.0](https://github.com/david-engelmann/maidan/releases/tag/v410.0.0) — accountable usage and bounded authorization evidence
 
 Three implementation PRs (#988/#989/#991) close Wave 4 row #41 with an
@@ -71,8 +84,8 @@ the 2026-09-21 full audit while keeping the experimental model path inert.
 
 | Change | Where |
 |--------|-------|
-| **Self-scoped personal state:** REST and MCP use authenticated acting identity for email, preferences, inbox state, follows, and other personal operations. Cross-member use requires the workspace-bound `member:impersonate`, whose use is logged via `tracing` rather than written to the durable audit trail; work attribution stays orchestrator-controlled pending the Cluster 411 delegation work. Confirmed client limits are clamped before SQL. | `crates/maidan-{auth,mcp,server}/`, `contracts/http-capability-map.json` |
-| **One outbound trust boundary:** operator-controlled HTTP destinations are parsed, publicly resolved, DNS-pinned, and denied redirects. Webhooks, slash commands, federation, OIDC discovery, and optional Jev advice share it. Probes, proxy-hop defaults, and container pins are hardened alongside it. | `crates/maidan-server/src/egress_http.rs`, `k8s/base/`, `compose*.yaml` |
+| **Self-scoped personal state:** REST and MCP use authenticated acting identity for email, preferences, inbox state, follows, and other personal operations. Cross-member use requires the workspace-bound `member:impersonate`, whose use is logged via `tracing` rather than written to the durable audit trail; work attribution stays orchestrator-controlled pending the Cluster 411 delegation work. *Superseded in v411: `member:impersonate` is retired, and acting for another member requires a delegation grant, recorded durably.* Confirmed client limits are clamped before SQL. | `crates/maidan-{auth,mcp,server}/`, `contracts/http-capability-map.json` |
+| **One outbound trust boundary:** operator-controlled HTTP destinations are parsed, publicly resolved, DNS-pinned, and denied redirects. Webhooks, slash commands, federation, and optional Jev advice share it. *Correction: OIDC discovery does not.* It uses its own client, which refuses redirects but is not publicly resolved or DNS-pinned, because the issuer is operator configuration and a loopback provider is a supported deployment. Probes, proxy-hop defaults, and container pins are hardened alongside it. | `crates/maidan-server/src/egress_http.rs`, `k8s/base/`, `compose*.yaml` |
 | **Honest browser states:** loading, actionable errors, and meaningful empty panes are explicit; approvals refresh on entry and after mutation. | `crates/maidan-server/static/index.html`, UI contract and Playwright suites |
 | **Published presentation contract:** Mermaid renders, published links and edit metadata are valid, and the locked mark/favicon/social card/palette agree with `/ui` and the captured docs screenshots. | `book/`, `docs/assets/`, `scripts/check-docs-presentation.sh` |
 | **Measured advice without authority:** a default-off `POST /threads/:id/land-gate/advice` sends an explicit state to TypeSafe, returns raw choice/calibration/latency/usage evidence, and can only recommend. Provider failure never changes the stored gate; the JSONL harness measures independently labelled cases before any graduation decision. | `crates/maidan-server/src/land_gate_advisor.rs`, `scripts/eval-land-gate-advisor.py` |
