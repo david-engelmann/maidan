@@ -12,6 +12,13 @@ Canonical machine-readable maps:
 
 CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, table-driven HTTP denial via `http_capability_matrix_e2e`, exhaustive event-surface classification via `event_surface_disposition_contract`, and `scripts/check-agent-contract.sh`.
 
+> **This page itself is covered by none of them.** They guard the JSON contracts
+> above; nothing compares *this* table to `capability::all()`. That is why five
+> live capabilities — `channel:admin`, `secret:read`, `secret:admin`,
+> `audit:read-global`, `operator:global` — were missing here until 2026-09-23
+> while being correct in the contracts the entire time. A guard is scheduled in
+> Cluster 411.1; until it lands, add new capabilities here by hand.
+
 ## HTTP (member bearer)
 
 | Capability | Routes / behavior |
@@ -23,7 +30,12 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |
 | `search:query` | GET workspace search |
 | `event:subscribe` | WebSocket `/ws/subscribe` (token in subscribe frame) |
-| `member:impersonate` | Act on **another member's** personal state — inbox, notification prefs, delivery address, follows, push subscriptions — on HTTP and MCP alike. Every member surface is otherwise self-scoped: a token reads and writes the personal state of the member it was minted for and no one else's. Granted on purpose (never in `default_minted`), audited at the point of use. Work attribution — posting or claiming *as* a member — is a separate thing and needs no capability |
+| `member:impersonate` | Act on **another member's** personal state — inbox, notification prefs, delivery address, follows, push subscriptions — on HTTP and MCP alike. Every member surface is otherwise self-scoped: a token reads and writes the personal state of the member it was minted for and no one else's. Granted on purpose (never in `default_minted`), logged at the point of use via `tracing` — not yet a durable audit row. Work attribution — posting or claiming *as* a member — is a separate thing and needs no capability |
+| `channel:admin` | Channel membership (`GET`/`POST /channels/:cid/members`, `DELETE …/members/:mid`) and per-thread review controls (`DELETE /threads/:id/land-gate`, `…/review-requirement`, `…/reviewers/:member_id`) |
+| `secret:read` | `GET /workspaces/:wid/secrets`, `POST /workspaces/:wid/secrets/:name/resolve` |
+| `secret:admin` | `POST /workspaces/:wid/secrets`, `DELETE /workspaces/:wid/secrets/:name` |
+| `audit:read-global` | `GET /operator/audit` — cross-workspace audit read |
+| `operator:global` | `GET /operator/legal-holds` |
 | `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); issue/list/revoke `/workspaces/:wid/share-tickets`; signed workspace export / verify / import; snapshot `include_graph=true` |
 
 ## MCP (`POST /mcp` tools/call)
@@ -36,6 +48,8 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 | `artifact:upload` | `upload_artifact`, `begin_artifact_multipart`, `upload_artifact_multipart_part`, `complete_artifact_multipart`, `abort_artifact_multipart` |
 | `search:query` | `search_messages` |
 | `thread:transition` | `transition_thread` |
+| `channel:admin` | `add_channel_member`, `list_channel_members`, `remove_channel_member`, `clear_land_gate` |
+| `secret:read` | `list_secrets`, `resolve_secret` |
 | `token:admin` | `create_share_ticket`, `list_share_tickets`, `revoke_share_ticket` |
 
 MCP protocol methods (not tools):
