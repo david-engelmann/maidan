@@ -82,6 +82,20 @@ pub(super) async fn export_workspace(
         .map_err(|e| McpError::Internal(format!("export serialize: {e}")))?;
     let signed = maidan_auth::sign_export(key, payload)
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+    // As on REST: a read, but the whole workspace leaves in it.
+    let recorded = server
+        .store
+        .append_audit(maidan_types::NewAuditEvent {
+            actor_id: Some(auth.actor_id),
+            action: "workspace.export".into(),
+            target_kind: Some("workspace".into()),
+            target_id: Some(workspace_id.0),
+            metadata: json!({ "content_sha256": signed.content_sha256 }),
+        })
+        .await;
+    if let Err(err) = recorded {
+        tracing::error!(target: "audit", %err, action = "workspace.export", "audit.write_failed");
+    }
     Ok(content_json(&signed))
 }
 

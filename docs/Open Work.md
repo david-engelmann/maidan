@@ -1696,7 +1696,7 @@ Still open, tracked here rather than left to a re-audit:
   shared scratch content (memory blocks) — not another member's authored
   record.
 
-- **Found during 411.9: direct mutations that leave no history.** 411.8 made
+- **Found during 411.9, fixed in 411.11: direct mutations that left no history.** 411.8 made
   every event and audit row name actor, subject and grant — but only where a
   record is written. Measured by following each handler into the store: **85
   REST routes change durable state and write no event, no audit row and no
@@ -1711,9 +1711,25 @@ Still open, tracked here rather than left to a re-audit:
   grant, the concrete operation and its outcome (411.5). The first reading of
   this sweep said otherwise — it read handlers and missed the middleware, the
   same mistake as 411.7's two wrong findings. What is missing is the history of
-  what members do with their own credentials. **Next (411.11):** write that
-  record where attribution is already bound — the per-request scope — so
-  completeness is structural rather than a rule each handler must remember.
+  what members do with their own credentials.
+
+  **Fixed in 411.11**, where attribution is already bound rather than in 85
+  handlers: the per-request scope notes whether anything inside it wrote an
+  attributed record, and a successful REST mutation or MCP tool call that wrote
+  none gets a `mutation` audit row naming the operation, its target ids, and
+  actor, subject and grant. That covers routes added later too — a new handler
+  that forgets to record is recorded anyway. A change that records itself gets
+  no second row; reads get none, except exporting a workspace (now
+  `workspace.export`) and resolving a secret. MCP decides "read" from an
+  explicit `READ_ONLY_TOOLS` list, so a misclassified tool errs toward an extra
+  row, never a missing one. Tests: five in `attribution_e2e` plus two scope
+  unit tests; each of nine conditions was disabled alone and caught.
+
+  **Still open:** the row records *that* a change happened and who made it, not
+  what it changed to. For most of these routes the value is the current state
+  and that is enough. It is not enough for decisions — a review verdict, an
+  approval-gate answer — whose earlier values are overwritten; those want
+  domain records carrying the decision, and belong with 411.10.
 
 - **Found during 411.6: `member:impersonate` was doing two jobs.** It covered an
   orchestrator acting *as* an agent, which delegation replaces, but also an

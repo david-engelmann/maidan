@@ -381,9 +381,38 @@ and `grant_id`.
 
 The displayed author of a message stays the member it was posted for — a message
 an orchestrator posts for an agent is the agent's message. Attribution is what
-records that the orchestrator wrote it. Those
-refusals are recorded in full rather than sampled, because their volume is
-bounded by a grant you issued and can revoke. `GET /me` and MCP `whoami` return
+records that the orchestrator wrote it.
+
+**Every change leaves a record.** Most changes record themselves, as an event or
+a named audit row (`token.mint`, `workspace.purge`). A change that does not —
+setting a delivery address, a thread's owner, a webhook — gets an audit row
+written for it by the request layer, with `action: "mutation"`:
+
+```json
+{
+  "action": "mutation",
+  "actor_id": "…", "subject_id": "…", "grant_id": null,
+  "metadata": {
+    "surface": "rest",
+    "operation": "PUT /threads/{id}/owner",
+    "path": "/threads/3f0c…/owner",
+    "status": 200
+  }
+}
+```
+
+Over MCP, `operation` is `tools/call:<tool>` and `metadata.ids` holds the
+arguments whose names end in `_id` — only those, because other arguments can
+carry secrets. A change is recorded once: a request that wrote its own event or
+audit row gets no `mutation` row. Reads are not recorded, with two exceptions
+that take data out: a workspace export writes `workspace.export`, and resolving
+a secret is recorded like a change. The row says who changed what and when, not
+the new value; the value is the current state.
+
+Delegated requests are additionally recorded whether allowed or refused, as
+`authorization.decision` rows naming the operation and its outcome. Refusals are
+recorded in full rather than sampled, because their volume is bounded by a grant
+you issued and can revoke. `GET /me` and MCP `whoami` return
 `actor_id`, `member_id` (the subject) and `delegation_grant_id`, so a client can
 check what authority it is actually holding.
 

@@ -1,8 +1,8 @@
 //! Bearer authentication middleware and helpers.
 
 use axum::{
-    extract::{Request, State},
-    http::header,
+    extract::{MatchedPath, Request, State},
+    http::{header, Method},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -11,6 +11,8 @@ use maidan_auth::{
     record_delegated_authorization, resolve_bearer, resolve_peer_bearer, AuthContext,
     AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,
 };
+
+use maidan_types::NewAuditEvent;
 
 use crate::error::ApiError;
 use crate::federation::PeerContext;
@@ -55,19 +57,81 @@ pub fn auth_disabled_from_env() -> bool {
 /// it writes records who acted and on whose behalf. Every path out of the auth
 /// middlewares goes through here; a bypassed request carries no principal and
 /// records none.
-async fn run_as(req: Request, next: Next) -> Response {
-    let attribution = req
+///
+/// It also guarantees that a successful change leaves a record. Most changes
+/// record themselves — an event, an audit row — but not all of them do, and a
+/// rule each handler must remember is one the next handler forgets. So if a
+/// mutating request succeeds and nothing inside it wrote an attributed record,
+/// this writes one: the operation, its concrete path, and who acted for whom.
+/// MCP is exempt here because it records per tool call, below.
+async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
+    let Some(auth) = req.extensions().get::<AuthContext>().cloned() else {
+        return next.run(req).await;
+    };
+    let attribution = auth.attribution();
+    let method = req.method().clone();
+    let path = req.uri().path().to_owned();
+    let operation = req
         .extensions()
-        .get::<AuthContext>()
-        .and_then(AuthContext::attribution);
-    maidan_store::attribution::with_attribution(attribution, next.run(req)).await
+        .get::<MatchedPath>()
+        .map(|matched| route_template(matched.as_str()))
+        .unwrap_or_else(|| path.clone());
+    let (response, recorded) =
+        maidan_store::attribution::with_attribution_tracked(attribution, next.run(req)).await;
+    let mutating = matches!(
+        method,
+        Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+    );
+    if attribution.is_some()
+        && mutating
+        && !recorded
+        && response.status().is_success()
+        && !path.starts_with("/mcp")
+    {
+        maidan_store::attribution::with_attribution(
+            attribution,
+            crate::audit::record(
+                state,
+                NewAuditEvent {
+                    actor_id: Some(auth.actor_id),
+                    action: MUTATION_ACTION.into(),
+                    target_kind: Some("workspace".into()),
+                    target_id: Some(auth.workspace_id.0),
+                    metadata: serde_json::json!({
+                        "surface": "rest",
+                        "operation": format!("{method} {operation}"),
+                        "path": path,
+                        "status": response.status().as_u16(),
+                    }),
+                },
+            ),
+        )
+        .await;
+    }
+    response
+}
+
+/// The audit action of a change that did not record itself.
+pub const MUTATION_ACTION: &str = "mutation";
+
+/// `/threads/:id/owner` → `/threads/{id}/owner`, the spelling the capability
+/// map and OpenAPI use, so an operation reads the same in every contract.
+fn route_template(matched: &str) -> String {
+    matched
+        .split('/')
+        .map(|segment| match segment.strip_prefix(':') {
+            Some(name) => format!("{{{name}}}"),
+            None => segment.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
     if state.auth_disabled {
         let auth = auth_disabled_context(&state, req.headers()).await;
         req.extensions_mut().insert(auth);
-        return run_as(req, next).await;
+        return run_as(&state, req, next).await;
     }
 
     let bearer = req
@@ -87,7 +151,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             let method = req.method().clone();
             let path = req.uri().path().to_owned();
             req.extensions_mut().insert(ctx.clone());
-            let response = run_as(req, next).await;
+            let response = run_as(&state, req, next).await;
             if !path.starts_with("/mcp") {
                 let outcome = if matches!(response.status().as_u16(), 401 | 403 | 404) {
                     AuthorizationOutcome::Denied
@@ -109,7 +173,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             Ok(peer) => {
                 let workspace_id = peer.workspace_id;
                 req.extensions_mut().insert(PeerContext(peer));
-                tag_room(run_as(req, next).await, workspace_id)
+                tag_room(run_as(&state, req, next).await, workspace_id)
             }
             Err(_) => {
                 record_authentication_denial(req.uri().path());
@@ -163,14 +227,14 @@ pub async fn session_or_bearer_middleware(
     if state.auth_disabled {
         let auth = auth_disabled_context(&state, req.headers()).await;
         req.extensions_mut().insert(auth);
-        return run_as(req, next).await;
+        return run_as(&state, req, next).await;
     }
 
     if let Some(secret) = bearer_from_headers(req.headers()) {
         if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
             let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(ctx);
-            return tag_room(run_as(req, next).await, workspace_id);
+            return tag_room(run_as(&state, req, next).await, workspace_id);
         }
     }
 
@@ -188,7 +252,7 @@ pub async fn session_or_bearer_middleware(
             let workspace_id = session.workspace_id;
             req.extensions_mut().insert(session);
             req.extensions_mut().insert(ctx);
-            tag_room(run_as(req, next).await, workspace_id)
+            tag_room(run_as(&state, req, next).await, workspace_id)
         }
         Err(err) => {
             record_authentication_denial(req.uri().path());
@@ -206,14 +270,14 @@ pub async fn ui_session_or_bearer_middleware(
     if state.auth_disabled {
         let auth = auth_disabled_context(&state, req.headers()).await;
         req.extensions_mut().insert(auth);
-        return run_as(req, next).await;
+        return run_as(&state, req, next).await;
     }
 
     if let Some(secret) = bearer_from_headers(req.headers()) {
         if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
             let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(ctx);
-            return tag_room(run_as(req, next).await, workspace_id);
+            return tag_room(run_as(&state, req, next).await, workspace_id);
         }
     }
 
@@ -233,7 +297,7 @@ pub async fn ui_session_or_bearer_middleware(
             let workspace_id = session.workspace_id;
             req.extensions_mut().insert(session);
             req.extensions_mut().insert(ctx);
-            tag_room(run_as(req, next).await, workspace_id)
+            tag_room(run_as(&state, req, next).await, workspace_id)
         }
         Err(err) => {
             record_authentication_denial(req.uri().path());
