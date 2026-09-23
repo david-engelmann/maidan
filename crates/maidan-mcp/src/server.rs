@@ -6148,6 +6148,46 @@ mod tests {
         server
             .call_tool(
                 &auth,
+                "add_reaction",
+                &json!({ "message_id": msg.id.0, "member_id": alice.id.0, "emoji": "ship" }),
+            )
+            .await
+            .unwrap();
+        server
+            .call_tool(
+                &auth,
+                "remove_reaction",
+                &json!({ "message_id": msg.id.0, "member_id": alice.id.0, "emoji": "ship" }),
+            )
+            .await
+            .unwrap();
+        server
+            .call_tool(
+                &auth,
+                "pin_message",
+                &json!({
+                    "thread_id": thread.id.0,
+                    "message_id": msg.id.0,
+                    "member_id": alice.id.0
+                }),
+            )
+            .await
+            .unwrap();
+        server
+            .call_tool(
+                &auth,
+                "unpin_message",
+                &json!({
+                    "thread_id": thread.id.0,
+                    "message_id": msg.id.0,
+                    "member_id": alice.id.0
+                }),
+            )
+            .await
+            .unwrap();
+        server
+            .call_tool(
+                &auth,
                 "add_reference",
                 &json!({
                     "src_kind": "message", "src_id": msg.id.0,
@@ -6165,14 +6205,20 @@ mod tests {
             .await
             .unwrap();
 
-        // Workspace-scoped (ReferenceAdded isn't thread-scoped, so a thread query
-        // would miss it) — captures every event these tools appended.
-        let events = store.list_events_after(ws.id, 0, 1000).await.unwrap();
+        // ReferenceAdded is deliberately global, so use the global log to
+        // prove the complete social/reference event surface in one pass.
+        let events = store.list_events_after_global(0, 1000).await.unwrap();
         let kinds: Vec<EventKind> = events.iter().map(|e| e.kind).collect();
-        // The social tools now append their domain events (were event-less). (VoteCast
-        // is the representative message-scoped `*_with_event`; add_reference uses the
-        // same path but ReferenceAdded isn't workspace-hoisted, so it's not asserted here.)
-        assert!(kinds.contains(&EventKind::VoteCast), "VoteCast: {kinds:?}");
+        for expected in [
+            EventKind::VoteCast,
+            EventKind::ReactionAdded,
+            EventKind::ReactionRemoved,
+            EventKind::MessagePinned,
+            EventKind::MessageUnpinned,
+            EventKind::ReferenceAdded,
+        ] {
+            assert!(kinds.contains(&expected), "{expected:?}: {kinds:?}");
+        }
         // …and an MCP post with an @mention now publishes MentionRecorded for the mentioned member.
         assert!(
             kinds.contains(&EventKind::MentionRecorded),
@@ -6746,6 +6792,16 @@ mod tests {
                 .unwrap(),
         );
         let sha = up["sha256"].as_str().unwrap().to_string();
+        // ArtifactUpserted is deliberately global (the blob is deduplicated;
+        // workspace access lives in the separate ref), so inspect the global
+        // log rather than the workspace-filtered stream.
+        let events = store.list_events_after_global(0, 100).await.unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event.kind == EventKind::ArtifactUpserted),
+            "MCP upload_artifact must append ArtifactUpserted"
+        );
 
         // A can read its own artifact metadata; B cannot (NotFound — no oracle).
         assert!(server

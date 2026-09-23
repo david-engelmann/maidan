@@ -16,6 +16,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   a browser run or a copied route manifest. The first run exposed four live
   group-DM operations omitted from both OpenAPI and the HTTP capability map;
   those operations and their denial-matrix fixtures are now covered.
+- **407.2** classifies every `EventKind` as REST-only, MCP-only, both, or
+  internal-only in a machine-readable matrix whose cited tests are checked by
+  CI. The audit found MCP artifact uploads bypassing the atomic artifact-ref +
+  event operation; single-shot and multipart MCP uploads now append and
+  publish `ArtifactUpserted` exactly like REST.
 
 ## [406.0.0] — 2026-09-22
 

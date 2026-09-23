@@ -259,7 +259,7 @@ are dropped. The census excludes inaccessible private channels in the
 query (`private_channel_deny_set`) and keeps workspace-level events
 that have no `channel_id`.
 
-**Forward-compat:** [contracts/event-kinds.json](../contracts/event-kinds.json) lists kinds emitted today; ignore unknown `kind` strings on the wire.
+**Forward-compat:** [contracts/event-kinds.json](../contracts/event-kinds.json) lists kinds emitted today; ignore unknown `kind` strings on the wire. Maintainers keep the producer surfaces and executable evidence exhaustive in [contracts/event-surface-disposition.json](../contracts/event-surface-disposition.json); `rest_only`, `mcp_only`, and `internal_only` are intentional classifications, not an implication that every event needs two public writers.
 
 ---
 

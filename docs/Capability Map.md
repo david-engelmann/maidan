@@ -8,8 +8,9 @@ Canonical machine-readable maps:
 - MCP tools: [`contracts/mcp-capability-map.json`](../contracts/mcp-capability-map.json) (keys ⊆ [`contracts/mcp-tool-names.json`](../contracts/mcp-tool-names.json))
 - HTTP full map: [`contracts/http-capability-map.json`](../contracts/http-capability-map.json) (every OpenAPI bearer operation + transport appendix)
 - HTTP denial samples: [`contracts/http-capability-routes.json`](../contracts/http-capability-routes.json) (table-driven e2e)
+- Event production: [`contracts/event-surface-disposition.json`](../contracts/event-surface-disposition.json) (every `EventKind`: REST-only, MCP-only, both, or internal-only, with executable evidence)
 
-CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, table-driven HTTP denial via `http_capability_matrix_e2e`, and `scripts/check-agent-contract.sh`.
+CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, table-driven HTTP denial via `http_capability_matrix_e2e`, exhaustive event-surface classification via `event_surface_disposition_contract`, and `scripts/check-agent-contract.sh`.
 
 ## HTTP (member bearer)
 
