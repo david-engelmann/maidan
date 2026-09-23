@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use maidan_bus::{BusItem, EventStream};
 use maidan_types::{EventFilter, EventKind};
-use reqwest::Client;
 use tokio::sync::{mpsc, watch};
 use tokio_stream::StreamExt;
 use tracing::{info, warn};
@@ -220,14 +219,13 @@ async fn enqueue_matches(
 }
 
 async fn run_delivery_poller(state: AppState, mut shutdown: watch::Receiver<()>) {
-    let client = Client::new();
     let max_attempts = max_attempts_from_env();
     let interval = Duration::from_millis(poll_interval_ms_from_env());
     loop {
         tokio::select! {
             _ = shutdown.changed() => break,
             _ = tokio::time::sleep(interval) => {
-                if let Err(err) = poll_deliveries(&state, &client, max_attempts).await {
+                if let Err(err) = poll_deliveries(&state, max_attempts).await {
                     warn!(error = %err, "webhook delivery poll failed");
                 }
             }
@@ -235,11 +233,7 @@ async fn run_delivery_poller(state: AppState, mut shutdown: watch::Receiver<()>)
     }
 }
 
-async fn poll_deliveries(
-    state: &AppState,
-    client: &Client,
-    max_attempts: u32,
-) -> Result<(), String> {
+async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), String> {
     let pending = state
         .store
         .list_pending_webhook_deliveries(DELIVERY_BATCH)
@@ -276,7 +270,6 @@ async fn poll_deliveries(
         .await;
         let room_lsn = crate::room_lsn::current(state.store.as_ref()).await;
         match deliver_http(
-            client,
             &sub.subscription.url,
             delivery.id,
             kind,

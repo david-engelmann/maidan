@@ -19,7 +19,6 @@ use maidan_types::{
     ChannelId, MemberId, MessageId, NewSlashCommand, SlashCommand, SlashCommandId,
     SlashCommandWithSecret, SlashHandlerKind, ThreadId, WorkspaceId,
 };
-use reqwest::Client;
 use serde::Serialize;
 use serde_json::{json, Value};
 use utoipa::ToSchema;
@@ -98,16 +97,9 @@ fn validate_command_name(name: &str) -> ApiResult<String> {
 }
 
 fn validate_http_target(url: &str) -> ApiResult<()> {
-    let trimmed = url.trim();
-    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
-        return Err(ApiError::BadRequest(
-            "handler_target url must use http or https".into(),
-        ));
-    }
-    if trimmed.len() > 2048 || trimmed.as_bytes().contains(&b' ') {
-        return Err(ApiError::BadRequest("invalid handler url".into()));
-    }
-    Ok(())
+    maidan_auth::validate_egress_target(url)
+        .map(|_| ())
+        .map_err(|error| ApiError::BadRequest(error.to_string()))
 }
 
 fn validate_mcp_target(tool: &str) -> ApiResult<()> {
@@ -349,9 +341,13 @@ async fn dispatch_http(
         Err(err) => return json!({ "ok": false, "error": err.to_string() }),
     };
     let signature = sign_payload(&secret, &body);
-    let client = Client::new();
+    let (client, target) =
+        match crate::egress_http::client_for(&registration.command.handler_target).await {
+            Ok(target) => target,
+            Err(err) => return json!({ "ok": false, "error": err }),
+        };
     let response = match client
-        .post(&registration.command.handler_target)
+        .post(target)
         .header("Content-Type", "application/json")
         .header("X-Maidan-Signature", signature)
         .header("X-Maidan-Command", &parsed.name)

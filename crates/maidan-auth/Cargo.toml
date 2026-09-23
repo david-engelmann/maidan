@@ -20,7 +20,9 @@ serde_json.workspace = true
 sha2.workspace = true
 subtle = "2"
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
+url = "2"
 uuid.workspace = true
 
 [dev-dependencies]

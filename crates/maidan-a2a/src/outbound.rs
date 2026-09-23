@@ -23,6 +23,10 @@ impl Outbound {
         }
     }
 
+    pub fn with_client(client: Client) -> Self {
+        Self { client }
+    }
+
     /// Poll the remote peer's event log after `after_id` (exclusive).
     pub async fn list_events(
         &self,

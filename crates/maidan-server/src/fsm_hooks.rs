@@ -89,16 +89,9 @@ fn parse_opt_state(s: Option<&str>) -> ApiResult<Option<ThreadState>> {
 }
 
 fn validate_http_target(url: &str) -> ApiResult<()> {
-    let trimmed = url.trim();
-    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
-        return Err(ApiError::BadRequest(
-            "handler_target url must use http or https".into(),
-        ));
-    }
-    if trimmed.len() > 2048 || trimmed.as_bytes().contains(&b' ') {
-        return Err(ApiError::BadRequest("invalid handler url".into()));
-    }
-    Ok(())
+    maidan_auth::validate_egress_target(url)
+        .map(|_| ())
+        .map_err(|error| ApiError::BadRequest(error.to_string()))
 }
 
 fn validate_mcp_target(tool: &str) -> ApiResult<()> {

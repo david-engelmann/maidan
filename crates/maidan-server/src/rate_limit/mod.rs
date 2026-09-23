@@ -2,11 +2,14 @@
 
 mod limiter;
 
-use std::time::Duration;
+use std::{
+    net::{IpAddr, SocketAddr},
+    time::Duration,
+};
 
 use axum::{
     body::Body,
-    extract::State,
+    extract::{ConnectInfo, State},
     http::{header, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -99,6 +102,30 @@ fn workspace_id_from_path(path: &str) -> Option<&str> {
     (!seg.is_empty()).then_some(seg)
 }
 
+fn trusted_proxy_hops() -> usize {
+    std::env::var("MAIDAN_TRUSTED_PROXY_HOPS")
+        .ok()
+        .and_then(|raw| raw.parse().ok())
+        .unwrap_or(0)
+}
+
+fn forwarded_client_ip(header: &str, peer: IpAddr, trusted_hops: usize) -> Option<IpAddr> {
+    if trusted_hops == 0 {
+        return Some(peer);
+    }
+    let mut chain = header
+        .split(',')
+        .map(str::trim)
+        .map(str::parse::<IpAddr>)
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    chain.push(peer);
+    chain
+        .len()
+        .checked_sub(trusted_hops + 1)
+        .and_then(|index| chain.get(index).copied())
+}
+
 fn client_key(req: &Request<Body>) -> String {
     if let Some(h) = req.headers().get(header::AUTHORIZATION) {
         if let Ok(s) = h.to_str() {
@@ -111,12 +138,18 @@ fn client_key(req: &Request<Body>) -> String {
             }
         }
     }
-    if let Some(h) = req.headers().get("x-forwarded-for") {
-        if let Ok(s) = h.to_str() {
-            if let Some(ip) = s.split(',').next() {
-                return format!("ip:{}", ip.trim());
-            }
-        }
+    let peer = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(addr)| addr.ip());
+    if let Some(peer) = peer {
+        let ip = req
+            .headers()
+            .get("x-forwarded-for")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| forwarded_client_ip(value, peer, trusted_proxy_hops()))
+            .unwrap_or(peer);
+        return format!("ip:{ip}");
     }
     "anonymous".into()
 }
@@ -228,6 +261,30 @@ mod tests {
         assert!(exempt_path("/health/ready"));
         assert!(exempt_path("/metrics"));
         assert!(!exempt_path("/workspaces/abc/search"));
+    }
+
+    #[test]
+    fn forwarded_for_is_ignored_until_proxy_hops_are_declared() {
+        let peer: IpAddr = "203.0.113.9".parse().expect("peer");
+        assert_eq!(
+            forwarded_client_ip("198.51.100.4, 203.0.113.8", peer, 0),
+            Some(peer)
+        );
+        assert_eq!(
+            forwarded_client_ip("198.51.100.4, 203.0.113.8", peer, 1),
+            Some("203.0.113.8".parse().expect("proxy"))
+        );
+        assert_eq!(
+            forwarded_client_ip("198.51.100.4, 203.0.113.8", peer, 2),
+            Some("198.51.100.4".parse().expect("client"))
+        );
+    }
+
+    #[test]
+    fn malformed_or_short_forwarded_chain_falls_back_to_peer() {
+        let peer: IpAddr = "203.0.113.9".parse().expect("peer");
+        assert_eq!(forwarded_client_ip("garbage", peer, 1), None);
+        assert_eq!(forwarded_client_ip("198.51.100.4", peer, 2), None);
     }
 
     #[test]

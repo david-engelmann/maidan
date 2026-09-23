@@ -44,13 +44,13 @@ spec:
               mountPath: /data
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: http
             initialDelaySeconds: 3
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /health/live
               port: http
             initialDelaySeconds: 15
             periodSeconds: 15

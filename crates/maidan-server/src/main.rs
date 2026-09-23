@@ -820,10 +820,13 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let serve_result = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await
-        .context("axum serve");
+    let serve_result = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await
+    .context("axum serve");
 
     indexer.shutdown().await;
     webhook_worker.shutdown().await;

@@ -36,17 +36,12 @@ pub fn parse_allowlist(raw: &str) -> Vec<String> {
         .collect()
 }
 
-/// The host of a URL — everything after `://`, before the first `/?#`, minus any
-/// `userinfo@` and `:port`. Pure; avoids a URL-parser dependency.
-pub fn host_of(url: &str) -> Option<&str> {
-    let after_scheme = url.split("://").nth(1)?;
-    let authority = after_scheme
-        .split(['/', '?', '#'])
-        .next()
-        .filter(|s| !s.is_empty())?;
-    let host = authority.rsplit('@').next()?; // drop any userinfo@
-    let host = host.split(':').next()?; // drop any :port
-    (!host.is_empty()).then_some(host)
+/// The canonical parsed host for an already-valid public egress URL.
+pub fn host_of(url: &str) -> Option<String> {
+    maidan_auth::parse_egress_target(url)
+        .ok()?
+        .host_str()
+        .map(ToOwned::to_owned)
 }
 
 /// Whether `url`'s host is on `allowlist` (case-insensitive exact match). Pure.
@@ -138,13 +133,13 @@ mod tests {
     fn extracts_host_from_urls() {
         assert_eq!(
             host_of("https://api.example.com/hook?x=1"),
-            Some("api.example.com")
+            Some("api.example.com".to_string())
         );
+        assert_eq!(host_of("http://user:pw@host.internal:8443/x"), None);
         assert_eq!(
-            host_of("http://user:pw@host.internal:8443/x"),
-            Some("host.internal")
+            host_of("https://plain.host"),
+            Some("plain.host".to_string())
         );
-        assert_eq!(host_of("https://plain.host"), Some("plain.host"));
         assert_eq!(host_of("not a url"), None);
     }
 

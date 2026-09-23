@@ -135,11 +135,18 @@ async fn persist_task(state: &AppState, workspace_id: WorkspaceId, task: &Task) 
 /// agent notification is visible instead of silent.
 async fn deliver_a2a_push(url: &str, value: &serde_json::Value, task_id: &str) {
     const MAX_ATTEMPTS: u32 = 3;
-    let client = reqwest::Client::new();
+    let (client, target) = match crate::egress_http::client_for(url).await {
+        Ok(target) => target,
+        Err(err) => {
+            metrics::counter!("maidan_a2a_push_total", "result" => "failed").increment(1);
+            tracing::error!(task_id, error = %err, "a2a push target refused");
+            return;
+        }
+    };
     let mut backoff = Duration::from_millis(200);
     for attempt in 1..=MAX_ATTEMPTS {
         match client
-            .post(url)
+            .post(target.clone())
             .header("Content-Type", "application/json")
             .json(value)
             .timeout(Duration::from_secs(10))
@@ -701,6 +708,8 @@ async fn dispatch_create_push_config(
     if req.url.trim().is_empty() {
         return Err(JsonRpcResponse::error(id, ERR_PARAMS, "url is required"));
     }
+    maidan_auth::validate_egress_target(&req.url)
+        .map_err(|error| JsonRpcResponse::error(id.clone(), ERR_PARAMS, error.to_string()))?;
     let task = load_task(state, &req.task_id)
         .await
         .map_err(|_| JsonRpcResponse::error(id.clone(), ERR_PARAMS, "task not found"))?;
@@ -1326,6 +1335,7 @@ mod tests {
 
     #[tokio::test]
     async fn a2a_push_retries_then_succeeds() {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
         // Fails twice, succeeds on the third attempt.
         let (url, hits) = push_server(2).await;
         deliver_a2a_push(&url, &serde_json::json!({"task": "t1"}), "t1").await;
@@ -1334,6 +1344,7 @@ mod tests {
 
     #[tokio::test]
     async fn a2a_push_gives_up_after_max_attempts() {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
         // Always fails — bounded at MAX_ATTEMPTS (3), then gives up (no hang/loop).
         let (url, hits) = push_server(u32::MAX).await;
         deliver_a2a_push(&url, &serde_json::json!({"task": "t2"}), "t2").await;
