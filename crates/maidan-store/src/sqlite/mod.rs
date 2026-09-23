@@ -13,6 +13,7 @@ mod blocks;
 mod budget;
 mod channel_members;
 mod channels;
+mod delegation_grants;
 pub mod delivery_cursor;
 mod dlq;
 mod dm;
@@ -2473,6 +2474,38 @@ impl ShareTicketStore for SqliteStore {
         now: DateTime<Utc>,
     ) -> Result<bool, StoreError> {
         share_tickets::allows_artifact(&self.pool, id, sha256, now).await
+    }
+}
+
+#[async_trait]
+impl DelegationGrantStore for SqliteStore {
+    async fn create_delegation_grant(
+        &self,
+        new: NewDelegationGrant,
+    ) -> Result<DelegationGrant, StoreError> {
+        delegation_grants::create(&self.pool, new).await
+    }
+
+    async fn get_delegation_grant(
+        &self,
+        id: DelegationGrantId,
+    ) -> Result<DelegationGrant, StoreError> {
+        delegation_grants::get(&self.pool, id).await
+    }
+
+    async fn list_delegation_grants(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<DelegationGrant>, StoreError> {
+        delegation_grants::list(&self.pool, workspace_id).await
+    }
+
+    async fn revoke_delegation_grant(
+        &self,
+        workspace_id: WorkspaceId,
+        id: DelegationGrantId,
+    ) -> Result<bool, StoreError> {
+        delegation_grants::revoke(&self.pool, workspace_id, id).await
     }
 }
 

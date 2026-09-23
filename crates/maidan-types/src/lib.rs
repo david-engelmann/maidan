@@ -5,6 +5,7 @@
 //! for shared schema; nothing here depends on other Maidan crates.
 
 pub mod cursor;
+pub mod delegation;
 pub mod egress;
 pub mod erase;
 pub mod event_chain;
@@ -39,6 +40,7 @@ pub mod wasi;
 pub mod workspace_import;
 
 pub use cursor::*;
+pub use delegation::*;
 pub use egress::*;
 pub use erase::*;
 pub use event_chain::*;
