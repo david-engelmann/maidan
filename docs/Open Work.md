@@ -1277,10 +1277,15 @@ No action: F-22/23/29 (reframed or resolved).
   touched `maidan-store` and were each green only against their own base; a
   semantic conflict between them would have been invisible.
 
-**D-5 is resolved in #964 (Cluster 408.1).** Personal member state is self-scoped
-for session and bearer callers on REST and MCP. Cross-member action requires the
-explicit, workspace-bound, audited `member:impersonate` capability; work
-attribution remains an orchestrator operation.
+**D-5 is partly resolved in #964 (Cluster 408.1), and its remedy is superseded.**
+Personal member state is self-scoped for session and bearer callers on REST and
+MCP. Two corrections to how that was recorded at the 408 close: the
+`member:impersonate` use is logged with `tracing::info!`, **not** a durable
+`audit::record` row, so "audited" overstates it; and four member surfaces were
+missed (share-ticket `owner_id`, member skills, `transition_limit`, the MCP
+search limit). "Work attribution remains an orchestrator operation" was true
+when written and is now **rejected** — see "Audit feedback round 2" below.
+`member:impersonate` is retired in Cluster 411 before anything depends on it.
 
 *(D-4, the budget PUT shape, was delegated and is resolved in Cluster 403.)*
 
@@ -1328,12 +1333,12 @@ deltas all point the same way: the ops-debt numbers grew in a single day.
 |---|---|
 | F-09 (subscribe-filter schema) **OPEN** | **Closed** by #937 — the schema names `event:subscribe` and the `$id` dropped its `-v3` suffix |
 | F-37/F-40 (lease demo lifecycle) **OPEN** | **Closed** by #939 — both workers now acknowledge, report usage, renew and release, with assertions |
-| F-52: 77 env vars, `config.rs` owns 9 | **111** env vars, `config.rs` owns **22** |
-| F-48: ~30.5k twin lines, 81 files | **31,464** lines, **82** files |
-| F-54: 283 routes | **289** routes, still zero `/v*` |
+| F-52: 77 env vars, `config.rs` owns 9 | **Corrected 2026-09-22.** My 111 was a raw `MAIDAN_` token count; the corpus's 77 was unique names. Like-for-like by the reproducible method `env::var("MAIDAN_…")` reads in `crates/**/*.rs` — stating it because the undefined method *was* the bug — `f5f50adf`→`8189f8ad`: unique **77→79**, occurrences **93→96** (new: `MAIDAN_DB_ACQUIRE_TIMEOUT_SECS`, `MAIDAN_ALLOW_PRIVATE_EGRESS`). `config.rs` owns **11** reads / 9–10 unique — the corpus's 9 was right, my 22 was irreproducible. The growth is real but modest; "in a single day" was not a valid framing |
+| F-48: ~30.5k twin lines, 81 files | **31,464** lines across **166** twin files (83 sqlite + 83 postgres). Re-derived twice; stands |
+| F-54: 283 routes | **290** routes (`.route(` in `app.rs`) at both `f5f50adf` and `8189f8ad`, still zero `/v*`. **291** at HEAD — #973–#978 added one; the table is pinned to the re-derivation commit, not live |
 | F-53: `mcp/server.rs` 7,007 lines | **7,076** lines |
-| Jev: "waitlisted, re-check status" | **Generally available since 2026-09-20** — no waitlist, `POST https://api.typesafe.ai/v1/systemone`, $0.042/M input, output free, $5 starting credit. The spike is unblocked today |
-| D-5 framed as cross-*member* mutation | Also cross-**workspace**: the 11 member mutation tools take `(store, args)` with no `auth`, and the pre-dispatch gate only matches `channel_id`/`thread_id`/`message_id` arms — so a `member_id` arg reaches the store with no workspace check either. Same class as the Cluster-204 artifact hole, one severity band above how it is filed |
+| Jev: "waitlisted, re-check status" | **My GA claim was wrong — retracted 2026-09-22.** TypeSafe left stealth 2026-09-15 into *early access behind a waitlist*; no source confirms a Sept-20 GA (the Sept-18 OpenRouter listing is third-party availability, not GA). Verified: **$0.042/M input, output free**. The `POST /v1/systemone` endpoint is single-source and unconfirmed. The corpus's waitlist-first posture stands |
+| D-5 framed as cross-*member* mutation | Escalation stands (cross-**workspace** too; proven by #964's e2e). **But the remedy is superseded** — see "Delegated authority" below. `member:impersonate` is retired before it was ever used |
 
 ### Dispositions
 
@@ -1384,6 +1389,209 @@ Executed as Cluster 408 under umbrella #971:
 4. **D — docs rendering + the branding ship-list.** Shipped in #975.
 5. **E — the J-01 spike.** Shipped flag-off in #976; live calibration remains
    an operator-run measurement, not a graduation assumption.
+
+## Audit feedback round 2 — delegated authority (2026-09-22)
+
+The audit author reviewed this digest and #964 against fresh `main` and filed
+11 corrections plus a **decided directive**. Every code claim was re-verified
+here before acting; all confirmed. Four corrections are applied to the table
+above. The rest are below.
+
+### The directive: ordinary tokens never act as another member
+
+David decided this 2026-09-22, with fresh-eyes research across RFC 8693, GCP
+impersonation, AWS AssumeRole, GitHub Apps and K8s impersonation. **#964's
+work-attribution carve-out is rejected.**
+
+#964 self-scoped *personal* state and deliberately left *work attribution*
+ambient — a plain `message:post` token could still post, claim and react **as
+any member**. I argued that was the orchestrator model. It contradicts the
+corpus directive's explicit sentence ("never bundled into ordinary read/write
+tokens"), and I asserted it as design without flagging the contradiction. That
+was the error: the carve-out may have been defensible, but shipping it silently
+against a written directive was not.
+
+The replacement is **grant-backed delegation**, not a wider capability:
+
+- Ordinary bearer tokens always self-scope. Caller-chosen identity fields
+  (`author_id`, `editor_id`, claim owner, reaction voter, share-ticket
+  `owner_id`, DM creator) are **removed from the wire** — identity comes from
+  `auth.member_id` and nowhere else. This is what actually kills ambient
+  act-as-any: no code path is left where a token names a foreign identity.
+- A durable `maidan_delegation_grants` row is the consent object: subject,
+  delegate, capability subset, expiry, authorizer, required free-text purpose.
+- `POST /tokens/delegate` (+ MCP twin) exchanges a grant for a short-lived
+  token — **15 min default, 1 h hard max** — scoped to
+  `grant ∩ delegate's caps ∩ subject's caps` (intersection, never union).
+  Revoking a grant cascades to its minted tokens, reusing the existing
+  attenuation-subtree cascade.
+- Every delegated action writes a **durable dual-identity audit row** (actor +
+  subject + `grant_id`) via `audit::record` — including denied attempts.
+- **`member:impersonate` is retired outright.** Nothing consumes this repo, so
+  it goes rather than being deprecated. Cross-member action gets exactly one
+  path.
+
+Decided sub-questions: admin-only grants first (subject-consent UI later);
+15 min / 1 h lifetimes; capability-level scoping first.
+
+### Confirmed D-5 gaps #964 missed
+
+| Gap | Verified at | Severity |
+|---|---|---|
+| Share-ticket `owner_id` is caller-chosen and unbound | `routes/share_ticket.rs:35`, `mcp/tools/share.rs:35` | `token:admin`-gated, so operator-only — mitigated, not absolved |
+| Member skills are not self-scoped on either surface | `routes/skills.rs`, `mcp/tools/skill.rs:43` | **Live hole** — a plain `workspace:write` token mutates any member's skill list |
+| `transition_limit` unclamped client→SQL | `routes/thread.rs:129,173`, `routes/workspace.rs:556` | Only guard is `> 0`, else default 50 |
+| MCP `search_messages` limit unclamped | `mcp/tools/search.rs:78,90,109` | The HTTP twin was clamped in #964; the MCP twin was not |
+
+**Why my own drift test did not catch the skills gap, and this is the lesson:**
+`every_member_tool_is_self_scoped` enumerates dispatch arms matching
+`"name" => member::`. Skills dispatch through `skill::`, so they were invisible
+to it. The test could only ever find drift inside the module I happened to be
+editing. Same shape as the `limit` sweep — I clamped `routes/` and never looked
+at the MCP twin. **Both misses are one failure: I enumerated the surface I was
+working on, not the property I was enforcing.** The fix is to key the test on
+the *argument* (`member_id` in any dispatch arm), not the module.
+
+### Re-verified statuses
+
+- **F-47 is closed**, by #973 — `maidan-auth/src/egress.rs` ships
+  `parse/validate/resolve_egress_target` (non-public IP blocklist, DNS
+  validation, address pinning, no redirects), wired into webhooks, slash
+  commands, federation, automation and a2a. Verify-don't-schedule. **Residual:**
+  `web_push.rs:234` and `a2a/outbound.rs:22` still build a bare
+  `reqwest::Client::new()` — confirm whether those URLs are operator-supplied
+  before calling F-47 fully closed.
+- **Cluster 408 landed** (#964, #973, #974, #975, #976). The A–E sequencing
+  below is history, not plan.
+
+### UI-UX P1 items 5, 6, 8 — dispositions I owed and skipped
+
+| Item | Disposition | Reasoning |
+|---|---|---|
+| 5 — landing / first-run state | **adapt** | #975 shipped the locked brand; a first-run empty state is the natural completion, but it is a design task, not a bug. Size it in a UI cluster |
+| 6 — consolidate 16 tabs | **adopt** | Sixteen top-level tabs is a real navigation failure, and it worsens with every feature cluster. Needs an information-architecture pass before more surface is added, not after |
+| 7 — header treatment | **covered** | Branding §6's UI-header line ships it; no separate row needed |
+| 8 — thread detail view | **adopt** | The thread is the product's primary object and currently has no dedicated view. Highest user-visible value of the three |
+
+### Cluster 411 — delegated authority
+
+Numbered 411: Cluster 410 is taken (#984, PayerStamp ledger + authorization
+audit lane). Ordered so the live hole closes first and the structural fix
+lands behind it.
+
+**Depends on 410, and should not duplicate it.** 410 builds a content-free
+authorization-record lane carrying principal, action, outcome and resource,
+and deliberately keeps *denials* out of the durable `maidan_audit` table to
+preserve Cluster 182's write-amplification decision. Delegation needs exactly
+that shape plus a subject and a `grant_id`. So 411.5 extends 410's lane with
+the second identity rather than adding a parallel audit path — and the
+"denied attempts are written too" requirement in the delegation design must be
+reconciled with 410's bounded-observability decision, not assumed over it.
+**If those conflict, 410's decision wins and 411 records why.**
+
+| Slice | Result |
+|---|---|
+| 411.1 | Close the confirmed D-5 gaps: self-scope member skills, bind share-ticket `owner_id`, clamp `transition_limit` + MCP search limit, and **re-key the drift test to the `member_id` argument across all dispatch arms** |
+| 411.2 | `maidan_delegation_grants` store foundation — table, models, both backends, no routes (the 159/217/226/234 zero-blast-radius pattern) |
+| 411.3 | `POST /tokens/delegate` + MCP `delegate_token`; short-lived minting, intersection scoping, cascade revoke |
+| 411.4 | **The breaking change** — strip caller-chosen identity fields from HTTP + MCP request schemas; identity from `auth.member_id` only |
+| 411.5 | Dual-identity durable audit rows, including denied attempts; grant CRUD + list + revoke |
+| 411.6 | Retire `member:impersonate` from the vocabulary, plus a contract test asserting it no longer exists in any capability set |
+| 411.close | Ledgers and retrospective |
+
+411.6 deliberately ships **last**: the capability must not be removed until
+411.3 provides the path that replaces it, or orchestration has no route at all
+in between.
+
+### F-48 — the right answer, measured (2026-09-23)
+
+Deferred while the schema still moves, but the target architecture is decided
+here so the deferral has an end state rather than being an indefinite shrug.
+
+**F-48 is three problems, not one.** Measured at `61904069` across all 82 twin pairs
+(31,391 lines) by normalising placeholder syntax and pool type, then scoring
+similarity:
+
+| Band | Pairs | Lines | Verdict |
+|---|---|---|---|
+| >98% mechanically identical | 6 | 1,137 (4%) | merge |
+| 90–98% near-identical | 36 | 10,104 (32%) | merge behind a dialect layer |
+| 70–90% partly different | 35 | 11,890 (38%) | case by case |
+| <70% least similar | 5 | 8,260 (26%) | **split** — see below; 6,079 of these are `mod.rs`, which scores low for a different reason than the rest |
+
+**Tier 1 — the delegation layer. The largest and cleanest win.**
+`{postgres,sqlite}/mod.rs` are **6,079 lines combined** (3,181 Postgres + 2,898
+SQLite): 429 `Store` trait methods whose signatures are byte-identical across
+backends and whose bodies are a one-line delegation to the module fn. The only
+difference is the pool accessor (`self.read_pool()` vs `&self.pool`). A
+declarative `store_impl!` macro taking the method→module mapping replaces those
+~6,079 lines with ~429 invocation lines.
+
+**`mod.rs` scores 0.50 similarity, which lands it in the least-similar band —
+and that is the measurement misleading us, not a finding.** It scores low
+because 429 one-line bodies each differ by a pool accessor, and at that scale
+the diff noise swamps the ratio. Structurally the two files are the same file.
+Similarity is a good proxy for mergeability on small focused modules and a bad
+one on large repetitive ones, so the band table needs this exception stated
+rather than applied mechanically.
+No behaviour change, no dialect reasoning, and it removes the file most likely
+to drift silently — a method wired on one backend and forgotten on the other.
+**Do this one first; it is worth more than the other two combined.**
+
+**Tier 2 — a dialect layer for the near-identical band.** The 90–98% pairs
+differ in exactly two ways: `$n` vs `?` placeholders, and timestamp origin
+(Postgres defaults `created_at` server-side; SQLite binds
+`Utc::now().to_rfc3339()`). A thin `Dialect` trait — placeholder rewriting at
+query-build time plus an explicit `now()` policy — lets one implementation per
+module be generic over `sqlx::Executor`. Note the SQLite datetime trap already
+documented in Cluster 254: `datetime('now')` format versus bound RFC-3339 is a
+*correctness* issue, not cosmetics, so the `now()` policy has to be part of the
+abstraction rather than left to each call site.
+
+**Tier 3 — reject, and say so permanently.** Setting `mod.rs` aside (Tier 1),
+the genuinely different pairs are `outbox` 0.39 (540 lines), `mail_outbox` 0.63
+(386), `messages` 0.68 (860) and `egress_outbox` 0.69 (395) — **2,181 lines, not
+8,260**. These are not duplication. They are *different algorithms
+satisfying the same contract*: Postgres claims rows with
+`FOR UPDATE SKIP LOCKED`, SQLite relies on its serialized-writer guarantee with
+a compare-and-set; Postgres stores JSONB natively, SQLite serialises to TEXT and
+parses back, which is why `row_to_*` is fallible on one backend and infallible
+on the other. Unifying these produces a lowest-common-denominator abstraction
+that is worse than the duplication and hides the concurrency model. **These
+2,181 lines should never be merged.**
+
+So F-48's headline is misleading in both directions. The corpus's 31,464 counts
+all 166 files; only **82 form twin pairs** (31,391 lines) — `postgres/replication.rs`
+and `sqlite/pragmas.rs` are legitimately backend-specific and have no twin. Of
+those 31,391, about **29,210 lines are addressable** once the 2,181 genuinely
+divergent lines are excluded — higher than a first read of the bands suggests,
+because the single largest file in the "different" band is the best merge
+candidate in the codebase.
+
+**The parity gap this measurement exposed.** `backend_parity.rs` asserts each
+module *exists* for both backends. It does not compare their contents, so the
+twins have already drifted in documentation — `sqlite/follows.rs` carries doc
+comments its Postgres twin lacks. Tier 1's macro closes the structural half of
+this by construction. The behavioural half wants a test that normalises a twin
+pair and fails when similarity drops below its recorded band, so an
+intentional divergence has to be declared rather than discovered later.
+
+**Sequencing.** Tier 1 is independent of schema churn and could be taken any
+time. Tiers 2 and 3 wait for schema stability near 1.0 — a dialect abstraction
+built while migrations land every cluster will be rebuilt.
+
+### Still David's call
+
+- ~~**F-54 / API versioning.**~~ **Decided 2026-09-23: no `/v1`, and no
+  compatibility promise before 1.0.** `CLAUDE.md`'s "no backwards-compatibility
+  shims pre-1.0" *is* the promise. Versioning a surface we are deliberately
+  still breaking — Cluster 411 strips identity fields off the wire next — would
+  document a stability that does not exist. Revisit at the 1.0 gate. **F-54 is
+  closed.**
+- ~~**F-48 rejection.**~~ **Decided 2026-09-23: deferred, with the target
+  architecture specified above.** Not a rejection — a scheduled fix with a
+  measured design and one part (Tier 3) rejected on the merits.
+- **F-43 branch protection.** Pending-maintainer. Nothing for an agent to do.
 
 ## Docs & presentation audit dispositions (2026-09-17)
 
