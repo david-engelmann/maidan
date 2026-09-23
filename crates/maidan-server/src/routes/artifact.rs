@@ -108,7 +108,7 @@ pub async fn complete_multipart_artifact(
                 size_bytes: bytes.len() as i64,
                 mime_type: body.mime_type,
                 kind: body.kind,
-                uploaded_by: body.uploaded_by.map(MemberId),
+                uploaded_by: (!auth.bypass).then_some(auth.member_id),
             },
             ref_workspace,
         )
@@ -153,7 +153,7 @@ pub async fn upload_artifact(
                 size_bytes: body.len() as i64,
                 mime_type: q.mime_type,
                 kind: q.kind,
-                uploaded_by: q.uploaded_by.map(MemberId),
+                uploaded_by: (!auth.bypass).then_some(auth.member_id),
             },
             ref_workspace,
         )

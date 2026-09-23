@@ -19,8 +19,8 @@ use axum::{
 use hmac::{Hmac, Mac};
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressKind, EgressTarget, ExternalRef, MemberId, NewEgressOutbox, NewSlackChannelLink,
-    SlackChannelLink, ThreadId, WorkspaceId,
+    EgressKind, EgressTarget, ExternalRef, NewEgressOutbox, NewSlackChannelLink, SlackChannelLink,
+    ThreadId, WorkspaceId,
 };
 use sha2::Sha256;
 
@@ -412,8 +412,7 @@ pub async fn route_message_to_slack(
 /// `POST /workspaces/:wid/slack-links` — link a Slack channel to a Maidan
 /// thread so the projector can bridge messages both ways. The link's
 /// `channel_id`/`workspace_id` come from resolving the thread (so they can't
-/// disagree with it); the caller supplies only the Slack channel id, thread,
-/// and the member that relayed Slack messages are attributed to.
+/// disagree with it); the caller supplies only the Slack channel id and thread.
 /// `workspace:write` + access to the thread. Upserts (re-linking a Slack
 /// channel replaces its link).
 pub async fn link_slack_channel(
@@ -439,7 +438,7 @@ pub async fn link_slack_channel(
             workspace_id: scope.workspace_id,
             channel_id: scope.channel_id,
             thread_id: ThreadId(body.thread_id),
-            member_id: MemberId(body.member_id),
+            member_id: auth.member_id,
         })
         .await?;
     Ok((StatusCode::CREATED, Json(link)))

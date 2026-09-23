@@ -180,7 +180,7 @@ async fn blocked_reason_parks_a_thread_from_dispatch_and_emits_on_clear() {
             client
                 .post(format!("{base}/threads/{thread}/assignee/claim"))
                 .header("Authorization", &auth)
-                .json(&json!({ "member_id": agent.id.0 }))
+                .json(&json!({}))
                 .send()
                 .await
                 .unwrap()
@@ -194,7 +194,7 @@ async fn blocked_reason_parks_a_thread_from_dispatch_and_emits_on_clear() {
     let next: serde_json::Value = client
         .post(format!("{base}/channels/{}/threads/claim-next", ch.id.0))
         .header("Authorization", &auth)
-        .json(&json!({ "member_id": agent.id.0 }))
+        .json(&json!({}))
         .send()
         .await
         .unwrap()

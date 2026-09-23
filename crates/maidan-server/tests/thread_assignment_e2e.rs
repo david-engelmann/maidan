@@ -190,7 +190,7 @@ async fn assign_claim_unassign_and_emit_events_over_rest() {
         .client
         .put(format!("{base}/threads/{tid}/assignee"))
         .header("Authorization", auth(&tok))
-        .json(&json!({"actor_id": alice.id.0, "assignee_id": bob.id.0}))
+        .json(&json!({"assignee_id": bob.id.0}))
         .send()
         .await
         .unwrap()
@@ -223,7 +223,7 @@ async fn assign_claim_unassign_and_emit_events_over_rest() {
         .client
         .post(format!("{base}/threads/{tid}/assignee/claim"))
         .header("Authorization", auth(&tok))
-        .json(&json!({"member_id": alice.id.0}))
+        .json(&json!({}))
         .send()
         .await
         .unwrap()
@@ -242,7 +242,7 @@ async fn assign_claim_unassign_and_emit_events_over_rest() {
         .client
         .delete(format!("{base}/threads/{tid}/assignee"))
         .header("Authorization", auth(&tok))
-        .json(&json!({"actor_id": alice.id.0}))
+        .json(&json!({}))
         .send()
         .await
         .unwrap()
@@ -255,7 +255,7 @@ async fn assign_claim_unassign_and_emit_events_over_rest() {
         .client
         .post(format!("{base}/threads/{tid}/assignee/claim"))
         .header("Authorization", auth(&tok))
-        .json(&json!({"member_id": alice.id.0}))
+        .json(&json!({}))
         .send()
         .await
         .unwrap()
@@ -354,7 +354,6 @@ async fn assign_with_note_carries_the_note_on_the_event() {
         .put(format!("{base}/threads/{tid}/assignee"))
         .header("Authorization", auth(&tok))
         .json(&json!({
-            "actor_id": alice.id.0,
             "assignee_id": bob.id.0,
             "note": "please pick up the deploy checklist"
         }))
@@ -390,7 +389,7 @@ async fn assign_with_note_carries_the_note_on_the_event() {
     ctx.client
         .delete(format!("{base}/threads/{tid}/assignee"))
         .header("Authorization", auth(&tok))
-        .json(&json!({"actor_id": alice.id.0}))
+        .json(&json!({}))
         .send()
         .await
         .unwrap();
@@ -452,6 +451,7 @@ async fn concurrent_claims_have_exactly_one_winner() {
         .await
         .unwrap();
     let tok = mint(ctx.store.as_ref(), ws.id, alice.id).await;
+    let bob_tok = mint(ctx.store.as_ref(), ws.id, bob.id).await;
 
     let ch: Value = ctx
         .client
@@ -479,15 +479,14 @@ async fn concurrent_claims_have_exactly_one_winner() {
     let tid = th["id"].as_str().unwrap().to_string();
 
     // Two members race to claim the same unassigned thread.
-    let claim = |member: MemberId| {
+    let claim = |tok: String| {
         let client = ctx.client.clone();
         let url = format!("{base}/threads/{tid}/assignee/claim");
-        let tok = tok.clone();
         async move {
             client
                 .post(url)
                 .header("Authorization", auth(&tok))
-                .json(&json!({"member_id": member.0}))
+                .json(&json!({}))
                 .send()
                 .await
                 .unwrap()
@@ -496,7 +495,7 @@ async fn concurrent_claims_have_exactly_one_winner() {
                 .unwrap()
         }
     };
-    let (a, b) = tokio::join!(claim(alice.id), claim(bob.id));
+    let (a, b) = tokio::join!(claim(tok), claim(bob_tok));
     let wins = [&a, &b]
         .iter()
         .filter(|r| r["claimed"] == json!(true))
@@ -574,7 +573,7 @@ async fn non_member_is_denied_claim_in_private_channel() {
         .client
         .post(format!("{base}/threads/{tid}/assignee/claim"))
         .header("Authorization", auth(&mallory_tok))
-        .json(&json!({"member_id": mallory.id.0}))
+        .json(&json!({}))
         .send()
         .await
         .unwrap();

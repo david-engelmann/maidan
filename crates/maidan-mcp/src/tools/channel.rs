@@ -127,19 +127,19 @@ pub(super) async fn list_channels(
 #[serde(deny_unknown_fields)]
 struct OpenDmArgs {
     workspace_id: uuid::Uuid,
-    member_id: uuid::Uuid,
     other_member_id: uuid::Uuid,
 }
 
 pub(super) async fn open_dm_conversation(
     store: &Arc<dyn Store>,
+    auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: OpenDmArgs = serde_json::from_value(args.clone())?;
     let dm = store
         .open_dm_conversation(
             WorkspaceId(a.workspace_id),
-            MemberId(a.member_id),
+            auth.member_id,
             MemberId(a.other_member_id),
         )
         .await?;

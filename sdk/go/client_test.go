@@ -1,14 +1,13 @@
-// Black-box test for the Maidan Go client against a running server (MAIDAN_URL,
-// auth disabled). Run via `scripts/sdk-test.sh go`, which boots a server. These
-// scenarios also exercise the server's REST + WS surface.
+// Black-box tests against the authenticated server from scripts/sdk-test.sh.
 package maidan
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -69,24 +68,30 @@ func testClient(t *testing.T) *Client {
 	return New(base, os.Getenv("MAIDAN_TOKEN"))
 }
 
-// seed creates a workspace + member (raw bootstrap route — member creation isn't
-// in the SDK surface) + channel + thread.
+var seedID atomic.Uint64
+
+// seed creates an isolated queue in the token's bootstrap workspace.
 func seed(t *testing.T, c *Client) (ws, member, channel, thread M) {
 	t.Helper()
-	var err error
-	if ws, err = c.Workspaces.Create("go-sdk"); err != nil {
+	wid := os.Getenv("MAIDAN_WORKSPACE")
+	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/me", nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(M{"handle": "sdk-agent", "kind": "agent"})
-	resp, err := http.Post(c.BaseURL+"/workspaces/"+ws["id"].(string)+"/members", "application/json", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("MAIDAN_TOKEN"))
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if err := json.NewDecoder(resp.Body).Decode(&member); err != nil {
+	var me M
+	if err := json.NewDecoder(resp.Body).Decode(&me); err != nil {
 		t.Fatal(err)
 	}
-	if channel, err = c.Channels.Create(ws["id"].(string), "general", false); err != nil {
+	ws = M{"id": wid}
+	member = M{"id": me["member_id"]}
+	name := fmt.Sprintf("go-sdk-%d", seedID.Add(1))
+	if channel, err = c.Channels.Create(wid, name, false); err != nil {
 		t.Fatal(err)
 	}
 	if thread, err = c.Threads.Create(channel["id"].(string), "kickoff"); err != nil {
@@ -97,8 +102,8 @@ func seed(t *testing.T, c *Client) (ws, member, channel, thread M) {
 
 func TestHeroLoopPostListContext(t *testing.T) {
 	c := testClient(t)
-	_, member, _, thread := seed(t, c)
-	if _, err := c.Messages.Post(thread["id"].(string), member["id"].(string), "hello from the go sdk"); err != nil {
+	_, _, _, thread := seed(t, c)
+	if _, err := c.Messages.Post(thread["id"].(string), "hello from the go sdk"); err != nil {
 		t.Fatal(err)
 	}
 	msgs, err := c.Messages.List(thread["id"].(string), nil)
@@ -120,9 +125,7 @@ func TestHeroLoopPostListContext(t *testing.T) {
 }
 
 func TestGetResultUnsetIs404(t *testing.T) {
-	// A full SetResult round-trip needs a real produced_by member (auth-enabled;
-	// the server's thread_result_e2e proves it). Under the auth-disabled harness
-	// the acting member is nil, so exercise the result route + client error path.
+	// Exercise the result route and client error path before a result exists.
 	c := testClient(t)
 	_, _, _, thread := seed(t, c)
 	_, err := c.Threads.GetResult(thread["id"].(string))
@@ -137,7 +140,7 @@ func TestClaimReturnsTheThreadFlattenedNotNested(t *testing.T) {
 	// point: a nested "thread" key would make every README snippet a silent no-op.
 	c := testClient(t)
 	_, member, channel, thread := seed(t, c)
-	claim, err := c.ClaimNextThread(channel["id"].(string), M{"member_id": member["id"]})
+	claim, err := c.ClaimNextThread(channel["id"].(string), M{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,17 +167,16 @@ func TestClaimReturnsTheThreadFlattenedNotNested(t *testing.T) {
 
 func TestRenewClaimExtendsTheLeaseWithTheFencingToken(t *testing.T) {
 	c := testClient(t)
-	_, member, channel, _ := seed(t, c)
+	_, _, channel, _ := seed(t, c)
 	claim, err := c.ClaimNextThread(
 		channel["id"].(string),
-		M{"member_id": member["id"], "lease_secs": 60},
+		M{"lease_secs": 60},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	renewed, err := c.RenewClaim(
 		claim["id"].(string),
-		member["id"].(string),
 		claim["claim_lease_id"].(string),
 		600,
 	)
@@ -189,8 +191,8 @@ func TestRenewClaimExtendsTheLeaseWithTheFencingToken(t *testing.T) {
 
 func TestClaimNextReturnsNilOnceDrained(t *testing.T) {
 	c := testClient(t)
-	_, member, channel, _ := seed(t, c)
-	body := M{"member_id": member["id"]}
+	_, _, channel, _ := seed(t, c)
+	body := M{}
 	if _, err := c.ClaimNextThread(channel["id"].(string), body); err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +216,7 @@ func TestErrorsSurfaceStatus(t *testing.T) {
 
 func TestSubscribeDeliversAMessage(t *testing.T) {
 	c := testClient(t)
-	ws, member, _, thread := seed(t, c)
+	ws, _, _, thread := seed(t, c)
 	got := make(chan Event, 1)
 	sub, err := c.Subscribe(M{"workspace_id": ws["id"], "kinds": []string{"message_posted"}}, func(e Event) {
 		if e["thread_id"] == thread["id"] {
@@ -230,7 +232,7 @@ func TestSubscribeDeliversAMessage(t *testing.T) {
 	defer sub.Close()
 
 	time.Sleep(200 * time.Millisecond) // let the subscription attach
-	if _, err := c.Messages.Post(thread["id"].(string), member["id"].(string), "ws ping"); err != nil {
+	if _, err := c.Messages.Post(thread["id"].(string), "ws ping"); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -247,17 +249,14 @@ func TestProvisioningSeedsAMemberAndMintsAScopedToken(t *testing.T) {
 	// The first thing an integrator does after `maidan init`. Both calls were
 	// reachable only through the private transport before.
 	c := testClient(t)
-	ws, err := c.Workspaces.Create("go-provisioning")
-	if err != nil {
-		t.Fatal(err)
-	}
-	wid := ws["id"].(string)
+	wid := os.Getenv("MAIDAN_WORKSPACE")
+	handle := fmt.Sprintf("provisioned-%d", seedID.Add(1))
 
-	member, err := c.Members.Create(wid, "provisioned-agent", "agent", "")
+	member, err := c.Members.Create(wid, handle, "agent", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if member["handle"] != "provisioned-agent" || member["kind"] != "agent" {
+	if member["handle"] != handle || member["kind"] != "agent" {
 		t.Fatalf("unexpected member %v", member)
 	}
 	members, err := c.Members.List(wid)

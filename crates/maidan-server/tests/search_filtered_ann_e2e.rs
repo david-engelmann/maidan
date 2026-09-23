@@ -135,11 +135,11 @@ impl Ctx {
         th["id"].as_str().unwrap().to_string()
     }
 
-    async fn post(&self, tid: &str, tok: &str, author: MemberId, body: &str) {
+    async fn post(&self, tid: &str, tok: &str, body: &str) {
         self.client
             .post(format!("{}/threads/{tid}/messages", self.base()))
             .header("Authorization", auth(tok))
-            .json(&json!({"author_id": author.0, "body": body}))
+            .json(&json!({"body": body}))
             .send()
             .await
             .unwrap();
@@ -186,25 +186,15 @@ async fn search_excludes_private_channel_hits_and_honors_limit() {
     let secret = ctx.make_channel(ws.id, &alice_tok, "secret", true).await;
     let secret_thread = ctx.make_thread(&secret, &alice_tok).await;
     for i in 0..5 {
-        ctx.post(
-            &secret_thread,
-            &alice_tok,
-            alice,
-            &format!("secret widget {i}"),
-        )
-        .await;
+        ctx.post(&secret_thread, &alice_tok, &format!("secret widget {i}"))
+            .await;
     }
     // Public channel: 3 "widget" hits.
     let open = ctx.make_channel(ws.id, &alice_tok, "open", false).await;
     let open_thread = ctx.make_thread(&open, &alice_tok).await;
     for i in 0..3 {
-        ctx.post(
-            &open_thread,
-            &alice_tok,
-            alice,
-            &format!("public widget {i}"),
-        )
-        .await;
+        ctx.post(&open_thread, &alice_tok, &format!("public widget {i}"))
+            .await;
     }
 
     // Mallory searches "widget" with limit 3. There are 5 private + 3 public

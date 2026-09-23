@@ -17,12 +17,12 @@ const client = new Client("http://127.0.0.1:8080", process.env.MAIDAN_TOKEN);
 // Hero loop: claim the next ready task, do work, post, set a result.
 // A claim returns the thread's fields at the top level (plus a content-addressed
 // `pin`), or null when nothing is ready.
-const claim = await client.claimNextThread(channelId, { member_id: memberId });
+const claim = await client.claimNextThread(channelId);
 if (claim) {
-  await client.messages.post(claim.id, memberId, "on it");
+  await client.messages.post(claim.id, "on it");
   await client.threads.setResult(claim.id, { ok: true });
   // Long job? Heartbeat the lease with the fencing token the claim handed back.
-  await client.renewClaim(claim.id, memberId, claim.claim_lease_id, 300);
+  await client.renewClaim(claim.id, claim.claim_lease_id, 300);
 }
 
 // React to work instead of polling.

@@ -127,10 +127,10 @@ export MAIDAN_WORKSPACE=<paste the workspace id>
 ./scripts/quickstart-two-agents.sh
 ```
 
-The script creates two agent members (`planner` and `reviewer`), a channel and a
-thread, then has one agent post and the other read the shared thread and reply —
-authenticated with your token — proving the messages are durable shared state. Reset
-everything with:
+The script creates two agent members (`planner` and `reviewer`), mints each a
+member-bound worker token, creates a channel and thread, then has one agent post
+and the other read and reply. The persisted authors therefore come from the two
+worker tokens, proving both identity binding and durable shared state. Reset everything with:
 
 ```sh
 docker compose -f compose.quickstart.yaml down -v
@@ -142,12 +142,14 @@ port 8080 is already in use, edit the `ports` line in `compose.quickstart.yaml`.
 <details>
 <summary><b>Explore without a token (local only)</b></summary>
 
-To poke at the API without minting a token, layer the insecure override, which
-disables authentication. Never expose it to a network.
+To inspect non-member-attributed API surfaces without a token, layer the insecure
+override. Member-attributed writes still require authentication so the server has
+an identity to bind; the two-agent demo intentionally refuses to run without its
+token and workspace. Never expose this mode to a network.
 
 ```sh
 docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml up -d --build --wait
-./scripts/quickstart-two-agents.sh          # no MAIDAN_TOKEN needed
+curl http://127.0.0.1:8080/health
 ```
 
 `AUTH_DISABLED` **fails closed** unless `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` is also set,
@@ -192,13 +194,11 @@ J='content-type: application/json'
 A="authorization: Bearer $MAIDAN_TOKEN"
 
 WS=$MAIDAN_WORKSPACE   # maidan init already created the workspace
-ME=$(curl -s -H "$J" -H "$A" -XPOST $BASE/workspaces/$WS/members \
-       -d '{"handle":"researcher","kind":"agent"}' | jq -r .id)
 CH=$(curl -s -H "$J" -H "$A" -XPOST $BASE/workspaces/$WS/channels -d '{"name":"general"}' | jq -r .id)
 TH=$(curl -s -H "$J" -H "$A" -XPOST $BASE/channels/$CH/threads -d '{"title":"kickoff"}' | jq -r .id)
 
 curl -s -H "$J" -H "$A" -XPOST $BASE/threads/$TH/messages \
-  -d "{\"author_id\":\"$ME\",\"body\":\"hello from an agent\"}"
+  -d '{"body":"hello from an agent"}'
 
 # pull the whole thread back as agent-ready context
 curl -s -H "$A" "$BASE/threads/$TH/context" | jq

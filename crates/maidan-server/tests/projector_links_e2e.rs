@@ -77,10 +77,10 @@ async fn projector_links_link_list_and_unlink() {
     // --- Slack ---
     let created: Value = client
         .post(format!("{base}/workspaces/{wid}/slack-links"))
+        .header("maidan-test-member-id", member.id.0.to_string())
         .json(&json!({
             "slack_channel_id": "C12345",
-            "thread_id": thread.id.0,
-            "member_id": member.id.0
+            "thread_id": thread.id.0
         }))
         .send()
         .await
@@ -132,11 +132,11 @@ async fn projector_links_link_list_and_unlink() {
     // --- GitHub ---
     let gh: Value = client
         .post(format!("{base}/workspaces/{wid}/github-links"))
+        .header("maidan-test-member-id", member.id.0.to_string())
         .json(&json!({
             "repo": "acme/widgets",
             "issue_number": 42,
-            "thread_id": thread.id.0,
-            "member_id": member.id.0
+            "thread_id": thread.id.0
         }))
         .send()
         .await

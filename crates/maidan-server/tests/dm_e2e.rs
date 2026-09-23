@@ -43,6 +43,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
+    state.test_identity_header = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -92,10 +93,8 @@ async fn dm_open_post_and_list_messages_round_trip() {
 
     let dm: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/dm"))
-        .json(&json!({
-            "member_id": alice_id,
-            "other_member_id": bob_id
-        }))
+        .header("maidan-test-member-id", alice_id)
+        .json(&json!({ "other_member_id": bob_id }))
         .send()
         .await
         .unwrap()
@@ -106,8 +105,8 @@ async fn dm_open_post_and_list_messages_round_trip() {
 
     let msg: Value = client
         .post(format!("{base}/dm/{dm_id}/messages"))
+        .header("maidan-test-member-id", alice_id)
         .json(&json!({
-            "author_id": alice_id,
             "body": "hello bob"
         }))
         .send()
@@ -174,7 +173,8 @@ async fn ws_subscribe_with_dm_conversation_id_receives_message_posted() {
 
     let dm: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/dm"))
-        .json(&json!({ "member_id": a_id, "other_member_id": b_id }))
+        .header("maidan-test-member-id", a_id)
+        .json(&json!({ "other_member_id": b_id }))
         .send()
         .await
         .unwrap()
@@ -239,7 +239,8 @@ async fn ws_subscribe_with_dm_conversation_id_receives_message_posted() {
 
     let resp = client
         .post(format!("{base}/dm/{dm_id}/messages"))
-        .json(&json!({ "author_id": a_id, "body": "via dm filter" }))
+        .header("maidan-test-member-id", a_id)
+        .json(&json!({ "body": "via dm filter" }))
         .send()
         .await
         .unwrap();

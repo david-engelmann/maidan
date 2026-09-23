@@ -154,8 +154,13 @@ POST /threads/{thread_id}/messages
 Authorization: Bearer {token}
 Content-Type: application/json
 
-{"author_id": "{member_id}", "body": "hello from integration"}
+{"body": "hello from integration"}
 ```
+
+Message authorship and every other acting identity come from the bearer or
+session. Requests never name their own author, editor, voter, claimer, or
+projector attribution member. To act for another member, exchange an authorized
+delegation grant for a short-lived token bound to that subject.
 
 ### 5. Subscribe to events (WebSocket)
 
@@ -301,16 +306,14 @@ whether or not that member exists, so no membership is leaked. Driving several
 members from one token needs `member:impersonate`, granted explicitly at mint,
 refused across workspaces even when held, and logged at every use.
 
-Posting or claiming *as* a member is **not** covered by this today. Work
-attribution is currently the orchestrator model and needs no extra capability;
-an agent runner that posts on behalf of its workers is unaffected.
-
-**This is changing.** Ambient act-as-any on ordinary tokens is being replaced by
-explicit delegation grants plus short-lived exchanged tokens, planned for
-`v411.0.0`:
-identity will come from the authenticated caller, never from a request payload,
-and `member:impersonate` is retired. Integrations that drive several members
-from one token should expect to obtain a grant and exchange it per task.
+Work attribution is also self-scoped. Posting, editing, claiming, transitioning,
+voting, reacting, pinning, opening DMs, linking projectors, and uploading
+artifacts all derive their actor from authentication; their request schemas do
+not accept an acting member id. Integrations that drive several members use a
+delegation grant and exchange it for a short-lived token bound to the intended
+subject. The transitional `member:impersonate` capability applies only to the
+legacy personal-state arguments above and is scheduled for removal before
+`v411.0.0`.
 
 Cluster 411's preflight closes two gaps before the breaking identity cleanup:
 member **skills** (`/members/:id/skills`, MCP `add_member_skill` /
@@ -583,7 +586,7 @@ speaks MCP.
 
 ### 1. Claim
 
-`claim_next_thread {channel_id, member_id, lease_secs?}` returns the thread it
+`claim_next_thread {channel_id, lease_secs?}` returns the thread it
 handed you (plus a flatten `pin: {uri, content_hash}` on the assignment
 event — a strong ref), or `null` when it handed you nothing. `null` is not an error — it is
 the ordinary answer on an idle channel, and it is also what you get when you are
@@ -637,7 +640,7 @@ bucket.
 
 ### 2. Acknowledge
 
-`acknowledge_claim {thread_id, member_id, claim_lease_id}` starts the thread's
+`acknowledge_claim {thread_id, claim_lease_id}` starts the thread's
 working clock (`work_started_at`). It is deliberately a second step, because
 `get_channel_occupancy` reports a grabbed-but-unacknowledged thread as `claimed`
 and an acknowledged one as `working` — so an agent that claims work and then hangs
@@ -803,7 +806,7 @@ parse still ignores `run_id`; see [Result Delivery — Run lineage](Result%20Del
 
 ### 6. Release
 
-`release_claim {thread_id, member_id, claim_lease_id}` puts the thread back in the
+`release_claim {thread_id, claim_lease_id}` puts the thread back in the
 queue at once and clears the working clock. Call it on every exit you control —
 finished, shutting down, redeploying, giving up.
 
@@ -831,7 +834,7 @@ fact, watch `get_channel_occupancy` for a thread that sits in `claimed` or
 
 ### Landing the thread (not the waiter's job)
 
-`transition_thread {thread_id, actor_id, action}` is the MCP twin of
+`transition_thread {thread_id, action}` is the MCP twin of
 `POST /threads/:id`. `action` is `start_review`, `close`, or `archive`.
 It goes through the same store path as REST, so the same rules apply:
 separation of duties (the claimer cannot land owned work — the owner or

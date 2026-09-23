@@ -87,7 +87,8 @@ async fn vote_confidence_round_trips_and_validates() {
     // Cast with confidence.
     let cast = client
         .post(&votes_url)
-        .json(&json!({ "member_id": member.id.0, "kind": "approve", "confidence": 0.7 }))
+        .header("maidan-test-member-id", member.id.0.to_string())
+        .json(&json!({ "kind": "approve", "confidence": 0.7 }))
         .send()
         .await
         .unwrap();
@@ -107,7 +108,8 @@ async fn vote_confidence_round_trips_and_validates() {
     // Re-cast the same kind updates the confidence (count stays 1).
     let recast = client
         .post(&votes_url)
-        .json(&json!({ "member_id": member.id.0, "kind": "approve", "confidence": 0.3 }))
+        .header("maidan-test-member-id", member.id.0.to_string())
+        .json(&json!({ "kind": "approve", "confidence": 0.3 }))
         .send()
         .await
         .unwrap();
@@ -126,7 +128,8 @@ async fn vote_confidence_round_trips_and_validates() {
     // A different kind without confidence omits the field.
     let plain = client
         .post(&votes_url)
-        .json(&json!({ "member_id": member.id.0, "kind": "ack" }))
+        .header("maidan-test-member-id", member.id.0.to_string())
+        .json(&json!({ "kind": "ack" }))
         .send()
         .await
         .unwrap();
@@ -153,7 +156,8 @@ async fn vote_confidence_round_trips_and_validates() {
     // Out of range -> 400.
     let bad = client
         .post(&votes_url)
-        .json(&json!({ "member_id": member.id.0, "kind": "approve", "confidence": 1.5 }))
+        .header("maidan-test-member-id", member.id.0.to_string())
+        .json(&json!({ "kind": "approve", "confidence": 1.5 }))
         .send()
         .await
         .unwrap();

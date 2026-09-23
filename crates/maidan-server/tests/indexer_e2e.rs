@@ -86,7 +86,8 @@ async fn http_post_drives_indexer() {
     let thread_id = th["id"].as_str().unwrap().to_string();
     let _: Value = client
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .json(&json!({"author_id": alice_id, "body": "hello"}))
+        .header("maidan-test-member-id", &alice_id)
+        .json(&json!({"body": "hello"}))
         .send()
         .await
         .unwrap()

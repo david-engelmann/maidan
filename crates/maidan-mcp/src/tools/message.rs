@@ -41,7 +41,6 @@ async fn observe_spawn_denial<T>(
 #[serde(deny_unknown_fields)]
 struct PostDmMessageArgs {
     dm_conversation_id: uuid::Uuid,
-    author_id: uuid::Uuid,
     #[serde(default)]
     body: String,
     #[serde(default)]
@@ -52,6 +51,7 @@ struct PostDmMessageArgs {
 
 pub(super) async fn post_dm_message(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let store = &server.store;
@@ -59,9 +59,9 @@ pub(super) async fn post_dm_message(
     let dm = store
         .get_dm_conversation(DmConversationId(a.dm_conversation_id))
         .await?;
-    if dm.member_low_id != MemberId(a.author_id) && dm.member_high_id != MemberId(a.author_id) {
+    if dm.member_low_id != auth.member_id && dm.member_high_id != auth.member_id {
         return Err(McpError::InvalidParams(
-            "author_id must be a DM participant".into(),
+            "authenticated member must be a DM participant".into(),
         ));
     }
     let content = a.content.clone();
@@ -73,7 +73,7 @@ pub(super) async fn post_dm_message(
     let msg = store
         .post_message(NewMessage {
             thread_id: dm.thread_id,
-            author_id: MemberId(a.author_id),
+            author_id: auth.member_id,
             body,
             metadata: if a.metadata.is_null() {
                 json!({})
@@ -172,7 +172,6 @@ pub(super) async fn list_messages(store: &Arc<dyn Store>, args: &Value) -> Resul
 #[serde(deny_unknown_fields)]
 struct PostMessageArgs {
     thread_id: uuid::Uuid,
-    author_id: uuid::Uuid,
     #[serde(default)]
     body: String,
     #[serde(default)]
@@ -215,7 +214,7 @@ pub(super) async fn post_message(
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
     let new_message = NewMessage {
         thread_id,
-        author_id: MemberId(a.author_id),
+        author_id: auth.member_id,
         body,
         metadata: if a.metadata.is_null() {
             json!({})
@@ -251,7 +250,7 @@ pub(super) async fn post_message(
 
     // A post the `max_tools` axis refuses is recorded as `ThreadSpawnDenied` on
     // the way to the InvalidParams, on both branches.
-    let author = Some(MemberId(a.author_id));
+    let author = Some(auth.member_id);
     let msg = if let Some((parsed, dispatcher)) = slash {
         // Provisional insert → run the (possibly external) dispatch →
         // finalizing edit + `MessagePosted` of the edited message in one tx.
@@ -264,7 +263,7 @@ pub(super) async fn post_message(
                 ctx.workspace_id,
                 ctx.channel_id,
                 thread_id,
-                MemberId(a.author_id),
+                auth.member_id,
                 m.id,
             )
             .await;
@@ -272,7 +271,7 @@ pub(super) async fn post_message(
         let (message, stored) = store
             .edit_message_with_posted_event(
                 m.id,
-                MemberId(a.author_id),
+                auth.member_id,
                 EditMessage {
                     body: m.body.clone(),
                     metadata,
@@ -304,7 +303,6 @@ pub(super) async fn post_message(
 #[serde(deny_unknown_fields)]
 struct EditMessageArgs {
     message_id: uuid::Uuid,
-    editor_id: uuid::Uuid,
     #[serde(default)]
     body: String,
     #[serde(default)]
@@ -325,7 +323,7 @@ pub(super) async fn edit_message(
     if existing.tombstoned_at.is_some() {
         return Err(McpError::InvalidParams("message is tombstoned".into()));
     }
-    let editor_id = MemberId(a.editor_id);
+    let editor_id = auth.member_id;
     if !auth.bypass {
         if editor_id == existing.author_id {
             maidan_auth::require_observed_capability(

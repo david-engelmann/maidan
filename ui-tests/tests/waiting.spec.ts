@@ -10,12 +10,9 @@ test("the Work tab loads the waiting-on-you inbox", async ({ page }) => {
   await page.goto("/ui/");
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.token);
-  // No session in the harness → the inbox resolves the member from the actor id
-  // (act-as-any bearer). The actor input lives in a non-active panel, so set its
-  // value directly (authorId() reads it regardless of visibility).
-  await page.evaluate((id) => {
-    (document.getElementById("actor-id") as HTMLInputElement).value = id;
-  }, fx.member_id);
+  const identity = page.waitForResponse((response) => response.url().endsWith("/me"));
+  await page.locator("#token").press("Tab");
+  await identity;
 
   await page.click('.tabs button[data-tab="work"]');
   await page.click("#waiting-refresh");

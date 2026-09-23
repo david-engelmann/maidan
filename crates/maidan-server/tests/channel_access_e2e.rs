@@ -164,7 +164,7 @@ async fn private_channel_denies_non_members_over_rest() {
         .client
         .post(format!("{base}/threads/{tid}/messages"))
         .header("Authorization", auth(&alice_tok))
-        .json(&json!({"author_id": alice.id.0, "body": "top secret"}))
+        .json(&json!({"body": "top secret"}))
         .send()
         .await
         .unwrap();
@@ -186,7 +186,7 @@ async fn private_channel_denies_non_members_over_rest() {
         ctx.client
             .post(format!("{base}/threads/{tid}/messages"))
             .header("Authorization", auth(&bob_tok))
-            .json(&json!({"author_id": bob.id.0, "body": "sneak"}))
+            .json(&json!({"body": "sneak"}))
             .send()
             .await
             .unwrap(),
@@ -317,7 +317,7 @@ async fn public_channel_and_dm_are_unaffected() {
         .client
         .post(format!("{base}/threads/{tid}/messages"))
         .header("Authorization", auth(&bob_tok))
-        .json(&json!({"author_id": bob.id.0, "body": "hello public"}))
+        .json(&json!({"body": "hello public"}))
         .send()
         .await
         .unwrap();
@@ -639,7 +639,7 @@ async fn dm_thread_not_readable_via_generic_route_by_non_participant() {
         .client
         .post(format!("{base}/workspaces/{}/dm", ws.id.0))
         .header("Authorization", auth(&alice_tok))
-        .json(&json!({"member_id": alice.id.0, "other_member_id": bob.id.0}))
+        .json(&json!({"other_member_id": bob.id.0}))
         .send()
         .await
         .unwrap()

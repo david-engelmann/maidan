@@ -14,7 +14,6 @@ use crate::error::McpError;
 #[serde(deny_unknown_fields)]
 struct CastVoteArgs {
     message_id: uuid::Uuid,
-    member_id: uuid::Uuid,
     kind: String,
     #[serde(default)]
     confidence: Option<f64>,
@@ -22,6 +21,7 @@ struct CastVoteArgs {
 
 pub(super) async fn cast_vote(
     server: &crate::server::McpServer,
+    auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: CastVoteArgs = serde_json::from_value(args.clone())?;
@@ -38,7 +38,7 @@ pub(super) async fn cast_vote(
         .store
         .cast_vote_with_event(NewVote {
             message_id: MessageId(a.message_id),
-            member_id: MemberId(a.member_id),
+            member_id: auth.member_id,
             kind: a.kind,
             confidence: a.confidence,
         })
@@ -51,12 +51,12 @@ pub(super) async fn cast_vote(
 #[serde(deny_unknown_fields)]
 struct ReactionArgs {
     message_id: uuid::Uuid,
-    member_id: uuid::Uuid,
     emoji: String,
 }
 
 pub(super) async fn add_reaction(
     server: &crate::server::McpServer,
+    auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ReactionArgs = serde_json::from_value(args.clone())?;
@@ -64,7 +64,7 @@ pub(super) async fn add_reaction(
         .store
         .add_reaction_with_event(NewReaction {
             message_id: MessageId(a.message_id),
-            member_id: MemberId(a.member_id),
+            member_id: auth.member_id,
             emoji: a.emoji,
         })
         .await?;
@@ -74,13 +74,14 @@ pub(super) async fn add_reaction(
 
 pub(super) async fn remove_reaction(
     server: &crate::server::McpServer,
+    auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ReactionArgs = serde_json::from_value(args.clone())?;
     // The event is appended only when a row was actually removed (idempotent).
     let (removed, stored) = server
         .store
-        .remove_reaction_with_event(MessageId(a.message_id), MemberId(a.member_id), &a.emoji)
+        .remove_reaction_with_event(MessageId(a.message_id), auth.member_id, &a.emoji)
         .await?;
     if let Some(stored) = stored {
         server.publish_stored(&stored).await;
@@ -110,11 +111,11 @@ pub(super) async fn list_reactions(
 struct PinArgs {
     thread_id: uuid::Uuid,
     message_id: uuid::Uuid,
-    member_id: uuid::Uuid,
 }
 
 pub(super) async fn pin_message(
     server: &crate::server::McpServer,
+    auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: PinArgs = serde_json::from_value(args.clone())?;
@@ -123,7 +124,7 @@ pub(super) async fn pin_message(
         .pin_message_with_event(NewPin {
             thread_id: ThreadId(a.thread_id),
             message_id: MessageId(a.message_id),
-            member_id: MemberId(a.member_id),
+            member_id: auth.member_id,
         })
         .await?;
     server.publish_stored(&stored).await;
@@ -132,6 +133,7 @@ pub(super) async fn pin_message(
 
 pub(super) async fn unpin_message(
     server: &crate::server::McpServer,
+    auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: PinArgs = serde_json::from_value(args.clone())?;
@@ -140,7 +142,7 @@ pub(super) async fn unpin_message(
         .unpin_message_with_event(
             ThreadId(a.thread_id),
             MessageId(a.message_id),
-            MemberId(a.member_id),
+            auth.member_id,
         )
         .await?;
     if let Some(stored) = stored {

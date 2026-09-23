@@ -204,8 +204,6 @@ async fn mcp_post_message_without_message_post_returns_forbidden_jsonrpc() {
     let bearer = mint_token(h.store.as_ref(), workspace_id, member_id, read_only_caps()).await;
     let ws = workspace_id.0.to_string();
     let thread_id = seed_thread(&h, &bearer, &ws).await;
-    let member = member_id.0.to_string();
-
     let resp = mcp_rpc(
         &h,
         &bearer,
@@ -214,7 +212,6 @@ async fn mcp_post_message_without_message_post_returns_forbidden_jsonrpc() {
             "name": "post_message",
             "arguments": {
                 "thread_id": thread_id,
-                "author_id": member,
                 "body": "nope"
             }
         }),

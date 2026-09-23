@@ -103,6 +103,7 @@ async fn spawn() -> Harness {
         None,
     );
     state.webhooks = WebhookRuntime::new(webhook_test_key());
+    state.test_identity_header = true;
     let webhook_worker = WebhookWorker::spawn(state.clone());
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -253,7 +254,8 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
     let msg: serde_json::Value = h
         .client
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .json(&json!({ "author_id": author_id, "body": "hi @mentioned" }))
+        .header("maidan-test-member-id", author_id)
+        .json(&json!({ "body": "hi @mentioned" }))
         .send()
         .await
         .unwrap()

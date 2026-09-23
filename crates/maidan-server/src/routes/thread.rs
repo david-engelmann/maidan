@@ -242,10 +242,9 @@ pub async fn transition_thread(
     let thread_id = ThreadId(id);
     // One fetch resolves scope + authorizes (was resolve + ws + access).
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let (result, stored) = state
         .store
-        .transition_thread_with_event(thread_id, MemberId(body.actor_id), action)
+        .transition_thread_with_event(thread_id, auth.member_id, action)
         .await?;
     super::publish_stored(&state, stored).await;
     // Entering a terminal state can unblock dependents. Push a `ThreadReady`
@@ -666,13 +665,12 @@ pub async fn assign_thread(
     // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let (thread, stored) = state
         .store
         .assign_thread_with_event(
             thread_id,
             MemberId(body.assignee_id),
-            MemberId(body.actor_id),
+            auth.member_id,
             body.note,
         )
         .await?;
@@ -684,7 +682,7 @@ pub async fn unassign_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
-    ApiJson(body): ApiJson<UnassignThread>,
+    ApiJson(_body): ApiJson<UnassignThread>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
@@ -692,10 +690,9 @@ pub async fn unassign_thread(
     // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    super::ensure_acting_member(&auth, MemberId(body.actor_id))?;
     let (thread, stored) = state
         .store
-        .unassign_thread_with_event(thread_id, MemberId(body.actor_id))
+        .unassign_thread_with_event(thread_id, auth.member_id)
         .await?;
     super::publish_stored(&state, stored).await;
     Ok(Json(thread))
@@ -762,7 +759,7 @@ pub async fn claim_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
-    ApiJson(body): ApiJson<ClaimThread>,
+    ApiJson(_body): ApiJson<ClaimThread>,
 ) -> ApiResult<Json<ThreadClaimResult>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
@@ -770,8 +767,7 @@ pub async fn claim_thread(
     // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    let member_id = MemberId(body.member_id);
-    super::ensure_acting_member(&auth, member_id)?;
+    let member_id = auth.member_id;
     // Unclaimable: a parked thread refuses an explicit claim, just as
     // `claim_next` skips it. Un-park it (DELETE …/unclaimable) to work it.
     if let Some(u) = state.store.get_thread_unclaimable(thread_id).await? {
@@ -1077,8 +1073,7 @@ pub async fn claim_next_thread(
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
-    let member_id = MemberId(body.member_id);
-    super::ensure_acting_member(&auth, member_id)?;
+    let member_id = auth.member_id;
     // WIP limit: a member already at their workspace cap is handed no further
     // work — `claim_next` returns null (nothing dispatched), the same shape as
     // an empty queue. `wait_for_ready` / the occupancy view show whether there
@@ -1119,12 +1114,11 @@ pub async fn renew_claim(
     // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     let thread = state
         .store
         .renew_claim(
             thread_id,
-            MemberId(body.member_id),
+            auth.member_id,
             ClaimLeaseId(body.claim_lease_id),
             body.lease_secs,
         )
@@ -1144,14 +1138,9 @@ pub async fn acknowledge_claim(
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     let thread = state
         .store
-        .acknowledge_claim(
-            thread_id,
-            MemberId(body.member_id),
-            ClaimLeaseId(body.claim_lease_id),
-        )
+        .acknowledge_claim(thread_id, auth.member_id, ClaimLeaseId(body.claim_lease_id))
         .await?;
     Ok(Json(thread))
 }
@@ -1169,14 +1158,9 @@ pub async fn release_claim(
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     let (thread, stored) = state
         .store
-        .release_claim_with_event(
-            thread_id,
-            MemberId(body.member_id),
-            ClaimLeaseId(body.claim_lease_id),
-        )
+        .release_claim_with_event(thread_id, auth.member_id, ClaimLeaseId(body.claim_lease_id))
         .await?;
     super::publish_stored(&state, stored).await;
     Ok(Json(thread))

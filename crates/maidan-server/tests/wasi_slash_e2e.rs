@@ -122,6 +122,7 @@ async fn spawn() -> Ctx {
         None,
     );
     state.slash = SlashRuntime::new(test_key());
+    state.test_identity_header = true;
     std::mem::forget(dir);
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -173,6 +174,7 @@ impl Ctx {
         let resp = self
             .client
             .post(format!("{}/artifacts?kind=attachment", self.base))
+            .header("maidan-test-member-id", self.author.0.to_string())
             .header("content-type", "application/wasm")
             .body(bytes)
             .send()
@@ -211,7 +213,8 @@ impl Ctx {
     async fn invoke(&self, body: &str) -> Value {
         self.client
             .post(format!("{}/threads/{}/messages", self.base, self.thread.0))
-            .json(&json!({ "author_id": self.author.0, "body": body }))
+            .header("maidan-test-member-id", self.author.0.to_string())
+            .json(&json!({ "body": body }))
             .send()
             .await
             .unwrap()

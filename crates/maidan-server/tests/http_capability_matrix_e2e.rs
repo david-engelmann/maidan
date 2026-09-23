@@ -331,7 +331,6 @@ fn apply_route_defaults(
     }
     if path.ends_with("/dm") && method == "POST" {
         return b.json(&json!({
-            "member_id": f.member,
             "other_member_id": f.workspace,
         }));
     }
@@ -346,7 +345,6 @@ fn apply_route_defaults(
     }
     if path.ends_with("/group-dms/{id}/messages") && method == "POST" {
         return b.json(&json!({
-            "author_id": f.member,
             "body": "cap matrix",
         }));
     }
@@ -441,16 +439,13 @@ fn apply_route_defaults(
         return b.json(&json!({ "webhook_id": null }));
     }
     if path.contains("/reactions") && method == "DELETE" {
-        return b.json(&json!({
-            "member_id": f.member,
-            "emoji": "thumbsup"
-        }));
+        return b.json(&json!({ "emoji": "thumbsup" }));
     }
     if path.contains("/reactions") && method == "POST" {
-        return b.json(&json!({ "emoji": "thumbsup", "member_id": f.member }));
+        return b.json(&json!({ "emoji": "thumbsup" }));
     }
     if path.contains("/votes") && method == "POST" {
-        return b.json(&json!({ "member_id": f.member, "kind": "upvote" }));
+        return b.json(&json!({ "kind": "upvote" }));
     }
     if path.contains("/mentions") && method == "POST" {
         return b.json(&json!({ "member_id": f.member }));
@@ -459,25 +454,20 @@ fn apply_route_defaults(
         return b.json(&json!({ "member_id": f.member }));
     }
     if path.contains("/pins") && (method == "POST" || method == "DELETE") {
-        return b.json(&json!({
-            "message_id": f.message,
-            "member_id": f.member
-        }));
+        return b.json(&json!({ "message_id": f.message }));
     }
     if path == "/threads/{id}" && method == "POST" {
         return b.json(&json!({
-            "actor_id": f.member,
             "action": "start_review"
         }));
     }
     if path == "/threads/{id}/assignee" && method == "PUT" {
         return b.json(&json!({
-            "actor_id": f.member,
             "assignee_id": f.member
         }));
     }
     if path == "/threads/{id}/assignee" && method == "DELETE" {
-        return b.json(&json!({ "actor_id": f.member }));
+        return b.json(&json!({}));
     }
     if path == "/threads/{id}/owner" && method == "PUT" {
         return b.json(&json!({ "owner_id": f.member }));
@@ -522,27 +512,24 @@ fn apply_route_defaults(
         }));
     }
     if path == "/threads/{id}/assignee/claim" && method == "POST" {
-        return b.json(&json!({ "member_id": f.member }));
+        return b.json(&json!({}));
     }
     if path == "/channels/{cid}/threads/claim-next" && method == "POST" {
-        return b.json(&json!({ "member_id": f.member }));
+        return b.json(&json!({}));
     }
     if path == "/threads/{id}/claim/renew" && method == "POST" {
         return b.json(&json!({
-            "member_id": f.member,
             "claim_lease_id": uuid::Uuid::nil(),
             "lease_secs": 60
         }));
     }
     if path == "/threads/{id}/claim/acknowledge" && method == "POST" {
         return b.json(&json!({
-            "member_id": f.member,
             "claim_lease_id": uuid::Uuid::nil()
         }));
     }
     if path == "/threads/{id}/claim/release" && method == "POST" {
         return b.json(&json!({
-            "member_id": f.member,
             "claim_lease_id": uuid::Uuid::nil()
         }));
     }
@@ -621,13 +608,11 @@ fn apply_route_defaults(
     }
     if path.ends_with("/messages") && method == "POST" {
         return b.json(&json!({
-            "author_id": f.member,
             "body": "cap matrix"
         }));
     }
     if path.contains("/messages/") && method == "PATCH" {
         return b.json(&json!({
-            "editor_id": f.member,
             "body": "edited"
         }));
     }
@@ -669,16 +654,14 @@ fn apply_route_defaults(
     if path.contains("/slack-links") && method == "POST" {
         return b.json(&json!({
             "slack_channel_id": "CTEST",
-            "thread_id": "00000000-0000-0000-0000-000000000000",
-            "member_id": "00000000-0000-0000-0000-000000000000"
+            "thread_id": "00000000-0000-0000-0000-000000000000"
         }));
     }
     if path.contains("/github-links") && method == "POST" {
         return b.json(&json!({
             "repo": "owner/name",
             "issue_number": 1,
-            "thread_id": "00000000-0000-0000-0000-000000000000",
-            "member_id": "00000000-0000-0000-0000-000000000000"
+            "thread_id": "00000000-0000-0000-0000-000000000000"
         }));
     }
     if path.contains("/fsm-hooks") && method == "POST" {
@@ -764,7 +747,6 @@ async fn seed_fixture(
         .post(format!("{base}/threads/{thread}/messages"))
         .header("Authorization", format!("Bearer {bearer}"))
         .json(&json!({
-            "author_id": member_id,
             "body": "seed"
         }))
         .send()

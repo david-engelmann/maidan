@@ -102,7 +102,8 @@ async fn closing_last_dependency_publishes_thread_ready() {
     for action in ["start_review", "close"] {
         let resp = client
             .post(format!("{base}/threads/{dep_id}"))
-            .json(&json!({"actor_id": actor_id, "action": action}))
+            .header("maidan-test-member-id", actor_id)
+            .json(&json!({"action": action}))
             .send()
             .await
             .unwrap();

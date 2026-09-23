@@ -4,7 +4,7 @@
 # Brings up two maidan-server replicas behind an nginx round-robin LB, sharing
 # one Postgres and one MinIO object store, then drives REST cross-replica paths
 # through the LB (so requests land on either replica with no session affinity):
-#   * a workspace/channel/thread/message round-trip — write on one replica,
+#   * a workspace/channel/thread round-trip — write on one replica,
 #     read back through the LB (typically the other replica);
 #   * an embedding reindex job started on one
 #     replica and polled to completion on another.
@@ -59,22 +59,18 @@ done
 [ "$ready" = 1 ] || fail "LB health check timed out"
 echo "LB healthy: $(cat /tmp/scale_health.json)"
 
-# --- workspace + message round-trip through the LB ---
-echo "=== workspace/message round-trip ==="
+# --- workspace + thread round-trip through the LB ---
+echo "=== workspace/thread round-trip ==="
 WID=$(curl -sf -X POST "$LB/workspaces" -H 'content-type: application/json' \
   -d '{"name":"scale-smoke"}' | jq -r '.id') || fail "create workspace"
-MID=$(curl -sf -X POST "$LB/workspaces/$WID/members" -H 'content-type: application/json' \
-  -d '{"handle":"smoke-bot","kind":"agent"}' | jq -r '.id') || fail "create member"
 CID=$(curl -sf -X POST "$LB/workspaces/$WID/channels" -H 'content-type: application/json' \
   -d '{"name":"general"}' | jq -r '.id') || fail "create channel"
 TID=$(curl -sf -X POST "$LB/channels/$CID/threads" -H 'content-type: application/json' \
   -d '{}' | jq -r '.id') || fail "create thread"
-MSGID=$(curl -sf -X POST "$LB/threads/$TID/messages" -H 'content-type: application/json' \
-  -d "{\"author_id\":\"$MID\",\"body\":\"scale-out hello\"}" | jq -r '.id') || fail "post message"
 # Read it back (likely a different replica) — shared store must serve it.
-curl -sf "$LB/threads/$TID/messages" | jq -e \
-  --arg id "$MSGID" 'any(.[]; .id == $id)' >/dev/null || fail "message not readable cross-replica"
-echo "message round-trip OK ($MSGID)"
+curl -sf "$LB/threads/$TID" | jq -e --arg id "$TID" '.id == $id' >/dev/null \
+  || fail "thread not readable cross-replica"
+echo "thread round-trip OK ($TID)"
 
 # --- reindex job: start, then poll status (any replica serves it from the store) ---
 echo "=== reindex job start → poll ==="

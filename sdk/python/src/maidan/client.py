@@ -222,9 +222,9 @@ class _Messages:
     def list(self, thread_id: str, query: Optional[dict] = None) -> Any:
         return self._c._req("GET", f"/threads/{thread_id}/messages{_qs(query)}")
 
-    def post(self, thread_id: str, author_id: str, body: str) -> Any:
+    def post(self, thread_id: str, body: str) -> Any:
         return self._c._req(
-            "POST", f"/threads/{thread_id}/messages", {"author_id": author_id, "body": body}
+            "POST", f"/threads/{thread_id}/messages", {"body": body}
         )
 
 
@@ -279,7 +279,6 @@ class Client:
     def renew_claim(
         self,
         thread_id: str,
-        member_id: str,
         claim_lease_id: str,
         lease_secs: int = 300,
     ) -> Any:
@@ -293,7 +292,6 @@ class Client:
             "POST",
             f"/threads/{thread_id}/claim/renew",
             {
-                "member_id": member_id,
                 "claim_lease_id": claim_lease_id,
                 "lease_secs": lease_secs,
             },

@@ -26,7 +26,6 @@ pub async fn cast_vote(
     // One message→thread→channel fetch authorizes (was resolve_message_chain +
     // ensure_workspace + ensure_thread_access).
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
-    super::ensure_acting_member(&auth, MemberId(body.member_id))?;
     if let Some(c) = body.confidence {
         if !(0.0..=1.0).contains(&c) {
             return Err(crate::error::ApiError::BadRequest(
@@ -40,7 +39,7 @@ pub async fn cast_vote(
         .store
         .cast_vote_with_event(NewVote {
             message_id: MessageId(message_id),
-            member_id: MemberId(body.member_id),
+            member_id: auth.member_id,
             kind: body.kind.clone(),
             confidence: body.confidence,
         })
@@ -81,8 +80,7 @@ pub async fn add_reaction(
     // Drop resolve_message_chain + ensure_workspace; ensure_message_access
     // resolves the message→thread→channel and authorizes in one pass.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
-    let member_id = MemberId(body.member_id);
-    super::ensure_acting_member(&auth, member_id)?;
+    let member_id = auth.member_id;
     let emoji = body.emoji.clone();
     // Reaction row + `ReactionAdded` event commit atomically.
     let stored = state
@@ -111,8 +109,7 @@ pub async fn remove_reaction(
     // Drop resolve_message_chain + ensure_workspace; ensure_message_access
     // resolves the message→thread→channel and authorizes in one pass.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
-    let member_id = MemberId(body.member_id);
-    super::ensure_acting_member(&auth, member_id)?;
+    let member_id = auth.member_id;
     let emoji = body.emoji.clone();
     // The DELETE + `ReactionRemoved` event commit atomically; the event is only
     // produced when a row was actually removed.
@@ -158,8 +155,7 @@ pub async fn pin_message(
     // `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
-    let member_id = MemberId(body.member_id);
-    super::ensure_acting_member(&auth, member_id)?;
+    let member_id = auth.member_id;
     let stored = state
         .store
         .pin_message_with_event(NewPin {
@@ -188,8 +184,7 @@ pub async fn unpin_message(
     // `resolve_thread_context` + `ensure_workspace` was a redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let message_id = MessageId(body.message_id);
-    let member_id = MemberId(body.member_id);
-    super::ensure_acting_member(&auth, member_id)?;
+    let member_id = auth.member_id;
     let (removed, stored) = state
         .store
         .unpin_message_with_event(thread_id, message_id, member_id)

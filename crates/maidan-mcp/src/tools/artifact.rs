@@ -20,7 +20,6 @@ struct UploadArtifactArgs {
     kind: ArtifactKind,
     content_base64: String,
     mime_type: Option<String>,
-    uploaded_by: Option<uuid::Uuid>,
 }
 
 fn s3_artifacts(artifacts: &Arc<dyn ArtifactStore>) -> Result<&S3Store, McpError> {
@@ -97,7 +96,6 @@ struct CompleteMultipartArgs {
     parts: Vec<MultipartPartArg>,
     kind: ArtifactKind,
     mime_type: Option<String>,
-    uploaded_by: Option<uuid::Uuid>,
 }
 
 pub(super) async fn complete_artifact_multipart(
@@ -133,7 +131,7 @@ pub(super) async fn complete_artifact_multipart(
                 size_bytes: bytes.len() as i64,
                 mime_type: a.mime_type,
                 kind: a.kind,
-                uploaded_by: a.uploaded_by.map(MemberId),
+                uploaded_by: (!auth.bypass).then_some(auth.member_id),
             },
             ref_workspace,
         )
@@ -186,7 +184,7 @@ pub(super) async fn upload_artifact(
                 size_bytes: bytes.len() as i64,
                 mime_type: a.mime_type,
                 kind: a.kind,
-                uploaded_by: a.uploaded_by.map(MemberId),
+                uploaded_by: (!auth.bypass).then_some(auth.member_id),
             },
             ref_workspace,
         )

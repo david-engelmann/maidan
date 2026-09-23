@@ -33,7 +33,7 @@ async fn spawn() -> (
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let state = AppState::new(
+    let mut state = AppState::new(
         store.clone(),
         artifacts,
         bus,
@@ -45,6 +45,7 @@ async fn spawn() -> (
         Arc::new(AtomicI64::new(0)),
         None,
     );
+    state.test_identity_header = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -94,7 +95,8 @@ async fn claim_next_then_list_mine_then_empty() {
             "{base}/channels/{}/threads/claim-next",
             channel.id.0
         ))
-        .json(&serde_json::json!({ "member_id": agent.id.0 }))
+        .header("maidan-test-member-id", agent.id.0.to_string())
+        .json(&serde_json::json!({}))
         .send()
         .await
         .unwrap();
@@ -130,7 +132,8 @@ async fn claim_next_then_list_mine_then_empty() {
             "{base}/channels/{}/threads/claim-next",
             channel.id.0
         ))
-        .json(&serde_json::json!({ "member_id": agent.id.0 }))
+        .header("maidan-test-member-id", agent.id.0.to_string())
+        .json(&serde_json::json!({}))
         .send()
         .await
         .unwrap();

@@ -61,6 +61,12 @@ async fn burst_over_limit_returns_429_problem_json() {
     let client = reqwest::Client::builder()
         .default_headers({
             let mut h = reqwest::header::HeaderMap::new();
+            // The in-memory limiter is process-global, so parallel tests need
+            // distinct client keys even though each starts its own server.
+            h.insert(
+                reqwest::header::AUTHORIZATION,
+                "Bearer rate-limit-burst".parse().unwrap(),
+            );
             h.insert("x-forwarded-for", "10.0.0.2".parse().unwrap());
             h
         })
@@ -108,7 +114,12 @@ async fn mcp_rate_limit_returns_jsonrpc_backpressure_envelope() {
     let client = reqwest::Client::builder()
         .default_headers({
             let mut h = reqwest::header::HeaderMap::new();
-            // Distinct client key so this test's bucket is isolated.
+            // Distinct bearer key so this test's process-global bucket is
+            // isolated even when the integration tests run in parallel.
+            h.insert(
+                reqwest::header::AUTHORIZATION,
+                "Bearer rate-limit-mcp".parse().unwrap(),
+            );
             h.insert("x-forwarded-for", "10.0.0.42".parse().unwrap());
             h.insert("MCP-Protocol-Version", "2024-11-05".parse().unwrap());
             h

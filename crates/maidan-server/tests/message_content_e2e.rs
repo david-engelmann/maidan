@@ -108,8 +108,8 @@ async fn content_post_derives_body_and_round_trips() {
     // Post with typed content, no body → body is derived.
     let posted: serde_json::Value = c
         .post(format!("{base}/threads/{tid}/messages"))
+        .header("maidan-test-member-id", &mid)
         .json(&serde_json::json!({
-            "author_id": mid,
             "content": [
                 {"type": "text", "text": "deploying now"},
                 {"type": "code", "language": "sh", "code": "cargo build"},
@@ -154,7 +154,8 @@ async fn plain_body_post_has_null_content() {
     let posted: serde_json::Value = ctx
         .client
         .post(format!("{base}/threads/{tid}/messages"))
-        .json(&serde_json::json!({"author_id": mid, "body": "just text"}))
+        .header("maidan-test-member-id", &mid)
+        .json(&serde_json::json!({"body": "just text"}))
         .send()
         .await
         .unwrap()
@@ -173,7 +174,8 @@ async fn editing_content_re_derives_body() {
     let c = &ctx.client;
     let posted: serde_json::Value = c
         .post(format!("{base}/threads/{tid}/messages"))
-        .json(&serde_json::json!({"author_id": mid, "content": [{"type": "text", "text": "v1"}]}))
+        .header("maidan-test-member-id", &mid)
+        .json(&serde_json::json!({"content": [{"type": "text", "text": "v1"}]}))
         .send()
         .await
         .unwrap()
@@ -184,8 +186,8 @@ async fn editing_content_re_derives_body() {
 
     let edited: serde_json::Value = c
         .patch(format!("{base}/messages/{msg_id}"))
+        .header("maidan-test-member-id", &mid)
         .json(&serde_json::json!({
-            "editor_id": mid,
             "content": [{"type": "text", "text": "v2 updated"}]
         }))
         .send()

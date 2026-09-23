@@ -90,6 +90,7 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
     state.webhooks = WebhookRuntime::new(test_key());
     state.slash = SlashRuntime::new(test_key());
     state.fsm_hooks = FsmHookRuntime::new(test_key());
+    state.test_identity_header = true;
     let indexer = Indexer::new(bus.clone(), Arc::new(LoggingHandler::default()))
         .spawn_with_heartbeat(state.indexer_last_event_unix_ms.clone());
     let fsm_worker = FsmHookWorker::spawn(state.clone());
@@ -132,6 +133,8 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
         .json(&json!({ "handle": "op", "kind": "human" }))
         .send()
         .await
+        .unwrap()
+        .error_for_status()
         .unwrap()
         .json()
         .await
@@ -178,15 +181,19 @@ async fn fsm_http_delivery_quarantines_then_replay_succeeds() {
         .unwrap();
     let tid = th["id"].as_str().unwrap();
 
-    let _: serde_json::Value = client
+    let transition = client
         .post(format!("{base}/threads/{tid}"))
-        .json(&json!({ "actor_id": actor_id, "action": "start_review" }))
+        .header("maidan-test-member-id", actor_id)
+        .json(&json!({ "action": "start_review" }))
         .send()
         .await
-        .unwrap()
-        .json()
-        .await
         .unwrap();
+    let transition_status = transition.status();
+    let transition_body = transition.text().await.unwrap();
+    assert!(
+        transition_status.is_success(),
+        "transition failed ({transition_status}): {transition_body}"
+    );
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     let mut delivery_id = None;

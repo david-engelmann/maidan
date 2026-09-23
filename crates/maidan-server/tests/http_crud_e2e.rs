@@ -267,7 +267,8 @@ async fn run_suite(h: &Harness) {
     let msg1: serde_json::Value = h
         .client
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .json(&json!({"author_id": alice_id, "body": "hello", "metadata": {"client": "test"}}))
+        .header("maidan-test-member-id", &alice_id)
+        .json(&json!({"body": "hello", "metadata": {"client": "test"}}))
         .send()
         .await
         .unwrap()
@@ -278,7 +279,8 @@ async fn run_suite(h: &Harness) {
     let msg2: serde_json::Value = h
         .client
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .json(&json!({"author_id": bot_id, "body": "world"}))
+        .header("maidan-test-member-id", &bot_id)
+        .json(&json!({"body": "world"}))
         .send()
         .await
         .unwrap()
@@ -305,7 +307,8 @@ async fn run_suite(h: &Harness) {
     let edited: serde_json::Value = h
         .client
         .patch(format!("{base}/messages/{msg1_id}"))
-        .json(&json!({"editor_id": alice_id, "body": "hello edited"}))
+        .header("maidan-test-member-id", &alice_id)
+        .json(&json!({"body": "hello edited"}))
         .send()
         .await
         .unwrap()
@@ -354,7 +357,8 @@ async fn run_suite(h: &Harness) {
     let resp = h
         .client
         .post(format!("{base}/messages/{msg1_id}/votes"))
-        .json(&json!({"member_id": bot_id, "kind": "approve"}))
+        .header("maidan-test-member-id", &bot_id)
+        .json(&json!({"kind": "approve"}))
         .send()
         .await
         .unwrap();

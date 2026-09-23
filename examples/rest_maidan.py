@@ -11,8 +11,8 @@ drives one agent turn (read the shared thread context, then post a reply).
     # Self-seed from the workspace/member carried by the admin token:
     python examples/rest_maidan.py --seed
 
-    # Or operate on an existing thread as a specific member:
-    python examples/rest_maidan.py <thread_id> <member_id>
+    # Or operate on an existing thread as the token-bound member:
+    python examples/rest_maidan.py <thread_id>
 """
 
 import asyncio
@@ -53,10 +53,10 @@ class MaidanClient:
         resp.raise_for_status()
         return resp.json()
 
-    async def post_message(self, thread_id: str, author_id: str, body: str) -> dict:
+    async def post_message(self, thread_id: str, body: str) -> dict:
         resp = await self._client.post(
             f"/threads/{thread_id}/messages",
-            json={"author_id": author_id, "body": body},
+            json={"body": body},
         )
         resp.raise_for_status()
         return resp.json()
@@ -75,21 +75,20 @@ async def main() -> None:
         if args == ["--seed"]:
             me = await client.whoami()
             workspace_id = me["workspace_id"]
-            member_id = me["member_id"]
             channel = await client.create_channel(workspace_id, "rest-example")
             thread = await client.create_thread(channel["id"], "REST example: one agent turn")
             thread_id = thread["id"]
-            print(f"seeded channel={channel['id']} thread={thread_id} member={member_id}")
-        elif len(args) == 2:
-            thread_id, member_id = args
+            print(f"seeded channel={channel['id']} thread={thread_id} member={me['member_id']}")
+        elif len(args) == 1:
+            thread_id = args[0]
         else:
-            print("usage: rest_maidan.py --seed | <thread_id> <member_id>", file=sys.stderr)
+            print("usage: rest_maidan.py --seed | <thread_id>", file=sys.stderr)
             raise SystemExit(2)
 
         context = await client.thread_context(thread_id)
         print(f"thread has {len(context.get('messages', []))} messages")
         # Hand `context` to your model, then persist only the final reply:
-        await client.post_message(thread_id, member_id, "Acknowledged; working on it.")
+        await client.post_message(thread_id, "Acknowledged; working on it.")
         print("posted reply")
     finally:
         await client.aclose()

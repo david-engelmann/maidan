@@ -78,15 +78,14 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "open_dm_conversation",
-            "description": "Open or fetch a 1:1 DM conversation between two workspace members.",
+            "description": "Open or fetch a 1:1 DM conversation between the authenticated member and another workspace member.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "workspace_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid"},
                     "other_member_id": {"type": "string", "format": "uuid"}
                 },
-                "required": ["workspace_id", "member_id", "other_member_id"]
+                "required": ["workspace_id", "other_member_id"]
             }
         }),
         json!({
@@ -108,12 +107,11 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "dm_conversation_id": {"type": "string", "format": "uuid"},
-                    "author_id": {"type": "string", "format": "uuid"},
                     "body": {"type": "string", "description": "plain text; omit when sending typed content (body is derived from it)"},
                     "metadata": {"type": "object"},
                     "content": {"type": "array", "items": {"type": "object"}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
-                "required": ["dm_conversation_id", "author_id", "body"]
+                "required": ["dm_conversation_id", "body"]
             }
         }),
         json!({
@@ -354,11 +352,10 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "actor_id": {"type": "string", "format": "uuid", "description": "member performing the assignment"},
                     "assignee_id": {"type": "string", "format": "uuid", "description": "member to assign the thread to"},
                     "note": {"type": "string", "description": "optional handoff note for the assignee"}
                 },
-                "required": ["thread_id", "actor_id", "assignee_id"]
+                "required": ["thread_id", "assignee_id"]
             }
         }),
         json!({
@@ -367,10 +364,9 @@ pub fn catalog() -> Vec<Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "thread_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid", "description": "member claiming the thread"}
+                    "thread_id": {"type": "string", "format": "uuid"}
                 },
-                "required": ["thread_id", "member_id"]
+                "required": ["thread_id"]
             }
         }),
         json!({
@@ -379,10 +375,9 @@ pub fn catalog() -> Vec<Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "thread_id": {"type": "string", "format": "uuid"},
-                    "actor_id": {"type": "string", "format": "uuid", "description": "member performing the unassignment"}
+                    "thread_id": {"type": "string", "format": "uuid"}
                 },
-                "required": ["thread_id", "actor_id"]
+                "required": ["thread_id"]
             }
         }),
         json!({
@@ -392,10 +387,9 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "actor_id": {"type": "string", "format": "uuid", "description": "member performing the transition"},
                     "action": {"type": "string", "description": "start_review, close, or archive"}
                 },
-                "required": ["thread_id", "actor_id", "action"]
+                "required": ["thread_id", "action"]
             }
         }),
         json!({
@@ -597,10 +591,9 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid", "description": "member to claim the thread for"},
                     "lease_secs": {"type": "integer", "description": "optional lease deadline in seconds; the claim is reclaimable after it lapses (omit for a durable claim)"}
                 },
-                "required": ["channel_id", "member_id"]
+                "required": ["channel_id"]
             }
         }),
         json!({
@@ -610,11 +603,10 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid", "description": "the current assignee"},
                     "claim_lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from the claim response's thread.claim_lease_id"},
                     "lease_secs": {"type": "integer", "description": "new lease deadline in seconds from now"}
                 },
-                "required": ["thread_id", "member_id", "claim_lease_id", "lease_secs"]
+                "required": ["thread_id", "claim_lease_id", "lease_secs"]
             }
         }),
         json!({
@@ -624,10 +616,9 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid", "description": "the current assignee"},
                     "claim_lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from the claim response's thread.claim_lease_id"}
                 },
-                "required": ["thread_id", "member_id", "claim_lease_id"]
+                "required": ["thread_id", "claim_lease_id"]
             }
         }),
         json!({
@@ -637,10 +628,9 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid", "description": "the current assignee"},
                     "claim_lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from the claim response's thread.claim_lease_id"}
                 },
-                "required": ["thread_id", "member_id", "claim_lease_id"]
+                "required": ["thread_id", "claim_lease_id"]
             }
         }),
         json!({
@@ -1793,17 +1783,16 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "post_message",
-            "description": "Post a message to a thread on behalf of a member.",
+            "description": "Post a message to a thread as the authenticated member.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "author_id": {"type": "string", "format": "uuid"},
                     "body": {"type": "string", "description": "plain text; omit when sending typed content (body is derived from it)"},
                     "metadata": {"type": "object"},
                     "content": {"type": "array", "items": {"type": "object"}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
-                "required": ["thread_id", "author_id", "body"]
+                "required": ["thread_id", "body"]
             }
         }),
         json!({
@@ -1827,12 +1816,11 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "message_id": {"type": "string", "format": "uuid"},
-                    "editor_id": {"type": "string", "format": "uuid"},
                     "body": {"type": "string", "description": "plain text; omit when sending typed content (body is derived from it)"},
                     "metadata": {"type": "object"},
                     "content": {"type": "array", "items": {"type": "object"}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
-                "required": ["message_id", "editor_id", "body"]
+                "required": ["message_id", "body"]
             }
         }),
         json!({
@@ -1854,11 +1842,10 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "message_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid"},
                     "kind": {"type": "string"},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "optional confidence weight for weighted consensus"}
                 },
-                "required": ["message_id", "member_id", "kind"]
+                "required": ["message_id", "kind"]
             }
         }),
         json!({
@@ -1868,10 +1855,9 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "message_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid"},
                     "emoji": {"type": "string"}
                 },
-                "required": ["message_id", "member_id", "emoji"]
+                "required": ["message_id", "emoji"]
             }
         }),
         json!({
@@ -1881,10 +1867,9 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "message_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid"},
                     "emoji": {"type": "string"}
                 },
-                "required": ["message_id", "member_id", "emoji"]
+                "required": ["message_id", "emoji"]
             }
         }),
         json!({
@@ -1905,10 +1890,9 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "message_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid"}
+                    "message_id": {"type": "string", "format": "uuid"}
                 },
-                "required": ["thread_id", "message_id", "member_id"]
+                "required": ["thread_id", "message_id"]
             }
         }),
         json!({
@@ -1918,10 +1902,9 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "message_id": {"type": "string", "format": "uuid"},
-                    "member_id": {"type": "string", "format": "uuid"}
+                    "message_id": {"type": "string", "format": "uuid"}
                 },
-                "required": ["thread_id", "message_id", "member_id"]
+                "required": ["thread_id", "message_id"]
             }
         }),
         json!({
@@ -1975,8 +1958,7 @@ pub fn catalog() -> Vec<Value> {
                         "enum": ["screenshot", "recording", "transcript", "code_dump", "attachment"]
                     },
                     "content_base64": {"type": "string"},
-                    "mime_type": {"type": "string"},
-                    "uploaded_by": {"type": "string", "format": "uuid"}
+                    "mime_type": {"type": "string"}
                 },
                 "required": ["kind", "content_base64"]
             }
@@ -2023,8 +2005,7 @@ pub fn catalog() -> Vec<Value> {
                         "type": "string",
                         "enum": ["screenshot", "recording", "transcript", "code_dump", "attachment"]
                     },
-                    "mime_type": {"type": "string"},
-                    "uploaded_by": {"type": "string", "format": "uuid"}
+                    "mime_type": {"type": "string"}
                 },
                 "required": ["upload_id", "object_key", "parts", "kind"]
             }
@@ -2217,15 +2198,14 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "link_slack_channel",
-            "description": "Link a Slack channel to a Maidan thread so the projector bridges messages both ways. The workspace/channel are resolved from the thread; you supply the Slack channel id and the member inbound Slack messages are attributed to. Requires workspace:write + access to the thread.",
+            "description": "Link a Slack channel to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "slack_channel_id": {"type": "string"},
-                    "member_id": {"type": "string", "format": "uuid"}
+                    "slack_channel_id": {"type": "string"}
                 },
-                "required": ["thread_id", "slack_channel_id", "member_id"]
+                "required": ["thread_id", "slack_channel_id"]
             }
         }),
         json!({
@@ -2250,16 +2230,15 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "link_github_issue",
-            "description": "Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both ways. The workspace/channel are resolved from the thread; you supply repo (owner/name), issue_number, and the member inbound GitHub comments are attributed to. Requires workspace:write + access to the thread.",
+            "description": "Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "repo": {"type": "string", "description": "owner/name"},
-                    "issue_number": {"type": "integer"},
-                    "member_id": {"type": "string", "format": "uuid"}
+                    "issue_number": {"type": "integer"}
                 },
-                "required": ["thread_id", "repo", "issue_number", "member_id"]
+                "required": ["thread_id", "repo", "issue_number"]
             }
         }),
         json!({

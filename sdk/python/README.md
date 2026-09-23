@@ -17,13 +17,13 @@ client = Client("http://127.0.0.1:8080", token)  # or MAIDAN_URL / MAIDAN_TOKEN
 # Hero loop: claim the next ready task, do work, post, set a result.
 # A claim returns the thread's fields at the top level (plus a content-addressed
 # `pin`), or None when nothing is ready.
-claim = client.claim_next_thread(channel_id, {"member_id": member_id})
+claim = client.claim_next_thread(channel_id)
 if claim:
     tid = claim["id"]
-    client.messages.post(tid, member_id, "on it")
+    client.messages.post(tid, "on it")
     client.threads.set_result(tid, {"ok": True})
     # Long job? Heartbeat the lease with the fencing token the claim handed back.
-    client.renew_claim(tid, member_id, claim["claim_lease_id"], 300)
+    client.renew_claim(tid, claim["claim_lease_id"], 300)
 
 # React to work instead of polling.
 sub = client.subscribe(

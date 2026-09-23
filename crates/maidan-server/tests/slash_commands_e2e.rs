@@ -99,6 +99,7 @@ async fn spawn() -> Harness {
     );
     state.webhooks = WebhookRuntime::new(test_key());
     state.slash = SlashRuntime::new(test_key());
+    state.test_identity_header = true;
     let indexer = Indexer::new(bus, Arc::new(LoggingHandler::default()))
         .spawn_with_heartbeat(state.indexer_last_event_unix_ms.clone());
     let app = router(state);
@@ -212,7 +213,8 @@ async fn http_slash_command_dispatches_signed_handler_and_stores_response() {
     let msg: serde_json::Value = h
         .client
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .json(&json!({ "author_id": author_id, "body": "/ping hello" }))
+        .header("maidan-test-member-id", &author_id)
+        .json(&json!({ "body": "/ping hello" }))
         .send()
         .await
         .unwrap()
@@ -257,7 +259,8 @@ async fn mcp_tool_slash_command_lists_channels() {
     let msg: serde_json::Value = h
         .client
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .json(&json!({ "author_id": author_id, "body": "/channels" }))
+        .header("maidan-test-member-id", &author_id)
+        .json(&json!({ "body": "/channels" }))
         .send()
         .await
         .unwrap()
@@ -282,7 +285,8 @@ async fn unregistered_slash_body_posts_without_slash_metadata() {
     let msg: serde_json::Value = h
         .client
         .post(format!("{}/threads/{tid}/messages", h.base))
-        .json(&json!({ "author_id": author_id, "body": "/unknown arg" }))
+        .header("maidan-test-member-id", &author_id)
+        .json(&json!({ "body": "/unknown arg" }))
         .send()
         .await
         .unwrap()

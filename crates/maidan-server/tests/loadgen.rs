@@ -281,11 +281,10 @@ async fn load_baseline() {
         parts.len() >= 4,
         "MAIDAN_LOADGEN_IDS must be workspace|channel|thread|member"
     );
-    let (ws_id, _cid, tid, mid) = (
+    let (ws_id, _cid, tid) = (
         parts[0].to_string(),
         parts[1].to_string(),
         parts[2].to_string(),
-        parts[3].to_string(),
     );
 
     let client = reqwest::Client::builder()
@@ -303,13 +302,7 @@ async fn load_baseline() {
     let mut set = tokio::task::JoinSet::new();
     for w in 0..concurrency {
         let client = client.clone();
-        let (base, bearer, ws_id, tid, mid) = (
-            base.clone(),
-            bearer.clone(),
-            ws_id.clone(),
-            tid.clone(),
-            mid.clone(),
-        );
+        let (base, bearer, ws_id, tid) = (base.clone(), bearer.clone(), ws_id.clone(), tid.clone());
         set.spawn(async move {
             let mut r = WorkerResult::default();
             let mut i = 0u64;
@@ -325,7 +318,6 @@ async fn load_baseline() {
                         .post(format!("{base}/threads/{tid}/messages"))
                         .bearer_auth(&bearer)
                         .json(&json!({
-                            "author_id": mid,
                             "body": format!("worker {w} op {i}")
                         }))
                         .send()
@@ -425,7 +417,7 @@ async fn post_to_observer_latency() {
         parts.len() >= 4,
         "MAIDAN_LOADGEN_IDS must be workspace|channel|thread|member"
     );
-    let (tid, mid) = (parts[2].to_string(), parts[3].to_string());
+    let tid = parts[2].to_string();
 
     // Connect the observer. `/ws/subscribe` reads the bearer from the subscribe
     // frame's `token` field, not an HTTP header, so the upgrade itself is plain.
@@ -469,7 +461,7 @@ async fn post_to_observer_latency() {
         let post = client
             .post(format!("{base}/threads/{tid}/messages"))
             .bearer_auth(&bearer)
-            .json(&json!({"author_id": mid, "body": nonce}))
+            .json(&json!({"body": nonce}))
             .send();
         // Read frames until the matching event, concurrently with the POST, so
         // t1 records receipt independent of when the POST response returns.

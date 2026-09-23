@@ -55,9 +55,7 @@ pub async fn list_group_dms(
     let workspace_id = WorkspaceId(workspace_id);
     ensure_workspace(&auth, workspace_id)?;
     let member_id = MemberId(q.member_id);
-    // A session caller may only list its OWN group DMs; bearer = orchestrator
-    // (act-as-any); bypass unrestricted (same rule as writes, 202).
-    crate::routes::ensure_acting_member(&auth, member_id)?;
+    crate::routes::ensure_own_personal_state(&auth, member_id)?;
     Ok(Json(
         state
             .store
@@ -97,8 +95,7 @@ pub async fn post_group_dm_message(
     let group_id = GroupDmConversationId(id);
     let group = state.store.get_group_dm_conversation(group_id).await?;
     ensure_workspace(&auth, group.workspace_id)?;
-    let author_id = MemberId(body.author_id);
-    crate::routes::ensure_acting_member(&auth, author_id)?;
+    let author_id = auth.member_id;
     if !state.store.group_dm_has_member(group_id, author_id).await? {
         return Err(ApiError::Forbidden(
             "member is not a participant in this group DM".into(),

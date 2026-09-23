@@ -16,6 +16,28 @@ use crate::federation::PeerContext;
 use crate::session::load_session;
 use crate::state::AppState;
 
+const TEST_MEMBER_HEADER: &str = "maidan-test-member-id";
+
+async fn auth_disabled_context(state: &AppState, headers: &axum::http::HeaderMap) -> AuthContext {
+    if state.test_identity_header {
+        if let Some(member_id) = headers
+            .get(TEST_MEMBER_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<uuid::Uuid>().ok())
+            .map(maidan_types::MemberId)
+        {
+            if let Ok(member) = state.store.get_member(member_id).await {
+                return AuthContext::from_session(
+                    member_id,
+                    member.workspace_id,
+                    maidan_auth::capability::all(),
+                );
+            }
+        }
+    }
+    AuthContext::bypass()
+}
+
 /// Whether bearer auth is actually disabled. Fail-closed: `AUTH_DISABLED` takes
 /// effect only when the operator has explicitly acknowledged it via
 /// `MAIDAN_ALLOW_INSECURE_NO_AUTH` and the deployment is not production. This
@@ -30,7 +52,8 @@ pub fn auth_disabled_from_env() -> bool {
 
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
     if state.auth_disabled {
-        req.extensions_mut().insert(AuthContext::bypass());
+        let auth = auth_disabled_context(&state, req.headers()).await;
+        req.extensions_mut().insert(auth);
         return next.run(req).await;
     }
 
@@ -107,7 +130,8 @@ pub async fn session_or_bearer_middleware(
     next: Next,
 ) -> Response {
     if state.auth_disabled {
-        req.extensions_mut().insert(AuthContext::bypass());
+        let auth = auth_disabled_context(&state, req.headers()).await;
+        req.extensions_mut().insert(auth);
         return next.run(req).await;
     }
 
@@ -149,7 +173,8 @@ pub async fn ui_session_or_bearer_middleware(
     next: Next,
 ) -> Response {
     if state.auth_disabled {
-        req.extensions_mut().insert(AuthContext::bypass());
+        let auth = auth_disabled_context(&state, req.headers()).await;
+        req.extensions_mut().insert(auth);
         return next.run(req).await;
     }
 

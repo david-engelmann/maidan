@@ -25,7 +25,7 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState, FederationRuntime, SlashRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
+    MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
 };
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -48,7 +48,6 @@ fn echo_module() -> Vec<u8> {
 struct Tenant {
     ws: WorkspaceId,
     thread: maidan_types::ThreadId,
-    author: MemberId,
     token: String,
 }
 
@@ -142,7 +141,6 @@ async fn a_handler_cannot_run_another_tenants_module() {
         tenants.push(Tenant {
             ws: ws.id,
             thread: thread.id,
-            author: author.id,
             token: secret.as_str().to_string(),
         });
     }
@@ -199,13 +197,13 @@ async fn a_handler_cannot_run_another_tenants_module() {
     );
 
     let invoke = |t: &Tenant, body: &'static str| {
-        let (base, token, thread, author) = (base.clone(), t.token.clone(), t.thread, t.author);
+        let (base, token, thread) = (base.clone(), t.token.clone(), t.thread);
         let client = client.clone();
         async move {
             client
                 .post(format!("{base}/threads/{}/messages", thread.0))
                 .bearer_auth(token)
-                .json(&json!({ "author_id": author.0, "body": body }))
+                .json(&json!({ "body": body }))
                 .send()
                 .await
                 .unwrap()

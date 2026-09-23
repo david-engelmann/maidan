@@ -488,14 +488,15 @@ All three are now carried.
      against the thread's **working clock** (`work_started_at`), so
      elapsed time is the room's own measurement.
    - **To arm the wall dimension, acknowledge the claim.** `work_started_at` is
-     `NULL` until the holder calls `acknowledge_claim {thread_id, member_id,
-     claim_lease_id}` (REST `POST /threads/:id/claim/acknowledge`). Until then
+     `NULL` until the holder calls `acknowledge_claim {thread_id,
+     claim_lease_id}` (REST `POST /threads/:id/claim/acknowledge`). The holder
+     comes from the authenticated identity; it is not a caller-selected field. Until then
      `max_wall_secs` is inert — a claimed-but-unacknowledged run is never stopped
      on time. Acknowledging is idempotent (the first start time is kept) and is
      also what splits `claimed` from `working` in `GET /channels/:cid/occupancy`.
-   - **Extra arguments are ignored, not rejected.** The handler does not set
-     `deny_unknown_fields`, so an unrecognized key cannot abort a run — but it is
-     silently dropped, so sending one buys nothing.
+   - **Extra arguments are rejected.** Lifecycle and usage request schemas use
+     strict deserialization, so stale acting-identity fields fail at the boundary
+     instead of being silently ignored.
 
 ## Versioning
 

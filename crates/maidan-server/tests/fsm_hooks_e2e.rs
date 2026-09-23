@@ -111,6 +111,7 @@ async fn spawn() -> Harness {
     state.webhooks = WebhookRuntime::new(test_key());
     state.slash = SlashRuntime::new(test_key());
     state.fsm_hooks = FsmHookRuntime::new(test_key());
+    state.test_identity_header = true;
     let indexer = Indexer::new(bus.clone(), Arc::new(LoggingHandler::default()))
         .spawn_with_heartbeat(state.indexer_last_event_unix_ms.clone());
     let fsm_worker = maidan_server::fsm_hook_worker::FsmHookWorker::spawn(state.clone());
@@ -239,7 +240,8 @@ async fn fsm_hook_invokes_http_handler_on_thread_close() {
     let _: serde_json::Value = h
         .client
         .post(format!("{}/threads/{tid}", h.base))
-        .json(&json!({ "actor_id": actor_id, "action": "start_review" }))
+        .header("maidan-test-member-id", actor_id)
+        .json(&json!({ "action": "start_review" }))
         .send()
         .await
         .unwrap()
@@ -251,7 +253,8 @@ async fn fsm_hook_invokes_http_handler_on_thread_close() {
     let _: serde_json::Value = h
         .client
         .post(format!("{}/threads/{tid}", h.base))
-        .json(&json!({ "actor_id": actor_id, "action": "close" }))
+        .header("maidan-test-member-id", actor_id)
+        .json(&json!({ "action": "close" }))
         .send()
         .await
         .unwrap()
@@ -346,7 +349,8 @@ async fn fsm_hook_does_not_fire_when_states_do_not_match() {
     let _ = h
         .client
         .post(format!("{}/threads/{tid}", h.base))
-        .json(&json!({ "actor_id": actor_id, "action": "start_review" }))
+        .header("maidan-test-member-id", actor_id)
+        .json(&json!({ "action": "start_review" }))
         .send()
         .await
         .unwrap();

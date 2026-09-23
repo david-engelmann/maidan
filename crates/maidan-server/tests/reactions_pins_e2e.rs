@@ -40,6 +40,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
         None,
     );
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
+    state.test_identity_header = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -102,8 +103,8 @@ async fn reaction_and_pin_http_flow() {
 
     let msg: Value = client
         .post(format!("{base}/threads/{thread_id}/messages"))
+        .header("maidan-test-member-id", member_id)
         .json(&json!({
-            "author_id": member_id,
             "body": "pin me"
         }))
         .send()
@@ -116,7 +117,8 @@ async fn reaction_and_pin_http_flow() {
 
     client
         .post(format!("{base}/messages/{message_id}/reactions"))
-        .json(&json!({"member_id": member_id, "emoji": "🎉"}))
+        .header("maidan-test-member-id", member_id)
+        .json(&json!({"emoji": "🎉"}))
         .send()
         .await
         .unwrap()
@@ -135,7 +137,8 @@ async fn reaction_and_pin_http_flow() {
 
     client
         .post(format!("{base}/threads/{thread_id}/pins"))
-        .json(&json!({"message_id": message_id, "member_id": member_id}))
+        .header("maidan-test-member-id", member_id)
+        .json(&json!({"message_id": message_id}))
         .send()
         .await
         .unwrap()
@@ -155,7 +158,8 @@ async fn reaction_and_pin_http_flow() {
 
     client
         .delete(format!("{base}/messages/{message_id}/reactions"))
-        .json(&json!({"member_id": member_id, "emoji": "🎉"}))
+        .header("maidan-test-member-id", member_id)
+        .json(&json!({"emoji": "🎉"}))
         .send()
         .await
         .unwrap()
@@ -174,7 +178,8 @@ async fn reaction_and_pin_http_flow() {
 
     client
         .delete(format!("{base}/threads/{thread_id}/pins"))
-        .json(&json!({"message_id": message_id, "member_id": member_id}))
+        .header("maidan-test-member-id", member_id)
+        .json(&json!({"message_id": message_id}))
         .send()
         .await
         .unwrap()

@@ -8,14 +8,14 @@ use axum::{
 use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
 use maidan_types::*;
 
-use super::{cap, ensure_acting_member, ensure_own_personal_state, ensure_workspace, ApiResult};
+use super::{cap, ensure_own_personal_state, ensure_workspace, ApiResult};
 use crate::dto::*;
 use crate::error::{ApiError, ApiJson};
 use crate::state::AppState;
 
 /// `GET /me` — the caller's own identity. Reflects the request's auth
 /// (member/workspace/capabilities), so an agent handed only a base URL + token
-/// can discover the `member_id` every member-attributed write needs.
+/// can discover which member the server will attribute writes to.
 /// `workspace:read`.
 pub async fn get_me(Extension(auth): Extension<AuthContext>) -> ApiResult<Json<WhoAmI>> {
     cap(&auth, WORKSPACE_READ)?;
@@ -509,7 +509,7 @@ pub async fn list_member_occupancy_follows(
     let follower_id = MemberId(id);
     let follower = state.store.get_member(follower_id).await?;
     ensure_workspace(&auth, follower.workspace_id)?;
-    ensure_acting_member(&auth, follower_id)?;
+    ensure_own_personal_state(&auth, follower_id)?;
     Ok(Json(state.store.list_member_follows(follower_id).await?))
 }
 

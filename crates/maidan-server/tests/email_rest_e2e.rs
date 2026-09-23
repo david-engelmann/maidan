@@ -147,8 +147,8 @@ async fn set_get_delete_member_email() {
     assert_eq!(after.status(), StatusCode::NOT_FOUND);
 }
 
-/// D-5 on the HTTP surface. Before this, `ensure_acting_member` only bound a
-/// *session* caller to its own member — a bearer skipped the check entirely, so
+/// D-5 on the HTTP surface. Before the personal-state guard, only a session
+/// caller was bound to its own member — a bearer skipped the check entirely, so
 /// an ordinary `workspace:read` token could point any member's digest mail
 /// wherever it liked.
 #[tokio::test]

@@ -25,13 +25,13 @@ func main() {
 	// Hero loop: claim the next ready task, do work, post, set a result.
 	// A claim returns the thread's fields at the top level (plus a
 	// content-addressed "pin"), or nil when nothing is ready.
-	claim, _ := c.ClaimNextThread(channelID, maidan.M{"member_id": memberID})
+	claim, _ := c.ClaimNextThread(channelID, nil)
 	if claim != nil {
 		tid := claim["id"].(string)
-		c.Messages.Post(tid, memberID, "on it")
+		c.Messages.Post(tid, "on it")
 		c.Threads.SetResult(tid, maidan.M{"ok": true})
 		// Long job? Heartbeat the lease with the fencing token the claim returned.
-		c.RenewClaim(tid, memberID, claim["claim_lease_id"].(string), 300)
+		c.RenewClaim(tid, claim["claim_lease_id"].(string), 300)
 	}
 
 	// React to work instead of polling.

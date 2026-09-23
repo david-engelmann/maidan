@@ -20,13 +20,13 @@ fn main() -> Result<(), maidan::MaidanError> {
     // Hero loop: claim the next ready task, do work, post, set a result.
     // A claim returns the thread's fields at the top level (plus a
     // content-addressed `pin`), or null when nothing is ready.
-    let claim = client.claim_next_thread(channel_id, json!({ "member_id": member_id }))?;
+    let claim = client.claim_next_thread(channel_id, json!({}))?;
     if let Some(tid) = claim["id"].as_str() {
-        client.messages().post(tid, member_id, "on it")?;
+        client.messages().post(tid, "on it")?;
         client.threads().set_result(tid, json!({ "ok": true }))?;
         // Long job? Heartbeat the lease with the fencing token the claim returned.
         let lease = claim["claim_lease_id"].as_str().unwrap_or_default();
-        client.renew_claim(tid, member_id, lease, 300)?;
+        client.renew_claim(tid, lease, 300)?;
     }
 
     // React to work instead of polling.

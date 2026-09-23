@@ -53,7 +53,7 @@ async fn ui_v3_collab_shell_and_session_api_reads() {
         .text()
         .await
         .unwrap();
-    assert!(html.contains(r#"data-ui-version="7""#));
+    assert!(html.contains(r#"data-ui-version="8""#));
     assert!(html.contains(r#"id="thread-list""#));
     assert!(html.contains(r#"id="collab-panel""#));
     assert!(html.contains("create-channel"));
@@ -105,7 +105,8 @@ async fn ui_v3_collab_shell_and_session_api_reads() {
 
     let msg: serde_json::Value = client
         .post(format!("{base}/threads/{thread_id}/messages"))
-        .json(&json!({"author_id": alice_id, "body": "faceted search needle collab-v44"}))
+        .header("maidan-test-member-id", alice_id)
+        .json(&json!({"body": "faceted search needle collab-v44"}))
         .send()
         .await
         .unwrap()
