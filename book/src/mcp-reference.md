@@ -1351,6 +1351,47 @@ Set or clear this workspace's WIP limit (G11): the max concurrent live claims an
 }
 ```
 
+### `set_delegation_policy`
+
+Set the longest a delegation grant may live in this workspace, in days (1 to 3650); omit or null to restore the default of 90. A grant is the standing authority to keep minting delegated tokens, so this bounds real exposure. Applies to grants issued afterwards. Requires token:admin.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "max_grant_days": {
+      "anyOf": [
+        {
+          "maximum": 3650,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "grant lifetime ceiling in days; null/omit = the default, 90"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `get_delegation_policy`
+
+This workspace's delegation policy: max_grant_days, the longest a delegation grant may live, and is_default when the workspace has set none.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {},
+  "type": "object"
+}
+```
+
 ### `get_wip_limit`
 
 This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).

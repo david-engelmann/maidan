@@ -71,6 +71,20 @@ pub trait WorkspaceStore: Send + Sync {
     /// The workspace's WIP limit, or `None` if unset (unlimited).
     async fn get_wip_limit(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError>;
 
+    /// The workspace's delegation policy: how long a grant may live (D-B).
+    /// The default ceiling when it has set none.
+    async fn get_delegation_policy(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<DelegationPolicy, StoreError>;
+    /// Set the grant ceiling in days (1–3650), or restore the default with
+    /// `None`. Applies to grants issued afterwards.
+    async fn set_delegation_policy(
+        &self,
+        workspace_id: WorkspaceId,
+        max_grant_days: Option<i64>,
+    ) -> Result<DelegationPolicy, StoreError>;
+
     /// Set or rename a workspace handle. The workspace id is unchanged. Invalid
     /// syntax is [`StoreError::InvalidInput`]; a handle owned by another
     /// workspace is [`StoreError::Conflict`].

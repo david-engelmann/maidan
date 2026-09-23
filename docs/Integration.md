@@ -351,6 +351,13 @@ a short-lived token that *is* the agent.
    expiry and a label. Only the named delegate can exchange a live grant, and it
    has to do so with its own token: a borrowed token cannot exchange anything.
    Delegation is one hop, so there is never a chain to untangle.
+   A grant itself may live at most the workspace's **grant ceiling** — 90 days
+   unless an administrator sets another (1–3650 days) with
+   `PUT /workspaces/{wid}/delegation-policy` or MCP `set_delegation_policy`
+   (`token:admin`; read it with `GET` / `get_delegation_policy`). A grant is
+   standing authority to keep minting tokens, so it is bounded like a
+   credential; renew one by issuing a new grant. Lowering the ceiling applies to
+   grants issued afterwards — revoke an existing grant to end it sooner.
 3. The token that comes back acts as the subject. It lasts 15 minutes by default
    and never more than an hour, or past the grant's or the caller's own expiry.
    It carries only capabilities that both the grant and the delegate hold.

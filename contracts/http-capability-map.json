@@ -1044,6 +1044,18 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/workspaces/{id}/delegation-policy",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/delegation-policy",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/members/{id}/wip",
     "capability": "workspace:read",

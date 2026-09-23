@@ -153,7 +153,7 @@ pub(super) async fn attenuate_token(
     // Best-effort, like `crate::audit::record`: a mint must not lose its
     // response-only secret to an audit hiccup.
     if let Err(err) = store
-        .append_audit(maidan_types::NewAuditEvent {
+        .append_audit(NewAuditEvent {
             actor_id: Some(auth.actor_id),
             action: "token.mint".into(),
             target_kind: Some("api_token".into()),
@@ -264,7 +264,7 @@ pub(super) async fn delegate_token(
         )
         .await?;
     if let Err(err) = store
-        .append_audit(maidan_types::NewAuditEvent {
+        .append_audit(NewAuditEvent {
             actor_id: Some(auth.actor_id),
             action: "token.delegate".into(),
             target_kind: Some("api_token".into()),
@@ -722,4 +722,51 @@ mod tests {
         let doc = maidan_types::RoomDiscovery::document();
         assert_eq!(doc.type_id, ROOM_DISCOVERY_TYPE);
     }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetDelegationPolicyArgs {
+    #[serde(default)]
+    max_grant_days: Option<i64>,
+}
+
+/// Set the caller's workspace grant ceiling (D-B). `token:admin`, like the REST
+/// twin: it bounds the authority grants carry.
+pub(super) async fn set_delegation_policy(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetDelegationPolicyArgs = serde_json::from_value(args.clone())?;
+    let policy = store
+        .set_delegation_policy(auth.workspace_id, a.max_grant_days)
+        .await?;
+    let recorded = store
+        .append_audit(NewAuditEvent {
+            actor_id: Some(auth.actor_id),
+            action: "delegation_policy.set".into(),
+            target_kind: Some("workspace".into()),
+            target_id: Some(auth.workspace_id.0),
+            metadata: json!({
+                "max_grant_days": policy.max_grant_days,
+                "is_default": policy.is_default,
+            }),
+        })
+        .await;
+    if let Err(err) = recorded {
+        tracing::warn!(error = %err, "audit.write_failed");
+    }
+    Ok(content_json(&policy))
+}
+
+/// The caller's workspace delegation policy. `workspace:read`.
+pub(super) async fn get_delegation_policy(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    _args: &Value,
+) -> Result<Value, McpError> {
+    Ok(content_json(
+        &store.get_delegation_policy(auth.workspace_id).await?,
+    ))
 }

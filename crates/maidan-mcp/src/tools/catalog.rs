@@ -589,6 +589,22 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_delegation_policy",
+            "description": "Set the longest a delegation grant may live in this workspace, in days (1 to 3650); omit or null to restore the default of 90. A grant is the standing authority to keep minting delegated tokens, so this bounds real exposure. Applies to grants issued afterwards. Requires token:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "max_grant_days": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 3650}, {"type": "null"}], "description": "grant lifetime ceiling in days; null/omit = the default, 90"}
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "get_delegation_policy",
+            "description": "This workspace's delegation policy: max_grant_days, the longest a delegation grant may live, and is_default when the workspace has set none.",
+            "inputSchema": {"type": "object", "properties": {}}
+        }),
+        json!({
             "name": "get_wip_limit",
             "description": "This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).",
             "inputSchema": {"type": "object", "properties": {}}

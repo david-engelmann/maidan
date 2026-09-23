@@ -189,6 +189,31 @@ pub fn set_wip_limit() {}
 pub fn get_wip_limit() {}
 
 #[utoipa::path(
+    put,
+    path = "/workspaces/{id}/delegation-policy",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = SetDelegationPolicy,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = DelegationPolicy, description = "The grant ceiling now in force"),
+        (status = 400, description = "Ceiling outside 1–3650 days"),
+        (status = 403, description = "Requires token:admin")
+    )
+)]
+pub fn set_delegation_policy() {}
+
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/delegation-policy",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = DelegationPolicy, description = "The longest a delegation grant may live"))
+)]
+pub fn get_delegation_policy() {}
+
+#[utoipa::path(
     get,
     path = "/members/{id}/wip",
     tag = "threads",

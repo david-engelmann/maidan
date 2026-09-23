@@ -1,4 +1,7 @@
-use maidan_types::{DelegationGrant, DelegationGrantId, MemberId, NewDelegationGrant, WorkspaceId};
+use maidan_types::{
+    DelegationGrant, DelegationGrantId, DelegationPolicy, MemberId, NewDelegationGrant,
+    WorkspaceId, DEFAULT_MAX_GRANT_DAYS,
+};
 use sqlx::{PgPool, Row};
 
 use crate::{delegation_grants, StoreError};
@@ -6,7 +9,10 @@ use crate::{delegation_grants, StoreError};
 const COLUMNS: &str = "id, workspace_id, subject_id, delegate_id, capabilities, purpose, authorized_by, expires_at, revoked_at, created_at";
 
 pub async fn create(pool: &PgPool, new: NewDelegationGrant) -> Result<DelegationGrant, StoreError> {
-    let (capabilities, purpose) = delegation_grants::validate_new(&new, chrono::Utc::now())?;
+    let now = chrono::Utc::now();
+    let (capabilities, purpose) = delegation_grants::validate_new(&new, now)?;
+    let policy = get_policy(pool, new.workspace_id).await?;
+    delegation_grants::check_grant_ceiling(new.expires_at, now, policy.max_grant_days)?;
     let encoded = serde_json::to_string(&capabilities)?;
     let scope_valid: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM maidan_members subject
@@ -103,4 +109,55 @@ fn row_to_grant(row: &sqlx::postgres::PgRow) -> Result<DelegationGrant, StoreErr
         revoked_at: row.get("revoked_at"),
         created_at: row.get("created_at"),
     })
+}
+
+/// The workspace's delegation policy; the default ceiling when it has set none.
+pub async fn get_policy(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<DelegationPolicy, StoreError> {
+    let days: Option<i64> = sqlx::query_scalar(
+        "SELECT max_grant_days FROM maidan_delegation_policies WHERE workspace_id = $1",
+    )
+    .bind(workspace_id.0)
+    .fetch_optional(pool)
+    .await?;
+    Ok(DelegationPolicy {
+        workspace_id,
+        max_grant_days: days.unwrap_or(DEFAULT_MAX_GRANT_DAYS),
+        is_default: days.is_none(),
+    })
+}
+
+/// Set the workspace's grant ceiling, or return it to the default with `None`.
+/// Existing grants keep the expiry they were issued with; revoke one to end it
+/// sooner.
+pub async fn set_policy(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    max_grant_days: Option<i64>,
+) -> Result<DelegationPolicy, StoreError> {
+    match max_grant_days {
+        Some(days) => {
+            delegation_grants::validate_ceiling(days)?;
+            sqlx::query(
+                "INSERT INTO maidan_delegation_policies (workspace_id, max_grant_days, updated_at)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (workspace_id) DO UPDATE
+                 SET max_grant_days = excluded.max_grant_days, updated_at = excluded.updated_at",
+            )
+            .bind(workspace_id.0)
+            .bind(days)
+            .bind(chrono::Utc::now())
+            .execute(pool)
+            .await?;
+        }
+        None => {
+            sqlx::query("DELETE FROM maidan_delegation_policies WHERE workspace_id = $1")
+                .bind(workspace_id.0)
+                .execute(pool)
+                .await?;
+        }
+    }
+    get_policy(pool, workspace_id).await
 }

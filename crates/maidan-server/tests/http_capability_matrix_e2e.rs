@@ -388,6 +388,9 @@ fn apply_route_defaults(
     if path.ends_with("/wip-limit") && method == "PUT" {
         return b.json(&json!({ "limit": 5 }));
     }
+    if path.ends_with("/delegation-policy") && method == "PUT" {
+        return b.json(&json!({ "max_grant_days": 30 }));
+    }
     if path.ends_with("/spawn-budget") && method == "PUT" {
         return b.json(&json!({ "max_children": 4, "max_depth": 3, "max_tools": 64 }));
     }

@@ -393,6 +393,19 @@ impl WorkspaceStore for PostgresStore {
         // limit (a soft over/under-claim is worse than one extra primary read).
         wip::get_limit(&self.pool, workspace_id).await
     }
+    async fn get_delegation_policy(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<DelegationPolicy, StoreError> {
+        delegation_grants::get_policy(&self.pool, workspace_id).await
+    }
+    async fn set_delegation_policy(
+        &self,
+        workspace_id: WorkspaceId,
+        max_grant_days: Option<i64>,
+    ) -> Result<DelegationPolicy, StoreError> {
+        delegation_grants::set_policy(&self.pool, workspace_id, max_grant_days).await
+    }
     async fn set_workspace_handle(
         &self,
         workspace_id: WorkspaceId,
