@@ -1696,19 +1696,24 @@ Still open, tracked here rather than left to a re-audit:
   shared scratch content (memory blocks) — not another member's authored
   record.
 
-- **Found during 411.9, not yet measured precisely: mutations that leave no
-  record at all.** 411.8 made every event and audit row name actor, subject and
-  grant — but only where a record is written. Deleting a memory block, for one,
-  hard-deletes the row and writes neither an event nor an audit row, so there is
-  nothing to attribute. A first heuristic sweep of the REST router flagged 111 of
-  195 mutating routes as recording nothing; it does not follow calls into the
-  store, so it overcounts, but the memory-block case is confirmed. Under
-  delegation this matters directly: a borrowed token acting as a member can
-  change that member's delivery email with `workspace:read`, and nothing records
-  that it happened. **Next: measure it exactly, then decide the mechanism** —
-  per-handler records have already failed to be complete once, which argues for
-  a record written where attribution is already bound (the per-request scope),
-  so completeness is structural rather than a discipline.
+- **Found during 411.9: direct mutations that leave no history.** 411.8 made
+  every event and audit row name actor, subject and grant — but only where a
+  record is written. Measured by following each handler into the store: **85
+  REST routes change durable state and write no event, no audit row and no
+  history**, among them answering an approval gate, submitting (and silently
+  overwriting) a review, setting or clearing a thread's owner, adding a
+  reviewer, installing webhooks, slash commands and FSM hooks, deleting memory
+  blocks, and changing a member's delivery email or push endpoint. Some keep a
+  who-column on the row, holding the subject and overwritten by the next write.
+
+  *Delegated* calls are not part of this gap: every delegated REST request and
+  MCP call already writes an `authorization.decision` row naming actor, subject,
+  grant, the concrete operation and its outcome (411.5). The first reading of
+  this sweep said otherwise — it read handlers and missed the middleware, the
+  same mistake as 411.7's two wrong findings. What is missing is the history of
+  what members do with their own credentials. **Next (411.11):** write that
+  record where attribution is already bound — the per-request scope — so
+  completeness is structural rather than a rule each handler must remember.
 
 - **Found during 411.6: `member:impersonate` was doing two jobs.** It covered an
   orchestrator acting *as* an agent, which delegation replaces, but also an
