@@ -60,7 +60,7 @@ pub(super) async fn seed_from_message(
             title: Some(a.title.trim().to_string()),
         })
         .await?;
-    notify(server, &t_stored).await;
+    server.publish_stored(&t_stored).await;
 
     // 2. The lineage edge: new thread `seeded_from` the source message.
     let (_reference, r_stored) = store
@@ -72,7 +72,7 @@ pub(super) async fn seed_from_message(
             relation: RelationKind::SeededFrom,
         })
         .await?;
-    notify(server, &r_stored).await;
+    server.publish_stored(&r_stored).await;
 
     // 3. `quote` inclusion: a first message quoting the source (author = caller).
     if inclusion == "quote" {
@@ -95,24 +95,8 @@ pub(super) async fn seed_from_message(
                 None,
             )
             .await?;
-        notify(server, &m_stored).await;
+        server.publish_stored(&m_stored).await;
     }
 
     Ok(content_json(&thread))
-}
-
-/// Notify the bus of an already-durably-appended event (from a `*_with_event`
-/// store call), hydrating the `Event` from the stored payload — the atomic
-/// analogue of the REST `publish_stored`. A missing bus (embedded use) is a no-op.
-async fn notify(server: &McpServer, stored: &StoredEvent) {
-    if let Some(bus) = server.event_bus.as_ref() {
-        if let Ok(event) = serde_json::from_value::<Event>(stored.payload.clone()) {
-            let _ = bus
-                .publish(BusEnvelope {
-                    log_id: stored.id,
-                    event,
-                })
-                .await;
-        }
-    }
 }

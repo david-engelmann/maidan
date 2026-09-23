@@ -110,11 +110,19 @@ async fn world() -> World {
         }
     };
     let work = vec![capability::WORKSPACE_READ, capability::MESSAGE_POST];
-    let admin_tok = mint(ids[0], vec![capability::TOKEN_ADMIN]).await;
+    let admin_tok = mint(
+        ids[0],
+        vec![
+            capability::TOKEN_ADMIN,
+            capability::WORKSPACE_READ,
+            capability::EVENT_SUBSCRIBE,
+        ],
+    )
+    .await;
     let orch_tok = mint(ids[1], work.clone()).await;
     let worker_tok = mint(ids[2], work).await;
 
-    let state = AppState::new(
+    let mut state = AppState::new(
         store.clone(),
         Arc::new(LocalFsStore::new(dir.path())),
         Arc::new(maidan_bus::InMemoryBus::new()),
@@ -126,6 +134,9 @@ async fn world() -> World {
         Arc::new(AtomicI64::new(0)),
         None,
     );
+    state.subscribe_resume_secret = Some(Arc::from(
+        maidan_server::subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET,
+    ));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, router(state)).await.unwrap() });
@@ -444,4 +455,94 @@ async fn an_mcp_tool_that_records_nothing_itself_still_leaves_a_record() {
         "only ids are kept from arguments"
     );
     assert_eq!(rows[0].actor_id, Some(w.worker));
+}
+
+impl World {
+    /// Subscribe to the workspace's live stream, `lean` or full frames, and
+    /// return once the subscription is acknowledged.
+    async fn subscribe(
+        &self,
+        lean: bool,
+    ) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>
+    {
+        use futures::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+        let url = format!("{}/ws/subscribe", self.base.replacen("http", "ws", 1));
+        let (mut ws, _) = tokio_tungstenite::connect_async(url.into_client_request().unwrap())
+            .await
+            .unwrap();
+        ws.send(Message::Text(
+            json!({
+                "filter": { "workspace_id": self.ws.0 },
+                "token": self.admin_tok,
+                "lean": lean,
+            })
+            .to_string(),
+        ))
+        .await
+        .unwrap();
+        loop {
+            let Some(Ok(Message::Text(text))) = ws.next().await else {
+                panic!("subscription closed before its ack");
+            };
+            let frame: Value = serde_json::from_str(&text).unwrap();
+            if frame["type"] == "subscribe_ack" {
+                return ws;
+            }
+        }
+    }
+}
+
+/// The next `message_posted` frame on `ws`.
+async fn next_post(
+    ws: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+) -> Value {
+    use futures::StreamExt;
+    use tokio_tungstenite::tungstenite::Message;
+    let deadline = std::time::Duration::from_secs(5);
+    loop {
+        let next = tokio::time::timeout(deadline, ws.next())
+            .await
+            .expect("no message_posted frame within 5s");
+        if let Some(Ok(Message::Text(text))) = next {
+            let frame: Value = serde_json::from_str(&text).unwrap();
+            if frame["kind"] == "message_posted" {
+                return frame;
+            }
+        }
+    }
+}
+
+/// A live subscriber learns who acted from the frame itself, as a replay
+/// would from the stored event — it does not have to refetch to tell a
+/// delegated post from a direct one.
+#[tokio::test]
+async fn a_live_frame_names_who_acted_and_for_whom() {
+    let w = world().await;
+    let (borrowed, grant) = w.borrowed().await;
+    for lean in [false, true] {
+        let mut ws = w.subscribe(lean).await;
+
+        w.post(&w.worker_tok, &format!("direct lean={lean}")).await;
+        let direct = next_post(&mut ws).await;
+        assert_eq!(
+            direct["attribution"],
+            json!({ "actor_id": w.worker.0, "subject_id": w.worker.0 }),
+            "lean={lean}: {direct}"
+        );
+
+        w.post(&borrowed, &format!("delegated lean={lean}")).await;
+        let delegated = next_post(&mut ws).await;
+        assert_eq!(
+            delegated["attribution"],
+            json!({
+                "actor_id": w.orchestrator.0,
+                "subject_id": w.worker.0,
+                "grant_id": grant,
+            }),
+            "lean={lean}: {delegated}"
+        );
+    }
 }

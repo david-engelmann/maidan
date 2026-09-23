@@ -24,6 +24,7 @@ async fn recording_bus_counts_publish_calls() {
                 tombstoned_at: None,
             },
         },
+        attribution: None,
     };
     bus.publish(envelope).await.unwrap();
     assert_eq!(bus.publishes(), 1);
@@ -44,6 +45,7 @@ async fn failing_bus_returns_error_on_publish() {
                 tombstoned_at: None,
             },
         },
+        attribution: None,
     };
     let err = bus.publish(envelope).await.unwrap_err();
     assert!(matches!(err, BusError::HydrateFailed { .. }));

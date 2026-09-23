@@ -71,6 +71,7 @@ async fn round_trip_through_listen_notify_with_pointer_hydrate() {
     bus.publish(BusEnvelope {
         log_id: stored.id,
         event: event.clone(),
+        attribution: None,
     })
     .await
     .unwrap();
@@ -199,6 +200,7 @@ async fn pointer_delivery_for_large_persisted_event() {
     bus.publish(BusEnvelope {
         log_id: stored.id,
         event,
+        attribution: None,
     })
     .await
     .unwrap();

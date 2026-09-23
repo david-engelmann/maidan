@@ -222,6 +222,7 @@ impl McpServer {
         let envelope = BusEnvelope {
             log_id: stored.id,
             event,
+            attribution: stored.attribution(),
         };
         let _ = bus.publish(envelope).await;
         Some(stored.id)
@@ -233,13 +234,10 @@ impl McpServer {
     /// Unlike [`Self::publish_event`], this does NOT append (no double-log).
     pub(crate) async fn publish_stored(&self, stored: &StoredEvent) {
         if let Some(bus) = self.event_bus.as_ref() {
-            if let Ok(event) = serde_json::from_value::<Event>(stored.payload.clone()) {
-                let _ = bus
-                    .publish(BusEnvelope {
-                        log_id: stored.id,
-                        event,
-                    })
-                    .await;
+            if let Ok(envelope) =
+                BusEnvelope::from_stored_payload(stored.id, stored.payload.clone())
+            {
+                let _ = bus.publish(envelope).await;
             }
         }
     }

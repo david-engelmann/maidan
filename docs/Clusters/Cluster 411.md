@@ -51,7 +51,8 @@
 | 411.8 | #1004 | Attribution everywhere — every event carries actor, subject and grant inside its hashed payload, and every audit row records them, so a delegated action is distinguishable from a direct one and rewriting who did something breaks the chain |
 | 411.9 | #1005 | Destroying the record needs authority: purging or erasing a workspace and hard-purging a message move from `workspace:write` to `token:admin`; tombstoning another member's message needs `channel:admin`; and no one but the author can edit a message. With this, 411.7's "delegation lends work, never authority" holds |
 | 411.10 | planned | Attestations are personal: whether an approval may be made with a borrowed token (awaiting the maintainer's decision) |
-| 411.11 | current | Nothing changes without a record: a successful REST mutation or MCP tool call that wrote no event or audit row gets an attributed `mutation` row from the request layer, closing 85 routes that recorded nothing; workspace export is recorded |
+| 411.11 | #1006 | Nothing changes without a record: a successful REST mutation or MCP tool call that wrote no event or audit row gets an attributed `mutation` row from the request layer, closing 85 routes that recorded nothing; workspace export is recorded |
+| 411.12 | current | Live frames carry attribution: the bus envelope keeps the stored event's actor, subject and grant, so WebSocket and MCP-SSE subscribers see who acted — full and lean frames — without refetching |
 | 411.close | close record | Ledgers, retrospective, and `v411.0.0` tag |
 
 ## Exit criteria
@@ -60,8 +61,9 @@
 - Delegation is explicit, expiring, capability-intersected, revocable, and
   attributable to actor, subject, and grant. **Not met at 411.6:** 25 of 31
   privileged audit writes recorded the subject as the actor, and no domain event
-  carried the delegate at all. **Met at 411.8** for every durable record; live
-  WebSocket/SSE frames do not yet carry it — see Open Work.
+  carried the delegate at all. **Met at 411.8** for every durable record, at
+  411.11 for changes that recorded nothing, and at 411.12 for live
+  WebSocket/SSE frames.
 - Grant revocation invalidates direct exchanged tokens and their attenuation
   descendants.
 - Both stores and both public protocol surfaces have executable parity evidence.

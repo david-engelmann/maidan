@@ -43,17 +43,6 @@ pub(super) async fn snapshot_thread_context(
             ref_workspace,
         )
         .await?;
-    // Bus-notify the already-durably-appended event (the MCP analogue of REST
-    // publish_stored); a missing bus (embedded use) is a no-op.
-    if let Some(bus) = server.event_bus.as_ref() {
-        if let Ok(event) = serde_json::from_value::<Event>(stored.payload.clone()) {
-            let _ = bus
-                .publish(BusEnvelope {
-                    log_id: stored.id,
-                    event,
-                })
-                .await;
-        }
-    }
+    server.publish_stored(&stored).await;
     Ok(content_json(&artifact))
 }
