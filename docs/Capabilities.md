@@ -3,6 +3,19 @@
 A running list of what Maidan can do, by release. Each cluster's retro
 PR prepends a new section so the latest is always at the top.
 
+## v408.0.0 — full-audit remediation
+
+Five implementation PRs (#964/#973/#974/#975/#976) close the adopted set from
+the 2026-09-21 full audit while keeping the experimental model path inert.
+
+| Change | Where |
+|--------|-------|
+| **Self-scoped personal state:** REST and MCP use authenticated acting identity for email, preferences, inbox state, follows, and other personal operations. Cross-member use requires the workspace-bound, audited `member:impersonate`; work attribution stays orchestrator-controlled. Confirmed client limits are clamped before SQL. | `crates/maidan-{auth,mcp,server}/`, `contracts/http-capability-map.json` |
+| **One outbound trust boundary:** operator-controlled HTTP destinations are parsed, publicly resolved, DNS-pinned, and denied redirects. Webhooks, slash commands, federation, OIDC discovery, and optional Jev advice share it. Probes, proxy-hop defaults, and container pins are hardened alongside it. | `crates/maidan-server/src/egress_http.rs`, `k8s/base/`, `compose*.yaml` |
+| **Honest browser states:** loading, actionable errors, and meaningful empty panes are explicit; approvals refresh on entry and after mutation. | `crates/maidan-server/static/index.html`, UI contract and Playwright suites |
+| **Published presentation contract:** Mermaid renders, published links and edit metadata are valid, and the locked mark/favicon/social card/palette agree with `/ui` and the captured docs screenshots. | `book/`, `docs/assets/`, `scripts/check-docs-presentation.sh` |
+| **Measured advice without authority:** a default-off `POST /threads/:id/land-gate/advice` sends an explicit state to TypeSafe, returns raw choice/calibration/latency/usage evidence, and can only recommend. Provider failure never changes the stored gate; the JSONL harness measures independently labelled cases before any graduation decision. | `crates/maidan-server/src/land_gate_advisor.rs`, `scripts/eval-land-gate-advisor.py` |
+
 ## v407.0.0 — executable surface and hero-loop contracts
 
 Four implementation PRs (#965/#966/#967/#968) close Wave 4 row #39 by

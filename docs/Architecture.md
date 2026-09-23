@@ -193,8 +193,10 @@ flowchart LR
   attenuate (drop rights, never amplify) without `token:admin`. Per-channel/thread access is enforced on
   read/write, events (WS + MCP SSE), search, and context packs across REST, MCP, and A2A;
   private channels require a membership row, DMs a participant check. App OAuth installs
-  and federation peer tokens are distinct token classes. Session callers act only as
-  themselves; bearer callers are the act-as-any orchestrator. A workspace is a
+  and federation peer tokens are distinct token classes. Personal member state is
+  self-scoped for session and bearer callers; cross-member access requires the explicit,
+  workspace-bound, audited `member:impersonate` capability. Work attribution remains an
+  orchestrator operation. A workspace is a
   **room**: `maidan://{workspace_id}/…` (optional `#sha256` fragment). A handle
   is a renameable alias; stored ids stay the UUID.
 - **Cross-organization incident shares.** A share ticket is deliberately not an API token
@@ -222,6 +224,11 @@ flowchart LR
   queue. A re-review updates the existing GitHub comment or Slack message in place.
   Intent lives in `maidan_result_deliveries` (`armed_revision` vs `delivered_revision`);
   transport stays the outbox. Status is readable per thread over REST + MCP.
+- **Review and close gates.** Required reviewers, unresolved refutations, critical
+  waiter findings, and the land-gate pointer deterministically govern close. An optional,
+  default-off TypeSafe Jev endpoint can score a caller-supplied review state and report
+  raw probabilities, confidence, latency, and usage, but it cannot write or arm the gate;
+  a qualified external verifier remains authoritative.
 - **Federation & A2A.** A `maidan_peers` registry + event relay replicate content events
   to peers (allowlist-by-kind). Ingest verifies the **origin** envelope's hash chain
   (`verify_peer_link`) before parse/remap — a rewrite is 409 `event-log-broken`, not a
@@ -239,6 +246,10 @@ flowchart LR
   uses a different header (`Maidan-Room-LSN`, the event-log id). Retention pruning,
   Prometheus metrics + alert rules, OTLP traces/metrics, a durable event log with replay,
   and a Helm chart round it out.
+- **Outbound HTTP.** Operator-supplied webhook, slash, federation, OIDC, and experimental
+  provider origins share one parser and client factory: resolve only public addresses,
+  pin the connection to the checked DNS result, and refuse redirects. Destination
+  approval and data governance remain operator policy beyond that network boundary.
 
 ## What's deliberately not here yet
 

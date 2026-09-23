@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [408.0.0] — 2026-09-23
+
+Post-gate hardening (Phase XXIV). **Full-audit remediation.** Five
+implementation PRs (#964/#973/#974/#975/#976) plus the close record complete
+#971.
+
+- **408.1** makes personal member state self-scoped across REST and MCP.
+  Cross-member action now requires the workspace-bound, audited
+  `member:impersonate` capability, while orchestrator work attribution remains
+  unchanged. Every confirmed client-supplied SQL limit is bounded.
+- **408.2** centralizes outbound URL safety in a DNS-pinned, no-redirect client
+  that rejects private, loopback, link-local, and metadata destinations. It
+  also moves Kubernetes probes to shallow liveness, defaults proxy trust to
+  zero hops, and digest-pins the remaining MinIO images.
+- **408.3** makes `/ui` asynchronous state honest: panes expose loading,
+  actionable problem details, and meaningful empty states, while approvals
+  refresh on entry and after mutation.
+- **408.4** renders Mermaid in the published book, repairs flattened links and
+  the broken edit affordance, and ships the locked Sweep Reach mark, favicon,
+  social card, palette, `/ui` header treatment, and refreshed screenshots.
+- **408.5** adds a default-off, advisory-only Jev land-gate experiment. It
+  preserves raw probabilities and confidence, applies operator thresholds,
+  reports latency and token usage, and ships a calibration harness, but cannot
+  write or arm the authoritative gate.
+
 ## [407.0.0] — 2026-09-22
 
 Post-gate hardening (Phase XXIV). **Wave 4 row #39: executable surface and
