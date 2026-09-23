@@ -1649,7 +1649,7 @@ Still open, tracked here rather than left to a re-audit:
   | A grant could lend `token:admin`, and a token minted under it is not a grant descendant, so it outlives revocation | **Real — fixed in 411.7** |
   | Exchange authorised on the acted-as identity, so a borrowed token could use its subject's grants and erase the real actor from the chain | **Real — fixed in 411.7** |
   | 25 of 31 privileged audit writes record the subject as the actor; no domain event carries the delegate | **Real — fixed in 411.8** |
-  | A delegate can approve its own work by acting as a reviewer | **Real — 411.9, awaiting the maintainer** |
+  | A delegate can approve its own work by acting as a reviewer | **Real — 411.10, awaiting the maintainer** |
   | Narrowing a borrowed token produces an ordinary token and sheds the record | **Wrong.** The store's attenuated insert copies the parent's grant. Pinned by a test on both backends |
   | A borrowed token's validity rests only on the revocation cascade | **Wrong.** The active-token lookup itself requires the grant to be live. Pinned by a test that kills the grant without touching the token row |
 
@@ -1667,15 +1667,53 @@ Still open, tracked here rather than left to a re-audit:
   delegated post from a direct one without refetching the event. The fix is to
   carry attribution on the bus envelope across every bus implementation. It is
   a display gap, not an audit gap: nothing is lost, only not pushed.
-- **Found during 411.8, not yet fixed: any ordinary token can erase the
-  workspace.** `purge_workspace` and `erase_workspace` require only
+- **Found during 411.8, fixed in 411.9: any ordinary token could destroy the
+  record.** `purge_workspace` and `erase_workspace` required only
   `workspace:write`, which `maidan.agent.worker` and `default_minted` both
-  carry. The only guards are legal hold and, for erase, a confirmation field
-  that must equal the workspace id already in the URL. It predates delegation;
-  classifying capabilities as work or authority is what made it visible. It is
-  also backwards against the repo's own precedent: *exporting* a workspace
-  requires `token:admin`, but *destroying* it requires only what every agent
-  holds. **Fix next: move both to `token:admin`.**
+  carry; the only guards were legal hold and, for erase, a confirmation field
+  equal to the workspace id already in the URL. It was backwards against the
+  repo's own precedent — *exporting* a workspace required `token:admin`, but
+  *destroying* it did not — and it made 411.7's "delegation lends work, never
+  authority" false, because `workspace:write` is work and carried erase. Both
+  now require `token:admin`, as does hard-purging a message.
+
+  Sweeping every destructive route for the same shape found two more on
+  messages, both from Cluster 29, which meant "moderator" and wrote
+  `workspace:write`:
+
+  | Operation | Was | Now |
+  |---|---|---|
+  | Edit another member's message | `workspace:write` | **Refused for everyone.** The message keeps the author's name, so the edit would record them saying what they did not. Moderation removes; it never rewrites |
+  | Tombstone another member's message | `workspace:write` | `channel:admin` — moderation, which a grant cannot lend. The author still tombstones their own with `message:post` |
+  | Hard-purge a message | `workspace:write` | `token:admin` |
+  | Purge / erase a workspace | `workspace:write` | `token:admin` |
+
+  Tests: `message_authorship_e2e` (five, REST and MCP),
+  `workspace_purge_e2e`, `workspace_erase_e2e` — each assert that a token with
+  every work capability is refused. Each of the six gates was disabled alone
+  and only its own test failed. The remaining `workspace:write` deletes remove
+  shared configuration (webhooks, hooks, slash commands, schedules, links) or
+  shared scratch content (memory blocks) — not another member's authored
+  record.
+
+- **Found during 411.9: direct mutations that leave no history.** 411.8 made
+  every event and audit row name actor, subject and grant — but only where a
+  record is written. Measured by following each handler into the store: **85
+  REST routes change durable state and write no event, no audit row and no
+  history**, among them answering an approval gate, submitting (and silently
+  overwriting) a review, setting or clearing a thread's owner, adding a
+  reviewer, installing webhooks, slash commands and FSM hooks, deleting memory
+  blocks, and changing a member's delivery email or push endpoint. Some keep a
+  who-column on the row, holding the subject and overwritten by the next write.
+
+  *Delegated* calls are not part of this gap: every delegated REST request and
+  MCP call already writes an `authorization.decision` row naming actor, subject,
+  grant, the concrete operation and its outcome (411.5). The first reading of
+  this sweep said otherwise — it read handlers and missed the middleware, the
+  same mistake as 411.7's two wrong findings. What is missing is the history of
+  what members do with their own credentials. **Next (411.11):** write that
+  record where attribution is already bound — the per-request scope — so
+  completeness is structural rather than a rule each handler must remember.
 
 - **Found during 411.6: `member:impersonate` was doing two jobs.** It covered an
   orchestrator acting *as* an agent, which delegation replaces, but also an

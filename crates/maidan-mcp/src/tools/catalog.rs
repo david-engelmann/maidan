@@ -1848,7 +1848,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "edit_message",
-            "description": "Edit a message body (author needs message:post; others need workspace:write).",
+            "description": "Edit your own message (message:post). Only the author can edit a message; another member's message can be tombstoned, not rewritten.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

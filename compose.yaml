@@ -130,6 +130,9 @@ services:
       AUTH_DISABLED: 1
       MAIDAN_ALLOW_INSECURE_NO_AUTH: 1
       FEDERATION_DISABLED: 1
+      # Peers in this profile are other containers on the compose network —
+      # private addresses the egress guard refuses unless told otherwise.
+      MAIDAN_ALLOW_PRIVATE_EGRESS: 1
       # Smoke-only 32-byte key (hex); required to register federation peers.
       FEDERATION_ENCRYPTION_KEY: "4242424242424242424242424242424242424242424242424242424242424242"
       MAIDAN_BIND: 0.0.0.0:8080
@@ -167,6 +170,7 @@ services:
       AUTH_DISABLED: 1
       MAIDAN_ALLOW_INSECURE_NO_AUTH: 1
       FEDERATION_DISABLED: "0"
+      MAIDAN_ALLOW_PRIVATE_EGRESS: 1
       FEDERATION_ENCRYPTION_KEY: "4242424242424242424242424242424242424242424242424242424242424242"
       FEDERATION_POLL_INTERVAL_SECS: "3"
       MAIDAN_BIND: 0.0.0.0:8080

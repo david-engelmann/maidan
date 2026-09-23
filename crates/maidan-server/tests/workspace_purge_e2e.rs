@@ -55,7 +55,7 @@ async fn spawn() -> (
 }
 
 #[tokio::test]
-async fn purge_workspace_requires_write_capability_and_writes_audit() {
+async fn purge_workspace_requires_authority_and_writes_audit() {
     let (addr, client, store, server) = spawn().await;
     let base = format!("http://{addr}");
 
@@ -96,18 +96,52 @@ async fn purge_workspace_requires_write_capability_and_writes_audit() {
         .unwrap();
     assert_eq!(denied.status(), StatusCode::FORBIDDEN);
 
-    let write_secret = TokenSecret::generate();
+    // Every capability an ordinary agent is minted with (`maidan.agent.worker`).
+    // It used to be enough to destroy the workspace's content, because purge
+    // was gated on `workspace:write` — work, which every agent holds and any
+    // delegation grant can lend.
+    let agent_secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
             workspace_id: ws.id,
             member_id: alice.id,
             app_installation_id: None,
-            token_hash: hash_secret(write_secret.as_str()),
-            label: None,
+            token_hash: hash_secret(agent_secret.as_str()),
+            label: Some("agent".into()),
             capabilities: vec![
                 capability::WORKSPACE_READ.into(),
                 capability::WORKSPACE_WRITE.into(),
+                capability::MESSAGE_POST.into(),
+                capability::EVENT_SUBSCRIBE.into(),
+                capability::SEARCH_QUERY.into(),
+                capability::ARTIFACT_UPLOAD.into(),
+                capability::THREAD_TRANSITION.into(),
             ],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let agent = client
+        .post(format!("{base}/workspaces/{}/purge", ws.id.0))
+        .header("authorization", format!("Bearer {}", agent_secret.as_str()))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        agent.status(),
+        StatusCode::FORBIDDEN,
+        "an ordinary agent must not be able to purge the workspace"
+    );
+
+    let admin_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: alice.id,
+            app_installation_id: None,
+            token_hash: hash_secret(admin_secret.as_str()),
+            label: None,
+            capabilities: vec![capability::TOKEN_ADMIN.into()],
             expires_at: None,
         })
         .await
@@ -115,7 +149,7 @@ async fn purge_workspace_requires_write_capability_and_writes_audit() {
 
     let ok = client
         .post(format!("{base}/workspaces/{}/purge", ws.id.0))
-        .header("authorization", format!("Bearer {}", write_secret.as_str()))
+        .header("authorization", format!("Bearer {}", admin_secret.as_str()))
         .send()
         .await
         .unwrap();
