@@ -13,7 +13,7 @@ pub async fn create(pool: &PgPool, new: NewApiToken) -> Result<ApiToken, StoreEr
             (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities, expires_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at",
+                   created_at, expires_at, revoked_at, delegation_grant_id",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -48,7 +48,7 @@ pub async fn create_attenuated(
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
                  (SELECT delegation_grant_id FROM maidan_api_tokens WHERE id = $9))
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at",
+                   created_at, expires_at, revoked_at, delegation_grant_id",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -103,7 +103,7 @@ pub async fn create_delegated(
                  AND p.revoked_at IS NULL
                  AND (p.expires_at IS NULL OR p.expires_at >= $7)))
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label,
-                   capabilities, created_at, expires_at, revoked_at",
+                   capabilities, created_at, expires_at, revoked_at, delegation_grant_id",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -125,7 +125,7 @@ pub async fn create_delegated(
 pub async fn get_by_id(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
     let row = sqlx::query(
         "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                created_at, expires_at, revoked_at
+                created_at, expires_at, revoked_at, delegation_grant_id
          FROM maidan_api_tokens
          WHERE id = $1",
     )
@@ -139,7 +139,7 @@ pub async fn get_by_id(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreE
 pub async fn get_active_by_hash(pool: &PgPool, token_hash: &str) -> Result<ApiToken, StoreError> {
     let row = sqlx::query(
         "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label,
-                capabilities, created_at, expires_at, revoked_at
+                capabilities, created_at, expires_at, revoked_at, delegation_grant_id
          FROM maidan_api_tokens
          WHERE token_hash = $1
            AND revoked_at IS NULL
@@ -194,7 +194,7 @@ pub async fn list_for_member(
 ) -> Result<Vec<ApiToken>, StoreError> {
     let rows = sqlx::query(
         "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                created_at, expires_at, revoked_at
+                created_at, expires_at, revoked_at, delegation_grant_id
          FROM maidan_api_tokens
          WHERE workspace_id = $1 AND member_id = $2
          ORDER BY created_at DESC",
@@ -232,7 +232,7 @@ pub async fn revoke(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreErro
          SET revoked_at = $2
          WHERE id = $1 AND revoked_at IS NULL
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at",
+                   created_at, expires_at, revoked_at, delegation_grant_id",
     )
     .bind(id.0)
     .bind(now)
@@ -284,5 +284,8 @@ fn row_to_token(row: &sqlx::postgres::PgRow) -> Result<ApiToken, StoreError> {
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         expires_at: row.get::<Option<DateTime<Utc>>, _>("expires_at"),
         revoked_at: row.get::<Option<DateTime<Utc>>, _>("revoked_at"),
+        delegation_grant_id: row
+            .get::<Option<Uuid>, _>("delegation_grant_id")
+            .map(maidan_types::DelegationGrantId),
     })
 }

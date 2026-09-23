@@ -273,12 +273,48 @@ impl McpServer {
         args: &Value,
     ) -> Result<Value, McpError> {
         let params = json!({ "name": name, "arguments": args });
-        self.tools_call(&params, auth).await
+        let result = self.tools_call(&params, auth).await;
+        maidan_auth::record_delegated_authorization(
+            self.store.as_ref(),
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            &format!("tools/call:{name}"),
+            if result.is_ok() {
+                maidan_auth::AuthorizationOutcome::Allowed
+            } else {
+                maidan_auth::AuthorizationOutcome::Denied
+            },
+        )
+        .await;
+        result
     }
 
     pub async fn handle(&self, request: JsonRpcRequest, auth: &AuthContext) -> JsonRpcResponse {
         let id = request.id.clone().unwrap_or(Value::Null);
-        match self.dispatch(&request, auth).await {
+        let action = if request.method == "tools/call" {
+            request
+                .params
+                .get("name")
+                .and_then(Value::as_str)
+                .map(|name| format!("tools/call:{name}"))
+                .unwrap_or_else(|| "tools/call".into())
+        } else {
+            request.method.clone()
+        };
+        let result = self.dispatch(&request, auth).await;
+        maidan_auth::record_delegated_authorization(
+            self.store.as_ref(),
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            &action,
+            if result.is_ok() {
+                maidan_auth::AuthorizationOutcome::Allowed
+            } else {
+                maidan_auth::AuthorizationOutcome::Denied
+            },
+        )
+        .await;
+        match result {
             Ok(result) => JsonRpcResponse::success(id, result),
             Err(err) => {
                 tracing::debug!(method = %request.method, error = %err, "mcp dispatch error");

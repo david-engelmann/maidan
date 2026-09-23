@@ -6,7 +6,10 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use maidan_auth::{capability, hash_secret, AuthContext, TokenSecret};
 use maidan_store::Store;
-use maidan_types::{NewApiToken, RoomCard, RoomUri, WorkspaceId};
+use maidan_types::{
+    DelegationGrantId, MemberId, NewApiToken, NewAuditEvent, NewDelegationGrant, RoomCard, RoomUri,
+    WorkspaceId,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -283,6 +286,141 @@ pub(super) async fn delegate_token(
     })))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateDelegationGrantArgs {
+    workspace_id: uuid::Uuid,
+    subject_id: uuid::Uuid,
+    delegate_id: uuid::Uuid,
+    capabilities: Vec<String>,
+    purpose: String,
+    expires_at: DateTime<Utc>,
+}
+
+pub(super) async fn create_delegation_grant(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: CreateDelegationGrantArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)?;
+    if let Some(unknown) = a
+        .capabilities
+        .iter()
+        .find(|capability| !capability::is_known(capability))
+    {
+        return Err(McpError::InvalidParams(format!(
+            "unknown delegated capability: {unknown}"
+        )));
+    }
+    let subject_id = MemberId(a.subject_id);
+    let delegate_id = MemberId(a.delegate_id);
+    for member_id in [subject_id, delegate_id] {
+        let member = store.get_member(member_id).await?;
+        if member.workspace_id != workspace_id {
+            return Err(McpError::InvalidParams(
+                "subject and delegate must belong to the workspace".into(),
+            ));
+        }
+    }
+    let grant = store
+        .create_delegation_grant(NewDelegationGrant {
+            workspace_id,
+            subject_id,
+            delegate_id,
+            capabilities: a.capabilities,
+            purpose: a.purpose,
+            authorized_by: auth.actor_id,
+            expires_at: a.expires_at,
+        })
+        .await?;
+    if let Err(err) = store
+        .append_audit(NewAuditEvent {
+            actor_id: Some(auth.actor_id),
+            action: "delegation_grant.create".into(),
+            target_kind: Some("delegation_grant".into()),
+            target_id: Some(grant.id.0),
+            metadata: json!({
+                "workspace_id": workspace_id.0,
+                "subject_id": grant.subject_id.0,
+                "delegate_id": grant.delegate_id.0,
+                "capabilities": grant.capabilities.clone(),
+                "expires_at": grant.expires_at,
+                "purpose": grant.purpose.clone(),
+                "surface": "mcp",
+            }),
+        })
+        .await
+    {
+        tracing::warn!(error = %err, "audit.write_failed");
+    }
+    Ok(content_json(&grant))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListDelegationGrantsArgs {
+    workspace_id: uuid::Uuid,
+}
+
+pub(super) async fn list_delegation_grants(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListDelegationGrantsArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)?;
+    Ok(content_json(
+        &store.list_delegation_grants(workspace_id).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RevokeDelegationGrantArgs {
+    workspace_id: uuid::Uuid,
+    grant_id: uuid::Uuid,
+}
+
+pub(super) async fn revoke_delegation_grant(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RevokeDelegationGrantArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    let grant_id = DelegationGrantId(a.grant_id);
+    auth.ensure_workspace(workspace_id)?;
+    let existing = store.get_delegation_grant(grant_id).await?;
+    if existing.workspace_id != workspace_id {
+        return Err(McpError::NotFound);
+    }
+    store
+        .revoke_delegation_grant(workspace_id, grant_id)
+        .await?;
+    let grant = store.get_delegation_grant(grant_id).await?;
+    if let Err(err) = store
+        .append_audit(NewAuditEvent {
+            actor_id: Some(auth.actor_id),
+            action: "delegation_grant.revoke".into(),
+            target_kind: Some("delegation_grant".into()),
+            target_id: Some(grant.id.0),
+            metadata: json!({
+                "workspace_id": workspace_id.0,
+                "subject_id": grant.subject_id.0,
+                "delegate_id": grant.delegate_id.0,
+                "surface": "mcp",
+            }),
+        })
+        .await
+    {
+        tracing::warn!(error = %err, "audit.write_failed");
+    }
+    Ok(content_json(&grant))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,9 +429,7 @@ mod tests {
     use maidan_auth::{AGENT_WORKER, HUMAN_ADMIN};
     use maidan_search::HashV1Provider;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
-    use maidan_types::{
-        MemberKind, NewDelegationGrant, NewMember, NewWorkspace, ROOM_DISCOVERY_TYPE, ROOM_TYPE,
-    };
+    use maidan_types::{MemberKind, NewMember, NewWorkspace, ROOM_DISCOVERY_TYPE, ROOM_TYPE};
     use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::server::McpServer;
@@ -351,6 +487,7 @@ mod tests {
         let server = mcp(store.clone(), pool);
         let worker = maidan_auth::expand_set(AGENT_WORKER).unwrap();
         let reader = AuthContext::from_session(member, ws, vec![WORKSPACE_READ.to_string()]);
+        let admin = AuthContext::from_session(member, ws, vec![TOKEN_ADMIN.to_string()]);
         let writer = AuthContext::from_session(
             member,
             ws,
@@ -472,25 +609,38 @@ mod tests {
             })
             .await
             .unwrap();
-        let grant = store
-            .create_delegation_grant(NewDelegationGrant {
-                workspace_id: ws,
-                subject_id: subject.id,
-                delegate_id: member,
-                capabilities: vec![WORKSPACE_READ.into(), MESSAGE_POST.into()],
-                purpose: "mcp exchange".into(),
-                authorized_by: subject.id,
-                expires_at: Utc::now() + chrono::Duration::hours(2),
-            })
-            .await
-            .unwrap();
-        let delegated = content(
+        let grant = content(
             &server
                 .call_tool(
-                    &reader,
-                    "delegate_token",
-                    &json!({ "grant_id": grant.id.0 }),
+                    &admin,
+                    "create_delegation_grant",
+                    &json!({
+                        "workspace_id": ws.0,
+                        "subject_id": subject.id.0,
+                        "delegate_id": member.0,
+                        "capabilities": [WORKSPACE_READ, MESSAGE_POST],
+                        "purpose": "mcp exchange",
+                        "expires_at": Utc::now() + chrono::Duration::hours(2),
+                    }),
                 )
+                .await
+                .unwrap(),
+        );
+        let grant_id = uuid::Uuid::parse_str(grant["id"].as_str().unwrap()).unwrap();
+        let listed = content(
+            &server
+                .call_tool(
+                    &admin,
+                    "list_delegation_grants",
+                    &json!({ "workspace_id": ws.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(listed.as_array().unwrap().len(), 1);
+        let delegated = content(
+            &server
+                .call_tool(&reader, "delegate_token", &json!({ "grant_id": grant_id }))
                 .await
                 .unwrap(),
         );
@@ -501,7 +651,47 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resolved.member_id, subject.id);
-        assert!(store.revoke_delegation_grant(ws, grant.id).await.unwrap());
+        assert_eq!(resolved.actor_id, member);
+        assert_eq!(resolved.delegation_grant_id.map(|id| id.0), Some(grant_id));
+        server
+            .call_tool(&resolved, "whoami", &json!({}))
+            .await
+            .unwrap();
+        assert!(server
+            .call_tool(
+                &resolved,
+                "create_delegation_grant",
+                &json!({ "workspace_id": ws.0 }),
+            )
+            .await
+            .is_err());
+        let decisions: Vec<_> = store
+            .list_audit_for_workspace(ws, 50)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|event| event.action == "authorization.decision")
+            .collect();
+        assert!(decisions.iter().any(|event| {
+            event.actor_id == Some(member)
+                && event.metadata["subject_id"] == json!(subject.id.0)
+                && event.metadata["grant_id"] == json!(grant_id)
+                && event.metadata["outcome"] == "allowed"
+        }));
+        assert!(decisions
+            .iter()
+            .any(|event| event.metadata["outcome"] == "denied"));
+        let revoked = content(
+            &server
+                .call_tool(
+                    &admin,
+                    "revoke_delegation_grant",
+                    &json!({ "workspace_id": ws.0, "grant_id": grant_id }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(revoked["revoked_at"].is_string());
         assert!(
             maidan_auth::resolve_bearer(store.as_ref(), delegated_secret)
                 .await

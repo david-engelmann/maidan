@@ -36,7 +36,7 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 | `secret:admin` | `POST /workspaces/:wid/secrets`, `DELETE /workspaces/:wid/secrets/:name` |
 | `audit:read-global` | `GET /operator/audit` — cross-workspace audit read |
 | `operator:global` | `GET /operator/legal-holds` |
-| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); issue/list/revoke `/workspaces/:wid/share-tickets`; signed workspace export / verify / import; snapshot `include_graph=true` |
+| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); create/list/revoke `/workspaces/:wid/delegation-grants`; issue/list/revoke `/workspaces/:wid/share-tickets`; signed workspace export / verify / import; snapshot `include_graph=true` |
 
 ## MCP (`POST /mcp` tools/call)
 

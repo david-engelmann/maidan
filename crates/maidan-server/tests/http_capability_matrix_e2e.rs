@@ -195,6 +195,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{whid}", &f.workspace)
             .replace("{cid}", &f.channel)
             .replace("{hid}", &f.workspace)
+            .replace("{gid}", &f.workspace)
             .replace("{tid}", &f.workspace)
             .replace("{term}", "testterm")
             .replace("{name}", "capsecret")
@@ -430,6 +431,15 @@ fn apply_route_defaults(
         return b.json(&json!({
             "grant_id": f.workspace,
             "capabilities": [capability::WORKSPACE_READ]
+        }));
+    }
+    if path == "/workspaces/{wid}/delegation-grants" && method == "POST" {
+        return b.json(&json!({
+            "subject_id": f.member,
+            "delegate_id": f.workspace,
+            "capabilities": [capability::WORKSPACE_READ],
+            "purpose": "capability matrix",
+            "expires_at": "2099-01-01T00:00:00Z"
         }));
     }
     if path.ends_with("/handle") && method == "PUT" {

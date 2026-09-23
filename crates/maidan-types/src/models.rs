@@ -2357,6 +2357,8 @@ pub struct ApiToken {
     pub created_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
     pub revoked_at: Option<DateTime<Utc>>,
+    /// Present for a grant-exchanged token and every attenuated descendant.
+    pub delegation_grant_id: Option<DelegationGrantId>,
 }
 
 #[derive(Debug, Clone)]

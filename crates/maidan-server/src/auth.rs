@@ -8,7 +8,8 @@ use axum::{
 };
 use maidan_auth::{
     capability::{EVENT_SUBSCRIBE, MESSAGE_POST, SEARCH_QUERY, WORKSPACE_READ, WORKSPACE_WRITE},
-    resolve_bearer, resolve_peer_bearer, AuthContext, AuthorizationDecision, AuthorizationSurface,
+    record_delegated_authorization, resolve_bearer, resolve_peer_bearer, AuthContext,
+    AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,
 };
 
 use crate::error::ApiError;
@@ -71,8 +72,26 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     match resolve_bearer(state.store.as_ref(), secret).await {
         Ok(ctx) => {
             let workspace_id = ctx.workspace_id;
-            req.extensions_mut().insert(ctx);
-            tag_room(next.run(req).await, workspace_id)
+            let method = req.method().clone();
+            let path = req.uri().path().to_owned();
+            req.extensions_mut().insert(ctx.clone());
+            let response = next.run(req).await;
+            if !path.starts_with("/mcp") {
+                let outcome = if matches!(response.status().as_u16(), 401 | 403 | 404) {
+                    AuthorizationOutcome::Denied
+                } else {
+                    AuthorizationOutcome::Allowed
+                };
+                record_delegated_authorization(
+                    state.store.as_ref(),
+                    &ctx,
+                    AuthorizationSurface::Rest,
+                    &format!("{method} {path}"),
+                    outcome,
+                )
+                .await;
+            }
+            tag_room(response, workspace_id)
         }
         Err(_) => match resolve_peer_bearer(state.store.as_ref(), secret).await {
             Ok(peer) => {

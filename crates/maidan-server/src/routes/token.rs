@@ -400,3 +400,113 @@ pub async fn delegate_api_token(
         }),
     ))
 }
+
+pub async fn create_delegation_grant(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<CreateDelegationGrant>,
+) -> ApiResult<(StatusCode, Json<DelegationGrant>)> {
+    cap(&auth, TOKEN_ADMIN)?;
+    let workspace_id = WorkspaceId(workspace_id);
+    ensure_workspace(&auth, workspace_id)?;
+    if let Some(unknown) = body
+        .capabilities
+        .iter()
+        .find(|capability| !capability::is_known(capability))
+    {
+        return Err(ApiError::BadRequest(format!(
+            "unknown delegated capability: {unknown}"
+        )));
+    }
+    let subject_id = MemberId(body.subject_id);
+    let delegate_id = MemberId(body.delegate_id);
+    for member_id in [subject_id, delegate_id] {
+        let member = state.store.get_member(member_id).await?;
+        if member.workspace_id != workspace_id {
+            return Err(ApiError::BadRequest(
+                "subject and delegate must belong to the workspace".into(),
+            ));
+        }
+    }
+    let grant = state
+        .store
+        .create_delegation_grant(NewDelegationGrant {
+            workspace_id,
+            subject_id,
+            delegate_id,
+            capabilities: body.capabilities,
+            purpose: body.purpose,
+            authorized_by: auth.actor_id,
+            expires_at: body.expires_at,
+        })
+        .await?;
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.actor_id),
+            action: "delegation_grant.create".into(),
+            target_kind: Some("delegation_grant".into()),
+            target_id: Some(grant.id.0),
+            metadata: serde_json::json!({
+                "workspace_id": workspace_id.0,
+                "subject_id": grant.subject_id.0,
+                "delegate_id": grant.delegate_id.0,
+                "capabilities": grant.capabilities.clone(),
+                "expires_at": grant.expires_at,
+                "purpose": grant.purpose.clone(),
+            }),
+        },
+    )
+    .await;
+    Ok((StatusCode::CREATED, Json(grant)))
+}
+
+pub async fn list_delegation_grants(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(workspace_id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<DelegationGrant>>> {
+    cap(&auth, TOKEN_ADMIN)?;
+    let workspace_id = WorkspaceId(workspace_id);
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(
+        state.store.list_delegation_grants(workspace_id).await?,
+    ))
+}
+
+pub async fn revoke_delegation_grant(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path((workspace_id, grant_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> ApiResult<Json<DelegationGrant>> {
+    cap(&auth, TOKEN_ADMIN)?;
+    let workspace_id = WorkspaceId(workspace_id);
+    let grant_id = DelegationGrantId(grant_id);
+    ensure_workspace(&auth, workspace_id)?;
+    let existing = state.store.get_delegation_grant(grant_id).await?;
+    if existing.workspace_id != workspace_id {
+        return Err(ApiError::NotFound);
+    }
+    state
+        .store
+        .revoke_delegation_grant(workspace_id, grant_id)
+        .await?;
+    let grant = state.store.get_delegation_grant(grant_id).await?;
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.actor_id),
+            action: "delegation_grant.revoke".into(),
+            target_kind: Some("delegation_grant".into()),
+            target_id: Some(grant.id.0),
+            metadata: serde_json::json!({
+                "workspace_id": workspace_id.0,
+                "subject_id": grant.subject_id.0,
+                "delegate_id": grant.delegate_id.0,
+            }),
+        },
+    )
+    .await;
+    Ok(Json(grant))
+}

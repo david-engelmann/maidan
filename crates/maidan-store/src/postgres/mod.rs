@@ -2731,7 +2731,9 @@ impl DelegationGrantStore for PostgresStore {
         &self,
         id: DelegationGrantId,
     ) -> Result<DelegationGrant, StoreError> {
-        delegation_grants::get(self.read_pool(), id).await
+        // Grant validity is authentication state: a lagging replica must not
+        // reject a newly issued delegated token or accept stale authority.
+        delegation_grants::get(&self.pool, id).await
     }
 
     async fn list_delegation_grants(

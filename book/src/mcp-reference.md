@@ -25,7 +25,7 @@ Bearer token required unless `AUTH_DISABLED=1`.
 
 ### `whoami`
 
-Return the caller's own identity: member_id, workspace_id, capabilities, capability_sets the caller fully holds, and whether the token is a bearer (acts-as-any) vs a pinned session. Call this first — every hero-loop tool needs your member_id.
+Return the authentication-bound identity: actor_id, member_id, optional delegation_grant_id, workspace_id, capabilities, capability_sets the caller fully holds, and whether the credential is a bearer. Call this first — writes are attributed to member_id.
 
 **Capability:** `workspace:read`
 
@@ -173,6 +173,100 @@ Exchange a durable delegation grant for a short-lived token acting as its subjec
     }
   },
   "required": [
+    "grant_id"
+  ],
+  "type": "object"
+}
+```
+
+### `create_delegation_grant`
+
+Create an expiring capability-scoped grant authorizing one workspace member to delegate actions for another. Requires token:admin and a non-empty purpose.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "properties": {
+    "capabilities": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "delegate_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "subject_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "subject_id",
+    "delegate_id",
+    "capabilities",
+    "purpose",
+    "expires_at"
+  ],
+  "type": "object"
+}
+```
+
+### `list_delegation_grants`
+
+List delegation grants in a workspace, including expiry and revocation state. Requires token:admin.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "properties": {
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
+### `revoke_delegation_grant`
+
+Revoke a delegation grant and every exchanged token and attenuated descendant. Requires token:admin.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "properties": {
+    "grant_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
     "grant_id"
   ],
   "type": "object"

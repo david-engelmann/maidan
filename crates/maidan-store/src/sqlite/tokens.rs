@@ -14,7 +14,7 @@ pub async fn create(pool: &SqlitePool, new: NewApiToken) -> Result<ApiToken, Sto
             (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities, created_at, expires_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at",
+                   created_at, expires_at, revoked_at, delegation_grant_id",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -51,7 +51,7 @@ pub async fn create_attenuated(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                  (SELECT delegation_grant_id FROM maidan_api_tokens WHERE id = ?))
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at",
+                   created_at, expires_at, revoked_at, delegation_grant_id",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -109,7 +109,7 @@ pub async fn create_delegated(
                  AND p.revoked_at IS NULL
                  AND (p.expires_at IS NULL OR datetime(p.expires_at) >= datetime(?8))))
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label,
-                   capabilities, created_at, expires_at, revoked_at",
+                   capabilities, created_at, expires_at, revoked_at, delegation_grant_id",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -132,7 +132,7 @@ pub async fn create_delegated(
 pub async fn get_by_id(pool: &SqlitePool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
     let row = sqlx::query(
         "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                created_at, expires_at, revoked_at
+                created_at, expires_at, revoked_at, delegation_grant_id
          FROM maidan_api_tokens
          WHERE id = ?",
     )
@@ -150,7 +150,7 @@ pub async fn get_active_by_hash(
     let now = Utc::now();
     let row = sqlx::query(
         "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label,
-                capabilities, created_at, expires_at, revoked_at
+                capabilities, created_at, expires_at, revoked_at, delegation_grant_id
          FROM maidan_api_tokens
          WHERE token_hash = ?
            AND revoked_at IS NULL
@@ -207,7 +207,7 @@ pub async fn list_for_member(
 ) -> Result<Vec<ApiToken>, StoreError> {
     let rows = sqlx::query(
         "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                created_at, expires_at, revoked_at
+                created_at, expires_at, revoked_at, delegation_grant_id
          FROM maidan_api_tokens
          WHERE workspace_id = ? AND member_id = ?
          ORDER BY created_at DESC",
@@ -244,7 +244,7 @@ pub async fn revoke(pool: &SqlitePool, id: ApiTokenId) -> Result<ApiToken, Store
          SET revoked_at = ?
          WHERE id = ? AND revoked_at IS NULL
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at",
+                   created_at, expires_at, revoked_at, delegation_grant_id",
     )
     .bind(now.to_rfc3339())
     .bind(id.0)
@@ -296,5 +296,8 @@ fn row_to_token(row: &sqlx::sqlite::SqliteRow) -> Result<ApiToken, StoreError> {
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         expires_at: row.get::<Option<DateTime<Utc>>, _>("expires_at"),
         revoked_at: row.get::<Option<DateTime<Utc>>, _>("revoked_at"),
+        delegation_grant_id: row
+            .get::<Option<Uuid>, _>("delegation_grant_id")
+            .map(maidan_types::DelegationGrantId),
     })
 }

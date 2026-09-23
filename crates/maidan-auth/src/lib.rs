@@ -20,8 +20,8 @@ pub use access::{
     WasiTargetError,
 };
 pub use authorization::{
-    require_capability as require_observed_capability, AuthorizationDecision, AuthorizationOutcome,
-    AuthorizationSurface,
+    record_delegated_authorization, require_capability as require_observed_capability,
+    AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,
 };
 pub use capability::*;
 pub use capability_set::{
