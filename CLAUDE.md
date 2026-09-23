@@ -264,7 +264,7 @@ before planning work.
 - For decisions whose rationale isn't obvious, check
   [`docs/Decisions.md`](docs/Decisions.md).
 
-## Where the project actually is (2026-09-16)
+## Where the project actually is (2026-09-23)
 
 Read this before the long narrative below, which is a point-in-time record and
 **stops around Cluster 273**. Current state:
@@ -276,12 +276,24 @@ Read this before the long narrative below, which is a point-in-time record and
   found in that run. **Every defect passed CI and its own tests.** The recurring
   shape: *something outranked the control meant to bind it*, because every test
   asked "does the control work?" and none asked "what outranks it?".
-- **Cluster 398** (five PRs) swept for the opposite failure — capability that is
+- **Cluster 398** (eight PRs, 398.1–398.8) swept for the opposite failure — capability that is
   built, tested, and wired to nothing — by enumerating the `Store` trait's 409
   methods and reading what had no caller.
-- **Wave 3 row #36 (WASI) is OPEN, not closed.** `SlashHandlerKind::wasi` is
-  registrable on both write surfaces and every dispatch returns
-  `wasi_runtime_unavailable`. Do not read Cluster 396 as a completion.
+- **Wave 3 row #36 (WASI) is CLOSED** — by **Cluster 399** (`v399.0.0`,
+  2026-09-16), not by Cluster 396. `crates/maidan-wasi` is a real sandboxed host
+  (`maidan_wasi::run`), `slash_commands.rs` dispatches to it, and
+  `wasi_slash_e2e::a_wasi_slash_command_runs_its_module` executes a module
+  end-to-end. The `wasi_runtime_unavailable` stub no longer exists in any
+  `src/`. *This entry said OPEN until 2026-09-23 — a week after it shipped.*
+- **Clusters 399–410 since this section was last written:** 399 WASI runtime,
+  400 backlog reconciliation, 401 two audit decisions, 402 the search tap
+  (isolate/resume/schedule), 404 member occupancy + manager digest, 405
+  time-boxed cross-org share tickets, 406 published-image boot proof + real
+  loopback OIDC, 407 executable surface + hero-loop contracts, 408 full-audit
+  remediation (member self-scoping, egress guard, `/ui` P1, brand), 409 the
+  tag-honest release stream. **410 (PayerStamp ledger + authorization audit
+  lane) is in flight**; **411 (delegated authority) is planned** and rejects
+  408's ambient work-attribution model — see [`docs/Open Work.md`](docs/Open%20Work.md).
 - **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
   several items deliberately recorded as *decisions* rather than fixed. Do not
   guess at them: self-approval laundering, `Maidan-Room-LSN` scoping, the
