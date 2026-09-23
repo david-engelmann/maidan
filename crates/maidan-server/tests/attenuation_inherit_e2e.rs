@@ -970,3 +970,124 @@ async fn another_workspaces_grant_is_indistinguishable_from_none() {
         "another workspace's grant must answer like a missing one"
     );
 }
+
+/// A grant is standing authority to keep minting tokens, so a workspace bounds
+/// how long one may live (D-B): 90 days unless it sets otherwise. Setting the
+/// ceiling is `token:admin` — the capability that issues grants — on REST and
+/// MCP alike.
+#[tokio::test]
+async fn a_workspace_bounds_how_long_a_grant_may_live() {
+    let e = escalation_setup().await;
+    let policy_url = format!("{}/workspaces/{}/delegation-policy", e.base, e.ws.0);
+
+    let policy: Value = e
+        .client
+        .get(&policy_url)
+        .bearer_auth(&e.orch_tok)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(policy["max_grant_days"], 90);
+    assert_eq!(policy["is_default"], true);
+
+    // Work capabilities cannot move the bound on authority.
+    let worker_secret = TokenSecret::generate();
+    e.store
+        .create_api_token(NewApiToken {
+            workspace_id: e.ws,
+            member_id: e.worker,
+            app_installation_id: None,
+            token_hash: hash_secret(worker_secret.as_str()),
+            label: None,
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::WORKSPACE_WRITE.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let refused = e
+        .client
+        .put(&policy_url)
+        .bearer_auth(worker_secret.as_str())
+        .json(&json!({ "max_grant_days": 3650 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+
+    let set = e
+        .client
+        .put(&policy_url)
+        .bearer_auth(&e.admin_tok)
+        .json(&json!({ "max_grant_days": 7 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(set.status(), StatusCode::OK);
+
+    let too_long = e
+        .client
+        .post(e.grants_url())
+        .bearer_auth(&e.admin_tok)
+        .json(&json!({
+            "subject_id": e.worker.0,
+            "delegate_id": e.orchestrator.0,
+            "capabilities": [capability::WORKSPACE_READ],
+            "purpose": "too long",
+            "expires_at": Utc::now() + ChronoDuration::days(8),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(too_long.status(), StatusCode::BAD_REQUEST);
+    assert!(too_long.text().await.unwrap().contains("ceiling"));
+
+    let out_of_range = e
+        .client
+        .put(&policy_url)
+        .bearer_auth(&e.admin_tok)
+        .json(&json!({ "max_grant_days": 3651 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(out_of_range.status(), StatusCode::BAD_REQUEST);
+
+    // The MCP twin reads the same policy and is gated the same way.
+    let mcp = |token: String, tool: &'static str, args: Value| {
+        let client = e.client.clone();
+        let url = format!("{}/mcp", e.base);
+        async move {
+            client
+                .post(url)
+                .bearer_auth(token)
+                .json(&json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": { "name": tool, "arguments": args }
+                }))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let read = mcp(e.orch_tok.clone(), "get_delegation_policy", json!({})).await;
+    let text = read["result"]["content"][0]["text"].as_str().unwrap();
+    let read: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(read["max_grant_days"], 7);
+    let denied = mcp(
+        worker_secret.as_str().to_string(),
+        "set_delegation_policy",
+        json!({ "max_grant_days": 3650 }),
+    )
+    .await;
+    assert!(denied["error"].is_object(), "{denied}");
+}

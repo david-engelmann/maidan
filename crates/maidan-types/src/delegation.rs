@@ -8,6 +8,23 @@ use crate::{DelegationGrantId, MemberId, WorkspaceId};
 pub const DELEGATED_TOKEN_DEFAULT_TTL_SECS: i64 = 15 * 60;
 pub const DELEGATED_TOKEN_MAX_TTL_SECS: i64 = 60 * 60;
 
+/// How long a delegation grant may live when its workspace sets no ceiling.
+/// A grant is standing authority to keep minting tokens, so it is bounded like
+/// a credential; renewal is a new grant, a fresh attributed decision.
+pub const DEFAULT_MAX_GRANT_DAYS: i64 = 90;
+/// The largest ceiling a workspace may set.
+pub const MAX_GRANT_DAYS_LIMIT: i64 = 3650;
+
+/// A workspace's delegation policy: the longest a grant may live.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DelegationPolicy {
+    pub workspace_id: WorkspaceId,
+    pub max_grant_days: i64,
+    /// `true` when the workspace has set nothing and the default applies.
+    pub is_default: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DelegationGrant {

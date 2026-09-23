@@ -134,6 +134,10 @@ pub fn router(state: AppState) -> Router {
             axum::routing::put(routes::set_wip_limit).get(routes::get_wip_limit),
         )
         .route(
+            "/workspaces/:id/delegation-policy",
+            axum::routing::put(routes::set_delegation_policy).get(routes::get_delegation_policy),
+        )
+        .route(
             "/workspaces/:id/spawn-budget",
             axum::routing::put(routes::set_spawn_budget).get(routes::get_spawn_budget),
         )

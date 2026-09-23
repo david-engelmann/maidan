@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Utc};
-use maidan_types::{NewApiToken, NewDelegationGrant, DELEGATED_TOKEN_MAX_TTL_SECS};
+use maidan_types::{
+    NewApiToken, NewDelegationGrant, DELEGATED_TOKEN_MAX_TTL_SECS, MAX_GRANT_DAYS_LIMIT,
+};
 
 use crate::StoreError;
 
@@ -41,6 +43,33 @@ pub(crate) fn validate_new(
         ));
     }
     Ok((capabilities.into_iter().collect(), purpose.to_owned()))
+}
+
+/// Refuse a grant that outlives its workspace's ceiling (D-B). The ceiling
+/// bounds the standing authority, not the tokens: those are capped at an hour
+/// regardless.
+pub(crate) fn check_grant_ceiling(
+    expires_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+    max_grant_days: i64,
+) -> Result<(), StoreError> {
+    if expires_at > now + chrono::Duration::days(max_grant_days) {
+        return Err(StoreError::InvalidInput(format!(
+            "delegation grant would outlive this workspace's ceiling of {max_grant_days} days; \
+             issue a shorter grant, or renew it with a new one"
+        )));
+    }
+    Ok(())
+}
+
+/// A ceiling a workspace may set: 1 to [`MAX_GRANT_DAYS_LIMIT`] days.
+pub(crate) fn validate_ceiling(days: i64) -> Result<(), StoreError> {
+    if !(1..=MAX_GRANT_DAYS_LIMIT).contains(&days) {
+        return Err(StoreError::InvalidInput(format!(
+            "grant ceiling must be 1 to {MAX_GRANT_DAYS_LIMIT} days"
+        )));
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_exchange(

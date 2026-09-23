@@ -479,6 +479,15 @@ pub struct SetWipLimit {
     pub limit: Option<i64>,
 }
 
+/// Body for `PUT /workspaces/:wid/delegation-policy`. `max_grant_days` is the
+/// longest a delegation grant may live (1–3650); `null` restores the default,
+/// 90 days.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetDelegationPolicy {
+    pub max_grant_days: Option<i64>,
+}
+
 /// Body for `PUT /threads/:id/unclaimable` — park a thread from dispatch with a
 /// reason (must be non-empty).
 #[derive(Debug, Deserialize, ToSchema)]

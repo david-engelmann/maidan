@@ -83,6 +83,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "get_approval_gate",
     "get_artifact_metadata",
     "get_channel_occupancy",
+    "get_delegation_policy",
     "get_delivery_mode",
     "get_dependency_results",
     "get_glossary_term",
@@ -204,6 +205,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_run_threads"
         | "list_assigned_threads"
         | "get_wip_limit"
+        | "get_delegation_policy"
         | "get_spawn_budget"
         | "get_member_wip"
         | "get_member_occupancy"
@@ -279,9 +281,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "parse_maidan_uri"
         | "attenuate_token" => Ok(WORKSPACE_READ),
         "delegate_token" => Ok(WORKSPACE_READ),
-        "create_delegation_grant" | "list_delegation_grants" | "revoke_delegation_grant" => {
-            Ok(TOKEN_ADMIN)
-        }
+        "create_delegation_grant"
+        | "list_delegation_grants"
+        | "revoke_delegation_grant"
+        | "set_delegation_policy" => Ok(TOKEN_ADMIN),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -914,6 +917,8 @@ pub async fn dispatch(
         "attenuate_token" => room::attenuate_token(store, auth, args).await,
         "delegate_token" => room::delegate_token(store, auth, args).await,
         "create_delegation_grant" => room::create_delegation_grant(store, auth, args).await,
+        "set_delegation_policy" => room::set_delegation_policy(store, auth, args).await,
+        "get_delegation_policy" => room::get_delegation_policy(store, auth, args).await,
         "list_delegation_grants" => room::list_delegation_grants(store, auth, args).await,
         "revoke_delegation_grant" => room::revoke_delegation_grant(store, auth, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),

@@ -429,6 +429,54 @@ pub async fn get_wip_limit(
     }))
 }
 
+/// `PUT /workspaces/:wid/delegation-policy` — set the longest a delegation grant
+/// may live, in days (1–3650), or `null` for the default 90. It bounds the
+/// standing authority to mint delegated tokens, so it is `token:admin` — the
+/// capability that issues grants — not `workspace:write`. Applies to grants
+/// issued afterwards; revoke an existing grant to end it sooner.
+pub async fn set_delegation_policy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<crate::dto::SetDelegationPolicy>,
+) -> ApiResult<Json<maidan_types::DelegationPolicy>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let policy = state
+        .store
+        .set_delegation_policy(workspace_id, body.max_grant_days)
+        .await?;
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.actor_id),
+            action: "delegation_policy.set".into(),
+            target_kind: Some("workspace".into()),
+            target_id: Some(workspace_id.0),
+            metadata: serde_json::json!({
+                "max_grant_days": policy.max_grant_days,
+                "is_default": policy.is_default,
+            }),
+        },
+    )
+    .await;
+    Ok(Json(policy))
+}
+
+/// `GET /workspaces/:wid/delegation-policy` — the grant ceiling in force.
+/// `workspace:read`: anyone who can be granted authority may see its bound.
+pub async fn get_delegation_policy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<maidan_types::DelegationPolicy>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(state.store.get_delegation_policy(workspace_id).await?))
+}
+
 /// `PUT /workspaces/:id/spawn-budget` — set the workspace's spawn budget: max
 /// direct child threads per parent, max thread nesting depth, max tool calls
 /// per thread. A full replace — an omitted or `null` axis is unlimited, so `{}`
