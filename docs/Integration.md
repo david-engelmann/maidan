@@ -293,7 +293,7 @@ checks the required capability before handling the request.
 | `artifact:upload` | Upload artifacts (simple + multipart) |
 | `search:query` | `GET /workspaces/:wid/search` |
 | `event:subscribe` | WebSocket `/ws/subscribe` |
-| `token:admin` | Mint/list/revoke API tokens and share tickets, app install admin, signed workspace export / verify / import, snapshot `include_graph=true` |
+| `token:admin` | Mint/list/revoke API tokens, delegation grants, and share tickets; app install admin; signed workspace export / verify / import; snapshot `include_graph=true` |
 | `member:impersonate` | Act on **another member's** personal state (see below) |
 | `federation:ingest` | Peer `POST /a2a/v1/events` |
 | `federation:admin` | Peer CRUD |
@@ -327,9 +327,17 @@ delegate may exchange a live grant. The returned bearer acts as the grant's
 subject, defaults to 15 minutes, cannot exceed one hour or the grant/caller
 expiry, and carries only capabilities held by both the grant and delegate.
 Grant revocation invalidates direct exchanged tokens and every attenuation
-descendant. Administrative grant create/list/revoke surfaces land later in the
-same `v411.0.0` cluster, so this exchange is not yet independently bootstrap-able
-through a public protocol.
+descendant. Administrators create/list/revoke grants at
+`/workspaces/{wid}/delegation-grants` (POST/GET) and
+`/workspaces/{wid}/delegation-grants/{grant_id}` (DELETE), or with the MCP
+`create_delegation_grant`, `list_delegation_grants`, and
+`revoke_delegation_grant` tools. Creation requires subject, delegate, capability
+subset, expiry, and a non-empty free-text purpose. Every request made with an
+exchanged token writes a content-free authorization record carrying actor,
+subject, grant, surface, action, and allowed/denied outcome; delegated denials
+are durable rather than sampled because their volume is bounded by an issued,
+expiring grant. `GET /me` / MCP `whoami` expose `actor_id`, `member_id` (the
+subject), and `delegation_grant_id` so clients can verify the active authority.
 
 Named sets (`maidan.agent.worker`, `maidan.human.admin`) are mint-time
 recipes, not stored capability strings. `POST …/tokens` accepts

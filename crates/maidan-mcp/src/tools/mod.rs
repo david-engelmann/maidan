@@ -174,6 +174,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "parse_maidan_uri"
         | "attenuate_token" => Ok(WORKSPACE_READ),
         "delegate_token" => Ok(WORKSPACE_READ),
+        "create_delegation_grant" | "list_delegation_grants" | "revoke_delegation_grant" => {
+            Ok(TOKEN_ADMIN)
+        }
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -829,6 +832,9 @@ pub async fn dispatch(
         "set_workspace_handle" => room::set_workspace_handle(store, auth, args).await,
         "attenuate_token" => room::attenuate_token(store, auth, args).await,
         "delegate_token" => room::delegate_token(store, auth, args).await,
+        "create_delegation_grant" => room::create_delegation_grant(store, auth, args).await,
+        "list_delegation_grants" => room::list_delegation_grants(store, auth, args).await,
+        "revoke_delegation_grant" => room::revoke_delegation_grant(store, auth, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }

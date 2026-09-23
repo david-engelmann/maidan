@@ -7,9 +7,11 @@
 //! let the operation succeed. The audit trail is a security record, not a
 //! transactional participant; making it one is a tracked dual-write concern.
 //!
-//! Denied requests (401/403) are deliberately *not* written here — a rejected,
-//! attacker-controlled request stream would be an unbounded audit-table write
-//! amplifier. Denials are surfaced through structured logs + metrics instead.
+//! Anonymous and ordinary denied requests (401/403) are deliberately *not*
+//! written here — an attacker-controlled request stream would be an unbounded
+//! audit-table write amplifier. Delegated denials are the exception: they come
+//! from a named actor holding an expiring, revocable grant and are durably
+//! recorded by the shared authorization lane.
 
 use maidan_types::NewAuditEvent;
 

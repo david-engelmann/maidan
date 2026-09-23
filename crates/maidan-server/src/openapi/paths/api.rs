@@ -146,6 +146,28 @@ pub fn mint_api_token() {}
 )]
 pub fn list_api_tokens() {}
 
+#[utoipa::path(post, path = "/workspaces/{wid}/delegation-grants", tag = "tokens",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateDelegationGrant,
+    security(("bearerAuth" = ["token:admin"])),
+    responses((status = 201, body = maidan_types::DelegationGrant)))]
+pub fn create_delegation_grant() {}
+
+#[utoipa::path(get, path = "/workspaces/{wid}/delegation-grants", tag = "tokens",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = ["token:admin"])),
+    responses((status = 200, body = Vec<maidan_types::DelegationGrant>)))]
+pub fn list_delegation_grants() {}
+
+#[utoipa::path(delete, path = "/workspaces/{wid}/delegation-grants/{gid}", tag = "tokens",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("gid" = Uuid, Path, description = "Delegation grant id"),
+    ),
+    security(("bearerAuth" = ["token:admin"])),
+    responses((status = 200, body = maidan_types::DelegationGrant)))]
+pub fn revoke_delegation_grant() {}
+
 #[utoipa::path(post, path = "/workspaces/{wid}/share-tickets", tag = "share",
     params(("wid" = Uuid, Path, description = "Workspace id")),
     request_body = CreateShareTicket,

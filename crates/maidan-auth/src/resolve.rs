@@ -12,6 +12,17 @@ pub async fn resolve_bearer(store: &dyn Store, bearer: &str) -> Result<AuthConte
     if !hashes_equal(&token.token_hash, &computed) {
         return Err(AuthError::Unauthorized);
     }
+    if let Some(grant_id) = token.delegation_grant_id {
+        let grant = store.get_delegation_grant(grant_id).await?;
+        return Ok(AuthContext::from_delegated_token(
+            token.id,
+            grant.delegate_id,
+            token.member_id,
+            token.workspace_id,
+            grant_id,
+            token.capabilities,
+        ));
+    }
     Ok(token_to_context(token))
 }
 

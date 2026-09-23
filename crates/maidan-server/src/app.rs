@@ -177,6 +177,14 @@ pub fn router(state: AppState) -> Router {
             post(routes::mint_api_token).get(routes::list_api_tokens),
         )
         .route(
+            "/workspaces/:wid/delegation-grants",
+            post(routes::create_delegation_grant).get(routes::list_delegation_grants),
+        )
+        .route(
+            "/workspaces/:wid/delegation-grants/:gid",
+            delete(routes::revoke_delegation_grant),
+        )
+        .route(
             "/workspaces/:wid/apps",
             post(apps::register_app).get(apps::list_apps),
         )

@@ -377,6 +377,160 @@ async fn delegated_tokens_are_bounded_and_die_with_the_grant() {
     }
 }
 
+#[tokio::test]
+async fn grant_admin_and_dual_identity_evidence_work_over_rest() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let admin = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "admin".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let subject = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "subject".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let delegate = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "delegate".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+
+    let mint = async |member_id, capabilities: Vec<String>| {
+        let secret = TokenSecret::generate();
+        store
+            .create_api_token(NewApiToken {
+                workspace_id: ws.id,
+                member_id,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: None,
+                capabilities,
+                expires_at: None,
+            })
+            .await
+            .unwrap();
+        secret
+    };
+    let admin_secret = mint(admin.id, vec![capability::TOKEN_ADMIN.into()]).await;
+    let delegate_secret = mint(delegate.id, vec![capability::WORKSPACE_READ.into()]).await;
+
+    let created = client
+        .post(format!("{base}/workspaces/{}/delegation-grants", ws.id.0))
+        .bearer_auth(admin_secret.as_str())
+        .json(&json!({
+            "subject_id": subject.id.0,
+            "delegate_id": delegate.id.0,
+            "capabilities": [capability::WORKSPACE_READ],
+            "purpose": "cover the incident",
+            "expires_at": Utc::now() + ChronoDuration::hours(1),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let grant: Value = created.json().await.unwrap();
+    let grant_id = grant["id"].as_str().unwrap();
+
+    let listed: Vec<Value> = client
+        .get(format!("{base}/workspaces/{}/delegation-grants", ws.id.0))
+        .bearer_auth(admin_secret.as_str())
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+
+    let exchanged: Value = client
+        .post(format!("{base}/tokens/delegate"))
+        .bearer_auth(delegate_secret.as_str())
+        .json(&json!({ "grant_id": grant_id }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let delegated_secret = exchanged["token"]["secret"].as_str().unwrap();
+    let me: Value = client
+        .get(format!("{base}/me"))
+        .bearer_auth(delegated_secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(me["actor_id"], delegate.id.0.to_string());
+    assert_eq!(me["member_id"], subject.id.0.to_string());
+    assert_eq!(me["delegation_grant_id"], grant_id);
+
+    let denied = client
+        .get(format!("{base}/operator/audit"))
+        .bearer_auth(delegated_secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    let decisions: Vec<_> = store
+        .list_audit_for_workspace(ws.id, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|event| event.action == "authorization.decision")
+        .collect();
+    assert!(decisions.iter().any(|event| {
+        event.actor_id == Some(delegate.id)
+            && event.metadata["subject_id"] == json!(subject.id.0)
+            && event.metadata["grant_id"] == json!(grant_id)
+            && event.metadata["outcome"] == "allowed"
+    }));
+    assert!(decisions
+        .iter()
+        .any(|event| event.metadata["outcome"] == "denied"));
+
+    let revoked = client
+        .delete(format!(
+            "{base}/workspaces/{}/delegation-grants/{grant_id}",
+            ws.id.0
+        ))
+        .bearer_auth(admin_secret.as_str())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(revoked.status(), StatusCode::OK);
+    assert!(revoked.json::<Value>().await.unwrap()["revoked_at"].is_string());
+    assert_eq!(
+        client
+            .get(format!("{base}/me"))
+            .bearer_auth(delegated_secret)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
 /// Revoking a token kills everything derived from it, and the derived
 /// credential actually stops working — not merely gets a column set.
 ///

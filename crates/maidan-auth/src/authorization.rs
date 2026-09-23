@@ -2,7 +2,8 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use maidan_types::{MemberId, WorkspaceId};
+use maidan_store::Store;
+use maidan_types::{MemberId, NewAuditEvent, WorkspaceId};
 use metrics::counter;
 use uuid::Uuid;
 
@@ -67,9 +68,9 @@ impl AuthorizationDecision {
     ) -> Self {
         Self {
             surface,
-            principal: (!auth.bypass).then_some(auth.member_id),
-            subject: None,
-            grant_id: None,
+            principal: (!auth.bypass).then_some(auth.actor_id),
+            subject: auth.delegation_grant_id.map(|_| auth.member_id),
+            grant_id: auth.delegation_grant_id.map(|id| id.0),
             action: bounded_action(capability),
             outcome,
             resource_workspace: (!auth.bypass).then_some(auth.workspace_id),
@@ -146,6 +147,44 @@ impl AuthorizationDecision {
             authorization.resource_id = ?self.resource_workspace.map(|id| id.0),
             authorization.sample_rate = DENIAL_LOG_SAMPLE_RATE,
             "authorization denied (sampled)"
+        );
+    }
+}
+
+/// Persist one delegated authorization decision. Unlike anonymous denials,
+/// delegated calls are bounded by a named, expiring, revocable grant and are
+/// therefore recorded durably without sampling.
+pub async fn record_delegated_authorization(
+    store: &dyn Store,
+    auth: &AuthContext,
+    surface: AuthorizationSurface,
+    action: &str,
+    outcome: AuthorizationOutcome,
+) {
+    let Some(grant_id) = auth.delegation_grant_id else {
+        return;
+    };
+    let event = NewAuditEvent {
+        actor_id: Some(auth.actor_id),
+        action: "authorization.decision".into(),
+        target_kind: Some("workspace".into()),
+        target_id: Some(auth.workspace_id.0),
+        metadata: serde_json::json!({
+            "surface": surface.label(),
+            "authorization_action": action,
+            "outcome": outcome.label(),
+            "subject_id": auth.member_id.0,
+            "grant_id": grant_id.0,
+        }),
+    };
+    if let Err(err) = store.append_audit(event).await {
+        tracing::error!(
+            target: "audit",
+            %err,
+            actor_id = %auth.actor_id.0,
+            subject_id = %auth.member_id.0,
+            grant_id = %grant_id.0,
+            "delegated_authorization.write_failed"
         );
     }
 }

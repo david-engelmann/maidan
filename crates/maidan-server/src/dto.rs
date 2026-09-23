@@ -943,7 +943,9 @@ pub struct DeliveryModeView {
 /// grant; this is the real set.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WhoAmI {
+    pub actor_id: uuid::Uuid,
     pub member_id: uuid::Uuid,
+    pub delegation_grant_id: Option<uuid::Uuid>,
     pub workspace_id: uuid::Uuid,
     pub capabilities: Vec<String>,
     pub is_bearer: bool,
@@ -1286,6 +1288,16 @@ pub struct DelegateToken {
     pub capabilities: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub label: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateDelegationGrant {
+    pub subject_id: uuid::Uuid,
+    pub delegate_id: uuid::Uuid,
+    pub capabilities: Vec<String>,
+    pub purpose: String,
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

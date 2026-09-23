@@ -20,7 +20,9 @@ use crate::state::AppState;
 pub async fn get_me(Extension(auth): Extension<AuthContext>) -> ApiResult<Json<WhoAmI>> {
     cap(&auth, WORKSPACE_READ)?;
     Ok(Json(WhoAmI {
+        actor_id: auth.actor_id.0,
         member_id: auth.member_id.0,
+        delegation_grant_id: auth.delegation_grant_id.map(|id| id.0),
         workspace_id: auth.workspace_id.0,
         capabilities: auth.capabilities().to_vec(),
         is_bearer: auth.token_id.is_some(),
