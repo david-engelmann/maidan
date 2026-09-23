@@ -6,6 +6,14 @@ use uuid::Uuid;
 use crate::error::StoreError;
 
 pub async fn create(pool: &PgPool, new: NewApiToken) -> Result<ApiToken, StoreError> {
+    let mut conn = pool.acquire().await?;
+    create_on(&mut conn, new).await
+}
+
+pub(crate) async fn create_on(
+    conn: &mut sqlx::PgConnection,
+    new: NewApiToken,
+) -> Result<ApiToken, StoreError> {
     let id = Uuid::new_v4();
     let capabilities = serde_json::to_string(&new.capabilities)?;
     let row = sqlx::query(
@@ -23,7 +31,7 @@ pub async fn create(pool: &PgPool, new: NewApiToken) -> Result<ApiToken, StoreEr
     .bind(new.label.as_deref())
     .bind(&capabilities)
     .bind(new.expires_at)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(map_token_err)?;
     row_to_token(&row)
@@ -37,6 +45,15 @@ pub async fn create(pool: &PgPool, new: NewApiToken) -> Result<ApiToken, StoreEr
 /// for one caller.
 pub async fn create_attenuated(
     pool: &PgPool,
+    new: NewApiToken,
+    parent_token_id: ApiTokenId,
+) -> Result<ApiToken, StoreError> {
+    let mut conn = pool.acquire().await?;
+    create_attenuated_on(&mut conn, new, parent_token_id).await
+}
+
+pub(crate) async fn create_attenuated_on(
+    conn: &mut sqlx::PgConnection,
     new: NewApiToken,
     parent_token_id: ApiTokenId,
 ) -> Result<ApiToken, StoreError> {
@@ -59,7 +76,7 @@ pub async fn create_attenuated(
     .bind(&capabilities)
     .bind(new.expires_at)
     .bind(parent_token_id.0)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(map_token_err)?;
     row_to_token(&row)
@@ -67,6 +84,17 @@ pub async fn create_attenuated(
 
 pub async fn create_delegated(
     pool: &PgPool,
+    new: NewApiToken,
+    grant_id: maidan_types::DelegationGrantId,
+    delegate_id: MemberId,
+    parent_token_id: Option<ApiTokenId>,
+) -> Result<ApiToken, StoreError> {
+    let mut conn = pool.acquire().await?;
+    create_delegated_on(&mut conn, new, grant_id, delegate_id, parent_token_id).await
+}
+
+pub(crate) async fn create_delegated_on(
+    conn: &mut sqlx::PgConnection,
     new: NewApiToken,
     grant_id: maidan_types::DelegationGrantId,
     delegate_id: MemberId,
@@ -80,7 +108,7 @@ pub async fn create_delegated(
     .bind(new.workspace_id.0)
     .bind(new.member_id.0)
     .bind(delegate_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?
     .ok_or(StoreError::NotFound)?;
     let grant_capabilities: Vec<String> = serde_json::from_str(&grant_capabilities_json)?;
@@ -115,7 +143,7 @@ pub async fn create_delegated(
     .bind(parent_token_id.map(|id| id.0))
     .bind(grant_id.0)
     .bind(delegate_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await
     .map_err(map_token_err)?
     .ok_or(StoreError::NotFound)?;
@@ -224,8 +252,18 @@ pub async fn list_for_member(
 /// survives. `NotFound` if the root was already revoked or does not exist —
 /// unchanged from before.
 pub async fn revoke(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
-    let now = Utc::now();
     let mut tx = pool.begin().await?;
+    let token = revoke_on(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok(token)
+}
+
+/// Revoke a token and its attenuation subtree on the caller's connection.
+pub(crate) async fn revoke_on(
+    conn: &mut sqlx::PgConnection,
+    id: ApiTokenId,
+) -> Result<ApiToken, StoreError> {
+    let now = Utc::now();
     // The root must still be live, and the caller gets its row back.
     let row = sqlx::query(
         "UPDATE maidan_api_tokens
@@ -236,7 +274,7 @@ pub async fn revoke(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreErro
     )
     .bind(id.0)
     .bind(now)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut *conn)
     .await?
     .ok_or(StoreError::NotFound)?;
     sqlx::query(
@@ -251,9 +289,8 @@ pub async fn revoke(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreErro
     )
     .bind(id.0)
     .bind(now)
-    .execute(&mut *tx)
+    .execute(&mut *conn)
     .await?;
-    tx.commit().await?;
     row_to_token(&row)
 }
 
@@ -288,4 +325,73 @@ fn row_to_token(row: &sqlx::postgres::PgRow) -> Result<ApiToken, StoreError> {
             .get::<Option<Uuid>, _>("delegation_grant_id")
             .map(maidan_types::DelegationGrantId),
     })
+}
+
+/// Write `audit` for `token` on the transaction that made it; a failure is
+/// counted and aborts the change.
+async fn audit_on_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    audit: crate::AuditFor<ApiToken>,
+    token: &ApiToken,
+) -> Result<(), StoreError> {
+    super::audit::append_on(tx, audit(token))
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+    Ok(())
+}
+
+/// [`create`], with its audit row in the same transaction (D-A).
+pub async fn create_audited(
+    pool: &PgPool,
+    new: NewApiToken,
+    audit: crate::AuditFor<ApiToken>,
+) -> Result<ApiToken, StoreError> {
+    let mut tx = pool.begin().await?;
+    let token = create_on(&mut tx, new).await?;
+    audit_on_tx(&mut tx, audit, &token).await?;
+    tx.commit().await?;
+    Ok(token)
+}
+
+/// [`create_attenuated`], with its audit row in the same transaction.
+pub async fn create_attenuated_audited(
+    pool: &PgPool,
+    new: NewApiToken,
+    parent_token_id: ApiTokenId,
+    audit: crate::AuditFor<ApiToken>,
+) -> Result<ApiToken, StoreError> {
+    let mut tx = pool.begin().await?;
+    let token = create_attenuated_on(&mut tx, new, parent_token_id).await?;
+    audit_on_tx(&mut tx, audit, &token).await?;
+    tx.commit().await?;
+    Ok(token)
+}
+
+/// [`create_delegated`], with its audit row in the same transaction.
+pub async fn create_delegated_audited(
+    pool: &PgPool,
+    new: NewApiToken,
+    grant_id: maidan_types::DelegationGrantId,
+    delegate_id: MemberId,
+    parent_token_id: Option<ApiTokenId>,
+    audit: crate::AuditFor<ApiToken>,
+) -> Result<ApiToken, StoreError> {
+    let mut tx = pool.begin().await?;
+    let token = create_delegated_on(&mut tx, new, grant_id, delegate_id, parent_token_id).await?;
+    audit_on_tx(&mut tx, audit, &token).await?;
+    tx.commit().await?;
+    Ok(token)
+}
+
+/// [`revoke`], with its audit row in the same transaction.
+pub async fn revoke_audited(
+    pool: &PgPool,
+    id: ApiTokenId,
+    audit: crate::AuditFor<ApiToken>,
+) -> Result<ApiToken, StoreError> {
+    let mut tx = pool.begin().await?;
+    let token = revoke_on(&mut tx, id).await?;
+    audit_on_tx(&mut tx, audit, &token).await?;
+    tx.commit().await?;
+    Ok(token)
 }

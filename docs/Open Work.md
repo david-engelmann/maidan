@@ -22,7 +22,7 @@ operational safety, then deploy hygiene, then product surface.
 | Slice | What | Size |
 |---|---|---|
 | ~~413.1~~ | ~~**D-B:** a per-workspace delegation-grant lifetime ceiling, default 90 days~~ **✅ shipped (#1014)** | S |
-| 413.2 | **D-A foundation:** `append_audit_in_tx` on both backends, then tokens: mint, revoke, attenuate, delegated exchange, app-token mint, app-installation revoke | M |
+| ~~413.2~~ | ~~**D-A foundation** + tokens~~ **✅ 413.2** — mint, attenuate, delegated exchange and revoke commit with their audit row; OAuth mint and SCIM per-token revokes, which recorded nothing, now do. App-installation revoke moves to 413.4 with the other governance changes | M |
 | 413.3 | **D-A:** grants, share tickets, workspace purge, erase and import, message purge, legal hold. Reads (export, secret resolve) write the row first and release data only if it succeeded | M |
 | 413.4 | **D-A:** governance and membership. Governance-skill grants, review-requirement loosening, reviewer removal, land-gate clear, channel membership, member freeze, SCIM users, egress targets | M |
 

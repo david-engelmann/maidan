@@ -2410,6 +2410,46 @@ impl TokenStore for SqliteStore {
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
         tokens::revoke(&self.pool, id).await
     }
+    async fn create_api_token_audited(
+        &self,
+        new: NewApiToken,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError> {
+        tokens::create_audited(&self.pool, new, audit).await
+    }
+    async fn create_attenuated_api_token_audited(
+        &self,
+        new: NewApiToken,
+        parent_token_id: ApiTokenId,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError> {
+        tokens::create_attenuated_audited(&self.pool, new, parent_token_id, audit).await
+    }
+    async fn create_delegated_api_token_audited(
+        &self,
+        new: NewApiToken,
+        grant_id: DelegationGrantId,
+        delegate_id: MemberId,
+        parent_token_id: Option<ApiTokenId>,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError> {
+        tokens::create_delegated_audited(
+            &self.pool,
+            new,
+            grant_id,
+            delegate_id,
+            parent_token_id,
+            audit,
+        )
+        .await
+    }
+    async fn revoke_api_token_audited(
+        &self,
+        id: ApiTokenId,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError> {
+        tokens::revoke_audited(&self.pool, id, audit).await
+    }
     async fn list_api_tokens_for_member(
         &self,
         workspace_id: WorkspaceId,

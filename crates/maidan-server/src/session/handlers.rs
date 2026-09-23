@@ -34,35 +34,33 @@ pub async fn mint_first_admin_token(
     let mut capabilities = capability::default_minted();
     capabilities.push(TOKEN_ADMIN.to_string());
     let secret = TokenSecret::generate();
+    let actor = ctx.member_id;
     let record = state
         .store
-        .create_api_token(NewApiToken {
-            workspace_id: ctx.workspace_id,
-            member_id: ctx.member_id,
-            app_installation_id: None,
-            token_hash: hash_secret(secret.as_str()),
-            label: Some("oidc-first-admin".into()),
-            capabilities,
-            expires_at: None,
-        })
-        .await?;
-
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(ctx.member_id),
-            action: "token.mint".into(),
-            target_kind: Some("api_token".into()),
-            target_id: Some(record.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": record.workspace_id.0,
-                "subject_member_id": record.member_id.0,
-                "capabilities": record.capabilities.clone(),
-                "source": "oidc-first-admin",
+        .create_api_token_audited(
+            NewApiToken {
+                workspace_id: ctx.workspace_id,
+                member_id: ctx.member_id,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: Some("oidc-first-admin".into()),
+                capabilities,
+                expires_at: None,
+            },
+            Box::new(move |record| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "token.mint".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(record.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": record.workspace_id.0,
+                    "subject_member_id": record.member_id.0,
+                    "capabilities": record.capabilities.clone(),
+                    "source": "oidc-first-admin",
+                }),
             }),
-        },
-    )
-    .await;
+        )
+        .await?;
 
     Ok((
         StatusCode::CREATED,

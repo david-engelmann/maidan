@@ -140,21 +140,13 @@ pub(super) async fn attenuate_token(
         capabilities: capabilities.clone(),
         expires_at,
     };
-    // Record the parent so revoking it reaches this token.
-    let record = match auth.token_id {
-        Some(parent) => store.create_attenuated_api_token(derived, parent).await?,
-        None => store.create_api_token(derived).await?,
-    };
-    if !inherited_quotas.is_empty() {
-        store
-            .replace_token_quotas(record.id, &inherited_quotas)
-            .await?;
-    }
-    // Best-effort, like `crate::audit::record`: a mint must not lose its
-    // response-only secret to an audit hiccup.
-    if let Err(err) = store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(auth.actor_id),
+    // The audit row commits with the mint (D-A). If it cannot be written the
+    // mint rolls back too, so no token exists whose secret was never shown.
+    let (actor, parent_token_id, quota_count) =
+        (auth.actor_id, auth.token_id, inherited_quotas.len());
+    let audit: maidan_store::AuditFor<maidan_types::ApiToken> =
+        Box::new(move |record| NewAuditEvent {
+            actor_id: Some(actor),
             action: "token.mint".into(),
             target_kind: Some("api_token".into()),
             target_id: Some(record.id.0),
@@ -165,14 +157,24 @@ pub(super) async fn attenuate_token(
                 "expires_at": record.expires_at,
                 "attenuated": true,
                 "surface": "mcp",
-                "parent_token_id": auth.token_id.map(|t| t.0),
+                "parent_token_id": parent_token_id.map(|t| t.0),
                 "app_installation_id": record.app_installation_id.map(|i| i.0),
-                "inherited_quotas": inherited_quotas.len(),
+                "inherited_quotas": quota_count,
             }),
-        })
-        .await
-    {
-        tracing::warn!(error = %err, "audit.write_failed");
+        });
+    // Record the parent so revoking it reaches this token.
+    let record = match auth.token_id {
+        Some(parent) => {
+            store
+                .create_attenuated_api_token_audited(derived, parent, audit)
+                .await?
+        }
+        None => store.create_api_token_audited(derived, audit).await?,
+    };
+    if !inherited_quotas.is_empty() {
+        store
+            .replace_token_quotas(record.id, &inherited_quotas)
+            .await?;
     }
     Ok(content_json(&json!({
         "id": record.id.0,
@@ -247,8 +249,10 @@ pub(super) async fn delegate_token(
         maidan_auth::delegated_expiry(grant.expires_at, parent_expiry, a.expires_at, now)
             .map_err(McpError::InvalidParams)?;
     let secret = TokenSecret::generate();
+    let (actor, delegate, parent_token_id, grant_id) =
+        (auth.actor_id, auth.member_id, auth.token_id, grant.id);
     let record = store
-        .create_delegated_api_token(
+        .create_delegated_api_token_audited(
             NewApiToken {
                 workspace_id: grant.workspace_id,
                 member_id: grant.subject_id,
@@ -261,29 +265,24 @@ pub(super) async fn delegate_token(
             grant.id,
             auth.member_id,
             auth.token_id,
+            Box::new(move |record| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "token.delegate".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(record.id.0),
+                metadata: json!({
+                    "workspace_id": record.workspace_id.0,
+                    "delegate_id": delegate.0,
+                    "subject_member_id": record.member_id.0,
+                    "grant_id": grant_id.0,
+                    "capabilities": record.capabilities.clone(),
+                    "expires_at": record.expires_at,
+                    "surface": "mcp",
+                    "parent_token_id": parent_token_id.map(|id| id.0),
+                }),
+            }),
         )
         .await?;
-    if let Err(err) = store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "token.delegate".into(),
-            target_kind: Some("api_token".into()),
-            target_id: Some(record.id.0),
-            metadata: json!({
-                "workspace_id": record.workspace_id.0,
-                "delegate_id": auth.member_id.0,
-                "subject_member_id": record.member_id.0,
-                "grant_id": grant.id.0,
-                "capabilities": record.capabilities.clone(),
-                "expires_at": record.expires_at,
-                "surface": "mcp",
-                "parent_token_id": auth.token_id.map(|id| id.0),
-            }),
-        })
-        .await
-    {
-        tracing::warn!(error = %err, "audit.write_failed");
-    }
     Ok(content_json(&json!({
         "grant_id": grant.id.0,
         "delegate_id": auth.member_id.0,
