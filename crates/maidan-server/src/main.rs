@@ -515,6 +515,16 @@ async fn main() -> anyhow::Result<()> {
     state.read_routing_metrics = read_routing_metrics;
     state.search_read_routing_metrics = search_read_routing_metrics;
 
+    // Experimental J-01 spike. Default-off and advisory-only: this separate
+    // route never writes the land-gate pointer or enters the close path.
+    if let Some(advisor) = maidan_server::land_gate_advisor::from_env()
+        .await
+        .context("configure Jev land-gate advisor")?
+    {
+        state.attach_land_gate_advisor(advisor);
+        tracing::info!("experimental Jev land-gate advisor enabled");
+    }
+
     if let Some(key) = export_signing {
         tracing::info!(
             public_key = %key.public_key_hex(),

@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::dto::*;
 use crate::error::ProblemDetails;
 use crate::federation::{IngestSummary, WellKnownMaidan};
+use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest};
 use crate::openapi::schemas::SearchHit;
 use crate::share_consumer::*;
 use maidan_types::*;
@@ -1281,6 +1282,17 @@ pub fn clear_land_gate() {}
     security(("bearerAuth" = [])),
     responses((status = 200, body = LandGateStanding)))]
 pub fn require_land_gate() {}
+
+#[utoipa::path(post, path = "/threads/{id}/land-gate/advice", tag = "land_gate",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = LandGateAdviceRequest,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = LandGateAdvice, description = "Advisory result; never writes the gate pointer"),
+        (status = 404, body = ProblemDetails, description = "Experimental advisor disabled"),
+        (status = 502, body = ProblemDetails, description = "Decision provider unavailable")
+    ))]
+pub fn advise_land_gate() {}
 
 // --- spawn budget ---
 

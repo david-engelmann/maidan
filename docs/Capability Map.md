@@ -19,7 +19,7 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 | `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/members/:id/manager-digest`, GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:wid/snapshot` (header + `graph_hash`; `include_graph=true` needs `token:admin`), GET `/workspaces/:wid/events/catch-up`, GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:id/tombstones`, GET `/workspaces/:id/kind-census`, GET `/messages/:id/backlinks`, GET `/workspaces/:wid/mention-webhook`, GET `/workspaces/:id/room`, GET `/workspaces/:id/handle`, GET `/capability-sets`, `POST /tokens/attenuate` (holder-side; no `token:admin`), group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
 | `workspace:write` | POST channels, threads, messages (mentions, votes), references; POST `/workspaces/:id/purge`; automation replay; slash/FSM hook CRUD; `PUT /workspaces/:wid/mention-webhook`; `PUT /workspaces/:id/handle` |
 | `message:post` | POST thread messages, A2A `SendMessage` |
-| `thread:transition` | POST thread FSM transitions; MCP `transition_thread` |
+| `thread:transition` | POST thread FSM transitions; experimental `POST /threads/:id/land-gate/advice` when enabled; MCP `transition_thread` |
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |
 | `search:query` | GET workspace search |
 | `event:subscribe` | WebSocket `/ws/subscribe` (token in subscribe frame) |

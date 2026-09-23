@@ -11,6 +11,9 @@ use crate::dto::*;
 use crate::error::ProblemDetails;
 use crate::federation::{IngestSummary, WellKnownA2a, WellKnownMaidan};
 use crate::health::{HealthResponse, SubsystemStatus};
+use crate::land_gate_advisor::{
+    LandGateAdvice, LandGateAdviceRequest, LandGateAdviceThresholds, LandGateAdviceUsage,
+};
 use crate::openapi::schemas::{LivenessOk, SearchHit};
 use crate::share_consumer::*;
 use crate::thread_context::{ThreadContext, ThreadFsmContext, WorkspaceContext};
@@ -300,6 +303,7 @@ impl Modify for SecurityAddon {
         paths::get_land_gate,
         paths::clear_land_gate,
         paths::require_land_gate,
+        paths::advise_land_gate,
         paths::set_spawn_budget,
         paths::get_spawn_budget,
         paths::add_member_skill,
@@ -362,6 +366,10 @@ impl Modify for SecurityAddon {
         HealthResponse,
         SubsystemStatus,
         ProblemDetails,
+        LandGateAdviceRequest,
+        LandGateAdvice,
+        LandGateAdviceThresholds,
+        LandGateAdviceUsage,
         Workspace,
         WorkspaceEraseResult,
         WorkspaceUsage,

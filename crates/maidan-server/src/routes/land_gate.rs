@@ -25,7 +25,33 @@ use maidan_types::*;
 use super::{cap, ApiResult};
 use crate::dto::SetLandGate;
 use crate::error::{ApiError, ApiJson};
+use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorError};
 use crate::state::AppState;
+
+/// Ask the optional decision model for advice. This route never writes the
+/// pointer: a qualified external verifier remains the only authority that can
+/// call [`set_land_gate`].
+pub async fn advise_land_gate(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+    ApiJson(body): ApiJson<LandGateAdviceRequest>,
+) -> ApiResult<Json<LandGateAdvice>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    let advisor = state.land_gate_advisor.as_ref().ok_or(ApiError::NotFound)?;
+    match advisor.advise(body).await {
+        Ok(advice) => Ok(Json(advice)),
+        Err(LandGateAdvisorError::InvalidRequest(error)) => Err(ApiError::BadRequest(error)),
+        Err(error) => {
+            tracing::warn!(%error, %thread_id, "land-gate advisor request failed");
+            Err(ApiError::BadGateway(
+                "land-gate advisor unavailable; the authoritative gate is unchanged".into(),
+            ))
+        }
+    }
+}
 
 pub async fn set_land_gate(
     State(state): State<AppState>,

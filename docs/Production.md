@@ -186,6 +186,29 @@ detail. Summary:
 | `MAIDAN_SUBSCRIBE_RESUME_SECRET` | no | Override HMAC key for subscribe resume tokens only. |
 | `MAIDAN_SUBSCRIBE_RESUME_TTL_SECS` | no | Resume token lifetime in seconds (default `3600`). |
 
+### Experimental Jev land-gate advisor
+
+The Cluster 408.5 spike is **off by default** and does not participate in the
+authoritative land-gate write or close paths. Enabling it adds only
+`POST /threads/:id/land-gate/advice`; see
+[Agent integration — Experimental Jev advice](Integration.md#experimental-jev-advice-default-off)
+for its request, response, calibration harness, and privacy boundary.
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `MAIDAN_JEV_LAND_GATE_ENABLED` | `0` | `1` enables the advisory route. Invalid values fail startup. |
+| `TYPESAFE_API_KEY` | — | Required only when the feature is enabled. Never sent to clients or logged. |
+| `MAIDAN_JEV_MODEL` | `jev-latest` | Model or alias returned by TypeSafe `GET /v1/models`. |
+| `MAIDAN_JEV_GREEN_MIN_CONFIDENCE` | `0.90` | Green below this becomes advisory amber. Must be in `[0,1]`. |
+| `MAIDAN_JEV_RED_MIN_CONFIDENCE` | `0.90` | Red below this becomes advisory amber. Must be in `[0,1]`. |
+| `MAIDAN_JEV_TIMEOUT_MS` | `1500` | Positive per-request timeout. A timeout returns `502` only on the advice call. |
+| `MAIDAN_JEV_BASE_URL` | `https://api.typesafe.ai/` | Origin only. Uses the shared DNS-pinned SSRF/redirect guard. |
+
+When enabled, a missing key, malformed threshold, unsafe base URL, or DNS
+resolution failure stops startup rather than silently enabling a partial
+configuration. With the flag unset or `0`, none of the other variables are
+read and the server behaves exactly as before.
+
 After OIDC login, use `/ui/` (session cookie) or mint an API token for MCP.
 
 **Channel browser (`v92.0.0`):** From `/ui/`, list channels and threads, then post

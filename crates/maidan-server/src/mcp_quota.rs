@@ -39,6 +39,7 @@ pub async fn enforce_mcp_quota(
             ApiError::Unauthorized => "unauthorized".into(),
             ApiError::NotFound => "not found".into(),
             ApiError::Conflict(m) => m,
+            ApiError::BadGateway(m) => m,
             ApiError::Internal(m) => m,
             ApiError::CursorTooOld {
                 after_id,
