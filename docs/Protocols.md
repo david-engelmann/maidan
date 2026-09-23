@@ -2,9 +2,12 @@
 
 **Audience:** someone plugging Maidan into an existing agent stack (Cursor, Claude Desktop, a Python/TS agent, another org's A2A agent, n8n, Slack).
 
-**Companion:** [Providers.md](Providers.md) is *where it runs* (Postgres host, S3, OIDC). This page is *how it talks*. Execution checklist: Hardening **J**. Feature packs that sit on top (one-click MCP, thin SDK, Slack projector) live in [Expansion Bets.md](Expansion%20Bets.md).
+[Providers.md](Providers.md) covers *where it runs* — Postgres host, S3, OIDC.
+This page covers *how it talks*.
 
-Snapshot: 2026-08-25. Code facts from the local tree (`SUPPORTED_PROTOCOL_VERSIONS`, `POST /a2a/v1/rpc`, Agent Card). Market facts from AAIF / Linux Foundation / MCP spec `2026-07-28` / A2A v1.0. Re-scan before you quote numbers in a blog post.
+Protocol facts come from the code (`SUPPORTED_PROTOCOL_VERSIONS`,
+`POST /a2a/v1/rpc`, the Agent Card) and are current. The market commentary below
+was written on 2026-08-25 and ages faster than the code does.
 
 **MCP `2026-07-28` is current.** The server negotiates the current
 `2026-07-28` revision — stateless Streamable HTTP (no `Mcp-Session-Id`) + SEP-2243 `Mcp-Method`/`Mcp-Name`
@@ -60,12 +63,12 @@ MCP tool count is **186**. There is **no** MCP create workspace / channel / thre
 | They already run | Point them at | Do not |
 |------------------|---------------|--------|
 | Cursor, Claude Desktop, VS Code, Claude Code, ChatGPT connectors | MCP **`2026-07-28`** (shipped) — `POST /mcp` / Streamable HTTP / stdio; older clients may still request `2024-11-05`. | — |
-| A Python / TS agent they wrote | REST + WS, or MCP if they already have an MCP client. Thin SDK is Bet 3. | An in-process `Crew.kickoff`. Maidan *is* the orchestrator. |
+| A Python / TS agent they wrote | REST + WS, or MCP if they already have an MCP client. There are thin SDKs for TypeScript, Python, Go and Rust in [`sdk/`](https://github.com/david-engelmann/maidan/tree/main/sdk), at 0.1.0. | An in-process `Crew.kickoff`. Maidan *is* the orchestrator. |
 | LangGraph / CrewAI / OpenAI Agents SDK | Recipe on REST+WS (or MCP tools). Those frameworks speak MCP as of 2026; they do not need a Maidan-native runtime. | A LangGraph checkpointer inside Maidan. |
 | Another vendor's agent (Salesforce, SAP, Bedrock, Foundry) | A2A Agent Card + JSON-RPC. | IBM ACP. It is A2A now. |
 | n8n / Zapier / Make / "we have webhooks" | Outbound webhooks + REST. OpenAPI for the REST half. | A GraphQL gateway. |
-| Humans in Slack | Bet 1 projector (HTTP Events API). Agents stay on MCP/A2A. | Making Slack the datastore. Socket Mode as Marketplace default. |
-| Humans in GitHub / GitLab / Gitea | Bet 6 projector (GitHub App / webhooks). Agents use official GitHub MCP for diffs. | Reimplementing GitHub MCP. Opening PRs as Maidan. Ambient on every PR. |
+| Humans in Slack | The Slack projector (HTTP Events API); link a channel with the `link_slack_channel` MCP tool. Agents stay on MCP/A2A. | Making Slack the datastore. Socket Mode as Marketplace default. |
+| Humans in GitHub / GitLab / Gitea | The GitHub projector (App / webhooks); link an issue with `link_github_issue`. Agents use the official GitHub MCP for diffs. | Reimplementing GitHub MCP. Opening PRs as Maidan. Ambient on every PR. |
 | Humans in the browser / a React app | Today: `/ui` + WS. Later, *maybe* AG-UI if `/ui` becomes a real product. | Native AG-UI this quarter. CopilotKit is a frontend stack, not a workspace. |
 | Coding agent in Zed / JetBrains (OpenTag-shaped) | Optional ACP *adapter*: Maidan thread → spawn ACP agent → result back. | Replacing A2A or MCP with Zed ACP. |
 | Observability (Grafana, Datadog, Honeycomb) | `/metrics` + existing OTLP smoke. | OpenTelemetry as a fourth agent protocol. |
@@ -129,7 +132,11 @@ docs are 2026. **Staying 2024-only is not an option.**
 J3 is Hardening (protocol upgrade), not Bet 2. Bet 2 **M.0 is J3**. The
 pack (M.1) and public cut wait on it. Do not sneak this into a docs PR.
 
-## Gaps worth closing (Hardening J + existing bets)
+## Gaps worth closing
+
+> The rest of this page is maintainer planning, kept here so the protocol
+> decisions and the work they imply stay together. If you are integrating, you
+> can stop reading at this line.
 
 J3 shipped (`2026-07-28`). The rest is adapters + honesty. No new native protocol.
 
@@ -175,8 +182,8 @@ J3 shipped (`2026-07-28`). The rest is adapters + honesty. No new native protoco
 2. **Need live events in your own UI** → WebSocket subscribe (or MCP SSE live-wait).
 3. **Need to script / generate a client / talk to n8n** → REST + OpenAPI, optionally webhooks.
 4. **A second *agent* must delegate to Maidan or vice versa** → A2A JSON-RPC + Agent Card (J4).
-5. **Humans already live in Slack** → Bet 1 projector, not a new protocol.
-6. **Humans already live in GitHub/GitLab** → Bet 6 projector, not Copilot.
+5. **Humans already live in Slack** → the Slack projector, not a new protocol.
+6. **Humans already live in GitHub/GitLab** → the GitHub projector, not Copilot.
 7. **Editor coding agent should work a Maidan thread** → ACP adapter later, not now.
 
 If two of those apply, use two transports. That is the design (README: "one surface, four transports").
