@@ -1,0 +1,85 @@
+{
+  "$type": "maidan.workspace.export/1",
+  "alg": "ed25519",
+  "content_sha256": "<sha256>",
+  "payload": {
+    "channels": [
+      {
+        "channel": {
+          "created_at": "<timestamp>",
+          "id": "<channel-id>",
+          "name": "general",
+          "private": true,
+          "tombstoned_at": null,
+          "topic": "portable contracts",
+          "updated_at": "<timestamp>",
+          "workspace_id": "<workspace-id>"
+        },
+        "members": [
+          {
+            "channel_id": "<channel-id>",
+            "created_at": "<timestamp>",
+            "member_id": "<member-id>",
+            "role": "admin"
+          }
+        ]
+      }
+    ],
+    "exported_at": "<timestamp>",
+    "format_version": 1,
+    "members": [
+      {
+        "created_at": "<timestamp>",
+        "display_name": "Alice",
+        "handle": "alice",
+        "id": "<member-id>",
+        "kind": "human",
+        "tombstoned_at": null,
+        "updated_at": "<timestamp>",
+        "workspace_id": "<workspace-id>"
+      }
+    ],
+    "message_edits": [],
+    "messages": [
+      {
+        "author_id": "<member-id>",
+        "body": "hello portable world",
+        "edited_at": null,
+        "id": "<message-id>",
+        "metadata": {
+          "source": "golden"
+        },
+        "posted_at": "<timestamp>",
+        "thread_id": "<thread-id>",
+        "tombstoned_at": null
+      }
+    ],
+    "pins": [],
+    "references": [],
+    "threads": [
+      {
+        "assignee_id": null,
+        "channel_id": "<channel-id>",
+        "created_at": "<timestamp>",
+        "id": "<thread-id>",
+        "owner_id": "<member-id>",
+        "parent_thread_id": null,
+        "state": "open",
+        "title": "portable task",
+        "tombstoned_at": null,
+        "updated_at": "<timestamp>"
+      }
+    ],
+    "workspace": {
+      "created_at": "<timestamp>",
+      "id": "<workspace-id>",
+      "name": "portable-room",
+      "tombstoned_at": null,
+      "updated_at": "<timestamp>"
+    }
+  },
+  "public_key": "<ed25519-public-key>",
+  "signature": "<ed25519-signature>",
+  "signed_at": "<timestamp>",
+  "token_policy": "tokens_die_on_export"
+}

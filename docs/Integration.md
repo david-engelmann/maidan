@@ -402,6 +402,13 @@ When that pin is empty, a stranger still detects *tamper* against the
 embedded key. Missing signing key → export refuses (never unsigned).
 Bit-flip or a bad signature → 400.
 
+Maintainers review the normalized wire shape in
+`crates/maidan-server/tests/fixtures/normalized-workspace-export.json`. Its
+companion `normalized-event-frames.json` locks the snapshot and since-LSN
+catch-up envelopes. Generated UUIDs, timestamps, hashes, public keys, and
+signatures are placeholders; protocol type ids, JSON value types,
+relationships, arrays, and field presence remain compatibility assertions.
+
 This envelope is not `Maidan-Room-LSN` and not
 `Maidan-Consistency-Token`. See [Production.md](Production.md#signed-workspace-export)
 and [Threat-Model.md](Threat-Model.md).

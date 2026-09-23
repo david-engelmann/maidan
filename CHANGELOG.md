@@ -25,6 +25,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   test: a real signed session subscribes to the workspace WebSocket, waits for
   acknowledgement, creates a channel and thread through `/ui/api`, posts a
   message without a bearer, and observes that exact durable event live.
+- **407.4** adds reviewable golden JSON for the signed workspace-export
+  envelope and the snapshot + since-LSN catch-up frames. The comparison
+  normalizes generated UUIDs, timestamps, hashes, keys, and signatures while
+  preserving protocol types, value types, relationships, and structure.
 
 ## [406.0.0] — 2026-09-22
 

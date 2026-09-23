@@ -1,0 +1,150 @@
+{
+  "catch_up": {
+    "$type": "maidan.event-log.catch-up/1",
+    "after_lsn": 10,
+    "chain": {
+      "algorithm": "sha256",
+      "checked": 1,
+      "from_genesis": false,
+      "genesis": "sha256:<hash>",
+      "head": {
+        "content_hash": "sha256:<hash>",
+        "id": 11,
+        "lsn": 11,
+        "prev_hash": "sha256:<hash>"
+      },
+      "ok": true
+    },
+    "events": [
+      {
+        "$type": "maidan.event.message_posted/1",
+        "channel_id": "<channel-id>",
+        "content_hash": "sha256:<hash>",
+        "id": 11,
+        "kind": "message_posted",
+        "lsn": 11,
+        "occurred_at": "<timestamp>",
+        "payload": {
+          "channel_id": "<channel-id>",
+          "kind": "message_posted",
+          "message": {
+            "author_id": "<member-id>",
+            "body": "hello portable world",
+            "edited_at": null,
+            "id": "<message-id>",
+            "metadata": {
+              "source": "golden"
+            },
+            "posted_at": "<timestamp>",
+            "thread_id": "<thread-id>",
+            "tombstoned_at": null
+          },
+          "occurred_at": "<timestamp>",
+          "thread_id": "<thread-id>",
+          "workspace_id": "<workspace-id>"
+        },
+        "prev_hash": "sha256:<hash>",
+        "thread_id": "<thread-id>",
+        "workspace_id": "<workspace-id>"
+      }
+    ],
+    "head_lsn": 11,
+    "room_lsn": 11,
+    "truncated": false,
+    "workspace_id": "<workspace-id>"
+  },
+  "snapshot": {
+    "$type": "maidan.event-log.snapshot/1",
+    "as_of_lsn": 10,
+    "floor": {
+      "content_hash": "sha256:<hash>",
+      "id": 10,
+      "lsn": 10,
+      "prev_hash": "sha256:<hash>"
+    },
+    "floor_lsn": 10,
+    "from_genesis": true,
+    "graph": {
+      "channels": [
+        {
+          "channel": {
+            "created_at": "<timestamp>",
+            "id": "<channel-id>",
+            "name": "general",
+            "private": true,
+            "tombstoned_at": null,
+            "topic": "portable contracts",
+            "updated_at": "<timestamp>",
+            "workspace_id": "<workspace-id>"
+          },
+          "members": [
+            {
+              "channel_id": "<channel-id>",
+              "created_at": "<timestamp>",
+              "member_id": "<member-id>",
+              "role": "admin"
+            }
+          ]
+        }
+      ],
+      "members": [
+        {
+          "created_at": "<timestamp>",
+          "display_name": "Alice",
+          "handle": "alice",
+          "id": "<member-id>",
+          "kind": "human",
+          "tombstoned_at": null,
+          "updated_at": "<timestamp>",
+          "workspace_id": "<workspace-id>"
+        }
+      ],
+      "message_edits": [],
+      "messages": [
+        {
+          "author_id": "<member-id>",
+          "body": "hello portable world",
+          "edited_at": null,
+          "id": "<message-id>",
+          "metadata": {
+            "source": "golden"
+          },
+          "posted_at": "<timestamp>",
+          "thread_id": "<thread-id>",
+          "tombstoned_at": null
+        }
+      ],
+      "pins": [],
+      "references": [],
+      "threads": [
+        {
+          "assignee_id": null,
+          "channel_id": "<channel-id>",
+          "created_at": "<timestamp>",
+          "id": "<thread-id>",
+          "owner_id": "<member-id>",
+          "parent_thread_id": null,
+          "state": "open",
+          "title": "portable task",
+          "tombstoned_at": null,
+          "updated_at": "<timestamp>"
+        }
+      ],
+      "workspace": {
+        "created_at": "<timestamp>",
+        "id": "<workspace-id>",
+        "name": "portable-room",
+        "tombstoned_at": null,
+        "updated_at": "<timestamp>"
+      }
+    },
+    "graph_hash": "sha256:<hash>",
+    "head": {
+      "content_hash": "sha256:<hash>",
+      "id": 10,
+      "lsn": 10,
+      "prev_hash": "sha256:<hash>"
+    },
+    "workspace_id": "<workspace-id>"
+  }
+}
