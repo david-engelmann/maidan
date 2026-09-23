@@ -93,7 +93,7 @@ pub async fn mint_api_token(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "token.mint".into(),
             target_kind: Some("api_token".into()),
             target_id: Some(record.id.0),
@@ -171,7 +171,7 @@ pub async fn revoke_api_token(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "token.revoke".into(),
             target_kind: Some("api_token".into()),
             target_id: Some(revoked.id.0),
@@ -272,7 +272,7 @@ pub async fn attenuate_api_token(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "token.mint".into(),
             target_kind: Some("api_token".into()),
             target_id: Some(record.id.0),
@@ -375,7 +375,7 @@ pub async fn delegate_api_token(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "token.delegate".into(),
             target_kind: Some("api_token".into()),
             target_id: Some(record.id.0),

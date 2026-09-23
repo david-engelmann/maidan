@@ -53,7 +53,7 @@ pub async fn set_review_requirement(
         crate::audit::record(
             &state,
             NewAuditEvent {
-                actor_id: Some(auth.member_id),
+                actor_id: Some(auth.actor_id),
                 action: "review_requirement.lower".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(thread_id.0),
@@ -99,7 +99,7 @@ pub async fn clear_review_requirement(
         crate::audit::record(
             &state,
             NewAuditEvent {
-                actor_id: Some(auth.member_id),
+                actor_id: Some(auth.actor_id),
                 action: "review_requirement.clear".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(thread_id.0),
@@ -153,7 +153,7 @@ pub async fn remove_reviewer(
         crate::audit::record(
             &state,
             NewAuditEvent {
-                actor_id: Some(auth.member_id),
+                actor_id: Some(auth.actor_id),
                 action: "reviewer.remove".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(thread_id.0),

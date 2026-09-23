@@ -70,6 +70,7 @@ pub async fn append_in_tx(
     event: &Event,
 ) -> Result<StoredEvent, StoreError> {
     let mut payload = serde_json::to_value(event)?;
+    crate::attribution::attach_to_payload(&mut payload)?;
     // Both the hash and the stored copy must be this same normalized value, or
     // a jsonb round trip can change one without the other — see
     // `normalize_payload_numbers`.

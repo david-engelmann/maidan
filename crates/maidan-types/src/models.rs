@@ -2299,7 +2299,14 @@ pub struct NewArtifact {
 pub struct AuditEvent {
     pub id: i64,
     pub occurred_at: DateTime<Utc>,
+    /// Who performed the action. For a delegated action, the delegate.
     pub actor_id: Option<MemberId>,
+    /// Who the action was performed for — the actor itself unless delegated.
+    #[serde(default)]
+    pub subject_id: Option<MemberId>,
+    /// The delegation grant the action was taken under, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grant_id: Option<crate::DelegationGrantId>,
     pub action: String,
     pub target_kind: Option<String>,
     pub target_id: Option<uuid::Uuid>,

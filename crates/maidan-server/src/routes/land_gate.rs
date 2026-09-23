@@ -100,7 +100,7 @@ pub async fn clear_land_gate(
         crate::audit::record(
             &state,
             NewAuditEvent {
-                actor_id: Some(auth.member_id),
+                actor_id: Some(auth.actor_id),
                 action: "land_gate.clear".into(),
                 target_kind: Some("thread".into()),
                 target_id: Some(thread_id.0),

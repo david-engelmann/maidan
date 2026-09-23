@@ -48,7 +48,7 @@ pub async fn freeze_member(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "member.freeze".into(),
             target_kind: Some("member".into()),
             target_id: Some(member_id.0),
@@ -73,7 +73,7 @@ pub async fn unfreeze_member(
     crate::audit::record(
         &state,
         NewAuditEvent {
-            actor_id: Some(auth.member_id),
+            actor_id: Some(auth.actor_id),
             action: "member.unfreeze".into(),
             target_kind: Some("member".into()),
             target_id: Some(member_id.0),

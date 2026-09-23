@@ -198,7 +198,11 @@ flowchart LR
   authentication, never from a request body. Acting for another member means a
   delegation grant exchanged for a short-lived token that *is* that member, and
   every use is written durably with the delegate as actor, the member as subject,
-  and the grant — refusals included. There is no standing act-as-any capability. A workspace is a
+  and the grant — refusals included. There is no standing act-as-any capability.
+  **Attribution** is set once per request, by the auth middleware and by MCP tool
+  dispatch, and read at the single point each backend appends an event, which
+  stores it inside the hashed payload. Audit rows take the same principal. Work
+  outside a request records none. A workspace is a
   **room**: `maidan://{workspace_id}/…` (optional `#sha256` fragment). A handle
   is a renameable alias; stored ids stay the UUID.
 - **Authorization evidence.** REST and MCP capability decisions emit one
