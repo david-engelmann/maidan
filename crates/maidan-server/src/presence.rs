@@ -230,6 +230,13 @@ impl PresenceHub {
         });
     }
 
+    /// The current `presence_snapshot` frame for `workspace_id`: what a
+    /// subscriber that fell behind the diff stream is sent to resynchronize.
+    pub fn snapshot(&self, workspace_id: WorkspaceId) -> String {
+        let inner = self.inner.read().unwrap_or_else(PoisonError::into_inner);
+        build_snapshot(workspace_id, &inner, self.ttl, Instant::now())
+    }
+
     pub fn register(
         &self,
         workspace_id: WorkspaceId,
@@ -630,6 +637,22 @@ fn build_snapshot(workspace_id: WorkspaceId, inner: &Inner, ttl: Duration, now: 
 mod tests {
     use super::*;
     use maidan_bus::InMemoryPresenceNotifier;
+
+    /// The snapshot a lagging subscriber is resent reflects the hub's current
+    /// roster, including a member who arrived during the lag.
+    #[test]
+    fn the_resync_snapshot_reflects_the_current_roster() {
+        let hub = PresenceHub::new();
+        let ws = WorkspaceId(Uuid::new_v4());
+        let first = MemberId(Uuid::new_v4());
+        let later = MemberId(Uuid::new_v4());
+        let (_rx, _reg, _) = hub.register(ws, first);
+        let (_rx2, _reg2, _) = hub.register(ws, later);
+        let snapshot = hub.snapshot(ws);
+        assert!(snapshot.contains("presence_snapshot"));
+        assert!(snapshot.contains(&first.0.to_string()));
+        assert!(snapshot.contains(&later.0.to_string()));
+    }
 
     #[test]
     fn snapshot_lists_local_and_remote_members() {

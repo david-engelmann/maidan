@@ -97,6 +97,21 @@ spec:
               their domain rows committed without them. Search the logs for
               event.append_failed.
 
+        # A replica this far behind has stopped serving untokened reads (the
+        # store routes them to the primary), so the primary is carrying them.
+        - alert: MaidanReplicaLagHigh
+          expr: maidan_replica_lag_bytes > 67108864
+          for: 5m
+          labels:
+            severity: warning
+            slo: replica_lag
+          annotations:
+            summary: Read replica lagging
+            description: |
+              The read replica is {{ $value | humanize1024 }}B of WAL behind the
+              primary. Reads that carry no consistency token have moved to the
+              primary until it catches up.
+
         - alert: MaidanOutboxPendingHigh
           expr: maidan_slo:outbox_pending > 100
           for: 5m

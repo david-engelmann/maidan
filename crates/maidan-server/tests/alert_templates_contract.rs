@@ -29,6 +29,7 @@ fn prometheus_slo_rules_reference_exported_metrics() {
         "maidan_egress_dead",
         "maidan_mail_dead",
         "maidan_authorization_decisions_total",
+        "maidan_replica_lag_bytes",
         // The permanent record: a change that committed without its audit row
         // or its event.
         "maidan_audit_write_failures_total",

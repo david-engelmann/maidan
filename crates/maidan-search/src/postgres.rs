@@ -52,6 +52,7 @@ pub struct PostgresSearch {
     /// configured (a single-pool search leaves it at zero). The store's
     /// metrics-agnostic `ReadRoutingMetrics` pattern.
     read_routing: Arc<SearchReadMetrics>,
+    replica_health: Arc<maidan_store::postgres::ReplicaHealth>,
 }
 
 /// Cumulative search read-routing outcomes. The server snapshots this into
@@ -80,6 +81,7 @@ impl PostgresSearch {
             reader: pool.clone(),
             has_replica: false,
             replica_replay: Arc::new(AtomicU64::new(0)),
+            replica_health: Arc::default(),
             pool,
             hnsw: crate::hnsw::HnswParams::from_env(),
             model_tables: std::sync::Arc::default(),
@@ -94,11 +96,17 @@ impl PostgresSearch {
     /// DDL, reindex) always stay on the primary. Spawns the replica-LSN poller.
     pub fn with_replica_reader(pool: PgPool, reader: PgPool) -> Self {
         let replica_replay = Arc::new(AtomicU64::new(0));
-        spawn_replica_lsn_poller(reader.clone(), replica_replay.clone());
+        let replica_health = Arc::new(maidan_store::postgres::ReplicaHealth::default());
+        spawn_replica_lsn_poller(
+            reader.clone(),
+            replica_replay.clone(),
+            replica_health.clone(),
+        );
         Self {
             reader,
             has_replica: true,
             replica_replay,
+            replica_health,
             pool: pool.clone(),
             hnsw: crate::hnsw::HnswParams::from_env(),
             model_tables: std::sync::Arc::default(),
@@ -124,7 +132,11 @@ impl PostgresSearch {
     /// otherwise the primary. Mirrors `PostgresStore::read_pool`.
     fn read_pool(&self) -> &PgPool {
         let cached = Lsn(self.replica_replay.load(Ordering::Relaxed));
-        let to_replica = maidan_store::postgres::replica_route(self.has_replica, cached);
+        let to_replica = maidan_store::postgres::replica_route(
+            self.has_replica,
+            self.replica_health.is_healthy(),
+            cached,
+        );
         if self.has_replica {
             let counter = if to_replica {
                 &self.read_routing.replica
@@ -146,7 +158,13 @@ impl PostgresSearch {
 /// result leaves the cache unchanged low → reads route to the primary until the
 /// next good poll (fail-safe). The replica-lag gauge is already emitted by the
 /// store's poller against the same replica, so this one does not duplicate it.
-fn spawn_replica_lsn_poller(reader: PgPool, replay_cache: Arc<AtomicU64>) {
+/// Search polls only the replica, so it judges health by staleness alone; the
+/// store's poller, which also samples the primary, applies the lag bound.
+fn spawn_replica_lsn_poller(
+    reader: PgPool,
+    replay_cache: Arc<AtomicU64>,
+    health: Arc<maidan_store::postgres::ReplicaHealth>,
+) {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(REPLICA_LSN_POLL_INTERVAL);
         loop {
@@ -155,6 +173,7 @@ fn spawn_replica_lsn_poller(reader: PgPool, replay_cache: Arc<AtomicU64>) {
                 maidan_store::postgres::replication::replica_replay_lsn(&reader).await
             {
                 replay_cache.store(replay.0, Ordering::Relaxed);
+                health.record_good_poll(None);
             }
         }
     });

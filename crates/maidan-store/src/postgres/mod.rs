@@ -137,6 +137,7 @@ pub struct PostgresStore {
     /// `maidan_replica_reads_total` metric. Counted only when a replica is
     /// configured (a single-pool store leaves it at zero).
     read_routing: Arc<ReadRoutingMetrics>,
+    replica_health: Arc<ReplicaHealth>,
 }
 
 /// Cumulative read-routing outcomes. The server snapshots this into
@@ -169,6 +170,52 @@ impl ReadRoutingMetrics {
 /// How often the background poller refreshes the cached replica replay LSN.
 const REPLICA_LSN_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
+/// A replica not successfully polled for this long is treated as down.
+const REPLICA_STALE_AFTER: Duration = Duration::from_secs(2);
+
+/// A replica more than this many WAL bytes behind the primary stops serving
+/// reads that carry no consistency token. A token read is safe at any lag —
+/// the cached replay LSN proves it has the write — but a read with no token is
+/// served whatever the replica holds, and past this it is serving the past.
+pub const REPLICA_MAX_LAG_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Whether the replica may serve reads. Before this, no-token reads went to the
+/// replica however far behind it was, and a poller that could no longer reach
+/// it left the cache stale and reads still routed there.
+#[derive(Debug, Default)]
+pub struct ReplicaHealth {
+    /// Unix millis of the last successful poll; `0` before the first.
+    last_good_poll_ms: AtomicU64,
+    lagging: std::sync::atomic::AtomicBool,
+}
+
+impl ReplicaHealth {
+    /// Record a successful poll, with the lag when the poller could measure it.
+    pub fn record_good_poll(&self, lag_bytes: Option<u64>) {
+        self.last_good_poll_ms
+            .store(unix_millis(), Ordering::Relaxed);
+        if let Some(lag) = lag_bytes {
+            self.lagging
+                .store(lag > REPLICA_MAX_LAG_BYTES, Ordering::Relaxed);
+        }
+    }
+
+    /// Polled recently, and not lagging past [`REPLICA_MAX_LAG_BYTES`].
+    pub fn is_healthy(&self) -> bool {
+        let last = self.last_good_poll_ms.load(Ordering::Relaxed);
+        let fresh = last != 0
+            && unix_millis().saturating_sub(last) <= REPLICA_STALE_AFTER.as_millis() as u64;
+        fresh && !self.lagging.load(Ordering::Relaxed)
+    }
+}
+
+fn unix_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 impl PostgresStore {
     /// Single-pool store: reads and writes both use `pool` (reader aliases it).
     pub fn new(pool: PgPool) -> Self {
@@ -178,6 +225,7 @@ impl PostgresStore {
             has_replica: false,
             replica_replay: Arc::new(AtomicU64::new(0)),
             read_routing: Arc::new(ReadRoutingMetrics::default()),
+            replica_health: Arc::new(ReplicaHealth::default()),
         }
     }
 
@@ -188,11 +236,13 @@ impl PostgresStore {
     pub fn with_replica_reader(pool: PgPool, reader: PgPool) -> Self {
         let replica_replay = Arc::new(AtomicU64::new(0));
         let read_routing = Arc::new(ReadRoutingMetrics::default());
+        let replica_health = Arc::new(ReplicaHealth::default());
         spawn_replica_lsn_poller(
             pool.clone(),
             reader.clone(),
             replica_replay.clone(),
             read_routing.clone(),
+            replica_health.clone(),
         );
         Self {
             pool,
@@ -200,6 +250,7 @@ impl PostgresStore {
             has_replica: true,
             replica_replay,
             read_routing,
+            replica_health,
         }
     }
 
@@ -225,7 +276,7 @@ impl PostgresStore {
     ///   reached the token, else the **primary** (read-your-writes).
     fn read_pool(&self) -> &PgPool {
         let cached = Lsn(self.replica_replay.load(Ordering::Relaxed));
-        let decision = route_now(self.has_replica, cached);
+        let decision = route_now(self.has_replica, self.replica_health.is_healthy(), cached);
         if self.has_replica {
             let counter = match decision {
                 RouteDecision::Replica => &self.read_routing.replica,
@@ -249,9 +300,9 @@ enum RouteDecision {
 /// Read the current request's read-consistency scope from the task-local and apply
 /// [`route_decision`]. Shared by [`PostgresStore::read_pool`] and exposed as a bool
 /// via [`replica_route`] for read pools outside this struct.
-fn route_now(has_replica: bool, cached_replay: Lsn) -> RouteDecision {
+fn route_now(has_replica: bool, replica_healthy: bool, cached_replay: Lsn) -> RouteDecision {
     let scope = READ_CONSISTENCY.try_with(|t| *t).ok();
-    route_decision(has_replica, scope, cached_replay)
+    route_decision(has_replica && replica_healthy, scope, cached_replay)
 }
 
 /// Whether a read keyed on the **current request's** consistency scope should
@@ -261,9 +312,9 @@ fn route_now(has_replica: bool, cached_replay: Lsn) -> RouteDecision {
 /// `Maidan-Consistency-Token` without duplicating the decision or re-reading
 /// the task-local. `cached_replay` is that pool's own cached replica replay
 /// LSN.
-pub fn replica_route(has_replica: bool, cached_replay: Lsn) -> bool {
+pub fn replica_route(has_replica: bool, replica_healthy: bool, cached_replay: Lsn) -> bool {
     matches!(
-        route_now(has_replica, cached_replay),
+        route_now(has_replica, replica_healthy, cached_replay),
         RouteDecision::Replica
     )
 }
@@ -306,6 +357,7 @@ fn spawn_replica_lsn_poller(
     reader: PgPool,
     replay_cache: Arc<AtomicU64>,
     metrics: Arc<ReadRoutingMetrics>,
+    health: Arc<ReplicaHealth>,
 ) {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(REPLICA_LSN_POLL_INTERVAL);
@@ -313,11 +365,15 @@ fn spawn_replica_lsn_poller(
             tick.tick().await;
             if let Ok(Some(replay)) = replication::replica_replay_lsn(&reader).await {
                 replay_cache.store(replay.0, Ordering::Relaxed);
-                if let Ok(current) = replication::current_wal_lsn(&primary).await {
-                    metrics
-                        .replica_lag_bytes
-                        .store(current.0.saturating_sub(replay.0), Ordering::Relaxed);
-                }
+                let lag = match replication::current_wal_lsn(&primary).await {
+                    Ok(current) => {
+                        let lag = current.0.saturating_sub(replay.0);
+                        metrics.replica_lag_bytes.store(lag, Ordering::Relaxed);
+                        Some(lag)
+                    }
+                    Err(_) => None,
+                };
+                health.record_good_poll(lag);
             }
         }
     });
@@ -2865,8 +2921,11 @@ impl DeliveryCursorStore for PostgresStore {
         delivery_cursor::advance_cursor(&self.pool, consumer_id, workspace_id, log_id).await
     }
 
-    async fn min_delivery_cursor(&self) -> Result<Option<i64>, StoreError> {
-        retention::min_delivery_cursor(&self.pool).await
+    async fn min_delivery_cursor(
+        &self,
+        advanced_since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<i64>, StoreError> {
+        retention::min_delivery_cursor(&self.pool, advanced_since).await
     }
 
     async fn prune_events(
@@ -3216,7 +3275,10 @@ impl A2aStore for PostgresStore {
 
 #[cfg(test)]
 mod route_tests {
-    use super::{route_decision, RouteDecision};
+    use super::{
+        replica_route, route_decision, ReplicaHealth, RouteDecision, READ_CONSISTENCY,
+        REPLICA_MAX_LAG_BYTES,
+    };
     use maidan_types::Lsn;
 
     #[test]
@@ -3263,5 +3325,45 @@ mod route_tests {
             route_decision(true, Some(Some(token)), Lsn(101)),
             RouteDecision::Replica
         );
+    }
+
+    #[test]
+    fn a_replica_never_polled_is_not_healthy() {
+        assert!(!ReplicaHealth::default().is_healthy());
+    }
+
+    #[test]
+    fn a_polled_replica_within_the_lag_bound_is_healthy() {
+        let health = ReplicaHealth::default();
+        health.record_good_poll(Some(REPLICA_MAX_LAG_BYTES));
+        assert!(health.is_healthy());
+        // A poll that could not measure lag keeps the last lag verdict.
+        health.record_good_poll(None);
+        assert!(health.is_healthy());
+    }
+
+    #[test]
+    fn a_replica_past_the_lag_bound_stops_serving() {
+        let health = ReplicaHealth::default();
+        health.record_good_poll(Some(REPLICA_MAX_LAG_BYTES + 1));
+        assert!(!health.is_healthy());
+        health.record_good_poll(Some(0));
+        assert!(health.is_healthy(), "recovering clears it");
+    }
+
+    /// An unhealthy replica serves nothing, including reads whose token it has
+    /// already replayed: a replica that cannot be polled may not be reachable.
+    #[test]
+    fn an_unhealthy_replica_routes_every_read_to_the_primary() {
+        // Inside a read scope — outside one, every read is primary regardless.
+        for scope in [None, Some(Lsn(10))] {
+            READ_CONSISTENCY.sync_scope(scope, || {
+                assert!(replica_route(true, true, Lsn(u64::MAX)), "healthy serves");
+                assert!(
+                    !replica_route(true, false, Lsn(u64::MAX)),
+                    "unhealthy serves nothing, token or not"
+                );
+            });
+        }
     }
 }

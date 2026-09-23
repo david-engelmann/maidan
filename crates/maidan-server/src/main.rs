@@ -139,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
         Dialect::Postgres => {
             let max_connections = config.db.max_connections.unwrap_or(16);
             let acquire_timeout_secs = config.db.acquire_timeout_secs;
-            let statement_timeout_ms = config.db.statement_timeout_ms;
+            let session_settings = config.db.postgres_session_settings();
             // Build a pool options with the same connection setup for the primary
             // and (when configured) the read replica. Caps every pooled
             // connection's queries; boot migrations exempt their own connection
@@ -149,12 +149,14 @@ async fn main() -> anyhow::Result<()> {
                 let mut o = PgPoolOptions::new()
                     .max_connections(max_connections)
                     .acquire_timeout(std::time::Duration::from_secs(acquire_timeout_secs));
-                if statement_timeout_ms > 0 {
+                let settings = session_settings.clone();
+                if !settings.is_empty() {
                     o = o.after_connect(move |conn, _meta| {
+                        let settings = settings.clone();
                         Box::pin(async move {
-                            sqlx::query(&format!("SET statement_timeout = {statement_timeout_ms}"))
-                                .execute(conn)
-                                .await?;
+                            for setting in &settings {
+                                sqlx::query(setting).execute(&mut *conn).await?;
+                            }
                             Ok(())
                         })
                     });

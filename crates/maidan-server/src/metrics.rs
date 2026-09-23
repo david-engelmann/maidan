@@ -447,6 +447,10 @@ async fn refresh_runtime_gauges(state: &AppState) {
         sync_hydrate_counters(stats.snapshot());
     }
 
+    gauge!("maidan_ws_connections").set(state.ws_connections.load(Ordering::Relaxed) as f64);
+    gauge!("maidan_mcp_streamable_sessions")
+        .set(state.mcp.streamable_sessions().reap().await as f64);
+
     if let Some(routing) = state.read_routing_metrics.as_ref() {
         sync_read_routing_counters(routing.snapshot());
         gauge!("maidan_replica_lag_bytes").set(routing.lag_bytes() as f64);

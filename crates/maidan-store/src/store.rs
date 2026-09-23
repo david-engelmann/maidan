@@ -2348,11 +2348,22 @@ pub trait DeliveryCursorStore: Send + Sync {
         log_id: i64,
     ) -> Result<i64, StoreError>;
 
-    /// Lowest `last_delivered_log_id` across all at-least-once delivery
-    /// cursors, or `None` when no cursor exists. An event with `id` at or below
-    /// this has been delivered to every durable consumer and is safe to prune —
-    /// the retention floor for the event log.
-    async fn min_delivery_cursor(&self) -> Result<Option<i64>, StoreError>;
+    /// Lowest `last_delivered_log_id` across the at-least-once delivery cursors
+    /// that have advanced since `advanced_since`, or `None` when none has. An
+    /// event at or below it has reached every live durable consumer and is
+    /// safe to prune — the retention floor for the event log.
+    ///
+    /// A cursor that has not moved since then does not count. Pass the
+    /// retention cutoff: a consumer that has not advanced in longer than the
+    /// retention window is behind like any consumer offline that long, and
+    /// gets `CursorTooOld` (must refetch) when it returns. Counting it would let
+    /// one abandoned consumer id stop pruning forever. A consumer that is idle
+    /// because it is caught up sits at the head, so excluding it prunes nothing
+    /// it still needs.
+    async fn min_delivery_cursor(
+        &self,
+        advanced_since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<i64>, StoreError>;
 
     /// Delete up to `limit` oldest event-log rows with `id <= max_id` **and**
     /// `occurred_at < cutoff`. The `max_id` floor (see
