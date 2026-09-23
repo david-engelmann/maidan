@@ -5,15 +5,19 @@ description = "Design, operations, and API reference for Maidan"
 language = "en"
 src = "src"
 
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
 [build]
 build-dir = "build"
 
 [output.html]
 default-theme = "ayu"
 git-repository-url = "https://github.com/david-engelmann/maidan"
-edit-url-template = "https://github.com/david-engelmann/maidan/edit/main/{path}"
 site-url = "/maidan/"
 cname = ""
+additional-css = ["theme/maidan.css"]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # Dead-link gate: fail `mdbook build` on broken internal links (the class of bug
 # that shipped ~20 dead sidebar links before Cluster 141). Web links are not

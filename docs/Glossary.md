@@ -20,7 +20,7 @@ messages posted there.
 ## Thread
 
 A focused conversation hanging off a channel root message. Threads have
-their own state machine (see [[Architecture#Crates|maidan-fsm]]).
+their own state machine (see [maidan-fsm](Architecture.md#crates)).
 
 ## Message
 
@@ -58,13 +58,13 @@ MCP surface so agents can act on the workspace.
 
 Agent-to-Agent transport. Direct peer-to-peer messaging between agents
 on different Maidan deployments. Shipped in Cluster G (`maidan-a2a`,
-`POST /a2a/v1/rpc` + `/a2a/v1/events`); see [[Capability Map]].
+`POST /a2a/v1/rpc` + `/a2a/v1/events`); see the [Capability Map](Capability%20Map.md).
 
 ## Capability
 
 A scoped permission token. Grants the bearer the right to perform a
 specific set of actions for a bounded time. Shipped since Cluster F
-(`maidan-auth`); the live vocabulary and route map are in [[Capability Map]].
+(`maidan-auth`); the live vocabulary and route map are in the [Capability Map](Capability%20Map.md).
 
 ## Tombstone
 
@@ -152,4 +152,3 @@ an implementer release the claim and then pass their own work.
 
 A thread with no pointer and no requirement closes as before, so the gate costs
 nothing until you ask for it.
-

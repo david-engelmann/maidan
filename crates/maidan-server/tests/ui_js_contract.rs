@@ -485,3 +485,19 @@ fn ui_js_wires_honest_async_states_and_live_approvals() {
         );
     }
 }
+
+#[test]
+fn ui_uses_locked_brand_mark_and_palette() {
+    for color in ["#f7f5f0", "#14532d", "#4ade80", "#b45309", "#232327"] {
+        assert!(
+            HTML.contains(color),
+            "the UI must retain brand color {color}"
+        );
+    }
+    assert!(
+        HTML.contains("<svg class=\"brand-mark\" viewBox=\"0 0 64 64\"")
+            && HTML.contains("M38.95,32.85L48.07,37.53L59.65,35.70")
+            && HTML.contains("M37.52,27.69L47.28,24.55L51.08,17.60"),
+        "the /ui header must retain the locked Sweep Reach mark"
+    );
+}

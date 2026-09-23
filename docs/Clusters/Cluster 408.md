@@ -29,13 +29,13 @@ recorded there — chosen to stay clear of the concurrent Cluster 406 work.
 |-------|----|--------|
 | 408.1 | #964 | Member self-scoping (D-5) + client `limit` bounds (F-46) |
 | 408.2 | #973 | SSRF egress guard (F-47, F-58), probe targets (F-49), proxy-hop trust (F-50), pinned image tags (F-56) |
-| 408.3 | current | `/ui` P1: loading states, approvals refresh, error bodies, empty states |
-
-408.3 is UX polish and is deliberately distinct from Cluster 407's `/ui` work
-(#963), which is contract coverage. If 407 lands first, 408.3 builds on it.
-| 408.4 | planned | Docs rendering + the locked branding ship-list |
+| 408.3 | #974 | `/ui` P1: loading states, approvals refresh, error bodies, empty states |
+| 408.4 | #975 | Docs rendering + the locked branding ship-list |
 | 408.5 | planned | J-01 land-gate spike, behind a flag, flag-off |
 | 408.close | planned | Ledgers and retrospective |
+
+408.3 is UX polish and is deliberately distinct from Cluster 407's `/ui`
+contract coverage in #963, which it builds on.
 
 ## Non-goals
 

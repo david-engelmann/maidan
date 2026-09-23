@@ -54,7 +54,7 @@ Recommended production flow: seed the first admin with `maidan init` (writes thr
 
 ## Related docs
 
-- [[OIDC]] — planned human login (v2.0.0); design spike in v1.4.2
-- [[Production]] — env vars and probes
-- [[Deploy]] — network placement
+- [OIDC](OIDC.md) — planned human login (v2.0.0); design spike in v1.4.2
+- [Production](Production.md) — env vars and probes
+- [Deploy](Deploy.md) — network placement
 - `DELETE /messages/:id/purge` — hard-delete after tombstone (Track V.2)

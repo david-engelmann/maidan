@@ -38,10 +38,17 @@ jobs:
         # The `[output.linkcheck]` renderer in book.toml runs during `mdbook build`
         # and fails the build on dead internal links. mdBook finds it on PATH.
         run: cargo install mdbook-linkcheck --locked --version 0.7.7
+      - name: install Mermaid renderer
+        run: |
+          # 0.14.1 uses mdbook-preprocessor 0.4.x, matching mdBook 0.4.40.
+          cargo install mdbook-mermaid --locked --version 0.14.1
+          mdbook-mermaid install book
       - name: stage docs into book/src
         run: bash book/sync-docs.sh
       - name: build site (also runs the dead-link check)
         run: mdbook build book
+      - name: verify published presentation contracts
+        run: ./scripts/check-docs-presentation.sh
       - uses: actions/upload-artifact@v4
         with:
           name: mdbook
