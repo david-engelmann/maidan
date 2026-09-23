@@ -49,6 +49,11 @@ implementation PRs (#964/#973/#974/#975/#976) plus the close record complete
 
 ## [407.0.0] — 2026-09-22
 
+> Also inside this tag: **408.1** (#964, member self-scoping + `limit` bounds).
+> It merged before the 407 close, so `git tag --contains` reports it under both
+> `v407.0.0` and `v408.0.0`; it is described once, under 408.0.0 above. Anyone
+> diffing v406→v407 will find it there and nowhere else in these notes.
+
 Post-gate hardening (Phase XXIV). **Wave 4 row #39: executable surface and
 hero-loop contracts.** Four implementation PRs (#965/#966/#967/#968) plus the
 close record complete #963.
