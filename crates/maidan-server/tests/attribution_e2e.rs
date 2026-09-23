@@ -266,6 +266,10 @@ async fn a_delegated_audit_row_names_actor_subject_and_grant() {
     assert_eq!(mint.actor_id, Some(w.orchestrator), "the delegate acted");
     assert_eq!(mint.subject_id, Some(w.worker), "for the worker");
     assert_eq!(mint.grant_id.map(|g| g.0), Some(grant_id));
+    assert!(
+        w.mutations().await.is_empty(),
+        "a change that wrote its own audit row gets no second record"
+    );
 }
 
 /// Attribution is stored inside the hashed payload, so rewriting who did
@@ -294,4 +298,150 @@ async fn changing_who_did_something_breaks_the_chain() {
         !w.store.verify_event_chain(w.ws).await.unwrap().ok,
         "hiding that a delegate acted must break the chain"
     );
+}
+
+impl World {
+    /// Audit rows written for changes that did not record themselves.
+    async fn mutations(&self) -> Vec<maidan_types::AuditEvent> {
+        self.store
+            .list_audit(500)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|row| row.action == "mutation")
+            .collect()
+    }
+
+    async fn set_email(&self, bearer: &str, member: MemberId, email: &str) -> StatusCode {
+        self.client
+            .put(format!("{}/members/{}/email", self.base, member.0))
+            .bearer_auth(bearer)
+            .json(&json!({ "email": email }))
+            .send()
+            .await
+            .unwrap()
+            .status()
+    }
+}
+
+/// Setting a delivery address writes no event and no audit row of its own —
+/// one of 85 such routes. The request layer records it anyway.
+#[tokio::test]
+async fn a_change_that_records_nothing_itself_still_leaves_a_record() {
+    let w = world().await;
+    assert_eq!(
+        w.set_email(&w.worker_tok, w.worker, "worker@example.com")
+            .await,
+        StatusCode::OK
+    );
+    let rows = w.mutations().await;
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    let row = &rows[0];
+    assert_eq!(row.metadata["operation"], "PUT /members/{id}/email");
+    assert_eq!(
+        row.metadata["path"],
+        format!("/members/{}/email", w.worker.0)
+    );
+    assert_eq!(row.metadata["surface"], "rest");
+    assert_eq!(row.actor_id, Some(w.worker));
+    assert_eq!(row.subject_id, Some(w.worker));
+    assert_eq!(row.grant_id, None);
+}
+
+#[tokio::test]
+async fn a_delegated_change_records_the_delegate_the_member_and_the_grant() {
+    let w = world().await;
+    let (borrowed, grant) = w.borrowed().await;
+    assert_eq!(
+        w.set_email(&borrowed, w.worker, "redirected@example.com")
+            .await,
+        StatusCode::OK
+    );
+    let rows = w.mutations().await;
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].actor_id, Some(w.orchestrator));
+    assert_eq!(rows[0].subject_id, Some(w.worker));
+    assert_eq!(rows[0].grant_id.map(|g| g.0), Some(grant));
+}
+
+/// Posting appends an attributed event, so the request layer has nothing to
+/// add — a second record of the same change would only be noise.
+#[tokio::test]
+async fn a_change_that_records_itself_is_not_recorded_twice() {
+    let w = world().await;
+    w.post(&w.worker_tok, "recorded by its event").await;
+    assert!(w.mutations().await.is_empty());
+}
+
+#[tokio::test]
+async fn reads_and_refusals_are_not_changes() {
+    let w = world().await;
+    let read = w
+        .client
+        .get(format!("{}/threads/{}", w.base, w.thread.0))
+        .bearer_auth(&w.worker_tok)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(read.status(), StatusCode::OK);
+    // The worker's token carries no `thread:transition`.
+    let refused = w
+        .client
+        .put(format!("{}/threads/{}/title", w.base, w.thread.0))
+        .bearer_auth(&w.worker_tok)
+        .json(&json!({ "title": "renamed" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    assert!(w.mutations().await.is_empty());
+}
+
+#[tokio::test]
+async fn an_mcp_tool_that_records_nothing_itself_still_leaves_a_record() {
+    let w = world().await;
+    let call = |tool: &str, args: Value| {
+        w.client
+            .post(format!("{}/mcp", w.base))
+            .bearer_auth(&w.worker_tok)
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": { "name": tool, "arguments": args }
+            }))
+            .send()
+    };
+    let read: Value = call("list_channels", json!({ "workspace_id": w.ws.0 }))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(read["error"].is_null(), "{read}");
+    assert!(
+        w.mutations().await.is_empty(),
+        "a read tool is not a change"
+    );
+
+    let set: Value = call(
+        "set_member_email",
+        json!({ "member_id": w.worker.0, "email": "worker@example.com" }),
+    )
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert!(set["error"].is_null(), "{set}");
+    let rows = w.mutations().await;
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].metadata["surface"], "mcp");
+    assert_eq!(rows[0].metadata["operation"], "tools/call:set_member_email");
+    assert_eq!(rows[0].metadata["ids"]["member_id"], w.worker.0.to_string());
+    assert!(
+        rows[0].metadata["ids"].get("email").is_none(),
+        "only ids are kept from arguments"
+    );
+    assert_eq!(rows[0].actor_id, Some(w.worker));
 }

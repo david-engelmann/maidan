@@ -49,8 +49,9 @@
 | 411.6 | #1002 | Remove `member:impersonate` and add the absence contract; split member skills into self-declared routing tags and operator-conferred governance authority; close the bearer exemption on DM and group-DM metadata |
 | 411.7 | #1003 | Delegation cannot escalate: every capability is classified as work or authority and only work is delegatable; a borrowed context cannot hold authority whatever its grant says; exchange is one hop and authorised on the real actor |
 | 411.8 | #1004 | Attribution everywhere — every event carries actor, subject and grant inside its hashed payload, and every audit row records them, so a delegated action is distinguishable from a direct one and rewriting who did something breaks the chain |
-| 411.9 | current | Destroying the record needs authority: purging or erasing a workspace and hard-purging a message move from `workspace:write` to `token:admin`; tombstoning another member's message needs `channel:admin`; and no one but the author can edit a message. With this, 411.7's "delegation lends work, never authority" holds |
+| 411.9 | #1005 | Destroying the record needs authority: purging or erasing a workspace and hard-purging a message move from `workspace:write` to `token:admin`; tombstoning another member's message needs `channel:admin`; and no one but the author can edit a message. With this, 411.7's "delegation lends work, never authority" holds |
 | 411.10 | planned | Attestations are personal: whether an approval may be made with a borrowed token (awaiting the maintainer's decision) |
+| 411.11 | current | Nothing changes without a record: a successful REST mutation or MCP tool call that wrote no event or audit row gets an attributed `mutation` row from the request layer, closing 85 routes that recorded nothing; workspace export is recorded |
 | 411.close | close record | Ledgers, retrospective, and `v411.0.0` tag |
 
 ## Exit criteria

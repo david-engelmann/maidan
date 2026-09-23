@@ -69,10 +69,21 @@ pub async fn export_workspace(
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     let bundle = crate::export::build(&state.store, workspace_id).await?;
-    Ok(Json(crate::export::sign_bundle(
-        state.export_signing.as_ref(),
-        &bundle,
-    )?))
+    let signed = crate::export::sign_bundle(state.export_signing.as_ref(), &bundle)?;
+    // A read, but the whole workspace leaves in it — who took it belongs in the
+    // record as much as any change does.
+    crate::audit::record(
+        &state,
+        NewAuditEvent {
+            actor_id: Some(auth.actor_id),
+            action: "workspace.export".into(),
+            target_kind: Some("workspace".into()),
+            target_id: Some(workspace_id.0),
+            metadata: serde_json::json!({ "content_sha256": signed.content_sha256 }),
+        },
+    )
+    .await;
+    Ok(Json(signed))
 }
 
 /// Verify a signed export without importing it. A blank instance uses this

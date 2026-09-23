@@ -385,12 +385,52 @@ impl McpServer {
     /// where tool calls take on the caller's attribution. Over HTTP the auth
     /// middleware has already set the same value; stdio has no middleware, so
     /// without this its writes would read as the system's.
+    /// Run a tool as its caller, and make sure a change leaves a record — the
+    /// MCP half of the rule `run_as` enforces over REST. A tool that changed
+    /// something without writing an event or audit row of its own gets one
+    /// here: the tool, the ids it was called with, and who acted for whom.
+    /// Only ids are kept from the arguments; the rest can carry secrets.
     async fn tools_call(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
-        maidan_store::attribution::with_attribution(
-            auth.attribution(),
+        let attribution = auth.attribution();
+        let (result, recorded) = maidan_store::attribution::with_attribution_tracked(
+            attribution,
             self.tools_call_unscoped(params, auth),
         )
-        .await
+        .await;
+        let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+        let succeeded = result
+            .as_ref()
+            .is_ok_and(|out| out.get("isError") != Some(&Value::Bool(true)));
+        if attribution.is_some() && succeeded && !recorded && !tools::is_read_only(name) {
+            let ids: serde_json::Map<String, Value> = params
+                .get("arguments")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+                .filter(|(key, value)| key.ends_with("_id") && value.is_string())
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            let event = maidan_types::NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "mutation".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(auth.workspace_id.0),
+                metadata: json!({
+                    "surface": "mcp",
+                    "operation": format!("tools/call:{name}"),
+                    "ids": ids,
+                }),
+            };
+            let written = maidan_store::attribution::with_attribution(
+                attribution,
+                self.store.append_audit(event),
+            )
+            .await;
+            if let Err(err) = written {
+                tracing::error!(target: "audit", %err, tool = name, "audit.write_failed");
+            }
+        }
+        result
     }
 
     async fn tools_call_unscoped(

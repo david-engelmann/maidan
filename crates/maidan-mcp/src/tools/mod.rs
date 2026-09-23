@@ -71,6 +71,111 @@ pub fn catalog_for(auth: &AuthContext) -> Vec<Value> {
         .collect()
 }
 
+/// Tools that change nothing. Every other tool is treated as a change and, if
+/// it leaves no record of its own, gets one written for it by
+/// [`crate::server::McpServer`]. Listing a tool here is a claim that it writes
+/// nothing: getting it wrong in this direction loses a record, so the list is
+/// explicit rather than a prefix rule a future `get_or_create_*` would satisfy.
+/// Exporting a workspace and resolving a secret are reads that are
+/// deliberately absent — who took the data is part of the record.
+pub const READ_ONLY_TOOLS: &[&str] = &[
+    "catch_up_events",
+    "get_approval_gate",
+    "get_artifact_metadata",
+    "get_channel_occupancy",
+    "get_delivery_mode",
+    "get_dependency_results",
+    "get_glossary_term",
+    "get_inbox",
+    "get_kind_census",
+    "get_land_gate",
+    "get_log_snapshot",
+    "get_manager_digest",
+    "get_member_email",
+    "get_member_occupancy",
+    "get_member_wip",
+    "get_memory_block",
+    "get_priority",
+    "get_queue_depth",
+    "get_review_status",
+    "get_room",
+    "get_run_occupancy",
+    "get_spawn_budget",
+    "get_thread_block",
+    "get_thread_budget",
+    "get_thread_context",
+    "get_thread_lineage",
+    "get_thread_result",
+    "get_thread_steer",
+    "get_tool_transcript",
+    "get_unread_count",
+    "get_wait",
+    "get_waiting_inbox",
+    "get_wip_limit",
+    "get_workspace_context",
+    "list_assigned_threads",
+    "list_blocked_threads",
+    "list_buried_decisions",
+    "list_capability_sets",
+    "list_channel_follows",
+    "list_channel_members",
+    "list_channels",
+    "list_child_threads",
+    "list_delegation_grants",
+    "list_dlq",
+    "list_dm_conversations",
+    "list_frozen_members",
+    "list_fsm_hooks",
+    "list_github_issue_links",
+    "list_glossary_terms",
+    "list_member_follows",
+    "list_member_skills",
+    "list_memory_blocks",
+    "list_mentions",
+    "list_message_backlinks",
+    "list_messages",
+    "list_notification_prefs",
+    "list_notifications",
+    "list_notifications_grouped",
+    "list_pins",
+    "list_reactions",
+    "list_recently_active_threads",
+    "list_recipes",
+    "list_references",
+    "list_result_deliveries",
+    "list_reviews",
+    "list_run_threads",
+    "list_secrets",
+    "list_share_tickets",
+    "list_slack_channel_links",
+    "list_slash_commands",
+    "list_task_schedules",
+    "list_thread_dependencies",
+    "list_thread_follows",
+    "list_thread_memory_blocks",
+    "list_thread_required_skills",
+    "list_thread_results",
+    "list_threads",
+    "list_tombstones",
+    "list_unclaimable",
+    "parse_maidan_uri",
+    "search_messages",
+    "verify_event_chain",
+    "verify_workspace_export",
+    "wait_for_claim_expired",
+    "wait_for_landed",
+    "wait_for_memory_block",
+    "wait_for_mention",
+    "wait_for_notification",
+    "wait_for_ready",
+    "wait_for_result",
+    "whoami",
+];
+
+pub fn is_read_only(name: &str) -> bool {
+    READ_ONLY_TOOLS.binary_search(&name).is_ok()
+}
+
 pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
     match name {
         "list_channels"
@@ -963,5 +1068,39 @@ mod self_scope_tests {
             "listed in MEMBER_SCOPED_TOOLS but their schema has no `member_id`: {wrong:?} — \
              the gate cannot find the argument it is meant to check"
         );
+    }
+}
+
+#[cfg(test)]
+mod read_only_tests {
+    use super::*;
+
+    #[test]
+    fn the_read_only_list_is_sorted_so_lookup_finds_every_entry() {
+        let mut sorted = READ_ONLY_TOOLS.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(READ_ONLY_TOOLS, sorted.as_slice());
+        assert!(READ_ONLY_TOOLS.iter().all(|name| is_read_only(name)));
+    }
+
+    #[test]
+    fn every_read_only_tool_is_a_real_tool() {
+        let names: Vec<String> = catalog()
+            .iter()
+            .filter_map(|tool| tool.get("name").and_then(|n| n.as_str()).map(String::from))
+            .collect();
+        for name in READ_ONLY_TOOLS {
+            assert!(
+                names.iter().any(|n| n == name),
+                "{name} is listed read-only but is not in the catalog"
+            );
+        }
+    }
+
+    #[test]
+    fn taking_data_out_is_recorded_like_a_change() {
+        for name in ["export_workspace", "resolve_secret"] {
+            assert!(!is_read_only(name), "{name} must leave a record");
+        }
     }
 }
