@@ -34,18 +34,34 @@ pub(crate) fn validate_protocol_version(headers: &HeaderMap) -> Result<(), ApiEr
     Ok(())
 }
 
-/// The MCP revision (`2026-07-28`) whose transport is stateless: no protocol-level
-/// sessions, `Mcp-Session-Id` gone, any request lands cold. The streamable POST
-/// uses this to serve such a request inline without minting a session.
-pub(crate) const STATELESS_PROTOCOL_VERSION: &str = "2026-07-28";
-
-/// Whether the request declares the stateless `2026-07-28` revision via the
-/// `MCP-Protocol-Version` header (already validated by [`validate_protocol_version`]).
-pub(crate) fn is_stateless_request(headers: &HeaderMap) -> bool {
-    headers
+/// Whether a streamable request asks for the `2024-11-05` SSE-session model —
+/// the only revision that has one. Every later revision is stateless, so the
+/// session model is opt-in rather than the default:
+///
+/// - a request naming a version in `MCP-Protocol-Version` gets that version's
+///   model (the header is already validated by [`validate_protocol_version`]);
+/// - an `initialize` gets the model of the version it negotiates, because the
+///   header only exists once a version has been agreed;
+/// - anything else is stateless. A `2025-03-26` client never sends the header,
+///   so defaulting to sessions would hand every such client a session it has no
+///   reason to expect.
+///
+/// A follow-up on an already-open session is routed by its `Mcp-Session-Id`
+/// before this is asked.
+pub(crate) fn wants_session(headers: &HeaderMap, request: &JsonRpcRequest) -> bool {
+    if let Some(version) = headers
         .get("mcp-protocol-version")
         .and_then(|v| v.to_str().ok())
-        == Some(STATELESS_PROTOCOL_VERSION)
+    {
+        return version == maidan_mcp::SESSION_PROTOCOL_VERSION;
+    }
+    request.method == "initialize"
+        && maidan_mcp::negotiate_protocol_version(
+            request
+                .params
+                .get("protocolVersion")
+                .and_then(|v| v.as_str()),
+        ) == maidan_mcp::SESSION_PROTOCOL_VERSION
 }
 
 /// The name a routing gateway would put in `Mcp-Name` for a request: the tool /

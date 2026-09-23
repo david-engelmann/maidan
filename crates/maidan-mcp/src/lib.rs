@@ -4,7 +4,7 @@
 //! (current; stateless Streamable HTTP + SEP-2243 routing headers) or `2024-11-05`:
 //! - `initialize` handshake
 //! - `tools/list` + `tools/call`
-//! - `resources/list` + `resources/read`
+//! - `resources/list` (the caller's workspace) + `resources/templates/list` + `resources/read`
 //! - `prompts/list` + `prompts/get`
 //!
 //! Transport-agnostic: the [`McpServer`] takes JSON-RPC requests and
@@ -28,8 +28,8 @@ pub mod tools;
 pub use error::McpError;
 pub use protocol::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 pub use server::{
-    is_supported_protocol_version, preferred_protocol_version, McpServer, PresenceReader,
-    SUPPORTED_PROTOCOL_VERSIONS,
+    is_supported_protocol_version, negotiate_protocol_version, preferred_protocol_version,
+    McpServer, PresenceReader, SESSION_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
 };
 pub use slash_dispatch::SlashDispatcher;
 pub use stdio::run_stdio;

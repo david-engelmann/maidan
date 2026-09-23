@@ -65,14 +65,26 @@ pub async fn streamable(
         return Ok(Json(resp).into_response());
     }
 
-    // MCP 2026-07-28 is stateless (Protocols.md J3.3-4): sessions are gone, so a
-    // `2026-07-28` request lands cold and gets a single JSON-RPC response — we
-    // never mint or require an `Mcp-Session-Id`, regardless of `Accept`. Live-wait
-    // rides `GET /mcp/stream` / WS / the `wait_for_*` tools, not a POST session; a
-    // 2026 client must not depend on GET-session being "Streamable HTTP". (The
-    // 2024-11-05 SSE-session path below, incl. `Last-Event-ID` replay, is unchanged.)
-    if crate::mcp::is_stateless_request(&headers) {
+    // A follow-up on an open `2024-11-05` session stays on it.
+    let registry = state.mcp.streamable_sessions();
+    if let Some(existing) = session_header.filter(|s| !s.is_empty()) {
+        if registry.is_open(existing).await {
+            return follow_up_on_open_session(&state, &auth, existing, request).await;
+        }
+    }
+
+    // Every revision from `2025-03-26` on is stateless (Protocols.md J3.3-4): a
+    // request lands cold and gets one JSON-RPC response on its own POST — we
+    // never mint or require an `Mcp-Session-Id`, regardless of `Accept`, and a
+    // notification is acknowledged with `202` and no body. Server-initiated
+    // messages ride `GET /mcp/streamable` / `GET /mcp/stream` / WS / the
+    // `wait_for_*` tools, not a POST session.
+    if !crate::mcp::wants_session(&headers, &request) {
+        let notification = request.id.is_none();
         let response = state.mcp.handle(request, &auth).await;
+        if notification {
+            return Ok(StatusCode::ACCEPTED.into_response());
+        }
         return Ok(Json(response).into_response());
     }
 
@@ -81,13 +93,6 @@ pub async fn streamable(
     if !accepts_event_stream(&headers) {
         let response = state.mcp.handle(request, &auth).await;
         return Ok(Json(response).into_response());
-    }
-
-    let registry = state.mcp.streamable_sessions();
-    if let Some(existing) = session_header.filter(|s| !s.is_empty()) {
-        if registry.is_open(existing).await {
-            return follow_up_on_open_session(&state, &auth, existing, request).await;
-        }
     }
 
     open_new_streamable_session(&state, &auth, session_header, request).await

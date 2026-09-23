@@ -14,6 +14,10 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
+/// The one revision with protocol-level sessions. Every later revision is
+/// stateless, so these tests declare it rather than inheriting it as a default.
+const SESSION_REVISION: &str = "2024-11-05";
+
 async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
     let (addr, client, server, _mcp) = spawn_with_mcp().await;
     (addr, client, server)
@@ -143,6 +147,7 @@ async fn streamable_post_returns_sse_response_and_resource_notification() {
     });
     let resp2 = client
         .post(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .header("maidan-test-member-id", alice_id)
         .json(&post_body)
         .send()
@@ -174,6 +179,7 @@ async fn streamable_response_includes_mcp_session_id_header() {
     });
     let resp = client
         .post(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .json(&body)
         .send()
         .await
@@ -190,6 +196,7 @@ async fn streamable_response_includes_mcp_session_id_header() {
 
     let resp2 = client
         .post(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .header("mcp-session-id", &session)
         .json(&body)
         .send()
@@ -278,6 +285,7 @@ async fn streamable_follow_up_multiplexes_response_on_open_sse_session() {
     });
     let resp = client
         .post(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .json(&init)
         .send()
         .await
@@ -355,6 +363,7 @@ async fn streamable_delete_closes_session() {
     });
     let resp = client
         .post(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .json(&init)
         .send()
         .await
@@ -369,6 +378,7 @@ async fn streamable_delete_closes_session() {
 
     let del = client
         .delete(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .header("mcp-session-id", &session)
         .send()
         .await
@@ -377,6 +387,7 @@ async fn streamable_delete_closes_session() {
 
     let resp2 = client
         .post(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .header("mcp-session-id", &session)
         .json(&init)
         .send()
@@ -525,6 +536,7 @@ async fn streamable_get_replays_after_last_event_id() {
     // Open a session with `initialize` (SSE). The response is session event id 0.
     let init = client
         .post(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .json(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
         .send()
         .await
@@ -544,6 +556,7 @@ async fn streamable_get_replays_after_last_event_id() {
     // whether it muxes (202) or answers inline (200) after the leg dropped.
     let follow = client
         .post(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .header("mcp-session-id", &session)
         .json(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}))
         .send()
@@ -558,6 +571,7 @@ async fn streamable_get_replays_after_last_event_id() {
     // Reconnect via GET with Last-Event-ID: 0 → the retained event id 1 is replayed.
     let get = client
         .get(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
         .header("mcp-session-id", &session)
         .header("last-event-id", "0")
         .send()
@@ -581,5 +595,100 @@ async fn streamable_get_replays_after_last_event_id() {
         "replayed frame carries its SSE event id"
     );
 
+    server.abort();
+}
+
+/// The handshake the official TypeScript SDK (2.0) and the Inspector perform:
+/// `initialize` with a 2025 revision and no `MCP-Protocol-Version` header (it
+/// does not exist until a version is agreed), accepting either JSON or SSE.
+/// Maidan used to answer every one of these with `2026-07-28`, which the SDK
+/// does not accept, so the connection failed before any tool was listed.
+#[tokio::test]
+async fn a_2025_client_negotiates_its_revision_and_is_served_statelessly() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+    for revision in ["2025-11-25", "2025-06-18", "2025-03-26"] {
+        let init = client
+            .post(format!("{base}/mcp/streamable"))
+            .header("accept", "application/json, text/event-stream")
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": revision,
+                    "capabilities": {},
+                    "clientInfo": { "name": "sdk", "version": "2.0" }
+                }
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(init.status(), StatusCode::OK, "{revision}");
+        assert!(
+            init.headers().get("mcp-session-id").is_none(),
+            "{revision}: sessions are optional from 2025-03-26 on, and Maidan offers none"
+        );
+        let init: Value = init.json().await.unwrap();
+        assert_eq!(init["result"]["protocolVersion"], revision);
+
+        // `MCP-Protocol-Version` arrived in 2025-06-18; a 2025-03-26 client sends
+        // follow-ups with no version header at all, and must still be served
+        // statelessly rather than handed a session it never asked for.
+        let with_version = |req: reqwest::RequestBuilder| {
+            if revision == "2025-03-26" {
+                req
+            } else {
+                req.header("MCP-Protocol-Version", revision)
+            }
+        };
+
+        // The client acknowledges the handshake with a notification: 202, no body.
+        let initialized = with_version(client.post(format!("{base}/mcp/streamable")))
+            .json(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(initialized.status(), StatusCode::ACCEPTED, "{revision}");
+        assert!(initialized.text().await.unwrap().is_empty());
+
+        // Every request gets its response on its own POST.
+        let tools = with_version(client.post(format!("{base}/mcp/streamable")))
+            .header("accept", "application/json, text/event-stream")
+            .json(&json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }))
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            tools.headers().get("mcp-session-id").is_none(),
+            "{revision}: a follow-up must not open a session"
+        );
+        let tools: Value = tools.json().await.unwrap();
+        assert!(tools["result"]["tools"]
+            .as_array()
+            .is_some_and(|t| !t.is_empty()));
+    }
+    server.abort();
+}
+
+/// Sessions are opt-in: a `2024-11-05` client still gets one, by the version
+/// it negotiates, not by default.
+#[tokio::test]
+async fn a_2024_initialize_still_opens_a_session() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+    let resp = client
+        .post(format!("{base}/mcp/streamable"))
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "protocolVersion": SESSION_REVISION }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(resp.headers().get("mcp-session-id").is_some());
     server.abort();
 }

@@ -92,7 +92,7 @@ place those agents coordinate, remember, and hand off work.
 | **Memory** | Typed, content-addressed artifacts; message edit history; thread/workspace **context export** for prompt packing |
 | **Search** | Full-text (Postgres `tsvector` / SQLite FTS5) and semantic (`pgvector`), with a normalized relevance score |
 | **Real-time** | WebSocket subscribe with resumable cursors; MCP resource-update notifications; cross-replica presence + typing |
-| **Transports** | REST (OpenAPI 3.0), MCP JSON-RPC + streamable HTTP (`2026-07-28`), outbound webhooks; A2A v1.0 (JSON-RPC + REST; gRPC partial) |
+| **Transports** | REST (OpenAPI 3.0), MCP JSON-RPC + streamable HTTP (`2024-11-05` through `2026-07-28`; verified with the official Inspector), outbound webhooks; A2A v1.0 (JSON-RPC + REST; gRPC partial) |
 | **Auth** | Bearer API tokens with capability scopes; app OAuth-style install flow; optional OIDC human login |
 | **Ops** | `/health/{live,ready}`, Prometheus `/metrics`, OTLP, durable event log + replay, Helm chart, multi-replica support |
 

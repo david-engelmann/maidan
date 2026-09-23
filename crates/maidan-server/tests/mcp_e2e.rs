@@ -227,16 +227,25 @@ async fn full_mcp_flow() {
     assert_eq!(msgs.len(), 1);
     assert_eq!(msgs[0]["body"], "edited via mcp");
 
-    // resources/list
+    // resources/list names only concrete, readable URIs; the id-addressed
+    // resources are templates.
     let resources = rpc(&client, &base, 6, "resources/list", json!({})).await;
-    let uris: Vec<&str> = resources["result"]["resources"]
+    for resource in resources["result"]["resources"].as_array().unwrap() {
+        let uri = resource["uri"].as_str().unwrap();
+        assert!(
+            !uri.contains('{'),
+            "resources/list listed a template: {uri}"
+        );
+    }
+    let templates = rpc(&client, &base, 6, "resources/templates/list", json!({})).await;
+    let templates: Vec<&str> = templates["result"]["resourceTemplates"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|r| r["uri"].as_str().unwrap())
+        .map(|r| r["uriTemplate"].as_str().unwrap())
         .collect();
-    assert!(uris.iter().any(|u| u.contains("workspaces")));
-    assert!(uris.iter().any(|u| u.contains("threads")));
+    assert!(templates.contains(&"maidan://workspaces/{id}"));
+    assert!(templates.contains(&"maidan://threads/{id}"));
 
     // resources/read: thread transcript
     let resp = rpc(

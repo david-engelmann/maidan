@@ -15,29 +15,56 @@ use crate::error::McpError;
 
 const URI_PREFIX: &str = "maidan://";
 
-pub fn catalog() -> Vec<Value> {
-    vec![
-        json!({
-            "uri": "maidan://workspaces/{id}",
-            "name": "workspace",
-            "description": "Workspace metadata."
-        }),
-        json!({
-            "uri": "maidan://channels/{id}",
-            "name": "channel",
-            "description": "Channel metadata."
-        }),
-        json!({
-            "uri": "maidan://threads/{id}",
-            "name": "thread",
-            "description": "Full thread transcript (up to 100 messages)."
-        }),
-        json!({
-            "uri": "maidan://artifacts/{sha256}",
-            "name": "artifact",
-            "description": "Artifact metadata and byte length (body omitted)."
-        }),
+/// The resources this server serves, as URI templates (`resources/templates/list`).
+///
+/// Every Maidan resource is addressed by an id, so all of them are templates.
+/// They used to be returned from `resources/list` with the placeholder left in
+/// the `uri` — which a spec client reads as a concrete resource it can fetch,
+/// and cannot.
+pub fn templates() -> Vec<Value> {
+    [
+        (
+            "workspace",
+            "maidan://workspaces/{id}",
+            "Workspace metadata.",
+        ),
+        ("channel", "maidan://channels/{id}", "Channel metadata."),
+        (
+            "thread",
+            "maidan://threads/{id}",
+            "Full thread transcript (up to 100 messages).",
+        ),
+        (
+            "artifact",
+            "maidan://artifacts/{sha256}",
+            "Artifact metadata and byte length (body omitted).",
+        ),
     ]
+    .into_iter()
+    .map(|(name, uri_template, description)| {
+        json!({
+            "uriTemplate": uri_template,
+            "name": name,
+            "description": description,
+            "mimeType": "application/json",
+        })
+    })
+    .collect()
+}
+
+/// Concrete resources for `resources/list`: the caller's own workspace, the one
+/// resource that exists without the caller naming an id. Everything else is
+/// reached through [`templates`].
+pub fn listed(auth: &maidan_auth::AuthContext) -> Vec<Value> {
+    if auth.bypass {
+        return Vec::new();
+    }
+    vec![json!({
+        "uri": format!("{URI_PREFIX}workspaces/{}", auth.workspace_id.0),
+        "name": "workspace",
+        "description": "Your workspace's metadata.",
+        "mimeType": "application/json",
+    })]
 }
 
 pub async fn read(store: &Arc<dyn Store>, uri: &str) -> Result<Value, McpError> {

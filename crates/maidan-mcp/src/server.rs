@@ -32,9 +32,27 @@ use crate::{prompts, resources, tools};
 /// validate the `MCP-Protocol-Version` header against this set. The **default is
 /// `2026-07-28`** ([`DEFAULT_PROTOCOL_VERSION`]) — the current revision, fully
 /// landed and advertised (negotiation, stateless streamable core, and SEP-2243
-/// routing headers; Protocols.md J3.1–3.5). `2024-11-05` stays supported for
-/// older clients that request it explicitly.
-pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2026-07-28", "2024-11-05"];
+/// routing headers; Protocols.md J3.1–3.5).
+///
+/// The 2025 revisions are here because the clients most people run speak them:
+/// the official TypeScript SDK (2.0), and the Inspector built on it, request
+/// `2025-11-25` and do not accept `2026-07-28`, so without these a handshake
+/// with them failed before a single tool was listed. All three are served
+/// over the same stateless streamable transport as `2026-07-28` — sessions are
+/// optional from `2025-03-26` on — and the method surface is identical; newer
+/// result fields are additive, and clients ignore what they do not know.
+/// `2024-11-05` alone keeps the SSE-session model ([`SESSION_PROTOCOL_VERSION`]).
+pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
+    "2026-07-28",
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05",
+];
+
+/// The one revision served over protocol-level sessions (an SSE leg plus
+/// `Mcp-Session-Id`). Every other supported revision is stateless.
+pub const SESSION_PROTOCOL_VERSION: &str = "2024-11-05";
 const NOTIFY_RESOURCE_UPDATED: &str = "notifications/resources/updated";
 
 /// The version `initialize` echoes when the client requests none, and the
@@ -57,7 +75,7 @@ pub fn is_supported_protocol_version(version: &str) -> bool {
 
 /// Negotiate the `initialize` protocol version: echo the client's requested
 /// version if supported, else the preferred one (MCP spec §Lifecycle).
-fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
+pub fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
     requested
         .and_then(|v| {
             SUPPORTED_PROTOCOL_VERSIONS
@@ -333,7 +351,10 @@ impl McpServer {
             "notifications/initialized" | "notifications/cancelled" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": tools::catalog_for(auth) })),
             "tools/call" => self.tools_call(&request.params, auth).await,
-            "resources/list" => Ok(json!({ "resources": resources::catalog() })),
+            "resources/list" => Ok(json!({ "resources": resources::listed(auth) })),
+            "resources/templates/list" => {
+                Ok(json!({ "resourceTemplates": resources::templates() }))
+            }
             "resources/read" => self.resources_read(&request.params, auth).await,
             "resources/subscribe" => self.resources_subscribe(&request.params, auth).await,
             "resources/unsubscribe" => self.resources_unsubscribe(&request.params, auth).await,
