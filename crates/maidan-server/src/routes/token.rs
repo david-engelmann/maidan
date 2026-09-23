@@ -324,7 +324,11 @@ pub async fn delegate_api_token(
     }
     let grant_id = DelegationGrantId(body.grant_id);
     let grant = state.store.get_delegation_grant(grant_id).await?;
-    ensure_workspace(&auth, grant.workspace_id)?;
+    // Another workspace's grant reads as absent, as on revoke: a 403 here would
+    // confirm that the id exists somewhere.
+    if !auth.bypass && grant.workspace_id != auth.workspace_id {
+        return Err(ApiError::NotFound);
+    }
     if grant.delegate_id != auth.actor_id {
         return Err(ApiError::Forbidden(
             "delegation grant belongs to a different delegate".into(),

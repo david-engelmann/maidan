@@ -212,7 +212,10 @@ pub(super) async fn delegate_token(
     let grant = store
         .get_delegation_grant(maidan_types::DelegationGrantId(a.grant_id))
         .await?;
-    auth.ensure_workspace(grant.workspace_id)?;
+    // As on REST: another workspace's grant reads as absent.
+    if !auth.bypass && grant.workspace_id != auth.workspace_id {
+        return Err(McpError::NotFound);
+    }
     if grant.delegate_id != auth.actor_id {
         return Err(McpError::Forbidden(
             "delegation grant belongs to a different delegate".into(),

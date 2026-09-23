@@ -2371,7 +2371,9 @@ impl ArtifactMetaStore for PostgresStore {
 #[async_trait]
 impl EventStore for PostgresStore {
     async fn append_audit(&self, new: NewAuditEvent) -> Result<AuditEvent, StoreError> {
-        audit::append(&self.pool, new).await
+        audit::append(&self.pool, new)
+            .await
+            .inspect_err(|_| crate::attribution::count_audit_write_failure())
     }
     async fn list_audit(&self, limit: i64) -> Result<Vec<AuditEvent>, StoreError> {
         audit::list(&self.pool, limit).await

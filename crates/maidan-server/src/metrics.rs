@@ -107,6 +107,14 @@ pub fn init() {
             "HTTP request latency in seconds"
         );
         describe_counter!(
+            "maidan_audit_write_failures_total",
+            "Audit rows that failed to write; the change they record went through without it"
+        );
+        describe_counter!(
+            "maidan_event_append_failures_total",
+            "Events lost after retries although their domain row committed"
+        );
+        describe_counter!(
             "maidan_bus_lag_total",
             "In-process bus subscriber lag events (one per BusItem::Lagged)"
         );

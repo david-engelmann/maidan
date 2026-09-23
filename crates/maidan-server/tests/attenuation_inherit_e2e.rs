@@ -919,3 +919,54 @@ async fn a_narrowed_borrowed_token_stays_borrowed() {
         "the child must still carry the grant it was borrowed under"
     );
 }
+
+/// Another workspace's grant reads exactly like one that does not exist, as it
+/// already did on revoke. A 403 here would confirm the id is real somewhere.
+#[tokio::test]
+async fn another_workspaces_grant_is_indistinguishable_from_none() {
+    let e = escalation_setup().await;
+    let other_ws = e
+        .store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap();
+    let mut others = Vec::new();
+    for handle in ["s", "d"] {
+        others.push(
+            e.store
+                .create_member(NewMember {
+                    workspace_id: other_ws.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    let foreign = e
+        .store
+        .create_delegation_grant(NewDelegationGrant {
+            workspace_id: other_ws.id,
+            subject_id: others[0],
+            delegate_id: others[1],
+            capabilities: vec![capability::WORKSPACE_READ.into()],
+            purpose: "elsewhere".into(),
+            authorized_by: others[0],
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        })
+        .await
+        .unwrap();
+
+    let foreign = e.exchange(&e.orch_tok, &json!(foreign.id.0)).await;
+    let missing = e.exchange(&e.orch_tok, &json!(uuid::Uuid::new_v4())).await;
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        foreign.status(),
+        missing.status(),
+        "another workspace's grant must answer like a missing one"
+    );
+}

@@ -70,6 +70,33 @@ spec:
               Denial rate is {{ $value | humanize }}/s over 5m. Inspect the
               sampled content-free authorization warnings by surface and action.
 
+        # The permanent record. Both are best-effort writes beside a change that
+        # has already committed, so a failure is a change with no record of it.
+        # No `for:` — a single lost record is the event worth paging on.
+        - alert: MaidanAuditWriteFailures
+          expr: increase(maidan_audit_write_failures_total[5m]) > 0
+          labels:
+            severity: critical
+            slo: permanent_record
+          annotations:
+            summary: Audit rows are failing to write
+            description: |
+              {{ $value | humanize }} audit write(s) failed in the last 5m; the
+              changes they record went through without their record. Search the
+              logs for audit.write_failed.
+
+        - alert: MaidanEventAppendFailures
+          expr: increase(maidan_event_append_failures_total[5m]) > 0
+          labels:
+            severity: critical
+            slo: permanent_record
+          annotations:
+            summary: Events are being lost after their change committed
+            description: |
+              {{ $value | humanize }} event(s) lost in the last 5m after retries;
+              their domain rows committed without them. Search the logs for
+              event.append_failed.
+
         - alert: MaidanOutboxPendingHigh
           expr: maidan_slo:outbox_pending > 100
           for: 5m

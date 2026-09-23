@@ -1423,6 +1423,8 @@ The replacement is **grant-backed delegation**, not a wider capability:
 - `POST /tokens/delegate` (+ MCP twin) exchanges a grant for a short-lived
   token — **15 min default, 1 h hard max** — scoped to
   `grant ∩ delegate's caps ∩ subject's caps` (intersection, never union).
+  *(Superseded 2026-09-23 by decision D-C: the contract is grant ∩ delegate ∩
+  request. Members carry no capabilities, so a subject term named nothing.)*
   Revoking a grant cascades to its minted tokens, reusing the existing
   attenuation-subtree cascade.
 - Every delegated action writes a **durable dual-identity audit row** (actor +
@@ -1796,6 +1798,98 @@ Still open, tracked here rather than left to a re-audit:
   behalf.
 
 - **F-43 branch protection.** Pending-maintainer. Nothing for an agent to do.
+
+## Round-3 processing-check dispositions (2026-09-23)
+
+An external auditor checked whether its round-3 regrade had been digested, at
+`05d2becd`. The regrade itself never reached this repo or the building agent,
+and the check is right that none of its material shows up here. What follows
+disposes of every open item in the check. Each was re-verified against `main` at
+`871ca56f`, because the check itself withdrew two findings for reading call
+sites instead of the code behind them.
+
+| Item | Verified | Disposition |
+|---|---|---|
+| web_push blind SSRF | **Real.** Registration checked only for non-empty; delivery was a bare `client.post(&sub.endpoint)` outside the egress guard | **Adopt — fixed.** Registration refuses non-public, credentialed or non-`https` endpoints (`validate_egress_target`); delivery goes through `egress_http::client_for` (resolved, pinned, no redirects). `push_subscription_egress_e2e` covers loopback, private, metadata, credentials and `http`, and fails with the guard removed |
+| OIDC "one outbound trust boundary" | **Real overclaim.** `oidc/config.rs` builds its own redirect-refusing client, not pinned | **Adopt — doc corrected** in the v408 record (#1009). The code stays: the issuer is operator configuration, and a loopback provider is a supported, tested deployment (406) |
+| N2 — v408 row cites `member:impersonate` | **True at v408.** It is a release record, not a live description | **Adapt** — annotated as superseded by v411 rather than rewritten, which would falsify the record (#1009) |
+| Capability intersection wording | **Code:** grant ∩ delegate-held ∩ request. **Docs:** grant ∩ delegate ∩ subject. **#1009:** two-way | **Decided D-C: two-way.** The three-way promises in Cluster 411 and this file are marked superseded |
+| Unbounded grant lifetime | **Real.** `validate_new` only requires `expires_at > now` | **Decided D-B: per-workspace ceiling, default 90 days.** Cluster 413 |
+| Fail-open audit write | **Real, and unratified.** `audit.rs` documents best-effort as deliberate, and no decision is recorded | **Decision D-A below.** Separately **adopted:** a failed write was visible only as a log line. `maidan_audit_write_failures_total` now counts every one, at the single store entry point, and `MaidanAuditWriteFailures` pages on the first. `maidan_event_append_failures_total` existed with no alert despite its doc saying to alert on any non-zero rate; `MaidanEventAppendFailures` now does. Both have promtool tests |
+| Dead hook `with_delegation` | **Real, and redundant.** The record constructor already derives subject and grant from the context | **Adopt — removed** |
+| Grant-id oracle | **Real, and negligible.** Exchange answered 403 for another workspace's grant and 404 for none, while revoke already answered 404 | **Adopt — fixed** on REST and MCP. `another_workspaces_grant_is_indistinguishable_from_none` fails on the old behavior |
+| N1 | Withdrawn by the auditor | Not filed |
+| N3 — compose bypasses the whole egress guard | **True, and bounded.** `MAIDAN_ALLOW_PRIVATE_EGRESS` is refused when `MAIDAN_ENV=production`; compose is a dev and CI profile | **Defer.** Narrowing it to a per-peer allowlist is sound, but it's a feature. The bypass is documented where it's set |
+| N4 — `maidan-auth` "now" depends on `maidan-store` | **Wrong as a new finding.** The dependency dates from Cluster F (#78, 2026-05-23): `resolve_bearer` has always needed the store | **Reject** |
+| N5 — attribution lost across spawned tasks | **True, and unenforced.** No handler spawns today | **Adopt — enforced.** `attribution_scope_contract` fails on any `tokio::spawn` in REST route or MCP tool handlers; an exemption must be named, with its reason |
+| Mint refusals by ordinary callers write nothing | **True, by design.** Cluster 182: an attacker-controlled request stream must not be a durable write amplifier. Only delegated refusals are durable, per David's 2026-09-23 decision | **Reject** as a gap |
+
+### Decisions (from the regrade, via the check) — DECIDED by David, 2026-09-23
+
+| | Decision | Delivery |
+|---|---|---|
+| **D-A** | **Transactional for authority** (A2): authority-changing actions write their audit row inside the change's own transaction, so a failed write aborts the change; routine rows stay best-effort, counted and paged | Cluster 413 |
+| **D-B** | **A per-workspace ceiling, default 90 days** (B3). David chose flexibility over the recommended hard ceiling | Cluster 413 |
+| **D-C** | **Two-way is the contract** (C1): grant ∩ delegate ∩ request. Per-member roles (C3) are the recorded path if ever wanted before 1.0 | Docs, this PR |
+
+The analysis each was decided on follows.
+
+**D-A — when an audit write fails, does the change it records fail too?**
+
+The facts decide more than it first appears:
+- **Events** already can't fail open. Attribution sits inside the event's
+  hashed payload, in the same transaction as the domain row.
+- **Audit rows** are written after the change they record has committed. So
+  "fail-closed" can't mean aborting the change after the fact. It can only mean
+  writing the row *inside* that transaction.
+
+| Option | What it takes | Trade |
+|---|---|---|
+| A1: best-effort, counted and paged (today, now alerted) | Nothing more | A record can have gaps, but every gap pages. The cheapest option |
+| **A2: transactional for authority, best-effort for the rest** | Token mint and revoke, grant create, revoke and exchange, purge and erase, export, secret resolve, and moderation write their audit row in the change's own transaction, so a failed write aborts the change. `mutation` and `authorization.decision` rows stay best-effort and paged | About 20 store methods take an audit record, or read one from the scope as attribution already does. Authority can never change unrecorded; routine changes can, loudly |
+| A3: fail-closed everywhere | Every `mutation` row inside its change's transaction | Impossible with the request-layer fallback, which runs after the handler. It would go back to per-handler records, the design that already failed to be complete once |
+
+**Recommendation: A2.** It is what "the real permanent record" means where it
+matters most: nobody can gain or destroy anything without a record. It keeps
+the structural completeness of 411.11 for everything else. Until you decide,
+today's behavior is **A1, and provisional**; `audit.rs` no longer calls it
+settled. *(Decided A2; Cluster 413 delivers it.)*
+
+**D-B — should a grant's lifetime have a ceiling?**
+
+Exchanged tokens are capped at one hour, but the grant is the *standing*
+authority to keep minting them, and today it can be set to expire in a
+century. Revocation works, but only for someone who remembers the grant exists.
+
+| Option | Trade |
+|---|---|
+| B1: no ceiling | Relies on someone remembering to revoke. A forgotten grant is permanent delegated authority |
+| **B2: a hard ceiling (90 days), renewal by issuing a new grant** | Every renewal is a fresh, attributed decision with a current purpose. Long-running orchestrations need to automate renewal |
+| B3: a per-workspace ceiling, defaulting to 90 days | More flexible, but one more setting, and a workspace can set it to a century |
+
+**Recommendation: B2 at 90 days,** in line with common personal-access-token
+policy. Take 30 days if you'd rather force renewal more often. Renewal as a new
+grant, rather than extending the old one, keeps "who authorized this, and why,
+still" true in the record.
+
+**D-C — what bounds a delegated token: two-way or three-way?**
+
+The documented contract says grant ∩ delegate ∩ **subject**. The code does
+grant ∩ delegate ∩ request. The check reads this as the code falling short of
+the contract. The contract is the problem: **members carry no capabilities.**
+Tokens do, and `token:admin`, the only thing that can create a grant, can mint
+any capability for any member. So "the subject's capabilities" names nothing,
+and the promise can't be implemented as written.
+
+| Option | Trade |
+|---|---|
+| **C1: two-way is the contract** (grant ∩ delegate ∩ request); fix the docs | Honest about the model. The grant's issuer, an admin who could mint the subject such a token directly, is the authority over what gets lent |
+| C2: bound by the subject's live tokens (the union of their capabilities at exchange time) | Makes three-way mean something, but breaks the main use case: an agent whose only credential is its orchestrator's delegation holds no tokens, so it could lend nothing. It also makes delegation depend on unrelated token hygiene |
+| C3: per-member capability ceilings (roles) | The principled subject bound, one that limits both minting and lending. It is a new authorization feature, and before launch it is a scope decision in its own right |
+
+**Recommendation: C1 now,** with C3 recorded as the path if per-member roles are
+wanted before 1.0. C2 looks like the literal fix and would quietly break
+orchestration.
 
 ## Docs & presentation audit dispositions (2026-09-17)
 
