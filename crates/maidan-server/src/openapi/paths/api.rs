@@ -795,9 +795,9 @@ pub fn get_thread_budget() {}
 
 #[utoipa::path(post, path = "/threads/{id}/usage", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
-    request_body = UsageDelta,
+    request_body = AccountedUsageRequest,
     security(("bearerAuth" = [])),
-    responses((status = 200, body = UsageReport)))]
+    responses((status = 200, body = UsageLedgerEntry)))]
 pub fn report_thread_usage() {}
 
 #[utoipa::path(post, path = "/threads/{id}/assignee/claim", tag = "threads",

@@ -272,16 +272,41 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "report_usage",
-            "description": "Report incremental resource usage against a thread's budget — your run's heartbeat. If it pushes a claimed thread over budget, the run is STOPPED (claim released + claim_failed event + DLQ) and the response's stopped/reason say so. Report as you go so a runaway run is caught early.",
+            "description": "Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. Tiered tokens + the immutable price snapshot must calculate to usd_micros. A binding cap atomically stops the run.",
             "inputSchema": {
                 "type": "object",
+                "additionalProperties": false,
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "tokens": {"type": "integer", "default": 0},
-                    "usd_micros": {"type": "integer", "default": 0, "description": "USD in micros ($1 = 1000000)"},
+                    "usage_report_id": {"type": "string", "format": "uuid", "description": "globally unique idempotency key"},
+                    "claim_lease_id": {"type": "string", "format": "uuid", "description": "active claim fencing token"},
+                    "model": {"type": "string", "minLength": 1, "maxLength": 255},
+                    "tokens": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "input": {"type": "integer", "minimum": 0},
+                            "output": {"type": "integer", "minimum": 0},
+                            "cache_read": {"type": "integer", "minimum": 0},
+                            "cache_write": {"type": "integer", "minimum": 0}
+                        },
+                        "required": ["input", "output", "cache_read", "cache_write"]
+                    },
+                    "usd_micros": {"type": "integer", "minimum": 0, "description": "validated USD charge in micros ($1 = 1000000)"},
+                    "price_snapshot": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "input_usd_micros_per_million": {"type": "integer", "minimum": 0},
+                            "output_usd_micros_per_million": {"type": "integer", "minimum": 0},
+                            "cache_read_usd_micros_per_million": {"type": "integer", "minimum": 0},
+                            "cache_write_usd_micros_per_million": {"type": "integer", "minimum": 0}
+                        },
+                        "required": ["input_usd_micros_per_million", "output_usd_micros_per_million", "cache_read_usd_micros_per_million", "cache_write_usd_micros_per_million"]
+                    },
                     "turns": {"type": "integer", "default": 0}
                 },
-                "required": ["thread_id"]
+                "required": ["thread_id", "usage_report_id", "claim_lease_id", "model", "tokens", "usd_micros", "price_snapshot"]
             }
         }),
         json!({

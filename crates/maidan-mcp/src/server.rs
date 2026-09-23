@@ -3358,6 +3358,15 @@ mod tests {
             })
             .await
             .unwrap();
+        let intruder = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "other-agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
         let channel = store
             .create_channel(NewChannel {
                 workspace_id: ws.id,
@@ -3375,7 +3384,8 @@ mod tests {
             })
             .await
             .unwrap();
-        store.assign_thread(thread.id, agent.id).await.unwrap();
+        let claimed = store.assign_thread(thread.id, agent.id).await.unwrap();
+        let claim_lease_id = claimed.claim_lease_id.expect("claim lease");
 
         let server = McpServer::new(
             store.clone(),
@@ -3383,7 +3393,11 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         );
-        let auth = AuthContext::bypass();
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec!["thread:transition".into(), "workspace:read".into()],
+        );
         let unwrap_content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
@@ -3436,25 +3450,59 @@ mod tests {
             "a partial replace must be refused"
         );
 
+        let usage = |tokens: i64| {
+            json!({
+                "thread_id": thread.id.0,
+                "usage_report_id": uuid::Uuid::new_v4(),
+                "claim_lease_id": claim_lease_id.0,
+                "model": "test/model",
+                "tokens": {
+                    "input": tokens,
+                    "output": 0,
+                    "cache_read": 0,
+                    "cache_write": 0
+                },
+                "usd_micros": 0,
+                "price_snapshot": {
+                    "input_usd_micros_per_million": 0,
+                    "output_usd_micros_per_million": 0,
+                    "cache_read_usd_micros_per_million": 0,
+                    "cache_write_usd_micros_per_million": 0
+                },
+                "turns": 1
+            })
+        };
+        let first = usage(50);
+        let wrong_auth = AuthContext::from_session(
+            intruder.id,
+            ws.id,
+            vec!["thread:transition".into(), "workspace:read".into()],
+        );
+        assert!(server
+            .call_tool(&wrong_auth, "report_usage", &usage(1))
+            .await
+            .is_err());
         let under = unwrap_content(
             server
-                .call_tool(
-                    &auth,
-                    "report_usage",
-                    &json!({ "thread_id": thread.id.0, "tokens": 50 }),
-                )
+                .call_tool(&auth, "report_usage", &first)
                 .await
                 .unwrap(),
         );
         assert_eq!(under["stopped"], json!(false));
+        assert_eq!(under["stamp"]["payer"], json!(ws.id.0));
+        assert_eq!(under["stamp"]["reporter"], json!(agent.id.0));
+
+        let retried = unwrap_content(
+            server
+                .call_tool(&auth, "report_usage", &first)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(retried, under, "exact retry returns the first outcome");
 
         let over = unwrap_content(
             server
-                .call_tool(
-                    &auth,
-                    "report_usage",
-                    &json!({ "thread_id": thread.id.0, "tokens": 60 }),
-                )
+                .call_tool(&auth, "report_usage", &usage(60))
                 .await
                 .unwrap(),
         );

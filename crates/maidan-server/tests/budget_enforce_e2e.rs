@@ -61,7 +61,8 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
         .await
         .unwrap();
     // A claimed run to stop.
-    store.assign_thread(thread.id, agent.id).await.unwrap();
+    let claimed = store.assign_thread(thread.id, agent.id).await.unwrap();
+    let claim_lease_id = claimed.claim_lease_id.expect("claim lease");
 
     let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -112,10 +113,44 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
     assert_eq!(set["max_tokens"], 100);
     assert_eq!(set["used_tokens"], 0);
 
-    // Report under budget → not stopped.
+    let usage = |tokens: i64| {
+        json!({
+            "usage_report_id": uuid::Uuid::new_v4(),
+            "claim_lease_id": claim_lease_id.0,
+            "model": "test/model",
+            "tokens": {
+                "input": tokens,
+                "output": 0,
+                "cache_read": 0,
+                "cache_write": 0
+            },
+            "usd_micros": 0,
+            "price_snapshot": {
+                "input_usd_micros_per_million": 0,
+                "output_usd_micros_per_million": 0,
+                "cache_read_usd_micros_per_million": 0,
+                "cache_write_usd_micros_per_million": 0
+            },
+            "turns": 1
+        })
+    };
+
+    // Caller-chosen identity is no longer part of the schema.
+    let mut forged = usage(1);
+    forged["reporter"] = json!(uuid::Uuid::new_v4());
+    let rejected = client
+        .post(format!("{base}/threads/{tid}/usage"))
+        .json(&forged)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rejected.status(), 400);
+
+    // Report under budget → not stopped. The server derives both identities.
+    let first = usage(50);
     let under: Value = client
         .post(format!("{base}/threads/{tid}/usage"))
-        .json(&json!({ "tokens": 50 }))
+        .json(&first)
         .send()
         .await
         .unwrap()
@@ -124,11 +159,26 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
         .unwrap();
     assert_eq!(under["stopped"], json!(false));
     assert_eq!(under["budget"]["used_tokens"], 50);
+    assert_eq!(under["stamp"]["payer"], json!(ws.id.0));
+    assert_eq!(under["stamp"]["reporter"], json!(agent.id.0));
+
+    // An exact transport retry returns the same ledger outcome and cannot
+    // increment the budget twice.
+    let retry: Value = client
+        .post(format!("{base}/threads/{tid}/usage"))
+        .json(&first)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(retry, under);
 
     // Report over budget → stopped, reason tokens.
     let over: Value = client
         .post(format!("{base}/threads/{tid}/usage"))
-        .json(&json!({ "tokens": 60 }))
+        .json(&usage(60))
         .send()
         .await
         .unwrap()

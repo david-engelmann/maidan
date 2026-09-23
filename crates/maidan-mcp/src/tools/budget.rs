@@ -3,8 +3,12 @@
 
 use std::sync::Arc;
 
+use maidan_auth::AuthContext;
 use maidan_store::Store;
-use maidan_types::{BudgetLimits, ChannelId, ThreadId, UsageDelta};
+use maidan_types::{
+    AccountedUsageRequest, BudgetLimits, ChannelId, ClaimLeaseId, PriceSnapshot, ThreadId,
+    TokenUsage,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -123,12 +127,28 @@ pub(super) async fn get_thread_budget(
 #[serde(deny_unknown_fields)]
 struct ReportUsageArgs {
     thread_id: uuid::Uuid,
-    #[serde(default)]
-    tokens: i64,
-    #[serde(default)]
+    usage_report_id: uuid::Uuid,
+    claim_lease_id: uuid::Uuid,
+    model: String,
+    tokens: TokenUsage,
     usd_micros: i64,
+    price_snapshot: PriceSnapshot,
     #[serde(default)]
     turns: i64,
+}
+
+impl ReportUsageArgs {
+    fn request(self) -> AccountedUsageRequest {
+        AccountedUsageRequest {
+            usage_report_id: self.usage_report_id,
+            claim_lease_id: ClaimLeaseId(self.claim_lease_id),
+            model: self.model,
+            tokens: self.tokens,
+            usd_micros: self.usd_micros,
+            price_snapshot: self.price_snapshot,
+            turns: self.turns,
+        }
+    }
 }
 
 /// Report incremental usage against a thread's budget — the claim-holder's
@@ -137,21 +157,26 @@ struct ReportUsageArgs {
 /// `stopped`/`reason` say so. Thread access is enforced pre-dispatch.
 pub(super) async fn report_usage(
     server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ReportUsageArgs = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let reporter = if auth.bypass {
+        server
+            .store
+            .get_thread(thread_id)
+            .await?
+            .assignee_id
+            .ok_or_else(|| McpError::InvalidParams("thread has no active claim holder".into()))?
+    } else {
+        auth.member_id
+    };
     let (report, stored) = server
         .store
-        .report_thread_usage(
-            ThreadId(a.thread_id),
-            UsageDelta {
-                tokens: a.tokens,
-                usd_micros: a.usd_micros,
-                turns: a.turns,
-            },
-        )
+        .report_accounted_usage(&a.request().into_new(thread_id, reporter))
         .await?;
-    if let Some(stored) = stored {
+    for stored in stored {
         server.publish_stored(&stored).await;
     }
     Ok(content_json(&report))

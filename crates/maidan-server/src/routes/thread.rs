@@ -626,23 +626,34 @@ pub async fn get_thread_budget(
     }
 }
 
-/// Report incremental resource usage against a thread's budget — the
-/// claim-holder's heartbeat. Accumulates the delta; if it pushes the thread
-/// over budget and a run is claimed, the run is STOPPED (claim released,
-/// `ClaimFailed` emitted, DLQ entry recorded) and the response's
-/// `stopped`/`reason` say so. Gated on `thread:transition` (the claim-lifecycle
-/// cap) plus thread access.
+/// Record one retry-safe, claim-fenced usage heartbeat. Reporter identity comes
+/// from auth (or the active assignee in auth-disabled local mode); the payer
+/// comes from the thread's workspace. A binding cap atomically releases the
+/// claim, emits `ClaimFailed`, and records the DLQ entry.
 pub async fn report_thread_usage(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
-    ApiJson(delta): ApiJson<UsageDelta>,
-) -> ApiResult<Json<UsageReport>> {
+    ApiJson(body): ApiJson<AccountedUsageRequest>,
+) -> ApiResult<Json<UsageLedgerEntry>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    let (report, stored) = state.store.report_thread_usage(thread_id, delta).await?;
-    if let Some(stored) = stored {
+    let reporter = if auth.bypass {
+        state
+            .store
+            .get_thread(thread_id)
+            .await?
+            .assignee_id
+            .ok_or_else(|| ApiError::Conflict("thread has no active claim holder".into()))?
+    } else {
+        auth.member_id
+    };
+    let (report, stored) = state
+        .store
+        .report_accounted_usage(&body.into_new(thread_id, reporter))
+        .await?;
+    for stored in stored {
         publish_stored(&state, stored).await;
     }
     Ok(Json(report))
