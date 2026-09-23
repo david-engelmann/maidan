@@ -19,6 +19,13 @@ CI enforces map ↔ OpenAPI parity via `http_openapi_capability_map_contract`, t
 > while being correct in the contracts the entire time. A guard is scheduled in
 > Cluster 411.1; until it lands, add new capabilities here by hand.
 
+**Delegation lends work, never authority.** A delegation grant may carry only
+`workspace:read`, `workspace:write`, `message:post`, `thread:transition`,
+`artifact:upload`, `search:query` and `event:subscribe`. Every other capability
+is refused at grant creation and stripped from any borrowed token regardless of
+how its grant was created. `capability::tests::every_capability_is_classified_as_work_or_authority`
+fails if a new capability is added without deciding which it is.
+
 ## HTTP (member bearer)
 
 | Capability | Routes / behavior |

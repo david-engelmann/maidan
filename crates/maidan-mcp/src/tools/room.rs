@@ -202,11 +202,18 @@ pub(super) async fn delegate_token(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: DelegateTokenArgs = serde_json::from_value(args.clone())?;
+    // One hop — see the REST twin. A borrowed token exchanging would use its
+    // subject's grants and erase the real actor from the chain.
+    if auth.delegation_grant_id.is_some() {
+        return Err(McpError::Forbidden(
+            "a delegated token cannot exchange a grant; delegation is one hop".into(),
+        ));
+    }
     let grant = store
         .get_delegation_grant(maidan_types::DelegationGrantId(a.grant_id))
         .await?;
     auth.ensure_workspace(grant.workspace_id)?;
-    if grant.delegate_id != auth.member_id {
+    if grant.delegate_id != auth.actor_id {
         return Err(McpError::Forbidden(
             "delegation grant belongs to a different delegate".into(),
         ));
@@ -312,6 +319,16 @@ pub(super) async fn create_delegation_grant(
     {
         return Err(McpError::InvalidParams(format!(
             "unknown delegated capability: {unknown}"
+        )));
+    }
+    if let Some(authority) = a
+        .capabilities
+        .iter()
+        .find(|capability| !capability::is_delegatable(capability))
+    {
+        return Err(McpError::InvalidParams(format!(
+            "{authority} cannot be delegated: a grant lends the ability to do work, \
+             never the means to hand out more authority"
         )));
     }
     let subject_id = MemberId(a.subject_id);

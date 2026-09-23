@@ -142,6 +142,14 @@ async fn run_suite(store: &dyn Store) {
         )
         .await
         .expect("attenuated child");
+    // A narrowed child of a borrowed token inherits its parent's grant, so it
+    // still resolves with the delegate as actor. Without this the child would
+    // read, forever after, as the subject acting alone.
+    assert_eq!(
+        child.delegation_grant_id,
+        Some(grant.id),
+        "a child of a borrowed token must inherit the grant"
+    );
     assert_eq!(
         store
             .get_active_api_token_by_hash(&direct_hash)

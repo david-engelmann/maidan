@@ -1640,6 +1640,25 @@ Still open, tracked here rather than left to a re-audit:
   who is talking to whom, was not. **Closed in 411.6**, with
   `dm_participation_e2e::a_bearer_cannot_read_the_roster_of_a_dm_it_is_not_in`,
   which was observed failing against the old code.
+- **Full audit of "on behalf of", 2026-09-23.** Mapping the whole identity model
+  at once, rather than surface by surface, found three real problems and ruled
+  out two that looked real:
+
+  | Finding | Verdict |
+  |---|---|
+  | A grant could lend `token:admin`, and a token minted under it is not a grant descendant, so it outlives revocation | **Real — fixed in 411.7** |
+  | Exchange authorised on the acted-as identity, so a borrowed token could use its subject's grants and erase the real actor from the chain | **Real — fixed in 411.7** |
+  | 25 of 31 privileged audit writes record the subject as the actor; no domain event carries the delegate | **Real — 411.8** |
+  | A delegate can approve its own work by acting as a reviewer | **Real — 411.9, awaiting the maintainer** |
+  | Narrowing a borrowed token produces an ordinary token and sheds the record | **Wrong.** The store's attenuated insert copies the parent's grant. Pinned by a test on both backends |
+  | A borrowed token's validity rests only on the revocation cascade | **Wrong.** The active-token lookup itself requires the grant to be live. Pinned by a test that kills the grant without touching the token row |
+
+  Both wrong findings came from reading a route and not the query behind it.
+  Both were caught by mutation-testing the fix: a test that still passed with
+  the "fix" disabled meant there had been nothing to fix. Each fix in 411.7 is
+  now proven by disabling it alone and watching only its own test fail — eight
+  mutations over REST and both stores, two more over MCP, all caught.
+
 - **Found during 411.6: `member:impersonate` was doing two jobs.** It covered an
   orchestrator acting *as* an agent, which delegation replaces, but also an
   operator granting a governance skill (`land_gate`) *to* an agent — which

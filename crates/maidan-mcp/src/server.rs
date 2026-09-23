@@ -962,6 +962,112 @@ mod tests {
         }
     }
 
+    /// The MCP twins of grant creation and exchange carry the same bounds as
+    /// REST: a grant cannot lend authority, and a borrowed token cannot exchange.
+    #[tokio::test]
+    async fn mcp_delegation_is_bounded_like_rest() {
+        use maidan_auth::capability::{TOKEN_ADMIN, WORKSPACE_READ};
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "w".into() })
+            .await
+            .unwrap();
+        let mut ids = Vec::new();
+        for handle in ["admin", "orchestrator", "worker", "third"] {
+            ids.push(
+                store
+                    .create_member(NewMember {
+                        workspace_id: ws.id,
+                        handle: handle.into(),
+                        display_name: None,
+                        kind: MemberKind::Agent,
+                    })
+                    .await
+                    .unwrap()
+                    .id,
+            );
+        }
+        let (admin, orchestrator, worker, third) = (ids[0], ids[1], ids[2], ids[3]);
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+
+        let admin_auth = AuthContext::from_token(
+            ApiTokenId(uuid::Uuid::new_v4()),
+            admin,
+            ws.id,
+            vec![TOKEN_ADMIN.to_string()],
+        );
+        let err = server
+            .call_tool(
+                &admin_auth,
+                "create_delegation_grant",
+                &json!({
+                    "workspace_id": ws.id.0,
+                    "subject_id": worker.0,
+                    "delegate_id": orchestrator.0,
+                    "capabilities": [TOKEN_ADMIN],
+                    "purpose": "lend authority",
+                    "expires_at": chrono::Utc::now() + chrono::Duration::hours(1),
+                }),
+            )
+            .await
+            .expect_err("a grant must not lend authority over MCP either");
+        assert!(
+            matches!(err, McpError::InvalidParams(_)),
+            "expected InvalidParams, got {err:?}"
+        );
+
+        // The orchestrator's own grant, presented from a token borrowed as the
+        // worker: the delegate check alone would pass it, so this is the case
+        // only the one-hop rule stops.
+        let own = store
+            .create_delegation_grant(NewDelegationGrant {
+                workspace_id: ws.id,
+                subject_id: third,
+                delegate_id: orchestrator,
+                capabilities: vec![WORKSPACE_READ.into()],
+                purpose: "second grant".into(),
+                authorized_by: admin,
+                expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+            })
+            .await
+            .unwrap();
+        let borrowed = AuthContext::from_delegated_token(
+            ApiTokenId(uuid::Uuid::new_v4()),
+            orchestrator,
+            worker,
+            ws.id,
+            DelegationGrantId(uuid::Uuid::new_v4()),
+            vec![WORKSPACE_READ.to_string()],
+        );
+        let err = server
+            .call_tool(
+                &borrowed,
+                "delegate_token",
+                &json!({ "grant_id": own.id.0 }),
+            )
+            .await
+            .expect_err("a borrowed token must not exchange over MCP either");
+        assert!(
+            matches!(err, McpError::Forbidden(_)),
+            "expected Forbidden, got {err:?}"
+        );
+    }
+
     #[tokio::test]
     async fn mcp_denies_non_members_in_private_channels() {
         let pool = SqlitePoolOptions::new()

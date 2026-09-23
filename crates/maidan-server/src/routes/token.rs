@@ -313,10 +313,19 @@ pub async fn delegate_api_token(
     ApiJson(body): ApiJson<DelegateToken>,
 ) -> ApiResult<(StatusCode, Json<DelegateTokenResponse>)> {
     cap(&auth, WORKSPACE_READ)?;
+    // One hop. A borrowed token acts *as* its subject, so letting it exchange
+    // would let it use the subject's own grants: A acting as B could become C,
+    // and every record of the new token would name B as the delegate — erasing
+    // A from the chain. Delegation is exchanged by the real delegate, directly.
+    if auth.delegation_grant_id.is_some() {
+        return Err(ApiError::Forbidden(
+            "a delegated token cannot exchange a grant; delegation is one hop".into(),
+        ));
+    }
     let grant_id = DelegationGrantId(body.grant_id);
     let grant = state.store.get_delegation_grant(grant_id).await?;
     ensure_workspace(&auth, grant.workspace_id)?;
-    if grant.delegate_id != auth.member_id {
+    if grant.delegate_id != auth.actor_id {
         return Err(ApiError::Forbidden(
             "delegation grant belongs to a different delegate".into(),
         ));
@@ -417,6 +426,16 @@ pub async fn create_delegation_grant(
     {
         return Err(ApiError::BadRequest(format!(
             "unknown delegated capability: {unknown}"
+        )));
+    }
+    if let Some(authority) = body
+        .capabilities
+        .iter()
+        .find(|capability| !capability::is_delegatable(capability))
+    {
+        return Err(ApiError::BadRequest(format!(
+            "{authority} cannot be delegated: a grant lends the ability to do work, \
+             never the means to hand out more authority"
         )));
     }
     let subject_id = MemberId(body.subject_id);
