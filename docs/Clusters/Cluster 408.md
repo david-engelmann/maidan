@@ -1,6 +1,6 @@
 # Cluster 408 — Full-audit remediation: self-scoping, bounds, egress, UI, docs
 
-> Post-gate hardening · target tag `v408.0.0`
+> Post-gate hardening · target tag `v408.0.0` · umbrella issue #971
 
 The 2026-09-21 full audit is dispositioned in
 [Open Work](../Open%20Work.md#full-audit-dispositions--adjusted-roadmap-2026-09-22).
@@ -27,8 +27,8 @@ recorded there — chosen to stay clear of the concurrent Cluster 406 work.
 
 | Slice | PR | Result |
 |-------|----|--------|
-| 408.1 | current | Member self-scoping (D-5) + client `limit` bounds (F-46) |
-| 408.2 | planned | SSRF egress guard (F-47, F-58), probe targets (F-49), proxy-hop trust (F-50), pinned image tags (F-56) |
+| 408.1 | #964 | Member self-scoping (D-5) + client `limit` bounds (F-46) |
+| 408.2 | current | SSRF egress guard (F-47, F-58), probe targets (F-49), proxy-hop trust (F-50), pinned image tags (F-56) |
 | 408.3 | planned | `/ui` P1: loading states, approvals refresh, error bodies, empty states |
 
 408.3 is UX polish and is deliberately distinct from Cluster 407's `/ui` work

@@ -18,7 +18,6 @@ use maidan_types::{
     inject_type, Event, EventKind, NewWebhookSubscription, WebhookSubscription,
     WebhookSubscriptionId, WorkspaceId, ROOM_LSN_HEADER,
 };
-use reqwest::Client;
 use serde::Serialize;
 use sha2::Sha256;
 use utoipa::ToSchema;
@@ -100,19 +99,9 @@ pub fn resolve_webhook_secret(
 }
 
 fn validate_webhook_url(url: &str) -> ApiResult<()> {
-    let trimmed = url.trim();
-    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
-        return Err(ApiError::BadRequest(
-            "webhook url must use http or https".into(),
-        ));
-    }
-    if trimmed.len() > 2048 {
-        return Err(ApiError::BadRequest("webhook url too long".into()));
-    }
-    if trimmed.as_bytes().contains(&b' ') {
-        return Err(ApiError::BadRequest("invalid webhook url".into()));
-    }
-    Ok(())
+    maidan_auth::validate_egress_target(url)
+        .map(|_| ())
+        .map_err(|error| ApiError::BadRequest(error.to_string()))
 }
 
 fn parse_event_kinds(kinds: &[String]) -> ApiResult<Vec<String>> {
@@ -284,7 +273,6 @@ pub fn verify_signature(secret: &str, body: &str, header: &str) -> bool {
 }
 
 pub async fn deliver_http(
-    client: &Client,
     url: &str,
     delivery_id: i64,
     kind: EventKind,
@@ -292,6 +280,7 @@ pub async fn deliver_http(
     body: &str,
     room_lsn: Option<i64>,
 ) -> Result<(), String> {
+    let (client, url) = crate::egress_http::client_for(url).await?;
     let signature = sign_payload(secret, body);
     let mut request = client
         .post(url)

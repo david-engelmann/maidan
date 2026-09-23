@@ -157,10 +157,21 @@ pub(crate) fn validate_insecure_no_auth(
     Ok(())
 }
 
+fn validate_private_egress(production: bool, allowed: bool) -> Result<(), ConfigError> {
+    if production && allowed {
+        return Err(ConfigError::Invalid(
+            "MAIDAN_ALLOW_PRIVATE_EGRESS",
+            "cannot be set when MAIDAN_ENV=production".into(),
+        ));
+    }
+    Ok(())
+}
+
 impl Config {
     /// Load from `std::env`. Errors return [`ConfigError`] with the
     /// offending key.
     pub fn from_env() -> Result<Self, ConfigError> {
+        validate_private_egress(is_production(), env_truthy("MAIDAN_ALLOW_PRIVATE_EGRESS"))?;
         let bind: SocketAddr = std::env::var("MAIDAN_BIND")
             .unwrap_or_else(|_| "0.0.0.0:8080".to_string())
             .parse()
@@ -246,6 +257,17 @@ mod tests {
         assert!(matches!(
             validate_insecure_no_auth(true, true, true),
             Err(ConfigError::Invalid("AUTH_DISABLED", _))
+        ));
+    }
+
+    #[test]
+    fn private_egress_escape_hatch_is_never_accepted_in_production() {
+        assert!(validate_private_egress(false, false).is_ok());
+        assert!(validate_private_egress(false, true).is_ok());
+        assert!(validate_private_egress(true, false).is_ok());
+        assert!(matches!(
+            validate_private_egress(true, true),
+            Err(ConfigError::Invalid("MAIDAN_ALLOW_PRIVATE_EGRESS", _))
         ));
     }
 

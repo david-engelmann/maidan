@@ -841,6 +841,13 @@ Content-Type: application/json
 {"url": "https://integrator.example/hook", "event_kinds": ["message_posted"], "label": "primary"}
 ```
 
+The URL must resolve to public network addresses. Loopback, private, link-local,
+shared, multicast, documentation, and reserved ranges are refused; redirects
+are not followed. The same rule covers HTTP slash/FSM handlers, federation
+peers, and A2A push targets. This is checked again when Maidan sends, so a DNS
+change cannot turn a previously public registration into private-network
+access.
+
 Deliveries are HMAC-signed (`X-Maidan-Signature`). The JSON body also carries
 `$type` (`maidan.event.{kind}/1`) on the envelope and the nested `event`.
 Each POST stamps `Maidan-Room-LSN` with the current event-log high-water

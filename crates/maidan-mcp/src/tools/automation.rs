@@ -149,16 +149,9 @@ fn normalize_slash_name(name: &str) -> Result<String, McpError> {
 }
 
 fn validate_http_target(url: &str) -> Result<(), McpError> {
-    let trimmed = url.trim();
-    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
-        return Err(McpError::InvalidParams(
-            "handler_target url must use http or https".into(),
-        ));
-    }
-    if trimmed.len() > 2048 || trimmed.as_bytes().contains(&b' ') {
-        return Err(McpError::InvalidParams("invalid handler url".into()));
-    }
-    Ok(())
+    maidan_auth::validate_egress_target(url)
+        .map(|_| ())
+        .map_err(|error| McpError::InvalidParams(error.to_string()))
 }
 
 fn parse_opt_state_mcp(raw: Option<String>) -> Result<Option<ThreadState>, McpError> {

@@ -69,6 +69,7 @@ impl Harness {
 }
 
 async fn spawn() -> Harness {
+    std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")

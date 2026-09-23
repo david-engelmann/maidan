@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use reqwest::Client;
 use tokio::sync::watch;
 use tracing::warn;
 
@@ -36,14 +35,13 @@ impl AutomationDeliveryWorker {
 }
 
 async fn run(state: AppState, mut shutdown: watch::Receiver<()>) {
-    let client = Client::new();
     let max_attempts = max_attempts_from_env();
     let interval = Duration::from_millis(poll_interval_ms_from_env());
     loop {
         tokio::select! {
             _ = shutdown.changed() => break,
             _ = tokio::time::sleep(interval) => {
-                if let Err(err) = poll_once(&state, &client, max_attempts).await {
+                if let Err(err) = poll_once(&state, max_attempts).await {
                     warn!(error = %err, "automation delivery poll failed");
                 }
             }
@@ -51,7 +49,7 @@ async fn run(state: AppState, mut shutdown: watch::Receiver<()>) {
     }
 }
 
-async fn poll_once(state: &AppState, client: &Client, max_attempts: u32) -> Result<(), String> {
+async fn poll_once(state: &AppState, max_attempts: u32) -> Result<(), String> {
     let pending = state
         .store
         .list_pending_automation_deliveries(DELIVERY_BATCH)
@@ -59,7 +57,7 @@ async fn poll_once(state: &AppState, client: &Client, max_attempts: u32) -> Resu
         .map_err(|e| e.to_string())?;
     for delivery in pending {
         let start = std::time::Instant::now();
-        match deliver_pending(client, state, &delivery).await {
+        match deliver_pending(state, &delivery).await {
             Ok(()) => {
                 metrics::record_automation_delivery(true);
                 let _ = state

@@ -51,6 +51,8 @@ jobs:
         run: cargo deny check
       - name: helm template smoke
         run: ./scripts/helm-template-smoke.sh
+      - name: deployment contract
+        run: ./scripts/check-deploy-contract.sh
       - name: agent contract golden files
         run: ./scripts/check-agent-contract.sh
 

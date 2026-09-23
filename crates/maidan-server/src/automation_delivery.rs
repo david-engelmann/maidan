@@ -4,7 +4,6 @@ use maidan_types::{
     AutomationDeliveryPending, AutomationSourceKind, FsmHookId, NewAutomationDelivery,
     SlashCommandId, WorkspaceId, ROOM_LSN_HEADER,
 };
-use reqwest::Client;
 
 use crate::fsm_hooks::resolve_fsm_secret;
 use crate::slash_commands::resolve_slash_secret;
@@ -35,15 +34,15 @@ pub async fn enqueue(state: &AppState, new: NewAutomationDelivery) -> Result<i64
 }
 
 pub async fn deliver_pending(
-    client: &Client,
     state: &AppState,
     delivery: &AutomationDeliveryPending,
 ) -> Result<(), String> {
+    let (client, target) = crate::egress_http::client_for(&delivery.target_url).await?;
     let secret = resolve_secret(state, delivery).await?;
     let signature = sign_payload(&secret, &delivery.payload);
     let room_lsn = crate::room_lsn::current(state.store.as_ref()).await;
     let mut request = client
-        .post(&delivery.target_url)
+        .post(target)
         .header("Content-Type", "application/json")
         .header(&delivery.header_name, &delivery.header_value)
         .header("X-Maidan-Signature", signature)

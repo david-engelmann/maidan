@@ -5,6 +5,7 @@ pub mod access;
 pub mod capability;
 pub mod capability_set;
 pub mod context;
+pub mod egress;
 pub mod error;
 pub mod export_sign;
 pub mod peer_secret;
@@ -23,6 +24,7 @@ pub use capability_set::{
     progressive_grant, CapabilitySet, AGENT_WORKER, HUMAN_ADMIN,
 };
 pub use context::AuthContext;
+pub use egress::*;
 pub use error::AuthError;
 pub use export_sign::{
     export_signing_key_from_env, export_verify_keys_from_env, sign_export, verify_export,

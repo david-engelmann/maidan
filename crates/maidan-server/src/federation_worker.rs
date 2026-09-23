@@ -32,12 +32,11 @@ impl FederationWorker {
 }
 
 async fn run(state: AppState, interval: Duration, mut shutdown: watch::Receiver<()>) {
-    let outbound = Outbound::new();
     loop {
         tokio::select! {
             _ = shutdown.changed() => break,
             _ = tokio::time::sleep(interval) => {
-                if let Err(err) = poll_once(&state, &outbound).await {
+                if let Err(err) = poll_once(&state).await {
                     warn!(error = %err, "federation poll tick failed");
                 }
             }
@@ -45,13 +44,21 @@ async fn run(state: AppState, interval: Duration, mut shutdown: watch::Receiver<
     }
 }
 
-async fn poll_once(state: &AppState, outbound: &Outbound) -> Result<(), String> {
+async fn poll_once(state: &AppState) -> Result<(), String> {
     let peers = state
         .store
         .list_enabled_peers()
         .await
         .map_err(|e| e.to_string())?;
     for peer in peers {
+        let (client, _) = match crate::egress_http::client_for(&peer.base_url).await {
+            Ok(target) => target,
+            Err(err) => {
+                warn!(peer = %peer.id, error = %err, "federation peer target refused");
+                continue;
+            }
+        };
+        let outbound = Outbound::with_client(client);
         let Some(secret) = resolve_outbound_secret(state, &peer) else {
             warn!(
                 peer = %peer.id,

@@ -719,6 +719,8 @@ pub async fn create_peer(
     ensure_workspace(&auth, workspace_id)?;
     maidan_a2a::validate_peer_name(&body.name).map_err(federation_err)?;
     maidan_a2a::validate_base_url(&body.base_url).map_err(federation_err)?;
+    maidan_auth::validate_egress_target(&body.base_url)
+        .map_err(|error| ApiError::BadRequest(error.to_string()))?;
 
     let secret = TokenSecret::generate();
     let key = state.federation.encryption_key.as_deref().ok_or_else(|| {
