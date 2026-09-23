@@ -31,7 +31,7 @@ recorded there — chosen to stay clear of the concurrent Cluster 406 work.
 | 408.2 | #973 | SSRF egress guard (F-47, F-58), probe targets (F-49), proxy-hop trust (F-50), pinned image tags (F-56) |
 | 408.3 | #974 | `/ui` P1: loading states, approvals refresh, error bodies, empty states |
 | 408.4 | #975 | Docs rendering + the locked branding ship-list |
-| 408.5 | planned | J-01 land-gate spike, behind a flag, flag-off |
+| 408.5 | #976 | J-01 land-gate spike, behind a flag, flag-off |
 | 408.close | planned | Ledgers and retrospective |
 
 408.3 is UX polish and is deliberately distinct from Cluster 407's `/ui`

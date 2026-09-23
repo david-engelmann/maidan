@@ -194,6 +194,9 @@ pub struct AppState {
     /// Optional public-key pin for import/verify (`MAIDAN_EXPORT_VERIFY_KEYS`).
     /// Empty = integrity against the embedded key only (blank-instance default).
     pub export_verify_keys: Vec<[u8; 32]>,
+    /// Optional, advisory-only Jev land-gate scorer. `None` is the default and
+    /// makes the advice route unavailable without changing gate writes.
+    pub land_gate_advisor: Option<Arc<dyn crate::land_gate_advisor::LandGateAdvisor>>,
 }
 
 impl AppState {
@@ -259,7 +262,15 @@ impl AppState {
             search_read_routing_metrics: None,
             export_signing: None,
             export_verify_keys: Vec::new(),
+            land_gate_advisor: None,
         }
+    }
+
+    pub fn attach_land_gate_advisor(
+        &mut self,
+        advisor: Arc<dyn crate::land_gate_advisor::LandGateAdvisor>,
+    ) {
+        self.land_gate_advisor = Some(advisor);
     }
 
     /// Wire the operator export signing key. Called by the server binary when

@@ -279,6 +279,80 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
 }
 
 #[tokio::test]
+async fn land_gate_advice_requires_transition_before_revealing_feature_state() {
+    let (addr, client, store) = spawn().await;
+    let workspace = store
+        .create_workspace(NewWorkspace {
+            name: "advice-auth".into(),
+        })
+        .await
+        .unwrap();
+    let member = store
+        .create_member(NewMember {
+            workspace_id: workspace.id,
+            handle: "reader".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: workspace.id,
+            name: "review".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: None,
+        })
+        .await
+        .unwrap();
+    let reader = mint(
+        store.as_ref(),
+        workspace.id,
+        member.id,
+        vec![capability::WORKSPACE_READ.into()],
+    )
+    .await;
+    let response = client
+        .post(format!(
+            "http://{addr}/threads/{}/land-gate/advice",
+            thread.id.0
+        ))
+        .bearer_auth(reader)
+        .json(&json!({"state": "bounded fixture"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    let verifier = mint(
+        store.as_ref(),
+        workspace.id,
+        member.id,
+        vec![capability::THREAD_TRANSITION.into()],
+    )
+    .await;
+    let response = client
+        .post(format!(
+            "http://{addr}/threads/{}/land-gate/advice",
+            thread.id.0
+        ))
+        .bearer_auth(verifier)
+        .json(&json!({"state": "bounded fixture"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn land_gate_fail_is_red_and_mcp_standing_matches_the_store_gate() {
     let (addr, client, store) = spawn().await;
     let base = format!("http://{addr}");

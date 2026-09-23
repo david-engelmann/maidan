@@ -646,6 +646,10 @@ pub fn router(state: AppState) -> Router {
             put(routes::require_land_gate),
         )
         .route(
+            "/threads/:id/land-gate/advice",
+            post(routes::advise_land_gate),
+        )
+        .route(
             "/workspaces/:wid/webhooks",
             post(webhooks::create_webhook).get(webhooks::list_webhooks),
         )

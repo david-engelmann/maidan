@@ -1370,7 +1370,7 @@ output free, $5 credit on signup. The posture's first blocker is gone.
 
 | ID | Disposition | Reason |
 |----|-------------|--------|
-| **J-01** land gates | **adopt as the one spike — cluster E, flagged off** | Directed posture, and now unblocked. `Choice(green\|amber\|red)` behind a feature flag, thresholds user-set, measured against our own labelled land-gate decisions before it influences anything |
+| **J-01** land gates | **spike shipped in #976 — Cluster 408.5, flagged off** | `Choice(green\|amber\|red)` is advisory-only behind a feature flag, with user-set thresholds and an evaluation harness. It does not write the gate or graduate until it is measured against independently labelled Maidan decisions |
 | **J-06** event-chain triage | **reject** | Cluster 402 shipped deterministic chain verification. A hash chain either verifies or it does not; interposing a probabilistic triage on a decidable question can only add false confidence. This is the explicit rejection the corpus asked for |
 | J-02, J-03, J-04, J-05, J-07, J-08 | **defer** | All gated on J-01's calibration measurement. J-05 is the strongest of them (firstmate shipped the pattern: model classifies, deterministic code keeps authority) and should be reconsidered first if J-01 measures well |
 
@@ -1392,7 +1392,8 @@ Ordered to stay clear of the concurrent agent, which is on Cluster 406
    states. `static/index.html` only. No overlap with anything.
 4. **D — docs rendering + the branding ship-list.** Deliberately last: it is the
    most likely to collide with in-flight retro and release-docs work.
-5. **E — the J-01 spike**, flag-off, after A–C.
+5. **E — the J-01 spike.** Shipped flag-off in #976; live calibration remains
+   an operator-run measurement, not a graduation assumption.
 
 ## Docs & presentation audit dispositions (2026-09-17)
 

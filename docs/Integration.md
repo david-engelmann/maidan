@@ -686,6 +686,63 @@ neither owner nor assignee. Amber (flags-then-still-engages) is not a
 land. Fail is always red, even if `land=green` is requested. The room
 holds the pointer; an external verifier records pass/fail. Not a CI product.
 
+#### Experimental Jev advice (default off)
+
+Cluster 408.5 adds an **advisory-only** decision-model spike at
+`POST /threads/:id/land-gate/advice` (`thread:transition`). It is unavailable
+unless the operator sets `MAIDAN_JEV_LAND_GATE_ENABLED=1` and a
+`TYPESAFE_API_KEY`. The request supplies a string, array, or object as `state`:
+
+```json
+{
+  "state": {
+    "change": "Bounded description of the work and evidence to judge"
+  },
+  "thresholds": {
+    "green_min_confidence": 0.9,
+    "red_min_confidence": 0.9
+  }
+}
+```
+
+The response keeps the model's `raw_land`, probabilities, and confidence, then
+adds `recommended_land`, latency, and token usage. A green or red answer below
+its threshold becomes amber; the policy never promotes an answer to green. Record
+these fields beside your labelled outcome and run
+`scripts/eval-land-gate-advisor.py` to calculate accuracy, multiclass Brier
+score, reliability bins/ECE, latency, and estimated input cost.
+
+The harness input is JSONL; `actual` is the independently labelled verifier
+outcome, never the model's own recommendation:
+
+```json
+{"state":{"change":"Bounded fixture A","evidence":["tests green"]},"actual":"green"}
+{"state":{"change":"Bounded fixture B","evidence":["authorization gap"]},"actual":"red"}
+```
+
+```sh
+MAIDAN_TOKEN=… scripts/eval-land-gate-advisor.py \
+  --thread-id "$THREAD_ID" \
+  --dataset labelled-land-gates.jsonl \
+  --output land-gate-eval.json
+```
+
+Calibration uses the raw top-choice confidence, not `recommended_land`; the
+latter is policy output after thresholds and is reported separately by the API.
+
+This endpoint **does not write or arm the gate**. A land-gate-skilled verifier
+must still use `PUT /threads/:id/land-gate` (or MCP `set_land_gate`), and all
+existing separation-of-duties checks still apply. A disabled advisor is `404`;
+a provider failure is `502` on the advice call and leaves the authoritative
+gate unchanged. There is deliberately no MCP twin while this is a measured,
+flag-off spike rather than a graduated capability.
+
+Privacy boundary: the supplied `state` leaves the Maidan deployment for
+TypeSafe when the endpoint is called. Do not send secrets or unapproved data.
+The wire shape was checked against TypeSafe's public
+[OpenAPI document](https://api.typesafe.ai/openapi.json) (API `0.2.0`) on
+2026-09-23; this is a dated experimental contract, not a compatibility promise.
+
 > **Two things make the skill meaningful, and both are recent.** Granting
 > `land_gate` needs `channel:admin` — `maidan.agent.worker` does
 > not carry it, so an agent cannot give itself the qualification the gate checks

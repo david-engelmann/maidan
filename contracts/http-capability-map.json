@@ -1638,6 +1638,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/land-gate/advice",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/threads/{id}/land-gate/requirement",
     "capability": "thread:transition",

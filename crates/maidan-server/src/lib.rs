@@ -40,6 +40,7 @@ pub mod github;
 pub mod group_dm;
 pub mod health;
 pub mod import;
+pub mod land_gate_advisor;
 pub mod mail;
 pub mod mail_worker;
 pub mod mcp;

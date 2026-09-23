@@ -302,7 +302,7 @@ jobs:
           # (the full two-language lease demo is verified locally via scripts/lease-demo.sh).
           bash -n scripts/lease-demo.sh
           node --check examples/lease_demo/claim.mjs
-          python3 -m py_compile examples/lease_demo/lease_demo.py examples/langchain_maidan.py examples/autogen_maidan.py examples/rest_maidan.py
+          python3 -m py_compile examples/lease_demo/lease_demo.py examples/langchain_maidan.py examples/autogen_maidan.py examples/rest_maidan.py scripts/eval-land-gate-advisor.py
           python3 -c "import json,sys; [json.load(open(f)) for f in ['examples/cursor-mcp.json','examples/claude-desktop-mcp.json']]; print('mcp configs valid')"
       - name: build images
         run: |
