@@ -134,6 +134,31 @@ jobs:
       - name: a2a conformance
         run: scripts/a2a-interop.sh
 
+  mcp-inspector:
+    name: mcp inspector (report-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Boots a source-built server with auth enabled and runs the official MCP
+    # Inspector (built on the official TypeScript SDK) against it — an external
+    # client oracle the in-repo MCP tests cannot be, because they agree with the
+    # server by construction. This is how the SDK's failed handshake was found.
+    # Report-only (continue-on-error) and NOT a required check: the behavior is
+    # gated by the required Rust e2e tests (mcp_streamable_e2e, mcp_e2e); a new
+    # Inspector release should never block a merge before it is triaged.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          # The Inspector requires Node >= 22.19.
+          node-version: "22"
+      - name: mcp external verifier
+        run: scripts/mcp-inspector.sh
+
   sdk-interop:
     name: sdk interop (report-only)
     runs-on: ubuntu-latest

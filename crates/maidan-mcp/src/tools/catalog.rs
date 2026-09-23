@@ -300,10 +300,10 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "max_tokens": {"type": ["integer", "null"]},
-                    "max_usd_micros": {"type": ["integer", "null"], "description": "USD in micros ($1 = 1000000)"},
-                    "max_turns": {"type": ["integer", "null"]},
-                    "max_wall_secs": {"type": ["integer", "null"], "description": "wall-clock budget vs the working clock"}
+                    "max_tokens": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                    "max_usd_micros": {"anyOf": [{"type": "integer"}, {"type": "null"}], "description": "USD in micros ($1 = 1000000)"},
+                    "max_turns": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                    "max_wall_secs": {"anyOf": [{"type": "integer"}, {"type": "null"}], "description": "wall-clock budget vs the working clock"}
                 },
                 "required": ["thread_id"]
             }
@@ -584,7 +584,7 @@ pub fn catalog() -> Vec<Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "limit": {"type": ["integer", "null"], "minimum": 0, "description": "max concurrent live claims per member; null/omit = unlimited"}
+                    "limit": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}], "description": "max concurrent live claims per member; null/omit = unlimited"}
                 }
             }
         }),
@@ -599,9 +599,9 @@ pub fn catalog() -> Vec<Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "max_children": {"type": ["integer", "null"], "minimum": 0, "description": "max direct child threads per parent; null = unlimited"},
-                    "max_depth": {"type": ["integer", "null"], "minimum": 0, "description": "max thread nesting depth (a root thread is depth 1); null = unlimited"},
-                    "max_tools": {"type": ["integer", "null"], "minimum": 0, "description": "max tool calls recorded on one thread; null = unlimited"}
+                    "max_children": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}], "description": "max direct child threads per parent; null = unlimited"},
+                    "max_depth": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}], "description": "max thread nesting depth (a root thread is depth 1); null = unlimited"},
+                    "max_tools": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}], "description": "max tool calls recorded on one thread; null = unlimited"}
                 }
             }
         }),
@@ -2323,4 +2323,41 @@ pub fn declared_arguments(tool: &str) -> Option<std::collections::HashSet<String
                 .unwrap_or_default(),
         )
     })
+}
+
+#[cfg(test)]
+mod portability_tests {
+    use super::*;
+
+    fn array_types(path: &str, schema: &Value, found: &mut Vec<String>) {
+        match schema {
+            Value::Object(map) => {
+                if map.get("type").is_some_and(Value::is_array) {
+                    found.push(path.to_owned());
+                }
+                for (key, value) in map {
+                    array_types(&format!("{path}.{key}"), value, found);
+                }
+            }
+            Value::Array(items) => {
+                for (i, value) in items.iter().enumerate() {
+                    array_types(&format!("{path}[{i}]"), value, found);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// `"type": ["integer", "null"]` is legal JSON Schema, but several MCP
+    /// clients read `type` as a single string and reject the tool or drop the
+    /// constraint — for a budget cap, silently. Nullable fields use `anyOf`.
+    #[test]
+    fn no_tool_schema_uses_an_array_type() {
+        let mut found = Vec::new();
+        for tool in catalog() {
+            let name = tool["name"].as_str().unwrap_or("?").to_owned();
+            array_types(&name, &tool["inputSchema"], &mut found);
+        }
+        assert!(found.is_empty(), "array-valued `type` at: {found:?}");
+    }
 }

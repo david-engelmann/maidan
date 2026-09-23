@@ -26,8 +26,11 @@ Most agents use MCP, or HTTP with a WebSocket. Operators use the static UI at
 A2A, REST, webhooks or the Slack projector, [Protocols.md](Protocols.md)
 compares them.
 
-The MCP server negotiates `2026-07-28` — stateless streamable HTTP with SEP-2243
-routing headers — and still accepts `2024-11-05` for older clients. The A2A
+The MCP server negotiates whichever revision your client asks for — `2026-07-28`
+(the default), `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05` — over
+stateless streamable HTTP with SEP-2243 routing headers. Only `2024-11-05` uses
+protocol-level sessions. The official MCP Inspector and TypeScript SDK connect as
+they are. The A2A
 endpoint speaks A2A v1.0 over JSON-RPC and REST (§11). A gRPC binding (§10)
 covers reading, cancelling and listing tasks; sending a message stays on
 JSON-RPC or REST.

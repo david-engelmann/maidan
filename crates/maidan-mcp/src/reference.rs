@@ -8,13 +8,14 @@ use crate::{prompts, resources, tools};
 pub fn markdown() -> String {
     let mut out = String::from(
         "# MCP reference\n\n\
-         Auto-generated from `maidan-mcp` `tools/list`, `resources/list`, and \
+         Auto-generated from `maidan-mcp` `tools/list`, `resources/templates/list`, and \
          `prompts/list` catalogs. Regenerate with \
          `cargo run -p maidan-mcp --bin gen-mcp-reference`.\n\n\
          ## Transport\n\n\
-         - **HTTP:** `POST /mcp` (JSON-RPC 2.0; MCP `2026-07-28`, `2024-11-05` also supported)\n\
+         - **Protocol revisions:** `2026-07-28` (default), `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`. `initialize` echoes the revision you request if it is one of these\n\
+         - **HTTP:** `POST /mcp` (JSON-RPC 2.0)\n\
          - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)\n\
-         - **Streamable HTTP:** `POST /mcp/streamable` — `2026-07-28` is stateless (send `MCP-Protocol-Version: 2026-07-28`; a single JSON-RPC response, no `Mcp-Session-Id`; optional SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers). A `2024-11-05` request keeps the SSE-session model (first request opens the SSE + `Mcp-Session-Id`; follow-ups with that id are pushed to the session). Live-wait/server→client ride `GET /mcp/stream`\n\
+         - **Streamable HTTP:** `POST /mcp/streamable` — every revision from `2025-03-26` on is stateless: one JSON-RPC response per POST, no `Mcp-Session-Id`, a notification answered `202`; optional SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers. Only a `2024-11-05` client (by `initialize` or `MCP-Protocol-Version`) gets the SSE-session model (the first request opens the SSE + `Mcp-Session-Id`; follow-ups with that id are pushed to the session). Server→client messages ride `GET /mcp/streamable` or `GET /mcp/stream`\n\
          - **SSE:** `GET /mcp/stream` for workspace event stream replay/live\n\
          - **stdio:** `maidan mcp-stdio` for desktop clients (SQLite or Postgres `DATABASE_URL`; `resources/subscribe` notifications). Set `MAIDAN_MCP_TOKEN`: it scopes every tool the process serves, and without it the command refuses unless `--allow-insecure-no-auth` is passed\n\n\
          Bearer token required unless `AUTH_DISABLED=1`.\n\n",
@@ -24,7 +25,7 @@ pub fn markdown() -> String {
         "## JSON-RPC methods\n\n\
          - `initialize`\n\
          - `tools/list`, `tools/call`\n\
-         - `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`\n\
+         - `resources/list`, `resources/templates/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`\n\
          - `prompts/list`, `prompts/get`\n\n\
          **Notification:** `notifications/resources/updated` with `{ \"uri\": \"maidan://...\" }` \
          (stdio after each response; HTTP via `GET /mcp/notifications` or `POST /mcp/streamable`). \
@@ -38,7 +39,7 @@ pub fn markdown() -> String {
     }
 
     out.push_str("## Resources\n\n");
-    for resource in resources::catalog() {
+    for resource in resources::templates() {
         out.push_str(&render_resource(&resource));
         out.push('\n');
     }
@@ -64,7 +65,7 @@ fn render_tool(tool: &Value) -> String {
 }
 
 fn render_resource(resource: &Value) -> String {
-    let uri = field_str(resource, "uri");
+    let uri = field_str(resource, "uriTemplate");
     let name = field_str(resource, "name");
     let description = field_str(resource, "description");
     format!("### `{name}` — `{uri}`\n\n{description}\n")
@@ -103,8 +104,10 @@ mod tests {
             let name = tool["name"].as_str().expect("tool name");
             assert!(md.contains(name), "missing tool {name}");
         }
-        for resource in resources::catalog() {
-            let uri = resource["uri"].as_str().expect("resource uri");
+        for resource in resources::templates() {
+            let uri = resource["uriTemplate"]
+                .as_str()
+                .expect("resource uri template");
             assert!(md.contains(uri), "missing resource {uri}");
         }
         for prompt in prompts::catalog() {
