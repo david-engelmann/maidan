@@ -1,4 +1,5 @@
-//! Channel browser via `/ui/api` with session cookie (no bearer).
+//! Channel browser via `/ui/api` with session cookie (no bearer), including
+//! the signed-session write-to-live-WebSocket collaboration loop.
 
 use std::{
     net::SocketAddr,
@@ -6,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use futures::{SinkExt, StreamExt};
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{
@@ -17,6 +19,10 @@ use maidan_types::{NewMember, NewWorkspace, WorkspaceId};
 use reqwest::{redirect::Policy, StatusCode};
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, Message},
+};
 
 const TEST_SESSION_SECRET: &[u8] = b"test-session-secret-32-bytes-min!";
 
@@ -167,7 +173,7 @@ async fn ui_shell_exposes_channel_browser_markers() {
 }
 
 #[tokio::test]
-async fn ui_api_session_posts_channel_thread_and_message_without_bearer() {
+async fn ui_api_signed_session_hero_loop_reaches_the_live_websocket() {
     let h = spawn_oidc().await;
     let base = format!("http://{}", h.addr);
     let wid = h.workspace_id.0;
@@ -184,6 +190,44 @@ async fn ui_api_session_posts_channel_thread_and_message_without_bearer() {
         .await
         .expect("session json");
     let member_id = session["member_id"].as_str().expect("member_id");
+
+    let mut ws_request = format!("ws://{}/ws/subscribe", h.addr)
+        .into_client_request()
+        .expect("ws request");
+    ws_request
+        .headers_mut()
+        .insert("Cookie", cookie.parse().expect("cookie header"));
+    let (mut ws, _) = connect_async(ws_request).await.expect("ws connect");
+    ws.send(Message::Text(
+        json!({
+            "filter": {
+                "workspace_id": wid,
+                "kinds": ["message_posted"]
+            }
+        })
+        .to_string(),
+    ))
+    .await
+    .expect("subscribe send");
+
+    let subscribed = async {
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Text(text))) => {
+                    let frame: serde_json::Value =
+                        serde_json::from_str(&text).expect("subscribe frame json");
+                    if frame["type"] == "subscribe_ack" {
+                        return;
+                    }
+                }
+                Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
+                other => panic!("unexpected frame before subscribe_ack: {other:?}"),
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), subscribed)
+        .await
+        .expect("subscribe_ack timeout");
 
     let channel: serde_json::Value = h
         .client
@@ -256,6 +300,35 @@ async fn ui_api_session_posts_channel_thread_and_message_without_bearer() {
         .await
         .expect("message json");
     assert_eq!(msg["body"], "posted from ui session api");
+    let message_id = msg["id"].as_str().expect("message id");
+
+    let observed = async {
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Text(text))) => {
+                    let frame: serde_json::Value =
+                        serde_json::from_str(&text).expect("event frame json");
+                    if frame["kind"] == "message_posted" {
+                        return frame;
+                    }
+                }
+                Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {}
+                other => panic!("unexpected frame before message_posted: {other:?}"),
+            }
+        }
+    };
+    let observed = tokio::time::timeout(Duration::from_secs(5), observed)
+        .await
+        .expect("message_posted timeout");
+    assert_eq!(observed["workspace_id"], wid.to_string());
+    assert_eq!(observed["thread_id"], thread_id);
+    assert_eq!(observed["message"]["id"], message_id);
+    assert_eq!(observed["message"]["author_id"], member_id);
+    assert_eq!(observed["message"]["body"], "posted from ui session api");
+    assert!(
+        observed["log_id"].as_i64().is_some_and(|id| id > 0),
+        "live event must carry its durable log id: {observed}"
+    );
 
     let messages: Vec<serde_json::Value> = h
         .client
@@ -284,6 +357,7 @@ async fn ui_api_session_posts_channel_thread_and_message_without_bearer() {
         .expect("spoof post");
     assert_eq!(wrong_author.status(), StatusCode::FORBIDDEN);
 
+    ws.close(None).await.ok();
     h.server.abort();
 }
 

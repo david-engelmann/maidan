@@ -21,6 +21,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   CI. The audit found MCP artifact uploads bypassing the atomic artifact-ref +
   event operation; single-shot and multipart MCP uploads now append and
   publish `ArtifactUpserted` exactly like REST.
+- **407.3** turns the browser collaboration path into one causal integration
+  test: a real signed session subscribes to the workspace WebSocket, waits for
+  acknowledgement, creates a channel and thread through `/ui/api`, posts a
+  message without a bearer, and observes that exact durable event live.
 
 ## [406.0.0] — 2026-09-22
 
