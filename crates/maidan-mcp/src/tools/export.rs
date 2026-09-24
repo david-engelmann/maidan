@@ -82,20 +82,18 @@ pub(super) async fn export_workspace(
         .map_err(|e| McpError::Internal(format!("export serialize: {e}")))?;
     let signed = maidan_auth::sign_export(key, payload)
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
-    // As on REST: a read, but the whole workspace leaves in it.
-    let recorded = server
+    // As on REST: a read, but the whole workspace leaves in it. Recorded
+    // before the bundle is released, and withheld if it cannot be.
+    server
         .store
         .append_audit(maidan_types::NewAuditEvent {
             actor_id: Some(auth.actor_id),
             action: "workspace.export".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(workspace_id.0),
-            metadata: json!({ "content_sha256": signed.content_sha256 }),
+            metadata: json!({ "content_sha256": signed.content_sha256, "surface": "mcp" }),
         })
-        .await;
-    if let Err(err) = recorded {
-        tracing::error!(target: "audit", %err, action = "workspace.export", "audit.write_failed");
-    }
+        .await?;
     Ok(content_json(&signed))
 }
 
@@ -154,8 +152,8 @@ pub(super) async fn import_workspace(
 
     let mode = a.mode.as_deref().unwrap_or("new");
     let flat = flatten_export(bundle);
-    let to_write = match mode {
-        "new" => remap_import(flat, Uuid::new_v4),
+    let (to_write, replace_existing) = match mode {
+        "new" => (remap_import(flat, Uuid::new_v4), false),
         "restore" => {
             auth.ensure_workspace(flat.workspace.id)?;
             match server.store.get_workspace(flat.workspace.id).await {
@@ -165,13 +163,13 @@ pub(super) async fn import_workspace(
                         flat.workspace.id.0
                     )));
                 }
-                Ok(_) => {
-                    server.store.erase_workspace(flat.workspace.id).await?;
-                }
-                Err(StoreError::NotFound) => {}
+                // As on REST, the store erases in the import's transaction and
+                // refuses a workspace under legal hold. This path erased with
+                // no hold check before.
+                Ok(_) => (flat, true),
+                Err(StoreError::NotFound) => (flat, false),
                 Err(e) => return Err(e.into()),
             }
-            flat
         }
         other => {
             return Err(McpError::InvalidParams(format!(
@@ -181,7 +179,25 @@ pub(super) async fn import_workspace(
     };
 
     let workspace_id = to_write.workspace.id;
-    server.store.import_workspace(&to_write).await?;
+    server
+        .store
+        .import_workspace_audited(
+            &to_write,
+            replace_existing,
+            maidan_types::NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "workspace.import".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: json!({
+                    "mode": mode,
+                    "force": a.force,
+                    "replaced_existing": replace_existing,
+                    "surface": "mcp",
+                }),
+            },
+        )
+        .await?;
     Ok(content_json(&json!({
         "workspace_id": workspace_id,
         "mode": mode,
@@ -360,6 +376,82 @@ mod tests {
             .call_tool(&dest_auth, "verify_workspace_export", &stuffed)
             .await
             .is_err());
+    }
+
+    /// REST refused a forced restore over a held workspace; this path erased it.
+    #[tokio::test]
+    async fn a_forced_restore_over_a_held_workspace_is_refused() {
+        let (store, pool) = blank_store().await;
+        let (ws, alice) = seed(store.as_ref()).await;
+        let server = mcp(store.clone(), pool);
+        server.set_export_signing(ExportSigningKey::from_seed(SEED));
+        let auth = AuthContext::from_session(alice, ws, vec![TOKEN_ADMIN.to_string()]);
+        let exported = content(
+            &server
+                .call_tool(&auth, "export_workspace", &json!({}))
+                .await
+                .unwrap(),
+        );
+        store
+            .place_legal_hold(ws, "litigation", Some(alice))
+            .await
+            .unwrap();
+
+        let err = server
+            .call_tool(
+                &auth,
+                "import_workspace",
+                &json!({ "envelope": exported, "mode": "restore", "force": true }),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("legal hold"), "{err}");
+        assert!(
+            store.get_workspace(ws).await.is_ok(),
+            "the held workspace survives"
+        );
+        assert_eq!(store.list_members(ws).await.unwrap().len(), 1);
+    }
+
+    /// The whole workspace leaves in an export, so it is withheld when its
+    /// record cannot be written; an import that cannot be recorded does not
+    /// happen.
+    #[tokio::test]
+    async fn an_export_or_import_that_cannot_be_recorded_does_not_happen() {
+        let (store, pool) = blank_store().await;
+        let (ws, alice) = seed(store.as_ref()).await;
+        let server = mcp(store.clone(), pool.clone());
+        server.set_export_signing(ExportSigningKey::from_seed(SEED));
+        let auth = AuthContext::from_session(alice, ws, vec![TOKEN_ADMIN.to_string()]);
+        let exported = content(
+            &server
+                .call_tool(&auth, "export_workspace", &json!({}))
+                .await
+                .unwrap(),
+        );
+        let workspaces = store.count_workspaces().await.unwrap();
+
+        sqlx::query(
+            "CREATE TRIGGER audit_down BEFORE INSERT ON maidan_audit
+             BEGIN SELECT RAISE(ABORT, 'audit down'); END",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        assert!(server
+            .call_tool(&auth, "export_workspace", &json!({}))
+            .await
+            .is_err());
+        assert!(server
+            .call_tool(
+                &auth,
+                "import_workspace",
+                &json!({ "envelope": exported, "mode": "new" }),
+            )
+            .await
+            .is_err());
+        assert_eq!(store.count_workspaces().await.unwrap(), workspaces);
     }
 
     #[tokio::test]

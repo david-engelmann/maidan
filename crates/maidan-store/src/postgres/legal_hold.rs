@@ -5,7 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{LegalHold, MemberId, WorkspaceId};
-use sqlx::{PgPool, Row};
+use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
@@ -27,6 +27,22 @@ pub async fn place(
     reason: &str,
     placed_by: Option<MemberId>,
 ) -> Result<LegalHold, StoreError> {
+    let mut conn = pool.acquire().await?;
+    place_on(&mut conn, workspace_id, reason, placed_by).await
+}
+
+pub(crate) async fn place_on(
+    conn: &mut PgConnection,
+    workspace_id: WorkspaceId,
+    reason: &str,
+    placed_by: Option<MemberId>,
+) -> Result<LegalHold, StoreError> {
+    // Serialize with a purge or erase of the same workspace, which takes this
+    // lock before checking for a hold (`refuse_if_held`).
+    sqlx::query("SELECT 1 FROM maidan_workspaces WHERE id = $1 FOR NO KEY UPDATE")
+        .bind(workspace_id.0)
+        .fetch_optional(&mut *conn)
+        .await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_legal_holds (workspace_id, reason, placed_by, placed_at)
          VALUES ($1, $2, $3, NOW())
@@ -39,17 +55,54 @@ pub async fn place(
     .bind(workspace_id.0)
     .bind(reason)
     .bind(placed_by.map(|m| m.0))
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(row_to_hold(&row))
 }
 
 pub async fn lift(pool: &PgPool, workspace_id: WorkspaceId) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    lift_on(&mut conn, workspace_id).await
+}
+
+pub(crate) async fn lift_on(
+    conn: &mut PgConnection,
+    workspace_id: WorkspaceId,
+) -> Result<bool, StoreError> {
     let done = sqlx::query("DELETE FROM maidan_legal_holds WHERE workspace_id = $1")
         .bind(workspace_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(done.rows_affected() > 0)
+}
+
+/// Refuse to destroy a held workspace's data: `Conflict`, which the API
+/// answers with 409. `NotFound` when the workspace does not exist. Run it in
+/// the destroying transaction.
+pub(crate) async fn refuse_if_held(
+    conn: &mut PgConnection,
+    workspace_id: WorkspaceId,
+) -> Result<(), StoreError> {
+    // Held until the transaction ends, so a hold placed meanwhile waits for it
+    // (see `place_on`).
+    let exists = sqlx::query("SELECT 1 FROM maidan_workspaces WHERE id = $1 FOR NO KEY UPDATE")
+        .bind(workspace_id.0)
+        .fetch_optional(&mut *conn)
+        .await?
+        .is_some();
+    if !exists {
+        return Err(StoreError::NotFound);
+    }
+    let held: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM maidan_legal_holds WHERE workspace_id = $1)",
+    )
+    .bind(workspace_id.0)
+    .fetch_one(&mut *conn)
+    .await?;
+    if held {
+        return Err(StoreError::Conflict(crate::LEGAL_HOLD_REFUSAL.into()));
+    }
+    Ok(())
 }
 
 pub async fn get(

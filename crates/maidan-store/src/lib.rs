@@ -10,6 +10,10 @@ pub mod attribution;
 /// transaction (D-A), built from what the call produced — a new token's id,
 /// say — so the row commits or rolls back with the change it records.
 pub type AuditFor<T> = Box<dyn FnOnce(&T) -> maidan_types::NewAuditEvent + Send>;
+/// Why a destructive call refused a workspace under legal hold. The store
+/// checks inside the destroying transaction, so every caller is bound by it.
+pub const LEGAL_HOLD_REFUSAL: &str =
+    "workspace is under a legal hold; lift it before deleting workspace data";
 pub mod automation_deliveries;
 mod delegation_grants;
 pub mod dialect;

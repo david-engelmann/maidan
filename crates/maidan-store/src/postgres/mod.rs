@@ -10,6 +10,7 @@ mod blocks;
 mod budget;
 mod channel_members;
 mod channels;
+mod data_audited;
 mod delegation_grants;
 pub mod delivery_cursor;
 mod dlq;
@@ -426,6 +427,30 @@ impl WorkspaceStore for PostgresStore {
     }
     async fn lift_legal_hold(&self, workspace_id: WorkspaceId) -> Result<bool, StoreError> {
         legal_hold::lift(&self.pool, workspace_id).await
+    }
+    async fn import_workspace_audited(
+        &self,
+        import: &WorkspaceImport,
+        replace_existing: bool,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError> {
+        data_audited::import_workspace(&self.pool, import, replace_existing, audit).await
+    }
+    async fn place_legal_hold_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        reason: &str,
+        placed_by: Option<MemberId>,
+        audit: crate::AuditFor<LegalHold>,
+    ) -> Result<LegalHold, StoreError> {
+        data_audited::place_legal_hold(&self.pool, workspace_id, reason, placed_by, audit).await
+    }
+    async fn lift_legal_hold_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        data_audited::lift_legal_hold(&self.pool, workspace_id, audit).await
     }
     async fn get_legal_hold(
         &self,
@@ -2259,6 +2284,27 @@ impl MessageStore for PostgresStore {
         workspace_id: WorkspaceId,
     ) -> Result<WorkspaceEraseResult, StoreError> {
         erase_workspace::erase(&self.pool, workspace_id).await
+    }
+    async fn purge_message_audited(
+        &self,
+        id: MessageId,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError> {
+        data_audited::purge_message(&self.pool, id, audit).await
+    }
+    async fn purge_workspace_messages_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: crate::AuditFor<WorkspacePurgeResult>,
+    ) -> Result<WorkspacePurgeResult, StoreError> {
+        data_audited::purge_workspace(&self.pool, workspace_id, audit).await
+    }
+    async fn erase_workspace_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: crate::AuditFor<WorkspaceEraseResult>,
+    ) -> Result<WorkspaceEraseResult, StoreError> {
+        data_audited::erase_workspace(&self.pool, workspace_id, audit).await
     }
 }
 

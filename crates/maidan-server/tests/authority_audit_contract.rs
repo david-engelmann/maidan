@@ -23,6 +23,12 @@ const UNAUDITED: &[&str] = &[
     ".create_share_ticket(",
     ".revoke_share_ticket(",
     ".set_delegation_policy(",
+    ".purge_workspace_messages(",
+    ".erase_workspace(",
+    ".import_workspace(",
+    ".purge_message(",
+    ".place_legal_hold(",
+    ".lift_legal_hold(",
 ];
 
 fn rust_files(path: &Path, out: &mut Vec<PathBuf>) {

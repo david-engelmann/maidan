@@ -52,6 +52,34 @@ pub trait WorkspaceStore: Send + Sync {
     ) -> Result<LegalHold, StoreError>;
     /// Lift a workspace's legal hold. `true` when a hold existed.
     async fn lift_legal_hold(&self, workspace_id: WorkspaceId) -> Result<bool, StoreError>;
+
+    // D-A: the audited forms request handlers use (see `create_api_token_audited`).
+
+    /// [`Self::import_workspace`] with its audit row in the same transaction.
+    /// With `replace_existing`, the named workspace is erased first in that
+    /// transaction (refused under legal hold), so a failed import leaves it
+    /// intact.
+    async fn import_workspace_audited(
+        &self,
+        import: &WorkspaceImport,
+        replace_existing: bool,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
+    /// [`Self::place_legal_hold`] with its audit row in the same transaction.
+    async fn place_legal_hold_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        reason: &str,
+        placed_by: Option<MemberId>,
+        audit: crate::AuditFor<LegalHold>,
+    ) -> Result<LegalHold, StoreError>;
+    /// [`Self::lift_legal_hold`] with its audit row in the same transaction;
+    /// nothing is recorded when there was no hold.
+    async fn lift_legal_hold_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
     /// The workspace's legal hold, or `None`.
     async fn get_legal_hold(
         &self,
@@ -1795,17 +1823,42 @@ pub trait MessageStore: Send + Sync {
         id: MessageId,
         dm_conversation_id: Option<DmConversationId>,
     ) -> Result<StoredEvent, StoreError>;
-    /// Hard-delete a tombstoned message (GDPR erasure). Fails if not tombstoned.
+    /// Hard-delete a tombstoned message (GDPR erasure). Fails if not
+    /// tombstoned; `Conflict` under legal hold.
     async fn purge_message(&self, id: MessageId) -> Result<(), StoreError>;
-    /// Tombstone then hard-delete all messages in a workspace (GDPR erasure).
+    /// Tombstone then hard-delete all messages in a workspace (GDPR erasure),
+    /// in one transaction. `Conflict` under legal hold.
     async fn purge_workspace_messages(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<WorkspacePurgeResult, StoreError>;
-    /// Deep purge then delete the workspace row and CASCADE-owned data.
+    /// Deep purge then delete the workspace row and CASCADE-owned data, in
+    /// one transaction. `Conflict` under legal hold.
     async fn erase_workspace(
         &self,
         workspace_id: WorkspaceId,
+    ) -> Result<WorkspaceEraseResult, StoreError>;
+
+    // D-A: the audited forms request handlers use.
+
+    /// [`Self::purge_message`] with its audit row in the same transaction.
+    async fn purge_message_audited(
+        &self,
+        id: MessageId,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
+    /// [`Self::purge_workspace_messages`] with its audit row in the same
+    /// transaction.
+    async fn purge_workspace_messages_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: crate::AuditFor<WorkspacePurgeResult>,
+    ) -> Result<WorkspacePurgeResult, StoreError>;
+    /// [`Self::erase_workspace`] with its audit row in the same transaction.
+    async fn erase_workspace_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: crate::AuditFor<WorkspaceEraseResult>,
     ) -> Result<WorkspaceEraseResult, StoreError>;
 }
 

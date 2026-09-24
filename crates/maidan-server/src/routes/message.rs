@@ -357,22 +357,24 @@ pub async fn purge_message(
     cap(&auth, TOKEN_ADMIN)?;
     // One message→thread→channel fetch resolves the scope + authorizes.
     let chain = maidan_auth::authorize_message(state.store.as_ref(), &auth, MessageId(id)).await?;
-    state.store.purge_message(MessageId(id)).await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "message.purge".into(),
-            target_kind: Some("message".into()),
-            target_id: Some(id),
-            metadata: serde_json::json!({
-                "workspace_id": chain.workspace_id.0,
-                "channel_id": chain.channel_id.0,
-                "thread_id": chain.thread_id.0,
-            }),
-        },
-    )
-    .await;
+    // `Conflict` (409) under legal hold, checked in the purge's transaction.
+    state
+        .store
+        .purge_message_audited(
+            MessageId(id),
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "message.purge".into(),
+                target_kind: Some("message".into()),
+                target_id: Some(id),
+                metadata: serde_json::json!({
+                    "workspace_id": chain.workspace_id.0,
+                    "channel_id": chain.channel_id.0,
+                    "thread_id": chain.thread_id.0,
+                }),
+            },
+        )
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

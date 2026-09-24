@@ -3,12 +3,20 @@
 //! `metadata`/`content` as JSON TEXT and uses `?` placeholders.
 
 use maidan_types::WorkspaceImport;
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::error::StoreError;
 
 pub async fn import_workspace(pool: &SqlitePool, b: &WorkspaceImport) -> Result<(), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut conn = pool.acquire().await?;
+    import_on(&mut conn, b).await
+}
+
+pub(crate) async fn import_on(
+    conn: &mut SqliteConnection,
+    b: &WorkspaceImport,
+) -> Result<(), StoreError> {
+    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
 
     let w = &b.workspace;
     sqlx::query(
