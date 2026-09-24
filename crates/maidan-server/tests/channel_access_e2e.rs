@@ -465,6 +465,34 @@ async fn channel_admin_api_manages_membership_end_to_end() {
         .unwrap();
     assert_eq!(members.as_array().unwrap().len(), 2);
 
+    // A member of another workspace cannot be seated here.
+    let other = ctx
+        .store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap();
+    let outsider = ctx
+        .store
+        .create_member(NewMember {
+            workspace_id: other.id,
+            handle: "outsider".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let foreign = ctx
+        .client
+        .post(format!("{base}/channels/{cid}/members"))
+        .header("Authorization", auth(&alice_tok))
+        .json(&json!({"member_id": outsider.id.0}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(foreign.status(), StatusCode::BAD_REQUEST);
+
     // Remove Bob → denied again.
     let del = ctx
         .client
