@@ -33,6 +33,15 @@ unaudited forms leave the trait, so no caller can make the change without its
 record. Tests fail the audit insert (with a trigger) and assert the change did
 not happen.
 
+**Found while working 413 (fixed off-cluster, 2026-09-23):** the MCP
+`list_channel_members` / `add_channel_member` / `remove_channel_member` tools
+checked the per-workspace `channel:admin` and nothing else — no channel scope
+at dispatch, none in the handler. One workspace's admin could list another's
+private-channel members, add itself, or empty the channel. Both surfaces also
+seated a member of another workspace in a channel. Fixed, and
+`every_channel_id_tool_is_classified` now fails on any MCP tool that names a
+channel without either a dispatch-time access check or a listed reason.
+
 ### Cluster 414 — nothing grows without bound, nothing hangs forever
 
 414.1 ships everything below except retrying failed embeddings, which is 414.2.

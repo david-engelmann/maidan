@@ -529,6 +529,52 @@ const MEMBER_TARGET_TOOLS: &[&str] = &[
     "record_mention",
 ];
 
+/// Tools whose `channel_id` is checked for channel access before dispatch.
+const CHANNEL_SCOPED_TOOLS: &[&str] = &[
+    "list_threads",
+    "claim_next_thread",
+    "wait_for_ready",
+    "wait_for_claim_expired",
+    "wait_for_landed",
+    "get_queue_depth",
+    "get_channel_occupancy",
+    "list_recently_active_threads",
+    "mute_channel",
+    "unmute_channel",
+    "list_dlq",
+    "create_task_schedule",
+    "create_recipe",
+    "list_unclaimable",
+    "list_blocked_threads",
+    "follow_channel",
+];
+
+/// Tools whose optional `channel_id` and `thread_id` are both checked before
+/// dispatch.
+const CHANNEL_AND_THREAD_SCOPED_TOOLS: &[&str] = &["list_tombstones", "get_kind_census"];
+
+/// Tools with a `channel_id` that is deliberately not checked for channel
+/// access at dispatch, each for a reason its handler or the store carries.
+/// Checked by `every_channel_id_tool_is_classified`.
+///
+/// - The membership tools: an admin manages a private channel it is not in, so
+///   the handler checks the workspace instead (`channel::own_channel`).
+/// - `create_share_ticket`: the store requires the channel, owner and creator
+///   to be live in the ticket's workspace.
+/// - `unfollow_channel`: deletes only the caller's own follow row.
+/// - `seed_from_message`: scoped by its `message_id`.
+/// - `search_messages`: filters its results by access.
+#[cfg(test)]
+const CHANNEL_HANDLER_SCOPED_TOOLS: &[&str] = &[
+    "add_channel_member",
+    "list_channel_members",
+    "remove_channel_member",
+    "create_share_ticket",
+    "unfollow_channel",
+    "seed_from_message",
+    "search_messages",
+];
+
 /// Pre-dispatch per-channel authorization for point-access content tools.
 /// Bypass callers pass through; DM tools rely on their own participant checks
 /// (the `__dm__` channel is exempt in `ensure_*`); aggregate reads
@@ -551,22 +597,7 @@ async fn enforce_channel_access(
             .and_then(|s| s.parse().ok())
     };
     match name {
-        "list_threads"
-        | "claim_next_thread"
-        | "wait_for_ready"
-        | "wait_for_claim_expired"
-        | "wait_for_landed"
-        | "get_queue_depth"
-        | "get_channel_occupancy"
-        | "list_recently_active_threads"
-        | "mute_channel"
-        | "unmute_channel"
-        | "list_dlq"
-        | "create_task_schedule"
-        | "create_recipe"
-        | "list_unclaimable"
-        | "list_blocked_threads"
-        | "follow_channel" => {
+        name if CHANNEL_SCOPED_TOOLS.contains(&name) => {
             // These tools' channel_id is optional; gate it only when present
             // so a caller can't long-poll a private channel they can't access.
             if let Some(id) = field("channel_id") {
@@ -640,7 +671,7 @@ async fn enforce_channel_access(
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
             }
         }
-        "list_tombstones" | "get_kind_census" => {
+        name if CHANNEL_AND_THREAD_SCOPED_TOOLS.contains(&name) => {
             if let Some(id) = field("channel_id") {
                 maidan_auth::ensure_channel_access(store, auth, maidan_types::ChannelId(id))
                     .await?;
@@ -706,9 +737,9 @@ pub async fn dispatch(
     let embedding_provider = &server.embedding_provider;
     match name {
         "list_channels" => channel::list_channels(store, auth, args).await,
-        "add_channel_member" => channel::add_channel_member(store, args).await,
-        "list_channel_members" => channel::list_channel_members(store, args).await,
-        "remove_channel_member" => channel::remove_channel_member(store, args).await,
+        "add_channel_member" => channel::add_channel_member(store, auth, args).await,
+        "list_channel_members" => channel::list_channel_members(store, auth, args).await,
+        "remove_channel_member" => channel::remove_channel_member(store, auth, args).await,
         "open_dm_conversation" => channel::open_dm_conversation(store, auth, args).await,
         "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
         "post_dm_message" => message::post_dm_message(server, auth, args).await,
@@ -1073,6 +1104,51 @@ mod self_scope_tests {
             both.is_empty(),
             "member_id tools listed in multiple semantic classes: {both:?}"
         );
+    }
+
+    /// A tool that names a channel is either checked for access to it before
+    /// dispatch or listed with the reason it is not. The channel-membership
+    /// tools were neither, and let one workspace's admin list and empty
+    /// another's private channel.
+    #[test]
+    fn every_channel_id_tool_is_classified() {
+        let declared: Vec<String> = catalog()
+            .iter()
+            .filter_map(|tool| {
+                let name = tool.get("name")?.as_str()?;
+                declared_arguments(name)?
+                    .contains("channel_id")
+                    .then(|| name.to_owned())
+            })
+            .collect();
+        assert!(
+            declared.len() > 15,
+            "expected broad channel_id schema coverage; found {}",
+            declared.len()
+        );
+        let classes = [
+            CHANNEL_SCOPED_TOOLS,
+            CHANNEL_AND_THREAD_SCOPED_TOOLS,
+            CHANNEL_HANDLER_SCOPED_TOOLS,
+        ];
+        for name in &declared {
+            let claimed = classes
+                .iter()
+                .filter(|c| c.contains(&name.as_str()))
+                .count();
+            assert_eq!(
+                claimed, 1,
+                "channel_id tool {name} must be in exactly one class, found {claimed}"
+            );
+        }
+        for class in classes {
+            for name in class {
+                assert!(
+                    declared.iter().any(|d| d == name),
+                    "{name} is classified but declares no channel_id"
+                );
+            }
+        }
     }
 
     /// The gate reads one argument: `member_id`. A tool listed as
