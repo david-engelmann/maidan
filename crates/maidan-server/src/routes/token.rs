@@ -69,17 +69,34 @@ pub async fn mint_api_token(
     crate::quota::validate_token_quotas(&body.quotas, &capabilities)?;
 
     let secret = TokenSecret::generate();
+    let actor = auth.actor_id;
+    let capability_set = body.capability_set.clone();
     let record = state
         .store
-        .create_api_token(NewApiToken {
-            workspace_id,
-            member_id,
-            app_installation_id: None,
-            token_hash: hash_secret(secret.as_str()),
-            label: body.label,
-            capabilities: capabilities.clone(),
-            expires_at: body.expires_at,
-        })
+        .create_api_token_audited(
+            NewApiToken {
+                workspace_id,
+                member_id,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: body.label,
+                capabilities: capabilities.clone(),
+                expires_at: body.expires_at,
+            },
+            Box::new(move |record| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "token.mint".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(record.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": record.workspace_id.0,
+                    "subject_member_id": record.member_id.0,
+                    "capabilities": record.capabilities.clone(),
+                    "capability_set": capability_set,
+                    "expires_at": record.expires_at,
+                }),
+            }),
+        )
         .await?;
 
     if !body.quotas.is_empty() {
@@ -89,24 +106,6 @@ pub async fn mint_api_token(
             .await?;
     }
     let quotas = state.store.list_token_quotas(record.id).await?;
-
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "token.mint".into(),
-            target_kind: Some("api_token".into()),
-            target_id: Some(record.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": record.workspace_id.0,
-                "subject_member_id": record.member_id.0,
-                "capabilities": record.capabilities.clone(),
-                "capability_set": body.capability_set,
-                "expires_at": record.expires_at,
-            }),
-        },
-    )
-    .await;
 
     Ok((
         StatusCode::CREATED,
@@ -167,21 +166,23 @@ pub async fn revoke_api_token(
     let token_id = ApiTokenId(id);
     let existing = state.store.get_api_token(token_id).await?;
     ensure_workspace(&auth, existing.workspace_id)?;
-    let revoked = state.store.revoke_api_token(token_id).await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "token.revoke".into(),
-            target_kind: Some("api_token".into()),
-            target_id: Some(revoked.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": revoked.workspace_id.0,
-                "subject_member_id": revoked.member_id.0,
+    let actor = auth.actor_id;
+    let revoked = state
+        .store
+        .revoke_api_token_audited(
+            token_id,
+            Box::new(move |revoked| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "token.revoke".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(revoked.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": revoked.workspace_id.0,
+                    "subject_member_id": revoked.member_id.0,
+                }),
             }),
-        },
-    )
-    .await;
+        )
+        .await?;
     Ok(Json(revoked))
 }
 
@@ -253,14 +254,33 @@ pub async fn attenuate_api_token(
     // Record the parent so revoking it reaches this token. A holder without a
     // token id is a session, which has nothing to derive from — that case
     // cannot reach here, but it mints unlinked rather than guessing a parent.
+    let actor = auth.actor_id;
+    let parent_token_id = auth.token_id;
+    let quota_count = inherited_quotas.len();
+    let audit: maidan_store::AuditFor<ApiToken> = Box::new(move |record| NewAuditEvent {
+        actor_id: Some(actor),
+        action: "token.mint".into(),
+        target_kind: Some("api_token".into()),
+        target_id: Some(record.id.0),
+        metadata: serde_json::json!({
+            "workspace_id": record.workspace_id.0,
+            "subject_member_id": record.member_id.0,
+            "capabilities": record.capabilities.clone(),
+            "expires_at": record.expires_at,
+            "attenuated": true,
+            "parent_token_id": parent_token_id.map(|t| t.0),
+            "app_installation_id": record.app_installation_id.map(|a| a.0),
+            "inherited_quotas": quota_count,
+        }),
+    });
     let record = match auth.token_id {
         Some(parent) => {
             state
                 .store
-                .create_attenuated_api_token(derived, parent)
+                .create_attenuated_api_token_audited(derived, parent, audit)
                 .await?
         }
-        None => state.store.create_api_token(derived).await?,
+        None => state.store.create_api_token_audited(derived, audit).await?,
     };
     if !inherited_quotas.is_empty() {
         state
@@ -268,27 +288,6 @@ pub async fn attenuate_api_token(
             .replace_token_quotas(record.id, &inherited_quotas)
             .await?;
     }
-
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "token.mint".into(),
-            target_kind: Some("api_token".into()),
-            target_id: Some(record.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": record.workspace_id.0,
-                "subject_member_id": record.member_id.0,
-                "capabilities": record.capabilities.clone(),
-                "expires_at": record.expires_at,
-                "attenuated": true,
-                "parent_token_id": auth.token_id.map(|t| t.0),
-                "app_installation_id": record.app_installation_id.map(|a| a.0),
-                "inherited_quotas": inherited_quotas.len(),
-            }),
-        },
-    )
-    .await;
 
     Ok((
         StatusCode::CREATED,
@@ -358,9 +357,11 @@ pub async fn delegate_api_token(
             .map_err(ApiError::BadRequest)?;
 
     let secret = TokenSecret::generate();
+    let (actor, delegate, parent_token_id, grant_id) =
+        (auth.actor_id, auth.member_id, auth.token_id, grant.id);
     let record = state
         .store
-        .create_delegated_api_token(
+        .create_delegated_api_token_audited(
             NewApiToken {
                 workspace_id: grant.workspace_id,
                 member_id: grant.subject_id,
@@ -373,28 +374,23 @@ pub async fn delegate_api_token(
             grant.id,
             auth.member_id,
             auth.token_id,
+            Box::new(move |record| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "token.delegate".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(record.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": record.workspace_id.0,
+                    "delegate_id": delegate.0,
+                    "subject_member_id": record.member_id.0,
+                    "grant_id": grant_id.0,
+                    "capabilities": record.capabilities.clone(),
+                    "expires_at": record.expires_at,
+                    "parent_token_id": parent_token_id.map(|id| id.0),
+                }),
+            }),
         )
         .await?;
-
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "token.delegate".into(),
-            target_kind: Some("api_token".into()),
-            target_id: Some(record.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": record.workspace_id.0,
-                "delegate_id": auth.member_id.0,
-                "subject_member_id": record.member_id.0,
-                "grant_id": grant.id.0,
-                "capabilities": record.capabilities.clone(),
-                "expires_at": record.expires_at,
-                "parent_token_id": auth.token_id.map(|id| id.0),
-            }),
-        },
-    )
-    .await;
 
     Ok((
         StatusCode::CREATED,

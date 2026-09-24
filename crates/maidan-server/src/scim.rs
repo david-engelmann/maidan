@@ -179,7 +179,9 @@ async fn load_resource(
 }
 
 /// Revoke every API token of a member — the real effect of SCIM deactivation /
-/// deprovisioning (best-effort; a failed revoke is logged, not fatal).
+/// deprovisioning (best-effort; a failed revoke is logged, not fatal). Each
+/// revoke is recorded in its own transaction (D-A); the actor comes from the
+/// request's attribution scope, as every audit row inside a request does.
 async fn revoke_member_tokens(
     state: &AppState,
     workspace_id: WorkspaceId,
@@ -192,7 +194,21 @@ async fn revoke_member_tokens(
     {
         for token in tokens {
             if token.revoked_at.is_none() {
-                if let Err(err) = state.store.revoke_api_token(token.id).await {
+                let revoke = state.store.revoke_api_token_audited(
+                    token.id,
+                    Box::new(move |revoked| maidan_types::NewAuditEvent {
+                        actor_id: None,
+                        action: "token.revoke".into(),
+                        target_kind: Some("api_token".into()),
+                        target_id: Some(revoked.id.0),
+                        metadata: json!({
+                            "workspace_id": revoked.workspace_id.0,
+                            "subject_member_id": revoked.member_id.0,
+                            "reason": "scim_deprovision",
+                        }),
+                    }),
+                );
+                if let Err(err) = revoke.await {
                     tracing::warn!(error = %err, "scim: revoking member token failed");
                 }
             }

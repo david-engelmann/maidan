@@ -181,17 +181,37 @@ pub async fn mint_app_token(
     crate::quota::validate_token_quotas(&body.quotas, &capabilities)?;
 
     let secret = TokenSecret::generate();
+    let (actor, bot_member_id, audited_capabilities) = (
+        auth.actor_id,
+        installation.bot_member_id,
+        capabilities.clone(),
+    );
     let record = state
         .store
-        .create_api_token(NewApiToken {
-            workspace_id,
-            member_id: installation.bot_member_id,
-            app_installation_id: Some(installation_id),
-            token_hash: hash_secret(secret.as_str()),
-            label: body.label,
-            capabilities: capabilities.clone(),
-            expires_at: body.expires_at,
-        })
+        .create_api_token_audited(
+            NewApiToken {
+                workspace_id,
+                member_id: installation.bot_member_id,
+                app_installation_id: Some(installation_id),
+                token_hash: hash_secret(secret.as_str()),
+                label: body.label,
+                capabilities: capabilities.clone(),
+                expires_at: body.expires_at,
+            },
+            Box::new(move |record| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "app_token.mint".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(record.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": record.workspace_id.0,
+                    "app_installation_id": installation_id.0,
+                    "bot_member_id": bot_member_id.0,
+                    "capabilities": audited_capabilities,
+                    "expires_at": record.expires_at,
+                }),
+            }),
+        )
         .await?;
 
     if !body.quotas.is_empty() {
@@ -201,24 +221,6 @@ pub async fn mint_app_token(
             .await?;
     }
     let quotas = state.store.list_token_quotas(record.id).await?;
-
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "app_token.mint".into(),
-            target_kind: Some("api_token".into()),
-            target_id: Some(record.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": record.workspace_id.0,
-                "app_installation_id": installation_id.0,
-                "bot_member_id": installation.bot_member_id.0,
-                "capabilities": capabilities.clone(),
-                "expires_at": record.expires_at,
-            }),
-        },
-    )
-    .await;
 
     Ok((
         StatusCode::CREATED,

@@ -5,6 +5,11 @@
 
 pub mod a2a;
 pub mod attribution;
+
+/// The audit row an authority-changing store call writes in its own
+/// transaction (D-A), built from what the call produced — a new token's id,
+/// say — so the row commits or rolls back with the change it records.
+pub type AuditFor<T> = Box<dyn FnOnce(&T) -> maidan_types::NewAuditEvent + Send>;
 pub mod automation_deliveries;
 mod delegation_grants;
 pub mod dialect;

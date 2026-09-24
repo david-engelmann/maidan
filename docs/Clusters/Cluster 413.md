@@ -19,8 +19,8 @@ David's decisions of 2026-09-23 on the round-3 audit (Open Work,
 
 | Slice | PR | Result |
 |-------|----|--------|
-| 413.1 | current | D-B: per-workspace grant ceiling. `maidan_delegation_policies` (Postgres 0107 / SQLite 0106), enforced in the store's grant create, `GET/PUT /workspaces/:wid/delegation-policy` + MCP `get/set_delegation_policy` |
-| 413.2 | planned | D-A foundation: `append_audit_in_tx` on both backends, then tokens — mint, revoke, attenuate, delegated exchange, app-token mint, app-installation revoke |
+| 413.1 | #1014 | D-B: per-workspace grant ceiling. `maidan_delegation_policies` (Postgres 0107 / SQLite 0106), enforced in the store's grant create, `GET/PUT /workspaces/:wid/delegation-policy` + MCP `get/set_delegation_policy` |
+| 413.2 | current | D-A for tokens: mint, attenuate, delegated exchange and revoke commit with their audit row (`*_audited`, `AuditFor<T>`), across REST, MCP, app install, OAuth code exchange (which recorded nothing before), first-admin mint and SCIM deprovisioning (which recorded no per-token revoke). `authority_audit_contract` forbids the unaudited calls in handlers; `authority_audit_tx` proves on both backends that a failed audit write aborts the change |
 | 413.3 | planned | D-A: grants, share tickets, workspace purge/erase/import, message purge, legal hold; reads (export, secret resolve) write first and release data only on success |
 | 413.4 | planned | D-A: governance and membership — governance-skill grants, review-requirement loosening, reviewer removal, land-gate clear, channel membership, member freeze, SCIM users, egress targets |
 | 413.close | close record | Retro, ledgers, `v413.0.0` (the maintainer's tag) |

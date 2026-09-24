@@ -2190,6 +2190,42 @@ pub trait TokenStore: Send + Sync {
     /// A derived token inherits the parent's app installation and quotas, because re-issuing was otherwise a way to shed a bound.
     /// Revocation is the ultimate limit and was the dimension still leaking.
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
+
+    // D-A (2026-09-23): changing authority writes its audit row inside the
+    // change's own transaction, so a failed write aborts the change. Request
+    // handlers use these; `authority_changes_are_audited_in_their_transaction`
+    // fails if one calls the unaudited form above.
+
+    /// [`Self::create_api_token`] with its audit row in the same transaction.
+    async fn create_api_token_audited(
+        &self,
+        new: NewApiToken,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError>;
+    /// [`Self::create_attenuated_api_token`] with its audit row in the same
+    /// transaction.
+    async fn create_attenuated_api_token_audited(
+        &self,
+        new: NewApiToken,
+        parent_token_id: ApiTokenId,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError>;
+    /// [`Self::create_delegated_api_token`] with its audit row in the same
+    /// transaction.
+    async fn create_delegated_api_token_audited(
+        &self,
+        new: NewApiToken,
+        grant_id: DelegationGrantId,
+        delegate_id: MemberId,
+        parent_token_id: Option<ApiTokenId>,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError>;
+    /// [`Self::revoke_api_token`] with its audit row in the same transaction.
+    async fn revoke_api_token_audited(
+        &self,
+        id: ApiTokenId,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError>;
     async fn list_api_tokens_for_member(
         &self,
         workspace_id: WorkspaceId,

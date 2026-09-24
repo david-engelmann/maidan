@@ -155,17 +155,38 @@ pub async fn exchange_app_code(
     };
 
     let secret = TokenSecret::generate();
+    // This minted a token and recorded nothing. The token endpoint carries no
+    // bearer, so there is no acting member: the row names the exchange, and
+    // the `token:admin` authorize step that issued the code is its own record.
+    let (installation_id, app_id, slug) = (installation.id, app.id, app.slug.clone());
     let record = state
         .store
-        .create_api_token(NewApiToken {
-            workspace_id: pending.workspace_id,
-            member_id: installation.bot_member_id,
-            app_installation_id: Some(installation.id),
-            token_hash: hash_secret(secret.as_str()),
-            label: Some(format!("oauth:{}", app.slug)),
-            capabilities: installation.granted_capabilities.clone(),
-            expires_at: None,
-        })
+        .create_api_token_audited(
+            NewApiToken {
+                workspace_id: pending.workspace_id,
+                member_id: installation.bot_member_id,
+                app_installation_id: Some(installation.id),
+                token_hash: hash_secret(secret.as_str()),
+                label: Some(format!("oauth:{}", app.slug)),
+                capabilities: installation.granted_capabilities.clone(),
+                expires_at: None,
+            },
+            Box::new(move |record| maidan_types::NewAuditEvent {
+                actor_id: None,
+                action: "app_token.mint".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(record.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": record.workspace_id.0,
+                    "app_installation_id": installation_id.0,
+                    "app_id": app_id.0,
+                    "app_slug": slug,
+                    "bot_member_id": record.member_id.0,
+                    "capabilities": record.capabilities.clone(),
+                    "source": "oauth_code_exchange",
+                }),
+            }),
+        )
         .await?;
 
     Ok((

@@ -11,6 +11,16 @@ const AUDIT_COLUMNS: &str =
     "id, occurred_at, actor_id, subject_id, grant_id, action, target_kind, target_id, metadata";
 
 pub async fn append(pool: &SqlitePool, new: NewAuditEvent) -> Result<AuditEvent, StoreError> {
+    let mut conn = pool.acquire().await?;
+    append_on(&mut conn, new).await
+}
+
+/// [`append`] on the caller's connection — inside a transaction, the audit row
+/// commits or rolls back with the change it records (D-A).
+pub(crate) async fn append_on(
+    conn: &mut sqlx::SqliteConnection,
+    new: NewAuditEvent,
+) -> Result<AuditEvent, StoreError> {
     let now = Utc::now();
     let metadata_text = serde_json::to_string(&new.metadata)?;
     let (actor, subject, grant) = crate::attribution::audit_principal(new.actor_id);
@@ -29,7 +39,7 @@ pub async fn append(pool: &SqlitePool, new: NewAuditEvent) -> Result<AuditEvent,
         .bind(new.target_kind.as_deref())
         .bind(new.target_id)
         .bind(&metadata_text)
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await?;
     row_to_audit(&row)
 }

@@ -8,10 +8,11 @@
 //! (`maidan_audit_write_failures_total`) and `MaidanAuditWriteFailures` pages
 //! on the first.
 //!
-//! **Not the end state.** The maintainer decided (D-A, 2026-09-23) that
-//! authority-changing actions write their audit row inside the change's own
-//! transaction, so a failed write aborts the change; Cluster 413 moves them
-//! there. Routine records stay on this best-effort path.
+//! **Authority changes do not use this path** (D-A, 2026-09-23): they write
+//! their audit row inside the change's own transaction, so a failed write
+//! aborts the change — tokens since 413.2 (`Store::*_audited`), the rest as
+//! Cluster 413 moves them. `authority_audit_contract` keeps a handler from
+//! falling back here. Routine records stay on this best-effort path.
 //!
 //! Anonymous and ordinary denied requests (401/403) are deliberately *not*
 //! written here — an attacker-controlled request stream would be an unbounded
