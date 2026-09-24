@@ -27,6 +27,16 @@ pub async fn add(
     member_id: MemberId,
     role: ChannelMemberRole,
 ) -> Result<ChannelMember, StoreError> {
+    let mut conn = pool.acquire().await?;
+    add_on(&mut conn, channel_id, member_id, role).await
+}
+
+pub(crate) async fn add_on(
+    conn: &mut sqlx::SqliteConnection,
+    channel_id: ChannelId,
+    member_id: MemberId,
+    role: ChannelMemberRole,
+) -> Result<ChannelMember, StoreError> {
     let now = Utc::now().to_rfc3339();
     // Idempotent upsert; created_at is preserved on the update path.
     sqlx::query(
@@ -38,7 +48,7 @@ pub async fn add(
     .bind(member_id.0)
     .bind(role.as_str())
     .bind(&now)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     let row = sqlx::query(
         "SELECT channel_id, member_id, role, created_at
@@ -46,7 +56,7 @@ pub async fn add(
     )
     .bind(channel_id.0)
     .bind(member_id.0)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     row_to_member(&row)
 }
@@ -56,10 +66,19 @@ pub async fn remove(
     channel_id: ChannelId,
     member_id: MemberId,
 ) -> Result<(), StoreError> {
+    let mut conn = pool.acquire().await?;
+    remove_on(&mut conn, channel_id, member_id).await
+}
+
+pub(crate) async fn remove_on(
+    conn: &mut sqlx::SqliteConnection,
+    channel_id: ChannelId,
+    member_id: MemberId,
+) -> Result<(), StoreError> {
     sqlx::query("DELETE FROM maidan_channel_members WHERE channel_id = ? AND member_id = ?")
         .bind(channel_id.0)
         .bind(member_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(())
 }

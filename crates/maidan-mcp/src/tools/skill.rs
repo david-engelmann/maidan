@@ -59,9 +59,25 @@ pub(super) async fn add_member_skill(
             return Err(McpError::Forbidden("member_id is not yours".to_string()));
         }
     }
-    store
-        .add_member_skill(MemberId(a.member_id), a.skill.trim())
-        .await?;
+    if is_governance_skill(&a.skill) {
+        store
+            .grant_governance_skill_audited(
+                MemberId(a.member_id),
+                a.skill.trim(),
+                maidan_types::NewAuditEvent {
+                    actor_id: Some(auth.actor_id),
+                    action: "member_skill.grant_governance".into(),
+                    target_kind: Some("member".into()),
+                    target_id: Some(a.member_id),
+                    metadata: serde_json::json!({ "skill": a.skill.trim(), "surface": "mcp" }),
+                },
+            )
+            .await?;
+    } else {
+        store
+            .add_member_skill(MemberId(a.member_id), a.skill.trim())
+            .await?;
+    }
     Ok(content_json(&serde_json::json!({ "ok": true })))
 }
 

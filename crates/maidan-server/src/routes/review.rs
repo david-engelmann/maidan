@@ -41,7 +41,9 @@ pub async fn set_review_requirement(
         return Err(ApiError::BadRequest("required_count must be >= 0".into()));
     }
     // Raising `k` is a tightening any transitioner may do. Lowering it — `0`
-    // included, which disarms the gate — is the waiver.
+    // included, which disarms the gate — is the waiver, and needs
+    // `channel:admin`. The early read gives a clear 403; the store decides
+    // again inside the write, where a concurrent change cannot outrun it.
     let current = state
         .store
         .get_review_requirement(thread_id)
@@ -50,23 +52,40 @@ pub async fn set_review_requirement(
         .unwrap_or(0);
     if body.required_count < current {
         cap(&auth, CHANNEL_ADMIN)?;
-        crate::audit::record(
-            &state,
-            NewAuditEvent {
-                actor_id: Some(auth.actor_id),
-                action: "review_requirement.lower".into(),
-                target_kind: Some("thread".into()),
-                target_id: Some(thread_id.0),
-                metadata: serde_json::json!({ "from": current, "to": body.required_count }),
-            },
-        )
-        .await;
     }
-    let req = state
+    let allow_lower = cap(&auth, CHANNEL_ADMIN).is_ok();
+    let actor = auth.actor_id;
+    let (_, req) = state
         .store
-        .set_review_requirement(thread_id, body.required_count)
+        .set_review_requirement_audited(
+            thread_id,
+            body.required_count,
+            allow_lower,
+            Box::new(move |(from, req)| review_requirement_event(actor, *from, req)),
+        )
         .await?;
     Ok(Json(req))
+}
+
+/// The record of a review-requirement write. A lowering is the waiver and keeps
+/// its own action; a raise or an unchanged count is recorded as a set.
+fn review_requirement_event(
+    actor: MemberId,
+    from: i64,
+    req: &ThreadReviewRequirement,
+) -> NewAuditEvent {
+    NewAuditEvent {
+        actor_id: Some(actor),
+        action: if req.required_count < from {
+            "review_requirement.lower"
+        } else {
+            "review_requirement.set"
+        }
+        .into(),
+        target_kind: Some("thread".into()),
+        target_id: Some(req.thread_id.0),
+        metadata: serde_json::json!({ "from": from, "to": req.required_count }),
+    }
 }
 
 pub async fn get_review_requirement(
@@ -95,9 +114,10 @@ pub async fn clear_review_requirement(
     cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    if state.store.clear_review_requirement(thread_id).await? {
-        crate::audit::record(
-            &state,
+    let cleared = state
+        .store
+        .clear_review_requirement_audited(
+            thread_id,
             NewAuditEvent {
                 actor_id: Some(auth.actor_id),
                 action: "review_requirement.clear".into(),
@@ -106,7 +126,8 @@ pub async fn clear_review_requirement(
                 metadata: serde_json::json!({}),
             },
         )
-        .await;
+        .await?;
+    if cleared {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
@@ -145,13 +166,11 @@ pub async fn remove_reviewer(
     cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    if state
+    let removed = state
         .store
-        .remove_reviewer(thread_id, MemberId(member_id))
-        .await?
-    {
-        crate::audit::record(
-            &state,
+        .remove_reviewer_audited(
+            thread_id,
+            MemberId(member_id),
             NewAuditEvent {
                 actor_id: Some(auth.actor_id),
                 action: "reviewer.remove".into(),
@@ -160,7 +179,8 @@ pub async fn remove_reviewer(
                 metadata: serde_json::json!({ "member_id": member_id }),
             },
         )
-        .await;
+        .await?;
+    if removed {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

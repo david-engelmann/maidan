@@ -22,6 +22,14 @@ fn row_to_secret(row: &sqlx::sqlite::SqliteRow) -> Secret {
 }
 
 pub async fn create(pool: &SqlitePool, new: NewSecret) -> Result<Secret, StoreError> {
+    let mut conn = pool.acquire().await?;
+    create_on(&mut conn, new).await
+}
+
+pub(crate) async fn create_on(
+    conn: &mut sqlx::SqliteConnection,
+    new: NewSecret,
+) -> Result<Secret, StoreError> {
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_secrets (id, workspace_id, name, value_ciphertext, created_by, created_at, updated_at)
@@ -38,7 +46,7 @@ pub async fn create(pool: &SqlitePool, new: NewSecret) -> Result<Secret, StoreEr
     .bind(new.created_by.0)
     .bind(&now)
     .bind(&now)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(row_to_secret(&row))
 }
@@ -73,10 +81,19 @@ pub async fn delete(
     workspace_id: WorkspaceId,
     name: &str,
 ) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    delete_on(&mut conn, workspace_id, name).await
+}
+
+pub(crate) async fn delete_on(
+    conn: &mut sqlx::SqliteConnection,
+    workspace_id: WorkspaceId,
+    name: &str,
+) -> Result<bool, StoreError> {
     let done = sqlx::query("DELETE FROM maidan_secrets WHERE workspace_id = ? AND name = ?")
         .bind(workspace_id.0)
         .bind(name)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(done.rows_affected() > 0)
 }

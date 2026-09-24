@@ -2726,6 +2726,112 @@ pub trait A2aStore: Send + Sync {
 /// narrower sub-trait (e.g. `impl ThreadStore`). The blanket impl means any
 /// backend that implements all the sub-traits is automatically a `Store` — no
 /// per-backend `impl Store` block.
+/// D-A for governance and membership (413.4): the audited forms of the calls
+/// that decide who may act, approve, or receive. Each writes its audit row in
+/// the change's own transaction, so a failed write aborts the change.
+#[async_trait]
+pub trait GovernanceAuditStore: Send + Sync {
+    /// Store a workspace secret (ciphertext only; the record names it).
+    async fn create_secret_audited(
+        &self,
+        new: NewSecret,
+        audit: crate::AuditFor<Secret>,
+    ) -> Result<Secret, StoreError>;
+    /// `true` when the secret existed; nothing is recorded otherwise.
+    async fn delete_secret_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        name: &str,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// Freeze a member and release their claims.
+    async fn freeze_member_audited(
+        &self,
+        member_id: MemberId,
+        frozen_by: MemberId,
+        reason: Option<&str>,
+        audit: crate::AuditFor<(MemberFreeze, u64)>,
+    ) -> Result<(MemberFreeze, u64), StoreError>;
+    /// `true` when the member was frozen; nothing is recorded otherwise.
+    async fn unfreeze_member_audited(
+        &self,
+        member_id: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// Add or re-role a channel member.
+    async fn add_channel_member_audited(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+        role: ChannelMemberRole,
+        audit: crate::AuditFor<ChannelMember>,
+    ) -> Result<ChannelMember, StoreError>;
+    /// Remove a channel member.
+    async fn remove_channel_member_audited(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
+    /// Set a thread's review requirement, returning the count it replaced. Without
+    /// `allow_lower`, a write that would lower it is refused (`Conflict`) — decided
+    /// in the write's transaction, so a concurrent change cannot turn a raise
+    /// into a lowering.
+    async fn set_review_requirement_audited(
+        &self,
+        thread_id: ThreadId,
+        required_count: i64,
+        allow_lower: bool,
+        audit: crate::AuditFor<(i64, ThreadReviewRequirement)>,
+    ) -> Result<(i64, ThreadReviewRequirement), StoreError>;
+    /// `true` when a requirement existed; nothing is recorded otherwise.
+    async fn clear_review_requirement_audited(
+        &self,
+        thread_id: ThreadId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// `true` when the member was a reviewer; nothing is recorded otherwise.
+    async fn remove_reviewer_audited(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// `true` when a gate existed; nothing is recorded otherwise.
+    async fn clear_land_gate_audited(
+        &self,
+        thread_id: ThreadId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// Grant a skill a gate reads as approval authority. Routing tags, which are
+    /// personal state, use [`SkillStore::add_member_skill`].
+    async fn grant_governance_skill_audited(
+        &self,
+        member_id: MemberId,
+        skill: &str,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
+    /// Allow a delivery destination.
+    async fn allow_egress_target_audited(
+        &self,
+        new: NewEgressTarget,
+        audit: crate::AuditFor<AllowedEgressTarget>,
+    ) -> Result<AllowedEgressTarget, StoreError>;
+    /// `true` when the target existed; nothing is recorded otherwise.
+    async fn revoke_egress_target_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: EgressTargetId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// Revoke an app installation and every token minted under it, together.
+    async fn revoke_app_installation_audited(
+        &self,
+        id: AppInstallationId,
+        audit: crate::AuditFor<AppInstallation>,
+    ) -> Result<AppInstallation, StoreError>;
+}
+
 pub trait Store:
     MetaStore
     + WorkspaceStore
@@ -2778,6 +2884,7 @@ pub trait Store:
     + SlashCommandStore
     + FsmHookStore
     + A2aStore
+    + GovernanceAuditStore
     + Send
     + Sync
 {
@@ -2835,6 +2942,7 @@ impl<
             + SlashCommandStore
             + FsmHookStore
             + A2aStore
+            + GovernanceAuditStore
             + Send
             + Sync,
     > Store for T

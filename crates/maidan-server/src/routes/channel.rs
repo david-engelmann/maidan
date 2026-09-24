@@ -39,9 +39,26 @@ pub async fn create_channel(
     // Auto-add the creator as an admin of a new private channel so they don't
     // lock themselves out. Bypass callers have no real member.
     if c.private && !auth.bypass {
+        let actor = auth.actor_id;
         state
             .store
-            .add_channel_member(c.id, auth.member_id, ChannelMemberRole::Admin)
+            .add_channel_member_audited(
+                c.id,
+                auth.member_id,
+                ChannelMemberRole::Admin,
+                Box::new(move |m| NewAuditEvent {
+                    actor_id: Some(actor),
+                    action: "channel_member.add".into(),
+                    target_kind: Some("channel".into()),
+                    target_id: Some(m.channel_id.0),
+                    metadata: serde_json::json!({
+                        "workspace_id": workspace_id.0,
+                        "subject_member_id": m.member_id.0,
+                        "role": m.role.as_str(),
+                        "reason": "channel_created",
+                    }),
+                }),
+            )
             .await?;
     }
     publish_stored(&state, stored).await;
@@ -222,25 +239,26 @@ pub async fn add_channel_member(
         ));
     }
     let role = body.role.unwrap_or(ChannelMemberRole::Member);
+    let (actor, workspace_id) = (auth.actor_id, channel.workspace_id);
     let m = state
         .store
-        .add_channel_member(channel.id, member.id, role)
-        .await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "channel_member.add".into(),
-            target_kind: Some("channel".into()),
-            target_id: Some(channel.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": channel.workspace_id.0,
-                "subject_member_id": body.member_id,
-                "role": role.as_str(),
+        .add_channel_member_audited(
+            channel.id,
+            member.id,
+            role,
+            Box::new(move |m| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "channel_member.add".into(),
+                target_kind: Some("channel".into()),
+                target_id: Some(m.channel_id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "subject_member_id": m.member_id.0,
+                    "role": m.role.as_str(),
+                }),
             }),
-        },
-    )
-    .await;
+        )
+        .await?;
     Ok((StatusCode::CREATED, Json(m)))
 }
 
@@ -265,21 +283,20 @@ pub async fn remove_channel_member(
     ensure_workspace(&auth, channel.workspace_id)?;
     state
         .store
-        .remove_channel_member(channel.id, MemberId(mid))
+        .remove_channel_member_audited(
+            channel.id,
+            MemberId(mid),
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "channel_member.remove".into(),
+                target_kind: Some("channel".into()),
+                target_id: Some(channel.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": channel.workspace_id.0,
+                    "subject_member_id": mid,
+                }),
+            },
+        )
         .await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "channel_member.remove".into(),
-            target_kind: Some("channel".into()),
-            target_id: Some(channel.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": channel.workspace_id.0,
-                "subject_member_id": mid,
-            }),
-        },
-    )
-    .await;
     Ok(StatusCode::NO_CONTENT)
 }

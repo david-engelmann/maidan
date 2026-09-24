@@ -8,6 +8,15 @@ use crate::error::StoreError;
 /// Declare a skill for a member. Idempotent; an empty skill is rejected. The FK
 /// requires the member to exist.
 pub async fn add(pool: &SqlitePool, member_id: MemberId, skill: &str) -> Result<(), StoreError> {
+    let mut conn = pool.acquire().await?;
+    add_on(&mut conn, member_id, skill).await
+}
+
+pub(crate) async fn add_on(
+    conn: &mut sqlx::SqliteConnection,
+    member_id: MemberId,
+    skill: &str,
+) -> Result<(), StoreError> {
     if skill.trim().is_empty() {
         return Err(StoreError::InvalidInput("skill must not be empty".into()));
     }
@@ -19,7 +28,7 @@ pub async fn add(pool: &SqlitePool, member_id: MemberId, skill: &str) -> Result<
     .bind(member_id.0)
     .bind(skill)
     .bind(Utc::now().to_rfc3339())
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }

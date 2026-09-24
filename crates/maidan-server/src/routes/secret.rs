@@ -58,14 +58,27 @@ pub async fn create_secret(
     let key = require_key(&state)?;
     let value_ciphertext =
         encrypt_peer_secret(&body.value, key).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let actor = auth.actor_id;
     let secret = state
         .store
-        .create_secret(NewSecret {
-            workspace_id,
-            name: body.name,
-            value_ciphertext,
-            created_by: auth.member_id,
-        })
+        .create_secret_audited(
+            NewSecret {
+                workspace_id,
+                name: body.name,
+                value_ciphertext,
+                created_by: auth.member_id,
+            },
+            Box::new(move |secret| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "secret.create".into(),
+                target_kind: Some("secret".into()),
+                target_id: Some(secret.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": secret.workspace_id.0,
+                    "name": secret.name,
+                }),
+            }),
+        )
         .await?;
     Ok((StatusCode::CREATED, Json(secret)))
 }
@@ -119,7 +132,21 @@ pub async fn delete_secret(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SECRET_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    if state.store.delete_secret(workspace_id, &name).await? {
+    let deleted = state
+        .store
+        .delete_secret_audited(
+            workspace_id,
+            &name,
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "secret.delete".into(),
+                target_kind: Some("secret".into()),
+                target_id: None,
+                metadata: serde_json::json!({ "workspace_id": workspace_id.0, "name": name }),
+            },
+        )
+        .await?;
+    if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

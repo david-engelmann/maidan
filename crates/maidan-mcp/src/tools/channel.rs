@@ -70,8 +70,25 @@ pub(super) async fn add_channel_member(
         ));
     }
     let role = a.role.unwrap_or(ChannelMemberRole::Member);
+    let (actor, workspace_id) = (auth.actor_id, channel.workspace_id);
     let m = store
-        .add_channel_member(ChannelId(a.channel_id), MemberId(a.member_id), role)
+        .add_channel_member_audited(
+            channel.id,
+            member.id,
+            role,
+            Box::new(move |m| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "channel_member.add".into(),
+                target_kind: Some("channel".into()),
+                target_id: Some(m.channel_id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "subject_member_id": m.member_id.0,
+                    "role": m.role.as_str(),
+                    "surface": "mcp",
+                }),
+            }),
+        )
         .await?;
     Ok(content_json(&m))
 }
@@ -93,9 +110,23 @@ pub(super) async fn remove_channel_member(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ChannelMemberRefArgs = serde_json::from_value(args.clone())?;
-    own_channel(store, auth, ChannelId(a.channel_id)).await?;
+    let channel = own_channel(store, auth, ChannelId(a.channel_id)).await?;
     store
-        .remove_channel_member(ChannelId(a.channel_id), MemberId(a.member_id))
+        .remove_channel_member_audited(
+            channel.id,
+            MemberId(a.member_id),
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "channel_member.remove".into(),
+                target_kind: Some("channel".into()),
+                target_id: Some(channel.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": channel.workspace_id.0,
+                    "subject_member_id": a.member_id,
+                    "surface": "mcp",
+                }),
+            },
+        )
         .await?;
     Ok(content_json(&serde_json::json!({"ok": true})))
 }

@@ -137,18 +137,20 @@ pub async fn revoke_app_installation(
     if row.workspace_id != workspace_id {
         return Err(ApiError::NotFound);
     }
-    let revoked = state.store.revoke_app_installation(installation_id).await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "app_installation.revoke".into(),
-            target_kind: Some("app_installation".into()),
-            target_id: Some(installation_id.0),
-            metadata: serde_json::json!({ "workspace_id": workspace_id.0 }),
-        },
-    )
-    .await;
+    let actor = auth.actor_id;
+    let revoked = state
+        .store
+        .revoke_app_installation_audited(
+            installation_id,
+            Box::new(move |installation| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "app_installation.revoke".into(),
+                target_kind: Some("app_installation".into()),
+                target_id: Some(installation.id.0),
+                metadata: serde_json::json!({ "workspace_id": installation.workspace_id.0 }),
+            }),
+        )
+        .await?;
     Ok(Json(AppInstallationResponse::from(revoked)))
 }
 

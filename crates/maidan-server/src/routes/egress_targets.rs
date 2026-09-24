@@ -41,30 +41,37 @@ pub async fn allow_egress_target(
     let workspace_id = WorkspaceId(wid);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
+    let actor = auth.actor_id;
     let target = state
         .store
-        .allow_egress_target(NewEgressTarget {
-            workspace_id,
-            surface: body.surface,
-            selector: body.selector,
-        })
+        .allow_egress_target_audited(
+            NewEgressTarget {
+                workspace_id,
+                surface: body.surface,
+                selector: body.selector,
+            },
+            Box::new(move |target| egress_target_allowed_event(actor, target)),
+        )
         .await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "egress_target.allow".into(),
-            target_kind: Some("egress_target".into()),
-            target_id: Some(target.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": workspace_id.0,
-                "surface": target.surface,
-                "selector": target.selector,
-            }),
-        },
-    )
-    .await;
     Ok((StatusCode::CREATED, Json(target)))
+}
+
+/// The record of blessing a destination.
+fn egress_target_allowed_event(
+    actor: maidan_types::MemberId,
+    target: &AllowedEgressTarget,
+) -> NewAuditEvent {
+    NewAuditEvent {
+        actor_id: Some(actor),
+        action: "egress_target.allow".into(),
+        target_kind: Some("egress_target".into()),
+        target_id: Some(target.id.0),
+        metadata: serde_json::json!({
+            "workspace_id": target.workspace_id.0,
+            "surface": target.surface,
+            "selector": target.selector,
+        }),
+    }
 }
 
 /// `GET /workspaces/:wid/egress-targets` — the workspace's blessed destinations.
@@ -92,23 +99,22 @@ pub async fn revoke_egress_target(
     let workspace_id = WorkspaceId(wid);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    if !state
+    let revoked = state
         .store
-        .revoke_egress_target(workspace_id, EgressTargetId(tid))
-        .await?
-    {
+        .revoke_egress_target_audited(
+            workspace_id,
+            EgressTargetId(tid),
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "egress_target.revoke".into(),
+                target_kind: Some("egress_target".into()),
+                target_id: Some(tid),
+                metadata: serde_json::json!({ "workspace_id": workspace_id.0 }),
+            },
+        )
+        .await?;
+    if !revoked {
         return Err(ApiError::NotFound);
     }
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "egress_target.revoke".into(),
-            target_kind: Some("egress_target".into()),
-            target_id: Some(tid),
-            metadata: serde_json::json!({ "workspace_id": workspace_id.0 }),
-        },
-    )
-    .await;
     Ok(StatusCode::NO_CONTENT)
 }

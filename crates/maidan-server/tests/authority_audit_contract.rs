@@ -29,6 +29,19 @@ const UNAUDITED: &[&str] = &[
     ".purge_message(",
     ".place_legal_hold(",
     ".lift_legal_hold(",
+    ".freeze_member(",
+    ".unfreeze_member(",
+    ".set_review_requirement(",
+    ".clear_review_requirement(",
+    ".remove_reviewer(",
+    ".clear_land_gate(",
+    ".allow_egress_target(",
+    ".revoke_egress_target(",
+    ".revoke_app_installation(",
+    ".create_secret(",
+    ".delete_secret(",
+    ".add_channel_member(",
+    ".remove_channel_member(",
 ];
 
 fn rust_files(path: &Path, out: &mut Vec<PathBuf>) {

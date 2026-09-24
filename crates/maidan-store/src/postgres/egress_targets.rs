@@ -21,6 +21,14 @@ const COLS: &str = "id, workspace_id, surface, selector, created_at";
 /// (original `created_at` intact) rather than adding a second row, so the list
 /// stays the operator's "what may we post to" with nothing to reconcile.
 pub async fn allow(pool: &PgPool, new: NewEgressTarget) -> Result<AllowedEgressTarget, StoreError> {
+    let mut conn = pool.acquire().await?;
+    allow_on(&mut conn, new).await
+}
+
+pub(crate) async fn allow_on(
+    conn: &mut sqlx::PgConnection,
+    new: NewEgressTarget,
+) -> Result<AllowedEgressTarget, StoreError> {
     validate_allowlist_selector(new.surface, &new.selector)
         .map_err(|why| StoreError::InvalidInput(why.to_string()))?;
     let id = EgressTargetId::new();
@@ -35,7 +43,7 @@ pub async fn allow(pool: &PgPool, new: NewEgressTarget) -> Result<AllowedEgressT
     .bind(new.workspace_id.0)
     .bind(new.surface.as_str())
     .bind(&new.selector)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(row_to_target(&row))
 }
@@ -62,10 +70,19 @@ pub async fn revoke(
     workspace_id: WorkspaceId,
     id: EgressTargetId,
 ) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    revoke_on(&mut conn, workspace_id, id).await
+}
+
+pub(crate) async fn revoke_on(
+    conn: &mut sqlx::PgConnection,
+    workspace_id: WorkspaceId,
+    id: EgressTargetId,
+) -> Result<bool, StoreError> {
     let res = sqlx::query("DELETE FROM maidan_egress_targets WHERE id = $1 AND workspace_id = $2")
         .bind(id.0)
         .bind(workspace_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(res.rows_affected() > 0)
 }

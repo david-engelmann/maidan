@@ -50,8 +50,20 @@ pub(super) async fn freeze_member(
     let member_id = MemberId(a.member_id);
     ensure_same_workspace(store, auth, member_id).await?;
     let reason = a.reason.as_deref().map(str::trim).filter(|r| !r.is_empty());
+    let actor = auth.actor_id;
     let (freeze, released) = store
-        .freeze_member(member_id, auth.member_id, reason)
+        .freeze_member_audited(
+            member_id,
+            auth.member_id,
+            reason,
+            Box::new(move |(freeze, released)| maidan_types::NewAuditEvent {
+                actor_id: Some(actor),
+                action: "member.freeze".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member_id.0),
+                metadata: json!({ "reason": freeze.reason, "released": released, "surface": "mcp" }),
+            }),
+        )
         .await?;
     Ok(content_json(
         &json!({ "freeze": freeze, "released": released }),
@@ -72,7 +84,18 @@ pub(super) async fn unfreeze_member(
     let a: UnfreezeArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
     ensure_same_workspace(store, auth, member_id).await?;
-    let unfrozen = store.unfreeze_member(member_id).await?;
+    let unfrozen = store
+        .unfreeze_member_audited(
+            member_id,
+            maidan_types::NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "member.unfreeze".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member_id.0),
+                metadata: json!({ "surface": "mcp" }),
+            },
+        )
+        .await?;
     Ok(content_json(&json!({ "unfrozen": unfrozen })))
 }
 

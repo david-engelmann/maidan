@@ -14,6 +14,10 @@ pub type AuditFor<T> = Box<dyn FnOnce(&T) -> maidan_types::NewAuditEvent + Send>
 /// checks inside the destroying transaction, so every caller is bound by it.
 pub const LEGAL_HOLD_REFUSAL: &str =
     "workspace is under a legal hold; lift it before deleting workspace data";
+/// Why a review-requirement write was refused: it would lower the requirement
+/// and the caller may not. Checked in the write's transaction.
+pub const REVIEW_LOWER_REFUSAL: &str =
+    "lowering a review requirement needs the channel:admin capability";
 pub mod automation_deliveries;
 mod delegation_grants;
 pub mod dialect;

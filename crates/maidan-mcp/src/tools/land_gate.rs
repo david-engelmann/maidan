@@ -68,9 +68,21 @@ pub(super) async fn require_land_gate(
 /// Clear the LandGate pointer / requirement.
 pub(super) async fn clear_land_gate(
     store: &Arc<dyn Store>,
+    auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ThreadArg = serde_json::from_value(args.clone())?;
-    let cleared = store.clear_land_gate(ThreadId(a.thread_id)).await?;
+    let cleared = store
+        .clear_land_gate_audited(
+            ThreadId(a.thread_id),
+            maidan_types::NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "land_gate.clear".into(),
+                target_kind: Some("thread".into()),
+                target_id: Some(a.thread_id),
+                metadata: serde_json::json!({ "surface": "mcp" }),
+            },
+        )
+        .await?;
     Ok(content_json(&serde_json::json!({ "cleared": cleared })))
 }

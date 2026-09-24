@@ -170,9 +170,17 @@ pub async fn standing(
 }
 
 pub async fn clear(pool: &SqlitePool, thread_id: ThreadId) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    clear_on(&mut conn, thread_id).await
+}
+
+pub(crate) async fn clear_on(
+    conn: &mut sqlx::SqliteConnection,
+    thread_id: ThreadId,
+) -> Result<bool, StoreError> {
     let done = sqlx::query("DELETE FROM maidan_thread_land_gate WHERE thread_id = ?")
         .bind(thread_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(done.rows_affected() > 0)
 }

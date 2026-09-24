@@ -81,13 +81,21 @@ pub async fn get_installation(
     pool: &PgPool,
     id: AppInstallationId,
 ) -> Result<AppInstallation, StoreError> {
+    let mut conn = pool.acquire().await?;
+    get_installation_on(&mut conn, id).await
+}
+
+pub(crate) async fn get_installation_on(
+    conn: &mut sqlx::PgConnection,
+    id: AppInstallationId,
+) -> Result<AppInstallation, StoreError> {
     let row = sqlx::query(
         "SELECT id, app_id, workspace_id, bot_member_id, granted_capabilities,
                 installed_at, revoked_at
          FROM maidan_app_installations WHERE id = $1",
     )
     .bind(id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?
     .ok_or(StoreError::NotFound)?;
     row_to_installation(&row)
@@ -114,6 +122,16 @@ pub async fn revoke_installation(
     pool: &PgPool,
     id: AppInstallationId,
 ) -> Result<AppInstallation, StoreError> {
+    let mut conn = pool.acquire().await?;
+    revoke_installation_on(&mut conn, id).await
+}
+
+pub(crate) async fn revoke_installation_on(
+    conn: &mut sqlx::PgConnection,
+    id: AppInstallationId,
+) -> Result<AppInstallation, StoreError> {
+    // The installation and every token minted under it are revoked together.
+    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let now = Utc::now();
     let row = sqlx::query(
         "UPDATE maidan_app_installations
@@ -124,7 +142,7 @@ pub async fn revoke_installation(
     )
     .bind(id.0)
     .bind(now)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?
     .ok_or(StoreError::NotFound)?;
     sqlx::query(
@@ -133,8 +151,9 @@ pub async fn revoke_installation(
     )
     .bind(id.0)
     .bind(now)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     row_to_installation(&row)
 }
 
