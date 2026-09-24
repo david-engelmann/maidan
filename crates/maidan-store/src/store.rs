@@ -84,6 +84,14 @@ pub trait WorkspaceStore: Send + Sync {
         workspace_id: WorkspaceId,
         max_grant_days: Option<i64>,
     ) -> Result<DelegationPolicy, StoreError>;
+    /// [`Self::set_delegation_policy`] with its audit row in the same
+    /// transaction (D-A).
+    async fn set_delegation_policy_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        max_grant_days: Option<i64>,
+        audit: crate::AuditFor<DelegationPolicy>,
+    ) -> Result<DelegationPolicy, StoreError>;
 
     /// Set or rename a workspace handle. The workspace id is unchanged. Invalid
     /// syntax is [`StoreError::InvalidInput`]; a handle owned by another
@@ -2291,6 +2299,23 @@ pub trait ShareTicketStore: Send + Sync {
         sha256: &str,
         now: DateTime<Utc>,
     ) -> Result<bool, StoreError>;
+
+    // D-A: the audited forms request handlers use (see `create_api_token_audited`).
+
+    /// [`Self::create_share_ticket`] with its audit row in the same transaction.
+    async fn create_share_ticket_audited(
+        &self,
+        new: NewShareTicket,
+        audit: crate::AuditFor<ShareTicket>,
+    ) -> Result<ShareTicket, StoreError>;
+    /// [`Self::revoke_share_ticket`] with its audit row in the same transaction;
+    /// nothing is recorded when there was no live ticket to revoke.
+    async fn revoke_share_ticket_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ShareTicketId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
 }
 
 #[async_trait]
@@ -2315,6 +2340,24 @@ pub trait DelegationGrantStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         id: DelegationGrantId,
+    ) -> Result<bool, StoreError>;
+
+    // D-A: the audited forms request handlers use (see `create_api_token_audited`).
+
+    /// [`Self::create_delegation_grant`] with its audit row in the same
+    /// transaction.
+    async fn create_delegation_grant_audited(
+        &self,
+        new: NewDelegationGrant,
+        audit: crate::AuditFor<DelegationGrant>,
+    ) -> Result<DelegationGrant, StoreError>;
+    /// [`Self::revoke_delegation_grant`] with its audit row in the same
+    /// transaction (written even when the grant was already revoked).
+    async fn revoke_delegation_grant_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: DelegationGrantId,
+        audit: NewAuditEvent,
     ) -> Result<bool, StoreError>;
 }
 

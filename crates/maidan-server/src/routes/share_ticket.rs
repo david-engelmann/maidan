@@ -25,36 +25,42 @@ pub async fn create_share_ticket(
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     let secret = ShareTicketSecret::generate();
+    let actor = auth.actor_id;
+    // The store rejects any SHA that is not lowercase hex, so the distinct
+    // inputs are exactly what a successful create stores.
+    let artifact_count = body
+        .artifact_shas
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len();
     let ticket = state
         .store
-        .create_share_ticket(NewShareTicket {
-            workspace_id,
-            channel_id: ChannelId(body.channel_id),
-            owner_id: auth.member_id,
-            created_by: auth.member_id,
-            token_hash: hash_secret(secret.as_str()),
-            expires_at: body.expires_at,
-            artifact_shas: body.artifact_shas.clone(),
-        })
+        .create_share_ticket_audited(
+            NewShareTicket {
+                workspace_id,
+                channel_id: ChannelId(body.channel_id),
+                owner_id: auth.member_id,
+                created_by: auth.member_id,
+                token_hash: hash_secret(secret.as_str()),
+                expires_at: body.expires_at,
+                artifact_shas: body.artifact_shas.clone(),
+            },
+            Box::new(move |ticket| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "share_ticket.create".into(),
+                target_kind: Some("share_ticket".into()),
+                target_id: Some(ticket.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "channel_id": ticket.channel_id.0,
+                    "owner_id": ticket.owner_id.0,
+                    "expires_at": ticket.expires_at,
+                    "artifact_count": artifact_count,
+                }),
+            }),
+        )
         .await?;
     let artifact_shas = state.store.list_share_ticket_artifacts(ticket.id).await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "share_ticket.create".into(),
-            target_kind: Some("share_ticket".into()),
-            target_id: Some(ticket.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": workspace_id.0,
-                "channel_id": ticket.channel_id.0,
-                "owner_id": ticket.owner_id.0,
-                "expires_at": ticket.expires_at,
-                "artifact_count": artifact_shas.len(),
-            }),
-        },
-    )
-    .await;
     Ok((
         StatusCode::CREATED,
         Json(MintShareTicketResponse {
@@ -96,21 +102,20 @@ pub async fn revoke_share_ticket(
     ensure_workspace(&auth, workspace_id)?;
     if !state
         .store
-        .revoke_share_ticket(workspace_id, ticket_id)
+        .revoke_share_ticket_audited(
+            workspace_id,
+            ticket_id,
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "share_ticket.revoke".into(),
+                target_kind: Some("share_ticket".into()),
+                target_id: Some(ticket_id.0),
+                metadata: serde_json::json!({ "workspace_id": workspace_id.0 }),
+            },
+        )
         .await?
     {
         return Err(ApiError::NotFound);
     }
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "share_ticket.revoke".into(),
-            target_kind: Some("share_ticket".into()),
-            target_id: Some(ticket_id.0),
-            metadata: serde_json::json!({ "workspace_id": workspace_id.0 }),
-        },
-    )
-    .await;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -443,24 +443,24 @@ pub async fn set_delegation_policy(
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
+    let actor = auth.actor_id;
     let policy = state
         .store
-        .set_delegation_policy(workspace_id, body.max_grant_days)
-        .await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "delegation_policy.set".into(),
-            target_kind: Some("workspace".into()),
-            target_id: Some(workspace_id.0),
-            metadata: serde_json::json!({
-                "max_grant_days": policy.max_grant_days,
-                "is_default": policy.is_default,
+        .set_delegation_policy_audited(
+            workspace_id,
+            body.max_grant_days,
+            Box::new(move |policy| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "delegation_policy.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({
+                    "max_grant_days": policy.max_grant_days,
+                    "is_default": policy.is_default,
+                }),
             }),
-        },
-    )
-    .await;
+        )
+        .await?;
     Ok(Json(policy))
 }
 

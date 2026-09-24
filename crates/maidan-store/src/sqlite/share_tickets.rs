@@ -7,9 +7,17 @@ use crate::{share_tickets, StoreError};
 const COLUMNS: &str = "id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, revoked_at, created_at";
 
 pub async fn create(pool: &SqlitePool, new: NewShareTicket) -> Result<ShareTicket, StoreError> {
+    let mut conn = pool.acquire().await?;
+    create_on(&mut conn, new).await
+}
+
+pub(crate) async fn create_on(
+    conn: &mut sqlx::SqliteConnection,
+    new: NewShareTicket,
+) -> Result<ShareTicket, StoreError> {
     let artifacts = share_tickets::validate_new(&new, Utc::now())?;
     let id = ShareTicketId::new();
-    let mut tx = pool.begin().await?;
+    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let scope_valid: bool = sqlx::query_scalar(
         "SELECT EXISTS(
             SELECT 1
@@ -120,13 +128,22 @@ pub async fn revoke(
     workspace_id: WorkspaceId,
     id: ShareTicketId,
 ) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    revoke_on(&mut conn, workspace_id, id).await
+}
+
+pub(crate) async fn revoke_on(
+    conn: &mut sqlx::SqliteConnection,
+    workspace_id: WorkspaceId,
+    id: ShareTicketId,
+) -> Result<bool, StoreError> {
     let result = sqlx::query(
         "UPDATE maidan_share_tickets SET revoked_at = datetime('now')
          WHERE id = ?1 AND workspace_id = ?2 AND revoked_at IS NULL",
     )
     .bind(id.0)
     .bind(workspace_id.0)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(result.rows_affected() == 1)
 }
@@ -178,4 +195,34 @@ fn row_to_ticket(row: &sqlx::sqlite::SqliteRow) -> ShareTicket {
         revoked_at: row.get("revoked_at"),
         created_at: row.get("created_at"),
     }
+}
+
+/// [`create`], with its audit row in the same transaction (D-A).
+pub async fn create_audited(
+    pool: &SqlitePool,
+    new: NewShareTicket,
+    audit: crate::AuditFor<ShareTicket>,
+) -> Result<ShareTicket, StoreError> {
+    let mut tx = pool.begin().await?;
+    let ticket = create_on(&mut tx, new).await?;
+    super::audit::append_counted(&mut tx, audit(&ticket)).await?;
+    tx.commit().await?;
+    Ok(ticket)
+}
+
+/// [`revoke`], with its audit row in the same transaction. Nothing is recorded
+/// when there was no live ticket to revoke.
+pub async fn revoke_audited(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    id: ShareTicketId,
+    audit: maidan_types::NewAuditEvent,
+) -> Result<bool, StoreError> {
+    let mut tx = pool.begin().await?;
+    let revoked = revoke_on(&mut tx, workspace_id, id).await?;
+    if revoked {
+        super::audit::append_counted(&mut tx, audit).await?;
+    }
+    tx.commit().await?;
+    Ok(revoked)
 }

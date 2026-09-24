@@ -448,36 +448,35 @@ pub async fn create_delegation_grant(
             ));
         }
     }
+    let actor = auth.actor_id;
     let grant = state
         .store
-        .create_delegation_grant(NewDelegationGrant {
-            workspace_id,
-            subject_id,
-            delegate_id,
-            capabilities: body.capabilities,
-            purpose: body.purpose,
-            authorized_by: auth.actor_id,
-            expires_at: body.expires_at,
-        })
-        .await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "delegation_grant.create".into(),
-            target_kind: Some("delegation_grant".into()),
-            target_id: Some(grant.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": workspace_id.0,
-                "subject_id": grant.subject_id.0,
-                "delegate_id": grant.delegate_id.0,
-                "capabilities": grant.capabilities.clone(),
-                "expires_at": grant.expires_at,
-                "purpose": grant.purpose.clone(),
+        .create_delegation_grant_audited(
+            NewDelegationGrant {
+                workspace_id,
+                subject_id,
+                delegate_id,
+                capabilities: body.capabilities,
+                purpose: body.purpose,
+                authorized_by: auth.actor_id,
+                expires_at: body.expires_at,
+            },
+            Box::new(move |grant| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "delegation_grant.create".into(),
+                target_kind: Some("delegation_grant".into()),
+                target_id: Some(grant.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "subject_id": grant.subject_id.0,
+                    "delegate_id": grant.delegate_id.0,
+                    "capabilities": grant.capabilities.clone(),
+                    "expires_at": grant.expires_at,
+                    "purpose": grant.purpose.clone(),
+                }),
             }),
-        },
-    )
-    .await;
+        )
+        .await?;
     Ok((StatusCode::CREATED, Json(grant)))
 }
 
@@ -509,23 +508,22 @@ pub async fn revoke_delegation_grant(
     }
     state
         .store
-        .revoke_delegation_grant(workspace_id, grant_id)
+        .revoke_delegation_grant_audited(
+            workspace_id,
+            grant_id,
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "delegation_grant.revoke".into(),
+                target_kind: Some("delegation_grant".into()),
+                target_id: Some(grant_id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "subject_id": existing.subject_id.0,
+                    "delegate_id": existing.delegate_id.0,
+                }),
+            },
+        )
         .await?;
     let grant = state.store.get_delegation_grant(grant_id).await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "delegation_grant.revoke".into(),
-            target_kind: Some("delegation_grant".into()),
-            target_id: Some(grant.id.0),
-            metadata: serde_json::json!({
-                "workspace_id": workspace_id.0,
-                "subject_id": grant.subject_id.0,
-                "delegate_id": grant.delegate_id.0,
-            }),
-        },
-    )
-    .await;
     Ok(Json(grant))
 }
