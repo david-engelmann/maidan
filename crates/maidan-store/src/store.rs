@@ -2744,6 +2744,32 @@ pub trait GovernanceAuditStore: Send + Sync {
         name: &str,
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError>;
+    /// Create a SCIM user: the member and its link, together.
+    async fn scim_provision_audited(
+        &self,
+        new: NewMember,
+        external_id: Option<&str>,
+        active: bool,
+        audit: crate::AuditFor<(Member, ScimUser)>,
+    ) -> Result<(Member, ScimUser), StoreError>;
+    /// Update a SCIM link; deactivating revokes the member's live tokens in the
+    /// same transaction, each recorded. `None` when there is no link.
+    async fn scim_set_active_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        external_id: Option<&str>,
+        active: bool,
+        audit: NewAuditEvent,
+    ) -> Result<Option<ScimUser>, StoreError>;
+    /// Revoke the member's live tokens and remove its SCIM link, together.
+    /// `false` when there was no link.
+    async fn scim_deprovision_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
     /// Freeze a member and release their claims.
     async fn freeze_member_audited(
         &self,

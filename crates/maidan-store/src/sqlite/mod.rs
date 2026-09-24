@@ -62,6 +62,7 @@ mod reindex_jobs;
 mod result_deliveries;
 mod retention;
 mod reviews;
+mod scim_audited;
 mod scim_users;
 mod secrets;
 mod sessions;
@@ -3125,6 +3126,41 @@ impl GovernanceAuditStore for SqliteStore {
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError> {
         governance_audited::delete_secret(&self.pool, workspace_id, name, audit).await
+    }
+    async fn scim_provision_audited(
+        &self,
+        new: NewMember,
+        external_id: Option<&str>,
+        active: bool,
+        audit: crate::AuditFor<(Member, ScimUser)>,
+    ) -> Result<(Member, ScimUser), StoreError> {
+        scim_audited::provision(&self.pool, new, external_id, active, audit).await
+    }
+    async fn scim_set_active_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        external_id: Option<&str>,
+        active: bool,
+        audit: NewAuditEvent,
+    ) -> Result<Option<ScimUser>, StoreError> {
+        scim_audited::set_active(
+            &self.pool,
+            workspace_id,
+            member_id,
+            external_id,
+            active,
+            audit,
+        )
+        .await
+    }
+    async fn scim_deprovision_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        scim_audited::deprovision(&self.pool, workspace_id, member_id, audit).await
     }
     async fn freeze_member_audited(
         &self,
