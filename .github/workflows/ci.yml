@@ -395,6 +395,21 @@ jobs:
       - name: two-replica scale-out smoke
         run: bash scripts/scale-out-smoke.sh
 
+  pitr-drill:
+    # Base backup + WAL archive restored to a chosen moment, against the
+    # maidan-postgres image as built from this tree. `pg_dump` alone gives no
+    # recovery point between dumps; this is the evidence the PITR procedure in
+    # docs/Production.md works. Not (yet) a required check.
+    name: pitr drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: build maidan-postgres
+        run: docker build -f docker/Dockerfile.db -t maidan-postgres:ci docker
+      - name: point-in-time recovery drill
+        run: bash scripts/pitr-drill.sh maidan-postgres:ci
+
   alert-rules:
     # Executes the SLO recording/alert PromQL with promtool — lints expressions
     # and templates (`check rules`) and runs the unit tests (`test rules`). The

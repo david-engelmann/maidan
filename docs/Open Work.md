@@ -102,8 +102,11 @@ is generated app-side. Size M.
 
 ### Cluster 417 — disaster recovery that is actually tested
 
-PITR / WAL archiving with a scripted restore drill. `pg_dump` alone gives no
-real recovery point. Size M.
+**✅ 417.1.** WAL archiving (`compose.pitr.yaml`; the `maidan-postgres` image owns
+the `/archive` mount point), the restore procedure in Production.md
+("Point-in-time recovery"), and `scripts/pitr-drill.sh`, which runs that
+procedure end to end and fails unless the restore stops exactly at the chosen
+moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 
 ### Cluster 418 — Wave 4 adoption surface
 
