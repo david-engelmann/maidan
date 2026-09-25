@@ -496,7 +496,7 @@ pub async fn claim_next(
          WHERE id = (
              SELECT t.id FROM maidan_threads t
              LEFT JOIN maidan_thread_priorities p ON p.thread_id = t.id
-             WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
+             WHERE t.channel_id = ? AND t.tombstoned_at IS NULL AND t.state = 'open'
                AND (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
                AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_dependencies d
@@ -586,7 +586,7 @@ pub async fn channel_queue_depth(
                      THEN 1 ELSE 0 END), 0) AS unclaimable_count
          FROM maidan_threads t
          WHERE t.channel_id = ?
-           AND t.state NOT IN ('closed', 'archived')
+           AND t.state = 'open'
            AND t.tombstoned_at IS NULL",
     )
     .bind(&now)
@@ -642,7 +642,7 @@ pub async fn channel_occupancy(
                      THEN 1 ELSE 0 END), 0) AS blocked_count
          FROM maidan_threads t
          WHERE t.channel_id = ?
-           AND t.state NOT IN ('closed', 'archived')
+           AND t.state = 'open'
            AND t.tombstoned_at IS NULL",
     )
     .bind(&now)
@@ -683,7 +683,7 @@ pub async fn claim_next_with_event(
     let candidate = sqlx::query(
         "SELECT t.id, t.assignee_id FROM maidan_threads t
          LEFT JOIN maidan_thread_priorities p ON p.thread_id = t.id
-         WHERE t.channel_id = ? AND t.tombstoned_at IS NULL
+         WHERE t.channel_id = ? AND t.tombstoned_at IS NULL AND t.state = 'open'
            AND (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
            AND NOT EXISTS (
                SELECT 1 FROM maidan_thread_dependencies d
