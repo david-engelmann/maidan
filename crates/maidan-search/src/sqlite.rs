@@ -112,18 +112,21 @@ impl Search for SqliteSearch {
         let table =
             embedding_tables::ensure_model_sqlite(&self.pool, model, embedding.len()).await?;
         let bytes = embedding_bytes(embedding);
+        // Only a live message is embedded; see the Postgres twin. SQLite
+        // serializes writers, so a withdrawal cannot interleave.
         let sql = format!(
             r#"
             INSERT INTO {table} (message_id, embedding, updated_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
+            SELECT id, ?, CURRENT_TIMESTAMP FROM maidan_messages
+            WHERE id = ? AND tombstoned_at IS NULL
             ON CONFLICT (message_id) DO UPDATE SET
                 embedding = excluded.embedding,
                 updated_at = CURRENT_TIMESTAMP
             "#
         );
         sqlx::query(&sql)
-            .bind(message_id.0)
             .bind(bytes)
+            .bind(message_id.0)
             .execute(&self.pool)
             .await?;
         Ok(())

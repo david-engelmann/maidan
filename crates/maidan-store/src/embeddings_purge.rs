@@ -71,3 +71,40 @@ pub async fn purge_workspace_embeddings_sqlite(
     }
     Ok(total)
 }
+
+/// Delete one message's embeddings in every model table. A withdrawn message
+/// is not searchable, and its vectors are derived from words it withdrew.
+pub(crate) async fn purge_message_embeddings_postgres(
+    conn: &mut sqlx::PgConnection,
+    message_id: maidan_types::MessageId,
+) -> Result<(), StoreError> {
+    let tables: Vec<String> = sqlx::query_scalar("SELECT table_name FROM maidan_embedding_models")
+        .fetch_all(&mut *conn)
+        .await?;
+    for table in tables {
+        assert_registry_table(&table)?;
+        sqlx::query(&format!("DELETE FROM {table} WHERE message_id = $1"))
+            .bind(message_id.0)
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(())
+}
+
+/// SQLite twin of [`purge_message_embeddings_postgres`].
+pub(crate) async fn purge_message_embeddings_sqlite(
+    conn: &mut sqlx::SqliteConnection,
+    message_id: maidan_types::MessageId,
+) -> Result<(), StoreError> {
+    let tables: Vec<String> = sqlx::query_scalar("SELECT table_name FROM maidan_embedding_models")
+        .fetch_all(&mut *conn)
+        .await?;
+    for table in tables {
+        assert_registry_table(&table)?;
+        sqlx::query(&format!("DELETE FROM {table} WHERE message_id = ?"))
+            .bind(message_id.0)
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(())
+}
