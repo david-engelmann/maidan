@@ -71,6 +71,8 @@ pub async fn stream(
 
     let (mut filter, mut after_id, from_resume_token) = resolve_stream_params(&state, &q, &auth)?;
     crate::dm::expand_event_filter(&state, &mut filter, &auth).await?;
+    crate::subscribe_grants::bind_to_caller_workspace(&mut filter, &auth)
+        .map_err(|e| ApiError::Forbidden(e.into()))?;
     crate::subscribe_grants::apply_subscribe_grants(&state, &auth, &mut filter)
         .await
         .map_err(ApiError::BadRequest)?;

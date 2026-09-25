@@ -517,11 +517,9 @@ async fn read_subscribe(
     if !state.auth_disabled {
         ctx.require_capability(EVENT_SUBSCRIBE)
             .map_err(|_| (1008u16, "missing event:subscribe capability".to_string()))?;
-        if let Some(ws) = filter.workspace_id {
-            ctx.ensure_workspace(ws)
-                .map_err(|_| (1008u16, "token is not valid for this workspace".into()))?;
-        }
     }
+    crate::subscribe_grants::bind_to_caller_workspace(&mut filter, &ctx)
+        .map_err(|e| (1008u16, e.to_string()))?;
     crate::subscribe_grants::apply_subscribe_grants(state, &ctx, &mut filter)
         .await
         .map_err(|e| (1008u16, e))?;
