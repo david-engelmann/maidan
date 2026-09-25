@@ -132,7 +132,7 @@ flowchart LR
 
 | Surface | Path / scheme | Purpose |
 |---------|---------------|---------|
-| HTTP CRUD | workspaces, members, channels, threads, messages, DMs + group DMs, pins, reactions, votes | Authoritative entity API; RFC 7807 errors |
+| HTTP CRUD | workspaces, members, channels, threads, messages, DMs + group DMs, pins, reactions, votes | Authoritative entity API; RFC 9457 errors |
 | Thread FSM + tasks | `POST /threads/:id`, MCP `transition_thread`, assignee/claim/renew, dependencies, required-skills, result, deliveries, tool-transcript | Lifecycle + the agentic task layer. MCP `transition_thread` is the twin of the REST POST (same SoD / close-gate / required-reviewers / critical composition — no bypass) |
 | Recipes | `/workspaces/:wid/recipes` (CRUD + `/instantiate`), `task_schedules.recipe_id` | Reusable thread-type blueprints; instantiate = parent + DAG children + skills, copy-on-fire snapshot; a schedule seeds a run (`ScheduleSkipped` if the prior run is in flight) |
 | Secrets | `/workspaces/:wid/secrets` (CRUD + `/:name/resolve`), MCP `resolve_secret` | Named secrets; the log holds a `secret://<name>` reference, the store the AEAD-encrypted value; resolve at exec (`secret:read`) or the egress broker substitutes on webhook delivery to `MAIDAN_SECRET_EGRESS_ALLOWLIST` hosts |

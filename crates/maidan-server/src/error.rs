@@ -1,5 +1,5 @@
 //! HTTP error type. `ApiError` wraps `StoreError` and any local
-//! validation failures and renders as RFC 7807 `application/problem+json`
+//! validation failures and renders as RFC 9457 `application/problem+json`
 //! bodies.
 
 use axum::{
@@ -187,7 +187,8 @@ impl From<maidan_auth::AuthError> for ApiError {
     }
 }
 
-/// RFC 7807 problem details (`application/problem+json`).
+/// RFC 9457 problem details (`application/problem+json`; 9457 obsoletes 7807
+/// and keeps its format).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ProblemDetails {
     #[serde(rename = "type")]
