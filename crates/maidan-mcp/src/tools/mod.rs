@@ -296,7 +296,6 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_land_gate"
         | "whoami"
         | "get_log_snapshot"
-        | "catch_up_events"
         | "verify_event_chain"
         | "list_tombstones"
         | "list_message_backlinks"
@@ -350,7 +349,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "revoke_share_ticket"
         | "export_workspace"
         | "verify_workspace_export"
-        | "import_workspace" => Ok(TOKEN_ADMIN),
+        | "import_workspace"
+        // The whole log as one chain, every private channel and DM included.
+        | "catch_up_events" => Ok(TOKEN_ADMIN),
         "register_slash_command" => Ok(WORKSPACE_WRITE),
         "list_slash_commands" => Ok(WORKSPACE_READ),
         "list_references" => Ok(WORKSPACE_READ),

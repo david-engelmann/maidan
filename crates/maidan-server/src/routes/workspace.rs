@@ -969,16 +969,40 @@ pub async fn list_events(
         .await
         .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?;
     }
+    // A member reads back what they could see anywhere else; a federation peer
+    // replicates the whole log.
+    let mut visibility = auth.as_ref().map(|Extension(auth)| {
+        crate::event_visibility::EventVisibility::new(state.store.as_ref(), auth)
+    });
     Ok(Json(
         crate::delivery::list_events_for_shape(
             state.store.as_ref(),
             &shape,
             after_id,
             q.limit.clamp(1, 500),
+            visibility.as_mut(),
         )
         .await
         .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?,
     ))
+}
+
+/// Reading the log whole — every event, bodies included, as one hash chain —
+/// is for a federation peer or a workspace admin, the tier that can already
+/// export the workspace. A member reads the filtered [`list_events`] instead:
+/// a page with rows withheld would not verify as a chain.
+fn ensure_whole_log_read(
+    auth: &Option<Extension<AuthContext>>,
+    peer: &Option<Extension<PeerContext>>,
+    workspace_id: WorkspaceId,
+) -> ApiResult<()> {
+    ensure_event_log_read(auth, peer, workspace_id)?;
+    if let Some(Extension(auth)) = auth {
+        if !auth.bypass {
+            cap(auth, TOKEN_ADMIN)?;
+        }
+    }
+    Ok(())
 }
 
 /// Verify the retained hash chain for this workspace. 200 when intact; 409
@@ -1049,7 +1073,7 @@ pub async fn catch_up_events(
     peer: Option<Extension<PeerContext>>,
 ) -> ApiResult<Json<CatchUpPage>> {
     let workspace_id = WorkspaceId(workspace_id);
-    ensure_event_log_read(&auth, &peer, workspace_id)?;
+    ensure_whole_log_read(&auth, &peer, workspace_id)?;
     let page =
         maidan_store::catch_up_since(state.store.as_ref(), workspace_id, q.after_lsn, q.limit)
             .await

@@ -52,16 +52,24 @@ pub async fn ensure_subscribe_cursor(
 /// rows. Unfiltered shapes use a single `list_events_after`; filtered shapes
 /// keep paging until `limit` matches or the log ends (never under-fill by
 /// dropping non-matching rows from a single page).
+/// With `visible`, only the events that caller may read are returned; paging
+/// continues past hidden rows, so a page is never short while more readable
+/// events remain.
 pub async fn list_events_for_shape(
     store: &dyn Store,
     shape: &ProjectorShape,
     after_id: i64,
     limit: i64,
+    mut visible: Option<&mut crate::event_visibility::EventVisibility<'_>>,
 ) -> Result<Vec<StoredEvent>, StoreError> {
     store
         .ensure_cursor_fresh(shape.workspace_id, after_id)
         .await?;
-    if shape.channel_id.is_none() && shape.thread_id.is_none() && shape.types.is_empty() {
+    if visible.is_none()
+        && shape.channel_id.is_none()
+        && shape.thread_id.is_none()
+        && shape.types.is_empty()
+    {
         return store
             .list_events_after(shape.workspace_id, after_id, limit)
             .await;
@@ -79,7 +87,11 @@ pub async fn list_events_for_shape(
         let short = (page.len() as i64) < page_size;
         for row in page {
             after = row.id;
-            if shape.matches_stored(&row) {
+            let readable = match visible.as_deref_mut() {
+                Some(v) => v.allows(&row).await?,
+                None => true,
+            };
+            if readable && shape.matches_stored(&row) {
                 out.push(row);
                 if (out.len() as i64) >= limit {
                     return Ok(out);

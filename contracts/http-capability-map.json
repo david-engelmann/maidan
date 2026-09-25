@@ -1280,7 +1280,7 @@
   {
     "method": "GET",
     "path": "/workspaces/{wid}/events/catch-up",
-    "capability": "workspace:read",
+    "capability": "token:admin",
     "surface": "http"
   },
   {

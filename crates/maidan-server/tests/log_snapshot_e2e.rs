@@ -192,7 +192,7 @@ async fn snapshot_then_catch_up_then_tamper_and_prune_fail_closed() {
             h.base(),
             ws.id.0
         ))
-        .bearer_auth(&reader)
+        .bearer_auth(&admin)
         .send()
         .await
         .unwrap();
@@ -209,7 +209,7 @@ async fn snapshot_then_catch_up_then_tamper_and_prune_fail_closed() {
             h.base(),
             ws.id.0
         ))
-        .bearer_auth(&reader)
+        .bearer_auth(&admin)
         .send()
         .await
         .unwrap();
@@ -234,7 +234,7 @@ async fn snapshot_then_catch_up_then_tamper_and_prune_fail_closed() {
             h.base(),
             ws.id.0
         ))
-        .bearer_auth(&reader)
+        .bearer_auth(&admin)
         .send()
         .await
         .unwrap();
@@ -284,7 +284,7 @@ async fn catch_up_pruned_prefix_is_409_with_snapshot_href() {
         h.store.as_ref(),
         ws.id,
         member.id,
-        vec![WORKSPACE_READ.into()],
+        vec![WORKSPACE_READ.into(), TOKEN_ADMIN.into()],
     )
     .await;
     let events = h.store.list_events_after(ws.id, 0, 50).await.unwrap();
