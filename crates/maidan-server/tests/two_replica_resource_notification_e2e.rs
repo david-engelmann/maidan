@@ -146,8 +146,8 @@ async fn resource_update_on_one_replica_reaches_subscriber_on_another() {
         .await
         .expect("timeout waiting for cross-replica resource notification")
         .expect("notification channel closed");
-    assert_eq!(got.method, "notifications/resources/updated");
-    assert_eq!(got.params["uri"], uri);
+    assert_eq!(got.notification.method, "notifications/resources/updated");
+    assert_eq!(got.notification.params["uri"], uri);
 
     // A URI the subscriber did NOT subscribe to must not be delivered.
     replica_b

@@ -122,8 +122,11 @@ async fn streamable_post_returns_sse_response_and_resource_notification() {
         "method": "resources/subscribe",
         "params": { "uri": uri }
     });
+    // Subscribe as the member that posts: a subscription belongs to its
+    // caller's workspace, and only that workspace's callers are notified.
     let sub_resp: Value = client
         .post(format!("{base}/mcp"))
+        .header("maidan-test-member-id", alice_id)
         .json(&subscribe_body)
         .send()
         .await

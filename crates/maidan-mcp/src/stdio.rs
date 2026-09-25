@@ -25,7 +25,7 @@ pub async fn run_stdio(server: &McpServer, auth: &AuthContext) -> io::Result<()>
         };
         let response = server.handle(request, auth).await;
         write_response(&mut stdout, response)?;
-        let notifications = server.take_pending_notifications().await;
+        let notifications = server.take_pending_notifications(auth).await;
         for notification in notifications {
             write_notification(&mut stdout, notification)?;
         }

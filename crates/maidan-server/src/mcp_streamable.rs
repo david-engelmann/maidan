@@ -108,7 +108,7 @@ async fn follow_up_on_open_session(
     // Mux onto the open SSE leg (202). If that leg has since dropped — the
     // session survives it now, for reconnect — the response was still logged
     // for replay; answer it inline (200) rather than failing.
-    let mut resp = if push_response_and_notifications(state, session_id, &response)
+    let mut resp = if push_response_and_notifications(state, auth, session_id, &response)
         .await
         .is_ok()
     {
@@ -131,16 +131,18 @@ async fn open_new_streamable_session(
     let sse_rx = registry.open(session_id.clone()).await;
 
     let response = state.mcp.handle(request, auth).await;
-    push_response_and_notifications(state, &session_id, &response).await?;
+    push_response_and_notifications(state, auth, &session_id, &response).await?;
 
     let mut notify_rx = state.mcp.subscribe_notifications();
     let registry_bg = registry.clone();
     let session_bg = session_id.clone();
+    let auth_bg = auth.clone();
     tokio::spawn(async move {
         loop {
             match notify_rx.recv().await {
-                Ok(notification) => {
-                    if let Ok(data) = serde_json::to_string(&notification) {
+                Ok(scoped) if !scoped.visible_to(&auth_bg) => continue,
+                Ok(scoped) => {
+                    if let Ok(data) = serde_json::to_string(&scoped.notification) {
                         if !registry_bg.push(&session_bg, data).await {
                             break;
                         }
@@ -177,6 +179,7 @@ async fn open_new_streamable_session(
 
 async fn push_response_and_notifications(
     state: &AppState,
+    auth: &AuthContext,
     session_id: &str,
     response: &JsonRpcResponse,
 ) -> Result<(), ApiError> {
@@ -185,7 +188,7 @@ async fn push_response_and_notifications(
     if !registry.push(session_id, json).await {
         return Err(ApiError::Internal("streamable session closed".into()));
     }
-    for notification in state.mcp.take_pending_notifications().await {
+    for notification in state.mcp.take_pending_notifications(auth).await {
         let data =
             serde_json::to_string(&notification).map_err(|e| ApiError::Internal(e.to_string()))?;
         if !registry.push(session_id, data).await {
@@ -251,9 +254,10 @@ pub async fn stream_get(
     }));
 
     let rx = state.mcp.subscribe_notifications();
-    let notifications = BroadcastStream::new(rx).filter_map(|item| {
-        let notification = item.ok()?;
-        serde_json::to_string(&notification)
+    let listener = auth.clone();
+    let notifications = BroadcastStream::new(rx).filter_map(move |item| {
+        let scoped = item.ok().filter(|s| s.visible_to(&listener))?;
+        serde_json::to_string(&scoped.notification)
             .ok()
             .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
     });
