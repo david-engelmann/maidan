@@ -25,7 +25,7 @@ pub mod sqlite_vec;
 pub mod tap_projector;
 pub mod traits;
 
-pub use embedding_batcher::{BatchConfig, BatchingEmbeddingHandler, IndexerMetrics};
+pub use embedding_batcher::{BatchConfig, BatchingEmbeddingHandler, IndexerMetrics, RetryPolicy};
 pub use embedding_handler::EmbeddingHandler;
 pub use embedding_provider::{
     provider_from_env, provider_from_name, EmbeddingProvider, EmbeddingProviderError,

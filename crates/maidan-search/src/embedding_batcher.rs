@@ -13,11 +13,17 @@
 //!   lag is both observable and bounded.
 //! - **Isolation:** backfill (`reindex`) runs on its own task and never touches
 //!   this queue, so a large-workspace backfill can't delay live indexing.
+//! - **Retry:** a failed provider call or upsert is retried with exponential
+//!   backoff ([`RetryPolicy`]) while the worker holds the batch, so a transient
+//!   provider outage costs latency, not embeddings. The queue stays bounded: a
+//!   retrying worker simply stops draining it. What still fails is left for
+//!   [`Search::embed_missing`], which the server runs on a timer.
 
 use std::sync::{
     atomic::{AtomicU64, AtomicUsize, Ordering},
     Arc,
 };
+use std::time::Duration;
 
 use async_trait::async_trait;
 use maidan_store::Store;
@@ -45,6 +51,10 @@ pub struct IndexerMetrics {
     pub failed_total: AtomicU64,
     /// Provider batch calls issued.
     pub batches_total: AtomicU64,
+    /// Provider calls and upserts retried after a failure.
+    pub retries_total: AtomicU64,
+    /// Messages embedded by the repair sweep because live indexing missed them.
+    pub repaired_total: AtomicU64,
 }
 
 impl IndexerMetrics {
@@ -55,6 +65,8 @@ impl IndexerMetrics {
             embedded_total: AtomicU64::new(0),
             failed_total: AtomicU64::new(0),
             batches_total: AtomicU64::new(0),
+            retries_total: AtomicU64::new(0),
+            repaired_total: AtomicU64::new(0),
         }
     }
 }
@@ -70,6 +82,7 @@ impl Default for IndexerMetrics {
 pub struct BatchConfig {
     pub queue_capacity: usize,
     pub batch_size: usize,
+    pub retry: RetryPolicy,
 }
 
 impl BatchConfig {
@@ -79,7 +92,45 @@ impl BatchConfig {
         Self {
             queue_capacity,
             batch_size,
+            retry: RetryPolicy::from_env(),
         }
+    }
+}
+
+/// How a failed provider call or upsert is retried: `retries` more attempts,
+/// the first after `base`, each delay doubling, capped at `max_delay`.
+#[derive(Debug, Clone, Copy)]
+pub struct RetryPolicy {
+    pub retries: u32,
+    pub base: Duration,
+    pub max_delay: Duration,
+}
+
+impl RetryPolicy {
+    /// `MAIDAN_INDEXER_RETRIES` (default 3) and `MAIDAN_INDEXER_RETRY_BASE_MS`
+    /// (default 250). With the defaults a batch is tried for about two seconds
+    /// before the repair sweep takes it over.
+    pub fn from_env() -> Self {
+        Self {
+            retries: env_usize("MAIDAN_INDEXER_RETRIES", 3).min(10) as u32,
+            base: Duration::from_millis(env_usize("MAIDAN_INDEXER_RETRY_BASE_MS", 250) as u64),
+            max_delay: Duration::from_secs(10),
+        }
+    }
+
+    /// No retries, for tests that want a failure to stick.
+    pub fn none() -> Self {
+        Self {
+            retries: 0,
+            base: Duration::ZERO,
+            max_delay: Duration::ZERO,
+        }
+    }
+
+    fn delay(&self, attempt: u32) -> Duration {
+        self.base
+            .saturating_mul(2u32.saturating_pow(attempt))
+            .min(self.max_delay)
     }
 }
 
@@ -122,6 +173,7 @@ impl BatchingEmbeddingHandler {
             metrics.clone(),
             health_error.clone(),
             config.batch_size,
+            config.retry,
         ));
         Self {
             store,
@@ -196,6 +248,7 @@ async fn run_worker(
     metrics: Arc<IndexerMetrics>,
     health_error: HealthSlot,
     batch_size: usize,
+    retry: RetryPolicy,
 ) {
     let model = provider.model_name().to_string();
     while let Some(first) = rx.recv().await {
@@ -210,46 +263,63 @@ async fn run_worker(
         metrics.queue_depth.fetch_sub(n, Ordering::Relaxed);
         metrics.batches_total.fetch_add(1, Ordering::Relaxed);
 
-        // The provider may be a blocking HTTP client; keep it off the runtime.
         let bodies: Vec<String> = batch.iter().map(|j| j.body.clone()).collect();
-        let provider_cl = provider.clone();
-        let embed = tokio::task::spawn_blocking(move || {
-            let refs: Vec<&str> = bodies.iter().map(|s| s.as_str()).collect();
-            provider_cl.embed_batch(&refs)
-        })
-        .await;
-
-        let embeddings = match embed {
-            Ok(Ok(v)) => v,
-            Ok(Err(err)) => {
+        let mut attempt = 0;
+        let embeddings = loop {
+            // The provider may be a blocking HTTP client; keep it off the runtime.
+            let provider_cl = provider.clone();
+            let bodies_cl = bodies.clone();
+            let embed = tokio::task::spawn_blocking(move || {
+                let refs: Vec<&str> = bodies_cl.iter().map(|s| s.as_str()).collect();
+                provider_cl.embed_batch(&refs)
+            })
+            .await;
+            let err = match embed {
+                Ok(Ok(v)) => break Some(v),
+                Ok(Err(err)) => err.to_string(),
+                Err(join_err) => format!("embed task join failed: {join_err}"),
+            };
+            if attempt >= retry.retries {
                 set_health(&health_error, format!("embedding generation failed: {err}")).await;
-                warn!(%err, batch = n, "batch indexer: embedding batch failed");
+                warn!(%err, batch = n, attempts = attempt + 1, "batch indexer: embedding batch failed");
                 metrics.failed_total.fetch_add(n as u64, Ordering::Relaxed);
-                continue;
+                break None;
             }
-            Err(join_err) => {
-                warn!(%join_err, "batch indexer: embed task join failed");
-                metrics.failed_total.fetch_add(n as u64, Ordering::Relaxed);
-                continue;
-            }
+            metrics.retries_total.fetch_add(1, Ordering::Relaxed);
+            tokio::time::sleep(retry.delay(attempt)).await;
+            attempt += 1;
+        };
+        let Some(embeddings) = embeddings else {
+            continue;
         };
 
         let mut any_ok = false;
         for (job, embedding) in batch.iter().zip(embeddings.iter()) {
-            match search
-                .upsert_embedding(job.message_id, &model, embedding)
-                .await
-            {
-                Ok(()) => {
-                    metrics.embedded_total.fetch_add(1, Ordering::Relaxed);
-                    any_ok = true;
+            let mut attempt = 0;
+            loop {
+                match search
+                    .upsert_embedding(job.message_id, &model, embedding)
+                    .await
+                {
+                    Ok(()) => {
+                        metrics.embedded_total.fetch_add(1, Ordering::Relaxed);
+                        any_ok = true;
+                    }
+                    Err(SearchError::Unsupported(_)) => {}
+                    Err(err) if attempt < retry.retries => {
+                        metrics.retries_total.fetch_add(1, Ordering::Relaxed);
+                        warn!(%err, message_id = %job.message_id, attempt, "batch indexer: upsert failed; retrying");
+                        tokio::time::sleep(retry.delay(attempt)).await;
+                        attempt += 1;
+                        continue;
+                    }
+                    Err(err) => {
+                        metrics.failed_total.fetch_add(1, Ordering::Relaxed);
+                        set_health(&health_error, format!("embedding upsert failed: {err}")).await;
+                        warn!(%err, message_id = %job.message_id, "batch indexer: upsert failed");
+                    }
                 }
-                Err(SearchError::Unsupported(_)) => {}
-                Err(err) => {
-                    metrics.failed_total.fetch_add(1, Ordering::Relaxed);
-                    set_health(&health_error, format!("embedding upsert failed: {err}")).await;
-                    warn!(%err, message_id = %job.message_id, "batch indexer: upsert failed");
-                }
+                break;
             }
         }
         if any_ok {

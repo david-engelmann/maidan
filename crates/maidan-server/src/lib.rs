@@ -29,6 +29,7 @@ pub mod dto;
 pub mod egress_body;
 pub mod egress_http;
 pub mod egress_worker;
+pub mod embed_repair;
 pub mod error;
 pub mod event_stream;
 pub mod export;

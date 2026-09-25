@@ -436,6 +436,10 @@ async fn refresh_runtime_gauges(state: &AppState) {
     gauge!("maidan_indexer_embed_failed_total").set(im.failed_total.load(Ordering::Relaxed) as f64);
     gauge!("maidan_indexer_embed_batches_total")
         .set(im.batches_total.load(Ordering::Relaxed) as f64);
+    gauge!("maidan_indexer_embed_retries_total")
+        .set(im.retries_total.load(Ordering::Relaxed) as f64);
+    gauge!("maidan_indexer_embed_repaired_total")
+        .set(im.repaired_total.load(Ordering::Relaxed) as f64);
 
     if let Some(health) = state.bus_listener_health.as_ref() {
         let ok = health.check().is_ok();
