@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Cluster 415 — deploys are immutable and rolling restarts are safe
+
+- **Added:** Helm `image.digest`, rendered as `repository@sha256:…`.
+- **Added:** an in-process shutdown drain (`MAIDAN_SHUTDOWN_DRAIN_SECS`);
+  readiness reports `draining` after SIGTERM.
+- **Changed:** the release trivy scan blocks, covers the Postgres image, and
+  gates signing.
+- **Changed:** quickstart and Helm prod pin v410.0.0, the newest published
+  release; the pins are checked.
+- **Changed:** `cosign verify` instructions anchor the identity to the release
+  workflow.
+- **Added:** `GET /operator/status`.
+
 ### Cluster 417 — disaster recovery that is actually tested
 
 - **Added:** `compose.pitr.yaml` enables WAL archiving for the compose Postgres.
