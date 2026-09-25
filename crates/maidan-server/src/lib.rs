@@ -86,6 +86,20 @@ pub use app::router;
 pub use config::Config;
 pub use state::{AppState, FederationRuntime, FsmHookRuntime, SlashRuntime, WebhookRuntime};
 
+/// How long a SIGTERM'd server keeps its listener open after readiness starts
+/// failing: `MAIDAN_SHUTDOWN_DRAIN_SECS`, default 0 (the Helm chart and k8s
+/// manifests set 5). Longer than the readiness probe period, shorter than the
+/// pod's `terminationGracePeriodSeconds`.
+pub fn shutdown_drain_from_env() -> std::time::Duration {
+    std::time::Duration::from_secs(
+        std::env::var("MAIDAN_SHUTDOWN_DRAIN_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0)
+            .min(120),
+    )
+}
+
 /// Build the maidan-server git/build version string. Falls back to the
 /// crate version if no `MAIDAN_VERSION` is baked in at compile time.
 pub fn version() -> &'static str {

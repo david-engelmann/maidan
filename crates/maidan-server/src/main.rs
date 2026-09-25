@@ -809,7 +809,14 @@ async fn main() -> anyhow::Result<()> {
     // Drain on SIGINT (ctrl_c) *and* SIGTERM — Kubernetes/systemd send SIGTERM
     // on rollout/stop, and without handling it the process is killed mid-request
     // instead of draining via `with_graceful_shutdown`.
-    let shutdown = async {
+    //
+    // Kubernetes removes a terminating pod from its Service endpoints at the
+    // same time as it sends SIGTERM, so for a moment new requests still arrive.
+    // Readiness fails first and the listener stays open for the drain delay;
+    // the runtime image has no shell, so this cannot be an exec `preStop`.
+    let draining = state.draining.clone();
+    let drain = maidan_server::shutdown_drain_from_env();
+    let shutdown = async move {
         #[cfg(unix)]
         {
             use tokio::signal::unix::{signal, SignalKind};
@@ -836,6 +843,14 @@ async fn main() -> anyhow::Result<()> {
             if tokio::signal::ctrl_c().await.is_ok() {
                 tracing::info!("shutdown signal received");
             }
+        }
+        draining.store(true, std::sync::atomic::Ordering::Relaxed);
+        if !drain.is_zero() {
+            tracing::info!(
+                secs = drain.as_secs(),
+                "draining before closing the listener"
+            );
+            tokio::time::sleep(drain).await;
         }
     };
 

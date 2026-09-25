@@ -126,6 +126,9 @@ pub struct AppState {
     pub presence: Arc<PresenceHub>,
     /// Live `/ws/subscribe` connections, for the ceiling and the gauge.
     pub ws_connections: Arc<std::sync::atomic::AtomicUsize>,
+    /// Set on SIGTERM. Readiness then fails, so the load balancer stops sending
+    /// new requests before the listener closes (see `shutdown_drain_from_env`).
+    pub draining: Arc<std::sync::atomic::AtomicBool>,
     /// The most concurrent subscriber connections accepted
     /// (`MAIDAN_MAX_WS_CONNECTIONS`, default 10 000); past it, upgrades get 503.
     pub max_ws_connections: usize,
@@ -255,6 +258,7 @@ impl AppState {
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
             presence,
             ws_connections: Arc::default(),
+            draining: Arc::default(),
             max_ws_connections: std::env::var("MAIDAN_MAX_WS_CONNECTIONS")
                 .ok()
                 .and_then(|v| v.trim().parse().ok())

@@ -336,14 +336,25 @@ jobs:
 
   trivy-scan:
     name: trivy image scan (${{ matrix.image }})
-    needs: [docker-server-manifest, docker-cli-manifest]
-    if: needs.docker-server-manifest.result == 'success' && needs.docker-cli-manifest.result == 'success'
+    needs: [docker-server-manifest, docker-cli-manifest, docker-postgres]
+    if: needs.docker-server-manifest.result == 'success' && needs.docker-cli-manifest.result == 'success' && needs.docker-postgres.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        image: [maidan-server, maidan-cli]
+        include:
+          - image: maidan-server
+            skip-files: ""
+          - image: maidan-cli
+            skip-files: ""
+          # `gosu` is the upstream entrypoint's privilege drop: a static Go
+          # binary that execs postgres and never opens a socket. Its findings
+          # are Go stdlib (crypto/tls, net/http) CVEs it cannot reach; they
+          # are the documented false-positive class for gosu, and the fix is
+          # upstream's rebuild. Everything else in the image is scanned.
+          - image: maidan-postgres
+            skip-files: usr/local/bin/gosu
     permissions:
       contents: read
       packages: read
@@ -362,9 +373,11 @@ jobs:
             TAG="${{ inputs.tag }}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-      # Report-only on introduction: surfaces fixable OS/library
-      # CVEs in the release logs without gating the release. Promote `exit-code`
-      # to '1' once the baseline is clean and reviewed.
+      # Blocking: a fixable HIGH/CRITICAL in a published image stops the
+      # release — `sign-images` and `release` need this job — so a known-bad
+      # image is never signed or announced. The images are already pushed by
+      # then; an unsigned image fails `cosign verify`, which is the check the
+      # README tells operators to run.
       - name: trivy vulnerability scan
         # v0.36.0: pins its internal `setup-trivy` by commit SHA, so it can't
         # break when an upstream tag is removed — v0.28.0 pinned the since-yanked
@@ -376,7 +389,8 @@ jobs:
           severity: "CRITICAL,HIGH"
           ignore-unfixed: true
           vuln-type: "os,library"
-          exit-code: "0"
+          skip-files: ${{ matrix.skip-files }}
+          exit-code: "1"
 
   docker-postgres:
     name: docker push maidan-postgres
@@ -423,8 +437,8 @@ jobs:
 
   sign-images:
     name: cosign sign container images
-    needs: [docker-server-manifest, docker-cli-manifest, docker-postgres]
-    if: needs.docker-server-manifest.result == 'success' && needs.docker-cli-manifest.result == 'success' && needs.docker-postgres.result == 'success'
+    needs: [docker-server-manifest, docker-cli-manifest, docker-postgres, trivy-scan]
+    if: needs.docker-server-manifest.result == 'success' && needs.docker-cli-manifest.result == 'success' && needs.docker-postgres.result == 'success' && needs.trivy-scan.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -455,7 +469,8 @@ jobs:
         # Resolve each tag to its immutable index digest and sign THAT, so the
         # signature can't be dodged by a later tag re-point. Verify:
         #   cosign verify ghcr.io/david-engelmann/maidan-server:<tag> \
-        #     --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+        #     --certificate-identity-regexp \
+        #     '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
         #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
         env:
           COSIGN_YES: "true"
@@ -543,7 +558,8 @@ jobs:
         # Keyless signing via the job's GitHub OIDC identity (no private key).
         # Each artifact gets a self-verifiable `.cosign.bundle` (sig + cert +
         # Rekor proof). Verify: cosign verify-blob --bundle <f>.cosign.bundle \
-        #   --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+        #   --certificate-identity-regexp \
+        #     '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
         #   --certificate-oidc-issuer https://token.actions.githubusercontent.com <f>
         run: |
           cd dist

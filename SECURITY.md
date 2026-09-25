@@ -63,7 +63,7 @@ immutable digest):
 ```sh
 for image in maidan-server maidan-cli maidan-postgres; do
   cosign verify "ghcr.io/david-engelmann/${image}:<tag>" \
-    --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+    --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 done
 ```
@@ -74,13 +74,18 @@ Rekor proof; download the tarball and its bundle from the release page):
 ```sh
 cosign verify-blob \
   --bundle maidan-x86_64-unknown-linux-gnu.tar.gz.cosign.bundle \
-  --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+  --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   maidan-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 A `sbom.json` (CycloneDX) is published and signed the same way. A verification failure
 means the artifact was not produced by this repo's release pipeline — do not run it.
+
+The identity is anchored at both ends on purpose. `^https://github.com/david-engelmann/maidan`
+alone, which these instructions used to give, also matches any workflow in a repository whose
+name merely starts with `maidan`. The pattern accepts the release workflow run from a
+version tag, or re-run from `main` by `workflow_dispatch`.
 
 ## Cryptography
 

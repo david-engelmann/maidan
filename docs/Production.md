@@ -11,6 +11,19 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `GET /health/ready` | Readiness  | `200` when DB, artifact store, indexer (if stale check enabled and no embedding errors), and Postgres `LISTEN` bus (when used) are healthy. |
 | `GET /health`       | Readiness  | Alias of `/health/ready`.                     |
 
+### Rolling restarts
+
+Kubernetes takes a terminating pod out of its Service at the same moment it
+sends SIGTERM, and the endpoint change takes a few seconds to reach every
+proxy. On SIGTERM the server therefore reports `/health/ready` as `503
+{"status":"draining"}`, keeps serving for `MAIDAN_SHUTDOWN_DRAIN_SECS`, and only
+then closes its listener and drains in-flight requests. Liveness stays `200`
+throughout. The Helm chart and `k8s/base` set the drain to `10` and
+`terminationGracePeriodSeconds` to `45`; the default outside them is `0`. The
+runtime image is distroless, so this is done in-process rather than with an exec
+`preStop` hook. A long-poll MCP call (up to 330 s) still open at the grace
+period is cut, and clients retry.
+
 ## Environment
 
 | Variable        | Required | Notes                                                |
@@ -585,6 +598,12 @@ helm install maidan ./helm/maidan -f ./helm/maidan/values-cert-manager.yaml -n m
 ```
 
 **CI validation:** `./scripts/helm-template-smoke.sh` and `./scripts/helm-install-kind-smoke.sh` (kind + Docker).
+
+**Pin by digest.** `image.digest: sha256:…` renders the reference as
+`repository@sha256:…`, which a re-pointed tag cannot change; `image.tag` is
+then informational. Find a release's digest with
+`docker buildx imagetools inspect ghcr.io/david-engelmann/maidan-server:<tag>`,
+and verify its signature first (README, "Prebuilt image").
 
 Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix). For the umbrella chart, substitute `RELEASE-postgresql` / `RELEASE-minio` hostnames in `maidan-stack/values-prod.yaml` with your Helm release name.
 

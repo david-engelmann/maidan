@@ -29,6 +29,18 @@ Name of the Secret holding runtime secrets (DATABASE_URL, …). When
 `.Values.existingSecret` is set the chart references that pre-created Secret and
 renders none of its own; otherwise it uses the chart-managed Secret.
 */}}
+{{/*
+The server image. A digest, when set, is the reference — immutable, so a
+re-pointed tag cannot change what runs. The tag is then informational only.
+*/}}
+{{- define "maidan.image" -}}
+{{- if .Values.image.digest -}}
+{{- printf "%s@%s" .Values.image.repository .Values.image.digest -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.image.repository .Values.image.tag -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "maidan.secretName" -}}
 {{- if .Values.existingSecret }}
 {{- .Values.existingSecret }}

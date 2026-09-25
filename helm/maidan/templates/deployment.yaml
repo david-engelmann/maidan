@@ -19,13 +19,16 @@ spec:
       labels:
         {{- include "maidan.selectorLabels" . | nindent 8 }}
     spec:
+      # Covers the server's drain (MAIDAN_SHUTDOWN_DRAIN_SECS) plus in-flight
+      # requests; past it the kubelet sends SIGKILL.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: maidan-server
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: {{ include "maidan.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http

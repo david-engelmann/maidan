@@ -9,5 +9,6 @@ metadata:
 data:
   MAIDAN_BIND: "0.0.0.0:8080"
   MAIDAN_LOG: "info,sqlx=warn"
+  MAIDAN_SHUTDOWN_DRAIN_SECS: "10"
   ARTIFACT_BACKEND: "localfs"
   ARTIFACT_LOCALFS_ROOT: "/data/artifacts"

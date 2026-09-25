@@ -11,7 +11,16 @@ podSecurityContext:
 image:
   repository: maidan-server
   tag: dev
+  # `sha256:…`. When set, the image is pulled by digest and `tag` is ignored.
+  digest: ""
   pullPolicy: IfNotPresent
+
+# On SIGTERM the server fails readiness and keeps serving for
+# MAIDAN_SHUTDOWN_DRAIN_SECS so the Service stops routing to it before the
+# listener closes; this must exceed that plus the longest request you expect to
+# finish (long-poll MCP tools wait up to 330 s — they are cut here, and clients
+# retry).
+terminationGracePeriodSeconds: 45
 
 service:
   type: ClusterIP
@@ -47,6 +56,7 @@ config:
   MAIDAN_LOG: "info,sqlx=warn"
   ARTIFACT_BACKEND: "localfs"
   ARTIFACT_LOCALFS_ROOT: "/data/artifacts"
+  MAIDAN_SHUTDOWN_DRAIN_SECS: "10"
 
 secrets:
   DATABASE_URL: "postgres://maidan:maidan@postgres:5432/maidan"

@@ -47,6 +47,23 @@ for record in \
     die "$name names v$version, but docs/Capabilities.md starts at v$expected"
 done
 
+# The quickstart and the Helm production overlay pull a *published* release, so
+# they pin a tag that exists — not the Capabilities head, which a close PR may
+# prepare before its tag is cut. All three must agree: the compose default
+# overrides the Dockerfile ARG, and they drifted 88 clusters apart once.
+quickstart_arg="$(first_match '^ARG MAIDAN_VERSION=v([0-9]+\.[0-9]+\.[0-9]+)$' docker/Dockerfile.quickstart)"
+quickstart_compose="$(first_match '.*MAIDAN_VERSION: \$\{MAIDAN_VERSION:-v([0-9]+\.[0-9]+\.[0-9]+)\}.*' compose.quickstart.yaml)"
+helm_prod="$(first_match '^  tag: v([0-9]+\.[0-9]+\.[0-9]+)$' helm/maidan/values-prod.yaml)"
+for value_name in quickstart_arg quickstart_compose helm_prod; do
+  [[ -n "${!value_name}" ]] || die "could not read ${value_name}"
+done
+[[ "$quickstart_compose" == "$quickstart_arg" ]] || \
+  die "compose.quickstart.yaml pins v$quickstart_compose but Dockerfile.quickstart pins v$quickstart_arg"
+[[ "$helm_prod" == "$quickstart_arg" ]] || \
+  die "helm values-prod.yaml pins v$helm_prod but the quickstart pins v$quickstart_arg"
+git rev-parse -q --verify "refs/tags/v$quickstart_arg" >/dev/null || \
+  die "the quickstart and Helm pin v$quickstart_arg, which is not a published tag"
+
 if rg -n 'ghcr\.io/david-engelmann/maidan-(server|cli):latest' README.md >/dev/null; then
   die "README executable examples must use an immutable version tag, not :latest"
 fi
