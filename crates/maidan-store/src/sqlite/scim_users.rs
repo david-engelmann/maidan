@@ -28,6 +28,17 @@ pub async fn create(
     external_id: Option<&str>,
     active: bool,
 ) -> Result<ScimUser, StoreError> {
+    let mut conn = pool.acquire().await?;
+    create_on(&mut conn, member_id, workspace_id, external_id, active).await
+}
+
+pub(crate) async fn create_on(
+    conn: &mut sqlx::SqliteConnection,
+    member_id: MemberId,
+    workspace_id: WorkspaceId,
+    external_id: Option<&str>,
+    active: bool,
+) -> Result<ScimUser, StoreError> {
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_scim_users
@@ -41,7 +52,7 @@ pub async fn create(
     .bind(active)
     .bind(&now)
     .bind(&now)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(row_to_scim(&row))
 }
@@ -76,6 +87,16 @@ pub async fn update(
     external_id: Option<&str>,
     active: bool,
 ) -> Result<Option<ScimUser>, StoreError> {
+    let mut conn = pool.acquire().await?;
+    update_on(&mut conn, member_id, external_id, active).await
+}
+
+pub(crate) async fn update_on(
+    conn: &mut sqlx::SqliteConnection,
+    member_id: MemberId,
+    external_id: Option<&str>,
+    active: bool,
+) -> Result<Option<ScimUser>, StoreError> {
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
         "UPDATE maidan_scim_users
@@ -86,15 +107,23 @@ pub async fn update(
     .bind(active)
     .bind(&now)
     .bind(member_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?;
     Ok(row.as_ref().map(row_to_scim))
 }
 
 pub async fn delete(pool: &SqlitePool, member_id: MemberId) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    delete_on(&mut conn, member_id).await
+}
+
+pub(crate) async fn delete_on(
+    conn: &mut sqlx::SqliteConnection,
+    member_id: MemberId,
+) -> Result<bool, StoreError> {
     let done = sqlx::query("DELETE FROM maidan_scim_users WHERE member_id = ?")
         .bind(member_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(done.rows_affected() > 0)
 }

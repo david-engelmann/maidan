@@ -178,44 +178,6 @@ async fn load_resource(
     Some(user_resource(&member, &scim, email))
 }
 
-/// Revoke every API token of a member — the real effect of SCIM deactivation /
-/// deprovisioning (best-effort; a failed revoke is logged, not fatal). Each
-/// revoke is recorded in its own transaction (D-A); the actor comes from the
-/// request's attribution scope, as every audit row inside a request does.
-async fn revoke_member_tokens(
-    state: &AppState,
-    workspace_id: WorkspaceId,
-    member_id: maidan_types::MemberId,
-) {
-    if let Ok(tokens) = state
-        .store
-        .list_api_tokens_for_member(workspace_id, member_id)
-        .await
-    {
-        for token in tokens {
-            if token.revoked_at.is_none() {
-                let revoke = state.store.revoke_api_token_audited(
-                    token.id,
-                    Box::new(move |revoked| maidan_types::NewAuditEvent {
-                        actor_id: None,
-                        action: "token.revoke".into(),
-                        target_kind: Some("api_token".into()),
-                        target_id: Some(revoked.id.0),
-                        metadata: json!({
-                            "workspace_id": revoked.workspace_id.0,
-                            "subject_member_id": revoked.member_id.0,
-                            "reason": "scim_deprovision",
-                        }),
-                    }),
-                );
-                if let Err(err) = revoke.await {
-                    tracing::warn!(error = %err, "scim: revoking member token failed");
-                }
-            }
-        }
-    }
-}
-
 /// `GET /scim/v2/ServiceProviderConfig` — advertise the supported features.
 pub async fn service_provider_config(Extension(auth): Extension<AuthContext>) -> Response {
     if let Some(resp) = require_admin(&auth) {
@@ -274,17 +236,32 @@ pub async fn create_user(
             "a user with this userName already exists",
         );
     }
-    let member = match state
+    // The member and its SCIM link are created together, with their record: a
+    // failure leaves neither, so the provider's retry does not meet a member
+    // with no link under the same userName.
+    let actor = auth.actor_id;
+    let (member, scim) = match state
         .store
-        .create_member(NewMember {
-            workspace_id: auth.workspace_id,
-            handle: user_name,
-            display_name: input.resolved_display_name(),
-            kind: MemberKind::Human,
-        })
+        .scim_provision_audited(
+            NewMember {
+                workspace_id: auth.workspace_id,
+                handle: user_name,
+                display_name: input.resolved_display_name(),
+                kind: MemberKind::Human,
+            },
+            input.external_id.as_deref(),
+            input.active,
+            Box::new(move |(member, _)| maidan_types::NewAuditEvent {
+                actor_id: Some(actor),
+                action: "scim.user.create".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member.id.0),
+                metadata: json!({ "userName": member.handle }),
+            }),
+        )
         .await
     {
-        Ok(m) => m,
+        Ok(provisioned) => provisioned,
         Err(err) => {
             return scim_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -292,39 +269,11 @@ pub async fn create_user(
             )
         }
     };
-    let scim = match state
-        .store
-        .create_scim_user(
-            member.id,
-            auth.workspace_id,
-            input.external_id.as_deref(),
-            input.active,
-        )
-        .await
-    {
-        Ok(s) => s,
-        Err(err) => {
-            return scim_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("link failed: {err}"),
-            )
-        }
-    };
+    // A delivery address, not authority: a bad one does not undo the user.
     let email = input.primary_email();
     if let Some(addr) = &email {
         let _ = state.store.set_member_email(member.id, addr).await;
     }
-    crate::audit::record(
-        &state,
-        maidan_types::NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "scim.user.create".into(),
-            target_kind: Some("member".into()),
-            target_id: Some(member.id.0),
-            metadata: json!({ "userName": member.handle }),
-        },
-    )
-    .await;
     scim_response(StatusCode::CREATED, user_resource(&member, &scim, email))
 }
 
@@ -527,9 +476,24 @@ async fn apply_update(
     external_id: Option<&str>,
     active: bool,
 ) -> Response {
+    // Deactivating revokes the member's tokens in the same transaction. If any
+    // of it fails the provider sees a 500 and retries, instead of a 200 with
+    // tokens still live.
+    let event = maidan_types::NewAuditEvent {
+        actor_id: None,
+        action: if active {
+            "scim.user.update"
+        } else {
+            "scim.user.deactivate"
+        }
+        .into(),
+        target_kind: Some("member".into()),
+        target_id: Some(member_id.0),
+        metadata: json!({ "active": active }),
+    };
     match state
         .store
-        .update_scim_user(member_id, external_id, active)
+        .scim_set_active_audited(workspace_id, member_id, external_id, active, event)
         .await
     {
         Ok(Some(_)) => {}
@@ -541,25 +505,6 @@ async fn apply_update(
             )
         }
     }
-    if !active {
-        revoke_member_tokens(state, workspace_id, member_id).await;
-    }
-    crate::audit::record(
-        state,
-        maidan_types::NewAuditEvent {
-            actor_id: None,
-            action: if active {
-                "scim.user.update"
-            } else {
-                "scim.user.deactivate"
-            }
-            .into(),
-            target_kind: Some("member".into()),
-            target_id: Some(member_id.0),
-            metadata: json!({ "active": active }),
-        },
-    )
-    .await;
     match load_resource(state, workspace_id, member_id).await {
         Some(resource) => scim_response(StatusCode::OK, resource),
         None => scim_error(StatusCode::NOT_FOUND, "no such user"),
@@ -588,22 +533,19 @@ pub async fn delete_user(
             )
         }
     }
-    revoke_member_tokens(&state, auth.workspace_id, member_id).await;
-    match state.store.delete_scim_user(member_id).await {
-        Ok(_) => {
-            crate::audit::record(
-                &state,
-                maidan_types::NewAuditEvent {
-                    actor_id: Some(auth.actor_id),
-                    action: "scim.user.delete".into(),
-                    target_kind: Some("member".into()),
-                    target_id: Some(member_id.0),
-                    metadata: json!({}),
-                },
-            )
-            .await;
-            (StatusCode::NO_CONTENT, ()).into_response()
-        }
+    let event = maidan_types::NewAuditEvent {
+        actor_id: Some(auth.actor_id),
+        action: "scim.user.delete".into(),
+        target_kind: Some("member".into()),
+        target_id: Some(member_id.0),
+        metadata: json!({}),
+    };
+    match state
+        .store
+        .scim_deprovision_audited(auth.workspace_id, member_id, event)
+        .await
+    {
+        Ok(_) => (StatusCode::NO_CONTENT, ()).into_response(),
         Err(err) => scim_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("delete failed: {err}"),

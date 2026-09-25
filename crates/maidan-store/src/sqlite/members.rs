@@ -7,6 +7,14 @@ use crate::error::StoreError;
 use crate::sqlite::events;
 
 pub async fn create(pool: &SqlitePool, new: NewMember) -> Result<Member, StoreError> {
+    let mut conn = pool.acquire().await?;
+    create_on(&mut conn, new).await
+}
+
+pub(crate) async fn create_on(
+    conn: &mut sqlx::SqliteConnection,
+    new: NewMember,
+) -> Result<Member, StoreError> {
     let id = Uuid::now_v7();
     let now = Utc::now();
     let row = sqlx::query(
@@ -21,7 +29,7 @@ pub async fn create(pool: &SqlitePool, new: NewMember) -> Result<Member, StoreEr
     .bind(new.kind.as_str())
     .bind(now)
     .bind(now)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await
     .map_err(map_member_err)?;
     row_to_member(&row)

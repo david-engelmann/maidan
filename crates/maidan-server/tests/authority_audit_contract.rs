@@ -42,6 +42,9 @@ const UNAUDITED: &[&str] = &[
     ".delete_secret(",
     ".add_channel_member(",
     ".remove_channel_member(",
+    ".create_scim_user(",
+    ".update_scim_user(",
+    ".delete_scim_user(",
 ];
 
 fn rust_files(path: &Path, out: &mut Vec<PathBuf>) {
