@@ -54,8 +54,8 @@
 
 | Slice | PR | Result |
 |-------|----|--------|
-| 412.1 | current | `scripts/mcp-inspector.sh` + a report-only `mcp inspector` CI job. All 2025 revisions negotiated and served statelessly, sessions opt-in, `resources/templates/list`, and portable nullable schemas |
-| 412.close | close record | Retro, ledgers, `v412.0.0` (the maintainer's tag) |
+| 412.1 | #1010 | `scripts/mcp-inspector.sh` + a report-only `mcp inspector` CI job. All 2025 revisions negotiated and served statelessly, sessions opt-in, `resources/templates/list`, and portable nullable schemas |
+| 412.close | close record | [[Retros/Cluster 412]]; recorded as a source record until the maintainer cuts `v412.0.0` |
 
 ## Exit criteria
 

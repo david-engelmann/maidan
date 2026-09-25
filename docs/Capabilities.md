@@ -42,6 +42,18 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## Cluster 412 (source record; no `v412.0.0` tag) — an external MCP verifier
+
+The official MCP Inspector runs unmodified against a real, authenticated Maidan in CI (report-only), and the four failures it found are fixed.
+
+| Change | Where |
+|--------|-------|
+| **Revision negotiation (412.1):** every revision since `2024-11-05` is accepted; `2026-07-28` stays the default. A stock 2025 SDK client handshook against `2026-07-28` and disconnected before listing a tool. | `crates/maidan-mcp/src/lib.rs` |
+| **Stateless by default (412.1):** only a `2024-11-05` client gets a session; 2025 clients' notifications are `202` and their follow-ups stay stateless. | `crates/maidan-server/src/mcp_streamable.rs`, `crates/maidan-server/src/mcp.rs` |
+| **`resources/templates/list` (412.1):** `resources/list` lists what exists; id-addressed resources are templates. | `crates/maidan-mcp/src/resources.rs` |
+| **Portable nullable schemas (412.1):** `anyOf` instead of an array-valued `type`. | `crates/maidan-mcp/src/tools/` |
+| **Verifier:** `scripts/mcp-inspector.sh` and the `mcp inspector` CI job (Node 22). | `scripts/mcp-inspector.sh`, `.github/workflows/ci.yml` |
+
 ## [v411.0.0](https://github.com/david-engelmann/maidan/releases/tag/v411.0.0) — delegated authority
 
 Twelve implementation PRs (#996–#1008) make acting for someone else explicit,
