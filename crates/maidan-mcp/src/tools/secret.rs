@@ -50,5 +50,20 @@ pub(super) async fn resolve_secret(
         .ok_or(McpError::NotFound)?;
     let value = decrypt_peer_secret_rotating(&ciphertext, key)
         .map_err(|e| McpError::Internal(format!("secret decrypt failed: {e}")))?;
+    // Recorded before the value is released, and withheld if it cannot be.
+    server
+        .store
+        .append_audit(maidan_types::NewAuditEvent {
+            actor_id: Some(auth.actor_id),
+            action: "secret.resolve".into(),
+            target_kind: Some("secret".into()),
+            target_id: None,
+            metadata: json!({
+                "workspace_id": auth.workspace_id.0,
+                "name": a.name,
+                "surface": "mcp",
+            }),
+        })
+        .await?;
     Ok(content_json(&json!({ "name": a.name, "value": value })))
 }

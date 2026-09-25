@@ -3,7 +3,7 @@ use maidan_types::{
     ChannelId, ContentBlock, DmConversationId, EditMessage, Event, MemberId, Message, MessageId,
     NewMessage, SpawnAxis, SpawnDenial, StoredEvent, ThreadId, WorkspaceId,
 };
-use sqlx::{PgPool, Row};
+use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
@@ -207,14 +207,34 @@ pub async fn list_after(
 }
 
 pub async fn purge(pool: &PgPool, id: MessageId) -> Result<(), StoreError> {
+    let mut conn = pool.acquire().await?;
+    purge_on(&mut conn, id).await
+}
+
+/// Remove a tombstoned message outright, refusing one in a workspace under
+/// legal hold: a purge destroys the record, which is what a hold preserves.
+pub(crate) async fn purge_on(conn: &mut PgConnection, id: MessageId) -> Result<(), StoreError> {
+    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let workspace_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT c.workspace_id FROM maidan_messages m
+         INNER JOIN maidan_threads t ON m.thread_id = t.id
+         INNER JOIN maidan_channels c ON t.channel_id = c.id
+         WHERE m.id = $1",
+    )
+    .bind(id.0)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let workspace_id = workspace_id.ok_or(StoreError::NotFound)?;
+    super::legal_hold::refuse_if_held(&mut tx, WorkspaceId(workspace_id)).await?;
     let res =
         sqlx::query("DELETE FROM maidan_messages WHERE id = $1 AND tombstoned_at IS NOT NULL")
             .bind(id.0)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
     if res.rows_affected() == 0 {
         return Err(StoreError::NotFound);
     }
+    tx.commit().await?;
     Ok(())
 }
 

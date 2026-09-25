@@ -1,6 +1,6 @@
 use chrono::Utc;
 use maidan_types::{WorkspaceId, WorkspacePurgeResult};
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::embeddings_purge;
 use crate::error::StoreError;
@@ -9,10 +9,23 @@ pub async fn purge(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
 ) -> Result<WorkspacePurgeResult, StoreError> {
+    let mut conn = pool.acquire().await?;
+    purge_on(&mut conn, workspace_id).await
+}
+
+/// Everything the purge removes goes in one transaction, which refuses a held
+/// workspace — the check and the destruction cannot be separated by a hold
+/// placed in between.
+pub(crate) async fn purge_on(
+    conn: &mut SqliteConnection,
+    workspace_id: WorkspaceId,
+) -> Result<WorkspacePurgeResult, StoreError> {
+    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    super::legal_hold::refuse_if_held(&mut tx, workspace_id).await?;
     let now = Utc::now();
 
     let embeddings_removed =
-        embeddings_purge::purge_workspace_embeddings_sqlite(pool, workspace_id).await?;
+        embeddings_purge::purge_workspace_embeddings_sqlite(&mut tx, workspace_id).await?;
 
     let references_removed = sqlx::query(
         "DELETE FROM maidan_references
@@ -43,7 +56,7 @@ pub async fn purge(
     .bind(workspace_id.0)
     .bind(workspace_id.0)
     .bind(workspace_id.0)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     let tombstone = sqlx::query(
@@ -57,7 +70,7 @@ pub async fn purge(
     )
     .bind(now)
     .bind(workspace_id.0)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     let purge = sqlx::query(
@@ -70,7 +83,7 @@ pub async fn purge(
            )",
     )
     .bind(workspace_id.0)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     let api_tokens_revoked = sqlx::query(
@@ -79,12 +92,12 @@ pub async fn purge(
     )
     .bind(now)
     .bind(workspace_id.0)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     let events_removed = sqlx::query("DELETE FROM maidan_events WHERE workspace_id = ?")
         .bind(workspace_id.0)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // Artifacts are content-addressed and shared: one row and one blob per
@@ -95,7 +108,6 @@ pub async fn purge(
     // another tenant's content whenever it had uploaded the same bytes after
     // this workspace did, and left this workspace's copy behind when the other
     // tenant had uploaded first.
-    let mut tx = pool.begin().await?;
     let referenced: Vec<String> = sqlx::query_scalar(
         "DELETE FROM maidan_artifact_refs WHERE workspace_id = ? RETURNING sha256",
     )

@@ -71,18 +71,18 @@ pub async fn export_workspace(
     let bundle = crate::export::build(&state.store, workspace_id).await?;
     let signed = crate::export::sign_bundle(state.export_signing.as_ref(), &bundle)?;
     // A read, but the whole workspace leaves in it — who took it belongs in the
-    // record as much as any change does.
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
+    // record as much as any change does. Written before the bundle is
+    // released, and the bundle is withheld if it cannot be (D-A).
+    state
+        .store
+        .append_audit(NewAuditEvent {
             actor_id: Some(auth.actor_id),
             action: "workspace.export".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(workspace_id.0),
             metadata: serde_json::json!({ "content_sha256": signed.content_sha256 }),
-        },
-    )
-    .await;
+        })
+        .await?;
     Ok(Json(signed))
 }
 
@@ -147,62 +147,48 @@ pub async fn import_workspace(
     let bundle = crate::export::inner_bundle(&envelope)?;
 
     let flat = crate::import::flatten(bundle);
-    let to_write = match q.mode {
-        ImportMode::New => crate::import::remap(flat, uuid::Uuid::new_v4),
+    let (to_write, replace_existing) = match q.mode {
+        ImportMode::New => (crate::import::remap(flat, uuid::Uuid::new_v4), false),
         ImportMode::Restore => {
             // A restore writes to the id inside the bundle, so that id is the
             // authorization subject — not the token's own workspace by assumption.
             ensure_workspace(&auth, flat.workspace.id)?;
-            let existing = state.store.get_workspace(flat.workspace.id).await;
-            match existing {
+            match state.store.get_workspace(flat.workspace.id).await {
                 Ok(_) if !q.force => {
                     return Err(ApiError::Conflict(format!(
                         "workspace {} already exists; retry with force=true to overwrite",
                         flat.workspace.id.0
                     )));
                 }
-                Ok(_) => {
-                    // force: erase the existing workspace so the restore lands
-                    // cleanly. This is the same destruction `erase_workspace`
-                    // performs, so it answers to the same guards — a legal hold
-                    // refuses it, and the intent is audited *before* the rows go.
-                    ensure_not_under_legal_hold(&state, flat.workspace.id).await?;
-                    state
-                        .store
-                        .append_audit(NewAuditEvent {
-                            actor_id: Some(auth.actor_id),
-                            action: "workspace.import".into(),
-                            target_kind: Some("workspace".into()),
-                            target_id: Some(flat.workspace.id.0),
-                            metadata: serde_json::json!({
-                                "phase": "erase_started",
-                                "mode": q.mode,
-                                "force": q.force,
-                            }),
-                        })
-                        .await?;
-                    state.store.erase_workspace(flat.workspace.id).await?;
-                }
-                Err(StoreError::NotFound) => {}
+                // force: the store erases the existing workspace in the import's
+                // own transaction — the same destruction `erase_workspace`
+                // performs, refused the same way under a legal hold.
+                Ok(_) => (flat, true),
+                Err(StoreError::NotFound) => (flat, false),
                 Err(e) => return Err(e.into()),
             }
-            flat
         }
     };
 
     let workspace_id = to_write.workspace.id;
-    state.store.import_workspace(&to_write).await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "workspace.import".into(),
-            target_kind: Some("workspace".into()),
-            target_id: Some(workspace_id.0),
-            metadata: serde_json::json!({ "mode": q.mode, "force": q.force }),
-        },
-    )
-    .await;
+    state
+        .store
+        .import_workspace_audited(
+            &to_write,
+            replace_existing,
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "workspace.import".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({
+                    "mode": q.mode,
+                    "force": q.force,
+                    "replaced_existing": replace_existing,
+                }),
+            },
+        )
+        .await?;
 
     Ok(Json(crate::dto::ImportResult {
         workspace_id: workspace_id.0,
@@ -671,33 +657,43 @@ pub async fn purge_workspace(
     // privileged as copying or preserving.
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    state.store.get_workspace(workspace_id).await?;
-    ensure_not_under_legal_hold(&state, workspace_id).await?;
-    let mut result = state.store.purge_workspace_messages(workspace_id).await?;
-    let artifact_blobs_deleted = delete_orphaned_blobs(&state, &result.artifact_shas).await;
-    result.artifact_shas.clear();
-    state
+    // The store refuses a missing (404) or held (409) workspace inside the
+    // purge's transaction, and writes this row in it.
+    let actor = auth.actor_id;
+    let mut result = state
         .store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "workspace.purge".into(),
-            target_kind: Some("workspace".into()),
-            target_id: Some(workspace_id.0),
-            metadata: serde_json::json!({
-                "messages_tombstoned": result.messages_tombstoned,
-                "messages_purged": result.messages_purged,
-                "embeddings_removed": result.embeddings_removed,
-                "references_removed": result.references_removed,
-                "api_tokens_revoked": result.api_tokens_revoked,
-                "events_removed": result.events_removed,
-                "artifacts_removed": result.artifacts_removed,
-                "artifact_blobs_deleted": artifact_blobs_deleted,
+        .purge_workspace_messages_audited(
+            workspace_id,
+            Box::new(move |result| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "workspace.purge".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: purge_metadata(result),
             }),
-        })
+        )
         .await?;
+    delete_orphaned_blobs(&state, &result.artifact_shas).await;
+    result.artifact_shas.clear();
     let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
     state.mcp.publish_resource_uris(uris).await;
     Ok(Json(result))
+}
+
+/// What a purge removed, for its audit row. Blob deletion happens after the
+/// transaction commits, so the row records the blobs the purge orphaned; the
+/// ones left undeleted are logged by [`delete_orphaned_blobs`].
+fn purge_metadata(result: &WorkspacePurgeResult) -> serde_json::Value {
+    serde_json::json!({
+        "messages_tombstoned": result.messages_tombstoned,
+        "messages_purged": result.messages_purged,
+        "embeddings_removed": result.embeddings_removed,
+        "references_removed": result.references_removed,
+        "api_tokens_revoked": result.api_tokens_revoked,
+        "events_removed": result.events_removed,
+        "artifacts_removed": result.artifacts_removed,
+        "artifact_blobs_orphaned": result.artifact_shas.len(),
+    })
 }
 
 /// Delete the blobs a purge orphaned — shas no workspace references any more.
@@ -705,8 +701,7 @@ pub async fn purge_workspace(
 /// The store decides orphanhood inside its transaction; this runs after it, so
 /// a workspace that uploaded the same bytes in between must not lose them. A
 /// blob whose artifact row exists again is kept.
-async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) -> u64 {
-    let mut deleted = 0u64;
+async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) {
     for sha_hex in shas {
         let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
             continue;
@@ -714,11 +709,10 @@ async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) -> u64 {
         if state.store.get_artifact_by_sha(sha_hex).await.is_ok() {
             continue;
         }
-        if state.artifacts.delete(&sha).await.is_ok() {
-            deleted += 1;
+        if let Err(err) = state.artifacts.delete(&sha).await {
+            tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
         }
     }
-    deleted
 }
 
 pub async fn erase_workspace(
@@ -737,38 +731,25 @@ pub async fn erase_workspace(
             "confirm_workspace_id must match path workspace id".into(),
         ));
     }
-    state.store.get_workspace(workspace_id).await?;
-    ensure_not_under_legal_hold(&state, workspace_id).await?;
-    state
+    let actor = auth.actor_id;
+    let mut result = state
         .store
-        .append_audit(NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "workspace.erase".into(),
-            target_kind: Some("workspace".into()),
-            target_id: Some(workspace_id.0),
-            metadata: serde_json::json!({ "phase": "started" }),
-        })
+        .erase_workspace_audited(
+            workspace_id,
+            Box::new(move |result| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "workspace.erase".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: purge_metadata(&result.purge),
+            }),
+        )
         .await?;
-    let mut result = state.store.erase_workspace(workspace_id).await?;
-    let artifact_blobs_deleted = delete_orphaned_blobs(&state, &result.purge.artifact_shas).await;
-    let _ = artifact_blobs_deleted;
+    delete_orphaned_blobs(&state, &result.purge.artifact_shas).await;
     result.purge.artifact_shas.clear();
     let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
     state.mcp.publish_resource_uris(uris).await;
     Ok(Json(result))
-}
-
-/// Refuse a destructive workspace operation while the workspace is under a
-/// legal hold — 409 Conflict. Read on the primary (the pg store routes
-/// `get_legal_hold` there) so a lagged replica can never let evidence be
-/// destroyed.
-async fn ensure_not_under_legal_hold(state: &AppState, workspace_id: WorkspaceId) -> ApiResult<()> {
-    if state.store.get_legal_hold(workspace_id).await?.is_some() {
-        return Err(ApiError::Conflict(
-            "workspace is under a legal hold; lift it before deleting workspace data".into(),
-        ));
-    }
-    Ok(())
 }
 
 /// `PUT /workspaces/:id/legal-hold` — place (or update) a legal hold.
@@ -788,21 +769,22 @@ pub async fn place_legal_hold(
         return Err(ApiError::BadRequest("reason must not be empty".into()));
     }
     state.store.get_workspace(workspace_id).await?;
+    let actor = auth.actor_id;
     let hold = state
         .store
-        .place_legal_hold(workspace_id, reason, Some(auth.member_id))
+        .place_legal_hold_audited(
+            workspace_id,
+            reason,
+            Some(auth.member_id),
+            Box::new(move |hold| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "legal_hold.place".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({ "reason": hold.reason }),
+            }),
+        )
         .await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "legal_hold.place".into(),
-            target_kind: Some("workspace".into()),
-            target_id: Some(workspace_id.0),
-            metadata: serde_json::json!({ "reason": reason }),
-        },
-    )
-    .await;
     Ok(Json(hold))
 }
 
@@ -816,9 +798,10 @@ pub async fn lift_legal_hold(
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    if state.store.lift_legal_hold(workspace_id).await? {
-        crate::audit::record(
-            &state,
+    let lifted = state
+        .store
+        .lift_legal_hold_audited(
+            workspace_id,
             NewAuditEvent {
                 actor_id: Some(auth.actor_id),
                 action: "legal_hold.lift".into(),
@@ -827,7 +810,8 @@ pub async fn lift_legal_hold(
                 metadata: serde_json::json!({}),
             },
         )
-        .await;
+        .await?;
+    if lifted {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

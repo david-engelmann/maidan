@@ -5,7 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{LegalHold, MemberId, WorkspaceId};
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
@@ -27,6 +27,16 @@ pub async fn place(
     reason: &str,
     placed_by: Option<MemberId>,
 ) -> Result<LegalHold, StoreError> {
+    let mut conn = pool.acquire().await?;
+    place_on(&mut conn, workspace_id, reason, placed_by).await
+}
+
+pub(crate) async fn place_on(
+    conn: &mut SqliteConnection,
+    workspace_id: WorkspaceId,
+    reason: &str,
+    placed_by: Option<MemberId>,
+) -> Result<LegalHold, StoreError> {
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_legal_holds (workspace_id, reason, placed_by, placed_at)
@@ -41,17 +51,52 @@ pub async fn place(
     .bind(reason)
     .bind(placed_by.map(|m| m.0))
     .bind(&now)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(row_to_hold(&row))
 }
 
 pub async fn lift(pool: &SqlitePool, workspace_id: WorkspaceId) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    lift_on(&mut conn, workspace_id).await
+}
+
+pub(crate) async fn lift_on(
+    conn: &mut SqliteConnection,
+    workspace_id: WorkspaceId,
+) -> Result<bool, StoreError> {
     let done = sqlx::query("DELETE FROM maidan_legal_holds WHERE workspace_id = ?")
         .bind(workspace_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(done.rows_affected() > 0)
+}
+
+/// Refuse to destroy a held workspace's data: `Conflict`, which the API
+/// answers with 409. `NotFound` when the workspace does not exist. Run it in
+/// the destroying transaction.
+pub(crate) async fn refuse_if_held(
+    conn: &mut SqliteConnection,
+    workspace_id: WorkspaceId,
+) -> Result<(), StoreError> {
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM maidan_workspaces WHERE id = ?)")
+            .bind(workspace_id.0)
+            .fetch_one(&mut *conn)
+            .await?;
+    if !exists {
+        return Err(StoreError::NotFound);
+    }
+    let held: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM maidan_legal_holds WHERE workspace_id = ?)",
+    )
+    .bind(workspace_id.0)
+    .fetch_one(&mut *conn)
+    .await?;
+    if held {
+        return Err(StoreError::Conflict(crate::LEGAL_HOLD_REFUSAL.into()));
+    }
+    Ok(())
 }
 
 pub async fn get(

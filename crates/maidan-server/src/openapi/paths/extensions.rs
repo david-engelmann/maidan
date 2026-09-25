@@ -19,7 +19,10 @@ use maidan_types::*;
     tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
     security(("bearerAuth" = [])),
-    responses((status = 200, description = "Messages purged"))
+    responses(
+        (status = 200, description = "Messages purged"),
+        (status = 409, description = "The workspace is under legal hold")
+    )
 )]
 pub fn purge_workspace() {}
 
@@ -544,7 +547,10 @@ pub fn post_group_dm_message() {}
     path = "/messages/{id}/purge",
     tag = "messages",
     security(("bearerAuth" = [])),
-    responses((status = 204, description = "Purged"))
+    responses(
+        (status = 204, description = "Purged"),
+        (status = 409, description = "The workspace is under legal hold")
+    )
 )]
 pub fn purge_message() {}
 

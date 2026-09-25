@@ -5134,7 +5134,7 @@ mod tests {
         let server = McpServer::new(
             store.clone(),
             Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
-            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(maidan_search::SqliteSearch::new(pool.clone())),
             Arc::new(HashV1Provider),
         );
         server.set_encryption_key(key);
@@ -5166,6 +5166,25 @@ mod tests {
         // An unknown name is a not-found error.
         assert!(server
             .call_tool(&auth, "resolve_secret", &json!({ "name": "ghost" }))
+            .await
+            .is_err());
+
+        // A resolve is recorded, and the value is withheld when it cannot be.
+        assert!(store
+            .list_audit(10)
+            .await
+            .unwrap()
+            .iter()
+            .any(|row| row.action == "secret.resolve" && row.metadata["name"] == "api-key"));
+        sqlx::query(
+            "CREATE TRIGGER audit_down BEFORE INSERT ON maidan_audit
+             BEGIN SELECT RAISE(ABORT, 'audit down'); END",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert!(server
+            .call_tool(&auth, "resolve_secret", &json!({ "name": "api-key" }))
             .await
             .is_err());
     }

@@ -24,7 +24,7 @@ operational safety, then deploy hygiene, then product surface.
 | ~~413.1~~ | ~~**D-B:** a per-workspace delegation-grant lifetime ceiling, default 90 days~~ **✅ shipped (#1014)** | S |
 | ~~413.2~~ | ~~**D-A foundation** + tokens~~ **✅ 413.2** — mint, attenuate, delegated exchange and revoke commit with their audit row; OAuth mint and SCIM per-token revokes, which recorded nothing, now do. App-installation revoke moves to 413.4 with the other governance changes | M |
 | ~~413.3a~~ | ~~**D-A:** grants, share tickets~~ **✅ 413.3a** — delegation grants, share tickets and the grant ceiling commit with their audit row on REST and MCP | S |
-| 413.3b | **D-A:** workspace purge, erase and import, message purge, legal hold. Reads (export, secret resolve) write the row first and release data only if it succeeded | M |
+| ~~413.3b~~ | ~~**D-A:** workspace purge, erase and import, message purge, legal hold; reads~~ **✅ 413.3b** — all commit with their row; export and secret resolve are withheld if their row cannot be written. Also fixed: MCP forced restore bypassed the legal hold; a forced restore was not atomic; erasing a workspace anonymized its audit history. **Decision for the maintainer:** a member tombstoning their own message still blanks its body under a legal hold (the row survives, the words do not). Holding tombstones would make a hold preserve content, not only rows — say which | M |
 | 413.4 | **D-A:** governance and membership. Governance-skill grants, review-requirement loosening, reviewer removal, land-gate clear, channel membership, member freeze, SCIM users, egress targets | M |
 
 Each authority-changing store method takes its `NewAuditEvent` as a required

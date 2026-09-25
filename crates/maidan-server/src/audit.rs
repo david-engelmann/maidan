@@ -11,9 +11,11 @@
 //! **Authority changes do not use this path** (D-A, 2026-09-23): they write
 //! their audit row inside the change's own transaction, so a failed write
 //! aborts the change — tokens since 413.2 (`Store::*_audited`); grants, share
-//! tickets and the grant ceiling since 413.3a; the rest as Cluster 413 moves
-//! them. `authority_audit_contract` keeps a handler from
-//! falling back here. Routine records stay on this best-effort path.
+//! tickets and the grant ceiling since 413.3a; workspace purge, erase and
+//! import, message purge and legal hold since 413.3b; the rest as Cluster 413
+//! moves them. `authority_audit_contract` keeps a handler from falling back
+//! here. Routine records stay on this best-effort path. Reads that release a
+//! whole workspace or a secret write their row strictly before releasing it.
 //!
 //! Anonymous and ordinary denied requests (401/403) are deliberately *not*
 //! written here — an attacker-controlled request stream would be an unbounded
