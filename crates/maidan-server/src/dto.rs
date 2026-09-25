@@ -7,8 +7,11 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, BlockedReason, ChannelId,
-    ContentBlock, DelegationGrantId, EgressSurface, EmailDeliveryMode, EventKind, MemberId,
-    MemberKind, RefSide, RelationKind, ShareTicket, ThreadId, WebhookSubscriptionId, WorkspaceId,
+    ChannelMemberRole, ContentBlock, DelegationGrantId, EgressSurface, EmailDeliveryMode,
+    EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, MemberFreeze, MemberId,
+    MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision, ShareTicket,
+    SlashCommandId, SlashHandlerKind, ThreadDependency, ThreadId, TokenPolicy, TokenQuota,
+    WebhookSubscriptionId, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -42,7 +45,7 @@ pub struct CreateChannel {
 pub struct AddChannelMember {
     pub member_id: uuid::Uuid,
     /// `member` (default) or `admin`.
-    pub role: Option<maidan_types::ChannelMemberRole>,
+    pub role: Option<ChannelMemberRole>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -155,7 +158,7 @@ pub struct CreateTaskSchedule {
 pub struct CreateRecipe {
     pub channel_id: uuid::Uuid,
     pub name: String,
-    pub spec: maidan_types::RecipeSpec,
+    pub spec: RecipeSpec,
 }
 
 /// Instantiate a recipe: `params` are validated against the recipe's declared
@@ -215,7 +218,7 @@ pub struct AddReviewer {
 /// submit but it won't count toward the requirement.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SubmitReview {
-    pub decision: maidan_types::ReviewDecision,
+    pub decision: ReviewDecision,
     #[serde(default)]
     pub note: Option<String>,
 }
@@ -224,11 +227,11 @@ pub struct SubmitReview {
 /// defaults to green; amber is flags-then-still-engages and is not a land.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetLandGate {
-    pub status: maidan_types::LandGateStatus,
+    pub status: LandGateStatus,
     #[serde(default)]
     pub artifact_sha: Option<String>,
     #[serde(default)]
-    pub land: Option<maidan_types::LandColor>,
+    pub land: Option<LandColor>,
 }
 
 /// A resolved secret value — the `resolve` response body. This is the only
@@ -250,7 +253,7 @@ pub struct FreezeMember {
 /// claims released (leases dropped).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FreezeResult {
-    pub freeze: maidan_types::MemberFreeze,
+    pub freeze: MemberFreeze,
     pub released: u64,
 }
 
@@ -297,6 +300,7 @@ pub struct SetThreadLineage {
 
 /// Query params for workspace run-lineage reads.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct RunLineageQuery {
     /// The producer `run_id` (e.g. The waiter envelope). Empty / missing /
     /// whitespace is 400 after capability check. Not a minted Maidan id.
@@ -330,7 +334,7 @@ pub struct ApprovalGateView {
 /// A task's dependency edges plus whether it is ready to run.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ThreadDependenciesView {
-    pub dependencies: Vec<maidan_types::ThreadDependency>,
+    pub dependencies: Vec<ThreadDependency>,
     /// True when every dependency is terminal (closed/archived) — the task is
     /// ready to claim.
     pub ready: bool,
@@ -425,6 +429,7 @@ pub struct CreateReference {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ThreadContextQuery {
     #[serde(default = "default_limit")]
     pub message_limit: i64,
@@ -466,6 +471,7 @@ pub struct ThreadContextQuery {
 
 /// Query for `GET /threads/:id/tool-transcript`.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ToolTranscriptQuery {
     /// Max messages to scan (default 200, clamped 1..=500).
     pub limit: Option<i64>,
@@ -510,7 +516,7 @@ pub struct SetThreadBlock {
 pub struct SetThreadWait {
     pub wait_until: chrono::DateTime<chrono::Utc>,
     #[serde(default)]
-    pub on_timeout: Option<maidan_types::EscalationPolicy>,
+    pub on_timeout: Option<EscalationPolicy>,
     #[serde(default)]
     pub reason: Option<String>,
 }
@@ -569,6 +575,7 @@ pub struct SpawnBudgetView {
 
 /// Query for a channel's agent-work DLQ.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct DlqQuery {
     /// Max entries to return (default 50, clamped 1..=200).
     pub limit: Option<i64>,
@@ -579,6 +586,7 @@ fn default_transition_limit() -> i64 {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct WorkspaceContextQuery {
     #[serde(default = "default_workspace_thread_limit")]
     pub thread_limit: i64,
@@ -605,6 +613,7 @@ fn default_workspace_thread_limit() -> i64 {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListMessagesQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
@@ -614,12 +623,14 @@ pub struct ListMessagesQuery {
 /// live threads, `(created_at, id)` ascending. `limit` defaults to 100 (clamped
 /// 1..=500); `cursor` is the prior page's last thread id (exclusive).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListThreadsQuery {
     pub limit: Option<i64>,
     pub cursor: Option<uuid::Uuid>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListMessageEditsQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
@@ -634,6 +645,7 @@ fn default_true() -> bool {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListReferencesQuery {
     /// List references FROM this source (forward edges). Give either the
     /// `src_*` pair OR the `dst_*` pair.
@@ -648,6 +660,7 @@ pub struct ListReferencesQuery {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListEventsQuery {
     #[serde(default)]
     pub after_id: i64,
@@ -670,6 +683,7 @@ pub struct ListEventsQuery {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct LogSnapshotQuery {
     /// Include the domain graph. Requires `token:admin` (or a federation
     /// peer). Default false — header and `graph_hash` only.
@@ -678,6 +692,7 @@ pub struct LogSnapshotQuery {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct CatchUpQuery {
     /// Exclusive cursor: events have `id > after_lsn`.
     #[serde(default)]
@@ -687,6 +702,7 @@ pub struct CatchUpQuery {
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListAuditQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
@@ -705,6 +721,7 @@ pub enum SearchMode {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct SearchQuery {
     pub q: String,
     #[serde(default)]
@@ -740,18 +757,21 @@ fn default_search_limit() -> i64 {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListMentionsQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListInboxQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListNotificationsQuery {
     /// When true, only unread notifications are returned.
     #[serde(default)]
@@ -774,6 +794,7 @@ pub struct SnoozeNotification {
 
 /// Query for a member's buried decisions.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct DecisionsQuery {
     /// Only decisions produced after this RFC 3339 instant (default: 7 days ago).
     pub since: Option<chrono::DateTime<chrono::Utc>>,
@@ -783,6 +804,7 @@ pub struct DecisionsQuery {
 
 /// Query for a member's notification-backed manager digest.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ManagerDigestQuery {
     /// Only unread lifecycle notifications created after this instant
     /// (default: 7 days ago).
@@ -791,6 +813,7 @@ pub struct ManagerDigestQuery {
 
 /// Query params for `GET /workspaces/:id/tombstones`.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListTombstonesQuery {
     pub channel_id: Option<uuid::Uuid>,
     pub thread_id: Option<uuid::Uuid>,
@@ -803,6 +826,7 @@ pub struct ListTombstonesQuery {
 
 /// Query params for `GET /workspaces/:id/kind-census`.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct KindCensusQuery {
     pub channel_id: Option<uuid::Uuid>,
     pub thread_id: Option<uuid::Uuid>,
@@ -810,6 +834,7 @@ pub struct KindCensusQuery {
 
 /// Query params for `GET /workspaces/:id/results`.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListThreadResultsQuery {
     /// Exact-match facet on the namespaced `result_kind` string (e.g.
     /// `example.review.result/1`). Absent = every non-tombstoned result in the
@@ -821,6 +846,7 @@ pub struct ListThreadResultsQuery {
 
 /// Query params for workspace import.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ImportQuery {
     /// `new` (default) remaps every id to a fresh one and lands the content as a
     /// brand-new workspace; `restore` preserves the bundle's ids verbatim.
@@ -856,7 +882,7 @@ pub struct ImportResult {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct VerifyExportResult {
     pub ok: bool,
-    pub token_policy: maidan_types::TokenPolicy,
+    pub token_policy: TokenPolicy,
     pub public_key: String,
     pub content_sha256: String,
     pub workspace_id: Option<uuid::Uuid>,
@@ -868,7 +894,7 @@ pub struct VerifyExportResult {
 pub struct ExportPublicKey {
     pub alg: String,
     pub public_key: String,
-    pub token_policy: maidan_types::TokenPolicy,
+    pub token_policy: TokenPolicy,
 }
 
 /// Result of marking all of a member's notifications read.
@@ -911,6 +937,7 @@ pub struct SetEmail {
 /// Query for `GET /members/:id/waiting` — the SLA in seconds an item may wait
 /// before it is flagged overdue (default 86400 = 24h).
 #[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct WaitingQuery {
     #[serde(default)]
     pub sla_secs: Option<i64>,
@@ -1000,12 +1027,14 @@ pub struct LinkGithubIssue {
 /// omits them fails the capability check (403) rather than query extraction
 /// (400).
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct UnlinkGithubQuery {
     pub repo: Option<String>,
     pub issue_number: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,
@@ -1019,11 +1048,13 @@ pub struct MultipartUploadResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct MultipartUploadQuery {
     pub object_key: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct AbortMultipartQuery {
     pub upload_id: String,
     pub object_key: String,
@@ -1066,11 +1097,11 @@ pub struct CreateSlashCommand {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SlashCommandResponse {
-    pub id: maidan_types::SlashCommandId,
-    pub workspace_id: maidan_types::WorkspaceId,
+    pub id: SlashCommandId,
+    pub workspace_id: WorkspaceId,
     pub name: String,
     pub description: Option<String>,
-    pub handler_kind: maidan_types::SlashHandlerKind,
+    pub handler_kind: SlashHandlerKind,
     pub handler_target: String,
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
@@ -1110,12 +1141,12 @@ pub struct CreateFsmHook {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FsmHookResponse {
-    pub id: maidan_types::FsmHookId,
-    pub workspace_id: maidan_types::WorkspaceId,
+    pub id: FsmHookId,
+    pub workspace_id: WorkspaceId,
     pub label: Option<String>,
     pub from_state: Option<String>,
     pub to_state: Option<String>,
-    pub handler_kind: maidan_types::SlashHandlerKind,
+    pub handler_kind: SlashHandlerKind,
     pub handler_target: String,
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
@@ -1154,8 +1185,8 @@ pub struct CreateWebhook {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WebhookResponse {
-    pub id: maidan_types::WebhookSubscriptionId,
-    pub workspace_id: maidan_types::WorkspaceId,
+    pub id: WebhookSubscriptionId,
+    pub workspace_id: WorkspaceId,
     pub url: String,
     pub label: Option<String>,
     pub event_kinds: Vec<String>,
@@ -1249,7 +1280,7 @@ pub struct MintAppToken {
     pub capabilities: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
     #[serde(default)]
-    pub quotas: Vec<maidan_types::TokenQuota>,
+    pub quotas: Vec<TokenQuota>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -1261,7 +1292,7 @@ pub struct MintAppTokenResponse {
     pub bot_member_id: MemberId,
     pub capabilities: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
-    pub quotas: Vec<maidan_types::TokenQuota>,
+    pub quotas: Vec<TokenQuota>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -1275,7 +1306,7 @@ pub struct MintApiToken {
     pub capability_set: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
     #[serde(default)]
-    pub quotas: Vec<maidan_types::TokenQuota>,
+    pub quotas: Vec<TokenQuota>,
 }
 
 /// Holder-side attenuation body. No `token:admin` — the caller can only drop
@@ -1330,9 +1361,9 @@ pub struct CreatePeer {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PeerResponse {
-    pub id: maidan_types::PeerId,
-    pub workspace_id: maidan_types::WorkspaceId,
-    pub remote_workspace_id: maidan_types::WorkspaceId,
+    pub id: PeerId,
+    pub workspace_id: WorkspaceId,
+    pub remote_workspace_id: WorkspaceId,
     pub name: String,
     pub base_url: String,
     pub enabled: bool,
@@ -1393,7 +1424,7 @@ pub struct MintApiTokenResponse {
     pub member_id: MemberId,
     pub capabilities: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
-    pub quotas: Vec<maidan_types::TokenQuota>,
+    pub quotas: Vec<TokenQuota>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -1427,12 +1458,14 @@ pub struct MintShareTicketResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct OidcLoginQuery {
     pub workspace_id: uuid::Uuid,
     pub return_to: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct OidcCallbackQuery {
     pub state: String,
     pub code: Option<String>,

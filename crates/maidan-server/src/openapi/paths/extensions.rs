@@ -7,6 +7,8 @@
 //! `api.rs`", which scanned as "these routes are not implemented". The split is
 //! purely where the annotation sits.
 
+use crate::reindex_ops::StartReindexEmbeddings;
+use maidan_types::ReindexJob;
 use uuid::Uuid;
 
 use crate::dto::*;
@@ -381,6 +383,7 @@ pub fn get_workspace_context() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/outbox/quarantined",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
     tag = "workspaces",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Quarantined outbox rows"))
@@ -423,6 +426,7 @@ pub fn list_apps() {}
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/apps/{app_id}/install",
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("app_id" = Uuid, Path, description = "App id")),
     tag = "apps",
     security(("bearerAuth" = [])),
     responses((status = 201, description = "App installed"))
@@ -432,6 +436,7 @@ pub fn install_app() {}
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/apps/{app_id}/oauth/authorize",
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("app_id" = Uuid, Path, description = "App id")),
     tag = "apps",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Authorization URL or redirect"))
@@ -441,6 +446,7 @@ pub fn authorize_app_install() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/app-installations",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
     tag = "apps",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Installations"))
@@ -450,6 +456,7 @@ pub fn list_app_installations() {}
 #[utoipa::path(
     delete,
     path = "/workspaces/{wid}/app-installations/{iid}",
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("iid" = Uuid, Path, description = "App installation id")),
     tag = "apps",
     security(("bearerAuth" = [])),
     responses((status = 204, description = "Revoked"))
@@ -459,6 +466,7 @@ pub fn revoke_app_installation() {}
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/app-installations/{iid}/tokens",
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("iid" = Uuid, Path, description = "App installation id")),
     tag = "apps",
     security(("bearerAuth" = [])),
     responses((status = 201, body = MintApiTokenResponse))
@@ -468,6 +476,7 @@ pub fn mint_app_token() {}
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/dm",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
     tag = "dm",
     security(("bearerAuth" = [])),
     responses((status = 201, description = "DM conversation"))
@@ -477,6 +486,7 @@ pub fn open_dm_conversation() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/dm",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
     tag = "dm",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "DM conversations"))
@@ -486,6 +496,7 @@ pub fn list_dm_conversations() {}
 #[utoipa::path(
     get,
     path = "/dm/{id}",
+    params(("id" = Uuid, Path, description = "DM conversation id")),
     tag = "dm",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "DM conversation"))
@@ -495,6 +506,7 @@ pub fn get_dm_conversation() {}
 #[utoipa::path(
     post,
     path = "/dm/{id}/messages",
+    params(("id" = Uuid, Path, description = "DM conversation id")),
     tag = "dm",
     security(("bearerAuth" = [])),
     responses((status = 201, body = Message))
@@ -504,6 +516,7 @@ pub fn post_dm_message() {}
 #[utoipa::path(
     get,
     path = "/dm/{id}/messages",
+    params(("id" = Uuid, Path, description = "DM conversation id")),
     tag = "dm",
     security(("bearerAuth" = [])),
     responses((status = 200, body = Vec<Message>))
@@ -513,6 +526,7 @@ pub fn list_dm_messages() {}
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/group-dms",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
     tag = "dm",
     security(("bearerAuth" = [])),
     request_body = OpenGroupDmBody,
@@ -525,7 +539,7 @@ pub fn open_group_dm() {}
     path = "/workspaces/{wid}/group-dms",
     tag = "dm",
     security(("bearerAuth" = [])),
-    params(("member_id" = uuid::Uuid, Query, description = "Member whose group conversations are listed")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("member_id" = uuid::Uuid, Query, description = "Member whose group conversations are listed")),
     responses((status = 200, body = Vec<GroupDmConversation>))
 )]
 pub fn list_group_dms() {}
@@ -533,6 +547,7 @@ pub fn list_group_dms() {}
 #[utoipa::path(
     get,
     path = "/group-dms/{id}",
+    params(("id" = Uuid, Path, description = "Group DM id")),
     tag = "dm",
     security(("bearerAuth" = [])),
     responses((status = 200, body = GroupDmConversation))
@@ -542,6 +557,7 @@ pub fn get_group_dm() {}
 #[utoipa::path(
     post,
     path = "/group-dms/{id}/messages",
+    params(("id" = Uuid, Path, description = "Group DM id")),
     tag = "dm",
     security(("bearerAuth" = [])),
     request_body = PostDmMessage,
@@ -552,6 +568,7 @@ pub fn post_group_dm_message() {}
 #[utoipa::path(
     delete,
     path = "/messages/{id}/purge",
+    params(("id" = Uuid, Path, description = "Message id")),
     tag = "messages",
     security(("bearerAuth" = [])),
     responses(
@@ -564,6 +581,7 @@ pub fn purge_message() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/automation/dlq",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
     tag = "automation",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Dead-letter deliveries"))
@@ -573,6 +591,7 @@ pub fn list_automation_dlq() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/automation/deliveries",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
     tag = "automation",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Automation deliveries"))
@@ -582,6 +601,7 @@ pub fn list_automation_deliveries() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/automation/deliveries/{did}",
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = Uuid, Path, description = "Delivery id")),
     tag = "automation",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Delivery row"))
@@ -591,6 +611,7 @@ pub fn get_automation_delivery() {}
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/automation/deliveries/{did}/replay",
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = Uuid, Path, description = "Delivery id")),
     tag = "automation",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Replay enqueued"))
@@ -600,6 +621,7 @@ pub fn replay_automation_delivery() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/deliveries",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
     tag = "operator",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Webhook + automation deliveries"))
@@ -609,6 +631,7 @@ pub fn list_unified_deliveries() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/deliveries/{did}",
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = Uuid, Path, description = "Delivery id")),
     tag = "operator",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Delivery row"))
@@ -618,6 +641,7 @@ pub fn get_unified_delivery() {}
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/deliveries/{did}/replay",
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = Uuid, Path, description = "Delivery id")),
     tag = "operator",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Replay enqueued"))
@@ -641,10 +665,10 @@ pub fn list_global_audit() {}
     post,
     path = "/operator/reindex-embeddings",
     tag = "operator",
-    request_body = crate::reindex_ops::StartReindexEmbeddings,
+    request_body = StartReindexEmbeddings,
     security(("bearerAuth" = [])),
     responses(
-        (status = 202, description = "Reindex job accepted", body = maidan_types::ReindexJob),
+        (status = 202, description = "Reindex job accepted", body = ReindexJob),
     )
 )]
 pub fn start_reindex_embeddings() {}
@@ -656,7 +680,7 @@ pub fn start_reindex_embeddings() {}
     params(("job_id" = Uuid, Path, description = "Reindex job id")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, description = "Job status", body = maidan_types::ReindexJob),
+        (status = 200, description = "Job status", body = ReindexJob),
         (status = 404, description = "Unknown job"),
     )
 )]

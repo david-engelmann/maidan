@@ -1,5 +1,6 @@
 //! REST API path docs (mirrors `app.rs` routes; WS/MCP excluded).
 
+use maidan_types::DelegationGrant;
 use uuid::Uuid;
 
 use crate::dto::*;
@@ -150,13 +151,13 @@ pub fn list_api_tokens() {}
     params(("wid" = Uuid, Path, description = "Workspace id")),
     request_body = CreateDelegationGrant,
     security(("bearerAuth" = ["token:admin"])),
-    responses((status = 201, body = maidan_types::DelegationGrant)))]
+    responses((status = 201, body = DelegationGrant)))]
 pub fn create_delegation_grant() {}
 
 #[utoipa::path(get, path = "/workspaces/{wid}/delegation-grants", tag = "tokens",
     params(("wid" = Uuid, Path, description = "Workspace id")),
     security(("bearerAuth" = ["token:admin"])),
-    responses((status = 200, body = Vec<maidan_types::DelegationGrant>)))]
+    responses((status = 200, body = Vec<DelegationGrant>)))]
 pub fn list_delegation_grants() {}
 
 #[utoipa::path(delete, path = "/workspaces/{wid}/delegation-grants/{gid}", tag = "tokens",
@@ -165,7 +166,7 @@ pub fn list_delegation_grants() {}
         ("gid" = Uuid, Path, description = "Delegation grant id"),
     ),
     security(("bearerAuth" = ["token:admin"])),
-    responses((status = 200, body = maidan_types::DelegationGrant)))]
+    responses((status = 200, body = DelegationGrant)))]
 pub fn revoke_delegation_grant() {}
 
 #[utoipa::path(post, path = "/workspaces/{wid}/share-tickets", tag = "share",
@@ -1514,6 +1515,7 @@ pub fn abort_multipart_artifact_doc() {}
 #[utoipa::path(
     post,
     path = "/artifacts/multipart/{upload_id}/complete",
+    params(("upload_id" = String, Path, description = "Multipart upload id")),
     tag = "artifacts",
     security(("bearerAuth" = [])),
     responses((status = 200, body = Artifact))
@@ -1523,6 +1525,7 @@ pub fn complete_multipart_artifact_doc() {}
 #[utoipa::path(
     put,
     path = "/artifacts/multipart/{upload_id}/parts/{part_number}",
+    params(("upload_id" = String, Path, description = "Multipart upload id"), ("part_number" = i32, Path, description = "Part number, from 1")),
     tag = "artifacts",
     security(("bearerAuth" = [])),
     responses((status = 200, description = "Part stored"))

@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### The OpenAPI document
+
+- **Fixed:** `GET /openapi.json` referenced 57 schemas it never defined (263
+  `$ref`s, mostly id types), so a client generator stopped at the first one.
+- **Fixed:** 31 query-string structs were published as path parameters, and 25
+  operations did not declare the path parameters their route has. A generated
+  client would have put `limit` and `cursor` into the URL path.
+
 ### Cluster 418 — the adoption surface
 
 - **Added:** a pasted file in the `/ui` composer uploads as an artifact and

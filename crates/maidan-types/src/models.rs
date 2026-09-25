@@ -2,6 +2,7 @@
 //! caller can build state-less values without populating server-assigned
 //! fields (id, timestamps).
 
+use crate::EventKind;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -920,7 +921,7 @@ pub struct Notification {
     pub workspace_id: WorkspaceId,
     /// The recipient.
     pub member_id: MemberId,
-    pub kind: crate::EventKind,
+    pub kind: EventKind,
     /// The `maidan_events` row that triggered this notification.
     pub source_log_id: i64,
     pub channel_id: Option<ChannelId>,
@@ -942,7 +943,7 @@ pub struct Notification {
 pub struct NewNotification {
     pub workspace_id: WorkspaceId,
     pub member_id: MemberId,
-    pub kind: crate::EventKind,
+    pub kind: EventKind,
     pub source_log_id: i64,
     pub channel_id: Option<ChannelId>,
     pub thread_id: Option<ThreadId>,
@@ -958,7 +959,7 @@ pub struct NewNotification {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NotificationPref {
     pub member_id: MemberId,
-    pub kind: crate::EventKind,
+    pub kind: EventKind,
     pub muted: bool,
     pub updated_at: DateTime<Utc>,
 }
@@ -2131,6 +2132,25 @@ pub struct NewPin {
 /// wire (a controlled variant → its canonical name; `Other(s)` → `s`).
 ///
 /// [`Other`]: RelationKind::Other
+/// On the wire a relation is its name, a controlled one or any other string.
+#[cfg(feature = "openapi")]
+impl<'s> utoipa::ToSchema<'s> for RelationKind {
+    fn schema() -> (
+        &'s str,
+        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+    ) {
+        (
+            "RelationKind",
+            utoipa::openapi::ObjectBuilder::new()
+                .schema_type(utoipa::openapi::SchemaType::String)
+                .description(Some(
+                    "A relation name: supports, refutes, defines, depends, duplicates, grounds, supersedes, seeded_from, or any other string",
+                ))
+                .into(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RelationKind {
     /// This entity provides support/evidence for the target.
@@ -2303,6 +2323,7 @@ pub struct NewArtifact {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AuditEvent {
     pub id: i64,
     pub occurred_at: DateTime<Utc>,
@@ -2313,7 +2334,7 @@ pub struct AuditEvent {
     pub subject_id: Option<MemberId>,
     /// The delegation grant the action was taken under, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub grant_id: Option<crate::DelegationGrantId>,
+    pub grant_id: Option<DelegationGrantId>,
     pub action: String,
     pub target_kind: Option<String>,
     pub target_id: Option<uuid::Uuid>,
