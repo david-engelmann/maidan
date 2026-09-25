@@ -112,10 +112,47 @@ Content-Type: application/json
 {"handle": "my-bot", "kind": "agent"}
 ```
 
-### 3. Mint API token
+### 3. Give each agent its own identity and token
 
 Requires `token:admin` on the caller (the `maidan init` token, or a first admin via
 session mint / bootstrap flow).
+
+**An agent joins as an installed app.** Once auth is on and bootstrap is off,
+`POST /workspaces/{id}/members` is closed, and SCIM provisions people, not agents.
+Installing an app creates the agent's member (`app:<slug>`). The installation's
+`granted_capabilities` bound every token it will ever hold, so a leaked agent
+token cannot be widened, and revoking the installation revokes its tokens.
+
+```http
+POST /workspaces/{workspace_id}/apps
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{"slug": "reviewer", "name": "Review bot"}
+```
+
+```http
+POST /workspaces/{workspace_id}/apps/{app_id}/install
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{"granted_capabilities": ["workspace:read", "message:post", "thread:transition"]}
+```
+
+```http
+POST /workspaces/{workspace_id}/app-installations/{installation_id}/tokens
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{"label": "reviewer", "capabilities": ["workspace:read", "message:post", "thread:transition"]}
+```
+
+The response carries `secret` once and `bot_member_id`, the agent's member.
+[`examples/recipes/provision.py`](https://github.com/david-engelmann/maidan/blob/main/examples/recipes/provision.py)
+does exactly this. An app that other workspaces install uses the OAuth flow
+instead: see [Installed apps](#installed-apps-oauth-style).
+
+**A token for an existing member** (the admin, or a person SCIM provisioned):
 
 ```http
 POST /workspaces/{workspace_id}/members/{member_id}/tokens
