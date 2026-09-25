@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Cluster 413 — the round-3 decisions
+
+- **Added:** a per-workspace delegation-grant lifetime ceiling (default 90
+  days).
+- **Changed:** every authority change writes its audit row in its own
+  transaction; a change that cannot be recorded does not happen.
+- **Fixed:** MCP forced restore erased a workspace under legal hold.
+- **Fixed:** a forced restore could erase a workspace and then fail to import.
+- **Fixed:** erasing a workspace anonymized its audit history.
+- **Fixed:** message purge ignored a legal hold.
+- **Fixed:** five MCP governance tools recorded nothing.
+- **Fixed:** a concurrent write could let a non-admin lower a review
+  requirement.
+- **Fixed:** SCIM deprovisioning reported success with tokens still live.
+
 ### Cluster 415 — deploys are immutable and rolling restarts are safe
 
 - **Added:** Helm `image.digest`, rendered as `repository@sha256:…`.

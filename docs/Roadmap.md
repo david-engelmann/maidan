@@ -34,9 +34,10 @@ tags; they raise the bar each time they ship.
 ## Current cluster
 
 **Now (2026-09-25):** Cluster 411 (delegated authority) and Cluster 412 (the
-external MCP verifier) are closed on `main`, and so are 414 (bounded growth and
-timeouts), 415 (immutable deploys), 416 (UUIDv7 ids) and 417 (tested PITR).
-They are source records until the maintainer cuts their tags. The forward plan is the
+external MCP verifier) are closed on `main`, and so are 413 (the round-3
+decisions), 414 (bounded growth and timeouts), 415 (immutable deploys), 416
+(UUIDv7 ids) and 417 (tested PITR). They are source records until the
+maintainer cuts their tags. 418 (adoption) is in progress. The forward plan is the
 **Launch backlog** at the top of [Open Work.md](Open%20Work.md), reconciled
 against code:
 - **413:** the round-3 decisions (grant ceiling; authority audits inside their
@@ -259,6 +260,8 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 **409.0** (`v409.0.0`) **Wave 4 #40 complete — searchable, tag-honest release stream.** Two implementation PRs (#979/#982) plus the close record. **409.1** makes ordinary CI and the pre-publication release gate align the newest capability record, changelog, contributor guide, README image pins, and actual pushed tag. **409.2** promotes the release stream into reader navigation, links real tags, labels never-tagged source records, preserves exact search for folded tags, and explains published artifacts versus newer `main` source. **Row #40 is closed.** [[Clusters/Cluster 409]], [[Retros/Cluster 409]].
 
 **410.0** (`v410.0.0`) **Wave 4 #41 complete — accountable usage and bounded authorization evidence.** Three implementation PRs (#988/#989/#991) plus the close record. **410.1–410.2** atomically bind a claim-fenced, idempotent `PayerStamp` ledger row, accumulated budget, `UsageReported`, and over-budget claim failure. **410.3** exposes it over REST and MCP while deriving reporter and payer authority. **410.4** adds the shared content-free authorization record, fixed-label aggregate metric, sampled denial detail, and sustained-rate alert without durable denial writes. **Row #41 is closed.** [[Clusters/Cluster 410]], [[Retros/Cluster 410]].
+
+**413.0** (source record; `v413.0.0` not cut) **The round-3 decisions.** Six implementation PRs (#1014, #1016, #1017, #1019, #1024, #1025) plus the close record. A per-workspace grant-lifetime ceiling (D-B), and every authority change committed with its audit row (D-A), which surfaced and fixed a legal-hold bypass, a non-atomic restore, an audit table that anonymized erased workspaces, silent MCP governance tools, a review-lowering race and SCIM deprovisioning that left tokens live. [[Retros/Cluster 413]].
 
 **415.0** (source record; `v415.0.0` not cut) **Deploys are immutable and rolling restarts are safe.** Two implementation PRs (#1021, #1022) plus the close record. Digest pinning, an in-process drain, a blocking scan that gates signing, checked release pins, an anchored verify identity, and `GET /operator/status`. [[Retros/Cluster 415]].
 

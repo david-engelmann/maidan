@@ -264,7 +264,7 @@ before planning work.
 - For decisions whose rationale isn't obvious, check
   [`docs/Decisions.md`](docs/Decisions.md).
 
-## Where the project actually is (2026-09-23)
+## Where the project actually is (2026-09-25)
 
 Read this before the long narrative below, which is a point-in-time record and
 **stops around Cluster 273**. Current state:
@@ -302,12 +302,35 @@ Read this before the long narrative below, which is a point-in-time record and
   place the principal is bound; read it before adding a record). Approvals may
   be borrowed, never self-approved. `member:impersonate` no longer exists, and
   `capability_set::no_capability_grants_act_as_any` fails if it returns.
+- **Clusters 412–418 (the Launch backlog), since 411:** 412 an external MCP
+  verifier (the official Inspector in CI; stock 2025 clients now connect);
+  413 the round-3 decisions — D-B a per-workspace grant ceiling, and D-A: every
+  authority change (tokens, grants, share tickets, workspace purge/erase/import,
+  message purge, legal hold, governance, membership, egress targets, app
+  revoke, secrets, SCIM) writes its audit row in the change's own transaction,
+  and `authority_audit_contract` fails if handler code calls the unaudited form;
+  414 bounded growth and timeouts; 415 immutable deploys (Helm digests, an
+  in-process drain, blocking trivy, pinned quickstart) and `GET /operator/status`;
+  416 UUIDv7 ids (credentials stay v4; `uuid_v7_contract`); 417 PITR with a
+  drill CI runs; 418 adoption is in progress (CONTRIBUTING has landed). 412 and
+  later are **source records** in Capabilities until the maintainer cuts tags.
+- **Four cross-tenant leaks were found on 2026-09-25**, all the same
+  shape: an authorization check that runs only when an optional id is present.
+  Live subscriptions without `workspace_id` streamed every tenant's events
+  (#1029); MCP resource notifications were one global set (#1031); the MCP
+  channel-membership tools had no channel scope (#1018). A fourth, a deduped
+  artifact returning the first uploader's metadata, is fixed in #1033. Treat
+  `if let Some(x) = req.x { check(x) }` as a bug until shown otherwise, and give
+  every multi-tenant fix a two-tenant test.
+- **MinIO's own images are unpullable** (Docker Hub, then quay.io). Compose and
+  k8s use `cgr.dev/chainguard/minio{,-client}` pinned by digest (#1023); the
+  client image has no shell, so bucket init uses `MC_HOST_local`.
 - **Required checks must be green before `--admin`.** `docker compose smoke`
   was red on `main` from #973 to #1005 at the same step while ~30 PRs were
   admin-merged over it. A required check failing at the same step on
   consecutive `main` commits is a break, not a flake: diagnose it first.
 - **The forward plan is the *Launch backlog* at the top of [`docs/Open Work.md`](docs/Open%20Work.md)**
-  (reconciled against code 2026-09-23, Clusters 413–418). Sections below it are
+  (reconciled against code 2026-09-23; 413–417 are done, 418 is in progress). Sections below it are
   history and dispositions; where they disagree, the Launch backlog is right.
 - **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
   several items deliberately recorded as *decisions* rather than fixed. Do not
