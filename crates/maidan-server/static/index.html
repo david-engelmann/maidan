@@ -3200,47 +3200,73 @@
         const id = document.getElementById("edit-message-id").value.trim();
         loadMessageEdits(id);
       };
+      // Upload bytes as a content-addressed artifact. The server names it by its
+      // sha256; no client filename is ever used, so a pasted name cannot steer
+      // where anything is stored.
+      async function uploadArtifact(blob, kind) {
+        const params = new URLSearchParams({ kind });
+        if (blob.type) params.set("mime_type", blob.type);
+        const res = await fetch(`${base()}/artifacts?${params}`, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token(), Accept: "application/json" },
+          body: blob,
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          setOut(body);
+          return null;
+        }
+        return JSON.parse(body);
+      }
+      async function attachToSelectedThread(artifact) {
+        if (!selectedThreadId) return false;
+        const pres = await fetch(apiWritePath(`/threads/${selectedThreadId}/messages`), {
+          method: "POST",
+          headers: headers(true),
+          credentials: "include",
+          body: JSON.stringify({
+            body: `Attached artifact ${artifact.sha256.slice(0, 12)}…`,
+            metadata: { artifacts: [artifact.sha256] },
+          }),
+        });
+        if (pres.ok) {
+          setStatus("Artifact attached in thread", "ok");
+          await loadMessages();
+        }
+        return pres.ok;
+      }
       document.getElementById("upload-artifact").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const fileInput = document.getElementById("artifact-file");
         if (!fileInput.files || !fileInput.files[0]) return alert("Choose a file");
         const kind = document.getElementById("artifact-kind").value;
         persist();
-        const params = new URLSearchParams({ kind });
-        const file = fileInput.files[0];
-        if (file.type) params.set("mime_type", file.type);
-        const res = await fetch(`${base()}/artifacts?${params}`, {
-          method: "POST",
-          headers: { Authorization: "Bearer " + token(), Accept: "application/json" },
-          body: file,
-        });
-        const body = await res.text();
-        if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
-          return setOut(body);
-        }
-        const artifact = JSON.parse(body);
+        const artifact = await uploadArtifact(fileInput.files[0], kind);
+        if (!artifact) return;
         setStatus("Artifact uploaded", "ok");
         setOut(artifact);
         const attach = document.getElementById("attach-artifact-next");
-        if (attach && attach.checked && selectedThreadId) {
-          const meta = { artifacts: [artifact.sha256] };
-          const postPath = apiWritePath(`/threads/${selectedThreadId}/messages`);
-          const pres = await fetch(postPath, {
-            method: "POST",
-            headers: headers(true),
-            credentials: "include",
-            body: JSON.stringify({
-              body: `Attached artifact ${artifact.sha256.slice(0, 12)}…`,
-              metadata: meta,
-            }),
-          });
-          if (pres.ok) {
-            setStatus("Artifact attached in thread", "ok");
-            await loadMessages();
-          }
-        }
+        if (attach && attach.checked) await attachToSelectedThread(artifact);
       };
+      // Paste a file (a screenshot, say) into the composer and it becomes an
+      // artifact attached to the selected thread. Pasting text is untouched.
+      document.getElementById("compose-body").addEventListener("paste", async (event) => {
+        const files = Array.from((event.clipboardData && event.clipboardData.files) || []);
+        if (!files.length) return;
+        event.preventDefault();
+        if (!requireTokenForWrite()) return;
+        if (!selectedThreadId) {
+          setStatus("Select a thread before pasting a file", "err");
+          return;
+        }
+        persist();
+        for (const file of files) {
+          const kind = file.type.startsWith("image/") ? "screenshot" : "attachment";
+          const artifact = await uploadArtifact(file, kind);
+          if (!artifact || !(await attachToSelectedThread(artifact))) return;
+        }
+      });
       document.getElementById("load-thread").onclick = async () => {
         persist();
         const id = document.getElementById("thread-id").value.trim();

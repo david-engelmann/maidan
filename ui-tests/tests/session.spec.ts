@@ -5,7 +5,8 @@ const fx = fixtures();
 
 // The capability card in a real browser (Cluster 353.1): the Session tab reads
 // GET /me and renders what the token actually carries. The seeded fixture token
-// holds workspace:read + workspace:write + message:post, so those land in "Can"
+// holds workspace:read + workspace:write + message:post + artifact:upload, so
+// those land in "Can"
 // and the rest of the vocabulary (e.g. token:admin) lands in "Can't".
 test("the Session tab renders the capability card from the real grant", async ({ page }) => {
   await page.goto("/ui/");
@@ -17,9 +18,10 @@ test("the Session tab renders the capability card from the real grant", async ({
   await expect(page.locator("#session-credential")).toContainText("bearer");
   await expect(page.locator("#session-member")).toHaveText(fx.member_id);
 
-  // "Can" holds exactly the three granted capabilities.
+  // "Can" holds exactly the four granted capabilities.
   const can = page.locator("#cap-can-list");
-  await expect(page.locator("#cap-can-count")).toHaveText("(3)");
+  await expect(page.locator("#cap-can-count")).toHaveText("(4)");
+  await expect(can.locator("li", { hasText: "artifact:upload" })).toBeVisible();
   await expect(can.locator("li", { hasText: "workspace:read" })).toBeVisible();
   await expect(can.locator("li", { hasText: "workspace:write" })).toBeVisible();
   await expect(can.locator("li", { hasText: "message:post" })).toBeVisible();

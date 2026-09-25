@@ -112,6 +112,7 @@ async fn main() {
                 capability::WORKSPACE_READ.into(),
                 capability::WORKSPACE_WRITE.into(),
                 capability::MESSAGE_POST.into(),
+                capability::ARTIFACT_UPLOAD.into(),
             ],
             expires_at: None,
         })
