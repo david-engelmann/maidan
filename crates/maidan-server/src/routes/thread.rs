@@ -235,7 +235,8 @@ pub async fn transition_thread(
     cap(&auth, THREAD_TRANSITION)?;
     let action = ThreadAction::parse(&body.action).ok_or_else(|| {
         ApiError::BadRequest(format!(
-            "unknown action {:?}; expected start_review, close, or archive",
+            "unknown action {:?}; expected start_review, close, or archive (to send \
+             work back, submit a review with decision request_changes)",
             body.action
         ))
     })?;
@@ -301,16 +302,18 @@ pub async fn set_thread_result(
     // Arm the close-gate on the write path so a PUT is immediately visible on
     // review-status (the bus consumer in 383.2 is every-replica / replay; tests
     // and a single replica must not race).
-    if let Err(err) = state
+    match state
         .store
         .apply_critical_review_decision(thread_id, auth.member_id, &body.result)
         .await
     {
-        tracing::warn!(
+        Ok(Some((_, Some(reopened)))) => super::publish_stored(&state, reopened).await,
+        Ok(_) => {}
+        Err(err) => tracing::warn!(
             error = %err,
             %thread_id,
             "critical review adapter failed; result is stored"
-        );
+        ),
     }
     // Home the producer's `run_id` as `parent_run_id` when present. Best-effort
     // — a lineage hiccup must not undo a stored result.

@@ -154,6 +154,8 @@ const POSTGRES_UP_V108: &str =
     include_str!("../../../migrations/postgres/0108_audit_keeps_its_actors.sql");
 const POSTGRES_UP_V109: &str =
     include_str!("../../../migrations/postgres/0109_artifact_ref_metadata.sql");
+const POSTGRES_UP_V110: &str =
+    include_str!("../../../migrations/postgres/0110_review_dismissal.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -279,6 +281,7 @@ const SQLITE_UP_V107: &str =
     include_str!("../../../migrations/sqlite/0107_audit_keeps_its_actors.sql");
 const SQLITE_UP_V108: &str =
     include_str!("../../../migrations/sqlite/0108_artifact_ref_metadata.sql");
+const SQLITE_UP_V109: &str = include_str!("../../../migrations/sqlite/0109_review_dismissal.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -445,6 +448,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 107, POSTGRES_UP_V107).await?;
     apply_postgres(pool, 108, POSTGRES_UP_V108).await?;
     apply_postgres(pool, 109, POSTGRES_UP_V109).await?;
+    apply_postgres(pool, 110, POSTGRES_UP_V110).await?;
     Ok(())
 }
 
@@ -568,6 +572,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 106, SQLITE_UP_V106).await?;
     apply_sqlite(pool, 107, SQLITE_UP_V107).await?;
     apply_sqlite(pool, 108, SQLITE_UP_V108).await?;
+    apply_sqlite(pool, 109, SQLITE_UP_V109).await?;
     Ok(())
 }
 

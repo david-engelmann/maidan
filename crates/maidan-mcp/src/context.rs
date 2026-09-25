@@ -301,6 +301,18 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
             out["accepted_decisions"] = serde_json::to_value(&decisions)?;
         }
     }
+    // What a reviewer sent this thread back for. A worker that claims a
+    // reopened thread reads the notes here; each stays until its reviewer
+    // reviews again.
+    let change_requests: Vec<_> = store
+        .list_reviews(thread.id)
+        .await?
+        .into_iter()
+        .filter(|r| r.decision == maidan_types::ReviewDecision::RequestChanges)
+        .collect();
+    if !change_requests.is_empty() {
+        out["change_requests"] = serde_json::to_value(&change_requests)?;
+    }
     // The glossary grounds the pack in the workspace's shared vocabulary.
     // Attached only when present + requested, so an empty glossary costs no
     // tokens and a workspace-context pack (which carries it once at the top)

@@ -868,7 +868,7 @@ pub async fn dispatch(
         "wait_for_memory_block" => memory_block::wait_for_memory_block(server, auth, args).await,
         "set_review_requirement" => review::set_review_requirement(store, auth, args).await,
         "add_reviewer" => review::add_reviewer(store, auth, args).await,
-        "submit_review" => review::submit_review(store, auth, args).await,
+        "submit_review" => review::submit_review(server, auth, args).await,
         "get_review_status" => review::get_review_status(store, args).await,
         "list_reviews" => review::list_reviews(store, args).await,
         "set_land_gate" => land_gate::set_land_gate(store, auth, args).await,

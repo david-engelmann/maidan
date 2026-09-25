@@ -1397,13 +1397,18 @@ pub trait ReviewStore: Send + Sync {
         member_id: MemberId,
     ) -> Result<bool, StoreError>;
     async fn list_reviewers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
+    /// Record `reviewer_id`'s review. A `request_changes` review that sends an
+    /// `in_review` thread back for rework (from its owner or a reviewer whose
+    /// approval would count) reopens it, dismisses the approvals given to the
+    /// version it replaces, and returns the `ThreadStateChanged` event it
+    /// appended, for the caller to publish.
     async fn submit_review(
         &self,
         thread_id: ThreadId,
         reviewer_id: MemberId,
         decision: ReviewDecision,
         note: Option<&str>,
-    ) -> Result<ThreadReview, StoreError>;
+    ) -> Result<(ThreadReview, Option<StoredEvent>), StoreError>;
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
     async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError>;
     /// If `result` is a reviewed `example.review.result/1` with any `critical`
@@ -1417,7 +1422,7 @@ pub trait ReviewStore: Send + Sync {
         thread_id: ThreadId,
         reviewer_id: MemberId,
         result: &serde_json::Value,
-    ) -> Result<Option<ThreadReview>, StoreError>;
+    ) -> Result<Option<(ThreadReview, Option<StoredEvent>)>, StoreError>;
 }
 
 #[async_trait]

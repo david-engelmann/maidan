@@ -1517,7 +1517,7 @@ impl ReviewStore for SqliteStore {
         reviewer_id: MemberId,
         decision: ReviewDecision,
         note: Option<&str>,
-    ) -> Result<ThreadReview, StoreError> {
+    ) -> Result<(ThreadReview, Option<StoredEvent>), StoreError> {
         reviews::submit_review(&self.pool, thread_id, reviewer_id, decision, note).await
     }
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError> {
@@ -1531,7 +1531,7 @@ impl ReviewStore for SqliteStore {
         thread_id: ThreadId,
         reviewer_id: MemberId,
         result: &serde_json::Value,
-    ) -> Result<Option<ThreadReview>, StoreError> {
+    ) -> Result<Option<(ThreadReview, Option<StoredEvent>)>, StoreError> {
         reviews::apply_critical_review_decision(&self.pool, thread_id, reviewer_id, result).await
     }
 }
