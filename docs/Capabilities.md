@@ -42,6 +42,16 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## Cluster 416 (source record; no `v416.0.0` tag) — Wave 4 #44: UUIDv7 entity ids
+
+Every minted id for a row, job, task or request is UUIDv7; credentials stay random.
+
+| Change | Where |
+|--------|-------|
+| **v7 ids (416.1):** 70 production call sites moved to `Uuid::now_v7()` — both stores' rows, reindex jobs, A2A tasks, request ids, temp and multipart names. | `crates/maidan-store/src/{postgres,sqlite}/`, `crates/maidan-server/src/`, `crates/maidan-artifacts/src/` |
+| **v4 where it is a credential:** token and share-ticket secrets, the OAuth code, the MCP session id, the browser session id. | `crates/maidan-auth/src/token.rs`, `crates/maidan-server/src/app_oauth.rs`, `crates/maidan-mcp/src/server.rs`, `crates/maidan-store/src/*/sessions.rs` |
+| **Contract:** `uuid_v7_contract` fails on a production `new_v4()` outside an allowlist with exact counts and reasons; `uuid_v7_ids` checks store ids are v7 and ordered. | `crates/maidan-server/tests/uuid_v7_contract.rs`, `crates/maidan-store/tests/uuid_v7_ids.rs` |
+
 ## Cluster 414 (source record; no `v414.0.0` tag) — nothing grows without bound, nothing hangs forever
 
 Every queue, cursor, connection and wait on the launch path has a bound or a timeout, and failed embeddings are retried, then repaired.

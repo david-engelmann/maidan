@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Cluster 416 — UUIDv7 entity ids
+
+- **Changed:** every id minted for a row, job, task or request is UUIDv7, so
+  ids sort by creation. Existing ids are unchanged.
+- **Unchanged:** credentials (token and share-ticket secrets, OAuth codes,
+  session ids) stay random v4.
+- **Added:** `uuid_v7_contract`, which fails on a production `new_v4()`
+  outside its allowlist.
+
 ### Cluster 414 — nothing grows without bound, nothing hangs forever
 
 - **Fixed:** an abandoned delivery cursor no longer pins event-log retention.
