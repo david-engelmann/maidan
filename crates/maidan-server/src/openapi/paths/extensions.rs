@@ -10,6 +10,7 @@
 use uuid::Uuid;
 
 use crate::dto::*;
+use crate::status::OperatorStatus;
 use crate::thread_context::WorkspaceContext;
 use maidan_types::*;
 
@@ -169,6 +170,12 @@ pub fn get_legal_hold() {}
     security(("bearerAuth" = [])),
     responses((status = 200, body = [LegalHold], description = "Active legal holds across all workspaces")))]
 pub fn list_legal_holds() {}
+
+#[utoipa::path(get, path = "/operator/status", tag = "operator",
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = OperatorStatus,
+        description = "Phase, readiness checks, search backfill, replica lag and queue depths; `Accept: text/html` returns the same as a page")))]
+pub fn operator_status() {}
 
 #[utoipa::path(
     put,

@@ -58,6 +58,18 @@ pub async fn handler(state: State<AppState>) -> impl IntoResponse {
 }
 
 async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
+    let body = collect(&state).await;
+    let code = if body.status == "ok" {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (code, Json(body))
+}
+
+/// Every readiness check, as `/health/ready` reports it; `/operator/status`
+/// shows the same result so the two cannot disagree.
+pub(crate) async fn collect(state: &AppState) -> HealthResponse {
     // Shutting down: not ready, whatever the dependencies say, so the pod leaves
     // the Service endpoints while it still serves what it already accepted.
     let draining = state.draining.load(Ordering::Relaxed);
@@ -66,16 +78,16 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
         Err(e) => SubsystemStatus::Error(e.to_string()),
     };
 
-    let storage = check_artifact_store(&state).await;
-    let (indexer, indexer_last_event_at) = check_indexer(&state).await;
-    let bus = check_bus(&state);
+    let storage = check_artifact_store(state).await;
+    let (indexer, indexer_last_event_at) = check_indexer(state).await;
+    let bus = check_bus(state);
     let embedding = Some(EmbeddingStatus {
         model: state.embedding_provider.model_name().to_string(),
         dimension: state.embedding_provider.dimension(),
     });
 
     let healthy = !draining && db.is_ok() && storage.is_ok() && indexer.is_ok() && bus.is_ok();
-    let body = HealthResponse {
+    HealthResponse {
         status: if draining {
             "draining".to_string()
         } else if healthy {
@@ -90,13 +102,7 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
         bus,
         embedding,
         version: version(),
-    };
-    let code = if healthy {
-        StatusCode::OK
-    } else {
-        StatusCode::SERVICE_UNAVAILABLE
-    };
-    (code, Json(body))
+    }
 }
 
 fn check_bus(state: &AppState) -> SubsystemStatus {

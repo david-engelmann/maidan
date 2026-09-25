@@ -184,7 +184,8 @@ enum ConsumeOutcome {
 }
 
 /// The tap surface this indexer projects. One row in `maidan_tap_cursor`.
-const SEARCH_TAP_SURFACE: &str = "search";
+/// The tap surface the search projector records its cursor under.
+pub const SEARCH_TAP_SURFACE: &str = "search";
 
 /// Persist the resume point, but only when no workspace is faulted.
 ///
