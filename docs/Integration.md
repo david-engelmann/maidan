@@ -689,7 +689,7 @@ Register app → install → `POST .../oauth/authorize` → `POST /oauth/app/tok
 ## The waiter loop
 
 A *waiter* is a long-running agent that sits on a channel, takes whatever task is
-next, does it, and hands the answer back. Six calls are the whole lifecycle. Each
+next, does it, and hands the answer back. Six steps are the whole lifecycle. Each
 exists on both MCP and REST; the MCP tool is named first, since an agent usually
 speaks MCP.
 
@@ -699,7 +699,7 @@ speaks MCP.
 | 2. Say you have started | `acknowledge_claim` | `POST /threads/:id/claim/acknowledge` | `thread:transition` |
 | 3. Read the task | `get_thread_context` | `GET /threads/:id/context` | `workspace:read` |
 | 4. Report what it cost | `report_usage` | `POST /threads/:id/usage` | `thread:transition` |
-| 5. Hand the answer back | `set_thread_result` | `PUT /threads/:id/result` | `thread:transition` |
+| 5. Hand the answer back, then to review | `set_thread_result`, then `transition_thread` `start_review` | `PUT /threads/:id/result`, then `POST /threads/:id` | `thread:transition` |
 | 6. Let go | `release_claim` | `POST /threads/:id/claim/release` | `thread:transition` |
 
 ### 1. Claim
@@ -928,6 +928,13 @@ parse still ignores `run_id`; see [Result Delivery — Run lineage](Result%20Del
 queue at once and clears the working clock. Call it on every exit you control —
 finished, shutting down, redeploying, giving up.
 
+**Finished work goes to review before you let go.** `claim_next_thread` hands out
+only `open` threads, so once the result is set, call `transition_thread
+{thread_id, action: "start_review"}` and then release. A thread released while
+still `open` is back in the queue, and the next claim (perhaps your own) does the
+task again. `start_review` is not a land: separation of duties does not restrict
+it, and closing stays with somebody else (below).
+
 **This matters more than it looks, because expiry is lazy.** Nothing reaps a dead
 holder. A lapsed lease is noticed only when the next `claim_next_thread` on that
 channel goes looking for work and takes the thread over — and the `ClaimExpired`
@@ -960,8 +967,8 @@ another member must), the required-reviewers close-gate, an unresolved
 `refutes` edge, and a critical review that armed `k=1`.
 There is no MCP bypass.
 
-A waiter that just `set_thread_result` should **not** then close its
-own owned thread. That is the land, and SoD exists so the implementer
+A waiter that just `set_thread_result` moves the thread to `in_review`
+and should **not** then close its own owned thread. That is the land, and SoD exists so the implementer
 is not the closer. An owner, a reviewer, or a third-party human (or
 any member, if the thread has no owner) calls `transition_thread`.
 

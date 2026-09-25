@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Cluster 418 — the adoption surface
+
+- **Fixed:** `claim_next_thread` handed out threads under review, closed or
+  archived, so a finished task came back to the queue as soon as its claim was
+  released or its lease lapsed, and was done again. It now hands out only `open`
+  threads, and queue depth and occupancy count the same set.
+
 ### Cluster 413 — the round-3 decisions
 
 - **Added:** a per-workspace delegation-grant lifetime ceiling (default 90

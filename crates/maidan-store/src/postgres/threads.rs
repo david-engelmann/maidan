@@ -476,7 +476,7 @@ pub async fn claim_next(
         "WITH next AS (
              SELECT c.id FROM maidan_threads c
              LEFT JOIN maidan_thread_priorities p ON p.thread_id = c.id
-             WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL
+             WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL AND c.state = 'open'
                AND (c.assignee_id IS NULL OR (c.assignment_expires_at IS NOT NULL AND c.assignment_expires_at < NOW()))
                AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_dependencies d
@@ -562,7 +562,7 @@ pub async fn channel_queue_depth(
                      THEN 1 ELSE 0 END), 0) AS unclaimable_count
          FROM maidan_threads t
          WHERE t.channel_id = $1
-           AND t.state NOT IN ('closed', 'archived')
+           AND t.state = 'open'
            AND t.tombstoned_at IS NULL",
     )
     .bind(channel_id.0)
@@ -616,7 +616,7 @@ pub async fn channel_occupancy(
                      THEN 1 ELSE 0 END), 0) AS blocked_count
          FROM maidan_threads t
          WHERE t.channel_id = $1
-           AND t.state NOT IN ('closed', 'archived')
+           AND t.state = 'open'
            AND t.tombstoned_at IS NULL",
     )
     .bind(channel_id.0)
@@ -650,7 +650,7 @@ pub async fn claim_next_with_event(
         "WITH next AS (
              SELECT c.id, c.assignee_id AS prev_assignee FROM maidan_threads c
              LEFT JOIN maidan_thread_priorities p ON p.thread_id = c.id
-             WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL
+             WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL AND c.state = 'open'
                AND (c.assignee_id IS NULL OR (c.assignment_expires_at IS NOT NULL AND c.assignment_expires_at < NOW()))
                AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_dependencies d
