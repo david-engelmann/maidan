@@ -112,7 +112,7 @@ the `/archive` mount point), the restore procedure in Production.md
 procedure end to end and fails unless the restore stops exactly at the chosen
 moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 
-### Cluster 418 — Wave 4 adoption surface
+### Cluster 418 — Wave 4 adoption surface — ✅ complete
 
 | Item | Verified state | Size |
 |---|---|---|
@@ -127,8 +127,8 @@ moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 - ~~**The framework examples' "hero six" cannot hand work to review**~~ **✅** — `transition_thread` joins the filtered set (hero seven); both examples check for it, re-verified 2026-09-25
 - **No way back from `in_review`** — the FSM has no reopen, so a rejected result cannot return to the queue for rework; a reviewer has to file a new thread. Decide whether `request_changes` belongs in the FSM (decision)
 - ~~**Artifact metadata leaks another tenant's `uploaded_by`**~~ **✅ fixed** — each workspace's ref carries its own `kind`, `mime_type`, `uploaded_by` and `created_at` (pg 0109 / sqlite 0108); every read on behalf of a workspace uses `get_artifact_for_workspace`. Context packs no longer surface an artifact a message merely names
-- `book/src/mcp-reference.md` is git-ignored but still tracked (S).
-- Errors and docs cite RFC 7807, which RFC 9457 obsoleted (S).
+- ~~`book/src/mcp-reference.md` is git-ignored but still tracked~~ **✅** — tracked, no longer ignored, and `mcp_reference_current` fails if it drifts (#1028)
+- ~~Errors and docs cite RFC 7807~~ **✅** — code and docs cite RFC 9457 (#1028); the one remaining mention is a historical Capabilities row
 - ~~SMTP has no real-client test~~ **✅** `smtp_real_client_e2e` sends through
   `lettre` to a real SMTP server (Mailpit) and reads the message back, including
   that a CR/LF subject cannot inject a header. The names `slack_egress_e2e`,

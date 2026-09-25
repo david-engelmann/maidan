@@ -9,6 +9,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Cluster 418 — the adoption surface
 
+- **Added:** a pasted file in the `/ui` composer uploads as an artifact and
+  attaches to the selected thread.
+- **Added:** every example carries a last-verified date and the versions it ran
+  against; `a2a_interop.py` works against an auth-on server.
+- **Added:** CONTRIBUTING covers claiming work, security timelines, ownership,
+  the claims the project does not make, and how a release is cut.
 - **Added:** a Goose recipe (`examples/goose/`) that works Maidan tasks through
   the waiter loop.
 - **Added:** compose recipes in `examples/recipes/`: a coding agent on the
@@ -18,6 +24,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   archived, so a finished task came back to the queue as soon as its claim was
   released or its lease lapsed, and was done again. It now hands out only `open`
   threads, and queue depth and occupancy count the same set.
+- **Changed:** the framework examples' hero loop includes `transition_thread`,
+  and Integration.md shows how an agent joins a workspace as an installed app.
 
 ### Cluster 413 — the round-3 decisions
 

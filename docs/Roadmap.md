@@ -36,8 +36,8 @@ tags; they raise the bar each time they ship.
 **Now (2026-09-25):** Cluster 411 (delegated authority) and Cluster 412 (the
 external MCP verifier) are closed on `main`, and so are 413 (the round-3
 decisions), 414 (bounded growth and timeouts), 415 (immutable deploys), 416
-(UUIDv7 ids) and 417 (tested PITR). They are source records until the
-maintainer cuts their tags. 418 (adoption) is in progress. The forward plan is the
+(UUIDv7 ids), 417 (tested PITR) and 418 (the adoption surface). They are
+source records until the maintainer cuts their tags. The forward plan is the
 **Launch backlog** at the top of [Open Work.md](Open%20Work.md), reconciled
 against code:
 - **413:** the round-3 decisions (grant ceiling; authority audits inside their
@@ -46,7 +46,7 @@ against code:
 - **415:** immutable deploys.
 - **416:** uuidv7.
 - **417:** a tested DR drill.
-- **418:** Wave 4 adoption.
+- **418:** Wave 4 adoption (recipes, verified examples, a Goose claimant).
 
 Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**–**`v1.4.0`** are complete.
 
@@ -268,6 +268,8 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 **417.0** (source record; `v417.0.0` not cut) **Disaster recovery that is actually tested.** One implementation PR (#1026) plus the close record. WAL archiving, a written restore procedure, and a drill CI runs that restores to a chosen moment and fails unless exactly the earlier write is back. [[Retros/Cluster 417]].
 
 **416.0** (source record; `v416.0.0` not cut) **Wave 4 #44 — UUIDv7 entity ids.** One implementation PR (#1030) plus the close record. 70 minting sites moved to v7; the 8 that produce credentials stay v4, pinned by a contract with exact per-file counts. [[Retros/Cluster 416]].
+
+**418.0** (source record; `v418.0.0` not cut) **The adoption surface.** Eight PRs (#1032, #1036, #1040, #1046, #1047, #1048, #1049, #1050) plus the close record. Verified examples, compose recipes for a coding agent and a gated deploy, a Goose claimant, paste-to-artifact and CONTRIBUTING. Running the recipes found `claim_next_thread` re-handing finished work (#1046). [[Retros/Cluster 418]].
 
 **414.0** (source record; `v414.0.0` not cut) **Nothing grows without bound, nothing hangs forever.** Two implementation PRs (#1015, #1020) plus the close record. Retention, database timeouts, replica fencing, WebSocket and MCP ceilings and deadlines, presence repair, and failed embeddings retried then repaired. [[Retros/Cluster 414]].
 
