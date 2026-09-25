@@ -218,7 +218,7 @@ pub async fn build_thread_context(
 
     let mut artifacts = Vec::new();
     for sha in artifact_shas {
-        match store.get_artifact_by_sha(&sha).await {
+        match store.get_artifact_for_workspace(workspace_id, &sha).await {
             Ok(artifact) if artifact.tombstoned_at.is_none() => artifacts.push(artifact),
             Ok(_) => {}
             Err(_) => {}
@@ -471,7 +471,7 @@ async fn build_thread_context_as_of(
     }
     let mut artifacts = Vec::new();
     for sha in artifact_shas {
-        if let Ok(artifact) = store.get_artifact_by_sha(&sha).await {
+        if let Ok(artifact) = store.get_artifact_for_workspace(workspace_id, &sha).await {
             if artifact.tombstoned_at.is_none() && artifact.created_at <= cutoff {
                 artifacts.push(artifact);
             }

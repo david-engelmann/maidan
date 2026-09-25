@@ -2475,6 +2475,13 @@ impl ArtifactMetaStore for PostgresStore {
     async fn get_artifact_by_sha(&self, sha256: &str) -> Result<Artifact, StoreError> {
         artifacts::get_by_sha(&self.pool, sha256).await
     }
+    async fn get_artifact_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+    ) -> Result<Artifact, StoreError> {
+        artifacts::get_for_workspace(&self.pool, workspace_id, sha256).await
+    }
 
     async fn record_artifact_ref(
         &self,

@@ -188,7 +188,7 @@ pub async fn get_artifact(
     cap(&auth, WORKSPACE_READ)?;
     let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     ensure_artifact_ref(&state, &auth, &sha_hex).await?;
-    let meta = state.store.get_artifact_by_sha(&sha_hex).await?;
+    let meta = artifact_as_seen_by(&state, &auth, &sha_hex).await?;
     let bytes = state.artifacts.get(&sha).await?;
     let mut headers = HeaderMap::new();
     if let Some(mime) = meta.mime_type {
@@ -210,5 +210,23 @@ pub async fn get_artifact_metadata(
     cap(&auth, WORKSPACE_READ)?;
     Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     ensure_artifact_ref(&state, &auth, &sha_hex).await?;
-    Ok(Json(state.store.get_artifact_by_sha(&sha_hex).await?))
+    Ok(Json(artifact_as_seen_by(&state, &auth, &sha_hex).await?))
+}
+
+/// The artifact with the caller's workspace's own metadata. The shared row's
+/// `uploaded_by` is whoever uploaded the bytes first, possibly in another
+/// tenant.
+async fn artifact_as_seen_by(
+    state: &AppState,
+    auth: &AuthContext,
+    sha_hex: &str,
+) -> ApiResult<Artifact> {
+    Ok(if auth.bypass {
+        state.store.get_artifact_by_sha(sha_hex).await?
+    } else {
+        state
+            .store
+            .get_artifact_for_workspace(auth.workspace_id, sha_hex)
+            .await?
+    })
 }
