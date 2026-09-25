@@ -29,9 +29,9 @@ pub async fn stream(
     }
 
     let rx = state.mcp.subscribe_notifications();
-    let notification_stream = BroadcastStream::new(rx).filter_map(|item| {
-        let notification = item.ok()?;
-        serde_json::to_string(&notification)
+    let notification_stream = BroadcastStream::new(rx).filter_map(move |item| {
+        let scoped = item.ok().filter(|s| s.visible_to(&auth))?;
+        serde_json::to_string(&scoped.notification)
             .ok()
             .map(|data| Ok(Event::default().data(data)))
     });

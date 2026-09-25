@@ -1,7 +1,7 @@
 //! MCP dispatcher. Takes JSON-RPC requests and returns responses.
 //! Transport-agnostic; `maidan-server` wraps it behind `POST /mcp`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use maidan_artifacts::ArtifactStore;
@@ -86,6 +86,63 @@ pub fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
         .unwrap_or_else(preferred_protocol_version)
 }
 
+/// Who watches a resource URI: the workspaces whose members subscribed, and
+/// whether a bypass (in-process, unscoped) caller did — which only routes a
+/// copy to the unscoped inline queue.
+#[derive(Debug, Clone, Default)]
+pub struct Audience {
+    workspaces: HashSet<maidan_types::WorkspaceId>,
+    everyone: bool,
+}
+
+impl Audience {
+    fn add(&mut self, auth: &AuthContext) {
+        if auth.bypass {
+            self.everyone = true;
+        } else {
+            self.workspaces.insert(auth.workspace_id);
+        }
+    }
+
+    fn remove(&mut self, auth: &AuthContext) -> bool {
+        if auth.bypass {
+            std::mem::replace(&mut self.everyone, false)
+        } else {
+            self.workspaces.remove(&auth.workspace_id)
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        !self.everyone && self.workspaces.is_empty()
+    }
+
+    /// A bypass listener sees everything. A bypass *subscriber* only decides
+    /// that the unscoped inline queue gets a copy; it must not widen who else
+    /// receives the update.
+    fn includes(&self, auth: &AuthContext) -> bool {
+        auth.bypass || self.workspaces.contains(&auth.workspace_id)
+    }
+}
+
+/// A resource notification and the audience it may reach. Subscriptions were
+/// one process-wide set and every listener got every update, so a tenant saw
+/// other tenants' resource URIs; each listener now checks [`Self::visible_to`].
+#[derive(Debug, Clone)]
+pub struct ScopedNotification {
+    pub notification: JsonRpcNotification,
+    audience: Arc<Audience>,
+}
+
+impl ScopedNotification {
+    pub fn visible_to(&self, auth: &AuthContext) -> bool {
+        self.audience.includes(auth)
+    }
+}
+
+/// Inline notifications waiting for a caller of the same workspace; bounded
+/// so an idle workspace's queue cannot grow without limit.
+const PENDING_NOTIFICATIONS_PER_WORKSPACE: usize = 256;
+
 #[derive(Clone)]
 pub struct McpServer {
     pub(crate) store: Arc<dyn Store>,
@@ -94,9 +151,11 @@ pub struct McpServer {
     pub(crate) embedding_provider: Arc<dyn EmbeddingProvider>,
     server_name: String,
     server_version: String,
-    subscriptions: Arc<Mutex<HashSet<String>>>,
-    pending_notifications: Arc<Mutex<Vec<JsonRpcNotification>>>,
-    notification_tx: broadcast::Sender<JsonRpcNotification>,
+    subscriptions: Arc<Mutex<HashMap<String, Audience>>>,
+    /// Keyed by workspace; `None` holds bypass subscribers' notifications.
+    pending_notifications:
+        Arc<Mutex<HashMap<Option<maidan_types::WorkspaceId>, Vec<JsonRpcNotification>>>>,
+    notification_tx: broadcast::Sender<ScopedNotification>,
     streamable_sessions: Arc<StreamableSessionRegistry>,
     pub(crate) event_bus: Option<Arc<dyn EventBus>>,
     resource_notifier: Option<Arc<dyn ResourceNotifier>>,
@@ -132,8 +191,8 @@ impl McpServer {
             embedding_provider,
             server_name: "maidan".into(),
             server_version: env!("CARGO_PKG_VERSION").into(),
-            subscriptions: Arc::new(Mutex::new(HashSet::new())),
-            pending_notifications: Arc::new(Mutex::new(Vec::new())),
+            subscriptions: Arc::new(Mutex::new(HashMap::new())),
+            pending_notifications: Arc::new(Mutex::new(HashMap::new())),
             notification_tx,
             streamable_sessions: Arc::new(StreamableSessionRegistry::new()),
             event_bus: None,
@@ -276,8 +335,10 @@ impl McpServer {
         uuid::Uuid::new_v4().to_string()
     }
 
-    /// Live stream of MCP JSON-RPC notifications (HTTP SSE transport).
-    pub fn subscribe_notifications(&self) -> broadcast::Receiver<JsonRpcNotification> {
+    /// Live stream of MCP JSON-RPC notifications (HTTP SSE transport). Each
+    /// item carries its audience; forward only what
+    /// [`ScopedNotification::visible_to`] the listener's caller.
+    pub fn subscribe_notifications(&self) -> broadcast::Receiver<ScopedNotification> {
         self.notification_tx.subscribe()
     }
 
@@ -501,6 +562,61 @@ impl McpServer {
         prompts::get(&self.store, name, &args).await
     }
 
+    /// The per-resource check `resources/read` makes, shared with
+    /// `resources/subscribe` so a caller cannot watch what it cannot read.
+    /// A workspace URI must be the caller's own: `resources/read` of another
+    /// workspace's URI returned its record.
+    async fn authorize_resource(&self, uri: &str, auth: &AuthContext) -> Result<(), McpError> {
+        if auth.bypass {
+            return Ok(());
+        }
+
+        if let Some(rest) = uri.strip_prefix("maidan://") {
+            let mut parts = rest.splitn(2, '/');
+            match (parts.next(), parts.next()) {
+                (Some("workspaces"), Some(id)) => {
+                    if id.parse::<uuid::Uuid>().ok() != Some(auth.workspace_id.0) {
+                        return Err(McpError::NotFound);
+                    }
+                }
+                (Some("threads"), Some(id)) => {
+                    if let Ok(u) = id.parse() {
+                        maidan_auth::ensure_thread_access(
+                            self.store.as_ref(),
+                            auth,
+                            maidan_types::ThreadId(u),
+                        )
+                        .await?;
+                    }
+                }
+                (Some("channels"), Some(id)) => {
+                    if let Ok(u) = id.parse() {
+                        maidan_auth::ensure_channel_access(
+                            self.store.as_ref(),
+                            auth,
+                            maidan_types::ChannelId(u),
+                        )
+                        .await?;
+                    }
+                }
+                // Artifacts are deduped across tenants, so gate the read on
+                // the caller's per-workspace access ref. A missing ref is
+                // NotFound (no cross-tenant existence oracle), like REST.
+                (Some("artifacts"), Some(sha)) => {
+                    if !self
+                        .store
+                        .artifact_ref_exists(auth.workspace_id, sha)
+                        .await?
+                    {
+                        return Err(McpError::NotFound);
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     async fn resources_read(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
         if !auth.bypass {
             maidan_auth::require_observed_capability(
@@ -514,48 +630,7 @@ impl McpServer {
             .get("uri")
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
-        // Gate channel/thread resource content on per-channel access;
-        // workspace/artifact resources remain workspace-scoped.
-        if !auth.bypass {
-            if let Some(rest) = uri.strip_prefix("maidan://") {
-                let mut parts = rest.splitn(2, '/');
-                match (parts.next(), parts.next()) {
-                    (Some("threads"), Some(id)) => {
-                        if let Ok(u) = id.parse() {
-                            maidan_auth::ensure_thread_access(
-                                self.store.as_ref(),
-                                auth,
-                                maidan_types::ThreadId(u),
-                            )
-                            .await?;
-                        }
-                    }
-                    (Some("channels"), Some(id)) => {
-                        if let Ok(u) = id.parse() {
-                            maidan_auth::ensure_channel_access(
-                                self.store.as_ref(),
-                                auth,
-                                maidan_types::ChannelId(u),
-                            )
-                            .await?;
-                        }
-                    }
-                    // Artifacts are deduped across tenants, so gate the read on
-                    // the caller's per-workspace access ref. A missing ref is
-                    // NotFound (no cross-tenant existence oracle), like REST.
-                    (Some("artifacts"), Some(sha)) => {
-                        if !self
-                            .store
-                            .artifact_ref_exists(auth.workspace_id, sha)
-                            .await?
-                        {
-                            return Err(McpError::NotFound);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
+        self.authorize_resource(uri, auth).await?;
         resources::read(&self.store, uri).await
     }
 
@@ -577,8 +652,9 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
         resources::validate_uri(uri)?;
+        self.authorize_resource(uri, auth).await?;
         let mut subscriptions = self.subscriptions.lock().await;
-        subscriptions.insert(uri.to_string());
+        subscriptions.entry(uri.to_string()).or_default().add(auth);
         Ok(json!({
             "ok": true,
             "uri": uri
@@ -604,7 +680,16 @@ impl McpServer {
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
         resources::validate_uri(uri)?;
         let mut subscriptions = self.subscriptions.lock().await;
-        let removed = subscriptions.remove(uri);
+        let removed = match subscriptions.get_mut(uri) {
+            Some(audience) => {
+                let removed = audience.remove(auth);
+                if audience.is_empty() {
+                    subscriptions.remove(uri);
+                }
+                removed
+            }
+            None => false,
+        };
         Ok(json!({
             "ok": true,
             "uri": uri,
@@ -651,16 +736,27 @@ impl McpServer {
     /// Queue matching URIs for the current request's caller (inline response).
     async fn queue_pending_for_subscriptions(&self, uris: &[String]) {
         let subscriptions = self.subscriptions.lock().await;
-        let matching: Vec<&String> = uris.iter().filter(|u| subscriptions.contains(*u)).collect();
-        if matching.is_empty() {
-            return;
-        }
         let mut pending = self.pending_notifications.lock().await;
-        for uri in matching {
-            pending.push(JsonRpcNotification::new(
-                NOTIFY_RESOURCE_UPDATED,
-                json!({ "uri": uri }),
-            ));
+        for uri in uris {
+            let Some(audience) = subscriptions.get(uri) else {
+                continue;
+            };
+            let keys = audience
+                .workspaces
+                .iter()
+                .copied()
+                .map(Some)
+                .chain(audience.everyone.then_some(None));
+            for key in keys {
+                let queue = pending.entry(key).or_default();
+                queue.push(JsonRpcNotification::new(
+                    NOTIFY_RESOURCE_UPDATED,
+                    json!({ "uri": uri }),
+                ));
+                if queue.len() > PENDING_NOTIFICATIONS_PER_WORKSPACE {
+                    queue.remove(0);
+                }
+            }
         }
     }
 
@@ -669,15 +765,17 @@ impl McpServer {
     /// no-notifier path and by the cross-replica listener loop.
     pub(crate) async fn broadcast_to_subscribed_sse(&self, uris: &[String]) {
         let subscriptions = self.subscriptions.lock().await;
-        let matching: Vec<&String> = uris.iter().filter(|u| subscriptions.contains(*u)).collect();
-        if matching.is_empty() {
-            return;
-        }
-        for uri in matching {
-            let _ = self.notification_tx.send(JsonRpcNotification::new(
-                NOTIFY_RESOURCE_UPDATED,
-                json!({ "uri": uri }),
-            ));
+        for uri in uris {
+            let Some(audience) = subscriptions.get(uri) else {
+                continue;
+            };
+            let _ = self.notification_tx.send(ScopedNotification {
+                notification: JsonRpcNotification::new(
+                    NOTIFY_RESOURCE_UPDATED,
+                    json!({ "uri": uri }),
+                ),
+                audience: Arc::new(audience.clone()),
+            });
         }
     }
 
@@ -703,9 +801,12 @@ impl McpServer {
         });
     }
 
-    pub async fn take_pending_notifications(&self) -> Vec<JsonRpcNotification> {
+    /// The inline notifications waiting for this caller's workspace. A bypass
+    /// caller takes its own (unscoped subscriptions') queue.
+    pub async fn take_pending_notifications(&self, auth: &AuthContext) -> Vec<JsonRpcNotification> {
+        let key = (!auth.bypass).then_some(auth.workspace_id);
         let mut pending = self.pending_notifications.lock().await;
-        std::mem::take(&mut *pending)
+        pending.remove(&key).unwrap_or_default()
     }
 }
 
@@ -7661,7 +7762,7 @@ mod tests {
             )
             .await;
 
-        let notifications = server.take_pending_notifications().await;
+        let notifications = server.take_pending_notifications(&auth).await;
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].method, NOTIFY_RESOURCE_UPDATED);
         assert_eq!(
@@ -7714,7 +7815,90 @@ mod tests {
             )
             .await;
 
-        assert!(server.take_pending_notifications().await.is_empty());
+        assert!(server.take_pending_notifications(&auth).await.is_empty());
+    }
+
+    /// Resource subscriptions and their notifications were one process-wide
+    /// set: a tenant could subscribe to another's resources, every SSE
+    /// listener received every update, and inline notifications went to
+    /// whichever caller asked next. `resources/read` of another workspace's URI
+    /// also returned its record.
+    #[tokio::test]
+    async fn resource_notifications_stay_in_the_subscribers_workspace() {
+        use maidan_auth::capability::WORKSPACE_READ;
+
+        let (server, thread_a, member_a) = mk_server().await;
+        let ws_a = server
+            .store
+            .get_member(member_a)
+            .await
+            .unwrap()
+            .workspace_id;
+        let ws_b = server
+            .store
+            .create_workspace(NewWorkspace { name: "b".into() })
+            .await
+            .unwrap();
+        let member_b = server
+            .store
+            .create_member(NewMember {
+                workspace_id: ws_b.id,
+                handle: "bob".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let auth_a = AuthContext::from_session(member_a, ws_a, vec![WORKSPACE_READ.into()]);
+        let auth_b = AuthContext::from_session(member_b.id, ws_b.id, vec![WORKSPACE_READ.into()]);
+        let uri_a = format!("maidan://threads/{}", thread_a.0);
+        let call = |id: i64, method: &str, uri: &str| request(id, method, json!({ "uri": uri }));
+
+        let foreign = server
+            .handle(call(1, "resources/subscribe", &uri_a), &auth_b)
+            .await;
+        assert!(foreign.error.is_some(), "B subscribed to A's thread");
+        let foreign_ws = format!("maidan://workspaces/{}", ws_a.0);
+        let read = server
+            .handle(call(2, "resources/read", &foreign_ws), &auth_b)
+            .await;
+        assert!(read.error.is_some(), "B read A's workspace record");
+        let own_ws = format!("maidan://workspaces/{}", ws_b.id.0);
+        assert!(server
+            .handle(call(3, "resources/read", &own_ws), &auth_b)
+            .await
+            .error
+            .is_none());
+
+        assert!(server
+            .handle(call(4, "resources/subscribe", &uri_a), &auth_a)
+            .await
+            .error
+            .is_none());
+        // An in-process (bypass) subscriber to the same URI must not widen
+        // who is notified.
+        assert!(server
+            .handle(
+                call(5, "resources/subscribe", &uri_a),
+                &AuthContext::bypass()
+            )
+            .await
+            .error
+            .is_none());
+        let mut sse = server.subscribe_notifications();
+        server.publish_resource_uris(vec![uri_a.clone()]).await;
+        let got = sse.recv().await.unwrap();
+        assert!(got.visible_to(&auth_a));
+        assert!(got.visible_to(&AuthContext::bypass()));
+        assert!(
+            !got.visible_to(&auth_b),
+            "B's listener would receive A's update"
+        );
+
+        assert!(server.take_pending_notifications(&auth_b).await.is_empty());
+        let pending = server.take_pending_notifications(&auth_a).await;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].params["uri"], uri_a);
     }
 
     #[tokio::test]
@@ -7744,11 +7928,11 @@ mod tests {
             .await
             .expect("timed out waiting for SSE notification")
             .expect("notification channel closed");
-        assert_eq!(got.method, NOTIFY_RESOURCE_UPDATED);
-        assert_eq!(got.params["uri"], uri);
+        assert_eq!(got.notification.method, NOTIFY_RESOURCE_UPDATED);
+        assert_eq!(got.notification.params["uri"], uri);
 
         // Inline pending delivery still works (local, synchronous).
-        let pending = server.take_pending_notifications().await;
+        let pending = server.take_pending_notifications(&auth).await;
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].params["uri"], uri);
     }

@@ -29,7 +29,8 @@ pub use error::McpError;
 pub use protocol::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 pub use server::{
     is_supported_protocol_version, negotiate_protocol_version, preferred_protocol_version,
-    McpServer, PresenceReader, SESSION_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
+    McpServer, PresenceReader, ScopedNotification, SESSION_PROTOCOL_VERSION,
+    SUPPORTED_PROTOCOL_VERSIONS,
 };
 pub use slash_dispatch::SlashDispatcher;
 pub use stdio::run_stdio;
