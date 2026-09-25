@@ -14,7 +14,7 @@
   "begin_artifact_multipart": "artifact:upload",
   "cancel_wait": "thread:transition",
   "cast_vote": "workspace:write",
-  "catch_up_events": "workspace:read",
+  "catch_up_events": "token:admin",
   "claim_next_thread": "thread:transition",
   "claim_thread": "thread:transition",
   "clear_land_gate": "channel:admin",

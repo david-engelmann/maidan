@@ -283,6 +283,16 @@ or a registered peer — the graph is an export dump. A 409
 MCP SSE. A broken catch-up page is 409 `event-log-broken`. MCP twins:
 `get_log_snapshot`, `catch_up_events`, `verify_event_chain`.
 
+**Who reads what.** Catch-up returns the whole log as one verifiable chain,
+every private channel and DM included, so it is `token:admin` or a registered
+peer: the tier that can already export the workspace. A member reads
+`GET /workspaces/{id}/events` instead, which returns only the events that member
+could see elsewhere: no private channel they are not in, no DM they are not
+part of. A page skips withheld rows rather than coming back short, so an empty
+page still means the member is caught up. Withheld rows break the hash chain, so
+a filtered page cannot be verified as one; verify with
+`GET /workspaces/{id}/events/verify` (a report, no bodies) instead.
+
 **Tap projector contract.** Webhook, WS, MCP SSE, AG-UI, and search
 are taps — they are not the log. Each must (1) **verify** every
 backfill page, (2) **backfill** before live, (3) **filter** by

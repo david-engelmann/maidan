@@ -2518,7 +2518,7 @@ Hashed event-log snapshot for this workspace (getRepo-shaped, not MST/CAR). Head
 
 Since-LSN catch-up page after a snapshot (or a prior page). Events have id greater than after_lsn, hash-chain checked from the predecessor. A pruned-gap cursor fails closed and names the snapshot path to refetch; a broken chain fails closed. Requires workspace:read.
 
-**Capability:** `workspace:read`
+**Capability:** `token:admin`
 
 ```json
 {

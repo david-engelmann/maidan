@@ -100,6 +100,16 @@ pub(super) async fn catch_up_events(
 ) -> Result<Value, McpError> {
     let a: CatchUpArgs = serde_json::from_value(args.clone())?;
     let workspace_id = workspace(auth, a.workspace_id)?;
+    // The whole log, bodies from every private channel and DM included, as one
+    // chain: a workspace admin's read, as on REST.
+    if !auth.bypass {
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            TOKEN_ADMIN,
+        )
+        .map_err(|_| McpError::Forbidden("catch_up_events requires token:admin".into()))?;
+    }
     let limit = a.limit.unwrap_or(100).clamp(1, CATCH_UP_LIMIT);
     let page = catch_up_since(store.as_ref(), workspace_id, a.after_lsn, limit)
         .await
@@ -247,9 +257,16 @@ mod tests {
         assert!(snap.graph.is_some());
         assert!(verify_snapshot(&snap).ok);
 
+        // The whole log is an admin's read; a reader is refused.
+        let refused = server
+            .call_tool(&reader, "catch_up_events", &json!({ "after_lsn": 0 }))
+            .await
+            .unwrap_err();
+        assert!(refused.to_string().contains("token:admin"), "{refused}");
+
         let page = content(
             &server
-                .call_tool(&reader, "catch_up_events", &json!({ "after_lsn": 0 }))
+                .call_tool(&admin, "catch_up_events", &json!({ "after_lsn": 0 }))
                 .await
                 .unwrap(),
         );
@@ -259,7 +276,7 @@ mod tests {
 
         let caught = content(
             &server
-                .call_tool(&reader, "catch_up_events", &json!({ "after_lsn": as_of }))
+                .call_tool(&admin, "catch_up_events", &json!({ "after_lsn": as_of }))
                 .await
                 .unwrap(),
         );
@@ -288,9 +305,13 @@ mod tests {
         store.prune_events(cutoff, floor, 10).await.unwrap();
 
         let server = mcp(store, pool);
-        let reader = AuthContext::from_session(member, ws, vec![WORKSPACE_READ.to_string()]);
+        let admin = AuthContext::from_session(
+            member,
+            ws,
+            vec![WORKSPACE_READ.to_string(), TOKEN_ADMIN.to_string()],
+        );
         let err = server
-            .call_tool(&reader, "catch_up_events", &json!({ "after_lsn": first }))
+            .call_tool(&admin, "catch_up_events", &json!({ "after_lsn": first }))
             .await
             .unwrap_err();
         let msg = err.to_string();

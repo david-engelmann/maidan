@@ -19,6 +19,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   history to anyone in its channel.
 - **Changed:** `GET /workspaces/:id/legal-hold` requires `token:admin`.
 
+### The event log reads back only what the reader may see
+
+- **Security:** `GET /workspaces/:id/events` (and its `/ui/api` twin) and
+  `/events/catch-up` (and MCP `catch_up_events`) returned every event in the
+  workspace to any `workspace:read` token, message bodies included: a private
+  channel's messages to non-members, and every DM to every member. The events
+  list now returns only what the caller could see elsewhere, and catch-up, the
+  whole log as one chain, requires `token:admin` or a federation peer.
+
 ### Request changes
 
 - **Added:** a `request_changes` review sends a thread under review back for
