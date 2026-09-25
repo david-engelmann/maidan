@@ -125,9 +125,13 @@ real recovery point. Size M.
   shared row's `kind` (S, with 414).
 - `book/src/mcp-reference.md` is git-ignored but still tracked (S).
 - Errors and docs cite RFC 7807, which RFC 9457 obsoleted (S).
-- SMTP has no real-client test, although Slack and GitHub do. Test names that
-  overclaim: `slack_egress_e2e`, `github_egress_e2e`, `mail_worker_e2e`,
-  `two_replica_*` (S).
+- ~~SMTP has no real-client test~~ **✅** `smtp_real_client_e2e` sends through
+  `lettre` to a real SMTP server (Mailpit) and reads the message back, including
+  that a CR/LF subject cannot inject a header. The names `slack_egress_e2e`,
+  `github_egress_e2e`, `mail_worker_e2e` and `two_replica_*` are kept: each
+  module doc names the stand-in it uses, and the `two_replica_*` names are what
+  `scripts/scale-out-smoke.sh` (a required check) and the scale-gate records
+  cite. New tests follow CONTRIBUTING's naming rule.
 
 ### Verification depth, after launch-critical work
 
