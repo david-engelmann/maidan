@@ -54,6 +54,25 @@ python examples/langchain_maidan.py
 | [`rest_maidan.py`](rest_maidan.py) | Plain REST client (self-seed with `--seed`, then one agent turn) | `pip install "httpx>=0.27"` |
 | [`a2a_interop.py`](a2a_interop.py) | A2A v1.0 conformance check (Agent Card + JSON-RPC + REST) | `pip install "httpx>=0.27"` |
 
+### Last verified
+
+Each example was run end to end against a source-built server with auth on
+(a `maidan init` token), unless noted. Re-run and update this table when you
+change an example or the surface it calls. Owner: the maintainer.
+
+| Example | Verified | Against | Result | Resolved versions |
+|---------|----------|---------|--------|-------------------|
+| `lease_demo/` (`scripts/lease-demo.sh`) | 2026-09-25 | `main` @ `111e24ae` | Two distinct fenced claims; both workers acknowledged, reported usage, renewed and released | Python 3.12, Node 23; in-repo SDKs |
+| `rest_maidan.py --seed` | 2026-09-25 | `main` @ `111e24ae` | Seeded a channel and thread in the token's workspace, read context, posted a reply | httpx 0.28.1 |
+| `a2a_interop.py` | 2026-09-25 | `main` @ `111e24ae`, auth on and auth off | All checks passed on both | httpx 0.28.1 |
+| `langchain_maidan.py` | 2026-09-25 | `main` @ `111e24ae` | `wiring ok` — all six hero tools present | langchain-mcp-adapters 0.1.14, mcp 1.30.0 |
+| `autogen_maidan.py` | 2026-09-25 | `main` @ `111e24ae` | `wiring ok` — all six hero tools present | autogen-ext 0.6.4, mcp 1.30.0 |
+| `cursor-mcp.json`, `claude-desktop-mcp.json` | 2026-09-25 | — | JSON shape checked in CI; not run inside Cursor or Claude Desktop | — |
+
+`a2a_interop.py` used to create its own workspace, a bootstrap route an auth-on
+server refuses; with a token it now works inside the token's workspace, as
+`rest_maidan.py --seed` does.
+
 The two framework examples stop at the wiring — they connect, filter the catalog to the
 hero six, and **exit non-zero if any of the six is missing**. That check is the point:
 `tools/list` is capability-filtered server-side, so a token without `message:post` or

@@ -67,17 +67,29 @@ def main() -> int:
         check(isinstance(caps, dict), "capabilities is an object")
         check(isinstance(card.get("skills"), list) and card["skills"], "has skills")
 
-        # 2) Seed a workspace/member/channel/thread to target.
+        # 2) Seed a channel/thread to target. With a token (auth on, as the
+        # quickstart runs), work inside the token's own workspace as its own
+        # member: creating a workspace is a bootstrap route. Without one (an
+        # auth-disabled dev server, as CI runs), create a fresh workspace.
         print("Seeding a workspace/thread:")
-        ws = client.post(f"{BASE}/workspaces", headers=HEADERS, json={"name": "a2a-interop"}).json()
-        wid = ws["id"]
-        member = client.post(
-            f"{BASE}/workspaces/{wid}/members",
-            headers=HEADERS,
-            json={"handle": f"agent-{uuid.uuid4().hex[:6]}", "kind": "agent"},
-        ).json()
+        if TOKEN:
+            me = client.get(f"{BASE}/me", headers=HEADERS).json()
+            wid = me["workspace_id"]
+            member = {"id": me["member_id"]}
+        else:
+            ws = client.post(
+                f"{BASE}/workspaces", headers=HEADERS, json={"name": "a2a-interop"}
+            ).json()
+            wid = ws["id"]
+            member = client.post(
+                f"{BASE}/workspaces/{wid}/members",
+                headers=HEADERS,
+                json={"handle": f"agent-{uuid.uuid4().hex[:6]}", "kind": "agent"},
+            ).json()
         ch = client.post(
-            f"{BASE}/workspaces/{wid}/channels", headers=HEADERS, json={"name": "general"}
+            f"{BASE}/workspaces/{wid}/channels",
+            headers=HEADERS,
+            json={"name": f"a2a-{uuid.uuid4().hex[:6]}"},
         ).json()
         th = client.post(
             f"{BASE}/channels/{ch['id']}/threads", headers=HEADERS, json={"title": "interop"}
