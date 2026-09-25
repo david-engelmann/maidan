@@ -34,8 +34,8 @@ tags; they raise the bar each time they ship.
 ## Current cluster
 
 **Now (2026-09-25):** Cluster 411 (delegated authority) and Cluster 412 (the
-external MCP verifier) are closed on `main`. 412 is a source record until the
-maintainer cuts `v412.0.0`. The forward plan is the
+external MCP verifier) are closed on `main`, and so is 414 (bounded growth and
+timeouts). 412 and 414 are source records until the maintainer cuts their tags. The forward plan is the
 **Launch backlog** at the top of [Open Work.md](Open%20Work.md), reconciled
 against code:
 - **413:** the round-3 decisions (grant ceiling; authority audits inside their
@@ -258,6 +258,8 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 **409.0** (`v409.0.0`) **Wave 4 #40 complete — searchable, tag-honest release stream.** Two implementation PRs (#979/#982) plus the close record. **409.1** makes ordinary CI and the pre-publication release gate align the newest capability record, changelog, contributor guide, README image pins, and actual pushed tag. **409.2** promotes the release stream into reader navigation, links real tags, labels never-tagged source records, preserves exact search for folded tags, and explains published artifacts versus newer `main` source. **Row #40 is closed.** [[Clusters/Cluster 409]], [[Retros/Cluster 409]].
 
 **410.0** (`v410.0.0`) **Wave 4 #41 complete — accountable usage and bounded authorization evidence.** Three implementation PRs (#988/#989/#991) plus the close record. **410.1–410.2** atomically bind a claim-fenced, idempotent `PayerStamp` ledger row, accumulated budget, `UsageReported`, and over-budget claim failure. **410.3** exposes it over REST and MCP while deriving reporter and payer authority. **410.4** adds the shared content-free authorization record, fixed-label aggregate metric, sampled denial detail, and sustained-rate alert without durable denial writes. **Row #41 is closed.** [[Clusters/Cluster 410]], [[Retros/Cluster 410]].
+
+**414.0** (source record; `v414.0.0` not cut) **Nothing grows without bound, nothing hangs forever.** Two implementation PRs (#1015, #1020) plus the close record. Retention, database timeouts, replica fencing, WebSocket and MCP ceilings and deadlines, presence repair, and failed embeddings retried then repaired. [[Retros/Cluster 414]].
 
 **412.0** (source record; `v412.0.0` not cut) **Wave 4 #42 — an external MCP verifier.** One implementation PR (#1010) plus the close record. The official MCP Inspector runs unmodified against an authenticated Maidan in CI, and the four failures it found are fixed: stock 2025 clients couldn't handshake, 2025 clients were forced into sessions, `resources/list` returned templates, and nullable schemas used array-valued `type`. [[Clusters/Cluster 412]], [[Retros/Cluster 412]].
 

@@ -42,6 +42,20 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## Cluster 414 (source record; no `v414.0.0` tag) — nothing grows without bound, nothing hangs forever
+
+Every queue, cursor, connection and wait on the launch path has a bound or a timeout, and failed embeddings are retried, then repaired.
+
+| Change | Where |
+|--------|-------|
+| **Retention (414.1):** only delivery cursors advanced since the retention cutoff hold back event-log pruning. | `crates/maidan-store/src/*/retention.rs` |
+| **Database timeouts (414.1):** `idle_in_transaction_session_timeout` (60 s) and `lock_timeout` (10 s) on every pooled connection; migrations run with `lock_timeout = 0`. | `crates/maidan-server/src/config.rs` (`DbConfig`) |
+| **Replica fence (414.1):** reads go to the replica only while its poll is fresh (2 s) and its lag under 64 MiB; alert `MaidanReplicaLagHigh`. | `crates/maidan-store/src/postgres/mod.rs`, `docs/alerts/prometheus-rules-maidan-slo.yaml` |
+| **Connection and message ceilings (414.1):** 64 KiB WebSocket client messages; `MAIDAN_MAX_WS_CONNECTIONS` (10 000, then 503); streamable-session reaper and ceiling; gauges `maidan_ws_connections`, `maidan_mcp_streamable_sessions`. | `crates/maidan-server/src/ws.rs`, `crates/maidan-server/src/mcp_streamable.rs` |
+| **MCP deadlines (414.1):** 60 s per tool call; 330 s for `wait_for_*` and bulk tools. | `crates/maidan-mcp/src/tools/mod.rs` |
+| **Presence (414.1):** a lagging subscriber is re-snapshotted instead of silently missing diffs. | `crates/maidan-server/src/ws.rs` |
+| **Embedding retry and repair (414.2):** `MAIDAN_INDEXER_RETRIES` / `_RETRY_BASE_MS`; `Search::embed_missing` swept every `MAIDAN_EMBED_REPAIR_INTERVAL_SECS` under an advisory lock; gauges `…_retries_total`, `…_repaired_total`. | `crates/maidan-search/src/embedding_batcher.rs`, `crates/maidan-server/src/embed_repair.rs` |
+
 ## Cluster 412 (source record; no `v412.0.0` tag) — an external MCP verifier
 
 The official MCP Inspector runs unmodified against a real, authenticated Maidan in CI (report-only), and the four failures it found are fixed.
