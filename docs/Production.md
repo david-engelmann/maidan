@@ -755,9 +755,9 @@ rotation keyring), `MAIDAN_EXPORT_SIGNING_KEY` (and any
 still restores all data; only signed-token continuity needs the same secret.
 
 **RPO / RTO.** A periodic `backup.sh` (e.g. hourly cron) gives an RPO of one backup
-interval. For a tighter RPO, run Postgres with **WAL archiving / PITR** (or a managed
-Postgres with continuous backup) — the logical dump is the portable floor, not the
-lower bound. RTO is a `restore.sh` run plus a `/health/ready` check before the load
+interval. For a tighter RPO, run Postgres with **WAL archiving / PITR** (below, or a
+managed Postgres with continuous backup) — the logical dump is the portable floor,
+not the lower bound. RTO is a `restore.sh` run plus a `/health/ready` check before the load
 balancer is pointed at the restored instance.
 
 **Recovery outline.** Provision Postgres + the artifact store → set the out-of-band
@@ -767,6 +767,40 @@ store + indexer + the `LISTEN` bus) → scale out. Because artifacts are
 content-addressed, a message referencing a blob that predates the artifact backup is
 still consistent after restore; a blob written *after* the last artifact archive is
 the only thing a stale artifact backup can miss.
+
+### Point-in-time recovery
+
+With WAL archiving on, a base backup plus the archive restores the database to
+any moment since that backup, not only to the last dump.
+
+**Enable it.** Set `wal_level=replica`, `archive_mode=on` and an
+`archive_command` that copies each finished segment somewhere durable, and set
+`archive_timeout` so a quiet database still closes a segment at least once a
+minute. `compose.pitr.yaml` does this for the compose stack, archiving to a
+volume. In production, point `archive_command` at storage off the database host,
+through WAL-G, pgBackRest or a managed service: an archive on the same disk
+survives a bad deploy, not a lost disk. Take a base backup
+(`pg_basebackup -X none -c fast`) when you enable it and on a schedule; recovery
+replays WAL from the most recent one.
+
+**Restore to a moment.**
+
+1. Stop the server and put the base backup in a fresh data directory.
+2. Create `recovery.signal` in it.
+3. Start Postgres with `restore_command = 'cp /archive/%f %p'` (or your tool's
+   fetch command), `recovery_target_time = '<timestamp with zone>'` and
+   `recovery_target_action = promote`.
+4. When `SELECT pg_is_in_recovery()` returns `false`, the database is at the
+   target and writable. Start one replica, confirm `/health/ready`, then scale
+   out.
+
+Artifacts are content-addressed, so a restored message still names the blob it
+had. Restore the artifact store to a point no earlier than the database target.
+
+**The drill.** `scripts/pitr-drill.sh [image]` runs this whole procedure with
+Docker. It writes a row, notes the time, writes another, restores to that time,
+and fails unless exactly the first row is back. CI runs it on every PR against
+the `maidan-postgres` image built from the tree.
 
 ## Signed workspace export
 

@@ -15,3 +15,7 @@ FROM pgvector/pgvector:pg16
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
+
+# The WAL archive mount point (compose.pitr.yaml), owned by postgres so a fresh
+# named volume mounted here inherits ownership and archive_command can write.
+RUN mkdir -p /archive && chown postgres:postgres /archive

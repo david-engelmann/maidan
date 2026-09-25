@@ -1,0 +1,31 @@
+# Point-in-time recovery for the compose Postgres: WAL archiving to the
+# `postgres_wal_archive` volume. Layer it on any profile:
+#
+#   docker compose -f compose.yaml -f compose.pitr.yaml --profile full up -d
+#
+# Take a base backup after enabling it (and on a schedule), then restore with
+# the procedure in docs/Production.md ("Point-in-time recovery").
+# `scripts/pitr-drill.sh` runs that whole procedure against these settings and
+# fails unless the restore stops exactly at the chosen moment.
+#
+# In production, point `archive_command` at durable storage off the database
+# host — an object store via WAL-G or pgBackRest, or a managed Postgres's
+# continuous backup. An archive on the same disk as the database survives a
+# bad deploy, not a lost disk.
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /archive/%f && cp %p /archive/%f
+      - -c
+      - archive_timeout=60
+    volumes:
+      - postgres_wal_archive:/archive
+
+volumes:
+  postgres_wal_archive:
