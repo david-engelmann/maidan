@@ -51,7 +51,7 @@ pub async fn start_reindex_embeddings(
         None => cap(&auth, TOKEN_ADMIN)?,
     }
 
-    let job_id = Uuid::new_v4();
+    let job_id = Uuid::now_v7();
     let model = state.embedding_provider.model_name().to_string();
     let started_at = Utc::now();
     let job = ReindexJob {

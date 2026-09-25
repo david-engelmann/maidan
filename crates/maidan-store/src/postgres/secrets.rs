@@ -42,7 +42,7 @@ pub(crate) async fn create_on(
              updated_at = NOW()
          RETURNING {META_COLS}"
     ))
-    .bind(Uuid::new_v4())
+    .bind(Uuid::now_v7())
     .bind(new.workspace_id.0)
     .bind(&new.name)
     .bind(&new.value_ciphertext)

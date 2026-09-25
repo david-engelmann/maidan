@@ -94,11 +94,15 @@ were skipped too. An omitted workspace now means the caller's own
 
 ### Cluster 416 — Wave 4 #44: uuidv7 entity ids
 
-About 78 production `Uuid::new_v4()` calls create entity ids directly, bypassing
-the v7 newtypes. They move to v7. Secret material stays v4: token and
-share-ticket secrets, OAuth codes, session ids, MCP session ids. A contract test
-fails on a new `new_v4()` outside that allowlist. PG16 has no `uuidv7()`, so v7
-is generated app-side. Size M.
+**✅ 416.1.** The 78 production `Uuid::new_v4()` calls were counted exactly;
+70 were entity or correlation ids (rows in both stores, reindex jobs, A2A tasks,
+request ids, temp and multipart names) and are now `Uuid::now_v7()`. Eight stay
+v4 because the value is a credential: token and share-ticket secrets, the OAuth
+code, the MCP session id and the browser session id. `uuid_v7_contract` fails
+on a `new_v4()` in production code outside that allowlist (with an exact count
+per file, and a reason), and `uuid_v7_ids` checks that store-minted ids are v7
+and sort by creation. No migration mints ids in SQL, so nothing depends on PG16
+lacking `uuidv7()`. Existing v4 rows keep their ids; only new rows are v7.
 
 ### Cluster 417 — disaster recovery that is actually tested
 

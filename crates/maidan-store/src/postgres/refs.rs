@@ -16,7 +16,7 @@ fn map_ref_err(err: sqlx::Error) -> StoreError {
 }
 
 pub async fn create(pool: &PgPool, new: NewReference) -> Result<Reference, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let row = sqlx::query(
         "INSERT INTO maidan_references (id, src_kind, src_id, dst_kind, dst_id, relation)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -40,7 +40,7 @@ pub async fn create_with_event(
     pool: &PgPool,
     new: NewReference,
 ) -> Result<(Reference, StoredEvent), StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "INSERT INTO maidan_references (id, src_kind, src_id, dst_kind, dst_id, relation)

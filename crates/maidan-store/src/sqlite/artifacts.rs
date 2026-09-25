@@ -17,7 +17,7 @@ const UPSERT_SQL: &str =
      RETURNING id, sha256, size_bytes, mime_type, kind, uploaded_by, created_at, tombstoned_at";
 
 pub async fn upsert(pool: &SqlitePool, new: NewArtifact) -> Result<Artifact, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let row = sqlx::query(UPSERT_SQL)
         .bind(id)
@@ -41,7 +41,7 @@ pub async fn upsert_with_event(
     new: NewArtifact,
     ref_workspace: Option<WorkspaceId>,
 ) -> Result<(Artifact, StoredEvent), StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let mut tx = pool.begin().await?;
     let row = sqlx::query(UPSERT_SQL)

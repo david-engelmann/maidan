@@ -10,7 +10,7 @@ pub fn sample_stored_event(id: i64, kind: EventKind) -> StoredEvent {
         id,
         lsn: id,
         kind,
-        workspace_id: Some(WorkspaceId(uuid::Uuid::new_v4())),
+        workspace_id: Some(WorkspaceId(uuid::Uuid::now_v7())),
         channel_id: None,
         thread_id: None,
         payload,

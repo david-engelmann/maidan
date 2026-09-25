@@ -21,7 +21,7 @@ pub async fn middleware(mut req: Request, next: Next) -> Response {
         .and_then(|v| v.to_str().ok())
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+        .unwrap_or_else(|| Uuid::now_v7().to_string());
 
     req.extensions_mut().insert(RequestId(id.clone()));
 

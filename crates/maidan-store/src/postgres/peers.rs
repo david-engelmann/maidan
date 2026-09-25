@@ -10,7 +10,7 @@ const PEER_COLS: &str =
                           enabled, last_synced_event_id, created_at, updated_at";
 
 pub async fn create(pool: &PgPool, new: NewPeer) -> Result<Peer, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_peers
             (id, workspace_id, remote_workspace_id, name, base_url, token_hash, outbound_secret_ciphertext)

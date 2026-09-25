@@ -10,7 +10,7 @@ const PEER_COLS: &str =
                           enabled, last_synced_event_id, created_at, updated_at";
 
 pub async fn create(pool: &SqlitePool, new: NewPeer) -> Result<Peer, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_peers

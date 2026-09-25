@@ -156,7 +156,7 @@ impl PresenceHub {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(Inner::default())),
-            origin: Uuid::new_v4(),
+            origin: Uuid::now_v7(),
             notifier: None,
             ttl: Duration::from_secs(ttl_secs_from_env()),
             heartbeat: Duration::from_secs(heartbeat_secs_from_env()),

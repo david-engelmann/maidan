@@ -14,7 +14,7 @@ pub(crate) async fn create_on(
     conn: &mut sqlx::SqliteConnection,
     new: NewApiToken,
 ) -> Result<ApiToken, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let capabilities = serde_json::to_string(&new.capabilities)?;
     let row = sqlx::query(
@@ -59,7 +59,7 @@ pub(crate) async fn create_attenuated_on(
     new: NewApiToken,
     parent_token_id: ApiTokenId,
 ) -> Result<ApiToken, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let capabilities = serde_json::to_string(&new.capabilities)?;
     let row = sqlx::query(
@@ -119,7 +119,7 @@ pub(crate) async fn create_delegated_on(
     let grant_capabilities: Vec<String> = serde_json::from_str(&grant_capabilities_json)?;
     let expires_at =
         crate::delegation_grants::validate_exchange(&new, &grant_capabilities, Utc::now())?;
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let capabilities = serde_json::to_string(&new.capabilities)?;
     let row = sqlx::query(

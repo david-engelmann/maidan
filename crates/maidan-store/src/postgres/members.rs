@@ -7,7 +7,7 @@ use crate::error::StoreError;
 use crate::postgres::events;
 
 pub async fn create(pool: &PgPool, new: NewMember) -> Result<Member, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let row = sqlx::query(
         "INSERT INTO maidan_members (id, workspace_id, handle, display_name, kind)
          VALUES ($1, $2, $3, $4, $5)
@@ -30,7 +30,7 @@ pub async fn create_with_event(
     pool: &PgPool,
     new: NewMember,
 ) -> Result<(Member, StoredEvent), StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let workspace_id = new.workspace_id;
     let mut tx = pool.begin().await?;
     let row = sqlx::query(

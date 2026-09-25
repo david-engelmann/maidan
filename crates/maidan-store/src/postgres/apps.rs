@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::error::StoreError;
 
 pub async fn create_app(pool: &PgPool, new: NewApp) -> Result<App, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let row = sqlx::query(
         "INSERT INTO maidan_apps (id, workspace_id, slug, name, description, created_by)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -58,7 +58,7 @@ pub async fn create_installation(
     pool: &PgPool,
     new: NewAppInstallation,
 ) -> Result<AppInstallation, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let caps = serde_json::to_string(&new.granted_capabilities)?;
     let row = sqlx::query(
         "INSERT INTO maidan_app_installations

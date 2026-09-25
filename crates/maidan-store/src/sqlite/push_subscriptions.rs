@@ -27,7 +27,7 @@ pub async fn add(
     new: NewPushSubscription,
 ) -> Result<PushSubscription, StoreError> {
     let now = Utc::now().to_rfc3339();
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_push_subscriptions (id, member_id, endpoint, p256dh, auth, created_at)
          VALUES (?, ?, ?, ?, ?, ?)

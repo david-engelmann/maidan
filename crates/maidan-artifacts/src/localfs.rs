@@ -38,7 +38,7 @@ impl LocalFsStore {
     }
 
     fn tmp_path(&self) -> PathBuf {
-        self.root.join(format!(".tmp-{}", uuid::Uuid::new_v4()))
+        self.root.join(format!(".tmp-{}", uuid::Uuid::now_v7()))
     }
 }
 

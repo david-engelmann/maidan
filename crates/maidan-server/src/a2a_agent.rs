@@ -362,7 +362,7 @@ async fn post_a2a_message(
         citations: req.message.citations.clone(),
     };
     Ok(PostedA2a {
-        task_id: uuid::Uuid::new_v4().to_string(),
+        task_id: uuid::Uuid::now_v7().to_string(),
         workspace_id: thread_ctx.workspace_id,
         thread_id: ctx.thread_id,
         message: posted,
@@ -718,7 +718,7 @@ async fn dispatch_create_push_config(
         .config_id
         .clone()
         .filter(|c| !c.trim().is_empty())
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+        .unwrap_or_else(|| Uuid::now_v7().to_string());
     state
         .store
         .create_a2a_task_push_config(&req.task_id, &config_id, &req.url)

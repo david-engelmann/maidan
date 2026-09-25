@@ -15,7 +15,7 @@ use crate::error::StoreError;
 pub async fn create(pool: &SqlitePool, new: NewThread) -> Result<Thread, StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, created_at, updated_at)
@@ -41,7 +41,7 @@ pub async fn create_with_event(
 ) -> Result<(Thread, StoredEvent), StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
