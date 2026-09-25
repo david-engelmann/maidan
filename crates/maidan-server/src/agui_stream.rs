@@ -78,6 +78,9 @@ pub async fn stream(
         filter.thread_id = Some(ThreadId(th));
     }
 
+    crate::subscribe_grants::bind_to_caller_workspace(&mut filter, &auth)
+        .map_err(|e| ApiError::Forbidden(e.into()))?;
+
     // `Last-Event-ID` (SSE reconnect) wins over the `after_id` query param.
     let after_id = last_event_id(&headers).or(q.after_id).unwrap_or(0);
     if after_id < 0 {

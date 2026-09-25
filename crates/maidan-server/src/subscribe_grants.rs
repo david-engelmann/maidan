@@ -8,6 +8,32 @@ use maidan_types::{ChannelId, EventFilter, WorkspaceId, DM_CHANNEL_NAME};
 
 use crate::state::AppState;
 
+/// Bind a live subscription to the caller's workspace.
+///
+/// `EventFilter::matches` treats an absent `workspace_id` as "every
+/// workspace", and the grants below only apply once a workspace is set. So a
+/// subscriber that simply left the field out received every tenant's live
+/// events, private channels and DMs included. A token belongs to one
+/// workspace: an omitted workspace means that one, and a named workspace must
+/// be it. Bypass (auth disabled, trusted in-process callers) is unchanged.
+pub fn bind_to_caller_workspace(
+    filter: &mut EventFilter,
+    auth: &AuthContext,
+) -> Result<(), &'static str> {
+    if auth.bypass {
+        return Ok(());
+    }
+    match filter.workspace_id {
+        None => {
+            filter.workspace_id = Some(auth.workspace_id);
+            Ok(())
+        }
+        Some(ws) => auth
+            .ensure_workspace(ws)
+            .map_err(|_| "token is not valid for this workspace"),
+    }
+}
+
 pub async fn apply_subscribe_grants(
     state: &AppState,
     auth: &AuthContext,

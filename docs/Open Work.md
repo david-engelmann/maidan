@@ -43,6 +43,30 @@ seated a member of another workspace in a channel. Fixed, and
 `every_channel_id_tool_is_classified` now fails on any MCP tool that names a
 channel without either a dispatch-time access check or a listed reason.
 
+**Found 2026-09-25 — live subscriptions were not bound to a workspace (fixed):**
+`/ws/subscribe`, `/mcp/stream` and `/agui/stream` checked the workspace only
+when the subscriber named one, and `EventFilter::matches` reads an absent
+`workspace_id` as "every workspace". A token with `event:subscribe`, or a
+browser session, that left the field out received every tenant's live events,
+including messages, DMs and private-channel traffic; the private-channel grants
+were skipped too. An omitted workspace now means the caller's own
+(`subscribe_grants::bind_to_caller_workspace`), and
+`subscribe_workspace_scope_e2e` pins it on WS and MCP SSE.
+
+**Open, found in the same trace:**
+
+- **Artifact dedupe hands another tenant's metadata back.** The shared
+  `maidan_artifacts` row keeps the first uploader, so a second tenant uploading
+  the same bytes gets the first tenant's `uploaded_by` member id and
+  `created_at` in the upload response (REST and MCP) and from `/artifacts/:sha/meta`.
+  A second tenant's upload also overwrites the shared row's `kind` and
+  `mime_type`. Fix: per-workspace metadata on the ref, not the shared row (S–M).
+- **MCP resource notifications are one global set.** `resources/subscribe`
+  inserts into a process-wide `HashSet`, and `/mcp/notifications` and
+  `GET /mcp/streamable` forward every update to every listener, so a tenant
+  receives other tenants' resource URIs (thread, channel and artifact ids, no
+  content). Fix: key subscriptions and delivery by session and workspace (S).
+
 ### Cluster 414 — nothing grows without bound, nothing hangs forever
 
 414.1 ships everything below except retrying failed embeddings, which is 414.2.
