@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Cluster 412 — an external MCP verifier
+
+- **Added:** `scripts/mcp-inspector.sh` and a report-only `mcp inspector` CI
+  job running the official MCP Inspector against an authenticated Maidan.
+- **Fixed:** a stock 2025 MCP client could not connect. Every revision since
+  `2024-11-05` is now negotiated, with `2026-07-28` as the default.
+- **Changed:** `/mcp/streamable` is stateless by default; only a `2024-11-05`
+  client gets a session.
+- **Added:** `resources/templates/list`. `resources/list` no longer returns
+  URIs with placeholders.
+- **Fixed:** nullable tool-schema fields use `anyOf`, which clients that read
+  `type` as a string accept.
+
 ## [411.0.0] — 2026-09-23
 
 Post-gate hardening (Phase XXIV). **Delegated authority: a token acts as
