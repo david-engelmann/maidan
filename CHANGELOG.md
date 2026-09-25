@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Cluster 417 — disaster recovery that is actually tested
+
+- **Added:** `compose.pitr.yaml` enables WAL archiving for the compose Postgres.
+- **Added:** a point-in-time recovery procedure in `docs/Production.md`.
+- **Added:** `scripts/pitr-drill.sh` and the `pitr drill` CI job, which restore
+  to a chosen moment and check nothing after it came back.
+
 ### Cluster 416 — UUIDv7 entity ids
 
 - **Changed:** every id minted for a row, job, task or request is UUIDv7, so

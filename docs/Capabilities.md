@@ -42,6 +42,16 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## Cluster 417 (source record; no `v417.0.0` tag) — disaster recovery that is actually tested
+
+Postgres restores to any moment since the last base backup, and CI proves it on every PR.
+
+| Change | Where |
+|--------|-------|
+| **WAL archiving (417.1):** `wal_level=replica`, `archive_mode`, `archive_command`, `archive_timeout` for the compose Postgres; the image owns `/archive`. | `compose.pitr.yaml`, `docker/Dockerfile.db` |
+| **Restore procedure (417.1):** base backup, `recovery.signal`, `restore_command`, `recovery_target_time`, promote, then `/health/ready`. | `docs/Production.md` ("Point-in-time recovery") |
+| **Drill (417.1):** restores to a chosen moment and fails unless exactly the earlier write is back; CI job `pitr drill`. | `scripts/pitr-drill.sh`, `.github/workflows/ci.yml` |
+
 ## Cluster 416 (source record; no `v416.0.0` tag) — Wave 4 #44: UUIDv7 entity ids
 
 Every minted id for a row, job, task or request is UUIDv7; credentials stay random.
