@@ -98,7 +98,7 @@ pub async fn list_for_messages(
     Ok(rows.iter().map(row_to_edit).collect())
 }
 
-fn row_to_edit(row: &sqlx::postgres::PgRow) -> MessageEdit {
+pub(crate) fn row_to_edit(row: &sqlx::postgres::PgRow) -> MessageEdit {
     MessageEdit {
         id: row.get("id"),
         message_id: MessageId(row.get("message_id")),

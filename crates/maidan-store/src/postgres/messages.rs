@@ -380,15 +380,18 @@ pub async fn edit_with_event(
 }
 
 pub async fn tombstone(pool: &PgPool, id: MessageId) -> Result<(), StoreError> {
+    let mut tx = pool.begin().await?;
+    super::legal_hold::preserve_or_forget(&mut tx, id).await?;
     let res = sqlx::query(
         "UPDATE maidan_messages SET tombstoned_at = NOW(), body = '', content = NULL WHERE id = $1 AND tombstoned_at IS NULL",
     )
     .bind(id.0)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
     if res.rows_affected() == 0 {
         return Err(StoreError::NotFound);
     }
+    tx.commit().await?;
     Ok(())
 }
 
@@ -401,6 +404,7 @@ pub async fn tombstone_with_event(
     dm_conversation_id: Option<DmConversationId>,
 ) -> Result<StoredEvent, StoreError> {
     let mut tx = pool.begin().await?;
+    super::legal_hold::preserve_or_forget(&mut tx, id).await?;
     let res = sqlx::query(
         "UPDATE maidan_messages SET tombstoned_at = NOW(), body = '', content = NULL WHERE id = $1 AND tombstoned_at IS NULL",
     )

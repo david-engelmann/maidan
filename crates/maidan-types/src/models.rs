@@ -1270,9 +1270,11 @@ pub struct ThreadPriority {
 }
 
 /// A legal hold on a workspace. While held, the workspace's event-log rows are
-/// exempt from retention pruning, audit pruning is frozen, and workspace
-/// purge/erase is refused — evidence is preserved for litigation. One active
-/// hold per workspace; presence of the record = under hold.
+/// exempt from retention pruning, audit pruning is frozen, workspace
+/// purge/erase is refused, and a message withdrawn (tombstoned) keeps its words
+/// and earlier versions in [`PreservedMessage`] — evidence is preserved for
+/// litigation. One active hold per workspace; presence of the record = under
+/// hold.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LegalHold {
@@ -1281,6 +1283,26 @@ pub struct LegalHold {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placed_by: Option<MemberId>,
     pub placed_at: DateTime<Utc>,
+}
+
+/// What a legal hold kept of a message withdrawn while the workspace was held:
+/// its last words and every earlier version. The member's view is unchanged —
+/// the message is gone everywhere they look. Read only through the audited
+/// preserved-content read; lifting the hold deletes it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PreservedMessage {
+    pub message_id: MessageId,
+    pub thread_id: ThreadId,
+    pub channel_id: ChannelId,
+    pub author_id: MemberId,
+    pub posted_at: DateTime<Utc>,
+    pub body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<Vec<ContentBlock>>,
+    pub tombstoned_at: DateTime<Utc>,
+    /// Earlier versions, oldest first.
+    pub edits: Vec<MessageEdit>,
 }
 
 /// A member's Web Push subscription — one browser/device. From the browser's

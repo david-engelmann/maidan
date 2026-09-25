@@ -1022,7 +1022,13 @@
   {
     "method": "GET",
     "path": "/workspaces/{id}/legal-hold",
-    "capability": "workspace:read",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/legal-hold/preserved",
+    "capability": "token:admin",
     "surface": "http"
   },
   {

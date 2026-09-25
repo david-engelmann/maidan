@@ -80,6 +80,15 @@ pub trait WorkspaceStore: Send + Sync {
         workspace_id: WorkspaceId,
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError>;
+    /// What the workspace's legal hold kept of messages withdrawn while it
+    /// held: their last words and earlier versions. The audit row is written
+    /// first, in the same transaction; a read that cannot be recorded returns
+    /// nothing.
+    async fn read_preserved_messages_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: NewAuditEvent,
+    ) -> Result<Vec<maidan_types::PreservedMessage>, StoreError>;
     /// The workspace's legal hold, or `None`.
     async fn get_legal_hold(
         &self,

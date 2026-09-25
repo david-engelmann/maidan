@@ -14,6 +14,34 @@ pub type AuditFor<T> = Box<dyn FnOnce(&T) -> maidan_types::NewAuditEvent + Send>
 /// checks inside the destroying transaction, so every caller is bound by it.
 pub const LEGAL_HOLD_REFUSAL: &str =
     "workspace is under a legal hold; lift it before deleting workspace data";
+
+/// What lifting a legal hold disposed of: the withdrawn messages it had kept,
+/// and their earlier versions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HoldDisposal {
+    pub withdrawn_messages: u64,
+    pub edit_versions: u64,
+}
+
+impl HoldDisposal {
+    /// The lift's audit row, carrying what the lift disposed of.
+    pub(crate) fn recorded_in(
+        &self,
+        mut event: maidan_types::NewAuditEvent,
+    ) -> maidan_types::NewAuditEvent {
+        let disposed = serde_json::json!({
+            "withdrawn_messages": self.withdrawn_messages,
+            "edit_versions": self.edit_versions,
+        });
+        match &mut event.metadata {
+            serde_json::Value::Object(map) => {
+                map.insert("disposed".into(), disposed);
+            }
+            other => *other = serde_json::json!({ "disposed": disposed }),
+        }
+        event
+    }
+}
 /// Why a review-requirement write was refused: it would lower the requirement
 /// and the caller may not. Checked in the write's transaction.
 pub const REVIEW_LOWER_REFUSAL: &str =

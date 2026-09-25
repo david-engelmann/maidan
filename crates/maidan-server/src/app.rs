@@ -111,6 +111,10 @@ pub fn router(state: AppState) -> Router {
                 .delete(routes::lift_legal_hold)
                 .get(routes::get_legal_hold),
         )
+        .route(
+            "/workspaces/:id/legal-hold/preserved",
+            get(routes::get_preserved_messages),
+        )
         // SCIM 2.0 provisioning — outside OpenAPI/capability-map (like /mcp);
         // each handler enforces token:admin inline and scopes to the token's
         // workspace.

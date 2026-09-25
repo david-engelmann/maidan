@@ -818,19 +818,49 @@ pub async fn lift_legal_hold(
     }
 }
 
-/// `GET /workspaces/:id/legal-hold` — the hold, or `404`. `workspace:read`.
+/// `GET /workspaces/:id/legal-hold` — the hold, or `404`. `token:admin`: whether
+/// a workspace is held, and for what matter, is not for its custodians to
+/// see — telling them invites the deletions the hold is there to catch.
 pub async fn get_legal_hold(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
 ) -> ApiResult<Json<LegalHold>> {
     let workspace_id = WorkspaceId(id);
-    cap(&auth, WORKSPACE_READ)?;
+    cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
     match state.store.get_legal_hold(workspace_id).await? {
         Some(hold) => Ok(Json(hold)),
         None => Err(ApiError::NotFound),
     }
+}
+
+/// `GET /workspaces/:id/legal-hold/preserved` — what the hold kept of messages
+/// withdrawn while it held: each one's last words and earlier versions, which
+/// nobody else can read any more. `token:admin`, and every read is recorded
+/// before anything is returned.
+pub async fn get_preserved_messages(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Path(id): Path<uuid::Uuid>,
+) -> ApiResult<Json<Vec<PreservedMessage>>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let preserved = state
+        .store
+        .read_preserved_messages_audited(
+            workspace_id,
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "legal_hold.preserved_read".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await?;
+    Ok(Json(preserved))
 }
 
 /// `GET /operator/legal-holds` — every active hold across all workspaces,

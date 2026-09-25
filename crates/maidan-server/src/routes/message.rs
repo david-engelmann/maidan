@@ -307,6 +307,18 @@ pub async fn list_message_edits(
     cap(&auth, WORKSPACE_READ)?;
     // Drop resolve_message_chain + ensure_workspace; one fetch authorizes.
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
+    // A withdrawn message's history is withdrawn with it. Under a legal hold it
+    // is kept, and read only through the hold's audited preserved read.
+    if !auth.bypass
+        && state
+            .store
+            .get_message(message_id)
+            .await?
+            .tombstoned_at
+            .is_some()
+    {
+        return Ok(Json(Vec::new()));
+    }
     let limit = q.limit.clamp(1, 500);
     Ok(Json(
         state.store.list_message_edits(message_id, limit).await?,
