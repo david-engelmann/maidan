@@ -7,6 +7,15 @@ use crate::error::StoreError;
 
 /// Declare a skill for a member — see the SQLite twin.
 pub async fn add(pool: &PgPool, member_id: MemberId, skill: &str) -> Result<(), StoreError> {
+    let mut conn = pool.acquire().await?;
+    add_on(&mut conn, member_id, skill).await
+}
+
+pub(crate) async fn add_on(
+    conn: &mut sqlx::PgConnection,
+    member_id: MemberId,
+    skill: &str,
+) -> Result<(), StoreError> {
     if skill.trim().is_empty() {
         return Err(StoreError::InvalidInput("skill must not be empty".into()));
     }
@@ -17,7 +26,7 @@ pub async fn add(pool: &PgPool, member_id: MemberId, skill: &str) -> Result<(), 
     )
     .bind(member_id.0)
     .bind(skill)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }

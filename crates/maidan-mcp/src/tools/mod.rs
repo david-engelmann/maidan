@@ -874,7 +874,7 @@ pub async fn dispatch(
         "set_land_gate" => land_gate::set_land_gate(store, auth, args).await,
         "get_land_gate" => land_gate::get_land_gate(store, args).await,
         "require_land_gate" => land_gate::require_land_gate(store, args).await,
-        "clear_land_gate" => land_gate::clear_land_gate(store, args).await,
+        "clear_land_gate" => land_gate::clear_land_gate(store, auth, args).await,
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
         "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
         "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,

@@ -42,6 +42,15 @@ pub async fn set_requirement(
     thread_id: ThreadId,
     required_count: i64,
 ) -> Result<ThreadReviewRequirement, StoreError> {
+    let mut conn = pool.acquire().await?;
+    set_requirement_on(&mut conn, thread_id, required_count).await
+}
+
+pub(crate) async fn set_requirement_on(
+    conn: &mut sqlx::SqliteConnection,
+    thread_id: ThreadId,
+    required_count: i64,
+) -> Result<ThreadReviewRequirement, StoreError> {
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(
         "INSERT INTO maidan_thread_review_reqs (thread_id, required_count, created_at, updated_at)
@@ -53,7 +62,7 @@ pub async fn set_requirement(
     .bind(required_count)
     .bind(&now)
     .bind(&now)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(row_to_req(&row))
 }
@@ -62,20 +71,36 @@ pub async fn get_requirement(
     pool: &SqlitePool,
     thread_id: ThreadId,
 ) -> Result<Option<ThreadReviewRequirement>, StoreError> {
+    let mut conn = pool.acquire().await?;
+    get_requirement_on(&mut conn, thread_id).await
+}
+
+pub(crate) async fn get_requirement_on(
+    conn: &mut sqlx::SqliteConnection,
+    thread_id: ThreadId,
+) -> Result<Option<ThreadReviewRequirement>, StoreError> {
     let row = sqlx::query(
         "SELECT thread_id, required_count, created_at, updated_at
          FROM maidan_thread_review_reqs WHERE thread_id = ?",
     )
     .bind(thread_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?;
     Ok(row.as_ref().map(row_to_req))
 }
 
 pub async fn clear_requirement(pool: &SqlitePool, thread_id: ThreadId) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    clear_requirement_on(&mut conn, thread_id).await
+}
+
+pub(crate) async fn clear_requirement_on(
+    conn: &mut sqlx::SqliteConnection,
+    thread_id: ThreadId,
+) -> Result<bool, StoreError> {
     let done = sqlx::query("DELETE FROM maidan_thread_review_reqs WHERE thread_id = ?")
         .bind(thread_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(done.rows_affected() > 0)
 }
@@ -103,11 +128,20 @@ pub async fn remove_reviewer(
     thread_id: ThreadId,
     member_id: MemberId,
 ) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    remove_reviewer_on(&mut conn, thread_id, member_id).await
+}
+
+pub(crate) async fn remove_reviewer_on(
+    conn: &mut sqlx::SqliteConnection,
+    thread_id: ThreadId,
+    member_id: MemberId,
+) -> Result<bool, StoreError> {
     let done =
         sqlx::query("DELETE FROM maidan_thread_reviewers WHERE thread_id = ? AND member_id = ?")
             .bind(thread_id.0)
             .bind(member_id.0)
-            .execute(pool)
+            .execute(&mut *conn)
             .await?;
     Ok(done.rows_affected() > 0)
 }

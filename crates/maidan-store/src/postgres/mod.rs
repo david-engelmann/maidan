@@ -25,6 +25,7 @@ mod follows;
 mod fsm_hooks;
 mod github_links;
 mod glossary;
+mod governance_audited;
 mod group_dm;
 mod import;
 mod inbox;
@@ -3394,6 +3395,126 @@ impl A2aStore for PostgresStore {
         config_id: &str,
     ) -> Result<bool, StoreError> {
         a2a::delete_task_push_config(&self.pool, task_id, config_id).await
+    }
+}
+
+#[async_trait]
+impl GovernanceAuditStore for PostgresStore {
+    async fn create_secret_audited(
+        &self,
+        new: NewSecret,
+        audit: crate::AuditFor<Secret>,
+    ) -> Result<Secret, StoreError> {
+        governance_audited::create_secret(&self.pool, new, audit).await
+    }
+    async fn delete_secret_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        name: &str,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        governance_audited::delete_secret(&self.pool, workspace_id, name, audit).await
+    }
+    async fn freeze_member_audited(
+        &self,
+        member_id: MemberId,
+        frozen_by: MemberId,
+        reason: Option<&str>,
+        audit: crate::AuditFor<(MemberFreeze, u64)>,
+    ) -> Result<(MemberFreeze, u64), StoreError> {
+        governance_audited::freeze_member(&self.pool, member_id, frozen_by, reason, audit).await
+    }
+    async fn unfreeze_member_audited(
+        &self,
+        member_id: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        governance_audited::unfreeze_member(&self.pool, member_id, audit).await
+    }
+    async fn add_channel_member_audited(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+        role: ChannelMemberRole,
+        audit: crate::AuditFor<ChannelMember>,
+    ) -> Result<ChannelMember, StoreError> {
+        governance_audited::add_channel_member(&self.pool, channel_id, member_id, role, audit).await
+    }
+    async fn remove_channel_member_audited(
+        &self,
+        channel_id: ChannelId,
+        member_id: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError> {
+        governance_audited::remove_channel_member(&self.pool, channel_id, member_id, audit).await
+    }
+    async fn set_review_requirement_audited(
+        &self,
+        thread_id: ThreadId,
+        required_count: i64,
+        allow_lower: bool,
+        audit: crate::AuditFor<(i64, ThreadReviewRequirement)>,
+    ) -> Result<(i64, ThreadReviewRequirement), StoreError> {
+        governance_audited::set_review_requirement(
+            &self.pool,
+            thread_id,
+            required_count,
+            allow_lower,
+            audit,
+        )
+        .await
+    }
+    async fn clear_review_requirement_audited(
+        &self,
+        thread_id: ThreadId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        governance_audited::clear_review_requirement(&self.pool, thread_id, audit).await
+    }
+    async fn remove_reviewer_audited(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        governance_audited::remove_reviewer(&self.pool, thread_id, member_id, audit).await
+    }
+    async fn clear_land_gate_audited(
+        &self,
+        thread_id: ThreadId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        governance_audited::clear_land_gate(&self.pool, thread_id, audit).await
+    }
+    async fn grant_governance_skill_audited(
+        &self,
+        member_id: MemberId,
+        skill: &str,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError> {
+        governance_audited::grant_governance_skill(&self.pool, member_id, skill, audit).await
+    }
+    async fn allow_egress_target_audited(
+        &self,
+        new: NewEgressTarget,
+        audit: crate::AuditFor<AllowedEgressTarget>,
+    ) -> Result<AllowedEgressTarget, StoreError> {
+        governance_audited::allow_egress_target(&self.pool, new, audit).await
+    }
+    async fn revoke_egress_target_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: EgressTargetId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        governance_audited::revoke_egress_target(&self.pool, workspace_id, id, audit).await
+    }
+    async fn revoke_app_installation_audited(
+        &self,
+        id: AppInstallationId,
+        audit: crate::AuditFor<AppInstallation>,
+    ) -> Result<AppInstallation, StoreError> {
+        governance_audited::revoke_app_installation(&self.pool, id, audit).await
     }
 }
 

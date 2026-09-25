@@ -22,6 +22,16 @@ pub async fn add(
     member_id: MemberId,
     role: ChannelMemberRole,
 ) -> Result<ChannelMember, StoreError> {
+    let mut conn = pool.acquire().await?;
+    add_on(&mut conn, channel_id, member_id, role).await
+}
+
+pub(crate) async fn add_on(
+    conn: &mut sqlx::PgConnection,
+    channel_id: ChannelId,
+    member_id: MemberId,
+    role: ChannelMemberRole,
+) -> Result<ChannelMember, StoreError> {
     let row = sqlx::query(
         "INSERT INTO maidan_channel_members (channel_id, member_id, role)
          VALUES ($1, $2, $3)
@@ -31,7 +41,7 @@ pub async fn add(
     .bind(channel_id.0)
     .bind(member_id.0)
     .bind(role.as_str())
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     row_to_member(&row)
 }
@@ -41,10 +51,19 @@ pub async fn remove(
     channel_id: ChannelId,
     member_id: MemberId,
 ) -> Result<(), StoreError> {
+    let mut conn = pool.acquire().await?;
+    remove_on(&mut conn, channel_id, member_id).await
+}
+
+pub(crate) async fn remove_on(
+    conn: &mut sqlx::PgConnection,
+    channel_id: ChannelId,
+    member_id: MemberId,
+) -> Result<(), StoreError> {
     sqlx::query("DELETE FROM maidan_channel_members WHERE channel_id = $1 AND member_id = $2")
         .bind(channel_id.0)
         .bind(member_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(())
 }

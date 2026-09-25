@@ -96,9 +96,10 @@ pub async fn clear_land_gate(
     cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    if state.store.clear_land_gate(thread_id).await? {
-        crate::audit::record(
-            &state,
+    let cleared = state
+        .store
+        .clear_land_gate_audited(
+            thread_id,
             NewAuditEvent {
                 actor_id: Some(auth.actor_id),
                 action: "land_gate.clear".into(),
@@ -107,7 +108,8 @@ pub async fn clear_land_gate(
                 metadata: serde_json::json!({}),
             },
         )
-        .await;
+        .await?;
+    if cleared {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

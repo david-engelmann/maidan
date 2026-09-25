@@ -156,9 +156,17 @@ pub async fn standing(pool: &PgPool, thread_id: ThreadId) -> Result<LandGateStan
 }
 
 pub async fn clear(pool: &PgPool, thread_id: ThreadId) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    clear_on(&mut conn, thread_id).await
+}
+
+pub(crate) async fn clear_on(
+    conn: &mut sqlx::PgConnection,
+    thread_id: ThreadId,
+) -> Result<bool, StoreError> {
     let done = sqlx::query("DELETE FROM maidan_thread_land_gate WHERE thread_id = $1")
         .bind(thread_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(done.rows_affected() > 0)
 }

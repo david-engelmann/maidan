@@ -30,7 +30,17 @@ pub async fn freeze(
     frozen_by: MemberId,
     reason: Option<&str>,
 ) -> Result<(MemberFreeze, u64), StoreError> {
-    let mut tx = pool.begin().await?;
+    let mut conn = pool.acquire().await?;
+    freeze_on(&mut conn, member_id, frozen_by, reason).await
+}
+
+pub(crate) async fn freeze_on(
+    conn: &mut sqlx::PgConnection,
+    member_id: MemberId,
+    frozen_by: MemberId,
+    reason: Option<&str>,
+) -> Result<(MemberFreeze, u64), StoreError> {
+    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_member_freezes (member_id, frozen_at, frozen_by, reason)
          VALUES ($1, NOW(), $2, $3)
@@ -60,9 +70,17 @@ pub async fn freeze(
 }
 
 pub async fn unfreeze(pool: &PgPool, member_id: MemberId) -> Result<bool, StoreError> {
+    let mut conn = pool.acquire().await?;
+    unfreeze_on(&mut conn, member_id).await
+}
+
+pub(crate) async fn unfreeze_on(
+    conn: &mut sqlx::PgConnection,
+    member_id: MemberId,
+) -> Result<bool, StoreError> {
     let done = sqlx::query("DELETE FROM maidan_member_freezes WHERE member_id = $1")
         .bind(member_id.0)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
     Ok(done.rows_affected() > 0)
 }

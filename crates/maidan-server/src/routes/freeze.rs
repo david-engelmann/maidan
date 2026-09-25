@@ -41,21 +41,22 @@ pub async fn freeze_member(
         .as_deref()
         .map(str::trim)
         .filter(|r| !r.is_empty());
+    let actor = auth.actor_id;
     let (freeze, released) = state
         .store
-        .freeze_member(member_id, auth.member_id, reason)
+        .freeze_member_audited(
+            member_id,
+            auth.member_id,
+            reason,
+            Box::new(move |(freeze, released)| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "member.freeze".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member_id.0),
+                metadata: serde_json::json!({ "reason": freeze.reason, "released": released }),
+            }),
+        )
         .await?;
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "member.freeze".into(),
-            target_kind: Some("member".into()),
-            target_id: Some(member_id.0),
-            metadata: serde_json::json!({ "reason": reason, "released": released }),
-        },
-    )
-    .await;
     Ok(Json(FreezeResult { freeze, released }))
 }
 
@@ -67,20 +68,22 @@ pub async fn unfreeze_member(
     cap(&auth, TOKEN_ADMIN)?;
     let member_id = MemberId(id);
     authorize_member(&state, &auth, member_id).await?;
-    if !state.store.unfreeze_member(member_id).await? {
+    let unfrozen = state
+        .store
+        .unfreeze_member_audited(
+            member_id,
+            NewAuditEvent {
+                actor_id: Some(auth.actor_id),
+                action: "member.unfreeze".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member_id.0),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await?;
+    if !unfrozen {
         return Err(ApiError::NotFound);
     }
-    crate::audit::record(
-        &state,
-        NewAuditEvent {
-            actor_id: Some(auth.actor_id),
-            action: "member.unfreeze".into(),
-            target_kind: Some("member".into()),
-            target_id: Some(member_id.0),
-            metadata: serde_json::json!({}),
-        },
-    )
-    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -43,22 +43,26 @@ pub async fn add_member_skill(
     } else {
         ensure_own_personal_state(&auth, member.id)?;
     }
-    state
-        .store
-        .add_member_skill(member.id, body.skill.trim())
-        .await?;
     if is_governance_skill(&body.skill) {
-        crate::audit::record(
-            &state,
-            NewAuditEvent {
-                actor_id: Some(auth.actor_id),
-                action: "member_skill.grant_governance".into(),
-                target_kind: Some("member".into()),
-                target_id: Some(member.id.0),
-                metadata: serde_json::json!({ "skill": body.skill.trim() }),
-            },
-        )
-        .await;
+        state
+            .store
+            .grant_governance_skill_audited(
+                member.id,
+                body.skill.trim(),
+                NewAuditEvent {
+                    actor_id: Some(auth.actor_id),
+                    action: "member_skill.grant_governance".into(),
+                    target_kind: Some("member".into()),
+                    target_id: Some(member.id.0),
+                    metadata: serde_json::json!({ "skill": body.skill.trim() }),
+                },
+            )
+            .await?;
+    } else {
+        state
+            .store
+            .add_member_skill(member.id, body.skill.trim())
+            .await?;
     }
     Ok(StatusCode::NO_CONTENT)
 }
