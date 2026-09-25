@@ -110,7 +110,7 @@ real recovery point. Size M.
 | Item | Verified state | Size |
 |---|---|---|
 | #47 templates | `examples/` exists, but without last-verified / owner / compatibility metadata. Compose recipes for coding-agent and deploy are missing | S |
-| #48 CONTRIBUTING handbook-lite | 76 lines. Nothing on occupying, response standard, ownership, banned claims, or cutting a release | S |
+| ~~#48 CONTRIBUTING handbook-lite~~ **✅ 418.1** | Claiming work, what to expect (security timelines from SECURITY.md; no invented SLA), ownership, claims we do not make (from Claims.md), how a release is cut | S |
 | #50 Goose / OpenHands claimant | No recipe. It's an MCP config plus a walkthrough of the waiter loop | S |
 | #49 paste → artifact | No paste handler and no `/ui` upload route. Server-minted filenames | M |
 

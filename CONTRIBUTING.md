@@ -39,6 +39,77 @@ not a rubber stamp.
    reviewed by the maintainer before merge.
 6. Squash-merge — the PR title + body become the commit on `main`.
 
+## Claiming work
+
+Two people doing the same work is the most expensive mistake a small project can
+make, so claim before you start:
+
+- Comment on the issue that you are taking it, and link your draft PR as soon as
+  it exists. A claim is the comment and the open PR, not a private intention.
+- One issue, one PR. If the work turns out to be two changes, open a second
+  issue.
+- If a claimed issue has gone quiet, ask on the issue before starting on it
+  yourself.
+- Cluster work (`docs/Clusters/`) is claimed by the maintainer; open an issue
+  against a cluster slice rather than starting on one directly.
+
+## What to expect
+
+Maidan is solo-maintained, and nothing here is a service-level commitment
+except security:
+
+- **Security reports** follow [`SECURITY.md`](SECURITY.md): acknowledgement
+  within 3 business days, confirmation or refutation within 10, and a default
+  90-day disclosure window.
+- **Issues and PRs** are handled as the maintainer's time allows. The bar for
+  merging is the 8 required checks plus review, not a queue position.
+- A PR that reds a required check is not merged over it. If the check is wrong,
+  fixing the check is its own PR.
+
+## Ownership
+
+The maintainer owns every area. To find where something lives and why:
+
+- each crate's `src/lib.rs` opens with a doc comment saying what the crate owns
+  and what it defers;
+- [`docs/Architecture.md`](docs/Architecture.md) maps components and data flow;
+- [`docs/Decisions.md`](docs/Decisions.md) records the decisions whose
+  rationale is not obvious, and a change that reverses one needs a new entry.
+
+## Claims we do not make
+
+[`docs/Claims.md`](docs/Claims.md) maps every load-bearing claim in the README
+and on the site to a gate, a test, or an honest "not yet". The rule for
+contributions follows from it:
+
+- A sentence about what Maidan does must point at a row in `Claims.md` — or add
+  one, with its evidence, in the same PR.
+- No "production-ready", "secure", "1.0" or performance numbers without the gate
+  or benchmark behind them. The tags are the engineering record; there is no
+  marketing release.
+- No internal or third-party product names in the public surface (Cluster 389):
+  examples use `example.*` kinds and generic names.
+- A test name says what it tests. A test that exercises a stub is not named as
+  if it exercised the real service.
+
+## How a release is cut
+
+Tagging is the maintainer's call. The full procedure is in
+[`docs/Operations.md`](docs/Operations.md); in outline:
+
+1. The cluster's close record lands: its retro, the Capabilities and CHANGELOG
+   entries, and the Roadmap pointer. `scripts/check-release-records.sh` fails
+   if the README, CLAUDE.md, CHANGELOG and Capabilities disagree on the version.
+2. The maintainer pushes an annotated tag `vX.0.0` from `main`.
+3. `release.yml` builds binaries and multi-arch images, runs the blocking trivy
+   scan, signs images and artifacts keylessly with cosign, smoke-tests the
+   published image, and publishes the GitHub Release.
+4. Anyone can verify a release with the `cosign` commands in the README and
+   [`SECURITY.md`](SECURITY.md#verifying-a-release).
+
+Work merged but not yet tagged is recorded in `docs/Capabilities.md` as a
+source record, never as a release.
+
 ## Retrospective discipline
 
 Every PR body includes:
