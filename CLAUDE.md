@@ -312,8 +312,8 @@ Read this before the long narrative below, which is a point-in-time record and
   414 bounded growth and timeouts; 415 immutable deploys (Helm digests, an
   in-process drain, blocking trivy, pinned quickstart) and `GET /operator/status`;
   416 UUIDv7 ids (credentials stay v4; `uuid_v7_contract`); 417 PITR with a
-  drill CI runs; 418 adoption is in progress (CONTRIBUTING has landed). 412 and
-  later are **source records** in Capabilities until the maintainer cuts tags.
+  drill CI runs; 418 the adoption surface (verified examples, compose recipes,
+  a Goose claimant). 412 and later are **source records** in Capabilities until the maintainer cuts tags.
 - **Four cross-tenant leaks were found on 2026-09-25**, all the same
   shape: an authorization check that runs only when an optional id is present.
   Live subscriptions without `workspace_id` streamed every tenant's events
@@ -322,6 +322,11 @@ Read this before the long narrative below, which is a point-in-time record and
   artifact returning the first uploader's metadata, is fixed in #1033. Treat
   `if let Some(x) = req.x { check(x) }` as a bug until shown otherwise, and give
   every multi-tenant fix a two-tenant test.
+- **Run the examples, not just the tests.** The coding-agent recipe found that
+  `claim_next_thread` had no state filter, so a finished thread was handed out
+  again once released (#1046). Every unit test had passed. A waiter now sets
+  its result, calls `start_review`, then releases. An agent joins a workspace as
+  an installed app; with auth on, member creation is bootstrap-only.
 - **MinIO's own images are unpullable** (Docker Hub, then quay.io). Compose and
   k8s use `cgr.dev/chainguard/minio{,-client}` pinned by digest (#1023); the
   client image has no shell, so bucket init uses `MC_HOST_local`.
@@ -330,7 +335,7 @@ Read this before the long narrative below, which is a point-in-time record and
   admin-merged over it. A required check failing at the same step on
   consecutive `main` commits is a break, not a flake: diagnose it first.
 - **The forward plan is the *Launch backlog* at the top of [`docs/Open Work.md`](docs/Open%20Work.md)**
-  (reconciled against code 2026-09-23; 413–417 are done, 418 is in progress). Sections below it are
+  (reconciled against code 2026-09-23; 413–418 are done). Sections below it are
   history and dispositions; where they disagree, the Launch backlog is right.
 - **[`docs/Open Work.md`](docs/Open%20Work.md) is the live backlog** and carries
   several items deliberately recorded as *decisions* rather than fixed. Do not

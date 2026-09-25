@@ -42,6 +42,19 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## Cluster 418 (source record; no `v418.0.0` tag) — the adoption surface
+
+A stranger can start a working agent with one command, and every example says when it last ran.
+
+| Change | Where |
+|--------|-------|
+| **Compose recipes (#47):** a coding agent on the REST waiter loop with a pluggable `AGENT_COMMAND`, and a deploy gated on a person; each agent is installed as an app with a scoped token. | `examples/recipes/` |
+| **Goose claimant (#50):** a Goose recipe for the waiter loop, one task per run. | `examples/goose/maidan-waiter.yaml` |
+| **Verified examples (#47):** last-verified date, target and versions per example. | `examples/README.md` |
+| **Paste to artifact (#49):** a pasted file uploads and attaches to the selected thread. | `crates/maidan-server/static/index.html`, `ui-tests/tests/paste.spec.ts` |
+| **CONTRIBUTING handbook-lite (#48).** | `CONTRIBUTING.md` |
+| **Claim only open work:** `claim_next_thread` hands out only `open` threads; queue depth and occupancy count the same set. | `crates/maidan-store/src/{sqlite,postgres}/threads.rs`, `crates/maidan-store/tests/claim_open_only.rs` |
+
 ## Cluster 413 (source record; no `v413.0.0` tag) — the round-3 decisions
 
 A workspace bounds how long a delegation grant lives, and every authority change commits together with its audit row.
