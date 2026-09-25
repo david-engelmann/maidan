@@ -35,7 +35,11 @@ services:
       retries: 20
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # MinIO's own images stopped being pullable (Docker Hub, then quay.io,
+    # 401 from 2026-09-24), so the server comes from Chainguard's build, pinned
+    # by digest because its free tier only publishes :latest. It runs as uid
+    # 65532 and bundles `mc`, so the healthcheck is unchanged.
+    image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
     container_name: maidan-minio
     command: server /data --console-address ":9001"
     environment:
@@ -55,16 +59,15 @@ services:
       - full
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    # The client image has no shell; `MC_HOST_local` defines the alias.
+    image: cgr.dev/chainguard/minio-client@sha256:b8b144ab34694ecea25aa352c4be9de4c26ee2a02701521dce02ee5593c57338
     container_name: maidan-minio-init
     depends_on:
       minio:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 maidan maidanmaidan &&
-      mc mb --ignore-existing local/maidan
-      "
+    environment:
+      MC_HOST_local: http://maidan:maidanmaidan@minio:9000
+    command: ["mb", "--ignore-existing", "local/maidan"]
     profiles:
       - full
 
@@ -201,7 +204,11 @@ services:
   # compose network, so the harness never collides with host ports (locally or
   # in CI) and is fully isolated from the `full` profile's minio.
   minio-scale:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # MinIO's own images stopped being pullable (Docker Hub, then quay.io,
+    # 401 from 2026-09-24), so the server comes from Chainguard's build, pinned
+    # by digest because its free tier only publishes :latest. It runs as uid
+    # 65532 and bundles `mc`, so the healthcheck is unchanged.
+    image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
     container_name: maidan-minio-scale
     command: server /data
     environment:
@@ -218,16 +225,14 @@ services:
       - scale
 
   minio-scale-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: cgr.dev/chainguard/minio-client@sha256:b8b144ab34694ecea25aa352c4be9de4c26ee2a02701521dce02ee5593c57338
     container_name: maidan-minio-scale-init
     depends_on:
       minio-scale:
         condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio-scale:9000 maidan maidanmaidan &&
-      mc mb --ignore-existing local/maidan
-      "
+    environment:
+      MC_HOST_local: http://maidan:maidanmaidan@minio-scale:9000
+    command: ["mb", "--ignore-existing", "local/maidan"]
     profiles:
       - scale
 
