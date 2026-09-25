@@ -5,7 +5,8 @@ const fx = fixtures();
 
 // Attenuation chrome in a real browser (Cluster 353.3): a minted token can only
 // be a subset of the caller's own grant. The fixture token holds
-// workspace:read + workspace:write + message:post, so requesting token:admin is
+// workspace:read + workspace:write + message:post + artifact:upload, so
+// requesting token:admin is
 // a widening attempt — flagged client-side before any request is sent (the
 // server enforces the same rule via validate_subset).
 test("minting cannot widen the caller's grant", async ({ page }) => {

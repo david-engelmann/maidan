@@ -119,7 +119,7 @@ moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 | #47 templates | `examples/` exists, but without last-verified / owner / compatibility metadata. Compose recipes for coding-agent and deploy are missing | S |
 | ~~#48 CONTRIBUTING handbook-lite~~ **✅ 418.1** | Claiming work, what to expect (security timelines from SECURITY.md; no invented SLA), ownership, claims we do not make (from Claims.md), how a release is cut | S |
 | #50 Goose / OpenHands claimant | No recipe. It's an MCP config plus a walkthrough of the waiter loop | S |
-| #49 paste → artifact | No paste handler and no `/ui` upload route. Server-minted filenames | M |
+| ~~#49 paste → artifact~~ **✅** | A file pasted into the `/ui` composer uploads as an artifact (images as `screenshot`) and attaches to the selected thread; text pastes are untouched. Artifacts are content-addressed, so the client filename is never used — a Playwright spec pastes `../../etc/evil.png` and checks it appears nowhere | M |
 
 ### Correctness and hygiene, folded into the nearest cluster
 
