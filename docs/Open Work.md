@@ -61,11 +61,11 @@ channel without either a dispatch-time access check or a listed reason.
 
 | Item | Verified state | Size |
 |---|---|---|
-| **Helm digest pinning** | `deployment.yaml:28` renders `repo:tag`. The `values-prod.yaml` hint would produce the invalid reference `repo:@sha256:…` | S |
-| **`preStop` drain + `terminationGracePeriodSeconds`** | Absent from `helm/` and `k8s/` | S |
-| **trivy blocks on HIGH/CRITICAL** | `release.yml:379` has `exit-code: "0"`, so the scan is report-only | S |
-| **Quickstart pin matches the release** | `Dockerfile.quickstart` and `compose.quickstart.yaml` pin `v402.0.0`; the README says `v411.0.0` | S |
-| **Wave 4 #46: `cosign verify` inline in the README, plus an operator `/status`** | The README only links to SECURITY.md, and no status route exists. The inputs do: readiness, tap cursor vs head, replica lag | S–M |
+| ~~**Helm digest pinning**~~ **✅ 415.1** | `image.digest` renders `repo@sha256:…`; the tag becomes informational | S |
+| ~~**`preStop` drain + `terminationGracePeriodSeconds`**~~ **✅ 415.1** | In-process drain (the image is distroless, so no exec `preStop`): readiness 503s and the listener stays open `MAIDAN_SHUTDOWN_DRAIN_SECS` (10 in Helm/k8s), grace period 45 s | S |
+| ~~**trivy blocks on HIGH/CRITICAL**~~ **✅ 415.1** | Blocking, and signing waits on it. Now scans `maidan-postgres` too, whose v410 image carried 3 fixable pcre2 HIGHs (the image now takes Debian updates at build) and 22 gosu Go-stdlib findings (skipped, with the reason in the workflow) | S |
+| ~~**Quickstart pin matches the release**~~ **✅ 415.1** | Quickstart and Helm prod pin v410.0.0, the newest published tag, with its real tarball SHA-256s; `check-release-records.sh` fails if the three disagree or name an unpublished tag | S |
+| **Wave 4 #46: ~~`cosign verify` inline in the README~~ ✅ 415.1, plus an operator `/status`** | The verify command is inline, with an identity anchored to the release workflow — the old `^https://github.com/david-engelmann/maidan` also matched any repository named `maidan…`. Remaining: the `/status` route; its inputs exist (readiness, tap cursor vs head, replica lag) | S–M |
 
 ### Cluster 416 — Wave 4 #44: uuidv7 entity ids
 

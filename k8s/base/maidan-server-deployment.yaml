@@ -23,6 +23,9 @@ spec:
         app.kubernetes.io/name: maidan
         app.kubernetes.io/component: server
     spec:
+      # The server drains for MAIDAN_SHUTDOWN_DRAIN_SECS (configmap) after
+      # SIGTERM; this covers that plus in-flight requests.
+      terminationGracePeriodSeconds: 45
       securityContext:
         runAsNonRoot: true
         seccompProfile:

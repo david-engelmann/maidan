@@ -269,3 +269,44 @@ async fn spawn_server_with_postgres_bus() -> Option<(
 
     Some((addr, handle, dir, container))
 }
+
+/// After SIGTERM the server fails readiness, so the Service stops routing to it,
+/// while liveness still passes — a failing liveness would get it killed
+/// mid-drain — and requests already routed are still served.
+#[tokio::test]
+async fn a_draining_server_is_not_ready_but_still_serves() {
+    use maidan_search::SqliteSearch;
+    use maidan_store::{run_sqlite_migrations, SqliteStore};
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store = Arc::new(SqliteStore::new(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().expect("tempdir");
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let state = AppState::for_tests(store, artifacts, bus, search);
+    let draining = state.draining.clone();
+    let app = router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let handle = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::new();
+    let get = |path: &'static str| client.get(format!("http://{addr}{path}")).send();
+
+    assert_eq!(get("/health/ready").await.unwrap().status(), StatusCode::OK);
+    draining.store(true, std::sync::atomic::Ordering::Relaxed);
+    let ready = get("/health/ready").await.unwrap();
+    assert_eq!(ready.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body: serde_json::Value = ready.json().await.unwrap();
+    assert_eq!(body["status"], "draining");
+    assert_eq!(get("/health/live").await.unwrap().status(), StatusCode::OK);
+    assert_eq!(get("/openapi.json").await.unwrap().status(), StatusCode::OK);
+
+    handle.abort();
+}

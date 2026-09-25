@@ -249,9 +249,20 @@ docker run --rm --network "$MAIDAN_NETWORK" \
 ```
 
 Then mint per-agent tokens from the returned admin credential (see
-[docs/Production.md](docs/Production.md#maidan-init-recommended)). Verify the image's cosign
-signature before trusting a tag ([SECURITY.md](SECURITY.md#verifying-a-release)). For a
-zero-setup *local* try-it with the token flow bundled, use the quickstart above.
+[docs/Production.md](docs/Production.md#maidan-init-recommended)). For a zero-setup *local*
+try-it with the token flow bundled, use the quickstart above.
+
+Verify an image before you trust its tag. The identity names this repo's release workflow
+exactly, so a signature from any other repository or workflow fails:
+
+```sh
+cosign verify "ghcr.io/david-engelmann/maidan-server:${MAIDAN_TAG}" \
+  --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Release binaries, the CLI and Postgres images, and the SBOM verify the same way; see
+[SECURITY.md](SECURITY.md#verifying-a-release).
 
 ### Build + test
 

@@ -58,6 +58,9 @@ pub async fn handler(state: State<AppState>) -> impl IntoResponse {
 }
 
 async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
+    // Shutting down: not ready, whatever the dependencies say, so the pod leaves
+    // the Service endpoints while it still serves what it already accepted.
+    let draining = state.draining.load(Ordering::Relaxed);
     let db = match state.store.health_check().await {
         Ok(()) => SubsystemStatus::Ok,
         Err(e) => SubsystemStatus::Error(e.to_string()),
@@ -71,9 +74,11 @@ async fn readiness(State(state): State<AppState>) -> (StatusCode, Json<HealthRes
         dimension: state.embedding_provider.dimension(),
     });
 
-    let healthy = db.is_ok() && storage.is_ok() && indexer.is_ok() && bus.is_ok();
+    let healthy = !draining && db.is_ok() && storage.is_ok() && indexer.is_ok() && bus.is_ok();
     let body = HealthResponse {
-        status: if healthy {
+        status: if draining {
+            "draining".to_string()
+        } else if healthy {
             "ok".to_string()
         } else {
             "degraded".to_string()

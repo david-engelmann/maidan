@@ -21,7 +21,7 @@ services:
       context: docker
       dockerfile: Dockerfile.quickstart
       args:
-        MAIDAN_VERSION: ${MAIDAN_VERSION:-v402.0.0}
+        MAIDAN_VERSION: ${MAIDAN_VERSION:-v410.0.0}
     environment:
       DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
       ARTIFACT_BACKEND: localfs

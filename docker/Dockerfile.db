@@ -8,3 +8,10 @@
 # same code path as upgrades.
 
 FROM pgvector/pgvector:pg16
+
+# Take the base distribution's security fixes at build time. The release scan
+# blocks on a fixable HIGH/CRITICAL, and the upstream image lags Debian's
+# point releases (v410 shipped a pcre2 with three fixed out-of-bounds writes).
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
