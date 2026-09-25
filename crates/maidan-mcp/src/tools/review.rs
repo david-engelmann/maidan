@@ -129,17 +129,28 @@ struct SubmitReviewArgs {
 }
 
 /// Submit a review decision as the caller. An owner/assignee may submit but it
-/// won't count toward the requirement (separation of duties).
+/// won't count toward the requirement (separation of duties). A change request
+/// from the owner or a counting reviewer sends an `in_review` thread back to
+/// `open` for rework.
 pub(super) async fn submit_review(
-    store: &Arc<dyn Store>,
+    server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SubmitReviewArgs = serde_json::from_value(args.clone())?;
     let note = a.note.as_deref().map(str::trim).filter(|n| !n.is_empty());
-    let review = store
-        .submit_review(ThreadId(a.thread_id), auth.member_id, a.decision, note)
+    let thread_id = ThreadId(a.thread_id);
+    let (review, reopened) = server
+        .store
+        .submit_review(thread_id, auth.member_id, a.decision, note)
         .await?;
+    if let Some(stored) = reopened {
+        server.publish_stored(&stored).await;
+        let uris =
+            crate::resource_updates::uris_for_thread_transition(server.store.as_ref(), thread_id)
+                .await;
+        server.publish_resource_uris(uris).await;
+    }
     Ok(content_json(&review))
 }
 

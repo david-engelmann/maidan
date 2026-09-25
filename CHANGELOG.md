@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Request changes
+
+- **Added:** a `request_changes` review sends a thread under review back for
+  rework. It is claimable again, earlier approvals are dismissed and must be
+  given afresh, and the worker reads the reviewer's note in the thread context
+  as `change_requests`.
+- **Fixed:** on Postgres, two concurrent transitions of one thread could both
+  act on the state they read; a transition now locks the thread row.
+
 ### The OpenAPI document
 
 - **Fixed:** `GET /openapi.json` referenced 57 schemas it never defined (263

@@ -2891,7 +2891,7 @@ Name a reviewer for a thread (G5) — the eligible set. Empty set = open review 
 
 ### `submit_review`
 
-Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). Re-submitting changes your decision. Requires thread:transition.
+Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. Re-submitting changes your decision. Requires thread:transition.
 
 **Capability:** `thread:transition`
 

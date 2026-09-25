@@ -14,6 +14,10 @@ pub enum ThreadAction {
     StartReview,
     Close,
     Archive,
+    /// A reviewer sends the work back for another round. Reached only through a
+    /// `request_changes` review, which carries the reviewer's note, so it is not
+    /// one of the actions [`ThreadAction::parse`] accepts.
+    RequestChanges,
 }
 
 impl ThreadAction {
@@ -22,9 +26,11 @@ impl ThreadAction {
             Self::StartReview => "start_review",
             Self::Close => "close",
             Self::Archive => "archive",
+            Self::RequestChanges => "request_changes",
         }
     }
 
+    /// The actions a caller may name directly on a transition route.
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "start_review" => Some(Self::StartReview),
@@ -48,6 +54,7 @@ pub fn apply(from: ThreadState, action: ThreadAction) -> Result<ThreadState, Inv
         (ThreadState::Open, ThreadAction::StartReview) => ThreadState::InReview,
         (ThreadState::InReview, ThreadAction::Close) => ThreadState::Closed,
         (ThreadState::Closed, ThreadAction::Archive) => ThreadState::Archived,
+        (ThreadState::InReview, ThreadAction::RequestChanges) => ThreadState::Open,
         (from, action) => return Err(InvalidTransition { from, action }),
     };
     Ok(next)
@@ -63,6 +70,21 @@ mod tests {
             apply(ThreadState::Open, ThreadAction::StartReview).unwrap(),
             ThreadState::InReview
         );
+    }
+
+    #[test]
+    fn a_change_request_returns_review_to_open() {
+        assert_eq!(
+            apply(ThreadState::InReview, ThreadAction::RequestChanges).unwrap(),
+            ThreadState::Open
+        );
+        assert!(apply(ThreadState::Open, ThreadAction::RequestChanges).is_err());
+        assert!(apply(ThreadState::Closed, ThreadAction::RequestChanges).is_err());
+    }
+
+    #[test]
+    fn request_changes_is_not_a_route_action() {
+        assert_eq!(ThreadAction::parse("request_changes"), None);
     }
 
     #[test]

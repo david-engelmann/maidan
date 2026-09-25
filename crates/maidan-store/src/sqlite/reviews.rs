@@ -3,9 +3,10 @@
 //! owner nor assignee (SoD), and, when a named set exists, is in it.
 
 use chrono::{DateTime, Utc};
+use maidan_fsm::ThreadAction;
 use maidan_types::{
-    review_decision_from_waiter, MemberId, ReviewDecision, ReviewStatus, ThreadId, ThreadReview,
-    ThreadReviewRequirement, CRITICAL_REVIEW_NOTE, REVIEW_SKILL,
+    review_decision_from_waiter, MemberId, ReviewDecision, ReviewStatus, StoredEvent, ThreadId,
+    ThreadReview, ThreadReviewRequirement, CRITICAL_REVIEW_NOTE, REVIEW_SKILL,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -34,8 +35,12 @@ fn row_to_review(row: &sqlx::sqlite::SqliteRow) -> Result<ThreadReview, StoreErr
         actor_id: row.get::<Option<Uuid>, _>("actor_id").map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
+        dismissed_at: row.get::<Option<DateTime<Utc>>, _>("dismissed_at"),
     })
 }
+
+const REVIEW_COLS: &str =
+    "thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, dismissed_at";
 
 pub async fn set_requirement(
     pool: &SqlitePool,
@@ -162,43 +167,121 @@ pub async fn list_reviewers(
         .collect())
 }
 
+/// Record a review, and let a change request send the thread back.
+///
+/// A `request_changes` review on a thread under review, from its owner or from
+/// a reviewer whose approval would count, returns the thread to `open` in the
+/// same transaction: the thread is claimable again, the approvals given to the
+/// version it replaces are dismissed, and the `ThreadStateChanged` event is
+/// returned for the caller to publish. From anyone else, or on a thread not
+/// under review, the review is only recorded, the way an implementer's
+/// approval is recorded and not counted.
 pub async fn submit_review(
     pool: &SqlitePool,
     thread_id: ThreadId,
     reviewer_id: MemberId,
     decision: ReviewDecision,
     note: Option<&str>,
-) -> Result<ThreadReview, StoreError> {
+) -> Result<(ThreadReview, Option<StoredEvent>), StoreError> {
+    let actor_id = crate::attribution::delegate_acting_for(reviewer_id);
     let now = Utc::now().to_rfc3339();
-    let row = sqlx::query(
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(&format!(
         "INSERT INTO maidan_thread_reviews
              (thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id)
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (thread_id, reviewer_id) DO UPDATE SET
              decision = excluded.decision, note = excluded.note, updated_at = excluded.updated_at,
-             actor_id = excluded.actor_id
-         RETURNING thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id",
-    )
+             actor_id = excluded.actor_id, dismissed_at = NULL
+         RETURNING {REVIEW_COLS}"
+    ))
     .bind(thread_id.0)
     .bind(reviewer_id.0)
     .bind(decision.as_str())
     .bind(note)
     .bind(&now)
     .bind(&now)
-    .bind(crate::attribution::delegate_acting_for(reviewer_id).map(|m| m.0))
-    .fetch_one(pool)
+    .bind(actor_id.map(|m| m.0))
+    .fetch_one(&mut *tx)
     .await?;
-    row_to_review(&row)
+    let review = row_to_review(&row)?;
+    let mut event = None;
+    if decision == ReviewDecision::RequestChanges
+        && sends_back_in_tx(&mut tx, thread_id, reviewer_id, actor_id).await?
+    {
+        let result = super::thread_transitions::transition_in_tx(
+            &mut tx,
+            thread_id,
+            reviewer_id,
+            ThreadAction::RequestChanges,
+        )
+        .await?;
+        sqlx::query(
+            "UPDATE maidan_thread_reviews SET dismissed_at = ?
+             WHERE thread_id = ? AND decision = 'approve' AND dismissed_at IS NULL",
+        )
+        .bind(&now)
+        .bind(thread_id.0)
+        .execute(&mut *tx)
+        .await?;
+        event = Some(
+            super::thread_transitions::state_changed_in_tx(&mut tx, reviewer_id, &result).await?,
+        );
+    }
+    tx.commit().await?;
+    Ok((review, event))
+}
+
+/// Whether a change request from `reviewer_id` sends the thread back: it is
+/// under review, and the reviewer owns it or is a reviewer whose approval
+/// would count. Whoever submitted it for them must not have worked it either.
+async fn sends_back_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+    reviewer_id: MemberId,
+    actor_id: Option<MemberId>,
+) -> Result<bool, StoreError> {
+    let row = sqlx::query(
+        "SELECT 1 FROM maidan_threads t
+         WHERE t.id = ?1 AND t.state = 'in_review' AND t.tombstoned_at IS NULL
+           AND (
+             t.owner_id = ?2
+             OR (
+               (t.assignee_id IS NULL OR t.assignee_id <> ?2)
+               AND NOT EXISTS (
+                 SELECT 1 FROM maidan_thread_workers w
+                 WHERE w.thread_id = t.id AND w.member_id = ?2
+               )
+               AND (
+                 NOT EXISTS (SELECT 1 FROM maidan_thread_reviewers rv WHERE rv.thread_id = t.id)
+                 OR EXISTS (SELECT 1 FROM maidan_thread_reviewers rv
+                            WHERE rv.thread_id = t.id AND rv.member_id = ?2)
+               )
+             )
+           )
+           AND (?3 IS NULL OR (
+             (t.assignee_id IS NULL OR t.assignee_id <> ?3)
+             AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_workers wa
+               WHERE wa.thread_id = t.id AND wa.member_id = ?3
+             )
+           ))",
+    )
+    .bind(thread_id.0)
+    .bind(reviewer_id.0)
+    .bind(actor_id.map(|m| m.0))
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(row.is_some())
 }
 
 pub async fn list_reviews(
     pool: &SqlitePool,
     thread_id: ThreadId,
 ) -> Result<Vec<ThreadReview>, StoreError> {
-    let rows = sqlx::query(
-        "SELECT thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id
-         FROM maidan_thread_reviews WHERE thread_id = ? ORDER BY created_at",
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT {REVIEW_COLS} FROM maidan_thread_reviews WHERE thread_id = ? ORDER BY created_at"
+    ))
     .bind(thread_id.0)
     .fetch_all(pool)
     .await?;
@@ -226,6 +309,7 @@ pub async fn review_status(
          JOIN maidan_threads t ON t.id = r.thread_id
          WHERE r.thread_id = ?
            AND r.decision = 'approve'
+           AND r.dismissed_at IS NULL
            AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
            AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
            -- And never worked it. The live `assignee_id` above
@@ -276,7 +360,7 @@ pub async fn apply_critical_review_decision(
     thread_id: ThreadId,
     reviewer_id: MemberId,
     result: &serde_json::Value,
-) -> Result<Option<ThreadReview>, StoreError> {
+) -> Result<Option<(ThreadReview, Option<StoredEvent>)>, StoreError> {
     let Some(decision) = review_decision_from_waiter(result) else {
         return Ok(None);
     };

@@ -324,7 +324,8 @@ pub(super) async fn transition_thread(
     let a: TransitionThreadArgs = serde_json::from_value(args.clone())?;
     let action = maidan_fsm::ThreadAction::parse(&a.action).ok_or_else(|| {
         McpError::InvalidParams(format!(
-            "unknown action {:?}; expected start_review, close, or archive",
+            "unknown action {:?}; expected start_review, close, or archive (to send \
+             work back, submit a review with decision request_changes)",
             a.action
         ))
     })?;
@@ -1000,16 +1001,18 @@ pub(super) async fn set_thread_result(
         .await?;
     // Same write-path arm as REST. The bus consumer (383.2) is every-replica /
     // replay; the tool itself must not race a close.
-    if let Err(err) = server
+    match server
         .store
         .apply_critical_review_decision(thread_id, auth.member_id, &a.result)
         .await
     {
-        tracing::warn!(
+        Ok(Some((_, Some(reopened)))) => server.publish_stored(&reopened).await,
+        Ok(_) => {}
+        Err(err) => tracing::warn!(
             error = %err,
             %thread_id,
             "critical review adapter failed; result is stored"
-        );
+        ),
     }
     // Same write-path arm as REST 387.2. Best-effort — a lineage hiccup must
     // not undo a stored result.

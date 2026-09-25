@@ -77,6 +77,11 @@ pub struct ThreadReview {
     pub actor_id: Option<MemberId>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Set on an approval when a change request sent the thread back for
+    /// rework: it approved a version that no longer stands, so it no longer
+    /// counts. Re-submitting the review clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dismissed_at: Option<DateTime<Utc>>,
 }
 
 /// The computed review standing of a thread — what the close-gate reads for the

@@ -91,6 +91,12 @@ pub struct ThreadContext {
     /// workspace-nested, or DM (`__dm__`). Does not inline full result JSON.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub accepted_decisions: Vec<AcceptedDecision>,
+    /// What a reviewer sent this thread back for: each `request_changes` review
+    /// with its note, until that reviewer reviews again. A worker that claims a
+    /// reopened thread reads what to fix here. Omitted when empty and in an
+    /// as-of pack.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub change_requests: Vec<ThreadReview>,
     /// Present when more messages exist (`message_id` cursor for the next page).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_message_cursor: Option<String>,
@@ -269,6 +275,12 @@ pub async fn build_thread_context(
     } else {
         Vec::new()
     };
+    let change_requests: Vec<ThreadReview> = store
+        .list_reviews(thread.id)
+        .await?
+        .into_iter()
+        .filter(|r| r.decision == ReviewDecision::RequestChanges)
+        .collect();
 
     Ok(ThreadContext {
         workspace_id,
@@ -286,6 +298,7 @@ pub async fn build_thread_context(
         elision,
         parent_grounding,
         accepted_decisions,
+        change_requests,
         next_message_cursor,
     })
 }
@@ -497,6 +510,7 @@ async fn build_thread_context_as_of(
         // Same for accepted decisions: they are the live channel scoreboard, not
         // a reconstruction of what was closed at `as_of`.
         accepted_decisions: Vec::new(),
+        change_requests: Vec::new(),
         next_message_cursor,
     })
 }

@@ -1009,6 +1009,31 @@ and should **not** then close its own owned thread. That is the land, and SoD ex
 is not the closer. An owner, a reviewer, or a third-party human (or
 any member, if the thread has no owner) calls `transition_thread`.
 
+### Sending work back
+
+A reviewer who wants changes does not reject the thread; they send it back.
+`submit_review {thread_id, decision: "request_changes", note}` (REST
+`POST /threads/:id/reviews`) on a thread in `in_review` returns it to `open`
+when the reviewer is its owner, or a reviewer whose approval would count: not
+someone who worked it and, when the thread names reviewers, one of them. In the
+same transaction:
+
+- the thread is claimable again, so the next `claim_next_thread` on the channel
+  hands it to a worker;
+- approvals given before are dismissed (`dismissed_at` on each). They approved a
+  version that no longer stands, so the rework needs fresh approvals to close;
+- a `ThreadStateChanged` (`in_review` → `open`) is logged, with the reviewer as
+  the actor.
+
+The worker who claims it finds the request in `get_thread_context` under
+`change_requests`: each reviewer's note, until that reviewer reviews again. The
+loop is the ordinary one: rework, set the result, `start_review`, release.
+
+A change request from anyone else, or on a thread not under review, is recorded
+and does nothing else, the way an implementer's approval is recorded and not
+counted. `transition_thread` does not take `request_changes`: the review, which
+carries the note, is the only way to send work back.
+
 ### Asking a human mid-loop
 
 `request_approval {prompt, schema?, thread_id?}` opens a durable gate and returns

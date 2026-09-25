@@ -25,7 +25,7 @@ async fn review_gate_in_tx(
              AS required_count,
            (SELECT COUNT(*) FROM maidan_thread_reviews r
               JOIN maidan_threads t ON t.id = r.thread_id
-              WHERE r.thread_id = $1 AND r.decision = 'approve'
+              WHERE r.thread_id = $1 AND r.decision = 'approve' AND r.dismissed_at IS NULL
                 AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
                 AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
                 -- And never held it. `assignee_id` is the live
@@ -79,7 +79,7 @@ async fn review_gate_in_tx(
 /// The FSM transition on a caller-supplied tx, without committing. Shared by
 /// `transition` (commit only) and `transition_with_event` (append the
 /// `ThreadStateChanged` event in the same tx, then commit).
-async fn transition_in_tx(
+pub(crate) async fn transition_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
     actor_id: MemberId,
@@ -87,7 +87,7 @@ async fn transition_in_tx(
 ) -> Result<ThreadTransitionResult, StoreError> {
     let row = sqlx::query(
         "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
-         FROM maidan_threads WHERE id = $1",
+         FROM maidan_threads WHERE id = $1 FOR UPDATE",
     )
     .bind(thread_id.0)
     .fetch_optional(&mut **tx)
@@ -199,7 +199,19 @@ pub async fn transition_with_event(
 ) -> Result<(ThreadTransitionResult, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
     let result = transition_in_tx(&mut tx, thread_id, actor_id, action).await?;
-    let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+    let stored = state_changed_in_tx(&mut tx, actor_id, &result).await?;
+    tx.commit().await?;
+    Ok((result, stored))
+}
+
+/// Append the `ThreadStateChanged` event for a transition made in `tx`.
+pub(crate) async fn state_changed_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    actor_id: MemberId,
+    result: &ThreadTransitionResult,
+) -> Result<StoredEvent, StoreError> {
+    let thread_id = result.thread.id;
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread_id).await?;
     let event = Event::ThreadStateChanged {
         occurred_at: Utc::now(),
         workspace_id,
@@ -210,9 +222,7 @@ pub async fn transition_with_event(
         to_state: result.to_state,
         thread: result.thread.clone(),
     };
-    let stored = events::append_in_tx(&mut tx, &event).await?;
-    tx.commit().await?;
-    Ok((result, stored))
+    events::append_in_tx(tx, &event).await
 }
 
 pub async fn list(
