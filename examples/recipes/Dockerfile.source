@@ -1,0 +1,28 @@
+# The quickstart image's layout (maidan-server + the maidan CLI, a shell, curl
+# for the healthcheck, a non-root user owning /data), built from this checkout
+# instead of downloaded. The recipes use it so they speak the API documented on
+# the branch they live on, not the last release's.
+ARG RUST_VERSION=1.91
+FROM rust:${RUST_VERSION}-slim-bookworm AS builder
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY . .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    cargo build --release --locked --bin maidan-server --bin maidan \
+ && cp target/release/maidan-server target/release/maidan /usr/local/bin/
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/local/bin/maidan-server /usr/local/bin/maidan /usr/local/bin/
+RUN useradd --system --uid 10001 --create-home maidan \
+ && mkdir -p /data/artifacts \
+ && chown -R maidan:maidan /data
+USER maidan
+WORKDIR /home/maidan
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/maidan-server"]

@@ -1,0 +1,52 @@
+# An approval-gated deploy. `docker compose -f examples/recipes/deploy.yaml up`
+# boots Maidan and files a deploy; the agent opens a gate and waits for a person.
+# Approve in /ui, or: docker compose -f examples/recipes/deploy.yaml run --rm approve
+name: maidan-recipe-deploy
+include:
+  - base.yaml
+services:
+  provision:
+    image: python:3.13-slim
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      MAIDAN_URL: http://maidan:8080
+      RECIPE_TASK: ${RECIPE_TASK:-}
+    working_dir: /recipe
+    command: ["python", "-B", "provision.py", "deployer"]
+    volumes:
+      - maidan_data:/data:ro
+      - agent_creds:/creds
+      - ./:/recipe:ro
+    restart: "no"
+
+  deploy-agent:
+    image: python:3.13-slim
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+    environment:
+      DEPLOY_COMMAND: ${DEPLOY_COMMAND:-}
+    working_dir: /recipe
+    command: ["python", "-B", "-u", "deploy_agent.py"]
+    volumes:
+      - agent_creds:/creds:ro
+      - ./:/recipe:ro
+    restart: unless-stopped
+
+  # The person who says yes, for when a browser is not to hand. Not started by
+  # `up`; run it on demand.
+  approve:
+    image: python:3.13-slim
+    profiles: ["manual"]
+    environment:
+      MAIDAN_URL: http://maidan:8080
+    working_dir: /recipe
+    entrypoint: ["python", "-B", "approve.py"]
+    volumes:
+      - maidan_data:/data:ro
+      - ./:/recipe:ro
+
+volumes:
+  agent_creds:

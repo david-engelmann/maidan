@@ -33,6 +33,18 @@ including the optional
 `request_approval` human gate, is written up as the waiter loop in
 [docs/Integration.md](../docs/Integration.md).
 
+## Compose recipes: a coding agent and a gated deploy
+
+One command each, in [`recipes/`](recipes/): Maidan built from this checkout, a
+task filed for the agent, and an agent with a token scoped to its job. The coding
+agent claims the task, runs your agent command, and hands back its patch as an
+artifact. The deploy agent opens an approval gate and deploys only after a person
+accepts it.
+
+```sh
+docker compose -f examples/recipes/coding-agent.yaml up --build
+```
+
 ## Framework + REST examples
 
 Start a Maidan first — the quickstart runs one on `http://127.0.0.1:8080` **with auth on**,
@@ -67,6 +79,8 @@ change an example or the surface it calls. Owner: the maintainer.
 | `a2a_interop.py` | 2026-09-25 | `main` @ `111e24ae`, auth on and auth off | All checks passed on both | httpx 0.28.1 |
 | `langchain_maidan.py` | 2026-09-25 | `main` @ `111e24ae` | `wiring ok` — all six hero tools present | langchain-mcp-adapters 0.1.14, mcp 1.30.0 |
 | `autogen_maidan.py` | 2026-09-25 | `main` @ `111e24ae` | `wiring ok` — all six hero tools present | autogen-ext 0.6.4, mcp 1.30.0 |
+| `recipes/coding-agent.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Claimed the filed task once, attached the stand-in's patch, result `done`, thread `in_review`; with a shell `AGENT_COMMAND`, exit 0 recorded `done` and exit 3 `failed`, each with its output attached | Docker Compose 5.1.3, `python:3.13-slim` |
+| `recipes/deploy.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Opened a gate on the thread and waited; the agent's own token was refused (403) answering it; `approve` deployed, `approve --decline` recorded `not_deployed`; lease held across a multi-minute wait | Docker Compose 5.1.3, `python:3.13-slim` |
 | `cursor-mcp.json`, `claude-desktop-mcp.json` | 2026-09-25 | — | JSON shape checked in CI; not run inside Cursor or Claude Desktop | — |
 
 `a2a_interop.py` used to create its own workspace, a bootstrap route an auth-on

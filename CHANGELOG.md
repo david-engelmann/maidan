@@ -9,6 +9,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Cluster 418 — the adoption surface
 
+- **Added:** compose recipes in `examples/recipes/`: a coding agent on the
+  waiter loop, and a deploy that waits on an approval gate. Each installs its
+  agent as an app with a scoped token.
 - **Fixed:** `claim_next_thread` handed out threads under review, closed or
   archived, so a finished task came back to the queue as soon as its claim was
   released or its lease lapsed, and was done again. It now hands out only `open`

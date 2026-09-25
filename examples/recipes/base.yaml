@@ -1,0 +1,54 @@
+# Shared by the recipes: Maidan built from this checkout (auth on, SQLite,
+# loopback only) and a one-shot `maidan init`. The admin token init prints
+# stays on the server's data volume; each recipe's `provision` step mints its
+# agent a narrower token.
+# Not a production deployment: see compose.yaml or the Helm chart for that.
+services:
+  maidan:
+    build:
+      context: ../..
+      dockerfile: examples/recipes/Dockerfile.source
+    image: maidan-recipe:source
+    environment:
+      DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
+      ARTIFACT_BACKEND: localfs
+      ARTIFACT_LOCALFS_ROOT: /data/artifacts
+      # Dev-only HMAC key for signed session, resume and approval tokens.
+      MAIDAN_SESSION_SECRET: "recipe-dev-session-secret-32-bytes-long"
+      MAIDAN_BIND: 0.0.0.0:8080
+      MAIDAN_LOG: info,sqlx=warn
+    ports:
+      - "127.0.0.1:${MAIDAN_HOST_PORT:-8080}:8080"
+    volumes:
+      - maidan_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+
+  init:
+    image: maidan-recipe:source
+    pull_policy: never
+    depends_on:
+      maidan:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
+    # init refuses a database that already has a workspace, so a rerun keeps
+    # the first run's output instead of calling it again.
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        test -s /data/recipe/init.txt ||
+        { mkdir -p /data/recipe &&
+          maidan init --workspace recipes > /data/recipe/init.txt.partial &&
+          mv /data/recipe/init.txt.partial /data/recipe/init.txt; }
+    volumes:
+      - maidan_data:/data
+    restart: "no"
+
+volumes:
+  maidan_data:
