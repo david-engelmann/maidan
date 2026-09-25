@@ -216,15 +216,17 @@ async fn a_withdrawal_withdraws_and_a_hold_keeps_it_for_admins_only() {
     assert_eq!(edits, json!([]), "a withdrawn message's history is gone");
 
     let wid = ws.0;
-    let (s, _) = send(
+    let holds = format!("/workspaces/{wid}/legal-holds");
+    let preserved_url = format!("/workspaces/{wid}/legal-holds/preserved");
+    let (s, first) = send(
         &ctx,
-        Method::PUT,
+        Method::POST,
         &admin_t,
-        &format!("/workspaces/{wid}/legal-hold"),
+        &holds,
         Some(json!({"reason": "matter 1"})),
     )
     .await;
-    assert!(s.is_success(), "place {s}");
+    assert_eq!(s, StatusCode::CREATED, "place");
     let held = say_then_withdraw(&ctx, &member_t, thread, "held words").await;
 
     // The member sees nothing of it, and nothing of the hold.
@@ -237,48 +239,47 @@ async fn a_withdrawal_withdraws_and_a_hold_keeps_it_for_admins_only() {
     )
     .await;
     assert_eq!(edits, json!([]));
-    let (s, _) = send(
-        &ctx,
-        Method::GET,
-        &member_t,
-        &format!("/workspaces/{wid}/legal-hold"),
-        None,
-    )
-    .await;
+    let (s, _) = send(&ctx, Method::GET, &member_t, &holds, None).await;
     assert_eq!(s, StatusCode::FORBIDDEN, "a custodian cannot see the hold");
-    let (s, _) = send(
-        &ctx,
-        Method::GET,
-        &member_t,
-        &format!("/workspaces/{wid}/legal-hold/preserved"),
-        None,
-    )
-    .await;
+    let (s, _) = send(&ctx, Method::GET, &member_t, &preserved_url, None).await;
     assert_eq!(s, StatusCode::FORBIDDEN);
 
     // The admin reads what was kept.
-    let (s, preserved) = send(
-        &ctx,
-        Method::GET,
-        &admin_t,
-        &format!("/workspaces/{wid}/legal-hold/preserved"),
-        None,
-    )
-    .await;
+    let (s, preserved) = send(&ctx, Method::GET, &admin_t, &preserved_url, None).await;
     assert_eq!(s, StatusCode::OK);
     let preserved = preserved.as_array().unwrap();
     assert_eq!(preserved.len(), 1, "{preserved:?}");
     assert_eq!(preserved[0]["message_id"], json!(held));
     assert_eq!(preserved[0]["body"], "held words");
     assert_eq!(preserved[0]["edits"][0]["body_before"], "first");
-    let (s, hold) = send(
+    let (s, listed) = send(&ctx, Method::GET, &admin_t, &holds, None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(listed[0]["reason"], "matter 1");
+
+    // A second matter. Lifting the first keeps the words; lifting the last
+    // disposes of them.
+    let (s, second) = send(
         &ctx,
-        Method::GET,
+        Method::POST,
         &admin_t,
-        &format!("/workspaces/{wid}/legal-hold"),
-        None,
+        &holds,
+        Some(json!({"reason": "matter 2"})),
     )
     .await;
-    assert_eq!(s, StatusCode::OK);
-    assert_eq!(hold["reason"], "matter 1");
+    assert_eq!(s, StatusCode::CREATED);
+    let lift = |hold: &Value| format!("{holds}/{}", hold["id"].as_str().unwrap());
+    let (s, _) = send(&ctx, Method::DELETE, &admin_t, &lift(&first), None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (_, still) = send(&ctx, Method::GET, &admin_t, &preserved_url, None).await;
+    assert_eq!(
+        still.as_array().unwrap().len(),
+        1,
+        "matter 2 still holds the words"
+    );
+    let (s, _) = send(&ctx, Method::DELETE, &admin_t, &lift(&second), None).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (_, gone) = send(&ctx, Method::GET, &admin_t, &preserved_url, None).await;
+    assert_eq!(gone, json!([]), "the last lift disposed of the words");
+    let (s, _) = send(&ctx, Method::DELETE, &admin_t, &lift(&second), None).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
 }

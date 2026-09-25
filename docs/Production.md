@@ -841,15 +841,17 @@ See [Integration.md](Integration.md#workspace-portability-signed-export).
 
 A legal hold stops a workspace's data from being destroyed while litigation is
 pending or reasonably anticipated (FRCP 37(e); GDPR Art. 17(3)(e) exempts such
-data from erasure). Place and lift it as a workspace admin (`token:admin`):
+data from erasure). Holds are per matter: place one for each, and lift each on
+its own, as a workspace admin (`token:admin`):
 
 ```http
-PUT /workspaces/{id}/legal-hold
+POST /workspaces/{id}/legal-holds
 {"reason": "matter 2026-114"}
-DELETE /workspaces/{id}/legal-hold
+GET /workspaces/{id}/legal-holds
+DELETE /workspaces/{id}/legal-holds/{hold_id}
 ```
 
-While a workspace is held:
+While a workspace has any hold:
 
 - workspace purge and erase, message purge, and an import that replaces the
   workspace are refused (409), inside the destroying transaction;
@@ -860,21 +862,18 @@ While a workspace is held:
   but its last body and every earlier version are kept. Nothing in the product
   tells the member the words were kept.
 
-Read what the hold kept with `GET /workspaces/{id}/legal-hold/preserved`
+Read what the holds kept with `GET /workspaces/{id}/legal-holds/preserved`
 (`token:admin`): one entry per withdrawn message, with its author, thread,
 channel, times, last words and earlier versions. Each read writes a
 `legal_hold.preserved_read` audit row first; if the row cannot be written,
-nothing is returned. `GET /workspaces/{id}/legal-hold` is `token:admin` too:
-the members a hold binds are not shown that it exists.
+nothing is returned. Listing the holds is `token:admin` too: the members a hold
+binds are not shown that it exists.
 
-Lifting the hold disposes of what it kept: the preserved bodies, and the earlier
-versions of messages withdrawn while it held. The lift's audit row records how
+Lifting one matter's hold releases nothing while another stands. Lifting the
+last disposes of what the holds kept: the preserved bodies, and the earlier
+versions of messages withdrawn while held. That lift's audit row records how
 many of each (`metadata.disposed`). Without a hold, a withdrawal takes the
 message's earlier versions with it.
-
-A workspace has one hold. Placing a second replaces the first's reason, and a
-lift ends both; track overlapping matters outside Maidan until holds are per
-matter (Open Work).
 
 ## Event-log hash chain
 

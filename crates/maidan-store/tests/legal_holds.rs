@@ -39,7 +39,11 @@ async fn run_crud(store: &dyn Store) {
         .await
         .expect("member");
 
-    assert!(store.get_legal_hold(held.id).await.expect("get").is_none());
+    assert!(store
+        .list_workspace_legal_holds(held.id)
+        .await
+        .expect("list")
+        .is_empty());
     assert!(store.list_legal_holds().await.expect("list").is_empty());
 
     let hold = store
@@ -48,21 +52,48 @@ async fn run_crud(store: &dyn Store) {
         .expect("place");
     assert_eq!(hold.reason, "litigation X");
     assert_eq!(hold.placed_by, Some(member.id));
-    assert!(store.get_legal_hold(held.id).await.expect("get").is_some());
-    assert_eq!(store.list_legal_holds().await.expect("list").len(), 1);
+    assert_eq!(hold.workspace_id, held.id);
 
-    // Upsert: re-placing updates the reason (one hold per workspace).
-    let re = store
+    // A second matter is a second hold; the first keeps its reason.
+    let second = store
         .place_legal_hold(held.id, "litigation Y", None)
         .await
-        .expect("re-place");
-    assert_eq!(re.reason, "litigation Y");
-    assert_eq!(store.list_legal_holds().await.expect("list").len(), 1);
+        .expect("second matter");
+    assert_ne!(second.id, hold.id);
+    let mine = store
+        .list_workspace_legal_holds(held.id)
+        .await
+        .expect("list");
+    assert_eq!(mine.len(), 2);
+    assert!(mine.iter().any(|h| h.reason == "litigation X"));
+    assert_eq!(store.list_legal_holds().await.expect("list").len(), 2);
 
-    // Lift: true once, false after; then gone.
-    assert!(store.lift_legal_hold(held.id).await.expect("lift"));
-    assert!(!store.lift_legal_hold(held.id).await.expect("lift again"));
-    assert!(store.get_legal_hold(held.id).await.expect("get").is_none());
+    // Lift one: true once, false after; the other still holds.
+    assert!(store.lift_legal_hold(held.id, hold.id).await.expect("lift"));
+    assert!(!store
+        .lift_legal_hold(held.id, hold.id)
+        .await
+        .expect("lift again"));
+    let left = store
+        .list_workspace_legal_holds(held.id)
+        .await
+        .expect("list");
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].id, second.id);
+    // A hold is lifted only through its own workspace.
+    assert!(!store
+        .lift_legal_hold(maidan_types::WorkspaceId::new(), second.id)
+        .await
+        .expect("wrong workspace"));
+    assert!(store
+        .lift_legal_hold(held.id, second.id)
+        .await
+        .expect("lift last"));
+    assert!(store
+        .list_workspace_legal_holds(held.id)
+        .await
+        .expect("list")
+        .is_empty());
 }
 
 /// The retention exemption: seed old events for a held and an unheld workspace,

@@ -63,4 +63,5 @@ id_newtype!(RecipeRunId);
 id_newtype!(SecretId);
 id_newtype!(MemoryBlockId);
 id_newtype!(ShareTicketId);
+id_newtype!(LegalHoldId);
 id_newtype!(DelegationGrantId);

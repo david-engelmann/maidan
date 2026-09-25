@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Legal holds per matter
+
+- **Changed:** a workspace may be held for several matters at once. `POST
+  /workspaces/:id/legal-holds` places one, `GET` lists them, and `DELETE
+  /workspaces/:id/legal-holds/:hold_id` lifts one; the workspace stays held
+  while any stands, and only the last lift disposes of what the holds kept.
+  Placing a second hold used to overwrite the first, and one lift ended both.
+  The singular `/legal-hold` routes are gone; the preserved read moves to
+  `/legal-holds/preserved`.
+
 ### Legal holds keep what is withdrawn
 
 - **Changed:** under a legal hold, a withdrawn (tombstoned) message keeps its

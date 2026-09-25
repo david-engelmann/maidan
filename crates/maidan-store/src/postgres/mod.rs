@@ -427,8 +427,12 @@ impl WorkspaceStore for PostgresStore {
         // Primary: a compliance write the retention sweeper must observe.
         legal_hold::place(&self.pool, workspace_id, reason, placed_by).await
     }
-    async fn lift_legal_hold(&self, workspace_id: WorkspaceId) -> Result<bool, StoreError> {
-        legal_hold::lift(&self.pool, workspace_id).await
+    async fn lift_legal_hold(
+        &self,
+        workspace_id: WorkspaceId,
+        hold_id: maidan_types::LegalHoldId,
+    ) -> Result<bool, StoreError> {
+        legal_hold::lift(&self.pool, workspace_id, hold_id).await
     }
     async fn import_workspace_audited(
         &self,
@@ -450,9 +454,10 @@ impl WorkspaceStore for PostgresStore {
     async fn lift_legal_hold_audited(
         &self,
         workspace_id: WorkspaceId,
+        hold_id: maidan_types::LegalHoldId,
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError> {
-        data_audited::lift_legal_hold(&self.pool, workspace_id, audit).await
+        data_audited::lift_legal_hold(&self.pool, workspace_id, hold_id, audit).await
     }
     async fn read_preserved_messages_audited(
         &self,
@@ -461,12 +466,12 @@ impl WorkspaceStore for PostgresStore {
     ) -> Result<Vec<maidan_types::PreservedMessage>, StoreError> {
         data_audited::read_preserved_messages(&self.pool, workspace_id, audit).await
     }
-    async fn get_legal_hold(
+    async fn list_workspace_legal_holds(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Option<LegalHold>, StoreError> {
+    ) -> Result<Vec<LegalHold>, StoreError> {
         // Primary: purge/erase gating must not read a lagged replica.
-        legal_hold::get(&self.pool, workspace_id).await
+        legal_hold::list_for_workspace(&self.pool, workspace_id).await
     }
     async fn list_legal_holds(&self) -> Result<Vec<LegalHold>, StoreError> {
         legal_hold::list(self.read_pool()).await

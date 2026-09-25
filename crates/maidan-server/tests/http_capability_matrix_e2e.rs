@@ -190,6 +190,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{mid}", &f.member)
             .replace("{app_id}", &f.workspace)
             .replace("{iid}", &f.workspace)
+            .replace("{hold_id}", &f.workspace)
             .replace("{oid}", &f.workspace)
             .replace("{pid}", &f.workspace)
             .replace("{whid}", &f.workspace)
@@ -406,7 +407,7 @@ fn apply_route_defaults(
     if path.ends_with("/priority") && method == "PUT" {
         return b.json(&json!({ "priority": 5 }));
     }
-    if path.ends_with("/legal-hold") && method == "PUT" {
+    if path.ends_with("/legal-holds") && method == "POST" {
         return b.json(&json!({ "reason": "cap matrix" }));
     }
     if path.contains("/glossary/") && method == "PUT" {

@@ -1273,11 +1273,13 @@ pub struct ThreadPriority {
 /// exempt from retention pruning, audit pruning is frozen, workspace
 /// purge/erase is refused, and a message withdrawn (tombstoned) keeps its words
 /// and earlier versions in [`PreservedMessage`] — evidence is preserved for
-/// litigation. One active hold per workspace; presence of the record = under
-/// hold.
+/// litigation. A workspace may be held for several matters at once, one hold
+/// each; it is held while any hold remains, and what the holds kept is disposed
+/// of only when the last is lifted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LegalHold {
+    pub id: LegalHoldId,
     pub workspace_id: WorkspaceId,
     pub reason: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

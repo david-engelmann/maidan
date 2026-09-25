@@ -113,10 +113,16 @@ where
     );
 
     // Under a hold, the member sees the same, and the store keeps the words.
-    store
+    let first = store
         .place_legal_hold_audited(ws, "matter 1", None, Box::new(|_| event("place")))
         .await
         .unwrap();
+    let second = store
+        .place_legal_hold_audited(ws, "matter 2", None, Box::new(|_| event("place")))
+        .await
+        .unwrap();
+    assert_ne!(first.id, second.id, "a second matter is a second hold");
+    assert_eq!(store.list_workspace_legal_holds(ws).await.unwrap().len(), 2);
     let kept = say_then_withdraw(store, thread, author, "what I said", "what I meant").await;
     assert!(
         store.get_message(kept).await.unwrap().body.is_empty(),
@@ -141,9 +147,28 @@ where
         .chain(store.list_audit(200).await.unwrap().iter())
         .any(|a| a.action == "legal_hold.preserved_read"));
 
-    // Lifting disposes of it, and says so.
+    // Lifting one matter's hold releases nothing while another stands.
     assert!(store
-        .lift_legal_hold_audited(ws, event("legal_hold.lift"))
+        .lift_legal_hold_audited(ws, first.id, event("legal_hold.lift.first"))
+        .await
+        .unwrap());
+    assert_eq!(
+        store
+            .read_preserved_messages_audited(ws, event("legal_hold.preserved_read"))
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "the other matter still holds the words"
+    );
+    assert!(!store
+        .lift_legal_hold_audited(ws, first.id, event("legal_hold.lift.again"))
+        .await
+        .unwrap());
+
+    // Lifting the last disposes of it, and says so.
+    assert!(store
+        .lift_legal_hold_audited(ws, second.id, event("legal_hold.lift"))
         .await
         .unwrap());
     assert!(store
@@ -164,7 +189,7 @@ where
 
     // A preserved read that cannot be recorded returns nothing.
     store
-        .place_legal_hold_audited(ws, "matter 2", None, Box::new(|_| event("place")))
+        .place_legal_hold_audited(ws, "matter 3", None, Box::new(|_| event("place")))
         .await
         .unwrap();
     say_then_withdraw(store, thread, author, "again", "again, edited").await;
