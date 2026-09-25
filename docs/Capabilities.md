@@ -42,6 +42,19 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## Cluster 415 (source record; no `v415.0.0` tag) — deploys are immutable and rolling restarts are safe
+
+Deploys name exactly what runs, restarts drain, a vulnerable release is not signed, and operators get one status page.
+
+| Change | Where |
+|--------|-------|
+| **Digest pinning (415.1):** `image.digest` renders `repository@sha256:…`. | `helm/maidan/templates/_helpers.tpl`, `helm/maidan/values*.yaml` |
+| **Shutdown drain (415.1):** readiness reports `draining` and the listener stays open `MAIDAN_SHUTDOWN_DRAIN_SECS`; Helm/k8s set 10 s and a 45 s grace period. | `crates/maidan-server/src/main.rs`, `crates/maidan-server/src/health.rs`, `k8s/base/` |
+| **Blocking scan (415.1):** trivy fails the release on a fixable HIGH/CRITICAL across server, CLI and Postgres images; signing and the GitHub release wait on it. | `.github/workflows/release.yml`, `docker/Dockerfile.db` |
+| **Checked pins (415.1):** quickstart and Helm prod pin the newest published tag; `check-release-records.sh` enforces agreement. | `docker/Dockerfile.quickstart`, `compose.quickstart.yaml`, `scripts/check-release-records.sh` |
+| **Verify instructions (415.1):** `cosign verify` inline in the README, identity anchored to the release workflow. | `README.md`, `SECURITY.md` |
+| **Operator status (415.2):** `GET /operator/status` (`operator:global`), JSON or `text/html`. | `crates/maidan-server/src/status.rs` |
+
 ## Cluster 417 (source record; no `v417.0.0` tag) — disaster recovery that is actually tested
 
 Postgres restores to any moment since the last base backup, and CI proves it on every PR.
