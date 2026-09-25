@@ -1,0 +1,39 @@
+# A coding agent on the waiter loop. `docker compose -f examples/recipes/coding-agent.yaml up`
+# boots Maidan, files one task, and the agent claims it, runs AGENT_COMMAND
+# (a stand-in when unset), and hands back a patch. See README.md.
+name: maidan-recipe-coding
+include:
+  - base.yaml
+services:
+  provision:
+    image: python:3.13-slim
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      MAIDAN_URL: http://maidan:8080
+      RECIPE_TASK: ${RECIPE_TASK:-}
+    working_dir: /recipe
+    command: ["python", "-B", "provision.py", "coder"]
+    volumes:
+      - maidan_data:/data:ro
+      - agent_creds:/creds
+      - ./:/recipe:ro
+    restart: "no"
+
+  coding-agent:
+    image: python:3.13-slim
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+    environment:
+      AGENT_COMMAND: ${AGENT_COMMAND:-}
+    working_dir: /recipe
+    command: ["python", "-B", "-u", "coding_agent.py"]
+    volumes:
+      - agent_creds:/creds:ro
+      - ./:/recipe:ro
+    restart: unless-stopped
+
+volumes:
+  agent_creds:
