@@ -9,6 +9,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Cluster 418 — the adoption surface
 
+- **Added:** a Goose recipe (`examples/goose/`) that works Maidan tasks through
+  the waiter loop.
 - **Added:** compose recipes in `examples/recipes/`: a coding agent on the
   waiter loop, and a deploy that waits on an approval gate. Each installs its
   agent as an app with a scoped token.

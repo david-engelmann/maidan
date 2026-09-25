@@ -47,6 +47,12 @@ accepts it.
 docker compose -f examples/recipes/coding-agent.yaml up --build
 ```
 
+## Goose
+
+[`goose/`](goose/) is a Goose recipe that works one task per run: it claims the
+task, does it with Goose's tools, asks a person before anything irreversible, and
+hands the result back for review.
+
 ## Framework + REST examples
 
 Start a Maidan first — the quickstart runs one on `http://127.0.0.1:8080` **with auth on**,
@@ -83,6 +89,7 @@ change an example or the surface it calls. Owner: the maintainer.
 | `autogen_maidan.py` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | `wiring ok` — all seven hero tools present, 192 in the catalog | autogen-ext 0.6.4, mcp 1.30.0 |
 | `recipes/coding-agent.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Claimed the filed task once, attached the stand-in's patch, result `done`, thread `in_review`; with a shell `AGENT_COMMAND`, exit 0 recorded `done` and exit 3 `failed`, each with its output attached | Docker Compose 5.1.3, `python:3.13-slim` |
 | `recipes/deploy.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Opened a gate on the thread and waited; the agent's own token was refused (403) answering it; `approve` deployed, `approve --decline` recorded `not_deployed`; lease held across a multi-minute wait | Docker Compose 5.1.3, `python:3.13-slim` |
+| `goose/maidan-waiter.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | Not run inside Goose (needs an LLM provider). The recipe's eight steps were replayed as MCP calls with an app token holding exactly its three capabilities: all ten tools it names are visible, the gate held until accepted, and the thread ended `in_review` and unclaimable | recipe schema per Goose's recipe reference, 2026-09 |
 | `cursor-mcp.json`, `claude-desktop-mcp.json` | 2026-09-25 | — | JSON shape checked in CI; not run inside Cursor or Claude Desktop | — |
 
 `a2a_interop.py` used to create its own workspace, a bootstrap route an auth-on
