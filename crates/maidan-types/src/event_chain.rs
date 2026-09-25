@@ -23,6 +23,7 @@
 //! hierarchical `maidan://{workspace_id}/channels/…` room scheme
 //! ([`crate::RoomUri`]). A handle is an alias, never the authority.
 
+use crate::models::Thread;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -70,7 +71,7 @@ pub struct StrongRef {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ClaimedThread {
     #[serde(flatten)]
-    pub thread: crate::models::Thread,
+    pub thread: Thread,
     pub pin: StrongRef,
 }
 

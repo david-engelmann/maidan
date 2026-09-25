@@ -149,6 +149,7 @@ pub struct SharedMessagePage {
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct SharePageQuery {
     pub cursor: Option<uuid::Uuid>,
     pub limit: Option<i64>,
