@@ -51,6 +51,76 @@ pub async fn reindex_sqlite(
     reindex_rows(search, provider, rows).await
 }
 
+/// Session advisory-lock key for the repair sweep, so that of several replicas
+/// only one embeds the same missing messages at a time. Any constant works.
+const EMBED_REPAIR_LOCK: i64 = 0x6d61_6964_656d_6272;
+
+/// Embed up to `limit` live messages lacking an embedding for the provider's
+/// model, newest first. Returns an empty report without doing anything when
+/// another replica holds the repair lock.
+pub async fn embed_missing_postgres(
+    pool: &PgPool,
+    search: &dyn Search,
+    provider: &dyn EmbeddingProvider,
+    limit: i64,
+) -> Result<ReindexReport, SearchError> {
+    let Some((table, _)) =
+        embedding_tables::resolve_table_postgres(pool, provider.model_name()).await?
+    else {
+        // The model is registered at startup; until then there is no table
+        // for anything to be missing from.
+        return Ok(ReindexReport::default());
+    };
+    // The name comes from the registry and is spliced into SQL.
+    if !table.starts_with("maidan_emb_")
+        || !table.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err(SearchError::InvalidQuery(format!(
+            "invalid embedding table name in registry: {table}"
+        )));
+    }
+    let mut lock = pool.acquire().await?;
+    let held: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
+        .bind(EMBED_REPAIR_LOCK)
+        .fetch_one(&mut *lock)
+        .await?;
+    if !held {
+        return Ok(ReindexReport::default());
+    }
+    let sql = format!(
+        r#"
+        SELECT m.id, m.body
+        FROM maidan_messages m
+        LEFT JOIN {table} e ON e.message_id = m.id
+        WHERE e.message_id IS NULL AND m.tombstoned_at IS NULL
+        ORDER BY m.posted_at DESC
+        LIMIT $1
+        "#
+    );
+    let rows = sqlx::query_as::<_, (Uuid, String)>(&sql)
+        .bind(limit)
+        .fetch_all(pool)
+        .await;
+    let report = match rows {
+        Ok(rows) => {
+            let rows = rows
+                .into_iter()
+                .map(|(id, body)| MessageRow {
+                    id: MessageId(id),
+                    body,
+                })
+                .collect();
+            reindex_rows(search, provider, rows).await
+        }
+        Err(err) => Err(err.into()),
+    };
+    sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(EMBED_REPAIR_LOCK)
+        .execute(&mut *lock)
+        .await?;
+    report
+}
+
 /// Backfill embeds in batches via [`EmbeddingProvider::embed_batch`] so a
 /// remote provider issues one request per chunk instead of one per message.
 /// Tuned for throughput, not latency — backfill runs on its own task

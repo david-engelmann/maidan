@@ -157,6 +157,7 @@ async fn batching_handler_embeds_posted_messages_and_records_metrics() {
     let config = BatchConfig {
         queue_capacity: 64,
         batch_size: 8,
+        retry: maidan_search::RetryPolicy::none(),
     };
     let metrics = Arc::new(IndexerMetrics::new(config.queue_capacity));
     let handler = Arc::new(BatchingEmbeddingHandler::spawn(

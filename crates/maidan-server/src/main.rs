@@ -376,6 +376,13 @@ async fn main() -> anyhow::Result<()> {
             metrics.clone(),
             Some(indexer_last_error.clone()),
         );
+        if let Some(repair) = maidan_server::embed_repair::config_from_env() {
+            let (search, provider, metrics) =
+                (search.clone(), embedding_provider.clone(), metrics.clone());
+            tokio::spawn(async move {
+                maidan_server::embed_repair::run(search, provider, metrics, repair).await;
+            });
+        }
         (Arc::new(handler), metrics)
     } else {
         tracing::info!("indexer: logging only (sqlite)");

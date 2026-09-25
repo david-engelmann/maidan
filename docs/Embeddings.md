@@ -30,9 +30,28 @@ to skip the probe (e.g. air-gapped boot, or to assert the expected dimension) â€
 `text-embedding-3-small` is `1536`, `text-embedding-3-large` is `3072`, BGE/GTE
 small models are `384`/`768`.
 
-Batching knobs for the live indexer are in
-[Production.md](Production.md): `MAIDAN_INDEXER_QUEUE_CAPACITY`,
-`MAIDAN_INDEXER_BATCH_SIZE`.
+## Live indexing, retry and repair
+
+The live indexer embeds posted and edited messages in batches, off a bounded
+queue. A failed provider call or upsert is retried with exponential backoff
+while the worker holds the batch â€” the queue stops draining rather than
+growing. What still fails is picked up by the repair sweep, which embeds, on a
+timer, the newest live messages that have no embedding for the active model.
+Replicas share the work through a Postgres advisory lock. A full reindex is
+only needed for a model change.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `MAIDAN_INDEXER_QUEUE_CAPACITY` | `1024` | Bound on queued messages; a full queue applies backpressure to the bus. |
+| `MAIDAN_INDEXER_BATCH_SIZE` | `32` | Messages per provider call. |
+| `MAIDAN_INDEXER_RETRIES` | `3` | Further attempts after a failed call or upsert (max 10). |
+| `MAIDAN_INDEXER_RETRY_BASE_MS` | `250` | First retry delay; each doubles, capped at 10 s. |
+| `MAIDAN_EMBED_REPAIR_INTERVAL_SECS` | `300` | How often the repair sweep runs; `0` disables it. |
+| `MAIDAN_EMBED_REPAIR_BATCH` | `256` | Messages the sweep embeds per pass. |
+
+Metrics: `maidan_indexer_embed_failed_total` (gave up after retries),
+`maidan_indexer_embed_retries_total`, `maidan_indexer_embed_repaired_total`
+(recovered by the sweep).
 
 ## Per-model table scheme
 

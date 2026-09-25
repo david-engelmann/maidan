@@ -54,7 +54,7 @@ channel without either a dispatch-time access check or a listed reason.
 | ~~**WebSocket frame and message limits**~~ **✅ 414.1** | `ws.rs:155` upgrades with no `max_message_size` or `max_frame_size`, so the 2 MiB REST body cap doesn't apply | S |
 | ~~**MCP per-tool deadline**~~ **✅ 414.1** | `tools_call` has no timeout. DB work is bounded by `statement_timeout`; the rest isn't | S |
 | ~~**Connection ceiling + streamable-session reaper + gauge**~~ **✅ 414.1** | No WS/SSE cap. `prune_expired` runs only inside open/push, with no timer and no active-session gauge | M |
-| **Failed embedding batches are retried** | `embedding_batcher.rs:222-233` counts a failure and drops the batch. Only a reindex recovers it | M |
+| ~~**Failed embedding batches are retried**~~ **✅ 414.2** | Retried with backoff in the worker; what still fails is embedded by a repair sweep (`Search::embed_missing`, advisory-locked across replicas), so no reindex is needed | M |
 | ~~**A lagging presence subscriber gets a fresh snapshot**~~ **✅ 414.1** | `ws.rs:331` answers `Lagged` with `continue`, and the missed diffs are never repaired | S |
 
 ### Cluster 415 — deploys are immutable and rolling restarts are safe

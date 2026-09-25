@@ -61,6 +61,20 @@ pub trait Search: Send + Sync {
         Err(SearchError::Unsupported("reindex_embeddings"))
     }
 
+    /// Embed up to `limit` live messages that have no embedding for the
+    /// provider's model — newest first — and return what was done. This is
+    /// how a message the live indexer failed to embed, or never saw because the
+    /// process stopped, is recovered without a full reindex. Backends without
+    /// vectors are `Unsupported`.
+    async fn embed_missing(
+        &self,
+        provider: &dyn EmbeddingProvider,
+        limit: i64,
+    ) -> Result<ReindexReport, SearchError> {
+        let _ = (provider, limit);
+        Err(SearchError::Unsupported("embed_missing"))
+    }
+
     /// Ensure the per-model embedding table + registry row for the active
     /// `provider` model exist. Called at startup so a newly configured model is
     /// registered before the first write and a dimension mismatch surfaces

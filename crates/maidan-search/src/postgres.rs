@@ -407,6 +407,14 @@ impl Search for PostgresSearch {
         reindex_postgres(&self.pool, self, provider, workspace_id).await
     }
 
+    async fn embed_missing(
+        &self,
+        provider: &dyn EmbeddingProvider,
+        limit: i64,
+    ) -> Result<crate::reindex::ReindexReport, SearchError> {
+        crate::reindex::embed_missing_postgres(&self.pool, self, provider, limit).await
+    }
+
     async fn ensure_model(&self, provider: &dyn EmbeddingProvider) -> Result<(), SearchError> {
         embedding_tables::ensure_model_postgres(
             &self.pool,
