@@ -141,8 +141,11 @@ moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 
 Wave 4 #45: ~~a claimer-crash case in `chaos.rs` (S)~~ **✅** `claimer_crash` (store, both backends: a crashed claim lapses, the takeover reports `ClaimExpired`, the dead claimer is fenced from renew/acknowledge/release, and crashing claimers never double-hold a thread), and ~~a proptest state machine
 for `claim_next` against the real store (M)~~ **✅** `claim_state_machine` (claims, releases, renewals, acknowledgements and expiries against a model; stale tokens change nothing). Then loom, madsim, the A2A TCK,
-`openapi-lint`, nextest profiles, coverage floors, and a pg-vs-sqlite schema
-diff.
+`openapi-lint`, nextest profiles and coverage floors. ~~A pg-vs-sqlite schema
+diff~~ **✅** `schema_parity` migrates both backends and compares tables, columns,
+nullability, unique keys and foreign keys. The first run found 101 matching tables
+and five known differences, each allowlisted with its reason: FTS, a `NOT NULL`
+and two FKs that SQLite cannot add to an existing column.
 
 ### Already done — the backlog said otherwise
 
