@@ -2026,6 +2026,16 @@ pub trait ArtifactMetaStore: Send + Sync {
         ref_workspace: Option<WorkspaceId>,
     ) -> Result<(Artifact, StoredEvent), StoreError>;
     async fn get_artifact_by_sha(&self, sha256: &str) -> Result<Artifact, StoreError>;
+    /// The artifact as `workspace_id` sees it: shared content with that
+    /// workspace's own `kind`, `mime_type`, `uploaded_by` and `created_at`.
+    /// `NotFound` when the workspace has no access ref. Every read on behalf
+    /// of a workspace uses this, never [`Self::get_artifact_by_sha`], whose
+    /// metadata may be another tenant's.
+    async fn get_artifact_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+    ) -> Result<Artifact, StoreError>;
 
     /// Record that `workspace_id` may access the artifact `sha256`. Idempotent.
     /// Written on upload; enforced on fetch by [`Self::artifact_ref_exists`].

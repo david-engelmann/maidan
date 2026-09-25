@@ -631,7 +631,12 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
         self.authorize_resource(uri, auth).await?;
-        resources::read(&self.store, uri).await
+        resources::read(
+            &self.store,
+            uri,
+            (!auth.bypass).then_some(auth.workspace_id),
+        )
+        .await
     }
 
     async fn resources_subscribe(

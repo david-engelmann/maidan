@@ -72,7 +72,14 @@ async fn collect_edit_views(
 
 /// Non-tombstoned artifacts referenced by a page's messages' metadata. Ordered
 /// by `created_at`; a missing/tombstoned blob is skipped.
-async fn collect_artifacts(store: &dyn Store, messages: &[Message]) -> Vec<Artifact> {
+/// The artifacts `messages` reference, as their workspace sees them. A sha the
+/// workspace holds no ref to is skipped: naming one in a message's metadata is
+/// not access to it.
+async fn collect_artifacts(
+    store: &dyn Store,
+    workspace_id: maidan_types::WorkspaceId,
+    messages: &[Message],
+) -> Vec<Artifact> {
     let mut shas = HashSet::new();
     for m in messages {
         for sha in artifact_shas_from_metadata(&m.metadata) {
@@ -81,7 +88,7 @@ async fn collect_artifacts(store: &dyn Store, messages: &[Message]) -> Vec<Artif
     }
     let mut artifacts = Vec::new();
     for sha in shas {
-        if let Ok(a) = store.get_artifact_by_sha(&sha).await {
+        if let Ok(a) = store.get_artifact_for_workspace(workspace_id, &sha).await {
             if a.tombstoned_at.is_none() {
                 artifacts.push(a);
             }
@@ -262,7 +269,7 @@ pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value
     // from MCP packs) — shared with the REST assembler's behavior.
     let references = collect_references(store, thread_id, &messages).await?;
     let message_edits = collect_edit_views(store, &messages, a.include_edits, None).await?;
-    let artifacts = collect_artifacts(store, &messages).await;
+    let artifacts = collect_artifacts(store, channel.workspace_id, &messages).await;
 
     let mut out = json!({
         "workspace_id": channel.workspace_id.0,
@@ -347,7 +354,7 @@ async fn get_thread_context_as_of(
     let message_edits = collect_edit_views(store, &messages, a.include_edits, Some(cutoff)).await?;
     let mut references = collect_references(store, thread_id, &messages).await?;
     references.retain(|r| r.created_at <= cutoff);
-    let mut artifacts = collect_artifacts(store, &messages).await;
+    let mut artifacts = collect_artifacts(store, channel.workspace_id, &messages).await;
     artifacts.retain(|art| art.created_at <= cutoff);
 
     let mut transitions = store

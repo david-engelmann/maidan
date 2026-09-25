@@ -120,9 +120,7 @@ real recovery point. Size M.
 
 ### Correctness and hygiene, folded into the nearest cluster
 
-- **Artifact metadata leaks another tenant's `uploaded_by`**, because the shared
-  row keeps the first uploader. A second tenant's upload also overwrites the
-  shared row's `kind` (S, with 414).
+- ~~**Artifact metadata leaks another tenant's `uploaded_by`**~~ **✅ fixed** — each workspace's ref carries its own `kind`, `mime_type`, `uploaded_by` and `created_at` (pg 0109 / sqlite 0108); every read on behalf of a workspace uses `get_artifact_for_workspace`. Context packs no longer surface an artifact a message merely names
 - `book/src/mcp-reference.md` is git-ignored but still tracked (S).
 - Errors and docs cite RFC 7807, which RFC 9457 obsoleted (S).
 - SMTP has no real-client test, although Slack and GitHub do. Test names that

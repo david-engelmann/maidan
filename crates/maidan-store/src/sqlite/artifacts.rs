@@ -8,13 +8,34 @@ use uuid::Uuid;
 use crate::error::StoreError;
 use crate::sqlite::events;
 
+/// The shared row is content: what the bytes are, never what one workspace
+/// said about them. A conflict leaves it as the first upload wrote it; each
+/// workspace's own `kind`, `mime_type` and `uploaded_by` live on its ref.
 const UPSERT_SQL: &str =
     "INSERT INTO maidan_artifacts (id, sha256, size_bytes, mime_type, kind, uploaded_by, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (sha256) DO UPDATE
-         SET mime_type = COALESCE(excluded.mime_type, maidan_artifacts.mime_type),
-             kind = excluded.kind
+         SET sha256 = excluded.sha256
      RETURNING id, sha256, size_bytes, mime_type, kind, uploaded_by, created_at, tombstoned_at";
+
+/// An artifact as one workspace sees it: shared content, that workspace's own
+/// metadata. A ref written without metadata (older rows, bare access grants)
+/// falls back to the shared row for `kind` and `mime_type` — never for
+/// `uploaded_by`, which on the shared row may name another tenant's member.
+/// An artifact no workspace holds a ref to was uploaded unscoped (bypass, auth
+/// disabled); there is no tenant to protect, and it reads as the shared row.
+const WORKSPACE_VIEW_SQL: &str = "SELECT a.id, a.sha256, a.size_bytes,
+            CASE WHEN r.kind IS NULL THEN a.mime_type ELSE r.mime_type END AS mime_type,
+            COALESCE(r.kind, a.kind) AS kind,
+            CASE WHEN r.workspace_id IS NULL THEN a.uploaded_by ELSE r.uploaded_by END
+                AS uploaded_by,
+            COALESCE(r.created_at, a.created_at) AS created_at,
+            a.tombstoned_at
+     FROM maidan_artifacts a
+     LEFT JOIN maidan_artifact_refs r ON r.sha256 = a.sha256 AND r.workspace_id = ?1
+     WHERE a.sha256 = ?2
+       AND (r.workspace_id IS NOT NULL
+            OR NOT EXISTS (SELECT 1 FROM maidan_artifact_refs x WHERE x.sha256 = a.sha256))";
 
 pub async fn upsert(pool: &SqlitePool, new: NewArtifact) -> Result<Artifact, StoreError> {
     let id = Uuid::now_v7();
@@ -54,9 +75,15 @@ pub async fn upsert_with_event(
         .bind(now)
         .fetch_one(&mut *tx)
         .await?;
-    let artifact = row_to_artifact(&row)?;
+    let mut artifact = row_to_artifact(&row)?;
     if let Some(workspace_id) = ref_workspace {
-        record_ref_in_tx(&mut tx, workspace_id, &artifact.sha256).await?;
+        record_ref_in_tx(&mut tx, workspace_id, &new).await?;
+        let row = sqlx::query(WORKSPACE_VIEW_SQL)
+            .bind(workspace_id.0)
+            .bind(&new.sha256)
+            .fetch_one(&mut *tx)
+            .await?;
+        artifact = row_to_artifact(&row)?;
     }
     let event = Event::ArtifactUpserted {
         occurred_at: Utc::now(),
@@ -97,14 +124,42 @@ pub async fn record_ref(
 async fn record_ref_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     workspace_id: WorkspaceId,
-    sha256: &str,
+    new: &NewArtifact,
 ) -> Result<(), StoreError> {
-    sqlx::query("INSERT OR IGNORE INTO maidan_artifact_refs (workspace_id, sha256) VALUES (?, ?)")
+    // See the Postgres twin: the workspace's latest upload sets its kind.
+    sqlx::query(
+        "INSERT INTO maidan_artifact_refs
+             (workspace_id, sha256, kind, mime_type, uploaded_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (workspace_id, sha256) DO UPDATE
+             SET kind = excluded.kind,
+                 mime_type = COALESCE(excluded.mime_type, maidan_artifact_refs.mime_type),
+                 uploaded_by = COALESCE(maidan_artifact_refs.uploaded_by, excluded.uploaded_by)",
+    )
+    .bind(workspace_id.0)
+    .bind(&new.sha256)
+    .bind(new.kind.as_str())
+    .bind(new.mime_type.as_deref())
+    .bind(new.uploaded_by.map(|m| m.0))
+    .bind(Utc::now())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// The artifact as `workspace_id` sees it; `NotFound` without an access ref.
+pub async fn get_for_workspace(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    sha256: &str,
+) -> Result<Artifact, StoreError> {
+    let row = sqlx::query(WORKSPACE_VIEW_SQL)
         .bind(workspace_id.0)
         .bind(sha256)
-        .execute(&mut **tx)
-        .await?;
-    Ok(())
+        .fetch_optional(pool)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+    row_to_artifact(&row)
 }
 
 pub async fn ref_exists(

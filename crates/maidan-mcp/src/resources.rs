@@ -67,7 +67,13 @@ pub fn listed(auth: &maidan_auth::AuthContext) -> Vec<Value> {
     })]
 }
 
-pub async fn read(store: &Arc<dyn Store>, uri: &str) -> Result<Value, McpError> {
+/// Read a resource. `viewer` is the caller's workspace (`None` for bypass):
+/// an artifact's metadata is that workspace's own, not the shared row's.
+pub async fn read(
+    store: &Arc<dyn Store>,
+    uri: &str,
+    viewer: Option<WorkspaceId>,
+) -> Result<Value, McpError> {
     let (kind, id_str) = parse_uri(uri)?;
 
     let payload = match kind {
@@ -81,7 +87,10 @@ pub async fn read(store: &Arc<dyn Store>, uri: &str) -> Result<Value, McpError> 
             // artifact_ref_exists). `size_bytes` is
             // authoritative metadata, so the blob is never loaded just to
             // report its length.
-            let meta = store.get_artifact_by_sha(id_str).await?;
+            let meta = match viewer {
+                Some(ws) => store.get_artifact_for_workspace(ws, id_str).await?,
+                None => store.get_artifact_by_sha(id_str).await?,
+            };
             json!({
                 "artifact": meta,
                 "byte_length": meta.size_bytes,

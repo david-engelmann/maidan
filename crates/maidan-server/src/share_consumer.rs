@@ -170,7 +170,10 @@ pub async fn manifest(
     let shas = state.store.list_share_ticket_artifacts(ticket.id).await?;
     let mut artifacts = Vec::with_capacity(shas.len());
     for sha256 in shas {
-        let artifact = state.store.get_artifact_by_sha(&sha256).await?;
+        let artifact = state
+            .store
+            .get_artifact_for_workspace(ticket.workspace_id, &sha256)
+            .await?;
         if artifact.tombstoned_at.is_none() {
             artifacts.push(SharedArtifact {
                 sha256: artifact.sha256,
@@ -271,7 +274,10 @@ pub async fn download_artifact(
     {
         return Err(ApiError::NotFound);
     }
-    let artifact = state.store.get_artifact_by_sha(&sha_hex).await?;
+    let artifact = state
+        .store
+        .get_artifact_for_workspace(context.0.workspace_id, &sha_hex)
+        .await?;
     if artifact.tombstoned_at.is_some() {
         return Err(ApiError::NotFound);
     }

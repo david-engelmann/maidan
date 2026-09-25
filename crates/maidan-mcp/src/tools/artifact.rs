@@ -216,6 +216,12 @@ pub(super) async fn get_artifact_metadata(
     {
         return Err(McpError::NotFound);
     }
-    let artifact = store.get_artifact_by_sha(&a.sha256).await?;
+    let artifact = if auth.bypass {
+        store.get_artifact_by_sha(&a.sha256).await?
+    } else {
+        store
+            .get_artifact_for_workspace(auth.workspace_id, &a.sha256)
+            .await?
+    };
     Ok(content_json(&artifact))
 }
