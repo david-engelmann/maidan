@@ -5,18 +5,23 @@
 //! private channel they are not in, and nothing from a DM they are not part of.
 //! The live streams apply the same rule (`subscribe_grants`); this is the
 //! backfill's half. Federation peers and bypass callers read the whole log.
+//!
+//! A message withdrawn since it was logged reads back withdrawn: its posted and
+//! edited events keep their place in the log, with the words blanked, as the
+//! live row is. The whole log, words included, stays with the admin tier.
 
 use std::collections::HashMap;
 
 use maidan_auth::{AuthContext, AuthError};
 use maidan_store::{Store, StoreError};
-use maidan_types::{ChannelId, StoredEvent, ThreadId, DM_CHANNEL_NAME};
+use maidan_types::{ChannelId, EventKind, MessageId, StoredEvent, ThreadId, DM_CHANNEL_NAME};
 
 pub struct EventVisibility<'a> {
     store: &'a dyn Store,
     auth: &'a AuthContext,
     threads: HashMap<ThreadId, bool>,
     channels: HashMap<ChannelId, bool>,
+    withdrawn: HashMap<MessageId, bool>,
 }
 
 impl<'a> EventVisibility<'a> {
@@ -26,6 +31,7 @@ impl<'a> EventVisibility<'a> {
             auth,
             threads: HashMap::new(),
             channels: HashMap::new(),
+            withdrawn: HashMap::new(),
         }
     }
 
@@ -66,6 +72,46 @@ impl<'a> EventVisibility<'a> {
             return Ok(allowed);
         }
         Ok(true)
+    }
+}
+
+impl EventVisibility<'_> {
+    /// Blank the words of a message withdrawn since this event was logged. A
+    /// message that no longer exists (purged) counts as withdrawn.
+    pub async fn redact_withdrawn(&mut self, event: &mut StoredEvent) -> Result<(), StoreError> {
+        if self.auth.bypass
+            || !matches!(
+                event.kind,
+                EventKind::MessagePosted | EventKind::MessageEdited
+            )
+        {
+            return Ok(());
+        }
+        let Some(id) = event.payload["message"]["id"]
+            .as_str()
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .map(MessageId)
+        else {
+            return Ok(());
+        };
+        let withdrawn = match self.withdrawn.get(&id) {
+            Some(&known) => known,
+            None => {
+                let known = match self.store.get_message(id).await {
+                    Ok(message) => message.tombstoned_at.is_some(),
+                    Err(StoreError::NotFound) => true,
+                    Err(e) => return Err(e),
+                };
+                self.withdrawn.insert(id, known);
+                known
+            }
+        };
+        if withdrawn {
+            let message = &mut event.payload["message"];
+            message["body"] = serde_json::Value::String(String::new());
+            message["content"] = serde_json::Value::Null;
+        }
+        Ok(())
     }
 }
 
