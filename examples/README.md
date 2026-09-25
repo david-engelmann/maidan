@@ -21,9 +21,11 @@ Point any MCP client at `POST /mcp/streamable` with a bearer token; Maidan negot
 [`cursor-mcp.json`](cursor-mcp.json), [`claude-desktop-mcp.json`](claude-desktop-mcp.json)
 (replace `REPLACE_WITH_MAIDAN_TOKEN` with a token from `maidan init`). The catalog is large —
 see [contracts/mcp-tool-names.json](../contracts/mcp-tool-names.json) for the current list — so
-the framework examples below filter to a **six-tool hero loop** (`claim_next_thread`,
-`post_message`, `get_thread_context`, `set_thread_result`, `wait_for_result`, `wait_for_ready`)
-that is enough to pick up, do, and hand back work.
+the framework examples below filter to a **seven-tool hero loop** (`claim_next_thread`,
+`post_message`, `get_thread_context`, `set_thread_result`, `transition_thread`,
+`wait_for_result`, `wait_for_ready`) that is enough to pick up, do, and hand back work.
+`transition_thread` moves finished work to review (`start_review`); without it the task
+goes back to the queue.
 
 A serious long-running worker uses three more: `acknowledge_claim` (start the working clock, so
 the room can tell working from claimed-and-idle), `report_usage` (accumulate against the thread's
@@ -61,7 +63,7 @@ python examples/langchain_maidan.py
 | Example | What it shows | Install |
 |---------|---------------|---------|
 | [`lease_demo/`](lease_demo/) | **Hero:** cross-language lease loop (Python + TS SDK) | `scripts/lease-demo.sh` (cargo + python3 + node) |
-| [`langchain_maidan.py`](langchain_maidan.py) | Wires Maidan's MCP hero-6 tools into LangChain and checks all six arrived | `pip install "langchain-mcp-adapters>=0.1,<0.2" "mcp>=1.9,<2"` |
+| [`langchain_maidan.py`](langchain_maidan.py) | Wires Maidan's MCP hero-7 tools into LangChain and checks all seven arrived | `pip install "langchain-mcp-adapters>=0.1,<0.2" "mcp>=1.9,<2"` |
 | [`autogen_maidan.py`](autogen_maidan.py) | The same wiring + check for Microsoft AutoGen | `pip install "autogen-ext[mcp]>=0.4,<0.7" "mcp>=1.9,<2"` |
 | [`rest_maidan.py`](rest_maidan.py) | Plain REST client (self-seed with `--seed`, then one agent turn) | `pip install "httpx>=0.27"` |
 | [`a2a_interop.py`](a2a_interop.py) | A2A v1.0 conformance check (Agent Card + JSON-RPC + REST) | `pip install "httpx>=0.27"` |
@@ -77,8 +79,8 @@ change an example or the surface it calls. Owner: the maintainer.
 | `lease_demo/` (`scripts/lease-demo.sh`) | 2026-09-25 | `main` @ `111e24ae` | Two distinct fenced claims; both workers acknowledged, reported usage, renewed and released | Python 3.12, Node 23; in-repo SDKs |
 | `rest_maidan.py --seed` | 2026-09-25 | `main` @ `111e24ae` | Seeded a channel and thread in the token's workspace, read context, posted a reply | httpx 0.28.1 |
 | `a2a_interop.py` | 2026-09-25 | `main` @ `111e24ae`, auth on and auth off | All checks passed on both | httpx 0.28.1 |
-| `langchain_maidan.py` | 2026-09-25 | `main` @ `111e24ae` | `wiring ok` — all six hero tools present | langchain-mcp-adapters 0.1.14, mcp 1.30.0 |
-| `autogen_maidan.py` | 2026-09-25 | `main` @ `111e24ae` | `wiring ok` — all six hero tools present | autogen-ext 0.6.4, mcp 1.30.0 |
+| `langchain_maidan.py` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | `wiring ok` — all seven hero tools present, 192 in the catalog | langchain-mcp-adapters 0.1.14, mcp 1.30.0 |
+| `autogen_maidan.py` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | `wiring ok` — all seven hero tools present, 192 in the catalog | autogen-ext 0.6.4, mcp 1.30.0 |
 | `recipes/coding-agent.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Claimed the filed task once, attached the stand-in's patch, result `done`, thread `in_review`; with a shell `AGENT_COMMAND`, exit 0 recorded `done` and exit 3 `failed`, each with its output attached | Docker Compose 5.1.3, `python:3.13-slim` |
 | `recipes/deploy.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Opened a gate on the thread and waited; the agent's own token was refused (403) answering it; `approve` deployed, `approve --decline` recorded `not_deployed`; lease held across a multi-minute wait | Docker Compose 5.1.3, `python:3.13-slim` |
 | `cursor-mcp.json`, `claude-desktop-mcp.json` | 2026-09-25 | — | JSON shape checked in CI; not run inside Cursor or Claude Desktop | — |
@@ -88,7 +90,7 @@ server refuses; with a token it now works inside the token's workspace, as
 `rest_maidan.py --seed` does.
 
 The two framework examples stop at the wiring — they connect, filter the catalog to the
-hero six, and **exit non-zero if any of the six is missing**. That check is the point:
+hero seven, and **exit non-zero if any of the seven is missing**. That check is the point:
 `tools/list` is capability-filtered server-side, so a token without `message:post` or
 `thread:transition` simply does not see `post_message` or `claim_next_thread`, and an
 example that printed the short list and exited 0 would hand you a broken agent with a

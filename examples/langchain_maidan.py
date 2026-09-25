@@ -1,7 +1,7 @@
 """Connect LangChain to Maidan's MCP server — filtered to the hero task-loop tools.
 
 Maidan speaks MCP over Streamable HTTP at POST /mcp/streamable. The catalog is large — handing all of it to an agent is expensive and noisy. This loads the
-catalog, then **filters to the six-tool lease loop** an agent actually needs to pick
+catalog, then **filters to the seven-tool lease loop** an agent actually needs to pick
 up work, do it, and hand back a result — then passes only those to your agent.
 
 The filter is client-side: Maidan's catalog is unchanged, and the other tools stay
@@ -25,12 +25,14 @@ import sys
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 # The lease loop: claim work → read its context → post progress → record a result →
+# hand it to review (`transition_thread` `start_review`, or the task is claimed again) →
 # block until a dependency's result / a task becomes ready. Widen as your agent needs.
 HERO_TOOLS = {
     "claim_next_thread",
     "post_message",
     "get_thread_context",
     "set_thread_result",
+    "transition_thread",
     "wait_for_result",
     "wait_for_ready",
 }
