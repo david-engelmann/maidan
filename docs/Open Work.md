@@ -136,7 +136,7 @@ moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 
 ### Verification depth, after launch-critical work
 
-Wave 4 #45: a claimer-crash case in `chaos.rs` (S), and ~~a proptest state machine
+Wave 4 #45: ~~a claimer-crash case in `chaos.rs` (S)~~ **✅** `claimer_crash` (store, both backends: a crashed claim lapses, the takeover reports `ClaimExpired`, the dead claimer is fenced from renew/acknowledge/release, and crashing claimers never double-hold a thread), and ~~a proptest state machine
 for `claim_next` against the real store (M)~~ **✅** `claim_state_machine` (claims, releases, renewals, acknowledgements and expiries against a model; stale tokens change nothing). Then loom, madsim, the A2A TCK,
 `openapi-lint`, nextest profiles, coverage floors, and a pg-vs-sqlite schema
 diff.
