@@ -168,6 +168,13 @@ pub fn lift_legal_hold() {}
     responses((status = 200, body = LegalHold), (status = 404, description = "Not under a legal hold")))]
 pub fn get_legal_hold() {}
 
+#[utoipa::path(get, path = "/workspaces/{id}/legal-hold/preserved", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses((status = 200, body = [PreservedMessage],
+        description = "Messages withdrawn while held: last words and earlier versions. Each read is audited")))]
+pub fn get_preserved_messages() {}
+
 #[utoipa::path(get, path = "/operator/legal-holds", tag = "operator",
     security(("bearerAuth" = [])),
     responses((status = 200, body = [LegalHold], description = "Active legal holds across all workspaces")))]

@@ -4,8 +4,8 @@
 //! ones refuse a held workspace inside that same transaction.
 
 use maidan_types::{
-    LegalHold, MemberId, MessageId, NewAuditEvent, WorkspaceEraseResult, WorkspaceId,
-    WorkspaceImport, WorkspacePurgeResult,
+    LegalHold, MemberId, MessageId, NewAuditEvent, PreservedMessage, WorkspaceEraseResult,
+    WorkspaceId, WorkspaceImport, WorkspacePurgeResult,
 };
 use sqlx::PgPool;
 
@@ -88,9 +88,23 @@ pub async fn lift_legal_hold(
 ) -> Result<bool, StoreError> {
     let mut tx = pool.begin().await?;
     let lifted = legal_hold::lift_on(&mut tx, workspace_id).await?;
-    if lifted {
-        audit::append_counted(&mut tx, event).await?;
+    if let Some(disposal) = &lifted {
+        audit::append_counted(&mut tx, disposal.recorded_in(event)).await?;
     }
     tx.commit().await?;
-    Ok(lifted)
+    Ok(lifted.is_some())
+}
+
+/// What the workspace's hold kept of withdrawn messages; the read is recorded
+/// first (SQLite twin).
+pub async fn read_preserved_messages(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    event: NewAuditEvent,
+) -> Result<Vec<PreservedMessage>, StoreError> {
+    let mut tx = pool.begin().await?;
+    audit::append_counted(&mut tx, event).await?;
+    let preserved = legal_hold::preserved_on(&mut tx, workspace_id).await?;
+    tx.commit().await?;
+    Ok(preserved)
 }

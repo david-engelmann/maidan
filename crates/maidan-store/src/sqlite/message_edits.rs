@@ -110,7 +110,7 @@ pub async fn list_for_messages(
     Ok(out)
 }
 
-fn row_to_edit(row: &sqlx::sqlite::SqliteRow) -> Result<MessageEdit, StoreError> {
+pub(crate) fn row_to_edit(row: &sqlx::sqlite::SqliteRow) -> Result<MessageEdit, StoreError> {
     Ok(MessageEdit {
         id: row.get("id"),
         message_id: MessageId(row.get::<Uuid, _>("message_id")),

@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Legal holds keep what is withdrawn
+
+- **Changed:** under a legal hold, a withdrawn (tombstoned) message keeps its
+  words and earlier versions for the hold, readable only by a workspace admin
+  through the audited `GET /workspaces/:id/legal-hold/preserved`. Lifting the
+  hold disposes of them and records how much.
+- **Changed:** without a hold, withdrawing a message also deletes its earlier
+  versions.
+- **Fixed:** `GET /messages/:id/edits` returned a withdrawn message's full edit
+  history to anyone in its channel.
+- **Changed:** `GET /workspaces/:id/legal-hold` requires `token:admin`.
+
 ### Request changes
 
 - **Added:** a `request_changes` review sends a thread under review back for

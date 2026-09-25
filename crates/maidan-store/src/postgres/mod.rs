@@ -454,6 +454,13 @@ impl WorkspaceStore for PostgresStore {
     ) -> Result<bool, StoreError> {
         data_audited::lift_legal_hold(&self.pool, workspace_id, audit).await
     }
+    async fn read_preserved_messages_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: NewAuditEvent,
+    ) -> Result<Vec<maidan_types::PreservedMessage>, StoreError> {
+        data_audited::read_preserved_messages(&self.pool, workspace_id, audit).await
+    }
     async fn get_legal_hold(
         &self,
         workspace_id: WorkspaceId,

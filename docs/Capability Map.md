@@ -42,7 +42,7 @@ fails if a new capability is added without deciding which it is.
 | `secret:admin` | `POST /workspaces/:wid/secrets`, `DELETE /workspaces/:wid/secrets/:name` |
 | `audit:read-global` | `GET /operator/audit` — cross-workspace audit read |
 | `operator:global` | `GET /operator/legal-holds`, `GET /operator/status` |
-| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); create/list/revoke `/workspaces/:wid/delegation-grants`; `PUT /workspaces/:wid/delegation-policy` (the grant-lifetime ceiling); issue/list/revoke `/workspaces/:wid/share-tickets`; signed workspace export / verify / import; snapshot `include_graph=true`; **destroying the record** — `POST /workspaces/:id/purge`, `DELETE /workspaces/:id` (erase), `DELETE /messages/:id/purge` |
+| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); create/list/revoke `/workspaces/:wid/delegation-grants`; `PUT /workspaces/:wid/delegation-policy` (the grant-lifetime ceiling); issue/list/revoke `/workspaces/:wid/share-tickets`; signed workspace export / verify / import; snapshot `include_graph=true`; **destroying the record** — `POST /workspaces/:id/purge`, `DELETE /workspaces/:id` (erase), `DELETE /messages/:id/purge`; legal holds — `PUT/DELETE/GET /workspaces/:id/legal-hold`, and `GET /workspaces/:id/legal-hold/preserved` (audited) |
 
 ## MCP (`POST /mcp` tools/call)
 

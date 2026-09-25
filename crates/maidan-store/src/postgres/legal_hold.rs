@@ -4,7 +4,9 @@
 //! pruning.
 
 use chrono::{DateTime, Utc};
-use maidan_types::{LegalHold, MemberId, WorkspaceId};
+use maidan_types::{
+    ChannelId, LegalHold, MemberId, MessageId, PreservedMessage, ThreadId, WorkspaceId,
+};
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
 
@@ -61,19 +63,138 @@ pub(crate) async fn place_on(
 }
 
 pub async fn lift(pool: &PgPool, workspace_id: WorkspaceId) -> Result<bool, StoreError> {
-    let mut conn = pool.acquire().await?;
-    lift_on(&mut conn, workspace_id).await
+    let mut tx = pool.begin().await?;
+    let lifted = lift_on(&mut tx, workspace_id).await?;
+    tx.commit().await?;
+    Ok(lifted.is_some())
 }
 
+/// Lift the hold and dispose of what it kept (SQLite twin). `None` when there
+/// was no hold.
 pub(crate) async fn lift_on(
     conn: &mut PgConnection,
     workspace_id: WorkspaceId,
-) -> Result<bool, StoreError> {
+) -> Result<Option<crate::HoldDisposal>, StoreError> {
     let done = sqlx::query("DELETE FROM maidan_legal_holds WHERE workspace_id = $1")
         .bind(workspace_id.0)
         .execute(&mut *conn)
         .await?;
-    Ok(done.rows_affected() > 0)
+    if done.rows_affected() == 0 {
+        return Ok(None);
+    }
+    let edit_versions = sqlx::query(
+        "DELETE FROM maidan_message_edits e
+         USING maidan_messages m, maidan_threads t, maidan_channels c
+         WHERE e.message_id = m.id AND t.id = m.thread_id AND c.id = t.channel_id
+           AND c.workspace_id = $1 AND m.tombstoned_at IS NOT NULL",
+    )
+    .bind(workspace_id.0)
+    .execute(&mut *conn)
+    .await?
+    .rows_affected();
+    let withdrawn_messages =
+        sqlx::query("DELETE FROM maidan_preserved_messages WHERE workspace_id = $1")
+            .bind(workspace_id.0)
+            .execute(&mut *conn)
+            .await?
+            .rows_affected();
+    Ok(Some(crate::HoldDisposal {
+        withdrawn_messages,
+        edit_versions,
+    }))
+}
+
+/// Before a message is withdrawn: under a hold, keep its words; otherwise
+/// forget its earlier versions (SQLite twin). The hold row is locked for
+/// share, so a lift waits for this withdrawal and then disposes of what it
+/// kept.
+pub(crate) async fn preserve_or_forget(
+    conn: &mut PgConnection,
+    message_id: MessageId,
+) -> Result<(), StoreError> {
+    let workspace_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT c.workspace_id FROM maidan_messages m
+         JOIN maidan_threads t ON t.id = m.thread_id
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE m.id = $1 AND m.tombstoned_at IS NULL",
+    )
+    .bind(message_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let Some(workspace_id) = workspace_id else {
+        return Err(StoreError::NotFound);
+    };
+    let held = sqlx::query("SELECT 1 FROM maidan_legal_holds WHERE workspace_id = $1 FOR SHARE")
+        .bind(workspace_id)
+        .fetch_optional(&mut *conn)
+        .await?
+        .is_some();
+    if held {
+        sqlx::query(
+            "INSERT INTO maidan_preserved_messages
+                 (message_id, workspace_id, body, content, tombstoned_at)
+             SELECT id, $2, body, content, NOW() FROM maidan_messages WHERE id = $1
+             ON CONFLICT (message_id) DO NOTHING",
+        )
+        .bind(message_id.0)
+        .bind(workspace_id)
+        .execute(&mut *conn)
+        .await?;
+    } else {
+        sqlx::query("DELETE FROM maidan_message_edits WHERE message_id = $1")
+            .bind(message_id.0)
+            .execute(&mut *conn)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Every message the workspace's hold has kept (SQLite twin).
+pub(crate) async fn preserved_on(
+    conn: &mut PgConnection,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<PreservedMessage>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT p.message_id, m.thread_id, t.channel_id, m.author_id, m.posted_at,
+                p.body, p.content, p.tombstoned_at
+         FROM maidan_preserved_messages p
+         JOIN maidan_messages m ON m.id = p.message_id
+         JOIN maidan_threads t ON t.id = m.thread_id
+         WHERE p.workspace_id = $1
+         ORDER BY p.tombstoned_at DESC, p.message_id",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let message_id = MessageId(row.get::<Uuid, _>("message_id"));
+        let edits = sqlx::query(
+            "SELECT id, message_id, editor_id, body_before, body_after, edited_at
+             FROM maidan_message_edits WHERE message_id = $1
+             ORDER BY edited_at ASC, id ASC",
+        )
+        .bind(message_id.0)
+        .fetch_all(&mut *conn)
+        .await?
+        .iter()
+        .map(super::message_edits::row_to_edit)
+        .collect();
+        out.push(PreservedMessage {
+            message_id,
+            thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
+            channel_id: ChannelId(row.get::<Uuid, _>("channel_id")),
+            author_id: MemberId(row.get::<Uuid, _>("author_id")),
+            posted_at: row.get::<DateTime<Utc>, _>("posted_at"),
+            body: row.get("body"),
+            content: row
+                .get::<Option<serde_json::Value>, _>("content")
+                .and_then(|v| serde_json::from_value(v).ok()),
+            tombstoned_at: row.get::<DateTime<Utc>, _>("tombstoned_at"),
+            edits,
+        });
+    }
+    Ok(out)
 }
 
 /// Refuse to destroy a held workspace's data: `Conflict`, which the API

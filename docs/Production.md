@@ -837,6 +837,45 @@ public key (`GET /operator/export-public-key` on the origin). A blank
 instance with neither key still verifies integrity (tamper-evident).
 See [Integration.md](Integration.md#workspace-portability-signed-export).
 
+## Legal holds
+
+A legal hold stops a workspace's data from being destroyed while litigation is
+pending or reasonably anticipated (FRCP 37(e); GDPR Art. 17(3)(e) exempts such
+data from erasure). Place and lift it as a workspace admin (`token:admin`):
+
+```http
+PUT /workspaces/{id}/legal-hold
+{"reason": "matter 2026-114"}
+DELETE /workspaces/{id}/legal-hold
+```
+
+While a workspace is held:
+
+- workspace purge and erase, message purge, and an import that replaces the
+  workspace are refused (409), inside the destroying transaction;
+- its event-log rows are exempt from retention pruning, and audit pruning is
+  frozen;
+- **a withdrawn message keeps its words.** When a member (or a moderator)
+  tombstones a message, it disappears for everyone exactly as it would unheld,
+  but its last body and every earlier version are kept. Nothing in the product
+  tells the member the words were kept.
+
+Read what the hold kept with `GET /workspaces/{id}/legal-hold/preserved`
+(`token:admin`): one entry per withdrawn message, with its author, thread,
+channel, times, last words and earlier versions. Each read writes a
+`legal_hold.preserved_read` audit row first; if the row cannot be written,
+nothing is returned. `GET /workspaces/{id}/legal-hold` is `token:admin` too:
+the members a hold binds are not shown that it exists.
+
+Lifting the hold disposes of what it kept: the preserved bodies, and the earlier
+versions of messages withdrawn while it held. The lift's audit row records how
+many of each (`metadata.disposed`). Without a hold, a withdrawal takes the
+message's earlier versions with it.
+
+A workspace has one hold. Placing a second replaces the first's reason, and a
+lift ends both; track overlapping matters outside Maidan until holds are per
+matter (Open Work).
+
 ## Event-log hash chain
 
 Every stored event is accompanied by `{id, lsn, prev_hash, content_hash}`
