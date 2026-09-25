@@ -112,7 +112,7 @@ where
 {
     // A hold binds every caller of the store, not only the handlers.
     let held = seed(store, "held").await;
-    store
+    let hold = store
         .place_legal_hold_audited(
             held.workspace,
             "litigation",
@@ -177,7 +177,11 @@ where
     // Lifting nothing records nothing.
     let unheld = seed(store, "unheld").await;
     assert!(!store
-        .lift_legal_hold_audited(unheld.workspace, event("lift.none", None))
+        .lift_legal_hold_audited(
+            unheld.workspace,
+            maidan_types::LegalHoldId::new(),
+            event("lift.none", None),
+        )
         .await
         .unwrap());
     assert!(!store
@@ -211,19 +215,22 @@ where
         .await
         .is_err());
     assert!(store
-        .get_legal_hold(victim.workspace)
+        .list_workspace_legal_holds(victim.workspace)
         .await
         .unwrap()
-        .is_none());
+        .is_empty());
     assert!(store
-        .lift_legal_hold_audited(held.workspace, event("lift", None))
+        .lift_legal_hold_audited(held.workspace, hold.id, event("lift", None))
         .await
         .is_err());
-    assert!(store
-        .get_legal_hold(held.workspace)
-        .await
-        .unwrap()
-        .is_some());
+    assert_eq!(
+        store
+            .list_workspace_legal_holds(held.workspace)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     let fresh = WorkspaceImport {
         workspace: maidan_types::Workspace {
             id: WorkspaceId::new(),

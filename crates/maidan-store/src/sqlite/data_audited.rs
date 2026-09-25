@@ -4,8 +4,8 @@
 //! ones refuse a held workspace inside that same transaction.
 
 use maidan_types::{
-    LegalHold, MemberId, MessageId, NewAuditEvent, PreservedMessage, WorkspaceEraseResult,
-    WorkspaceId, WorkspaceImport, WorkspacePurgeResult,
+    LegalHold, LegalHoldId, MemberId, MessageId, NewAuditEvent, PreservedMessage,
+    WorkspaceEraseResult, WorkspaceId, WorkspaceImport, WorkspacePurgeResult,
 };
 use sqlx::SqlitePool;
 
@@ -84,10 +84,11 @@ pub async fn place_legal_hold(
 pub async fn lift_legal_hold(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
+    hold_id: LegalHoldId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
     let mut tx = pool.begin().await?;
-    let lifted = legal_hold::lift_on(&mut tx, workspace_id).await?;
+    let lifted = legal_hold::lift_on(&mut tx, workspace_id, hold_id).await?;
     if let Some(disposal) = &lifted {
         audit::append_counted(&mut tx, disposal.recorded_in(event)).await?;
     }

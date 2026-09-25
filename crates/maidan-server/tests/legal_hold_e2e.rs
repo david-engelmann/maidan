@@ -109,31 +109,32 @@ async fn legal_hold_blocks_purge_over_rest() {
         .await
         .unwrap();
     let op_auth = format!("Bearer {}", op_secret.as_str());
-    let hold_url = format!("{base}/workspaces/{}/legal-hold", ws.id.0);
+    let hold_url = format!("{base}/workspaces/{}/legal-holds", ws.id.0);
     let purge_url = format!("{base}/workspaces/{}/purge", ws.id.0);
 
-    // No hold → 404, and purge is allowed (200).
-    assert_eq!(
-        client
-            .get(&hold_url)
-            .header("Authorization", &auth)
-            .send()
-            .await
-            .unwrap()
-            .status(),
-        StatusCode::NOT_FOUND
-    );
+    // No hold: an empty list.
+    let none: serde_json::Value = client
+        .get(&hold_url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(none, serde_json::json!([]));
 
     // Place a hold.
     let put = client
-        .put(&hold_url)
+        .post(&hold_url)
         .header("Authorization", &auth)
         .json(&serde_json::json!({ "reason": "litigation hold #42" }))
         .send()
         .await
         .unwrap();
-    assert_eq!(put.status(), StatusCode::OK);
+    assert_eq!(put.status(), StatusCode::CREATED);
     let h: serde_json::Value = put.json().await.unwrap();
+    let one_hold = format!("{hold_url}/{}", h["id"].as_str().unwrap());
     assert_eq!(h["reason"], "litigation hold #42");
     assert_eq!(h["workspace_id"], ws.id.0.to_string());
     assert_eq!(h["placed_by"], admin.id.0.to_string());
@@ -190,7 +191,7 @@ async fn legal_hold_blocks_purge_over_rest() {
     // Lift → 204, then 404, and purge is allowed again.
     assert_eq!(
         client
-            .delete(&hold_url)
+            .delete(&one_hold)
             .header("Authorization", &auth)
             .send()
             .await
@@ -200,7 +201,7 @@ async fn legal_hold_blocks_purge_over_rest() {
     );
     assert_eq!(
         client
-            .delete(&hold_url)
+            .delete(&one_hold)
             .header("Authorization", &auth)
             .send()
             .await

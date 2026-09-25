@@ -149,26 +149,30 @@ pub fn list_run_threads() {}
 )]
 pub fn get_run_occupancy() {}
 
-#[utoipa::path(put, path = "/workspaces/{id}/legal-hold", tag = "workspaces",
+#[utoipa::path(post, path = "/workspaces/{id}/legal-holds", tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
     request_body = PlaceLegalHold,
     security(("bearerAuth" = [])),
-    responses((status = 200, body = LegalHold, description = "The legal hold (placed/updated)")))]
+    responses((status = 201, body = LegalHold, description = "A hold for one matter")))]
 pub fn place_legal_hold() {}
 
-#[utoipa::path(delete, path = "/workspaces/{id}/legal-hold", tag = "workspaces",
+#[utoipa::path(get, path = "/workspaces/{id}/legal-holds", tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
     security(("bearerAuth" = [])),
-    responses((status = 204, description = "Lifted"), (status = 404, description = "No hold was placed")))]
+    responses((status = 200, body = [LegalHold], description = "The workspace's holds; empty when not held")))]
+pub fn list_workspace_legal_holds() {}
+
+#[utoipa::path(delete, path = "/workspaces/{id}/legal-holds/{hold_id}", tag = "workspaces",
+    params(
+        ("id" = Uuid, Path, description = "Workspace id"),
+        ("hold_id" = Uuid, Path, description = "Legal hold id"),
+    ),
+    security(("bearerAuth" = [])),
+    responses((status = 204, description = "Lifted; the last lift disposes of what the holds kept"),
+        (status = 404, description = "No such hold on this workspace")))]
 pub fn lift_legal_hold() {}
 
-#[utoipa::path(get, path = "/workspaces/{id}/legal-hold", tag = "workspaces",
-    params(("id" = Uuid, Path, description = "Workspace id")),
-    security(("bearerAuth" = [])),
-    responses((status = 200, body = LegalHold), (status = 404, description = "Not under a legal hold")))]
-pub fn get_legal_hold() {}
-
-#[utoipa::path(get, path = "/workspaces/{id}/legal-hold/preserved", tag = "workspaces",
+#[utoipa::path(get, path = "/workspaces/{id}/legal-holds/preserved", tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),
     security(("bearerAuth" = [])),
     responses((status = 200, body = [PreservedMessage],

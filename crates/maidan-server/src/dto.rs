@@ -528,7 +528,7 @@ pub struct SetThreadPriority {
     pub priority: i64,
 }
 
-/// Body for `PUT /workspaces/:id/legal-hold` — place a legal hold. `reason` is
+/// Body for `POST /workspaces/:id/legal-holds` — place a legal hold. `reason` is
 /// required (non-empty).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PlaceLegalHold {

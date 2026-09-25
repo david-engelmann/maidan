@@ -752,15 +752,16 @@ pub async fn erase_workspace(
     Ok(Json(result))
 }
 
-/// `PUT /workspaces/:id/legal-hold` — place (or update) a legal hold.
+/// `POST /workspaces/:id/legal-holds` — place a legal hold for one matter.
 /// `token:admin` (a higher bar than the `workspace:write` that purges, so a
-/// workspace admin can't lift-then-destroy). Body `{reason}`.
+/// workspace admin can't lift-then-destroy). Body `{reason}`. A second matter
+/// is a second hold; each is lifted on its own.
 pub async fn place_legal_hold(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
     ApiJson(body): ApiJson<PlaceLegalHold>,
-) -> ApiResult<Json<LegalHold>> {
+) -> ApiResult<(StatusCode, Json<LegalHold>)> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
@@ -779,21 +780,25 @@ pub async fn place_legal_hold(
             Box::new(move |hold| NewAuditEvent {
                 actor_id: Some(actor),
                 action: "legal_hold.place".into(),
-                target_kind: Some("workspace".into()),
-                target_id: Some(workspace_id.0),
-                metadata: serde_json::json!({ "reason": hold.reason }),
+                target_kind: Some("legal_hold".into()),
+                target_id: Some(hold.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "reason": hold.reason,
+                }),
             }),
         )
         .await?;
-    Ok(Json(hold))
+    Ok((StatusCode::CREATED, Json(hold)))
 }
 
-/// `DELETE /workspaces/:id/legal-hold` — lift the hold. `204` when a hold
-/// existed, `404` when not. `token:admin`.
+/// `DELETE /workspaces/:id/legal-holds/:hold_id` — lift one hold. `204`, or
+/// `404` when the workspace has no such hold. `token:admin`. Lifting the last
+/// hold disposes of what the holds kept.
 pub async fn lift_legal_hold(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    Path((id, hold_id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
@@ -802,12 +807,13 @@ pub async fn lift_legal_hold(
         .store
         .lift_legal_hold_audited(
             workspace_id,
+            LegalHoldId(hold_id),
             NewAuditEvent {
                 actor_id: Some(auth.actor_id),
                 action: "legal_hold.lift".into(),
-                target_kind: Some("workspace".into()),
-                target_id: Some(workspace_id.0),
-                metadata: serde_json::json!({}),
+                target_kind: Some("legal_hold".into()),
+                target_id: Some(hold_id),
+                metadata: serde_json::json!({ "workspace_id": workspace_id.0 }),
             },
         )
         .await?;
@@ -818,25 +824,25 @@ pub async fn lift_legal_hold(
     }
 }
 
-/// `GET /workspaces/:id/legal-hold` — the hold, or `404`. `token:admin`: whether
-/// a workspace is held, and for what matter, is not for its custodians to
-/// see — telling them invites the deletions the hold is there to catch.
-pub async fn get_legal_hold(
+/// `GET /workspaces/:id/legal-holds` — the workspace's holds, newest first;
+/// empty when it is not held. `token:admin`: whether a workspace is held, and
+/// for what matter, is not for its custodians to see — telling them invites
+/// the deletions the hold is there to catch.
+pub async fn list_workspace_legal_holds(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     Path(id): Path<uuid::Uuid>,
-) -> ApiResult<Json<LegalHold>> {
+) -> ApiResult<Json<Vec<LegalHold>>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    match state.store.get_legal_hold(workspace_id).await? {
-        Some(hold) => Ok(Json(hold)),
-        None => Err(ApiError::NotFound),
-    }
+    Ok(Json(
+        state.store.list_workspace_legal_holds(workspace_id).await?,
+    ))
 }
 
-/// `GET /workspaces/:id/legal-hold/preserved` — what the hold kept of messages
-/// withdrawn while it held: each one's last words and earlier versions, which
+/// `GET /workspaces/:id/legal-holds/preserved` — what the holds kept of messages
+/// withdrawn while held: each one's last words and earlier versions, which
 /// nobody else can read any more. `token:admin`, and every read is recorded
 /// before anything is returned.
 pub async fn get_preserved_messages(
@@ -870,7 +876,7 @@ pub async fn get_preserved_messages(
 /// `operator:global`, not the per-workspace `token:admin` this used to take:
 /// the query is instance-wide and deliberately stays that way, because scoping
 /// it to the caller would make it a duplicate of `GET
-/// /workspaces/:id/legal-hold`. A genuinely global read needs a genuinely
+/// /workspaces/:id/legal-holds`. A genuinely global read needs a genuinely
 /// global capability.
 pub async fn list_legal_holds(
     State(state): State<AppState>,

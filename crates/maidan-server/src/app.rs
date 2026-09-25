@@ -106,14 +106,16 @@ pub fn router(state: AppState) -> Router {
             get(routes::get_run_occupancy),
         )
         .route(
-            "/workspaces/:id/legal-hold",
-            axum::routing::put(routes::place_legal_hold)
-                .delete(routes::lift_legal_hold)
-                .get(routes::get_legal_hold),
+            "/workspaces/:id/legal-holds",
+            post(routes::place_legal_hold).get(routes::list_workspace_legal_holds),
         )
         .route(
-            "/workspaces/:id/legal-hold/preserved",
+            "/workspaces/:id/legal-holds/preserved",
             get(routes::get_preserved_messages),
+        )
+        .route(
+            "/workspaces/:id/legal-holds/:hold_id",
+            axum::routing::delete(routes::lift_legal_hold),
         )
         // SCIM 2.0 provisioning — outside OpenAPI/capability-map (like /mcp);
         // each handler enforces token:admin inline and scopes to the token's

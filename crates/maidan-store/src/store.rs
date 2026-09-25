@@ -41,17 +41,23 @@ pub trait WorkspaceStore: Send + Sync {
     /// excluding tombstoned rows) for metering.
     async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError>;
 
-    /// Place (or update) a legal hold on a workspace. While held, the
-    /// workspace's events are exempt from retention pruning, audit pruning is
-    /// frozen, and purge/erase is refused. Upserts (one hold per workspace).
+    /// Place a legal hold on a workspace, for one matter. While any hold
+    /// stands, the workspace's events are exempt from retention pruning, audit
+    /// pruning is frozen, purge/erase is refused, and withdrawn messages keep
+    /// their words. A second matter is a second hold.
     async fn place_legal_hold(
         &self,
         workspace_id: WorkspaceId,
         reason: &str,
         placed_by: Option<MemberId>,
     ) -> Result<LegalHold, StoreError>;
-    /// Lift a workspace's legal hold. `true` when a hold existed.
-    async fn lift_legal_hold(&self, workspace_id: WorkspaceId) -> Result<bool, StoreError>;
+    /// Lift one of the workspace's holds. `true` when that hold existed. What
+    /// the holds kept is disposed of when the last one is lifted.
+    async fn lift_legal_hold(
+        &self,
+        workspace_id: WorkspaceId,
+        hold_id: maidan_types::LegalHoldId,
+    ) -> Result<bool, StoreError>;
 
     // D-A: the audited forms request handlers use (see `create_api_token_audited`).
 
@@ -78,6 +84,7 @@ pub trait WorkspaceStore: Send + Sync {
     async fn lift_legal_hold_audited(
         &self,
         workspace_id: WorkspaceId,
+        hold_id: maidan_types::LegalHoldId,
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError>;
     /// What the workspace's legal hold kept of messages withdrawn while it
@@ -89,11 +96,11 @@ pub trait WorkspaceStore: Send + Sync {
         workspace_id: WorkspaceId,
         audit: NewAuditEvent,
     ) -> Result<Vec<maidan_types::PreservedMessage>, StoreError>;
-    /// The workspace's legal hold, or `None`.
-    async fn get_legal_hold(
+    /// The workspace's legal holds, newest first; empty when it is not held.
+    async fn list_workspace_legal_holds(
         &self,
         workspace_id: WorkspaceId,
-    ) -> Result<Option<LegalHold>, StoreError>;
+    ) -> Result<Vec<LegalHold>, StoreError>;
     /// Every active legal hold, newest first — the operator view.
     async fn list_legal_holds(&self) -> Result<Vec<LegalHold>, StoreError>;
 

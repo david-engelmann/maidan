@@ -5,7 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, LegalHold, MemberId, MessageId, PreservedMessage, ThreadId, WorkspaceId,
+    ChannelId, LegalHold, LegalHoldId, MemberId, MessageId, PreservedMessage, ThreadId, WorkspaceId,
 };
 use sqlx::{PgConnection, PgPool, Row};
 use uuid::Uuid;
@@ -14,6 +14,7 @@ use crate::error::StoreError;
 
 fn row_to_hold(row: &sqlx::postgres::PgRow) -> LegalHold {
     LegalHold {
+        id: LegalHoldId(row.get::<Uuid, _>("id")),
         workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
         reason: row.get::<String, _>("reason"),
         placed_by: row.get::<Option<Uuid>, _>("placed_by").map(MemberId),
@@ -21,7 +22,7 @@ fn row_to_hold(row: &sqlx::postgres::PgRow) -> LegalHold {
     }
 }
 
-const COLS: &str = "workspace_id, reason, placed_by, placed_at";
+const COLS: &str = "id, workspace_id, reason, placed_by, placed_at";
 
 pub async fn place(
     pool: &PgPool,
@@ -39,21 +40,12 @@ pub(crate) async fn place_on(
     reason: &str,
     placed_by: Option<MemberId>,
 ) -> Result<LegalHold, StoreError> {
-    // Serialize with a purge or erase of the same workspace, which takes this
-    // lock before checking for a hold (`refuse_if_held`).
-    sqlx::query("SELECT 1 FROM maidan_workspaces WHERE id = $1 FOR NO KEY UPDATE")
-        .bind(workspace_id.0)
-        .fetch_optional(&mut *conn)
-        .await?;
     let row = sqlx::query(&format!(
-        "INSERT INTO maidan_legal_holds (workspace_id, reason, placed_by, placed_at)
-         VALUES ($1, $2, $3, NOW())
-         ON CONFLICT (workspace_id) DO UPDATE SET
-             reason = excluded.reason,
-             placed_by = excluded.placed_by,
-             placed_at = excluded.placed_at
+        "INSERT INTO maidan_legal_holds (id, workspace_id, reason, placed_by, placed_at)
+         VALUES ($1, $2, $3, $4, NOW())
          RETURNING {COLS}"
     ))
+    .bind(LegalHoldId::new().0)
     .bind(workspace_id.0)
     .bind(reason)
     .bind(placed_by.map(|m| m.0))
@@ -62,9 +54,13 @@ pub(crate) async fn place_on(
     Ok(row_to_hold(&row))
 }
 
-pub async fn lift(pool: &PgPool, workspace_id: WorkspaceId) -> Result<bool, StoreError> {
+pub async fn lift(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    hold_id: LegalHoldId,
+) -> Result<bool, StoreError> {
     let mut tx = pool.begin().await?;
-    let lifted = lift_on(&mut tx, workspace_id).await?;
+    let lifted = lift_on(&mut tx, workspace_id, hold_id).await?;
     tx.commit().await?;
     Ok(lifted.is_some())
 }
@@ -74,13 +70,28 @@ pub async fn lift(pool: &PgPool, workspace_id: WorkspaceId) -> Result<bool, Stor
 pub(crate) async fn lift_on(
     conn: &mut PgConnection,
     workspace_id: WorkspaceId,
+    hold_id: LegalHoldId,
 ) -> Result<Option<crate::HoldDisposal>, StoreError> {
-    let done = sqlx::query("DELETE FROM maidan_legal_holds WHERE workspace_id = $1")
+    let done = sqlx::query("DELETE FROM maidan_legal_holds WHERE id = $1 AND workspace_id = $2")
+        .bind(hold_id.0)
         .bind(workspace_id.0)
         .execute(&mut *conn)
         .await?;
     if done.rows_affected() == 0 {
         return Ok(None);
+    }
+    // Another matter still holds the workspace: nothing is released yet.
+    let still_held: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM maidan_legal_holds WHERE workspace_id = $1)",
+    )
+    .bind(workspace_id.0)
+    .fetch_one(&mut *conn)
+    .await?;
+    if still_held {
+        return Ok(Some(crate::HoldDisposal {
+            withdrawn_messages: 0,
+            edit_versions: 0,
+        }));
     }
     let edit_versions = sqlx::query(
         "DELETE FROM maidan_message_edits e
@@ -226,22 +237,23 @@ pub(crate) async fn refuse_if_held(
     Ok(())
 }
 
-pub async fn get(
+pub async fn list_for_workspace(
     pool: &PgPool,
     workspace_id: WorkspaceId,
-) -> Result<Option<LegalHold>, StoreError> {
-    let row = sqlx::query(&format!(
-        "SELECT {COLS} FROM maidan_legal_holds WHERE workspace_id = $1"
+) -> Result<Vec<LegalHold>, StoreError> {
+    let rows = sqlx::query(&format!(
+        "SELECT {COLS} FROM maidan_legal_holds WHERE workspace_id = $1
+         ORDER BY placed_at DESC, id"
     ))
     .bind(workspace_id.0)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
-    Ok(row.as_ref().map(row_to_hold))
+    Ok(rows.iter().map(row_to_hold).collect())
 }
 
 pub async fn list(pool: &PgPool) -> Result<Vec<LegalHold>, StoreError> {
     let rows = sqlx::query(&format!(
-        "SELECT {COLS} FROM maidan_legal_holds ORDER BY placed_at DESC, workspace_id ASC"
+        "SELECT {COLS} FROM maidan_legal_holds ORDER BY placed_at DESC, id"
     ))
     .fetch_all(pool)
     .await?;

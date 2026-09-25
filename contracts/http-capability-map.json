@@ -1008,26 +1008,26 @@
     "surface": "http"
   },
   {
-    "method": "PUT",
-    "path": "/workspaces/{id}/legal-hold",
+    "method": "POST",
+    "path": "/workspaces/{id}/legal-holds",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/legal-holds",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/legal-holds/preserved",
     "capability": "token:admin",
     "surface": "http"
   },
   {
     "method": "DELETE",
-    "path": "/workspaces/{id}/legal-hold",
-    "capability": "token:admin",
-    "surface": "http"
-  },
-  {
-    "method": "GET",
-    "path": "/workspaces/{id}/legal-hold",
-    "capability": "token:admin",
-    "surface": "http"
-  },
-  {
-    "method": "GET",
-    "path": "/workspaces/{id}/legal-hold/preserved",
+    "path": "/workspaces/{id}/legal-holds/{hold_id}",
     "capability": "token:admin",
     "surface": "http"
   },
