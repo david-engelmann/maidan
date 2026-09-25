@@ -34,10 +34,14 @@ psql_in() {
   docker exec "$container" psql -U maidan -d maidan -v ON_ERROR_STOP=1 -Atc "$@"
 }
 
+# Ready means the real server answers a query on the target database. The
+# image's entrypoint first runs a temporary, socket-only server to initialize,
+# so a socket `pg_isready` can pass before `maidan` exists; the temporary
+# server never listens on TCP, so check over 127.0.0.1.
 wait_ready() {
   local container="$1"
   for _ in $(seq 1 60); do
-    if docker exec "$container" pg_isready -U maidan -d maidan >/dev/null 2>&1; then
+    if docker exec "$container" psql -h 127.0.0.1 -U maidan -d maidan -Atc "SELECT 1" >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
