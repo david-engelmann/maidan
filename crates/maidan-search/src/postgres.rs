@@ -291,10 +291,15 @@ impl Search for PostgresSearch {
             }
         };
         let vector = Vector::from(embedding.to_vec());
+        // Only a live message is embedded. The indexer can reach a message's
+        // event after it was withdrawn; the row lock waits out a withdrawal in
+        // flight, whose transaction deletes the message's embeddings.
         let sql = format!(
             r#"
             INSERT INTO {table} (message_id, embedding, updated_at)
-            VALUES ($1, $2, NOW())
+            SELECT m.id, $2, NOW() FROM maidan_messages m
+            WHERE m.id = $1 AND m.tombstoned_at IS NULL
+            FOR SHARE OF m
             ON CONFLICT (message_id) DO UPDATE
                 SET embedding = EXCLUDED.embedding,
                     updated_at = NOW()

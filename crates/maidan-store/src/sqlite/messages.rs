@@ -395,6 +395,7 @@ pub async fn edit_with_posted_event(
 pub async fn tombstone(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {
     let mut tx = pool.begin().await?;
     super::legal_hold::preserve_or_forget(&mut tx, id).await?;
+    crate::embeddings_purge::purge_message_embeddings_sqlite(&mut tx, id).await?;
     let now = Utc::now();
     let res = sqlx::query(
         "UPDATE maidan_messages SET tombstoned_at = ?, body = '', content = NULL WHERE id = ? AND tombstoned_at IS NULL",
@@ -419,6 +420,7 @@ pub async fn tombstone_with_event(
 ) -> Result<StoredEvent, StoreError> {
     let mut tx = pool.begin().await?;
     super::legal_hold::preserve_or_forget(&mut tx, id).await?;
+    crate::embeddings_purge::purge_message_embeddings_sqlite(&mut tx, id).await?;
     let now = Utc::now();
     let res = sqlx::query(
         "UPDATE maidan_messages SET tombstoned_at = ?, body = '', content = NULL WHERE id = ? AND tombstoned_at IS NULL",

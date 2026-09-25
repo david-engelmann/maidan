@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A withdrawn message leaves no embeddings
+
+- **Fixed:** withdrawing a message left its embeddings, vectors derived from the
+  words it withdrew, and the indexer could embed a message after it was
+  withdrawn. Withdrawal now deletes them, and only a live message is embedded.
+
 ### Legal holds per matter
 
 - **Changed:** a workspace may be held for several matters at once. `POST
