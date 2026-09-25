@@ -11,6 +11,23 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `GET /health/ready` | Readiness  | `200` when DB, artifact store, indexer (if stale check enabled and no embedding errors), and Postgres `LISTEN` bus (when used) are healthy. |
 | `GET /health`       | Readiness  | Alias of `/health/ready`.                     |
 
+### Operator status
+
+`GET /operator/status` (`operator:global`) is the page to read before a deploy
+or during an incident. It reports:
+
+- **Phase:** `serving`, `degraded` (a readiness check fails) or `draining`.
+- **Readiness checks:** the same ones `/health/ready` runs.
+- **Search backfill:** the search tap's cursor against the event-log head, as a
+  percentage and a count behind. Below 100% after a rebuild means the backfill
+  is still running.
+- **Replica lag,** in bytes, when a read replica is configured.
+- **Queue depths:** the indexer queue, WebSocket connections against their
+  ceiling, and the outbox.
+
+It returns JSON, or a script-free page when the request sends
+`Accept: text/html`.
+
 ### Rolling restarts
 
 Kubernetes takes a terminating pod out of its Service at the same moment it

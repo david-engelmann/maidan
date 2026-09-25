@@ -1032,6 +1032,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/operator/status",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/workspaces/{id}/wip-limit",
     "capability": "workspace:write",

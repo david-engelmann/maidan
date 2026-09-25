@@ -16,6 +16,7 @@ use crate::land_gate_advisor::{
 };
 use crate::openapi::schemas::{LivenessOk, SearchHit};
 use crate::share_consumer::*;
+use crate::status::{OperatorStatus, QueueStatus, ReplicaStatus, SearchProgress, StatusCheck};
 use crate::thread_context::{ThreadContext, ThreadFsmContext, WorkspaceContext};
 use maidan_types::*;
 
@@ -84,6 +85,7 @@ impl Modify for SecurityAddon {
         paths::lift_legal_hold,
         paths::get_legal_hold,
         paths::list_legal_holds,
+        paths::operator_status,
         paths::set_wip_limit,
         paths::get_wip_limit,
         paths::set_delegation_policy,
@@ -371,6 +373,11 @@ impl Modify for SecurityAddon {
         LivenessOk,
         HealthResponse,
         SubsystemStatus,
+        OperatorStatus,
+        StatusCheck,
+        SearchProgress,
+        ReplicaStatus,
+        QueueStatus,
         ProblemDetails,
         LandGateAdviceRequest,
         LandGateAdvice,

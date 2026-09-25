@@ -71,6 +71,7 @@ pub mod share_consumer;
 pub mod slack;
 pub mod slash_commands;
 pub mod state;
+pub mod status;
 pub mod subscribe_grants;
 pub mod subscribe_metrics;
 pub mod subscribe_resume;
