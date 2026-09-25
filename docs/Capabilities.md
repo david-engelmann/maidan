@@ -42,6 +42,19 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## Cluster 413 (source record; no `v413.0.0` tag) — the round-3 decisions
+
+A workspace bounds how long a delegation grant lives, and every authority change commits together with its audit row.
+
+| Change | Where |
+|--------|-------|
+| **Grant ceiling (413.1, D-B):** `maidan_delegation_policies`, default 90 days (1–3650), enforced in the store; `GET/PUT /workspaces/:wid/delegation-policy`, MCP `get/set_delegation_policy`. | `crates/maidan-store/src/*/delegation_grants.rs` |
+| **Transactional authority audit (413.2–413.4b, D-A):** tokens, delegation grants, share tickets, the grant ceiling, workspace purge/erase/import, message purge, legal hold, member freeze, channel membership, review requirements and reviewers, land-gate clear, governance skills, egress targets, app revoke, secrets and SCIM each write their audit row in the change's own transaction; export and secret resolve write first. | `crates/maidan-store/src/*/{tokens,data_audited,governance_audited,scim_audited}.rs` |
+| **Contract:** `authority_audit_contract` fails if handler code calls an unaudited form. | `crates/maidan-server/tests/authority_audit_contract.rs` |
+| **Legal hold in the store (413.3b):** purge, erase, message purge and a replacing import refuse a held workspace inside their transaction; MCP forced restore no longer bypasses it. | `crates/maidan-store/src/*/legal_hold.rs` |
+| **Audit keeps its actors (413.3b):** the audit table's member foreign keys are dropped (pg 0108 / sqlite 0107). | `migrations/` |
+| **Atomic changes (413.3b–413.4b):** forced restore, app revoke, SCIM provisioning and deprovisioning each commit in one transaction; a review requirement is not lowered by a concurrent non-admin write. | `crates/maidan-store/src/` |
+
 ## Cluster 415 (source record; no `v415.0.0` tag) — deploys are immutable and rolling restarts are safe
 
 Deploys name exactly what runs, restarts drain, a vulnerable release is not signed, and operators get one status page.
