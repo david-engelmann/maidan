@@ -229,7 +229,43 @@ async fn the_event_log_hides_what_the_reader_cannot_see() {
     )
     .await;
 
+    // A message posted, edited, then withdrawn by its author.
+    let resp = ctx
+        .client
+        .post(format!("{}/threads/{}/messages", ctx.base(), open.id.0))
+        .header("Authorization", &alice_t)
+        .json(&json!({"body": "withdrawn-words"}))
+        .send()
+        .await
+        .unwrap();
+    let withdrawn: Value = resp.json().await.unwrap();
+    let wid = withdrawn["id"].as_str().unwrap().to_string();
+    for (method, body) in [
+        (
+            reqwest::Method::PATCH,
+            Some(json!({"body": "withdrawn-words-edited"})),
+        ),
+        (reqwest::Method::DELETE, None),
+    ] {
+        let mut req = ctx
+            .client
+            .request(method, format!("{}/messages/{wid}", ctx.base()))
+            .header("Authorization", &alice_t);
+        if let Some(body) = body {
+            req = req.json(&body);
+        }
+        assert!(req.send().await.unwrap().status().is_success());
+    }
+
     let carol_sees = what_reader_sees(&ctx, &carol_t, ws).await;
+    assert!(
+        !carol_sees.contains("withdrawn-words"),
+        "a withdrawn message's words came back through the log"
+    );
+    assert!(
+        carol_sees.contains(&wid),
+        "the withdrawn message keeps its place in the log"
+    );
     assert!(
         carol_sees.contains("public-words"),
         "the public channel is still readable"
@@ -264,7 +300,50 @@ async fn the_event_log_hides_what_the_reader_cannot_see() {
         .unwrap();
     assert_eq!(catch_up.status(), StatusCode::FORBIDDEN);
 
+    // The whole chain, words included, is the admin tier's.
+    let admin = mk_member(store, ws, "admin").await;
+    let admin_t = {
+        let secret = TokenSecret::generate();
+        store
+            .create_api_token(NewApiToken {
+                workspace_id: ws,
+                member_id: admin,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: None,
+                capabilities: vec![
+                    capability::WORKSPACE_READ.into(),
+                    capability::TOKEN_ADMIN.into(),
+                ],
+                expires_at: None,
+            })
+            .await
+            .unwrap();
+        format!("Bearer {}", secret.as_str())
+    };
+    let whole = ctx
+        .client
+        .get(format!(
+            "{}/workspaces/{}/events/catch-up?after_lsn=0&limit=500",
+            ctx.base(),
+            ws.0
+        ))
+        .header("Authorization", &admin_t)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(whole.status(), StatusCode::OK);
+    let whole = whole.text().await.unwrap();
+    assert!(
+        whole.contains("withdrawn-words"),
+        "the raw chain is unchanged"
+    );
+
     let alice_sees = what_reader_sees(&ctx, &alice_t, ws).await;
+    assert!(
+        !alice_sees.contains("withdrawn-words"),
+        "withdrawn is withdrawn for its author too"
+    );
     for words in ["public-words", "private-channel-words", "dm-words"] {
         assert!(alice_sees.contains(words), "alice may see {words}");
     }

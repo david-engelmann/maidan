@@ -87,8 +87,15 @@ pub async fn list_events_for_shape(
         let short = (page.len() as i64) < page_size;
         for row in page {
             after = row.id;
+            let mut row = row;
             let readable = match visible.as_deref_mut() {
-                Some(v) => v.allows(&row).await?,
+                Some(v) => {
+                    let allowed = v.allows(&row).await?;
+                    if allowed {
+                        v.redact_withdrawn(&mut row).await?;
+                    }
+                    allowed
+                }
                 None => true,
             };
             if readable && shape.matches_stored(&row) {

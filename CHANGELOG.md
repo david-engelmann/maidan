@@ -27,6 +27,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   channel's messages to non-members, and every DM to every member. The events
   list now returns only what the caller could see elsewhere, and catch-up, the
   whole log as one chain, requires `token:admin` or a federation peer.
+- **Fixed:** a withdrawn message's words came back through the events list, in
+  its posted and edited events. For a member they now read back withdrawn,
+  body blank, as the message does.
 
 ### Request changes
 
