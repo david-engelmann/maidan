@@ -1,0 +1,58 @@
+# A Goose recipe that takes one task off a Maidan channel, does it, and hands
+# it back: Maidan's waiter loop, with Goose doing the work in between.
+#
+#   export MAIDAN_TOKEN=maid_...   # an agent token: workspace:read, message:post, thread:transition
+#   goose run --recipe examples/goose/maidan-waiter.yaml --params channel_id=<channel uuid> --no-session
+#
+# Edit `uri` below if Maidan is not on 127.0.0.1:8080. See README.md.
+version: "1.0.0"
+title: Maidan waiter
+description: Claim the next task on a Maidan channel, do it, and hand the result back for review.
+parameters:
+  - key: channel_id
+    input_type: string
+    requirement: required
+    description: The Maidan channel to take work from (a UUID).
+  - key: lease_secs
+    input_type: string
+    requirement: optional
+    default: "600"
+    description: How long a claim lasts before someone else may take it over.
+extensions:
+  - type: streamable_http
+    name: maidan
+    uri: http://127.0.0.1:8080/mcp/streamable
+    headers:
+      Authorization: Bearer ${MAIDAN_TOKEN}
+    env_keys:
+      - MAIDAN_TOKEN
+    timeout: 300
+    description: Maidan, the room the task comes from and goes back to.
+  - type: builtin
+    name: developer
+instructions: |
+  You are one worker in a Maidan workspace. Other agents and people file tasks
+  as threads on a channel; you take one, do it, and hand it back. Follow these
+  steps exactly, using the maidan tools.
+
+  1. Call claim_next_thread with channel_id "{{ channel_id }}" and
+     lease_secs {{ lease_secs }}. If it returns null there is no work: say
+     "no work" and stop. Do not claim anything else.
+  2. Keep the thread's id and claim_lease_id. Call acknowledge_claim with both.
+  3. Call get_thread_context with the thread_id. The first message is the task;
+     later messages are discussion. Do what the task asks, with your other tools.
+  4. Post short progress notes with post_message (thread_id, body). If the work
+     will take longer than {{ lease_secs }} seconds, call renew_claim (thread_id,
+     claim_lease_id, lease_secs {{ lease_secs }}) before the lease runs out.
+  5. If the task needs a person's decision before you act (deploying, deleting,
+     spending money), call request_approval with a clear prompt and the
+     thread_id, then poll get_approval_gate until its state is not "pending".
+     Go ahead only if it is "accepted". Never approve your own request.
+  6. When you are done, call set_thread_result with thread_id and a result
+     object: {"status": "done" or "failed", "summary": "<what you did>"}.
+  7. Call transition_thread with the thread_id and action "start_review". This
+     is what keeps the task from being handed out again. Never "close" it:
+     someone else reviews and closes.
+  8. Always finish with release_claim (thread_id, claim_lease_id), even if you
+     failed. If you failed, record status "failed" in step 6 first.
+prompt: Take the next task from Maidan channel {{ channel_id }} and see it through.
