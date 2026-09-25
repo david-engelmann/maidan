@@ -116,7 +116,7 @@ moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 
 | Item | Verified state | Size |
 |---|---|---|
-| #47 templates | `examples/` exists, but without last-verified / owner / compatibility metadata. Compose recipes for coding-agent and deploy are missing | S |
+| #47 templates | ~~Last-verified / owner / compatibility metadata~~ **✅** — every example run 2026-09-25 and recorded in `examples/README.md` (which found `a2a_interop.py` failing against an auth-on server; fixed). Still missing: compose recipes for a coding agent and for deploy | S |
 | ~~#48 CONTRIBUTING handbook-lite~~ **✅ 418.1** | Claiming work, what to expect (security timelines from SECURITY.md; no invented SLA), ownership, claims we do not make (from Claims.md), how a release is cut | S |
 | #50 Goose / OpenHands claimant | No recipe. It's an MCP config plus a walkthrough of the waiter loop | S |
 | ~~#49 paste → artifact~~ **✅** | A file pasted into the `/ui` composer uploads as an artifact (images as `screenshot`) and attaches to the selected thread; text pastes are untouched. Artifacts are content-addressed, so the client filename is never used — a Playwright spec pastes `../../etc/evil.png` and checks it appears nowhere | M |
