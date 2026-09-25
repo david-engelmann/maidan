@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Cluster 414 — nothing grows without bound, nothing hangs forever
+
+- **Fixed:** an abandoned delivery cursor no longer pins event-log retention.
+- **Added:** `idle_in_transaction_session_timeout` and `lock_timeout` on
+  pooled Postgres connections.
+- **Changed:** replica reads require a fresh poll and bounded lag; alert
+  `MaidanReplicaLagHigh`.
+- **Added:** WebSocket message and connection ceilings, per-tool MCP
+  deadlines, a streamable-session reaper and ceiling, and connection gauges.
+- **Fixed:** a lagging presence subscriber gets a fresh snapshot.
+- **Fixed:** failed embedding batches are retried, and a repair sweep embeds
+  whatever is still missing.
+
 ### Cluster 412 — an external MCP verifier
 
 - **Added:** `scripts/mcp-inspector.sh` and a report-only `mcp inspector` CI
