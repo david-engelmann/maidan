@@ -22,7 +22,7 @@ pub async fn record_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     new: &NewDlqEntry,
 ) -> Result<DlqEntry, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let row = sqlx::query(
         "INSERT INTO maidan_agent_work_dlq
              (id, workspace_id, channel_id, thread_id, member_id, reason,

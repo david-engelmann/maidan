@@ -22,7 +22,7 @@ pub async fn create(
     pool: &SqlitePool,
     new: NewWebhookSubscription,
 ) -> Result<WebhookSubscription, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let kinds_json = serde_json::to_string(&new.event_kinds)?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_webhook_subscriptions

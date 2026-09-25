@@ -63,7 +63,7 @@ async fn enforce_tool_budget(
 
 pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, StoreError> {
     enforce_tool_budget(pool, new.thread_id, new_tool_uses(&new.content)).await?;
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let metadata_text = serde_json::to_string(&new.metadata)?;
     let content_text = new
@@ -99,7 +99,7 @@ pub async fn create_with_event(
     dm_conversation_id: Option<DmConversationId>,
 ) -> Result<(Message, StoredEvent), StoreError> {
     enforce_tool_budget(pool, new.thread_id, new_tool_uses(&new.content)).await?;
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let metadata_text = serde_json::to_string(&new.metadata)?;
     let content_text = new

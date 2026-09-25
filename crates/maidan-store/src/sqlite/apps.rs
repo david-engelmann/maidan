@@ -25,7 +25,7 @@ fn parse_ts(s: &str) -> Result<DateTime<Utc>, StoreError> {
 }
 
 pub async fn create_app(pool: &SqlitePool, new: NewApp) -> Result<App, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     sqlx::query(
         "INSERT INTO maidan_apps (id, workspace_id, slug, name, description, created_by)
          VALUES (?, ?, ?, ?, ?, ?)",
@@ -74,7 +74,7 @@ pub async fn create_installation(
     pool: &SqlitePool,
     new: NewAppInstallation,
 ) -> Result<AppInstallation, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let caps = serde_json::to_string(&new.granted_capabilities)?;
     sqlx::query(
         "INSERT INTO maidan_app_installations

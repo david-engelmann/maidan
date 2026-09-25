@@ -23,7 +23,7 @@ fn row_to_sub(row: &sqlx::postgres::PgRow) -> PushSubscription {
 const COLS: &str = "id, member_id, endpoint, p256dh, auth, created_at";
 
 pub async fn add(pool: &PgPool, new: NewPushSubscription) -> Result<PushSubscription, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_push_subscriptions (id, member_id, endpoint, p256dh, auth, created_at)
          VALUES ($1, $2, $3, $4, $5, NOW())

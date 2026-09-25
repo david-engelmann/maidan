@@ -12,7 +12,7 @@ pub async fn upsert_identity(
     pool: &SqlitePool,
     new: NewOidcIdentity,
 ) -> Result<OidcIdentity, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let now = Utc::now();
     let row = sqlx::query(
         "INSERT INTO maidan_oidc_identities

@@ -12,7 +12,7 @@ pub async fn upsert_identity(
     pool: &PgPool,
     new: NewOidcIdentity,
 ) -> Result<OidcIdentity, StoreError> {
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let row = sqlx::query(
         "INSERT INTO maidan_oidc_identities
             (id, workspace_id, issuer, subject, member_id, email, created_at, last_login_at)

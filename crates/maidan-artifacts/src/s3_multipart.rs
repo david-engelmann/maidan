@@ -27,7 +27,7 @@ pub struct CompletedPart {
 impl S3Store {
     /// Start a multipart upload at a temporary object key.
     pub async fn begin_multipart_upload(&self) -> Result<MultipartUpload, ArtifactError> {
-        let object_key = format!("multipart/{}", Uuid::new_v4());
+        let object_key = format!("multipart/{}", Uuid::now_v7());
         let out = self
             .client()
             .create_multipart_upload()

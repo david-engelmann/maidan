@@ -110,7 +110,7 @@ async fn insert_thread(
          VALUES (?, ?, ?, ?, ?, ?)
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
-    .bind(Uuid::new_v4())
+    .bind(Uuid::now_v7())
     .bind(channel_id.0)
     .bind(parent.map(|p| p.0))
     .bind(title)
@@ -194,7 +194,7 @@ pub async fn instantiate(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING {RUN_COLS}"
     ))
-    .bind(Uuid::new_v4())
+    .bind(Uuid::now_v7())
     .bind(recipe.id.0)
     .bind(recipe.workspace_id.0)
     .bind(parent.id.0)

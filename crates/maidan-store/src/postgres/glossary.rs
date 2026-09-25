@@ -21,7 +21,7 @@ pub async fn set(pool: &PgPool, new: &NewGlossaryTerm) -> Result<GlossaryTerm, S
              updated_at = now()
          RETURNING id, workspace_id, term, definition, aliases, created_by, created_at, updated_at",
     )
-    .bind(Uuid::new_v4())
+    .bind(Uuid::now_v7())
     .bind(new.workspace_id.0)
     .bind(&new.term)
     .bind(&new.definition)

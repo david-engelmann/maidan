@@ -14,7 +14,7 @@ use crate::postgres::thread_workers;
 pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title)
          VALUES ($1, $2, $3, $4)
@@ -37,7 +37,7 @@ pub async fn create_with_event(
 ) -> Result<(Thread, StoredEvent), StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
-    let id = Uuid::new_v4();
+    let id = Uuid::now_v7();
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title)

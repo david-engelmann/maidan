@@ -141,7 +141,7 @@ async fn transition_in_tx(
             .map_err(|e| StoreError::Conflict(e.as_str().into()))?;
     }
 
-    let transition_id = Uuid::new_v4();
+    let transition_id = Uuid::now_v7();
     let now = Utc::now();
 
     sqlx::query(
