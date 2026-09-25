@@ -244,7 +244,9 @@ jobs:
   bootstrap-strip:
     name: bootstrap compile-time strip
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A release build: 10–11 min on an idle runner, over 15 on a busy one,
+    # where it was killed mid-compile on three PRs in a day.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: install rust
