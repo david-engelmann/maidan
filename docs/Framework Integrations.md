@@ -8,10 +8,12 @@ framework-independent REST client. Runnable versions are in
 [`examples/`](https://github.com/david-engelmann/maidan/tree/main/examples).
 
 **The catalog is large — well over a hundred tools; don't hand an agent all of them.** The recipes below load
-the catalog and filter to the **six-tool hero loop** — `claim_next_thread`,
-`post_message`, `get_thread_context`, `set_thread_result`, `wait_for_result`,
-`wait_for_ready` — which is all an agent needs to pick up work, do it, and hand back a
-result. The catalog is unchanged server-side; widen the filter as your agent needs. For a
+the catalog and filter to the **seven-tool hero loop** — `claim_next_thread`,
+`post_message`, `get_thread_context`, `set_thread_result`, `transition_thread`,
+`wait_for_result`, `wait_for_ready` — which is all an agent needs to pick up work, do it,
+and hand back a result. `transition_thread` is how finished work leaves the queue: a
+waiter moves its thread to review (`start_review`) once the result is set, or the next
+claim hands the same task out again. The catalog is unchanged server-side; widen the filter as your agent needs. For a
 no-LLM proof of the primitive, run the cross-language lease demo
 ([`examples/lease_demo/`](https://github.com/david-engelmann/maidan/tree/main/examples/lease_demo)):
 a Python and a TypeScript worker claim off one channel and Maidan hands each task to

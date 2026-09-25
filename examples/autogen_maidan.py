@@ -1,7 +1,7 @@
 """Connect Microsoft AutoGen to Maidan's MCP server — filtered to the hero task-loop.
 
 Maidan speaks MCP over Streamable HTTP at POST /mcp/streamable. This loads the catalog
-via autogen-ext's MCP adapter, then **filters to the six-tool lease loop** before
+via autogen-ext's MCP adapter, then **filters to the seven-tool lease loop** before
 handing tools to an agent — the full ~78-tool catalog is unchanged server-side.
 
     # Pin mcp < 2: the 2.x SDK is not yet compatible with these adapters.
@@ -24,6 +24,7 @@ HERO_TOOLS = {
     "post_message",
     "get_thread_context",
     "set_thread_result",
+    "transition_thread",
     "wait_for_result",
     "wait_for_ready",
 }
