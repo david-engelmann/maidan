@@ -32,7 +32,8 @@ services:
       retries: 20
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # See compose.yaml: MinIO's own images are no longer pullable.
+    image: cgr.dev/chainguard/minio@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
     container_name: maidan-dev-minio
     command: server /data --console-address ":9001"
     environment:
