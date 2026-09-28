@@ -700,7 +700,7 @@ fn purge_metadata(result: &WorkspacePurgeResult) -> serde_json::Value {
 /// any more.
 ///
 /// The store decides orphanhood inside its transaction; this runs after it.
-/// Each delete runs under the sha's lock (`reap_artifact_blob`), so a
+/// Each delete runs under a lease on the sha (`reap_artifact_blob`), so a
 /// workspace uploading the same bytes meanwhile either commits its row first,
 /// and the bytes stay, or after, and puts them back.
 pub(super) async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) {

@@ -3,7 +3,7 @@ use maidan_types::{
     Artifact, ArtifactErasure, ArtifactId, ArtifactKind, Event, MemberId, NewArtifact, StoredEvent,
     WorkspaceId,
 };
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
 use crate::error::StoreError;
@@ -38,9 +38,41 @@ const WORKSPACE_VIEW_SQL: &str = "SELECT a.id, a.sha256, a.size_bytes,
        AND (r.workspace_id IS NOT NULL
             OR NOT EXISTS (SELECT 1 FROM maidan_artifact_refs x WHERE x.sha256 = a.sha256))";
 
+/// Whether a live reap lease holds `sha256`: its bytes may be being deleted.
+async fn reap_in_progress(
+    tx: &mut Transaction<'_, Sqlite>,
+    sha256: &str,
+) -> Result<bool, StoreError> {
+    Ok(sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM maidan_artifact_reaps
+                       WHERE sha256 = ? AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+    )
+    .bind(sha256)
+    .fetch_one(&mut **tx)
+    .await?)
+}
+
+/// The write transaction an artifact-row write for `sha256` runs in, begun
+/// once no reap holds the sha. `BEGIN IMMEDIATE` takes the write lock before
+/// the check, so a reap cannot claim the sha between the check and the write.
+async fn begin_sha_write<'a>(
+    pool: &'a SqlitePool,
+    sha256: &str,
+) -> Result<Transaction<'a, Sqlite>, StoreError> {
+    loop {
+        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+        if !reap_in_progress(&mut tx, sha256).await? {
+            return Ok(tx);
+        }
+        tx.rollback().await?;
+        tokio::time::sleep(crate::REAP_POLL).await;
+    }
+}
+
 pub async fn upsert(pool: &SqlitePool, new: NewArtifact) -> Result<Artifact, StoreError> {
     let id = Uuid::now_v7();
     let now = Utc::now();
+    let mut tx = begin_sha_write(pool, &new.sha256).await?;
     let row = sqlx::query(UPSERT_SQL)
         .bind(id)
         .bind(&new.sha256)
@@ -49,21 +81,25 @@ pub async fn upsert(pool: &SqlitePool, new: NewArtifact) -> Result<Artifact, Sto
         .bind(new.kind.as_str())
         .bind(new.uploaded_by.map(|m| m.0))
         .bind(now)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
+    tx.commit().await?;
     row_to_artifact(&row)
 }
 
-/// Delete `sha256`'s bytes if no artifact row holds it. `BEGIN IMMEDIATE` takes
-/// SQLite's write lock before the check, and every upsert is a write, so none
-/// can commit a row until the delete is done. See
+/// Delete `sha256`'s bytes if no artifact row holds it. See
 /// `ArtifactMetaStore::reap_artifact_blob`.
+///
+/// The check and the lease are one short write transaction; the delete runs
+/// outside any transaction, so other writers are never held behind the blob
+/// store. Every artifact-row write for the sha waits while the lease is live.
 pub async fn reap_blob(
     pool: &SqlitePool,
     sha256: &str,
     delete: crate::BlobDelete<'_>,
 ) -> Result<crate::BlobReap, StoreError> {
-    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let token = Uuid::now_v7();
+    let mut tx = begin_sha_write(pool, sha256).await?;
     let held: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM maidan_artifacts WHERE sha256 = ?)")
             .bind(sha256)
@@ -72,11 +108,28 @@ pub async fn reap_blob(
     if held {
         return Ok(crate::BlobReap::Referenced);
     }
-    let reaped = match delete().await {
-        Ok(()) => crate::BlobReap::Deleted,
-        Err(err) => crate::BlobReap::DeleteFailed(err),
-    };
+    // A lapsed lease left by a reaper that died is replaced.
+    sqlx::query(
+        "INSERT INTO maidan_artifact_reaps (sha256, token, expires_at)
+         VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?3))
+         ON CONFLICT (sha256) DO UPDATE
+             SET token = excluded.token, expires_at = excluded.expires_at",
+    )
+    .bind(sha256)
+    .bind(token)
+    .bind(format!("+{} seconds", crate::REAP_LEASE_SECS))
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
+
+    let Some(reaped) = crate::run_blob_delete(delete).await else {
+        return Ok(crate::abandoned_delete());
+    };
+    sqlx::query("DELETE FROM maidan_artifact_reaps WHERE sha256 = ? AND token = ?")
+        .bind(sha256)
+        .bind(token)
+        .execute(pool)
+        .await?;
     Ok(reaped)
 }
 
@@ -91,7 +144,7 @@ pub async fn upsert_with_event(
 ) -> Result<(Artifact, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
     let now = Utc::now();
-    let mut tx = pool.begin().await?;
+    let mut tx = begin_sha_write(pool, &new.sha256).await?;
     let row = sqlx::query(UPSERT_SQL)
         .bind(id)
         .bind(&new.sha256)
