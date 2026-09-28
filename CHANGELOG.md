@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A2A passes the official TCK
+
+- **Added:** `scripts/a2a-tck.sh` runs the official A2A TCK (pinned) over
+  JSON-RPC and HTTP+JSON, in the non-required `a2a tck` CI job that replaces
+  `a2a interop`. 135 tests pass; the six excluded groups and their reasons are
+  in `scripts/a2a-tck/exclusions.txt`.
+- **Changed (breaking for A2A clients):** requests must send
+  `A2A-Version: 1.0`. Messages use the v1.0 shapes (`messageId`,
+  `ROLE_USER`, `{"text": …}` parts). A `contextId` is a thread: a new one
+  opens a thread in the workspace's `a2a` channel. The author is the token's
+  member; `metadata.maidan.threadId`/`authorId` are gone and bypass tokens
+  are refused. The HTTP+JSON binding answers `application/json` with
+  AIP-193 errors.
+- **Added:** `message:stream` and `tasks/{id}:subscribe` on HTTP+JSON;
+  `ListTasks` paging (`nextPageToken`, exact `totalSize`,
+  `contextId`/`status`/`statusTimestampAfter` filters); push-config `token`
+  and `authentication`, sealed with `FEDERATION_ENCRYPTION_KEY`; the card's
+  bearer security scheme, `ETag` and `Cache-Control`.
+- **Fixed:** tasks store no words. History is read from the thread, so a
+  withdrawn message leaves the task too; the migration strips old copies.
+  A task in a thread the caller cannot read is `TaskNotFoundError`.
+
 ### Crypto-shredding: withdrawn words are unreadable everywhere
 
 - **Added:** a message's body, metadata and content are encrypted under a key

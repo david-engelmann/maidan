@@ -89,6 +89,7 @@ pub mod store;
 pub mod test_support;
 pub mod workspace_export;
 
+pub use a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite};
 pub use automation_deliveries::AutomationDeliveryFilter;
 pub use dialect::Dialect;
 pub use error::StoreError;

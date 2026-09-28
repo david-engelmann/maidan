@@ -72,7 +72,7 @@ python examples/langchain_maidan.py
 | [`langchain_maidan.py`](langchain_maidan.py) | Wires Maidan's MCP hero-7 tools into LangChain and checks all seven arrived | `pip install "langchain-mcp-adapters>=0.1,<0.2" "mcp>=1.9,<2"` |
 | [`autogen_maidan.py`](autogen_maidan.py) | The same wiring + check for Microsoft AutoGen | `pip install "autogen-ext[mcp]>=0.4,<0.7" "mcp>=1.9,<2"` |
 | [`rest_maidan.py`](rest_maidan.py) | Plain REST client (self-seed with `--seed`, then one agent turn) | `pip install "httpx>=0.27"` |
-| [`a2a_interop.py`](a2a_interop.py) | A2A v1.0 conformance check (Agent Card + JSON-RPC + REST) | `pip install "httpx>=0.27"` |
+| [`a2a_interop.py`](a2a_interop.py) | A2A v1.0 walkthrough (Agent Card, a conversation over JSON-RPC and HTTP+JSON, streaming, versions); needs `MAIDAN_TOKEN` | `pip install "httpx>=0.27"` |
 
 ### Last verified
 
@@ -84,7 +84,7 @@ change an example or the surface it calls. Owner: the maintainer.
 |---------|----------|---------|--------|-------------------|
 | `lease_demo/` (`scripts/lease-demo.sh`) | 2026-09-25 | `main` @ `111e24ae` | Two distinct fenced claims; both workers acknowledged, reported usage, renewed and released | Python 3.12, Node 23; in-repo SDKs |
 | `rest_maidan.py --seed` | 2026-09-25 | `main` @ `111e24ae` | Seeded a channel and thread in the token's workspace, read context, posted a reply | httpx 0.28.1 |
-| `a2a_interop.py` | 2026-09-25 | `main` @ `111e24ae`, auth on and auth off | All checks passed on both | httpx 0.28.1 |
+| `a2a_interop.py` | 2026-09-28 | `main` @ `bf19d30b` + the A2A TCK change, auth on | All checks passed (also run by `scripts/a2a-tck.sh`) | httpx 0.28.1 |
 | `langchain_maidan.py` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | `wiring ok` — all seven hero tools present, 192 in the catalog | langchain-mcp-adapters 0.1.14, mcp 1.30.0 |
 | `autogen_maidan.py` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | `wiring ok` — all seven hero tools present, 192 in the catalog | autogen-ext 0.6.4, mcp 1.30.0 |
 | `recipes/coding-agent.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Claimed the filed task once, attached the stand-in's patch, result `done`, thread `in_review`; with a shell `AGENT_COMMAND`, exit 0 recorded `done` and exit 3 `failed`, each with its output attached | Docker Compose 5.1.3, `python:3.13-slim` |
@@ -92,9 +92,8 @@ change an example or the surface it calls. Owner: the maintainer.
 | `goose/maidan-waiter.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | Not run inside Goose (needs an LLM provider). The recipe's eight steps were replayed as MCP calls with an app token holding exactly its three capabilities: all ten tools it names are visible, the gate held until accepted, and the thread ended `in_review` and unclaimable | recipe schema per Goose's recipe reference, 2026-09 |
 | `cursor-mcp.json`, `claude-desktop-mcp.json` | 2026-09-25 | — | JSON shape checked in CI; not run inside Cursor or Claude Desktop | — |
 
-`a2a_interop.py` used to create its own workspace, a bootstrap route an auth-on
-server refuses; with a token it now works inside the token's workspace, as
-`rest_maidan.py --seed` does.
+`a2a_interop.py` needs a token: A2A messages are posted as the token's member,
+and a new conversation opens a thread in the workspace's `a2a` channel.
 
 The two framework examples stop at the wiring — they connect, filter the catalog to the
 hero seven, and **exit non-zero if any of the seven is missing**. That check is the point:

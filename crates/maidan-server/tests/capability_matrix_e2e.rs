@@ -233,17 +233,17 @@ async fn a2a_send_message_without_message_post_returns_jsonrpc_forbidden() {
         .client
         .post(format!("{}/a2a/v1/rpc", h.base()))
         .header("Authorization", format!("Bearer {bearer}"))
+        .header("A2A-Version", "1.0")
         .json(&json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "SendMessage",
             "params": {
                 "message": {
-                    "role": "user",
-                    "parts": [{ "type": "text", "text": "hi" }]
-                },
-                "metadata": {
-                    "maidan": { "threadId": thread_id, "authorId": member_id.0 }
+                    "messageId": "m-1",
+                    "contextId": thread_id,
+                    "role": "ROLE_USER",
+                    "parts": [{ "text": "hi" }]
                 }
             }
         }))
@@ -253,7 +253,7 @@ async fn a2a_send_message_without_message_post_returns_jsonrpc_forbidden() {
         .json()
         .await
         .unwrap();
-    assert_eq!(resp["error"]["code"], -32001);
+    assert_eq!(resp["error"]["code"], -32000);
     h.shutdown().await;
 }
 

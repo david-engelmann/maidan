@@ -1,137 +1,45 @@
-//! A2A protocol JSON-RPC: SendMessage posts to a thread; GetTask returns the task.
+//! The A2A v1.0 agent end to end over HTTP: the JSON-RPC and HTTP+JSON
+//! bindings against an auth-enabled server. The official TCK runs in
+//! `scripts/a2a-tck.sh`; these tests pin Maidan's own semantics (contexts are
+//! threads, the author is the caller, tasks hold no words) and the fixes the
+//! TCK drove.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::atomic::AtomicI64;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use futures::StreamExt;
-use maidan_a2a::{A2aClient, SendMessageRequest};
+use maidan_a2a::{A2aClient, Message, Part, Role, SendMessageRequest, SendMessageResponse};
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_bus::InMemoryBus;
-use maidan_server::FederationRuntime;
-use maidan_server::{router, AppState};
-use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_server::{router, AppState, FederationRuntime, WebhookRuntime};
+use maidan_store::{prelude::*, run_sqlite_migrations, A2aTaskWrite};
 use maidan_types::{
-    ApprovalGateState, MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewThread,
-    NewWorkspace,
+    ApprovalGateState, ChannelId, MemberId, MemberKind, MessageId, NewApiToken, NewApprovalGate,
+    NewChannel, NewMember, NewThread, NewWorkspace, ThreadId, WorkspaceId,
 };
+use reqwest::StatusCode;
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
-use std::sync::atomic::AtomicI64;
 
-#[tokio::test]
-async fn a2a_send_message_posts_to_thread_and_get_task_round_trips() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
+const ALL_CAPS: &[&str] = &[
+    capability::WORKSPACE_READ,
+    capability::WORKSPACE_WRITE,
+    capability::MESSAGE_POST,
+];
 
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    let base = format!("http://{addr}");
-
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "a2a-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-
-    let member: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "agent", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let author_id = member["id"].as_str().unwrap();
-
-    let ch: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let channel_id = ch["id"].as_str().unwrap();
-
-    let th: serde_json::Value = client
-        .post(format!("{base}/channels/{channel_id}/threads"))
-        .json(&json!({"title": "a2a"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let thread_id = th["id"].as_str().unwrap();
-
-    let a2a = A2aClient::new(&base).unwrap();
-    let result = a2a
-        .send_message(
-            serde_json::from_value::<SendMessageRequest>(json!({
-                "message": {
-                    "role": "user",
-                    "parts": [{ "type": "text", "text": "via a2a" }]
-                },
-                "metadata": {
-                    "maidan": { "threadId": thread_id, "authorId": author_id }
-                }
-            }))
-            .unwrap(),
-        )
-        .await
-        .unwrap();
-    let task_id = result["task"]["id"].as_str().expect("task id");
-    assert_eq!(
-        result["task"]["status"]["state"].as_str(),
-        Some("TASK_STATE_COMPLETED")
-    );
-
-    let task = a2a.get_task(task_id).await.unwrap();
-    assert_eq!(task.id, task_id);
-
-    let listed: Vec<serde_json::Value> = client
-        .get(format!("{base}/threads/{thread_id}/messages"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(
-        listed.iter().any(|m| m["body"].as_str() == Some("via a2a")),
-        "message body not found"
-    );
+struct H {
+    base: String,
+    http: reqwest::Client,
+    store: Arc<dyn Store>,
+    ws: WorkspaceId,
+    member: MemberId,
+    token: String,
+    _artifacts: tempfile::TempDir,
 }
 
-#[tokio::test]
-async fn a2a_send_message_preserves_parts_as_structured_content() {
+async fn spawn() -> H {
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -146,435 +54,931 @@ async fn a2a_send_message_preserves_parts_as_structured_content() {
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::new();
-    let base = format!("http://{addr}");
-
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "a2a-content"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-    let member: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "agent", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let author_id = member["id"].as_str().unwrap();
-    let ch: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let channel_id = ch["id"].as_str().unwrap();
-    let th: serde_json::Value = client
-        .post(format!("{base}/channels/{channel_id}/threads"))
-        .json(&json!({"title": "a2a"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let thread_id = th["id"].as_str().unwrap();
-
-    let a2a = A2aClient::new(&base).unwrap();
-    a2a.send_message(
-        serde_json::from_value::<SendMessageRequest>(json!({
-            "message": {
-                "role": "user",
-                "parts": [
-                    { "type": "text", "text": "part one" },
-                    { "type": "text", "text": "part two" }
-                ],
-                "citations": [{
-                    "uri": "maidan:event/1",
-                    "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                }]
-            },
-            "metadata": { "maidan": { "threadId": thread_id, "authorId": author_id } }
-        }))
-        .unwrap(),
-    )
-    .await
-    .unwrap();
-
-    let listed: Vec<serde_json::Value> = client
-        .get(format!("{base}/threads/{thread_id}/messages"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let msg = listed
-        .iter()
-        .find(|m| m["body"].as_str() == Some("part one\npart two"))
-        .expect("a2a message with joined body");
-    // The parts are preserved as structured content blocks.
-    let content = msg["content"].as_array().expect("content array");
-    assert_eq!(content.len(), 2);
-    assert_eq!(content[0], json!({"type": "text", "text": "part one"}));
-    assert_eq!(content[1], json!({"type": "text", "text": "part two"}));
-    assert_eq!(msg["metadata"]["citations"][0]["uri"], "maidan:event/1");
-    assert!(msg["metadata"]["citations"][0]["content_hash"]
-        .as_str()
-        .unwrap()
-        .starts_with("sha256:"));
-}
-
-#[tokio::test]
-async fn a2a_send_streaming_message_returns_sse_task_updates() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    let base = format!("http://{addr}");
-
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "a2a-stream-ws"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-
-    let member: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "stream-agent", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let author_id = member["id"].as_str().unwrap();
-
-    let ch: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let channel_id = ch["id"].as_str().unwrap();
-
-    let th: serde_json::Value = client
-        .post(format!("{base}/channels/{channel_id}/threads"))
-        .json(&json!({"title": "stream"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let thread_id = th["id"].as_str().unwrap();
-
-    let a2a = A2aClient::new(&base).unwrap();
-    let events = a2a
-        .send_streaming_message(
-            serde_json::from_value::<SendMessageRequest>(json!({
-                "message": {
-                    "role": "user",
-                    "parts": [{ "type": "text", "text": "streamed" }]
-                },
-                "metadata": {
-                    "maidan": { "threadId": thread_id, "authorId": author_id }
-                }
-            }))
-            .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert!(
-        events.len() >= 2,
-        "expected SSE frames, got {}",
-        events.len()
-    );
-    let first = events[0].result.as_ref().expect("first result");
-    assert_eq!(
-        first["task"]["status"]["state"].as_str(),
-        Some("TASK_STATE_WORKING")
-    );
-    let second = events[1].result.as_ref().expect("second result");
-    assert_eq!(
-        second["statusUpdate"]["status"]["state"].as_str(),
-        Some("TASK_STATE_COMPLETED")
-    );
-    assert_eq!(second["statusUpdate"]["final"].as_bool(), Some(true));
-}
-
-#[tokio::test]
-async fn a2a_get_task_loads_from_store_after_send_message() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    let base = format!("http://{addr}");
-
-    let ws: serde_json::Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "a2a-persist"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-
-    let member: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "agent", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let author_id = member["id"].as_str().unwrap();
-
-    let ch: serde_json::Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let channel_id = ch["id"].as_str().unwrap();
-
-    let th: serde_json::Value = client
-        .post(format!("{base}/channels/{channel_id}/threads"))
-        .json(&json!({}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let thread_id = th["id"].as_str().unwrap();
-
-    let a2a = A2aClient::new(&base).unwrap();
-    let send_resp = a2a
-        .send_message(
-            serde_json::from_value::<SendMessageRequest>(json!({
-                "message": {
-                    "role": "user",
-                    "parts": [{ "type": "text", "text": "persisted" }]
-                },
-                "metadata": {
-                    "maidan": { "threadId": thread_id, "authorId": author_id }
-                }
-            }))
-            .unwrap(),
-        )
-        .await
-        .unwrap();
-    let task_id = send_resp["task"]["id"].as_str().expect("task id");
-
-    let task = a2a.get_task(task_id).await.unwrap();
-    assert_eq!(task.id, task_id);
-    assert_eq!(task.status.state, "TASK_STATE_COMPLETED");
-}
-
-/// A pending held gate surfaces as an `input-required` A2A task (id = the gate
-/// id), so an external agent can discover it via `tasks/get` + `tasks/list`;
-/// resolving the gate makes the task disappear. Runs with auth ENABLED so the
-/// bearer's workspace scopes `tasks/list` (a bypass caller has no real
-/// workspace).
-#[tokio::test]
-async fn a2a_pending_gate_surfaces_as_input_required_task() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-    let state = AppState::new(
+    let bus = Arc::new(InMemoryBus::with_capacity(256));
+    let mut state = AppState::new(
         store.clone(),
         artifacts,
         bus,
         search,
         Arc::new(maidan_search::HashV1Provider),
-        false, // auth ENABLED
+        false, // auth enabled
         false,
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
     );
-    let app = router(state);
+    state.webhooks = WebhookRuntime::new(Some(Arc::new([7u8; 32])));
+    state.a2a_card.public_origin = Some("https://maidan.example".into());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .unwrap();
-    let base = format!("http://{addr}");
+    let app = router(state);
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    // Set the graph up through the store; mint a bearer scoped to the workspace.
     let ws = store
-        .create_workspace(NewWorkspace {
-            name: "gate-task".into(),
-        })
+        .create_workspace(NewWorkspace { name: "a2a".into() })
         .await
-        .unwrap();
-    let agent = store
+        .unwrap()
+        .id;
+    let member = member(store.as_ref(), ws, "caller").await;
+    let token = mint(store.as_ref(), ws, member, ALL_CAPS).await;
+    H {
+        base: format!("http://{addr}"),
+        http: reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap(),
+        store,
+        ws,
+        member,
+        token,
+        _artifacts: dir,
+    }
+}
+
+async fn member(store: &dyn Store, ws: WorkspaceId, handle: &str) -> MemberId {
+    store
         .create_member(NewMember {
-            workspace_id: ws.id,
-            handle: "agent".into(),
+            workspace_id: ws,
+            handle: handle.into(),
             display_name: None,
             kind: MemberKind::Agent,
         })
         .await
-        .unwrap();
-    let channel = store
-        .create_channel(NewChannel {
-            workspace_id: ws.id,
-            name: "general".into(),
-            topic: None,
-            private: false,
-        })
-        .await
-        .unwrap();
-    let thread = store
-        .create_thread(NewThread {
-            channel_id: channel.id,
-            parent_thread_id: None,
-            title: None,
-        })
-        .await
-        .unwrap();
+        .unwrap()
+        .id
+}
+
+async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId, caps: &[&str]) -> String {
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
-            workspace_id: ws.id,
-            member_id: agent.id,
+            workspace_id: ws,
+            member_id: member,
             app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
-            capabilities: vec![
-                capability::MESSAGE_POST.to_string(),
-                capability::WORKSPACE_READ.to_string(),
-            ],
+            capabilities: caps.iter().map(|c| c.to_string()).collect(),
             expires_at: None,
         })
         .await
         .unwrap();
-    let token = secret.as_str().to_string();
-    let rpc = |method: &str, params: Value| {
-        let (client, base, token) = (client.clone(), base.clone(), token.clone());
-        let method = method.to_string();
-        async move {
-            client
-                .post(format!("{base}/a2a/v1/rpc"))
-                .bearer_auth(&token)
-                .json(&json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap()
-        }
-    };
+    secret.as_str().to_string()
+}
 
-    // A real per-message task (completes synchronously).
-    let thread_id = thread.id.0.to_string();
-    let send = rpc(
-        "SendMessage",
-        json!({
-            "message": { "role": "user", "parts": [{ "type": "text", "text": "hi" }] },
-            "metadata": { "maidan": { "threadId": thread_id, "authorId": agent.id.0 } }
-        }),
+async fn channel(store: &dyn Store, ws: WorkspaceId, name: &str, private: bool) -> ChannelId {
+    store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: name.into(),
+            topic: None,
+            private,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+async fn thread(store: &dyn Store, channel_id: ChannelId) -> ThreadId {
+    store
+        .create_thread(NewThread {
+            channel_id,
+            parent_thread_id: None,
+            title: None,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+fn message(text: &str) -> Value {
+    json!({
+        "messageId": uuid::Uuid::new_v4().to_string(),
+        "role": "ROLE_USER",
+        "parts": [{ "text": text }],
+    })
+}
+
+impl H {
+    async fn rpc_as(&self, token: &str, method: &str, params: Value) -> Value {
+        self.http
+            .post(format!("{}/a2a/v1/rpc", self.base))
+            .bearer_auth(token)
+            .header("A2A-Version", "1.0")
+            .json(&json!({ "jsonrpc": "2.0", "id": 7, "method": method, "params": params }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    }
+
+    async fn rpc(&self, method: &str, params: Value) -> Value {
+        self.rpc_as(&self.token, method, params).await
+    }
+
+    /// Send `text` (into `context`, if given) and return the task.
+    async fn send(&self, text: &str, context: Option<&str>) -> Value {
+        let mut msg = message(text);
+        if let Some(context) = context {
+            msg["contextId"] = json!(context);
+        }
+        let resp = self.rpc("SendMessage", json!({ "message": msg })).await;
+        assert!(resp.get("error").is_none(), "SendMessage failed: {resp}");
+        resp["result"]["task"].clone()
+    }
+
+    async fn rest(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
+        let mut req = self
+            .http
+            .request(method, format!("{}/a2a/v1{path}", self.base))
+            .bearer_auth(&self.token)
+            .header("A2A-Version", "1.0");
+        if let Some(body) = body {
+            req = req.json(&body);
+        }
+        let resp = req.send().await.unwrap();
+        let status = resp.status();
+        let text = resp.text().await.unwrap();
+        (status, serde_json::from_str(&text).unwrap_or(Value::Null))
+    }
+
+    async fn get(&self, path: &str) -> (StatusCode, Value) {
+        self.rest(reqwest::Method::GET, path, None).await
+    }
+
+    /// Seed a task that has not finished, which SendMessage never produces.
+    async fn working_task(&self, context: ThreadId) -> String {
+        let id = uuid::Uuid::now_v7().to_string();
+        self.store
+            .upsert_a2a_task(A2aTaskWrite {
+                workspace_id: self.ws,
+                task_id: &id,
+                context_id: Some(&context.0.to_string()),
+                state: "TASK_STATE_WORKING",
+                status_at: chrono::Utc::now(),
+                task_json: json!({
+                    "id": id,
+                    "contextId": context.0.to_string(),
+                    "status": { "state": "TASK_STATE_WORKING" },
+                    "metadata": { "maidan": { "threadId": context.0 } },
+                }),
+            })
+            .await
+            .unwrap();
+        id
+    }
+}
+
+fn error_code(resp: &Value) -> i64 {
+    resp["error"]["code"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("expected an error: {resp}"))
+}
+
+fn reason(resp: &Value) -> &str {
+    resp["error"]["data"][0]["reason"]
+        .as_str()
+        .unwrap_or_default()
+}
+
+/// Every SSE `data:` payload of a response.
+async fn sse(resp: reqwest::Response) -> Vec<Value> {
+    assert!(resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("text/event-stream")));
+    let mut body = String::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        body.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
+    }
+    body.lines()
+        .filter_map(|l| l.strip_prefix("data:"))
+        .map(|d| serde_json::from_str(d.trim()).unwrap())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_conversation_is_a_thread_the_caller_authors() {
+    let h = spawn().await;
+    let a2a = A2aClient::new(&h.base).unwrap().with_bearer(&h.token);
+
+    // No contextId: a new thread in the workspace's `a2a` channel.
+    let sent = a2a
+        .send_message(SendMessageRequest {
+            message: Message {
+                message_id: "m-1".into(),
+                context_id: None,
+                task_id: None,
+                role: Role::User,
+                parts: vec![Part::text("hello from a2a")],
+                metadata: Some(json!({ "trace": "abc" })),
+                extensions: vec![],
+                reference_task_ids: vec![],
+            },
+            configuration: None,
+            metadata: None,
+        })
+        .await
+        .unwrap();
+    let SendMessageResponse::Task(task) = sent else {
+        panic!("expected a task");
+    };
+    assert_eq!(task.status.state, "TASK_STATE_COMPLETED");
+    assert!(task.status.timestamp.as_deref().unwrap().ends_with('Z'));
+    let context = task.context_id.clone().unwrap();
+    let history = task.history.clone().unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(
+        history[0].message_id, "m-1",
+        "the client's messageId round-trips"
+    );
+    assert_eq!(history[0].metadata, Some(json!({ "trace": "abc" })));
+    assert_eq!(history[0].task_id.as_deref(), Some(task.id.as_str()));
+
+    let thread_id = ThreadId(uuid::Uuid::parse_str(&context).unwrap());
+    let thread = h.store.get_thread(thread_id).await.unwrap();
+    let channel = h.store.get_channel(thread.channel_id).await.unwrap();
+    assert_eq!(channel.name, "a2a");
+    assert!(!channel.private);
+    let posted = h.store.list_messages(thread_id, 10).await.unwrap();
+    assert_eq!(posted.len(), 1);
+    assert_eq!(
+        posted[0].author_id, h.member,
+        "the token's member authors it"
+    );
+    assert_eq!(posted[0].body, "hello from a2a");
+
+    // The context carries follow-ups into the same thread.
+    let follow = h.send("a follow-up", Some(&context)).await;
+    assert_eq!(follow["contextId"], json!(context));
+    assert_eq!(h.store.list_messages(thread_id, 10).await.unwrap().len(), 2);
+
+    // A client-chosen context binds to one new thread and keeps it.
+    let first = h.send("client context", Some("conv-42")).await;
+    let second = h.send("again", Some("conv-42")).await;
+    assert_eq!(first["contextId"], json!("conv-42"));
+    let thread_of = |t: &Value| t["metadata"]["maidan"]["threadId"].clone();
+    assert_eq!(thread_of(&first), thread_of(&second));
+    assert_ne!(thread_of(&first), json!(context));
+    // Both land in the one `a2a` channel.
+    let channels = h.store.list_channels(h.ws).await.unwrap();
+    assert_eq!(channels.iter().filter(|c| c.name == "a2a").count(), 1);
+
+    // GetTask renders history from the stored message; historyLength=0 omits it.
+    let got = a2a.get_task(&task.id).await.unwrap();
+    assert_eq!(
+        got.history.unwrap()[0].parts,
+        vec![Part::text("hello from a2a")]
+    );
+    let bare = h
+        .rpc("GetTask", json!({ "id": task.id, "historyLength": 0 }))
+        .await;
+    assert!(bare["result"].get("history").is_none());
+    let bare = h
+        .rpc(
+            "SendMessage",
+            json!({ "message": message("quiet"), "configuration": { "historyLength": 0 } }),
+        )
+        .await;
+    assert!(bare["result"]["task"].get("history").is_none());
+}
+
+#[tokio::test]
+async fn a_context_may_name_a_thread_the_caller_can_read() {
+    let h = spawn().await;
+    let general = channel(h.store.as_ref(), h.ws, "general", false).await;
+    let existing = thread(h.store.as_ref(), general).await;
+    let task = h.send("into general", Some(&existing.0.to_string())).await;
+    assert_eq!(task["metadata"]["maidan"]["threadId"], json!(existing.0));
+    assert_eq!(h.store.list_messages(existing, 10).await.unwrap().len(), 1);
+
+    // A private channel the caller is not in: refused, not silently re-routed.
+    let secret = channel(h.store.as_ref(), h.ws, "secret", true).await;
+    let hidden = thread(h.store.as_ref(), secret).await;
+    let mut msg = message("sneak");
+    msg["contextId"] = json!(hidden.0.to_string());
+    let refused = h.rpc("SendMessage", json!({ "message": msg })).await;
+    assert_eq!(error_code(&refused), -32000);
+    assert!(h.store.list_messages(hidden, 10).await.unwrap().is_empty());
+
+    // Another workspace's thread id is only an unknown context here.
+    let other_ws = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap()
+        .id;
+    let foreign = thread(
+        h.store.as_ref(),
+        channel(h.store.as_ref(), other_ws, "x", false).await,
     )
     .await;
-    let real_task_id = send["result"]["task"]["id"]
-        .as_str()
-        .expect("task id")
-        .to_string();
+    let task = h.send("elsewhere", Some(&foreign.0.to_string())).await;
+    assert_ne!(task["metadata"]["maidan"]["threadId"], json!(foreign.0));
+    assert!(h.store.list_messages(foreign, 10).await.unwrap().is_empty());
+}
 
-    // Open a pending held gate on the thread (as `request_approval` would).
-    let gate = store
+#[tokio::test]
+async fn refusals_carry_the_spec_error_codes() {
+    let h = spawn().await;
+    let done = h.send("done", None).await;
+    let task_id = done["id"].as_str().unwrap();
+
+    // Continuing a completed task: UnsupportedOperation, with ErrorInfo.
+    let mut msg = message("more");
+    msg["taskId"] = json!(task_id);
+    let resp = h
+        .rpc("SendMessage", json!({ "message": msg.clone() }))
+        .await;
+    assert_eq!(error_code(&resp), -32004);
+    assert_eq!(reason(&resp), "UNSUPPORTED_OPERATION");
+    assert_eq!(resp["error"]["data"][0]["domain"], "a2a-protocol.org");
+    assert_eq!(
+        resp["error"]["data"][0]["metadata"]["taskId"],
+        json!(task_id)
+    );
+    // ... into another context: InvalidParams.
+    msg["contextId"] = json!("somewhere-else");
+    assert_eq!(
+        error_code(&h.rpc("SendMessage", json!({ "message": msg })).await),
+        -32602
+    );
+    // ... an unknown task: TaskNotFound.
+    let mut msg = message("more");
+    msg["taskId"] = json!("no-such-task");
+    assert_eq!(
+        error_code(&h.rpc("SendMessage", json!({ "message": msg })).await),
+        -32001
+    );
+
+    // Unsupported part media: ContentTypeNotSupported (JSON-RPC and REST 415).
+    let raw = json!({ "message": {
+        "messageId": "m", "role": "ROLE_USER",
+        "parts": [{ "raw": "dGNr", "mediaType": "application/x-unknown" }],
+    } });
+    let resp = h.rpc("SendMessage", raw.clone()).await;
+    assert_eq!(error_code(&resp), -32005);
+    let (status, body) = h
+        .rest(reqwest::Method::POST, "/message:send", Some(raw))
+        .await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(body["error"]["status"], "INVALID_ARGUMENT");
+    assert_eq!(
+        body["error"]["details"][0]["reason"],
+        "CONTENT_TYPE_NOT_SUPPORTED"
+    );
+
+    // A message without an id, or with no parts: InvalidParams.
+    let resp = h
+        .rpc("SendMessage", json!({ "message": { "role": "ROLE_USER", "parts": [{ "text": "x" }], "messageId": "" } }))
+        .await;
+    assert_eq!(error_code(&resp), -32602);
+
+    // A token without message:post: PermissionDenied.
+    let reader = mint(
+        h.store.as_ref(),
+        h.ws,
+        h.member,
+        &[capability::WORKSPACE_READ],
+    )
+    .await;
+    let resp = h
+        .rpc_as(&reader, "SendMessage", json!({ "message": message("x") }))
+        .await;
+    assert_eq!(error_code(&resp), -32000);
+    // A token that may post but not create threads cannot open a context.
+    let poster = mint(
+        h.store.as_ref(),
+        h.ws,
+        h.member,
+        &[capability::MESSAGE_POST],
+    )
+    .await;
+    let resp = h
+        .rpc_as(&poster, "SendMessage", json!({ "message": message("x") }))
+        .await;
+    assert_eq!(error_code(&resp), -32000);
+
+    // Unknown tasks read as TaskNotFound on every binding.
+    assert_eq!(
+        error_code(&h.rpc("GetTask", json!({ "id": "nope" })).await),
+        -32001
+    );
+    let (status, body) = h.get("/tasks/nope").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"]["status"], "NOT_FOUND");
+    assert_eq!(body["error"]["details"][0]["reason"], "TASK_NOT_FOUND");
+    let resp = h
+        .rpc("GetTask", json!({ "id": task_id, "historyLength": -1 }))
+        .await;
+    assert_eq!(error_code(&resp), -32602);
+}
+
+#[tokio::test]
+async fn the_protocol_version_is_negotiated() {
+    let h = spawn().await;
+    let call = |version: Option<&str>, query: &str| {
+        let mut req = h
+            .http
+            .post(format!("{}/a2a/v1/rpc{query}", h.base))
+            .bearer_auth(&h.token)
+            .json(&json!({ "jsonrpc": "2.0", "id": "v", "method": "ListTasks" }));
+        if let Some(version) = version {
+            req = req.header("A2A-Version", version);
+        }
+        async move { req.send().await.unwrap().json::<Value>().await.unwrap() }
+    };
+    for refused in [
+        call(None, "").await,
+        call(Some("0.3"), "").await,
+        call(Some("2.0"), "").await,
+    ] {
+        assert_eq!(error_code(&refused), -32009, "{refused}");
+        assert_eq!(refused["id"], "v");
+    }
+    assert!(call(Some("1.0.4"), "").await.get("result").is_some());
+    assert!(call(None, "?A2A-Version=1.0").await.get("result").is_some());
+
+    let resp = h
+        .http
+        .get(format!("{}/a2a/v1/tasks", h.base))
+        .bearer_auth(&h.token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["error"]["details"][0]["reason"],
+        "VERSION_NOT_SUPPORTED"
+    );
+    assert_eq!(body["error"]["status"], "UNIMPLEMENTED");
+}
+
+#[tokio::test]
+async fn the_json_rpc_envelope_is_checked() {
+    let h = spawn().await;
+    let post = |path: &str, content_type: &str, body: &str| {
+        h.http
+            .post(format!("{}{path}", h.base))
+            .bearer_auth(&h.token)
+            .header("A2A-Version", "1.0")
+            .header("content-type", content_type)
+            .body(body.to_string())
+            .send()
+    };
+    // The TCK posts to the advertised URL plus a trailing slash.
+    let listed: Value = post(
+        "/a2a/v1/rpc/",
+        "application/json",
+        r#"{"jsonrpc":"2.0","id":1,"method":"ListTasks"}"#,
+    )
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert!(listed["result"]["tasks"].is_array(), "{listed}");
+
+    let parse: Value = post("/a2a/v1/rpc", "application/json", "{not json")
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(error_code(&parse), -32700);
+    assert_eq!(parse["id"], Value::Null);
+
+    let resp = post(
+        "/a2a/v1/rpc",
+        "text/plain",
+        r#"{"jsonrpc":"2.0","id":1,"method":"ListTasks"}"#,
+    )
+    .await
+    .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(error_code(&resp.json::<Value>().await.unwrap()), -32005);
+
+    for (body, code) in [
+        (r#"{"jsonrpc":"1.0","id":3,"method":"ListTasks"}"#, -32600),
+        (r#"{"jsonrpc":"2.0","id":3,"method":"Nope"}"#, -32601),
+        (
+            r#"{"jsonrpc":"2.0","id":3,"method":"GetTask","params":{}}"#,
+            -32602,
+        ),
+    ] {
+        let resp: Value = post("/a2a/v1/rpc", "application/json", body)
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(error_code(&resp), code, "{body}");
+        assert_eq!(resp["id"], 3);
+    }
+}
+
+#[tokio::test]
+async fn tasks_hold_no_words_and_history_follows_shredding() {
+    let h = spawn().await;
+    let task = h.send("a secret plan", None).await;
+    let task_id = task["id"].as_str().unwrap();
+    let row = h.store.get_a2a_task(task_id).await.unwrap().unwrap();
+    let stored = row.task_json.to_string();
+    assert!(
+        !stored.contains("secret plan"),
+        "task row holds words: {stored}"
+    );
+    assert!(row.task_json.get("history").is_none());
+
+    let message_id: uuid::Uuid =
+        serde_json::from_value(task["metadata"]["maidan"]["messageId"].clone()).unwrap();
+    h.store
+        .tombstone_message(MessageId(message_id))
+        .await
+        .unwrap();
+    let got = h.rpc("GetTask", json!({ "id": task_id })).await;
+    assert_eq!(got["result"]["status"]["state"], "TASK_STATE_COMPLETED");
+    assert!(
+        got["result"].get("history").is_none(),
+        "a tombstoned message leaves no history: {got}"
+    );
+}
+
+#[tokio::test]
+async fn list_tasks_pages_filters_and_scopes() {
+    let h = spawn().await;
+    let a = h.send("a", Some("ctx-a")).await;
+    let mut ids = vec![a["id"].as_str().unwrap().to_string()];
+    for text in ["b", "c", "d"] {
+        tokio::time::sleep(Duration::from_millis(3)).await;
+        ids.push(
+            h.send(text, Some("ctx-b")).await["id"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
+    }
+    ids.reverse(); // newest first
+
+    // Keyset pages of two, then an empty token on the last page.
+    let mut seen = Vec::new();
+    let mut token = String::new();
+    loop {
+        let (status, page) = h.get(&format!("/tasks?pageSize=2&pageToken={token}")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(page["pageSize"], 2);
+        assert_eq!(page["totalSize"], 4);
+        for t in page["tasks"].as_array().unwrap() {
+            assert!(t.get("artifacts").is_none(), "artifacts omitted by default");
+            seen.push(t["id"].as_str().unwrap().to_string());
+        }
+        token = page["nextPageToken"].as_str().unwrap().to_string();
+        if token.is_empty() {
+            break;
+        }
+    }
+    assert_eq!(seen, ids, "every task once, newest status first");
+
+    let by_context = h
+        .rpc(
+            "ListTasks",
+            json!({ "contextId": "ctx-a", "includeArtifacts": true }),
+        )
+        .await;
+    let tasks = by_context["result"]["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0]["artifacts"], json!([]));
+    assert_eq!(by_context["result"]["totalSize"], 1);
+
+    let since = h
+        .rpc(
+            "ListTasks",
+            json!({ "statusTimestampAfter": a["status"]["timestamp"] }),
+        )
+        .await;
+    assert_eq!(
+        since["result"]["tasks"].as_array().unwrap().len(),
+        4,
+        "at or after"
+    );
+    let later = h
+        .rpc(
+            "ListTasks",
+            json!({ "statusTimestampAfter": "2099-01-01T00:00:00Z", "historyLength": 0 }),
+        )
+        .await;
+    assert!(later["result"]["tasks"].as_array().unwrap().is_empty());
+    assert_eq!(later["result"]["nextPageToken"], "");
+
+    for bad in [
+        json!({ "pageSize": 0 }),
+        json!({ "pageSize": 101 }),
+        json!({ "status": "TASK_STATE_RUNNING" }),
+        json!({ "statusTimestampAfter": "yesterday" }),
+        json!({ "pageToken": "garbage" }),
+        json!({ "historyLength": -5 }),
+    ] {
+        assert_eq!(
+            error_code(&h.rpc("ListTasks", bad.clone()).await),
+            -32602,
+            "{bad}"
+        );
+    }
+    let (status, _) = h.get("/tasks?pageSize=many").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Tasks in a private channel are invisible to, and uncounted for, others.
+    let secret = channel(h.store.as_ref(), h.ws, "secret", true).await;
+    let hidden = thread(h.store.as_ref(), secret).await;
+    h.store
+        .add_channel_member(secret, h.member, maidan_types::ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    h.send("private", Some(&hidden.0.to_string())).await;
+    let outsider = member(h.store.as_ref(), h.ws, "outsider").await;
+    let outsider_token = mint(h.store.as_ref(), h.ws, outsider, ALL_CAPS).await;
+    let theirs = h.rpc_as(&outsider_token, "ListTasks", json!({})).await;
+    assert_eq!(theirs["result"]["tasks"].as_array().unwrap().len(), 4);
+    assert_eq!(theirs["result"]["totalSize"], 4);
+    let mine = h.rpc("ListTasks", json!({})).await;
+    assert_eq!(mine["result"]["totalSize"], 5);
+}
+
+#[tokio::test]
+async fn cancel_and_subscribe_follow_task_state() {
+    let h = spawn().await;
+    let done = h.send("done", None).await;
+    let done_id = done["id"].as_str().unwrap();
+    let context = ThreadId(uuid::Uuid::parse_str(done["contextId"].as_str().unwrap()).unwrap());
+
+    // A finished task is not cancelable, and there is nothing to subscribe to.
+    let resp = h.rpc("CancelTask", json!({ "id": done_id })).await;
+    assert_eq!(error_code(&resp), -32002);
+    let (status, body) = h
+        .rest(
+            reqwest::Method::POST,
+            &format!("/tasks/{done_id}:cancel"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["status"], "FAILED_PRECONDITION");
+    assert_eq!(
+        error_code(&h.rpc("SubscribeToTask", json!({ "id": done_id })).await),
+        -32004
+    );
+    assert_eq!(
+        error_code(&h.rpc("CancelTask", json!({ "id": "nope" })).await),
+        -32001
+    );
+    let (status, _) = h
+        .rest(reqwest::Method::POST, "/tasks/nope:subscribe", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // A working task streams its state, then its end.
+    let working = h.working_task(context).await;
+    let stream = h
+        .http
+        .get(format!("{}/a2a/v1/tasks/{working}:subscribe", h.base))
+        .bearer_auth(&h.token)
+        .header("A2A-Version", "1.0")
+        .send();
+    let rpc_stream = h
+        .http
+        .post(format!("{}/a2a/v1/rpc", h.base))
+        .bearer_auth(&h.token)
+        .header("A2A-Version", "1.0")
+        .json(&json!({ "jsonrpc": "2.0", "id": 9, "method": "SubscribeToTask", "params": { "id": working } }))
+        .send();
+    let (stream, rpc_stream) = tokio::join!(stream, rpc_stream);
+    let (stream, rpc_stream) = (stream.unwrap(), rpc_stream.unwrap());
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let canceled = h.rpc("CancelTask", json!({ "id": working })).await;
+    assert_eq!(canceled["result"]["status"]["state"], "TASK_STATE_CANCELED");
+
+    let events = sse(stream).await;
+    assert_eq!(events.len(), 2, "{events:?}");
+    assert_eq!(events[0]["task"]["status"]["state"], "TASK_STATE_WORKING");
+    assert_eq!(
+        events[1]["statusUpdate"]["status"]["state"],
+        "TASK_STATE_CANCELED"
+    );
+    assert_eq!(events[1]["statusUpdate"]["taskId"], json!(working));
+    let frames = sse(rpc_stream).await;
+    assert_eq!(frames.len(), 2);
+    assert_eq!(frames[0]["id"], 9);
+    assert_eq!(
+        frames[1]["result"]["statusUpdate"]["status"]["state"],
+        "TASK_STATE_CANCELED"
+    );
+}
+
+#[tokio::test]
+async fn streaming_send_works_over_both_bindings() {
+    let h = spawn().await;
+    let rpc = h
+        .http
+        .post(format!("{}/a2a/v1/rpc", h.base))
+        .bearer_auth(&h.token)
+        .header("A2A-Version", "1.0")
+        .json(
+            &json!({ "jsonrpc": "2.0", "id": "s", "method": "SendStreamingMessage",
+                        "params": { "message": message("streamed") } }),
+        )
+        .send()
+        .await
+        .unwrap();
+    let frames = sse(rpc).await;
+    assert_eq!(frames.len(), 2);
+    assert_eq!(frames[0]["id"], "s");
+    assert_eq!(
+        frames[0]["result"]["task"]["status"]["state"],
+        "TASK_STATE_WORKING"
+    );
+    let update = &frames[1]["result"]["statusUpdate"];
+    assert_eq!(update["status"]["state"], "TASK_STATE_COMPLETED");
+    assert_eq!(update["taskId"], frames[0]["result"]["task"]["id"]);
+    assert!(update.get("final").is_none(), "v1.0 has no `final` flag");
+
+    let rest = h
+        .http
+        .post(format!("{}/a2a/v1/message:stream", h.base))
+        .bearer_auth(&h.token)
+        .header("A2A-Version", "1.0")
+        .json(&json!({ "message": message("streamed over rest") }))
+        .send()
+        .await
+        .unwrap();
+    let events = sse(rest).await;
+    let kinds: Vec<&str> = events
+        .iter()
+        .map(|e| e.as_object().unwrap().keys().next().unwrap().as_str())
+        .collect();
+    assert_eq!(kinds, ["task", "statusUpdate"]);
+
+    let (status, _) = h
+        .rest(
+            reqwest::Method::POST,
+            "/message:shout",
+            Some(json!({ "message": message("x") })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+type Deliveries = Arc<Mutex<Vec<(axum::http::HeaderMap, Value)>>>;
+
+async fn receiver() -> (String, Deliveries) {
+    let seen: Deliveries = Arc::default();
+    let sink = seen.clone();
+    let app = axum::Router::new().route(
+        "/hook",
+        axum::routing::post(
+            move |headers: axum::http::HeaderMap, axum::Json(body): axum::Json<Value>| {
+                let sink = sink.clone();
+                async move {
+                    sink.lock().unwrap().push((headers, body));
+                    StatusCode::OK
+                }
+            },
+        ),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}/hook"), seen)
+}
+
+#[tokio::test]
+async fn push_configs_seal_secrets_and_deliver_the_task() {
+    std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+    let h = spawn().await;
+    let (hook, seen) = receiver().await;
+
+    // Inline on SendMessage: registered before the task completes, so the
+    // completion is delivered with the credentials.
+    let sent = h
+        .rpc(
+            "SendMessage",
+            json!({
+                "message": message("notify me"),
+                "configuration": { "taskPushNotificationConfig": {
+                    "id": "inline", "url": hook, "token": "tok-1",
+                    "authentication": { "scheme": "Bearer", "credentials": "cred-1" },
+                } },
+            }),
+        )
+        .await;
+    let task_id = sent["result"]["task"]["id"].as_str().unwrap().to_string();
+    for _ in 0..50 {
+        if !seen.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    {
+        let seen = seen.lock().unwrap();
+        let (headers, body) = seen.first().expect("a delivery");
+        assert_eq!(headers["authorization"], "Bearer cred-1");
+        assert_eq!(headers["x-a2a-notification-token"], "tok-1");
+        assert_eq!(body["task"]["id"], json!(task_id));
+        assert_eq!(body["task"]["status"]["state"], "TASK_STATE_COMPLETED");
+        assert!(body["task"].get("history").is_none());
+    }
+
+    // The stored row holds ciphertext only; responses never echo secrets.
+    let row = h
+        .store
+        .get_a2a_task_push_config(&task_id, "inline")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(row.auth_scheme.as_deref(), Some("Bearer"));
+    for sealed in [&row.token_ciphertext, &row.auth_credentials_ciphertext] {
+        let sealed = sealed.as_deref().unwrap();
+        assert!(!sealed.contains("tok-1") && !sealed.contains("cred-1"));
+    }
+    let got = h
+        .rpc(
+            "GetTaskPushNotificationConfig",
+            json!({ "taskId": task_id, "id": "inline" }),
+        )
+        .await;
+    assert_eq!(got["result"]["url"], json!(hook));
+    assert_eq!(
+        got["result"]["authentication"],
+        json!({ "scheme": "Bearer" })
+    );
+    assert!(got["result"].get("token").is_none());
+
+    // REST create/list/get/delete; delete is idempotent.
+    let (status, created) = h
+        .rest(
+            reqwest::Method::POST,
+            &format!("/tasks/{task_id}/pushNotificationConfigs"),
+            Some(json!({ "url": "https://hooks.example/a2a", "token": "t2" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    let config_id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(created["taskId"], json!(task_id));
+    assert!(created.get("token").is_none());
+    let (_, listed) = h
+        .get(&format!("/tasks/{task_id}/pushNotificationConfigs"))
+        .await;
+    assert_eq!(listed["configs"].as_array().unwrap().len(), 2);
+    assert_eq!(listed["nextPageToken"], "");
+    let path = format!("/tasks/{task_id}/pushNotificationConfigs/{config_id}");
+    for _ in 0..2 {
+        let (status, _) = h.rest(reqwest::Method::DELETE, &path, None).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, body) = h.get(&path).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"]["details"][0]["reason"], "TASK_NOT_FOUND");
+
+    // A path/body mismatch, a private target, and an unknown task.
+    let (status, _) = h
+        .rest(
+            reqwest::Method::POST,
+            &format!("/tasks/{task_id}/pushNotificationConfigs"),
+            Some(json!({ "taskId": "other", "url": "https://hooks.example" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let resp = h
+        .rpc(
+            "CreateTaskPushNotificationConfig",
+            json!({ "task_id": "nope", "url": "https://hooks.example" }),
+        )
+        .await;
+    assert_eq!(error_code(&resp), -32001, "proto field names parse too");
+}
+
+#[tokio::test]
+async fn a_pending_gate_is_an_input_required_task() {
+    let h = spawn().await;
+    let general = channel(h.store.as_ref(), h.ws, "general", false).await;
+    let gate_thread = thread(h.store.as_ref(), general).await;
+    let real = h.send("real", None).await;
+    let gate = h
+        .store
         .create_approval_gate(&NewApprovalGate {
-            workspace_id: ws.id,
-            thread_id: Some(thread.id),
-            requested_by: agent.id,
+            workspace_id: h.ws,
+            thread_id: Some(gate_thread),
+            requested_by: h.member,
             prompt: "Deploy to prod?".into(),
             schema: None,
         })
@@ -582,896 +986,119 @@ async fn a2a_pending_gate_surfaces_as_input_required_task() {
         .unwrap();
     let gate_id = gate.id.0.to_string();
 
-    // GetTask(gate_id) → the gate as an input-required task.
-    let got = rpc("GetTask", json!({ "id": gate_id })).await;
-    assert_eq!(got["result"]["id"], json!(gate_id));
+    let got = h.rpc("GetTask", json!({ "id": gate_id })).await;
     assert_eq!(
         got["result"]["status"]["state"],
-        json!("TASK_STATE_INPUT_REQUIRED")
+        "TASK_STATE_INPUT_REQUIRED"
     );
-    assert_eq!(got["result"]["contextId"], json!(thread_id));
-
-    // ListTasks (REST §11) leads with the gate-task and still shows the real task.
-    let list: Value = client
-        .get(format!("{base}/a2a/v1/tasks"))
-        .bearer_auth(&token)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let tasks = list["tasks"].as_array().unwrap();
-    assert!(
-        tasks.iter().any(|t| t["id"] == json!(gate_id)
-            && t["status"]["state"] == json!("TASK_STATE_INPUT_REQUIRED")),
-        "the gate is listed as an input-required task"
-    );
-    assert!(
-        tasks.iter().any(|t| t["id"] == json!(real_task_id)),
-        "the real per-message task is still listed"
-    );
-
-    // `status=input-required` returns exactly the gate; a filter for another
-    // state excludes it. `pageSize` is clamped to the spec max of 100.
-    let list_ir = |status: &str| {
-        let (client, base, token) = (client.clone(), base.clone(), token.clone());
-        let status = status.to_string();
-        async move {
-            client
-                .get(format!("{base}/a2a/v1/tasks?status={status}"))
-                .bearer_auth(&token)
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap()
-        }
-    };
-    let only_gates = list_ir("input-required").await;
-    let g = only_gates["tasks"].as_array().unwrap();
-    assert_eq!(g.len(), 1, "only the input-required gate matches");
-    assert_eq!(g[0]["id"], json!(gate_id));
-    let only_done = list_ir("TASK_STATE_COMPLETED").await;
-    let d = only_done["tasks"].as_array().unwrap();
-    assert!(
-        d.iter().any(|t| t["id"] == json!(real_task_id))
-            && !d.iter().any(|t| t["id"] == json!(gate_id)),
-        "status=completed returns the real task, not the gate"
-    );
-    let clamped: Value = client
-        .get(format!("{base}/a2a/v1/tasks?pageSize=500"))
-        .bearer_auth(&token)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+    assert_eq!(got["result"]["status"]["message"]["role"], "ROLE_AGENT");
     assert_eq!(
-        clamped["pageSize"],
-        json!(100),
-        "pageSize is clamped to 100"
+        got["result"]["status"]["message"]["parts"][0]["text"],
+        "Deploy to prod?"
     );
+    assert_eq!(got["result"]["contextId"], json!(gate_thread.0.to_string()));
 
-    // The REST §11 binding uses `application/a2a+json`, not `application/json`.
-    let ct_resp = client
-        .get(format!("{base}/a2a/v1/tasks"))
-        .bearer_auth(&token)
-        .send()
-        .await
-        .unwrap();
+    let only = h
+        .rpc("ListTasks", json!({ "status": "input-required" }))
+        .await;
+    let tasks = only["result"]["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0]["id"], json!(gate_id));
+    let all = h.rpc("ListTasks", json!({})).await;
+    assert_eq!(all["result"]["totalSize"], 2);
+    let done = h
+        .rpc("ListTasks", json!({ "status": "TASK_STATE_COMPLETED" }))
+        .await;
+    let done = done["result"]["tasks"].as_array().unwrap();
+    assert_eq!(done.len(), 1);
+    assert_eq!(done[0]["id"], real["id"]);
+
+    // A gate is answered through approvals, not A2A.
     assert_eq!(
-        ct_resp
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok()),
-        Some("application/a2a+json"),
-        "REST §11 responses carry the A2A media type"
+        error_code(&h.rpc("CancelTask", json!({ "id": gate_id })).await),
+        -32002
     );
-
-    // `statusTimestampAfter` filters by the task's status timestamp.
-    let list_after = |ts: &str| {
-        let (client, base, token) = (client.clone(), base.clone(), token.clone());
-        let ts = ts.to_string();
-        async move {
-            client
-                .get(format!("{base}/a2a/v1/tasks?statusTimestampAfter={ts}"))
-                .bearer_auth(&token)
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap()
-        }
-    };
-    let future = list_after("2099-01-01T00:00:00Z").await;
-    assert!(
-        future["tasks"].as_array().unwrap().is_empty(),
-        "nothing changed after a far-future instant"
-    );
-    let past = list_after("2000-01-01T00:00:00Z").await;
-    assert!(
-        !past["tasks"].as_array().unwrap().is_empty(),
-        "everything changed after a far-past instant"
-    );
-    let bad = client
-        .get(format!(
-            "{base}/a2a/v1/tasks?statusTimestampAfter=not-a-date"
-        ))
-        .bearer_auth(&token)
-        .send()
-        .await
-        .unwrap();
+    let mut msg = message("yes");
+    msg["taskId"] = json!(gate_id);
     assert_eq!(
-        bad.status(),
-        reqwest::StatusCode::BAD_REQUEST,
-        "a malformed statusTimestampAfter is rejected"
+        error_code(&h.rpc("SendMessage", json!({ "message": msg })).await),
+        -32004
     );
-
-    // Resolving the gate makes the task disappear (no stale status).
-    store
-        .resolve_approval_gate(gate.id, agent.id, ApprovalGateState::Accepted, None)
-        .await
-        .unwrap();
-    let gone = rpc("GetTask", json!({ "id": gate_id })).await;
-    assert!(
-        gone.get("error").is_some(),
-        "a resolved gate is no longer a task"
-    );
-    let list2: Value = client
-        .get(format!("{base}/a2a/v1/tasks"))
-        .bearer_auth(&token)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(
-        !list2["tasks"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|t| t["id"] == json!(gate_id)),
-        "the resolved gate is gone from the list"
-    );
-}
-
-#[tokio::test]
-async fn a2a_subscribe_to_task_rejects_terminal_task() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-
-    let ws = store
-        .create_workspace(maidan_types::NewWorkspace { name: "sub".into() })
-        .await
-        .unwrap();
-    let task = serde_json::json!({
-        "id": "done-task",
-        "status": { "state": "TASK_STATE_COMPLETED" }
-    });
-    store
-        .upsert_a2a_task(ws.id, "done-task", task)
-        .await
-        .unwrap();
-
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-    let client = reqwest::Client::new();
-    let resp: serde_json::Value = client
-        .post(format!("http://{addr}/a2a/v1/rpc"))
-        .json(&json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "SubscribeToTask",
-            "params": { "id": "done-task" }
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(resp["error"]["code"], -32005);
-}
-
-#[tokio::test]
-async fn a2a_subscribe_to_task_streams_working_task() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-
-    let ws = store
-        .create_workspace(maidan_types::NewWorkspace {
-            name: "sub2".into(),
-        })
-        .await
-        .unwrap();
-    store
-        .upsert_a2a_task(
-            ws.id,
-            "work-task",
-            serde_json::json!({
-                "id": "work-task",
-                "status": { "state": "TASK_STATE_WORKING" }
-            }),
+    let resp = h
+        .rpc(
+            "CreateTaskPushNotificationConfig",
+            json!({ "taskId": gate_id, "url": "https://hooks.example" }),
         )
+        .await;
+    assert_eq!(error_code(&resp), -32003);
+
+    h.store
+        .resolve_approval_gate(gate.id, h.member, ApprovalGateState::Accepted, None)
         .await
         .unwrap();
-
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("http://{addr}/a2a/v1/rpc"))
-        .json(&json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "SubscribeToTask",
-            "params": { "id": "work-task" }
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), reqwest::StatusCode::OK);
-    let body = resp.text().await.unwrap();
-    assert!(body.contains("TASK_STATE_WORKING"));
-    assert!(body.contains("work-task"));
+    assert_eq!(
+        error_code(&h.rpc("GetTask", json!({ "id": gate_id })).await),
+        -32001
+    );
 }
 
 #[tokio::test]
-async fn a2a_tasks_cancel_marks_working_task_canceled() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-
-    let ws = store
-        .create_workspace(maidan_types::NewWorkspace {
-            name: "cancel-ws".into(),
-        })
-        .await
-        .unwrap();
-    store
-        .upsert_a2a_task(
-            ws.id,
-            "cancel-me",
-            serde_json::json!({
-                "id": "cancel-me",
-                "status": { "state": "TASK_STATE_WORKING" }
-            }),
-        )
-        .await
-        .unwrap();
-
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-    let client = reqwest::Client::new();
-    let resp: serde_json::Value = client
-        .post(format!("http://{addr}/a2a/v1/rpc"))
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "CancelTask",
-            "params": { "id": "cancel-me" }
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(resp["result"]["status"]["state"], "TASK_STATE_CANCELED");
-
-    let resp2: serde_json::Value = client
-        .post(format!("http://{addr}/a2a/v1/rpc"))
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "SubscribeToTask",
-            "params": { "id": "cancel-me" }
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(resp2["error"]["code"], -32005);
-}
-
-#[tokio::test]
-async fn a2a_subscribe_to_task_emits_progress_when_task_becomes_terminal() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-
-    let ws = store
-        .create_workspace(maidan_types::NewWorkspace {
-            name: "progress-ws".into(),
-        })
-        .await
-        .unwrap();
-    store
-        .upsert_a2a_task(
-            ws.id,
-            "progress-task",
-            serde_json::json!({
-                "id": "progress-task",
-                "status": { "state": "TASK_STATE_WORKING" }
-            }),
-        )
-        .await
-        .unwrap();
-
-    let store_bg = store.clone();
-    let ws_id = ws.id;
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        store_bg
-            .upsert_a2a_task(
-                ws_id,
-                "progress-task",
-                serde_json::json!({
-                    "id": "progress-task",
-                    "status": { "state": "TASK_STATE_COMPLETED" }
-                }),
-            )
-            .await
-            .unwrap();
-    });
-
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .unwrap();
-    let resp = client
-        .post(format!("http://{addr}/a2a/v1/rpc"))
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "SubscribeToTask",
-            "params": { "id": "progress-task" }
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), reqwest::StatusCode::OK);
-
-    let mut buf = String::new();
-    let mut stream = resp.bytes_stream();
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
-    while tokio::time::Instant::now() < deadline {
-        let Some(chunk) = stream.next().await else {
-            break;
-        };
-        buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
-        if buf.contains("TASK_STATE_COMPLETED") && buf.contains("statusUpdate") {
-            break;
-        }
-    }
-    assert!(
-        buf.contains("TASK_STATE_WORKING"),
-        "expected initial task frame"
-    );
-    assert!(
-        buf.contains("statusUpdate"),
-        "expected progress frame, got: {buf}"
-    );
-    assert!(buf.contains("TASK_STATE_COMPLETED"));
-}
-
-/// Per-task push notification configs — Create/Get/List/Delete over JSON-RPC
-/// against a real task created by SendMessage.
-#[tokio::test]
-async fn a2a_task_push_config_create_get_list_delete() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::new();
-    let base = format!("http://{addr}");
-
-    // workspace / member / channel / thread
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "pc"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let workspace_id = ws["id"].as_str().unwrap();
-    let member: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/members"))
-        .json(&json!({"handle": "agent", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let author_id = member["id"].as_str().unwrap();
-    let ch: Value = client
-        .post(format!("{base}/workspaces/{workspace_id}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let channel_id = ch["id"].as_str().unwrap();
-    let th: Value = client
-        .post(format!("{base}/channels/{channel_id}/threads"))
-        .json(&json!({"title": "pc"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let thread_id = th["id"].as_str().unwrap();
-
-    let rpc = |method: &'static str, params: Value| {
-        let client = client.clone();
-        let base = base.clone();
-        async move {
-            client
-                .post(format!("{base}/a2a/v1/rpc"))
-                .json(&json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}))
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap()
-        }
-    };
-
-    // Create a task via SendMessage.
-    let sent = rpc(
-        "SendMessage",
-        json!({
-            "message": {"role": "user", "parts": [{"type": "text", "text": "hi"}]},
-            "metadata": {"maidan": {"threadId": thread_id, "authorId": author_id}}
-        }),
-    )
-    .await;
-    let task_id = sent["result"]["task"]["id"].as_str().unwrap().to_string();
-
-    // Create a push config (server generates the id).
-    let created = rpc(
-        "CreateTaskPushNotificationConfig",
-        json!({"taskId": task_id, "url": "https://hook.example/a"}),
-    )
-    .await;
-    let config_id = created["result"]["id"].as_str().unwrap().to_string();
-    assert_eq!(created["result"]["taskId"].as_str(), Some(task_id.as_str()));
+async fn the_agent_card_is_cacheable_and_declares_auth() {
+    let h = spawn().await;
+    let url = format!("{}/.well-known/agent-card.json", h.base);
+    let resp = h.http.get(&url).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let headers = resp.headers().clone();
+    assert_eq!(headers["cache-control"], "public, max-age=300");
+    assert!(headers.contains_key("last-modified"));
+    assert_eq!(headers["content-type"], "application/json");
+    let etag = headers["etag"].to_str().unwrap().to_string();
+    let card: Value = resp.json().await.unwrap();
     assert_eq!(
-        created["result"]["url"].as_str(),
-        Some("https://hook.example/a")
-    );
-
-    // Get it back.
-    let got = rpc(
-        "GetTaskPushNotificationConfig",
-        json!({"taskId": task_id, "id": config_id}),
-    )
-    .await;
-    assert_eq!(
-        got["result"]["url"].as_str(),
-        Some("https://hook.example/a")
-    );
-
-    // List: exactly one.
-    let listed = rpc(
-        "ListTaskPushNotificationConfigs",
-        json!({"taskId": task_id}),
-    )
-    .await;
-    assert_eq!(listed["result"]["configs"].as_array().unwrap().len(), 1);
-
-    // Delete it, then the list is empty and a re-get errors.
-    let deleted = rpc(
-        "DeleteTaskPushNotificationConfig",
-        json!({"taskId": task_id, "id": config_id}),
-    )
-    .await;
-    assert!(deleted["result"].is_object());
-    let listed2 = rpc(
-        "ListTaskPushNotificationConfigs",
-        json!({"taskId": task_id}),
-    )
-    .await;
-    assert_eq!(listed2["result"]["configs"].as_array().unwrap().len(), 0);
-    let missing = rpc(
-        "GetTaskPushNotificationConfig",
-        json!({"taskId": task_id, "id": config_id}),
-    )
-    .await;
-    assert!(
-        missing["error"].is_object(),
-        "get after delete should error"
-    );
-}
-
-/// The public Agent Card is A2A v1.0 spec-shaped (§4.4.1).
-#[tokio::test]
-async fn agent_card_is_spec_shaped() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::new();
-    let base = format!("http://{addr}");
-
-    let card: Value = client
-        .get(format!("{base}/.well-known/agent-card.json"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-
-    // Required §4.4.1 fields.
-    assert_eq!(card["name"].as_str(), Some("maidan"));
-    assert!(card["description"].as_str().is_some_and(|d| !d.is_empty()));
-    assert!(card["version"].as_str().is_some());
-    assert!(card["provider"]["organization"].as_str().is_some());
-    // supportedInterfaces: first entry is the preferred JSON-RPC binding.
-    let iface = &card["supportedInterfaces"][0];
-    assert_eq!(iface["protocolBinding"].as_str(), Some("JSONRPC"));
-    assert_eq!(iface["protocolVersion"].as_str(), Some("1.0"));
-    assert!(iface["url"].as_str().is_some());
-    // capabilities object.
-    assert_eq!(card["capabilities"]["streaming"].as_bool(), Some(true));
-    assert_eq!(
-        card["capabilities"]["pushNotifications"].as_bool(),
-        Some(true)
+        card["supportedInterfaces"],
+        json!([
+            { "url": "https://maidan.example/a2a/v1/rpc", "protocolBinding": "JSONRPC", "protocolVersion": "1.0" },
+            { "url": "https://maidan.example/a2a/v1", "protocolBinding": "HTTP+JSON", "protocolVersion": "1.0" },
+        ])
     );
     assert_eq!(
-        card["capabilities"]["extendedAgentCard"].as_bool(),
-        Some(true)
+        card["securitySchemes"]["bearer"]["httpAuthSecurityScheme"]["scheme"],
+        "Bearer"
     );
-    // input/output modes + skills are non-empty.
-    assert!(card["defaultInputModes"]
-        .as_array()
-        .is_some_and(|m| !m.is_empty()));
-    assert!(card["defaultOutputModes"]
-        .as_array()
-        .is_some_and(|m| !m.is_empty()));
-    assert!(card["skills"].as_array().is_some_and(|s| !s.is_empty()));
-}
-
-/// The HTTP+JSON/REST binding (§11) maps the same operations as the JSON-RPC
-/// endpoint. Exercises message:send → get → list → push-config CRUD →
-/// extendedAgentCard, and confirms the tasks/{id}:cancel custom method routes.
-#[tokio::test]
-async fn a2a_rest_binding_maps_operations() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-    let app = router(AppState::for_tests(store, artifacts, bus, search));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::new();
-    let base = format!("http://{addr}");
-
-    let ws: Value = client
-        .post(format!("{base}/workspaces"))
-        .json(&json!({"name": "rest"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let wid = ws["id"].as_str().unwrap();
-    let member: Value = client
-        .post(format!("{base}/workspaces/{wid}/members"))
-        .json(&json!({"handle": "a", "kind": "agent"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let author = member["id"].as_str().unwrap();
-    let ch: Value = client
-        .post(format!("{base}/workspaces/{wid}/channels"))
-        .json(&json!({"name": "general"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let cid = ch["id"].as_str().unwrap();
-    let th: Value = client
-        .post(format!("{base}/channels/{cid}/threads"))
-        .json(&json!({"title": "rest"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let tid = th["id"].as_str().unwrap();
-
-    // message:send (REST) → 200 with a task.
-    let sent = client
-        .post(format!("{base}/a2a/v1/message:send"))
-        .json(&json!({
-            "message": {"role": "user", "parts": [{"type": "text", "text": "hi"}]},
-            "metadata": {"maidan": {"threadId": tid, "authorId": author}}
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(sent.status(), reqwest::StatusCode::OK);
-    let sent: Value = sent.json().await.unwrap();
-    let task_id = sent["task"]["id"].as_str().unwrap().to_string();
-
-    // get task.
-    let got = client
-        .get(format!("{base}/a2a/v1/tasks/{task_id}"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(got.status(), reqwest::StatusCode::OK);
     assert_eq!(
-        got.json::<Value>().await.unwrap()["id"].as_str(),
-        Some(task_id.as_str())
+        card["securityRequirements"],
+        json!([{ "schemes": { "bearer": { "list": [] } } }])
     );
+    assert_eq!(card["capabilities"]["extendedAgentCard"], true);
 
-    // list tasks: the REST route maps to ListTasks and returns the response shape.
-    // (Non-empty contents under RBAC are proven by the auth-enabled test in
-    // channel_access_e2e; this bypass server has no single workspace to scope by.)
-    let listed_resp = client
-        .get(format!("{base}/a2a/v1/tasks"))
+    let fresh = h
+        .http
+        .get(&url)
+        .header("if-none-match", &etag)
         .send()
         .await
         .unwrap();
-    assert_eq!(listed_resp.status(), reqwest::StatusCode::OK);
-    let listed: Value = listed_resp.json().await.unwrap();
-    assert!(listed["tasks"].is_array());
+    assert_eq!(fresh.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(fresh.headers()["etag"], etag.as_str());
+    let stale = h
+        .http
+        .get(&url)
+        .header("if-none-match", "\"other\"")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), StatusCode::OK);
 
-    // push-config create → get → list → delete.
-    let created: Value = client
-        .post(format!(
-            "{base}/a2a/v1/tasks/{task_id}/pushNotificationConfigs"
-        ))
-        .json(&json!({"url": "https://hook.example/x"}))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let config_id = created["id"].as_str().unwrap().to_string();
-    assert_eq!(created["url"].as_str(), Some("https://hook.example/x"));
-    let got_pc = client
-        .get(format!(
-            "{base}/a2a/v1/tasks/{task_id}/pushNotificationConfigs/{config_id}"
-        ))
+    // The extended card needs a credential; REST success is application/json.
+    let (status, extended) = h.get("/extendedAgentCard").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(extended["name"], card["name"]);
+    let anonymous = h
+        .http
+        .get(format!("{}/a2a/v1/extendedAgentCard", h.base))
+        .header("A2A-Version", "1.0")
         .send()
         .await
         .unwrap();
-    assert_eq!(got_pc.status(), reqwest::StatusCode::OK);
-    let list_pc: Value = client
-        .get(format!(
-            "{base}/a2a/v1/tasks/{task_id}/pushNotificationConfigs"
-        ))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(list_pc["configs"].as_array().unwrap().len(), 1);
-    let del = client
-        .delete(format!(
-            "{base}/a2a/v1/tasks/{task_id}/pushNotificationConfigs/{config_id}"
-        ))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(del.status(), reqwest::StatusCode::OK);
-
-    // extendedAgentCard (REST) → spec-shaped card.
-    let card: Value = client
-        .get(format!("{base}/a2a/v1/extendedAgentCard"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(card["name"].as_str(), Some("maidan"));
-
-    // tasks/{id}:cancel custom method routes (200 or a mapped 4xx, never a 404 route-miss).
-    let cancel = client
-        .post(format!("{base}/a2a/v1/tasks/{task_id}:cancel"))
-        .send()
-        .await
-        .unwrap();
-    assert_ne!(
-        cancel.status(),
-        reqwest::StatusCode::NOT_FOUND,
-        "cancel custom-method route should match"
-    );
-}
-
-/// With a public origin + advertised gRPC address configured, the Agent Card
-/// advertises absolute HTTP interface URLs and a GRPC interface (§5.2).
-#[tokio::test]
-async fn agent_card_advertises_configured_transports() {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(4)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
-    let dir = tempfile::tempdir().unwrap();
-    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(InMemoryBus::with_capacity(64));
-    let mut state = AppState::for_tests(store, artifacts, bus, search);
-    state.a2a_card = maidan_server::a2a_agent::A2aCardConfig {
-        public_origin: Some("https://maidan.example".into()),
-        grpc_public_addr: Some("grpc.maidan.example:443".into()),
-    };
-    let app = router(state);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    let _server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let client = reqwest::Client::new();
-    let base = format!("http://{addr}");
-
-    let card: Value = client
-        .get(format!("{base}/.well-known/agent-card.json"))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let ifaces = card["supportedInterfaces"].as_array().unwrap();
-    // HTTP interfaces are absolute (origin-prefixed).
-    let jsonrpc = ifaces
-        .iter()
-        .find(|i| i["protocolBinding"] == "JSONRPC")
-        .unwrap();
-    assert_eq!(
-        jsonrpc["url"].as_str(),
-        Some("https://maidan.example/a2a/v1/rpc")
-    );
-    let rest = ifaces
-        .iter()
-        .find(|i| i["protocolBinding"] == "HTTP+JSON")
-        .unwrap();
-    assert_eq!(rest["url"].as_str(), Some("https://maidan.example/a2a/v1"));
-    // The gRPC interface is advertised at the configured address.
-    let grpc = ifaces
-        .iter()
-        .find(|i| i["protocolBinding"] == "GRPC")
-        .expect("grpc interface advertised");
-    assert_eq!(grpc["url"].as_str(), Some("grpc.maidan.example:443"));
-    assert_eq!(grpc["protocolVersion"].as_str(), Some("1.0"));
+    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
 }

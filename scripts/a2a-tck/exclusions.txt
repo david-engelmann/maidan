@@ -1,0 +1,18 @@
+# A2A TCK tests Maidan does not run, one test-id prefix per line with its reason.
+# scripts/a2a-tck.sh deselects them; an entry that stops matching fails the run.
+#
+# The TCK drives these through its reference agent's scenario executor: the
+# messageId prefix (tck-artifact-*, tck-message-response, ...) tells that agent
+# to answer with artifacts or a bare Message. Maidan is not a scripted agent:
+# SendMessage posts the message to a workspace thread and completes the task,
+# so it has no artifacts to show and never replies with a Message.
+tests/compatibility/core_operations/test_artifacts.py::TestTextArtifact  # scenario executor: needs a task with a text artifact
+tests/compatibility/core_operations/test_artifacts.py::TestFileArtifact  # scenario executor: needs a task with a file artifact
+tests/compatibility/core_operations/test_artifacts.py::TestFileUrlArtifact  # scenario executor: needs a task with a file-url artifact
+tests/compatibility/core_operations/test_artifacts.py::TestDataArtifact  # scenario executor: needs a task with a data artifact
+tests/compatibility/core_operations/test_artifacts.py::TestMessageResponse  # scenario executor: needs a direct Message reply
+# TCK defect: the CORE-SEND-003 requirement lacks an expected_error, so the
+# generic runner demands success from a request that must fail. Maidan answers
+# it with ContentTypeNotSupportedError (-32005 / HTTP 415), which is what the
+# requirement text asks for; tests/a2a_protocol_e2e.rs pins that.
+tests/compatibility/core_operations/test_requirements.py::test_must_requirement[CORE-SEND-003-  # TCK defect: no expected_error, so the runner demands success

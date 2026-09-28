@@ -13,7 +13,19 @@
   },
   {
     "method": "POST",
+    "path": "/a2a/v1/rpc/",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "POST",
     "path": "/a2a/v1/message:send",
+    "capability": "per-rpc",
+    "surface": "a2a"
+  },
+  {
+    "method": "POST",
+    "path": "/a2a/v1/message:stream",
     "capability": "per-rpc",
     "surface": "a2a"
   },

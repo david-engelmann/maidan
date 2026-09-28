@@ -54,13 +54,18 @@ pub fn router(state: AppState) -> Router {
         .route("/mcp/streamable", post(mcp_streamable::streamable))
         .route("/mcp/streamable", get(mcp_streamable::stream_get))
         .route("/mcp/streamable", delete(mcp_streamable::close_session))
+        // A2A v1.0: the JSON-RPC binding (§9), with and without the trailing
+        // slash clients append to the advertised URL, and the HTTP+JSON
+        // binding (§11).
         .route("/a2a/v1/rpc", post(a2a_agent::json_rpc))
-        // A2A v1.0 HTTP+JSON/REST binding (§11) — thin adapters over the JSON-RPC ops.
-        .route("/a2a/v1/message:send", post(a2a_agent::rest_send_message))
+        .route("/a2a/v1/rpc/", post(a2a_agent::json_rpc))
+        // `message:send` and `message:stream`: the router captures the
+        // `:method` suffix after the static `message` prefix.
+        .route("/a2a/v1/message:method", post(a2a_agent::rest_message))
         .route("/a2a/v1/tasks", get(a2a_agent::rest_list_tasks))
         .route(
             "/a2a/v1/tasks/:id",
-            get(a2a_agent::rest_get_task).post(a2a_agent::rest_task_custom_method),
+            get(a2a_agent::rest_task_get).post(a2a_agent::rest_task_post),
         )
         .route(
             "/a2a/v1/tasks/:id/pushNotificationConfigs",

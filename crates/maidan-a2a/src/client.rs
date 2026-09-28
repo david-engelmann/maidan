@@ -1,10 +1,14 @@
-use crate::error::A2aClientError;
-use crate::protocol::{GetTaskRequest, Task};
-use crate::protocol::{
-    JsonRpcId, JsonRpcRequest, JsonRpcResponse, SendMessageRequest, JSONRPC_VERSION,
-    METHOD_GET_TASK, METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE,
-};
+//! A minimal A2A v1.0 JSON-RPC client (`{base}/a2a/v1/rpc`).
+
 use futures::StreamExt;
+use serde::de::DeserializeOwned;
+
+use crate::error::A2aClientError;
+use crate::protocol::{
+    GetTaskRequest, JsonRpcId, JsonRpcRequest, JsonRpcResponse, SendMessageRequest,
+    SendMessageResponse, StreamResponse, Task, A2A_PROTOCOL_VERSION, A2A_VERSION_HEADER,
+    JSONRPC_VERSION, METHOD_GET_TASK, METHOD_SEND_MESSAGE, METHOD_SEND_STREAMING_MESSAGE,
+};
 
 #[derive(Debug, Clone)]
 pub struct A2aClient {
@@ -36,29 +40,20 @@ impl A2aClient {
     pub async fn send_message(
         &self,
         params: SendMessageRequest,
-    ) -> Result<serde_json::Value, A2aClientError> {
+    ) -> Result<SendMessageResponse, A2aClientError> {
         self.call(METHOD_SEND_MESSAGE, serde_json::to_value(params)?)
             .await
     }
 
+    /// Send a message over SSE and collect every event until the server
+    /// closes the stream. An error frame ends the call with that error.
     pub async fn send_streaming_message(
         &self,
         params: SendMessageRequest,
-    ) -> Result<Vec<JsonRpcResponse>, A2aClientError> {
-        let id = JsonRpcId::Number(1);
-        let body = JsonRpcRequest {
-            jsonrpc: JSONRPC_VERSION.to_string(),
-            id: id.clone(),
-            method: METHOD_SEND_STREAMING_MESSAGE.to_string(),
-            params: serde_json::to_value(params)
-                .map_err(|e| A2aClientError::Decode(e.to_string()))?,
-        };
-        let url = format!("{}/a2a/v1/rpc", self.base_url);
-        let mut req = self.http.post(&url).json(&body);
-        if let Some(token) = &self.bearer {
-            req = req.bearer_auth(token);
-        }
-        let resp = req
+    ) -> Result<Vec<StreamResponse>, A2aClientError> {
+        let body = request(METHOD_SEND_STREAMING_MESSAGE, serde_json::to_value(params)?);
+        let resp = self
+            .post(&body)
             .send()
             .await
             .map_err(|e| A2aClientError::Http(e.to_string()))?;
@@ -75,12 +70,12 @@ impl A2aClient {
                 let block = buf[..pos].to_string();
                 buf = buf[pos + 2..].to_string();
                 for line in block.lines() {
-                    let Some(data) = line.strip_prefix("data: ") else {
+                    let Some(data) = line.strip_prefix("data:") else {
                         continue;
                     };
-                    let rpc: JsonRpcResponse = serde_json::from_str(data)
+                    let rpc: JsonRpcResponse = serde_json::from_str(data.trim())
                         .map_err(|e| A2aClientError::Decode(e.to_string()))?;
-                    events.push(rpc);
+                    events.push(decode_result(rpc)?);
                 }
             }
         }
@@ -90,54 +85,66 @@ impl A2aClient {
     pub async fn get_task(&self, task_id: &str) -> Result<Task, A2aClientError> {
         let params = GetTaskRequest {
             id: task_id.to_string(),
-            include_artifacts: None,
+            history_length: None,
         };
-        let value = self
-            .call(METHOD_GET_TASK, serde_json::to_value(params)?)
-            .await?;
-        serde_json::from_value(value).map_err(|e| A2aClientError::Decode(e.to_string()))
+        self.call(METHOD_GET_TASK, serde_json::to_value(params)?)
+            .await
     }
 
-    async fn call(
-        &self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<serde_json::Value, A2aClientError> {
-        let id = JsonRpcId::Number(1);
-        let body = JsonRpcRequest {
-            jsonrpc: JSONRPC_VERSION.to_string(),
-            id: id.clone(),
-            method: method.to_string(),
-            params,
-        };
+    fn post(&self, body: &JsonRpcRequest) -> reqwest::RequestBuilder {
         let url = format!("{}/a2a/v1/rpc", self.base_url);
         let mut req = self
             .http
-            .post(&url)
-            .timeout(std::time::Duration::from_secs(30))
-            .json(&body);
+            .post(url)
+            .header(A2A_VERSION_HEADER, A2A_PROTOCOL_VERSION)
+            .json(body);
         if let Some(token) = &self.bearer {
             req = req.bearer_auth(token);
         }
-        let resp = req
+        req
+    }
+
+    async fn call<T: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<T, A2aClientError> {
+        let resp = self
+            .post(&request(method, params))
+            .timeout(std::time::Duration::from_secs(30))
             .send()
             .await
             .map_err(|e| A2aClientError::Http(e.to_string()))?;
         let status = resp.status();
+        if !status.is_success() {
+            return Err(A2aClientError::Http(format!("HTTP {status}")));
+        }
         let rpc: JsonRpcResponse = resp
             .json()
             .await
             .map_err(|e| A2aClientError::Decode(e.to_string()))?;
-        if !status.is_success() {
-            return Err(A2aClientError::Http(format!("HTTP {status}")));
-        }
-        if let Some(err) = rpc.error {
-            return Err(A2aClientError::Rpc {
-                code: err.code,
-                message: err.message,
-            });
-        }
-        rpc.result
-            .ok_or_else(|| A2aClientError::Decode("missing result".into()))
+        decode_result(rpc)
     }
+}
+
+fn request(method: &str, params: serde_json::Value) -> JsonRpcRequest {
+    JsonRpcRequest {
+        jsonrpc: JSONRPC_VERSION.to_string(),
+        id: JsonRpcId::Number(1),
+        method: method.to_string(),
+        params,
+    }
+}
+
+fn decode_result<T: DeserializeOwned>(rpc: JsonRpcResponse) -> Result<T, A2aClientError> {
+    if let Some(err) = rpc.error {
+        return Err(A2aClientError::Rpc {
+            code: err.code,
+            message: err.message,
+        });
+    }
+    let result = rpc
+        .result
+        .ok_or_else(|| A2aClientError::Decode("missing result".into()))?;
+    serde_json::from_value(result).map_err(|e| A2aClientError::Decode(e.to_string()))
 }

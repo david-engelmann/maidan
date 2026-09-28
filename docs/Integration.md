@@ -702,17 +702,29 @@ MCP parity: `get_thread_context`/`get_workspace_context` accept `include_glossar
 
 ### A2A tasks
 
-A2A JSON-RPC method strings are the canonical A2A v1.0 operation names (the spec's
-§5.3 Method Mapping Reference), sent as the JSON-RPC `method` field on `POST /a2a/v1/rpc`:
+Maidan speaks A2A v1.0 over JSON-RPC (`POST /a2a/v1/rpc`, the spec's
+§5.3 method names) and HTTP+JSON (`/a2a/v1/message:send`, `/a2a/v1/tasks`,
+…), and passes the official A2A TCK (`scripts/a2a-tck.sh`). Every request
+sends `A2A-Version: 1.0` (header or query parameter); without it the
+request is 0.3 and refused with `VersionNotSupportedError`.
 
-- `CreateTaskPushNotificationConfig` — persist workspace webhook config (requires `workspace:write`).
-- `SubscribeToTask` — SSE task updates for non-terminal tasks.
-- `CancelTask` — cancel non-terminal task.
+- **Contexts are threads.** Omit `contextId` or send a new one and Maidan
+  opens a thread in the workspace's `a2a` channel (needs `workspace:write`);
+  send a thread id, or a `contextId` it returned, to post into that thread.
+- **The author is the token's member** (`message:post`). The task records
+  ids and state only; its history is read from the thread, so withdrawn
+  words leave the task too.
+- **Push configs** (`workspace:write`) keep `token` and `authentication`
+  sealed with `FEDERATION_ENCRYPTION_KEY` and never return them. A push
+  POSTs the task as `{"task": …}` with `Authorization` and
+  `X-A2A-Notification-Token`.
+- A task you cannot read is `TaskNotFoundError`. `ListTasks` pages with
+  `nextPageToken` and an exact `totalSize`.
 
-A2A `message.citations` is an optional list of `{uri, content_hash}`
-strong refs (`sha256:<hex>`). Empty is omitted. Citations persist on
-the stored message's `metadata.citations` and are echoed on the agent
-reply. Malformed hashes fail closed (400).
+A message's `metadata.maidan.citations` is an optional list of
+`{uri, content_hash}` strong refs (`sha256:<hex>`). Citations persist on
+the stored message's `metadata.citations`. Malformed hashes fail closed
+(`InvalidParams`).
 
 ### Long-poll waits (`wait_for_*`)
 

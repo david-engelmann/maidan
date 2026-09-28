@@ -283,6 +283,10 @@ deployment:
 Expose the gRPC port in your deployment (Kubernetes Service / compose port) when enabling
 it; the HTTP bindings share the main HTTP port.
 
+A2A push configs seal their `token` and credentials with `FEDERATION_ENCRYPTION_KEY`;
+without it, creating a push config that carries either fails. Push targets pass the
+same egress checks as webhooks.
+
 ## WebSocket and MCP subscribe (`v4.0.0`)
 
 Real-time subscribers use **`GET /ws/subscribe`** (WebSocket) or **`GET /mcp/stream`**

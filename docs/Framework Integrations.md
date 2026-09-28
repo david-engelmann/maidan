@@ -105,10 +105,10 @@ assignments instead of polling.
 Maidan also speaks the [A2A protocol](https://a2a-protocol.org) across three bindings —
 JSON-RPC (`POST /a2a/v1/rpc`), HTTP+JSON/REST (`/a2a/v1/*`), and gRPC (opt-in). An A2A
 client discovers them from the Agent Card at `GET /.well-known/agent-card.json`
-(`supportedInterfaces`). A dependency-light conformance client that validates the card
-and exercises the JSON-RPC + REST bindings is at
+(`supportedInterfaces`). A dependency-light walkthrough that reads the card and exercises the JSON-RPC and
+HTTP+JSON bindings is at
 [`examples/a2a_interop.py`](https://github.com/david-engelmann/maidan/blob/main/examples/a2a_interop.py);
-`scripts/a2a-interop.sh` boots a server and runs it end-to-end. See
+`scripts/a2a-tck.sh` boots a server and runs it, then the official A2A TCK. See
 [Production.md](Production.md) for the A2A transport deployment envs.
 
 ## Keeping these honest
