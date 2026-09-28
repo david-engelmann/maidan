@@ -324,11 +324,12 @@ Read this before the long narrative below, which is a point-in-time record and
   and artifact refcount erase (#1063, #1064), RFC 9457 problems for every client
   error (#1062), a Redocly-clean OpenAPI spec (#1061), MCP resource
   subscriptions scoped to session and workspace (#1060), nextest profiles and
-  per-crate coverage floors (#1065), the official A2A TCK in CI (#1066) and
-  CodeRabbit review (#1067, #1069), and the two quarantined races fixed plus
-  real MinIO tests (#1068); the full list is in
+  per-crate coverage floors (#1065), the official A2A TCK in CI (#1066),
+  CodeRabbit review (#1067, #1069), the two quarantined races fixed plus real
+  MinIO tests (#1068), and container tests that fail loud unless Docker is
+  absent (#1072); the full list is in
   [`docs/Roadmap.md`](docs/Roadmap.md). **In progress:** the loom/madsim/TLA+
-  models (Wave 4 #45).
+  models (Wave 4 #45; #1073–#1075, open).
 - **Four cross-tenant leaks were found on 2026-09-25**, all the same
   shape: an authorization check that runs only when an optional id is present.
   Live subscriptions without `workspace_id` streamed every tenant's events

@@ -60,10 +60,11 @@ crypto-shredding of message content, artifact refcount erase and
 `maidan verify-shredding` (#1063, #1064); nextest profiles and per-crate
 coverage floors (#1065); the official A2A TCK in CI (#1066); CodeRabbit review
 in the PR flow (#1067, #1069); the two quarantined test races removed and the
-MinIO tests running for real (#1068).
+MinIO tests running for real (#1068); container tests that skip only without a
+Docker daemon and otherwise fail loud (#1072).
 
 **In progress (not on `main`):** Wave 4 #45's loom, madsim and TLA+
-models are being written. Row #45 stays open until they land.
+models are in review (#1073–#1075). Row #45 stays open until they land.
 
 Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**–**`v1.4.0`** are complete.
 

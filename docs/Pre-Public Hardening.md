@@ -373,7 +373,8 @@ Do **not** interleave with 269–272 import/search PRs.
 - [ ] **D6. Flake budget** — **partial:** the nextest `ci` profile
   retries only a named quarantine and reports a retried pass as `FLAKY`
   (#1065); the two quarantined races were fixed and the quarantine is
-  empty (#1068).
+  empty (#1068); container tests no longer pass silently when their
+  container fails to start, only when no Docker daemon answers (#1072).
   Note known timing-sensitive tests; quarantine or rewrite before
   public contributors hit them.
 
