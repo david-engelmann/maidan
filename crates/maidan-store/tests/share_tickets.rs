@@ -235,6 +235,75 @@ async fn run_suite(store: &dyn Store) {
         .is_some());
 }
 
+/// A ticket whose expiry is milliseconds away is minted, and resolves until
+/// that exact instant. SQLite used to compare whole seconds against a creation
+/// time the database stamped after validation, so an expiry in the same
+/// second as the insert failed the table's CHECK and minting was a 500.
+async fn a_sub_second_expiry_is_minted_and_honoured(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "short-lived".into(),
+        })
+        .await
+        .expect("workspace");
+    let owner = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "owner".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("owner");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "brief".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .expect("channel");
+
+    let token_hash = "b".repeat(64);
+    let before = Utc::now();
+    let expires_at = before + ChronoDuration::milliseconds(50);
+    let ticket = store
+        .create_share_ticket(NewShareTicket {
+            workspace_id: ws.id,
+            channel_id: channel.id,
+            owner_id: owner.id,
+            created_by: owner.id,
+            token_hash: token_hash.clone(),
+            expires_at,
+            artifact_shas: Vec::new(),
+        })
+        .await
+        .expect("a ticket 50 ms from expiry is minted");
+    assert!(ticket.created_at >= before && ticket.created_at < ticket.expires_at);
+
+    let just_before = ticket.expires_at - ChronoDuration::milliseconds(1);
+    assert_eq!(
+        store
+            .resolve_share_ticket(&token_hash, just_before)
+            .await
+            .expect("valid until its expiry")
+            .id,
+        ticket.id
+    );
+    assert!(matches!(
+        store
+            .resolve_share_ticket(&token_hash, ticket.expires_at)
+            .await,
+        Err(StoreError::NotFound)
+    ));
+}
+
+#[tokio::test]
+async fn a_sub_second_expiry_is_minted_and_honoured_sqlite() {
+    a_sub_second_expiry_is_minted_and_honoured(&sqlite().await).await;
+}
+
 #[tokio::test]
 async fn share_ticket_lifecycle_sqlite() {
     run_suite(&sqlite().await).await;
@@ -270,5 +339,7 @@ async fn share_ticket_lifecycle_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    run_suite(&PostgresStore::for_tests(pool)).await;
+    let store = PostgresStore::for_tests(pool);
+    run_suite(&store).await;
+    a_sub_second_expiry_is_minted_and_honoured(&store).await;
 }

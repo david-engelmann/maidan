@@ -432,6 +432,11 @@ retry is reported as `FLAKY`, not hidden. Common failures:
   test's `match Postgres::default().start().await { Err(..) => return,
   ... }` pattern handles this; if it still fails, the pattern was
   removed.
+- `s3_roundtrip` or `s3_multipart` fails at "start the S3 container": the
+  image in `crates/maidan-artifacts/tests/common/mod.rs` could not be pulled
+  or did not log `API:`. These tests skip only when no Docker daemon answers,
+  so a pull failure fails them instead of passing with `s3.rs` untested. Keep
+  the image pinned to the digest `compose.yaml` uses.
 
 ### `coverage (llvm-cov)` fails
 

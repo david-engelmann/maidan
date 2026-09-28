@@ -18,8 +18,12 @@ use std::path::{Path, PathBuf};
 ///   columns are a *separate* migration on Postgres (`0014_outbox_quarantine`)
 ///   but are folded into the base `0013_outbox` migration on SQLite. Same
 ///   feature, different migration granularity — both backends have quarantine.
+/// - `share_ticket_expiry_precision` (SQLite only): rebuilds the share-ticket
+///   table so its expiry CHECK compares `julianday()` instead of whole-second
+///   `datetime()`. Postgres compares `timestamptz` values at full precision
+///   already, so it has nothing to change.
 const POSTGRES_ONLY_MIGRATIONS: &[&str] = &["outbox_quarantine"];
-const SQLITE_ONLY_MIGRATIONS: &[&str] = &[];
+const SQLITE_ONLY_MIGRATIONS: &[&str] = &["share_ticket_expiry_precision"];
 
 /// Store modules that legitimately exist for only one backend.
 ///

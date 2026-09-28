@@ -354,6 +354,9 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
     assert_eq!(revoked.status(), invalid_status);
     assert_eq!(revoked.text().await.unwrap(), invalid_body);
 
+    // Long enough that minting finishes well before it on a loaded runner;
+    // the wait below runs only until this instant has passed.
+    let expires_at = Utc::now() + ChronoDuration::seconds(3);
     let expiring = client
         .post(format!(
             "{base}/workspaces/{}/share-tickets",
@@ -362,7 +365,7 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
         .header("authorization", format!("Bearer {admin}"))
         .json(&json!({
             "channel_id": incident.id.0,
-            "expires_at": Utc::now() + ChronoDuration::seconds(1),
+            "expires_at": expires_at,
             "artifact_shas": [],
         }))
         .send()
@@ -373,7 +376,8 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
         .as_str()
         .unwrap()
         .to_owned();
-    tokio::time::sleep(std::time::Duration::from_millis(1_500)).await;
+    let until_expired = (expires_at - Utc::now()).to_std().unwrap_or_default();
+    tokio::time::sleep(until_expired + std::time::Duration::from_millis(10)).await;
     let expired = client
         .get(format!("{base}/share/manifest"))
         .header("authorization", format!("ShareTicket {expiring_secret}"))

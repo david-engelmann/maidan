@@ -30,19 +30,9 @@ final-status-level = "slow"
 # Written to target/nextest/ci/junit.xml and uploaded by the test jobs.
 path = "junit.xml"
 
-# Quarantine. Each test below has failed on `main` for a reason other than a
-# code change, and gets two retries in CI only. A retry that passes is
-# reported as FLAKY in the log and in the JUnit report; it does not hide the
-# test. Every entry has a row in docs/Open Work.md, and comes out when the
-# test is fixed. Add an entry only with a failed `main` run to point at.
-[[profile.ci.overrides]]
-# Floods the bus and expects a replay hint within 2 s of a 50 ms settle; a
-# loaded runner misses the window (run 36131376972).
-filter = "package(maidan-server) & binary(ws_subscribe_e2e) & test(=subscribe_emits_replay_hint_when_bus_subscriber_lags)"
-retries = 2
-
-[[profile.ci.overrides]]
-# Minting a ticket that expires in one second returned 500 instead of 201 on
-# a loaded runner (run 36366240722).
-filter = "package(maidan-server) & binary(share_ticket_consumer_e2e) & test(=consumer_surface_is_paginated_read_only_and_fail_closed)"
-retries = 2
+# Quarantine. A test that has failed on `main` for a reason other than a code
+# change can get two retries in CI only, as a `[[profile.ci.overrides]]` entry
+# with a `filter` naming it and `retries = 2`. A retry that passes is reported
+# as FLAKY in the log and in the JUnit report; it does not hide the test. Every
+# entry needs a failed `main` run to point at and a row in docs/Open Work.md,
+# and comes out when the test is fixed. The list is empty.

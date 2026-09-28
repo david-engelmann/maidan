@@ -18,7 +18,7 @@ lines = 85.5 # measured 86.66
 
 [crates]
 maidan-a2a = 80.0           # 81.38
-maidan-artifacts = 23.5     # 24.76; the MinIO tests return early in CI, so s3.rs is uncovered
+maidan-artifacts = 61.5     # 62.50 on run 36461416048, once the MinIO tests ran
 maidan-auth = 92.5          # 93.92
 maidan-bus = 86.0           # 87.46
 maidan-cli = 86.5           # 87.72
