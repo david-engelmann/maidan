@@ -134,7 +134,9 @@ retro is mandatory. The tag does not get cut without it.
    The body **must** include the PR-level retro section per
    [`docs/Conventions.md`](docs/Conventions.md).
 6. Wait for the 8 required CI jobs to pass. Use `gh pr checks <num>`
-   or arm a Monitor.
+   or arm a Monitor. Address every CodeRabbit review comment: fix it, or
+   reply with the reason it does not apply. CodeRabbit is advisory, not a
+   required check ([`.coderabbit.yaml`](.coderabbit.yaml)).
 7. Merge with `gh pr merge <num> -R david-engelmann/maidan --squash
    --admin --delete-branch`. The `--admin` flag is intentional and
    authorized — see [`docs/Decisions.md`](docs/Decisions.md) entry

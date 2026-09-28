@@ -27,8 +27,9 @@ The Rust toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml).
 ## PR flow
 
 Maidan is **solo-maintained.** The maintainer merges with admin rights once CI is
-green, so there is no second-reviewer gate to wait on — but the bar is the CI suite,
-not a rubber stamp.
+green and review comments are addressed. There is no second human reviewer; the bar
+is the CI suite plus an AI review from [CodeRabbit](https://coderabbit.ai), not a
+rubber stamp.
 
 1. Open a GitHub Issue from the relevant template.
 2. Branch from `main` per the convention above.
@@ -37,7 +38,11 @@ not a rubber stamp.
 5. All **8 required CI checks** must pass (lint, secrets scan, unit tests, integration,
    docker-compose smoke, scale-out smoke, promtool, otlp smoke). External PRs are
    reviewed by the maintainer before merge.
-6. Squash-merge — the PR title + body become the commit on `main`.
+6. CodeRabbit reviews every non-draft PR to `main` and reviews new pushes
+   incrementally (settings in [`.coderabbit.yaml`](.coderabbit.yaml)). Address every
+   comment before merge: fix it, or reply with the reason it does not apply. CodeRabbit is
+   advisory, not a required check; `@coderabbitai review` asks for a fresh review.
+7. Squash-merge — the PR title + body become the commit on `main`.
 
 ## Claiming work
 
@@ -62,7 +67,8 @@ except security:
   within 3 business days, confirmation or refutation within 10, and a default
   90-day disclosure window.
 - **Issues and PRs** are handled as the maintainer's time allows. The bar for
-  merging is the 8 required checks plus review, not a queue position.
+  merging is the 8 required checks plus addressed review comments, not a queue
+  position.
 - A PR that reds a required check is not merged over it. If the check is wrong,
   fixing the check is its own PR.
 
