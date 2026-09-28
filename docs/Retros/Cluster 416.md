@@ -1,6 +1,6 @@
 # Cluster 416 retro — Wave 4 #44: UUIDv7 entity ids
 
-> Post-gate hardening · source record (no `v416.0.0` tag yet; the tag is the maintainer's) · PR #1030 + close record
+> Post-gate hardening · ships in `v412.0.0` · PR #1030 + close record
 
 ## Outcome
 

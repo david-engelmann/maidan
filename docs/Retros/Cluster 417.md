@@ -1,6 +1,6 @@
 # Cluster 417 retro — disaster recovery that is actually tested
 
-> Post-gate hardening · source record (no `v417.0.0` tag yet; the tag is the maintainer's) · PR #1026 + close record
+> Post-gate hardening · ships in `v412.0.0` · PR #1026 + close record
 
 ## Outcome
 

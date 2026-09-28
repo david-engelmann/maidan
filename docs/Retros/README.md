@@ -137,3 +137,11 @@ PR review credit; external contributors.
 - [[Cluster 408]] — Full-audit remediation across authorization, egress, deployment, UI/docs presentation, and advisory-only land-gate measurement. Released as **`v408.0.0`**.
 - [[Cluster 409]] — Searchable, tag-honest release stream. Wave 4 row #40 complete; released as **`v409.0.0`**.
 - [[Cluster 410]] — Accountable usage ledger and bounded authorization evidence. Wave 4 row #41 complete; released as **`v410.0.0`**.
+- [[Cluster 411]] — Delegated authority. Recorded as `v411.0.0`, which was never tagged; ships in **`v412.0.0`**.
+- [[Cluster 412]] — An external MCP verifier. Wave 4 row #42 complete; ships in **`v412.0.0`**.
+- [[Cluster 413]] — The round-3 decisions: a grant ceiling and authority audits inside their transactions. Ships in **`v412.0.0`**.
+- [[Cluster 414]] — Nothing grows without bound, nothing hangs forever. Ships in **`v412.0.0`**.
+- [[Cluster 415]] — Deploys are immutable and rolling restarts are safe. Ships in **`v412.0.0`**.
+- [[Cluster 416]] — UUIDv7 entity ids. Wave 4 row #44 complete; ships in **`v412.0.0`**.
+- [[Cluster 417]] — Disaster recovery that is actually tested. Ships in **`v412.0.0`**.
+- [[Cluster 418]] — The adoption surface. Ships in **`v412.0.0`**.

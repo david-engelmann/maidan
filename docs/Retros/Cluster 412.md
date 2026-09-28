@@ -1,6 +1,6 @@
 # Cluster 412 retro — an external MCP verifier, and what it found
 
-> Post-gate hardening · source record (no `v412.0.0` tag yet; the tag is the maintainer's) · PR #1010 + close record
+> Post-gate hardening · ships in `v412.0.0` · PR #1010 + close record
 
 ## Outcome
 

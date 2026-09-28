@@ -42,7 +42,28 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
-## Cluster 418 (source record; no `v418.0.0` tag) — the adoption surface
+## [v412.0.0](https://github.com/david-engelmann/maidan/releases/tag/v412.0.0) — delegated authority, and everything since v410
+
+The first release since `v410.0.0`. `v411.0.0` was recorded but never tagged;
+its delegated-authority work (#996–#1008) ships here, together with Clusters
+412–418 and the fixes merged after them (#1011–#1077). The subsections below
+are the cluster records; the table first lists what landed outside a cluster.
+
+| Change | Where |
+|--------|-------|
+| **Tenant isolation fixes:** a live subscription is bound to its token's workspace (#1029); MCP resource subscriptions belong to one caller and are re-checked at delivery (#1031, #1060); MCP channel-membership tools stay in the caller's workspace (#1018); artifact metadata is per workspace (#1033), and purging a workspace never destroys another workspace's artifact (#1012). | `crates/maidan-server/src/subscribe_grants.rs`, `crates/maidan-mcp/src/resources.rs`, `crates/maidan-store/src/*/artifacts.rs` |
+| **Round-3 audit fixes (#1011):** web-push endpoints must be public https and are delivered through the outbound trust boundary; audit-write failures are counted and alert. | `crates/maidan-server/src/`, `docs/alerts/` |
+| **Crypto-shredding (#1063, #1064):** message content is encrypted under a per-message key before its event is hashed; withdrawing destroys the key; `maidan verify-shredding`. Artifacts are erased by reference count. | `crates/maidan-store/`, `docs/Operations.md` |
+| **Withdrawn means withdrawn:** the event log reads back only what the reader may see (#1055) and a withdrawn message reads back withdrawn (#1058); legal holds keep what is withdrawn and are per matter (#1056, #1057); a withdrawn message leaves no embeddings (#1059). | `crates/maidan-store/`, `crates/maidan-search/` |
+| **Request changes (#1054):** a reviewer sends work back for rework. | `crates/maidan-store/`, `crates/maidan-server/src/routes/` |
+| **Errors and OpenAPI:** every client error is an RFC 9457 problem (#1028, #1062); every `$ref` resolves and every path parameter is declared (#1053); the spec passes Redocly's recommended ruleset (#1061). | `crates/maidan-server/src/extract.rs`, `crates/maidan-server/src/openapi/` |
+| **A2A v1.0 (#1066):** the official TCK runs in CI; requests send `A2A-Version: 1.0`. | `scripts/a2a-tck.sh`, `crates/maidan-a2a/` |
+| **Verification depth:** `claimer_crash` (#1034), `claim_state_machine` (#1039), `schema_parity` (#1052), a real SMTP server (#1038), claim only open threads (#1046); nextest profiles and per-crate coverage floors (#1065); the two quarantined races fixed and the MinIO tests run for real (#1068); container tests skip only without Docker (#1072). | `crates/maidan-store/tests/`, `.config/nextest.toml`, `.config/coverage-floors.toml` |
+| **A2A lists page all the way through (#1076):** `ListTasks` pages and counts every pending approval gate, and push-config lists honour `pageSize`/`pageToken`. | `crates/maidan-a2a/`, `crates/maidan-store/` |
+| **Blob reaps under a lease (#1077):** deleting an orphaned artifact's bytes no longer holds a database transaction; only an upload of the same bytes waits. | `crates/maidan-store/src/*/artifacts.rs` |
+| **Docs and review:** CodeRabbit in the PR flow (#1067, #1069); roadmap sync (#1070); a README that shows a real handoff (#1071). | `.coderabbit.yaml`, `README.md` |
+
+### Cluster 418 — the adoption surface
 
 A stranger can start a working agent with one command, and every example says when it last ran.
 
@@ -55,7 +76,7 @@ A stranger can start a working agent with one command, and every example says wh
 | **CONTRIBUTING handbook-lite (#48).** | `CONTRIBUTING.md` |
 | **Claim only open work:** `claim_next_thread` hands out only `open` threads; queue depth and occupancy count the same set. | `crates/maidan-store/src/{sqlite,postgres}/threads.rs`, `crates/maidan-store/tests/claim_open_only.rs` |
 
-## Cluster 413 (source record; no `v413.0.0` tag) — the round-3 decisions
+### Cluster 413 — the round-3 decisions
 
 A workspace bounds how long a delegation grant lives, and every authority change commits together with its audit row.
 
@@ -68,7 +89,7 @@ A workspace bounds how long a delegation grant lives, and every authority change
 | **Audit keeps its actors (413.3b):** the audit table's member foreign keys are dropped (pg 0108 / sqlite 0107). | `migrations/` |
 | **Atomic changes (413.3b–413.4b):** forced restore, app revoke, SCIM provisioning and deprovisioning each commit in one transaction; a review requirement is not lowered by a concurrent non-admin write. | `crates/maidan-store/src/` |
 
-## Cluster 415 (source record; no `v415.0.0` tag) — deploys are immutable and rolling restarts are safe
+### Cluster 415 — deploys are immutable and rolling restarts are safe
 
 Deploys name exactly what runs, restarts drain, a vulnerable release is not signed, and operators get one status page.
 
@@ -81,7 +102,7 @@ Deploys name exactly what runs, restarts drain, a vulnerable release is not sign
 | **Verify instructions (415.1):** `cosign verify` inline in the README, identity anchored to the release workflow. | `README.md`, `SECURITY.md` |
 | **Operator status (415.2):** `GET /operator/status` (`operator:global`), JSON or `text/html`. | `crates/maidan-server/src/status.rs` |
 
-## Cluster 417 (source record; no `v417.0.0` tag) — disaster recovery that is actually tested
+### Cluster 417 — disaster recovery that is actually tested
 
 Postgres restores to any moment since the last base backup, and CI proves it on every PR.
 
@@ -91,7 +112,7 @@ Postgres restores to any moment since the last base backup, and CI proves it on 
 | **Restore procedure (417.1):** base backup, `recovery.signal`, `restore_command`, `recovery_target_time`, promote, then `/health/ready`. | `docs/Production.md` ("Point-in-time recovery") |
 | **Drill (417.1):** restores to a chosen moment and fails unless exactly the earlier write is back; CI job `pitr drill`. | `scripts/pitr-drill.sh`, `.github/workflows/ci.yml` |
 
-## Cluster 416 (source record; no `v416.0.0` tag) — Wave 4 #44: UUIDv7 entity ids
+### Cluster 416 — Wave 4 #44: UUIDv7 entity ids
 
 Every minted id for a row, job, task or request is UUIDv7; credentials stay random.
 
@@ -101,7 +122,7 @@ Every minted id for a row, job, task or request is UUIDv7; credentials stay rand
 | **v4 where it is a credential:** token and share-ticket secrets, the OAuth code, the MCP session id, the browser session id. | `crates/maidan-auth/src/token.rs`, `crates/maidan-server/src/app_oauth.rs`, `crates/maidan-mcp/src/server.rs`, `crates/maidan-store/src/*/sessions.rs` |
 | **Contract:** `uuid_v7_contract` fails on a production `new_v4()` outside an allowlist with exact counts and reasons; `uuid_v7_ids` checks store ids are v7 and ordered. | `crates/maidan-server/tests/uuid_v7_contract.rs`, `crates/maidan-store/tests/uuid_v7_ids.rs` |
 
-## Cluster 414 (source record; no `v414.0.0` tag) — nothing grows without bound, nothing hangs forever
+### Cluster 414 — nothing grows without bound, nothing hangs forever
 
 Every queue, cursor, connection and wait on the launch path has a bound or a timeout, and failed embeddings are retried, then repaired.
 
@@ -115,7 +136,7 @@ Every queue, cursor, connection and wait on the launch path has a bound or a tim
 | **Presence (414.1):** a lagging subscriber is re-snapshotted instead of silently missing diffs. | `crates/maidan-server/src/ws.rs` |
 | **Embedding retry and repair (414.2):** `MAIDAN_INDEXER_RETRIES` / `_RETRY_BASE_MS`; `Search::embed_missing` swept every `MAIDAN_EMBED_REPAIR_INTERVAL_SECS` under an advisory lock; gauges `…_retries_total`, `…_repaired_total`. | `crates/maidan-search/src/embedding_batcher.rs`, `crates/maidan-server/src/embed_repair.rs` |
 
-## Cluster 412 (source record; no `v412.0.0` tag) — an external MCP verifier
+### Cluster 412 — an external MCP verifier
 
 The official MCP Inspector runs unmodified against a real, authenticated Maidan in CI (report-only), and the four failures it found are fixed.
 
@@ -127,7 +148,7 @@ The official MCP Inspector runs unmodified against a real, authenticated Maidan 
 | **Portable nullable schemas (412.1):** `anyOf` instead of an array-valued `type`. | `crates/maidan-mcp/src/tools/` |
 | **Verifier:** `scripts/mcp-inspector.sh` and the `mcp inspector` CI job (Node 22). | `scripts/mcp-inspector.sh`, `.github/workflows/ci.yml` |
 
-## [v411.0.0](https://github.com/david-engelmann/maidan/releases/tag/v411.0.0) — delegated authority
+### Cluster 411 — delegated authority (recorded as `v411.0.0`; that tag was never cut)
 
 Twelve implementation PRs (#996–#1008) make acting for someone else explicit,
 bounded and on the record, and make the record complete.

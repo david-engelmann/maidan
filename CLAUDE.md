@@ -65,7 +65,7 @@ Glance at it before merging a docs change.
   XIX–XXIII (Clusters 102–120) closed on `main`; scale gate
   **`maidan-scale-1.0`** at **`v120.0.0`**. No further *ladder* cluster
   is defined past 120; subsequent clusters are **post-gate hardening**
-  (Phase XXIV, **Cluster 121+**, latest **`v411.0.0`**, tagged `vX.0.0` on
+  (Phase XXIV, **Cluster 121+**, latest **`v412.0.0`**, tagged `vX.0.0` on
   the same ladder but with no new gate tag — see "Project state at this
   handoff" below and [`docs/Roadmap.md`](docs/Roadmap.md)). Since v273:
   MCP `2026-07-28` (300–303), mail retry (304–306), Slack/GitHub projectors
@@ -299,7 +299,7 @@ Read this before the long narrative below, which is a point-in-time record and
   remediation (member self-scoping, egress guard, `/ui` P1, brand), 409 the
   tag-honest release stream, 410 the PayerStamp usage ledger and authorization
   evidence lane (`v410.0.0`). **411 (delegated authority) is complete**
-  (`v411.0.0` pending the maintainer's tag): every token acts as exactly one
+  (`v411.0.0` was never tagged; it ships in `v412.0.0`): every token acts as exactly one
   member; acting for another means a delegation grant exchanged for a
   short-lived token that *is* that member, and a grant lends work, never
   authority. Every event, audit row and live frame records actor, subject and
@@ -319,15 +319,16 @@ Read this before the long narrative below, which is a point-in-time record and
   in-process drain, blocking trivy, pinned quickstart) and `GET /operator/status`;
   416 UUIDv7 ids (credentials stay v4; `uuid_v7_contract`); 417 PITR with a
   drill CI runs; 418 the adoption surface (verified examples, compose recipes,
-  a Goose claimant). 412 and later are **source records** in Capabilities until the maintainer cuts tags.
-- **Since 418 (#1052–#1069, untagged):** crypto-shredding of message content
+  a Goose claimant). 411–418 and the fixes through #1077 ship in **`v412.0.0`**.
+- **Since 418 (#1052–#1077, in `v412.0.0`):** crypto-shredding of message content
   and artifact refcount erase (#1063, #1064), RFC 9457 problems for every client
   error (#1062), a Redocly-clean OpenAPI spec (#1061), MCP resource
   subscriptions scoped to session and workspace (#1060), nextest profiles and
   per-crate coverage floors (#1065), the official A2A TCK in CI (#1066),
   CodeRabbit review (#1067, #1069), the two quarantined races fixed plus real
   MinIO tests (#1068), and container tests that fail loud unless Docker is
-  absent (#1072); the full list is in
+  absent (#1072), A2A lists that page all the way through (#1076) and blob
+  reaps under a lease (#1077); the full list is in
   [`docs/Roadmap.md`](docs/Roadmap.md). **In progress:** the loom/madsim/TLA+
   models (Wave 4 #45; #1073–#1075, open).
 - **Four cross-tenant leaks were found on 2026-09-25**, all the same

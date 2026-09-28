@@ -1,6 +1,6 @@
 # Cluster 418 retro — the adoption surface
 
-> Post-gate hardening · source record (no `v418.0.0` tag yet; the tag is the maintainer's) · PRs #1032, #1036, #1040, #1046, #1047, #1048, #1049, #1050 + close record
+> Post-gate hardening · ships in `v412.0.0` · PRs #1032, #1036, #1040, #1046, #1047, #1048, #1049, #1050 + close record
 
 ## Outcome
 

@@ -1,6 +1,6 @@
 # Cluster 413 retro — the round-3 decisions
 
-> Post-gate hardening · source record (no `v413.0.0` tag yet; the tag is the maintainer's) · PRs #1014, #1016, #1017, #1019, #1024, #1025 + close record
+> Post-gate hardening · ships in `v412.0.0` · PRs #1014, #1016, #1017, #1019, #1024, #1025 + close record
 
 ## Outcome
 

@@ -36,8 +36,8 @@ tags; they raise the bar each time they ship.
 **Now (2026-09-25):** Cluster 411 (delegated authority) and Cluster 412 (the
 external MCP verifier) are closed on `main`, and so are 413 (the round-3
 decisions), 414 (bounded growth and timeouts), 415 (immutable deploys), 416
-(UUIDv7 ids), 417 (tested PITR) and 418 (the adoption surface). They are
-source records until the maintainer cuts their tags. The forward plan is the
+(UUIDv7 ids), 417 (tested PITR) and 418 (the adoption surface). They ship
+in **`v412.0.0`** with everything below (`v411.0.0` was never tagged). The forward plan is the
 **Launch backlog** at the top of [Open Work.md](Open%20Work.md), reconciled
 against code:
 - **413:** the round-3 decisions (grant ceiling; authority audits inside their
@@ -48,7 +48,7 @@ against code:
 - **417:** a tested DR drill.
 - **418:** Wave 4 adoption (recipes, verified examples, a Goose claimant).
 
-**Since 418 (2026-09-25 → 2026-09-28), merged to `main`, untagged:** schema
+**Since 418 (2026-09-25 → 2026-09-28), merged to `main`, shipping in `v412.0.0`:** schema
 parity across backends (#1052); OpenAPI references resolve (#1053) and the spec
 is clean under Redocly's recommended ruleset (#1061); request changes sends work
 back for rework (#1054); the event log reads back only what the reader may see
@@ -61,7 +61,8 @@ crypto-shredding of message content, artifact refcount erase and
 coverage floors (#1065); the official A2A TCK in CI (#1066); CodeRabbit review
 in the PR flow (#1067, #1069); the two quarantined test races removed and the
 MinIO tests running for real (#1068); container tests that skip only without a
-Docker daemon and otherwise fail loud (#1072).
+Docker daemon and otherwise fail loud (#1072); A2A lists page all the way
+through (#1076); blob reaps run under a lease, not a held transaction (#1077).
 
 **In progress (not on `main`):** Wave 4 #45's loom, madsim and TLA+
 models are in review (#1073–#1075). Row #45 stays open until they land.
@@ -279,21 +280,21 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 
 **410.0** (`v410.0.0`) **Wave 4 #41 complete — accountable usage and bounded authorization evidence.** Three implementation PRs (#988/#989/#991) plus the close record. **410.1–410.2** atomically bind a claim-fenced, idempotent `PayerStamp` ledger row, accumulated budget, `UsageReported`, and over-budget claim failure. **410.3** exposes it over REST and MCP while deriving reporter and payer authority. **410.4** adds the shared content-free authorization record, fixed-label aggregate metric, sampled denial detail, and sustained-rate alert without durable denial writes. **Row #41 is closed.** [[Clusters/Cluster 410]], [[Retros/Cluster 410]].
 
-**413.0** (source record; `v413.0.0` not cut) **The round-3 decisions.** Six implementation PRs (#1014, #1016, #1017, #1019, #1024, #1025) plus the close record. A per-workspace grant-lifetime ceiling (D-B), and every authority change committed with its audit row (D-A), which surfaced and fixed a legal-hold bypass, a non-atomic restore, an audit table that anonymized erased workspaces, silent MCP governance tools, a review-lowering race and SCIM deprovisioning that left tokens live. [[Retros/Cluster 413]].
+**413.0** (ships in `v412.0.0`) **The round-3 decisions.** Six implementation PRs (#1014, #1016, #1017, #1019, #1024, #1025) plus the close record. A per-workspace grant-lifetime ceiling (D-B), and every authority change committed with its audit row (D-A), which surfaced and fixed a legal-hold bypass, a non-atomic restore, an audit table that anonymized erased workspaces, silent MCP governance tools, a review-lowering race and SCIM deprovisioning that left tokens live. [[Retros/Cluster 413]].
 
-**415.0** (source record; `v415.0.0` not cut) **Deploys are immutable and rolling restarts are safe.** Two implementation PRs (#1021, #1022) plus the close record. Digest pinning, an in-process drain, a blocking scan that gates signing, checked release pins, an anchored verify identity, and `GET /operator/status`. [[Retros/Cluster 415]].
+**415.0** (ships in `v412.0.0`) **Deploys are immutable and rolling restarts are safe.** Two implementation PRs (#1021, #1022) plus the close record. Digest pinning, an in-process drain, a blocking scan that gates signing, checked release pins, an anchored verify identity, and `GET /operator/status`. [[Retros/Cluster 415]].
 
-**417.0** (source record; `v417.0.0` not cut) **Disaster recovery that is actually tested.** One implementation PR (#1026) plus the close record. WAL archiving, a written restore procedure, and a drill CI runs that restores to a chosen moment and fails unless exactly the earlier write is back. [[Retros/Cluster 417]].
+**417.0** (ships in `v412.0.0`) **Disaster recovery that is actually tested.** One implementation PR (#1026) plus the close record. WAL archiving, a written restore procedure, and a drill CI runs that restores to a chosen moment and fails unless exactly the earlier write is back. [[Retros/Cluster 417]].
 
-**416.0** (source record; `v416.0.0` not cut) **Wave 4 #44 — UUIDv7 entity ids.** One implementation PR (#1030) plus the close record. 70 minting sites moved to v7; the 8 that produce credentials stay v4, pinned by a contract with exact per-file counts. [[Retros/Cluster 416]].
+**416.0** (ships in `v412.0.0`) **Wave 4 #44 — UUIDv7 entity ids.** One implementation PR (#1030) plus the close record. 70 minting sites moved to v7; the 8 that produce credentials stay v4, pinned by a contract with exact per-file counts. [[Retros/Cluster 416]].
 
-**418.0** (source record; `v418.0.0` not cut) **The adoption surface.** Eight PRs (#1032, #1036, #1040, #1046, #1047, #1048, #1049, #1050) plus the close record. Verified examples, compose recipes for a coding agent and a gated deploy, a Goose claimant, paste-to-artifact and CONTRIBUTING. Running the recipes found `claim_next_thread` re-handing finished work (#1046). [[Retros/Cluster 418]].
+**418.0** (ships in `v412.0.0`) **The adoption surface.** Eight PRs (#1032, #1036, #1040, #1046, #1047, #1048, #1049, #1050) plus the close record. Verified examples, compose recipes for a coding agent and a gated deploy, a Goose claimant, paste-to-artifact and CONTRIBUTING. Running the recipes found `claim_next_thread` re-handing finished work (#1046). [[Retros/Cluster 418]].
 
-**414.0** (source record; `v414.0.0` not cut) **Nothing grows without bound, nothing hangs forever.** Two implementation PRs (#1015, #1020) plus the close record. Retention, database timeouts, replica fencing, WebSocket and MCP ceilings and deadlines, presence repair, and failed embeddings retried then repaired. [[Retros/Cluster 414]].
+**414.0** (ships in `v412.0.0`) **Nothing grows without bound, nothing hangs forever.** Two implementation PRs (#1015, #1020) plus the close record. Retention, database timeouts, replica fencing, WebSocket and MCP ceilings and deadlines, presence repair, and failed embeddings retried then repaired. [[Retros/Cluster 414]].
 
-**412.0** (source record; `v412.0.0` not cut) **Wave 4 #42 — an external MCP verifier.** One implementation PR (#1010) plus the close record. The official MCP Inspector runs unmodified against an authenticated Maidan in CI, and the four failures it found are fixed: stock 2025 clients couldn't handshake, 2025 clients were forced into sessions, `resources/list` returned templates, and nullable schemas used array-valued `type`. [[Clusters/Cluster 412]], [[Retros/Cluster 412]].
+**412.0** (`v412.0.0`, with 411 and 413–418) **Wave 4 #42 — an external MCP verifier.** One implementation PR (#1010) plus the close record. The official MCP Inspector runs unmodified against an authenticated Maidan in CI, and the four failures it found are fixed: stock 2025 clients couldn't handshake, 2025 clients were forced into sessions, `resources/list` returned templates, and nullable schemas used array-valued `type`. [[Clusters/Cluster 412]], [[Retros/Cluster 412]].
 
-**411.0** (`v411.0.0`) **Delegated authority complete.** Twelve implementation PRs (#996–#1008) plus the close record. A token acts as one member; acting for another is an explicit, expiring, capability-intersected grant exchanged for a short-lived token, and delegation lends work, never authority. Every event, audit row and live frame records actor, subject and grant, and a change that records nothing itself is recorded by the request layer. Destroying or rewriting the record needs authority, and approvals may be borrowed but never self-approved. Also fixed the required `docker compose smoke` check, red since #973. [[Clusters/Cluster 411]], [[Retros/Cluster 411]].
+**411.0** (`v411.0.0` never tagged; ships in `v412.0.0`) **Delegated authority complete.** Twelve implementation PRs (#996–#1008) plus the close record. A token acts as one member; acting for another is an explicit, expiring, capability-intersected grant exchanged for a short-lived token, and delegation lends work, never authority. Every event, audit row and live frame records actor, subject and grant, and a change that records nothing itself is recorded by the request layer. Destroying or rewriting the record needs authority, and approvals may be borrowed but never self-approved. Also fixed the required `docker compose smoke` check, red since #973. [[Clusters/Cluster 411]], [[Retros/Cluster 411]].
 
 **408.0** (`v408.0.0`) **full-audit remediation complete.** Five implementation PRs (#964/#973/#974/#975/#976) plus the close record. **408.1** self-scopes personal member state and bounds client limits. **408.2** centralizes DNS-pinned, no-redirect SSRF defense and hardens probes, proxy trust, and image pins. **408.3** makes `/ui` loading, error, empty, and approval-refresh states honest. **408.4** repairs published rendering and ships the locked brand system. **408.5** adds a flag-off, advisory-only Jev land-gate measurement path that cannot write the gate. [[Clusters/Cluster 408]], [[Retros/Cluster 408]].
 

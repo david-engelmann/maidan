@@ -55,7 +55,7 @@
 | Slice | PR | Result |
 |-------|----|--------|
 | 412.1 | #1010 | `scripts/mcp-inspector.sh` + a report-only `mcp inspector` CI job. All 2025 revisions negotiated and served statelessly, sessions opt-in, `resources/templates/list`, and portable nullable schemas |
-| 412.close | close record | [[Retros/Cluster 412]]; recorded as a source record until the maintainer cuts `v412.0.0` |
+| 412.close | close record | [[Retros/Cluster 412]]; ships in `v412.0.0`, with 411 and 413–418 |
 
 ## Exit criteria
 
