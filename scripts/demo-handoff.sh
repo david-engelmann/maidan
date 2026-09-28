@@ -22,10 +22,20 @@ PAUSE="${DEMO_PAUSE:-0}"
 SUFFIX="${DEMO_SUFFIX:-}"
 
 # The script sends bearer tokens on every call: plain http only to loopback.
-case "$BASE" in
-  https://* | http://127.0.0.1[:/]* | http://127.0.0.1 | http://localhost[:/]* | http://localhost | "http://[::1]"*) ;;
-  *) echo "refusing to send tokens to $BASE over plain http; use https or a loopback address" >&2; exit 1 ;;
-esac
+if [[ "$BASE" == http://* ]]; then
+  authority="${BASE#http://}"; authority="${authority%%/*}"
+  case "$authority" in
+    *@*) host= ;;                                   # userinfo hides the real host
+    "[::1]" | "[::1]:"*) host="[::1]" ;;
+    *) host="${authority%%:*}" ;;
+  esac
+  case "$host" in
+    127.0.0.1 | localhost | "[::1]") ;;
+    *) echo "refusing to send tokens to $BASE over plain http; use https or a loopback address" >&2; exit 1 ;;
+  esac
+elif [[ "$BASE" != https://* ]]; then
+  echo "MAIDAN_URL must be an http(s) URL, got $BASE" >&2; exit 1
+fi
 
 for cmd in curl jq; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd" >&2; exit 1; }
@@ -87,6 +97,9 @@ say "${G}✓${R} MCP set_review_requirement 1 · add_reviewer david"
 
 step "$Y" "coder" "MCP claim_next_thread {channel: #build, lease_secs: 900}"
 claim=$(mcp "$CT" claim_next_thread "{\"channel_id\":\"$channel\",\"lease_secs\":900}")
+if ! jq -e --arg tid "$tid" '. != null and .id == $tid' <<<"$claim" >/dev/null; then
+  echo "claim_next_thread did not hand the coder thread $tid: $claim" >&2; exit 1
+fi
 say "${G}✓${R} claimed ${B}$(jq -r .title <<<"$claim")${R}  assignee=$(name "$(jq -r .assignee_id <<<"$claim")")  lease until $(jq -r '.assignment_expires_at[11:19]' <<<"$claim")Z"
 rival=$(mcp "$PT" claim_next_thread "{\"channel_id\":\"$channel\"}")
 say "${D}·${R} planner tries claim_next_thread too → ${rival}  ${D}(one holder at a time)${R}"
