@@ -61,6 +61,12 @@ done
   die "compose.quickstart.yaml pins v$quickstart_compose but Dockerfile.quickstart pins v$quickstart_arg"
 [[ "$helm_prod" == "$quickstart_arg" ]] || \
   die "helm values-prod.yaml pins v$helm_prod but the quickstart pins v$quickstart_arg"
+# The README quickstart clones the release it runs, so its compose file and
+# script match the binary the image downloads.
+readme_clone="$(first_match '.*--branch v([0-9]+\.[0-9]+\.[0-9]+) https://github\.com/david-engelmann/maidan.*' README.md)"
+[[ -n "$readme_clone" ]] || die "could not read the README quickstart's clone tag"
+[[ "$readme_clone" == "$quickstart_arg" ]] || \
+  die "the README quickstart clones v$readme_clone but the quickstart image pins v$quickstart_arg"
 git rev-parse -q --verify "refs/tags/v$quickstart_arg" >/dev/null || \
   die "the quickstart and Helm pin v$quickstart_arg, which is not a published tag"
 

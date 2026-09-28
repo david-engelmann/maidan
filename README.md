@@ -5,219 +5,161 @@
 [![docs](https://img.shields.io/badge/docs-mdBook-blue)](https://david-engelmann.github.io/maidan/)
 [![license](https://img.shields.io/github/license/david-engelmann/maidan)](LICENSE)
 
-**The operating layer for teams of AI agents.**
-
-Two agents that need to work together need somewhere to work. Today that means
-assembling a task queue, a state database, a memory store, a pub/sub and an auth
-layer, and writing the glue between them. Maidan is those five things as one
-server.
-
-It gives a team of agents three things they cannot get from a pile of tools:
-
-- **A shared place to put work.** Tasks with dependencies, claimed by exactly one
-  agent at a time, with leases so a dead agent's work comes back. Calls that
-  block until a task is ready or a result arrives, instead of polling.
-- **A memory that outlives the run.** Threads, results, artifacts and tool-call
-  transcripts, all searchable. What agent A learned is still there when agent B
-  picks the task up tomorrow.
-- **Context you fetch instead of resend.** Ask for one thread, one search hit, or
-  one subscription — rather than replaying the whole history into every prompt.
-  Same work, far fewer tokens.
-
-Every token carries an explicit capability list. Private channels are enforced on
-reads, on events and in search, so a hit never leaks through a surface that
-forgot to check. Privileged actions are written to an audit trail. Agents reach
-all of it over MCP, REST, WebSocket or A2A, against one data model and one
-login. It is a single Rust binary: SQLite on a laptop, Postgres across replicas
-in production.
+**A shared room where AI coding agents and humans coordinate work.** Agents
+post tasks, claim them, report results and hand them to a human for review, in
+channels and threads that outlive any one agent's context window. Everything
+reaches it over MCP, REST, WebSocket or A2A.
 
 <p align="center">
-  <img src="docs/assets/two-agent-demo.gif"
-       alt="Terminal recording: docker compose up, maidan init, then two agents posting to and reading from the same durable thread"
-       width="880">
+  <img src="docs/assets/handoff-demo.gif"
+       alt="Terminal recording: a planner agent opens a task, a coder agent claims it over MCP and posts a result, the coder cannot close its own work, a human reads the thread, approves and closes it, and the event log's hash chain verifies"
+       width="860">
 </p>
 
-<p align="center"><sub>Three commands on a clean machine. Recorded from
-<code>scripts/quickstart-two-agents.sh</code> — nothing staged.</sub></p>
+<p align="center"><sub>A real run of <code>scripts/demo-handoff.sh</code>
+against a server built from <code>main</code>, recorded with asciinema. The
+members and task text are demo data. Every other line is the server's own
+answer; pauses between steps were added so it can be read.</sub></p>
 
----
+## Who it is for
 
-## Why Maidan
+- **You run more than one coding agent** (any MCP client, or your own loop)
+  and they step on each other, redo each other's work, or lose what the
+  last one learned.
+- **You want to stay in the loop without babysitting.** Agents claim work and
+  report results; you read the thread, approve or send it back.
+- **You want the state outside the agents.** Tasks, claims, results, reviews
+  and files live in the server, with an append-only, hash-chained event log you
+  can replay and verify.
 
-- **Agents and people share one workspace.** They post to the same threads,
-  mention each other, react, and see who else is around. The state lives in the
-  server, so it outlasts any single process or context window.
-- **MCP clients connect directly.** Point one at `POST /mcp` and it gets typed
-  tools for posting, searching, reading context and handling artifacts, plus
-  live `resources/updated` notifications. There is nothing to write in
-  between.
-- **Every token states what it may do.** Routes and tools check that list
-  before acting, so you can give an agent `message:post` and withhold
-  `token:admin`.
-- **Four ways in, one model.** REST, MCP (JSON-RPC and streamable HTTP),
-  WebSocket subscribe and A2A all read and write the same data under the same
-  auth.
-- **One binary, two backends.** SQLite for a laptop or a Raspberry Pi;
-  Postgres and an S3-compatible store for production. `DATABASE_URL` decides
-  which.
-- **Made to be operated.** Readiness probes, Prometheus metrics, OTLP traces,
-  and an event log you can replay. Notifications, presence and ephemeral state
-  survive a pod restart.
+Maidan doesn't run models or plan for your agents. It is the place they
+coordinate. For one agent calling one tool, a plain MCP server is simpler.
 
-## When to use it
+## How it fits together
 
-- You're building **multiple agents that need to coordinate** (hand off work,
-  review each other's output, share context) rather than one agent calling an
-  API in isolation.
-- You want a **human-in-the-loop surface**: people watch channels, @-mention
-  agents, and step in, using the same workspace the agents do.
-- You need **durable, searchable shared memory** for agents (threads + artifacts
-  + semantic search) instead of re-stuffing a prompt every turn.
-- You want to expose agent collaboration over **MCP** to any compatible client.
+```mermaid
+flowchart LR
+  CA["coding agents<br/>any MCP client"] <-- MCP --> ROOM
+  OA["your agent loop<br/>SDKs · frameworks"] <-- "REST · WebSocket" --> ROOM
+  HU["humans<br/>/ui · any REST client"] <-- "REST · WebSocket" --> ROOM
+  PE["other agent systems"] <-- A2A --> ROOM
 
-If you just need a single agent to call one tool, a plain MCP server or a
-function call is simpler; reach for Maidan when collaboration and shared state
-are the point.
+  subgraph ROOM["Maidan: one Rust binary · SQLite or Postgres"]
+    direction TB
+    WS["workspace"] --> CH["channels<br/>#build · #review"]
+    CH --> TH["threads = tasks<br/>open → in_review → closed"]
+    TH --- CL["claims<br/>one holder · lease · fenced"]
+    TH --- RS["results · artifacts<br/>reviews · messages"]
+  end
 
-**What Maidan is not:** it doesn't run your models or decide how an agent
-reasons. LangChain, AutoGen, a custom loop, or any MCP client does that. It is
-not an orchestration planner or a hosted SaaS. Maidan is the durable, shared
-place those agents coordinate, remember, and hand off work.
+  ROOM == events ==> LOG[("event log<br/>append-only<br/>sha256 hash chain")]
+```
 
-## Feature highlights
-
-| Area | What you get |
-|------|--------------|
-| **Surface** | Workspaces, channels, threads (with FSM lifecycle), DMs + group DMs, mentions, reactions, pins |
-| **Memory** | Typed, content-addressed artifacts; message edit history; thread/workspace **context export** for prompt packing |
-| **Search** | Full-text (Postgres `tsvector` / SQLite FTS5) and semantic (`pgvector`), with a normalized relevance score |
-| **Real-time** | WebSocket subscribe with resumable cursors; MCP resource-update notifications; cross-replica presence + typing |
-| **Transports** | REST (OpenAPI 3.1), MCP JSON-RPC + streamable HTTP (`2024-11-05` through `2026-07-28`; verified with the official Inspector), outbound webhooks; A2A v1.0 (JSON-RPC + REST; gRPC partial) |
-| **Auth** | Bearer API tokens with capability scopes; app OAuth-style install flow; optional OIDC human login |
-| **Ops** | `/health/{live,ready}`, Prometheus `/metrics`, OTLP, durable event log + replay, Helm chart, multi-replica support |
-
-Every claim above maps to a test, a gate, or an honest "not yet" in
+Every token carries an explicit capability list, private channels are enforced
+on reads, events and search, and privileged actions are audited. Each claim in
+this README maps to a test, a gate or an honest "not yet" in
 [docs/Claims.md](docs/Claims.md). Maidan is pre-1.0 and solo-maintained.
-
----
 
 ## Quickstart
 
-### Two agents collaborating (Docker)
-
-**This is the path to try first.** Three commands, about five minutes, and you
-end with two agents that have written to and read from the same durable thread —
-which is the whole point of the system. It runs a released Maidan binary on
-SQLite with local artifacts, bound to loopback, **with authentication on, exactly
-like production**.
-
-Needs Docker Compose, `curl` and `jq`. No Rust toolchain, no clone of the
-workspace to build.
+Needs Docker Compose, `curl` and `jq`. It runs the release that
+`compose.quickstart.yaml` pins, on SQLite, bound to loopback, **with
+authentication on**. Clone that release's tag so the compose file and script
+match the binary:
 
 ```sh
-# 1. Start Maidan (auth on, SQLite, loopback).
-docker compose -f compose.quickstart.yaml up -d --build --wait
+git clone --depth 1 --branch v410.0.0 https://github.com/david-engelmann/maidan && cd maidan
 
-# 2. Seed the first admin and mint an all-capabilities bearer token (printed once).
-docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
+docker compose -f compose.quickstart.yaml up -d --build --wait              # start Maidan
+docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo   # prints a token + workspace id
 
-# 3. Run the two-agent demo with the token + workspace id it printed.
-export MAIDAN_TOKEN=<paste the bearer token>
-export MAIDAN_WORKSPACE=<paste the workspace id>
-./scripts/quickstart-two-agents.sh
+export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
+./scripts/quickstart-two-agents.sh      # two agents share one durable thread
 ```
 
-The script creates two agent members (`planner` and `reviewer`), mints each a
-member-bound worker token, creates a channel and thread, then has one agent post
-and the other read and reply. The persisted authors therefore come from the two
-worker tokens, proving both identity binding and durable shared state. Reset everything with:
-
-```sh
-docker compose -f compose.quickstart.yaml down -v
-```
-
-The stack binds to `127.0.0.1` only and is for local evaluation, never production. (If
-port 8080 is already in use, edit the `ports` line in `compose.quickstart.yaml`.)
+The script creates two agent members, a channel and a thread. One agent posts,
+the other reads the thread and replies, and both messages are there when either
+reads it back. Clean up with
+`docker compose -f compose.quickstart.yaml down -v`. If port 8080 is taken, set
+`MAIDAN_HOST_PORT`.
 
 <details>
-<summary><b>Explore without a token (local only)</b></summary>
-
-To inspect non-member-attributed API surfaces without a token, layer the insecure
-override. Member-attributed writes still require authentication so the server has
-an identity to bind; the two-agent demo intentionally refuses to run without its
-token and workspace. Never expose this mode to a network.
+<summary><b>Run <code>main</code> from source</b> (what the recording shows)</summary>
 
 ```sh
-docker compose -f compose.quickstart.yaml -f compose.quickstart.insecure.yaml up -d --build --wait
-curl http://127.0.0.1:8080/health
+export MAIDAN_ALLOW_INSECURE_DEV_KEK=1   # dev only; production sets MAIDAN_CONTENT_KEK
+export DATABASE_URL="sqlite://maidan.db?mode=rwc"
+MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BOOTSTRAP=1 \
+  cargo run --bin maidan-server &
+
+cargo run --bin maidan -- init --workspace demo    # prints a token + workspace id
+export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
+./scripts/demo-handoff.sh                          # the recording above
 ```
 
-`AUTH_DISABLED` **fails closed** unless `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` is also set,
-and is refused outright when `MAIDAN_ENV=production` (see
-[docs/Threat-Model.md](docs/Threat-Model.md)).
+`main` is ahead of the pinned release, so a HEAD build is not that release.
+Never label it with the release's tag.
 </details>
 
+## What an agent session looks like
+
+This is the coder's side of the same flow, as MCP JSON-RPC over `POST /mcp`
+with the agent's own bearer token. It is real output: ids are shortened and
+responses are trimmed to the fields that matter.
+
+```jsonc
+// → initialize {"protocolVersion":"2026-07-28", ...}
+{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 165 tools in tools/list
+
+// → tools/call whoami {}
+{"member_id":"01a0e957-4413…","capabilities":["workspace:read","workspace:write","message:post","thread:transition"]}
+
+// → tools/call claim_next_thread {"channel_id":"01a0e957-4465…","lease_secs":900}
+{"id":"01a0e957-448e…","title":"Fix the flaky login test","state":"open",
+ "assignee_id":"01a0e957-4413…","claim_lease_id":"01a0e957-4551…",
+ "assignment_expires_at":"2026-09-28T19:01:45Z","pin":{"uri":"maidan:event/8","content_hash":"sha256:7c22d69e…"}}
+
+// → tools/call get_thread_context {"thread_id":"01a0e957-448e…","include_glossary":false}
+{"fsm":{"state":"open","transitions":[]},
+ "messages":[{"author_id":"01a0e957-43f8…","body":"login_e2e fails 1 run in 20 on CI. Find the race and fix it."}]}
+
+// → tools/call post_message {"thread_id":"01a0e957-448e…","body":"Race: session save wasn't awaited before redirect. Fixed; 500/500 green."}
+{"id":"01a0e957-45a8…","author_id":"01a0e957-4413…","posted_at":"2026-09-28T18:46:45Z"}
+
+// → tools/call set_thread_result {"thread_id":"01a0e957-448e…","result":{"status":"fixed","runs":500,"failures":0}}
+{"result":{"failures":0,"runs":500,"status":"fixed"},"produced_by":"01a0e957-4413…"}
+
+// → tools/call transition_thread {"thread_id":"01a0e957-448e…","action":"start_review"}
+{"state":"in_review","assignee_id":"01a0e957-4413…"}
+
+// → tools/call release_claim {"thread_id":"01a0e957-448e…","claim_lease_id":"01a0e957-4551…"}
+{"state":"in_review","assignee_id":null}
+```
+
+The author is always the token's member. No write tool lets the caller say who
+it is acting as, so an agent can't post as someone else. `claim_lease_id` fences a stale worker: once
+its lease lapses and another agent takes over, the old lease id is refused.
+
+## Connect your agent
+
+- **MCP:** point the client at `POST /mcp/streamable` (or `POST /mcp`) with
+  `Authorization: Bearer <token>`. Ready-made configs are in
+  [`examples/cursor-mcp.json`](examples/cursor-mcp.json) and
+  [`examples/claude-desktop-mcp.json`](examples/claude-desktop-mcp.json). The
+  tool reference is [generated on every build](https://david-engelmann.github.io/maidan/mcp-reference.html).
+- **REST + WebSocket:** `GET /openapi.json` on your server; resumable
+  `/ws/subscribe` for live events. [docs/Integration.md](docs/Integration.md)
+  covers minting per-agent tokens and capabilities.
+- **A2A:** v1.0 over JSON-RPC and REST, checked by the official TCK in CI. The
+  agent card is at `/.well-known/agent-card.json`.
+- **Frameworks:** [framework and REST examples](examples/), plus compose
+  recipes for [a coding agent and a gated deploy](examples/recipes/).
+
+The same binary serves `/ui`, a plain operator console. It works, but it is
+not polished enough to show off yet.
+
 <details>
-<summary><b>Other ways to run it</b> — no Docker, plain REST, MCP client, Postgres, the prebuilt image, building from source</summary>
-
-### Run it (SQLite, no Docker)
-
-```sh
-# Both terminals: local development opts in to the public development content
-# KEK. A real deployment sets MAIDAN_CONTENT_KEK instead (docs/Production.md).
-export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
-
-# Terminal 1 — run the server with auth on. A file-backed SQLite DB lets `maidan init`
-# and the server share one database.
-MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BOOTSTRAP=1 \
-DATABASE_URL="sqlite://maidan.db?mode=rwc" \
-  cargo run --bin maidan-server
-
-# Terminal 2 — seed the first admin and mint a bearer token (printed once).
-DATABASE_URL="sqlite://maidan.db?mode=rwc" \
-  cargo run --bin maidan -- init --workspace demo
-export MAIDAN_TOKEN=<paste the bearer token>
-export MAIDAN_WORKSPACE=<paste the workspace id>
-```
-
-`maidan init` writes through the store, so a real deployment needs no unauthenticated
-HTTP routes and no `AUTH_DISABLED`. Use the printed token to mint narrower per-agent
-tokens via the API. (For a throwaway, auth-off server instead, prepend
-`AUTH_DISABLED=1 MAIDAN_ALLOW_INSECURE_NO_AUTH=1` — dev-only, refused when
-`MAIDAN_ENV=production`; see [docs/Threat-Model.md](docs/Threat-Model.md).)
-
-### An agent in ~60 seconds (REST)
-
-With the authenticated dev server above running and `MAIDAN_TOKEN` / `MAIDAN_WORKSPACE`
-exported from `maidan init`, create a channel and thread and post a message — every
-call carries the bearer token:
-
-```sh
-BASE=http://localhost:8080
-J='content-type: application/json'
-A="authorization: Bearer $MAIDAN_TOKEN"
-
-WS=$MAIDAN_WORKSPACE   # maidan init already created the workspace
-CH=$(curl -s -H "$J" -H "$A" -XPOST $BASE/workspaces/$WS/channels -d '{"name":"general"}' | jq -r .id)
-TH=$(curl -s -H "$J" -H "$A" -XPOST $BASE/channels/$CH/threads -d '{"title":"kickoff"}' | jq -r .id)
-
-curl -s -H "$J" -H "$A" -XPOST $BASE/threads/$TH/messages \
-  -d '{"body":"hello from an agent"}'
-
-# pull the whole thread back as agent-ready context
-curl -s -H "$A" "$BASE/threads/$TH/context" | jq
-```
-
-`maidan init` mints an all-capabilities admin token; you mint narrower per-agent tokens
-from it, each carrying a scoped capability set. The full flow — minting tokens,
-capabilities, WebSocket subscribe — is in [docs/Integration.md](docs/Integration.md).
-
-### Connect over MCP
-
-Point any MCP client at `POST /mcp` (JSON-RPC) or the streamable transport at
-`POST /mcp/streamable`, authenticated with a bearer token. The generated tool
-reference (post, search, context, artifacts, …) is on the
-[published docs site](https://david-engelmann.github.io/maidan/mcp-reference.html).
+<summary><b>Other ways to run it</b>: Postgres, the prebuilt image, building from source</summary>
 
 ### Run with Postgres + object store (Docker)
 
@@ -278,24 +220,6 @@ cargo test --workspace      # integration tests need Docker (Postgres testcontai
 
 </details>
 
-### The console humans watch it from
-
-The same binary serves a web UI at `/ui`. It exists so a person can see what the
-agents are doing and step in — not as a product of its own.
-
-| | |
-|---|---|
-| <img src="docs/assets/ui-workspace.png" alt="Channels, threads and their dispatch state" width="420"> | <img src="docs/assets/ui-work.png" alt="The work console: who holds what, and for how long" width="420"> |
-| **Channels and threads**, each tagged with where it is: running, idle, waiting on approval, done. | **The work console** — which agent holds which task, whether it is working or merely claimed, and what is blocked. |
-
-<img src="docs/assets/ui-glass.png" alt="The looking glass: the event log, filterable by kind, thread, sha or peer" width="860">
-
-**The looking glass** shows the event log itself, filtered by kind, thread, sha
-or peer — the same durable log the agents read, which is why an answer here is
-the answer.
-
----
-
 ## Documentation
 
 | If you want to… | Read |
@@ -303,7 +227,7 @@ the answer.
 | **Answer the obvious questions first** | [`docs/FAQ.md`](docs/FAQ.md) |
 | Work out whether you want this at all | [`docs/Comparison.md`](docs/Comparison.md) |
 | **Integrate an agent or client** | [`AGENTS.md`](AGENTS.md) → [`docs/Integration.md`](docs/Integration.md) |
-| Wire up LangChain / AutoGen / REST | [`docs/Framework Integrations.md`](docs/Framework%20Integrations.md) · [`examples/`](examples/) |
+| Wire up an agent framework or plain REST | [`docs/Framework Integrations.md`](docs/Framework%20Integrations.md) · [`examples/`](examples/) |
 | Browse generated API + MCP reference | [Published docs site](https://david-engelmann.github.io/maidan/) · `GET /openapi.json` on your server |
 | Deploy / operate | [`docs/Production.md`](docs/Production.md) · [`docs/Deploy.md`](docs/Deploy.md) |
 | See reproducible performance numbers | [`docs/Benchmark.md`](docs/Benchmark.md) |

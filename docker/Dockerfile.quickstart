@@ -13,7 +13,8 @@ FROM ubuntu:24.04
 ARG MAIDAN_VERSION=v410.0.0
 # Per-arch release tarball SHA-256 for MAIDAN_VERSION (verified at build time). Bump
 # ALL THREE together when MAIDAN_VERSION changes — and the default in
-# `compose.quickstart.yaml`, which overrides this one:
+# `compose.quickstart.yaml`, which overrides this one, and the README quickstart's
+# `git clone --branch` tag (`scripts/check-release-records.sh` checks all of them):
 #   gh release download <tag> -R david-engelmann/maidan -p 'maidan-*-linux-gnu.tar.gz'
 #   shasum -a 256 maidan-*-linux-gnu.tar.gz
 ARG MAIDAN_SHA256_AMD64=152e11753a858b040c209153b1fda24ce28de401cdffa9aabcb77334a3813b77
