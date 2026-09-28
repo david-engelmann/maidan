@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### TLA+ specs
+
+- **Added:** TLA+ specs of the claim state machine and of the hash-chained
+  log with crypto-shredding (`specs/tla`), checked by TLC with
+  `scripts/tla.sh`. They run locally; a CI job for them is not wired up yet.
+- **Fixed:** a thread claimed by id, assigned or released kept the previous
+  holder's lease deadline, so a holder without a lease could lose the
+  thread to `claim_next` with a `ClaimExpired`. Every write that changes the
+  holder now sets the deadline. A thread held today with an inherited
+  deadline keeps it until its next change of holder.
+
 ### Loom models
 
 - **Added:** loom models of the sharded bus and the presence hub, behind a

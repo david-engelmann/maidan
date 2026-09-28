@@ -1511,8 +1511,9 @@ pub trait SpawnBudgetStore: Send + Sync {
 
 #[async_trait]
 pub trait AssignmentStore: Send + Sync {
-    /// Set a thread's assignee unconditionally (assign / handoff). `NotFound`
-    /// if the thread doesn't exist.
+    /// Set a thread's assignee unconditionally (assign / handoff). The
+    /// assignment has no lease: an earlier holder's deadline is cleared.
+    /// `NotFound` if the thread doesn't exist.
     async fn assign_thread(
         &self,
         thread_id: ThreadId,
@@ -1547,8 +1548,9 @@ pub trait AssignmentStore: Send + Sync {
 
     /// Atomically claim an unassigned thread for `member_id`. The
     /// compare-and-set (`WHERE assignee_id IS NULL`) makes concurrent claims
-    /// race-safe: exactly one wins. `claimed` is `false` when it was already
-    /// assigned; `NotFound` only when the thread doesn't exist.
+    /// race-safe: exactly one wins. The claim has no lease. `claimed` is
+    /// `false` when it was already assigned; `NotFound` only when the thread
+    /// doesn't exist.
     async fn claim_thread(
         &self,
         thread_id: ThreadId,

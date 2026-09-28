@@ -454,6 +454,14 @@ In the test build the `loom` feature swaps the locks for loom's, so it only
 builds the models (the normal tests are compiled out). To see the failing interleaving, rerun
 the failing model with `LOOM_LOG=trace LOOM_LOCATION=1`.
 
+### `tla` specs fail
+
+No CI job runs these yet. `scripts/tla.sh` model-checks the TLA+ specs in `specs/tla` with TLC (pinned
+`tla2tools.jar`, Java 21); run it after touching claims or the event log. Each spec has a
+passing config and one that turns off a mechanism (`ClaimNoReset.cfg`,
+`EventLogUnordered.cfg`), where TLC must find the named invariant violated.
+A failure prints the shortest trace that breaks the invariant.
+
 ### `coverage (llvm-cov)` fails
 
 The job runs the whole suite under `cargo llvm-cov nextest` and then

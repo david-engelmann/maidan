@@ -103,7 +103,7 @@ pub async fn assign(
     // `append_assignment_event` where the other paths record.
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -139,7 +139,7 @@ pub async fn assign_with_event(
     .map(MemberId);
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -249,7 +249,7 @@ pub async fn set_title(
 /// Clear the assignee. `NotFound` if absent.
 pub async fn unassign(pool: &PgPool, thread_id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
          WHERE id = $1
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -276,7 +276,7 @@ pub async fn unassign_with_event(
         .get::<Option<Uuid>, _>("assignee_id")
         .map(MemberId);
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
          WHERE id = $1
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -357,7 +357,7 @@ pub async fn claim(
     // never held the thread.
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -396,7 +396,7 @@ pub async fn claim_with_event(
     let mut tx = pool.begin().await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = $1, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -776,7 +776,7 @@ pub async fn release_claim(
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -800,7 +800,7 @@ pub async fn release_claim_with_event(
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
