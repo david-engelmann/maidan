@@ -1,0 +1,119 @@
+# CodeRabbit review settings. Schema: https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit is advisory: its comments are addressed before merge, but it is
+# not a required check. See CONTRIBUTING.md "PR flow".
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  # The PR body becomes the squash commit body, so the summary goes in the
+  # walkthrough comment instead of being written into the description.
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  in_progress_fortune: false
+  suggested_reviewers: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+  pre_merge_checks:
+    # Doc comments are written where the why is not obvious, not to a quota.
+    docstrings:
+      mode: "off"
+  path_filters:
+    - "!Cargo.lock"
+    - "!**/package-lock.json"
+    - "!helm/**/Chart.lock"
+    - "!helm/**/charts/*.tgz"
+    - "!book/build/**"
+    - "!book/src/docs/**"
+    - "!book/src/mcp-reference.md"
+    - "!crates/maidan-server/src/a2a_grpc/generated.rs"
+    - "!docs/alerts/*.generated.yaml"
+  path_instructions:
+    - path: "**/*.rs"
+      instructions: |
+        Maidan is pre-1.0: flag backwards-compatibility shims, deprecated
+        aliases and "kept for compatibility" code paths; renames and deletions
+        are made outright. Libraries use `thiserror`, binaries `anyhow`;
+        logging is `tracing`, never `println!` in library code. Comments
+        explain a non-obvious why and do not restate code.
+    - path: "crates/maidan-server/src/**"
+      instructions: |
+        Every HTTP error response is an RFC 9457 problem
+        (`application/problem+json`). Handlers take input through
+        `crate::extract` (`ApiPath`, `ApiQuery`, `ApiJson`, `ApiBytes`,
+        `ApiText`), never a raw axum extractor. SCIM and A2A answer in their
+        own protocol envelopes. A new client error must be documented in the
+        OpenAPI spec for that operation.
+    - path: "crates/**/src/**"
+      instructions: |
+        The content KEK fails closed. Flag any path that falls back to the
+        built-in development key without the explicit
+        `MAIDAN_ALLOW_INSECURE_DEV_KEK=1` opt-in, or that allows that opt-in
+        together with `MAIDAN_ENV=production`. The same rule applies to other
+        insecure modes (for example `AUTH_DISABLED` needs
+        `MAIDAN_ALLOW_INSECURE_NO_AUTH`).
+    - path: "migrations/**"
+      instructions: |
+        Every schema change lands in both `migrations/postgres/` and
+        `migrations/sqlite/` in the same PR (the numbers differ between the
+        two directories) and is registered in
+        `crates/maidan-store/src/migrate.rs`. Flag a migration with no
+        counterpart in the other dialect, and an edit to an already-merged
+        migration file. `*_down.sql` files are manual rollback only.
+    - path: "helm/**"
+      instructions: |
+        The chart must fail to render without `contentKek` or an
+        `existingSecret`. Check that new values are documented in the chart
+        README and have safe defaults, and that templates stay consistent with
+        the manifests under `k8s/`.
+    - path: "k8s/**"
+      instructions: |
+        Secrets come from `maidan-secrets`, never literal values in manifests.
+        Check that resource requests and limits, probes and security contexts
+        stay in place, and that changes stay consistent with the Helm chart.
+    - path: "docs/**"
+      instructions: |
+        These are public docs. Flag internal or third-party product names;
+        examples use `example.*` kinds and generic names. A sentence about
+        what Maidan does must be backed by a row in `docs/Claims.md`; flag
+        "production-ready", "secure", "1.0" or performance numbers without a
+        gate or benchmark behind them. Prefer short, plain sentences.
+    - path: "book/src/**"
+      instructions: |
+        These are public docs. Flag internal or third-party product names;
+        examples use `example.*` kinds and generic names. A sentence about
+        what Maidan does must be backed by a row in `docs/Claims.md`; flag
+        "production-ready", "secure", "1.0" or performance numbers without a
+        gate or benchmark behind them. Prefer short, plain sentences.
+    - path: "examples/**"
+      instructions: |
+        These are public docs. Flag internal or third-party product names;
+        examples use `example.*` kinds and generic names. A sentence about
+        what Maidan does must be backed by a row in `docs/Claims.md`; flag
+        "production-ready", "secure", "1.0" or performance numbers without a
+        gate or benchmark behind them. Prefer short, plain sentences.
+    - path: "*.md"
+      instructions: |
+        Same rules as docs/: no internal or third-party product names, no
+        unbacked claims. README, CLAUDE.md and CONTRIBUTING.md must agree on
+        the PR flow and the eight required CI checks.
+    - path: ".github/workflows/**"
+      instructions: |
+        The required checks are `lint (fmt + clippy + deny)`, `secrets scan`,
+        `unit tests`, `integration (testcontainers)`, `docker compose smoke`,
+        `scale-out smoke`, `promtool (alert rules)` and `otlp smoke`. Flag a
+        rename or removal of one of these jobs, since branch protection
+        matches them by name.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CLAUDE.md"
+      - "CONTRIBUTING.md"
+      - "docs/Conventions.md"
+chat:
+  auto_reply: true

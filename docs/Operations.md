@@ -205,7 +205,19 @@ The 8 required jobs:
 If anything goes red, fix on the branch and push again. The most
 common failures and fixes are in "Debugging CI" below.
 
+### 4a. Address the CodeRabbit review
+
+CodeRabbit reviews every non-draft PR to `main` and reviews new pushes
+incrementally (settings in `.coderabbit.yaml` at the repo root). Before
+merging, address every comment it leaves: fix it, or reply with the
+reason it does not apply. It is advisory, not a required check, so a
+wrong comment is answered, not obeyed. `@coderabbitai review` asks for
+a fresh review.
+
 ### 5. Merge
+
+Merge only when the 8 required checks are green and every CodeRabbit
+comment is addressed.
 
 ```sh
 gh pr merge <num> -R david-engelmann/maidan --squash --admin --delete-branch

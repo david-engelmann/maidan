@@ -1187,6 +1187,26 @@ retros.
 
 **To revisit:** never. This is load-bearing for the retro discipline.
 
+### CodeRabbit reviews every PR; its comments are addressed, not required
+
+**Decision.** CodeRabbit reviews every non-draft PR to `main` and each
+new push, with the settings in `.coderabbit.yaml`. A PR is squash-merged
+when the 8 required checks are green and every CodeRabbit comment is
+addressed: fixed, or answered with the reason it does not apply.
+CodeRabbit is not a required check and does not approve or block PRs.
+Its summary goes in the walkthrough comment, not the PR body, because
+the body becomes the squash commit.
+
+**Alternative.** Make its review a required check, or run without an
+automated reviewer.
+
+**Why this:** a solo maintainer has no second reader, and an AI review
+catches things CI does not. A required check would let a wrong comment
+block a merge; addressing each comment keeps the reader without that cost.
+
+**To revisit:** when a second human reviewer joins, or if its comments
+are mostly noise.
+
 ### Annotated unsigned tags acceptable pre-1.0
 
 **Decision.** Cluster tags are annotated (`git tag -a`) but not
