@@ -42,7 +42,8 @@ Working through this pack should leave a stranger able to:
    reimplement MCP).
 3. Point another vendor's agent at Maidan over **A2A** using the
    recipe in Protocols.md (A2A v1.0 over JSON-RPC and HTTP+JSON,
-   checked by the official TCK; text and URL parts). Not a fourth
+   checked by the official TCK minus listed exclusions; text and URL
+   parts). Not a fourth
    client library.
 4. Hook n8n / Zapier on **webhooks + OpenAPI** without an SDK.
 
@@ -63,7 +64,7 @@ speak is the efficient path, not a cop-out.
 |-------------------|------|--------------|----------------|
 | A Python / TS / Rust agent they wrote | **REST + WebSocket SDK** (`maidan` 0.1) | Typed speaker for the frozen contract | An in-process `Crew.kickoff`. Wrapping MCP as the SDK transport |
 | LangChain, AutoGen, Cursor, Claude Desktop, a 2026 MCP host | **MCP** | Keep `examples/langchain_maidan.py` and `autogen_maidan.py` green. SDK may expose `client.mcp_url` (a string) so a README can print the snippet | A Python extra that vendors `mcp`. Pretending the server speaks `2026-07-28` before J3 |
-| Another org's agent (Salesforce, SAP, Bedrock, Foundry) | **A2A** JSON-RPC + Agent Card | `examples/a2a_interop.py`, a walkthrough that POSTs `SendMessage` at `/a2a/v1/rpc`; the server passes the official A2A TCK | An A2A SDK wrapper in 0.1. gRPC. IBM ACP |
+| Another org's agent (Salesforce, SAP, Bedrock, Foundry) | **A2A** JSON-RPC + Agent Card | `examples/a2a_interop.py`, a walkthrough that POSTs `SendMessage` at `/a2a/v1/rpc`; the server passes the official A2A TCK apart from the cases in `scripts/a2a-tck/exclusions.txt` | An A2A SDK wrapper in 0.1. gRPC. IBM ACP |
 | n8n / Zapier / Make | **Webhooks + OpenAPI** | Point at `GET /openapi.json` and `/workspaces/{wid}/webhooks`. J7 is docs | A GraphQL gateway. SDK methods for webhooks in v1 |
 | Humans in Slack / Git | Bet 1 / Bet 6 projector | Slack adapter **consumes** the TS SDK later | Making Slack the datastore |
 

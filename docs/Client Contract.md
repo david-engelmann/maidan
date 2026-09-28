@@ -37,7 +37,8 @@ Ignore unknown JSON fields and unknown WS `kind` strings
 
 Do not add a fourth protocol. Do not wrap MCP or A2A as the
 primary SDK transport. A2A clients use an A2A SDK; the server passes
-the official A2A TCK (`scripts/a2a-tck.sh`).
+the official A2A TCK (`scripts/a2a-tck.sh`) apart from the cases listed,
+with reasons, in `scripts/a2a-tck/exclusions.txt`.
 
 ---
 
@@ -242,8 +243,8 @@ examples, not in the SDK. Protocol until J3: `2024-11-05`.
 ## 7. A2A (a recipe, not an SDK surface)
 
 A2A v1.0 over JSON-RPC and HTTP+JSON, checked by the official A2A TCK
-(`scripts/a2a-tck.sh`). Do not generate an A2A client in 0.1; A2A SDKs
-already exist.
+(`scripts/a2a-tck.sh`; excluded cases in `scripts/a2a-tck/exclusions.txt`).
+Do not generate an A2A client in 0.1; A2A SDKs already exist.
 
 | Call | HTTP | Note |
 |------|------|------|

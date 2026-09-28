@@ -704,7 +704,8 @@ MCP parity: `get_thread_context`/`get_workspace_context` accept `include_glossar
 
 Maidan speaks A2A v1.0 over JSON-RPC (`POST /a2a/v1/rpc`, the spec's
 §5.3 method names) and HTTP+JSON (`/a2a/v1/message:send`, `/a2a/v1/tasks`,
-…), and passes the official A2A TCK (`scripts/a2a-tck.sh`). Every request
+…), and passes the official A2A TCK (`scripts/a2a-tck.sh`) apart from the
+cases listed in `scripts/a2a-tck/exclusions.txt`. Every request
 sends `A2A-Version: 1.0` (header or query parameter); without it the
 request is 0.3 and refused with `VersionNotSupportedError`.
 
