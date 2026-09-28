@@ -26,7 +26,7 @@ async fn wip_limit_blocks_claim_and_claim_next_over_the_cap() {
 
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());

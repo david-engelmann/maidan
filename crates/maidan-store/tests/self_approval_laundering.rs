@@ -27,7 +27,7 @@ async fn sqlite() -> SqliteStore {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 async fn run_suite(store: &dyn Store) {
@@ -207,5 +207,5 @@ async fn a_claim_release_does_not_launder_a_self_approval_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    run_suite(&PostgresStore::new(pool)).await;
+    run_suite(&PostgresStore::for_tests(pool)).await;
 }

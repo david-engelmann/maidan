@@ -212,7 +212,7 @@ async fn a_hold_keeps_what_is_withdrawn_sqlite() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
     run_suite(&store, || async {
         sqlx::query(
             "CREATE TRIGGER audit_down BEFORE INSERT ON maidan_audit
@@ -255,7 +255,7 @@ async fn a_hold_keeps_what_is_withdrawn_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     run_suite(&store, || async {
         sqlx::query(
             "CREATE FUNCTION audit_down() RETURNS trigger AS $$

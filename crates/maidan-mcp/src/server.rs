@@ -820,7 +820,7 @@ mod tests {
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
 
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let workspace = store
             .create_workspace(NewWorkspace {
                 name: "mcp-subscribe".into(),
@@ -915,7 +915,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
 
         let mk_ws = |name: &'static str| {
             let store = store.clone();
@@ -1052,7 +1052,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
 
         let mk_ws = |name: &'static str| {
             let store = store.clone();
@@ -1148,7 +1148,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "w".into() })
             .await
@@ -1255,7 +1255,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "w".into() })
             .await
@@ -1346,7 +1346,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace {
                 name: "rbac".into(),
@@ -1482,7 +1482,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "aq".into() })
             .await
@@ -1630,7 +1630,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "wm".into() })
             .await
@@ -1786,7 +1786,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "wr".into() })
             .await
@@ -1928,7 +1928,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "wl".into() })
             .await
@@ -2059,7 +2059,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "ce".into() })
             .await
@@ -2199,7 +2199,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "res".into() })
             .await
@@ -2374,7 +2374,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace {
                 name: "lineage".into(),
@@ -2562,7 +2562,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "rk".into() })
             .await
@@ -2710,7 +2710,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "ow".into() })
             .await
@@ -2858,7 +2858,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "qd".into() })
             .await
@@ -2920,7 +2920,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "wt".into() })
             .await
@@ -3036,7 +3036,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "pr".into() })
             .await
@@ -3132,7 +3132,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "un".into() })
             .await
@@ -3261,7 +3261,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "blk".into() })
             .await
@@ -3430,7 +3430,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "wip".into() })
             .await
@@ -3558,7 +3558,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "th".into() })
             .await
@@ -3698,7 +3698,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "cm".into() })
             .await
@@ -3781,7 +3781,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "b".into() })
             .await
@@ -3989,7 +3989,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "wi".into() })
             .await
@@ -4079,7 +4079,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "n".into() })
             .await
@@ -4247,7 +4247,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "p".into() })
             .await
@@ -4324,7 +4324,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "d".into() })
             .await
@@ -4414,7 +4414,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace {
                 name: "gates".into(),
@@ -4568,7 +4568,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "e".into() })
             .await
@@ -4677,7 +4677,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "f".into() })
             .await
@@ -4864,7 +4864,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "p".into() })
             .await
@@ -5000,7 +5000,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "sch".into() })
             .await
@@ -5078,7 +5078,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "rec".into() })
             .await
@@ -5190,7 +5190,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "sec".into() })
             .await
@@ -5292,7 +5292,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "frz".into() })
             .await
@@ -5394,7 +5394,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "mb".into() })
             .await
@@ -5546,7 +5546,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "mbw".into() })
             .await
@@ -5651,7 +5651,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "rc".into() })
             .await
@@ -5784,7 +5784,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "rv".into() })
             .await
@@ -5917,7 +5917,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "fsm".into() })
             .await
@@ -6081,7 +6081,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "sc".into() })
             .await
@@ -6240,7 +6240,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "rv".into() })
             .await
@@ -6417,7 +6417,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "sd".into() })
             .await
@@ -6540,7 +6540,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "sb".into() })
             .await
@@ -6669,7 +6669,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "e".into() })
             .await
@@ -6767,7 +6767,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "w".into() })
             .await
@@ -6962,7 +6962,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "w".into() })
             .await
@@ -7080,7 +7080,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "w".into() })
             .await
@@ -7151,7 +7151,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "gl".into() })
             .await
@@ -7236,7 +7236,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "s".into() })
             .await
@@ -7339,7 +7339,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "cs".into() })
             .await
@@ -7441,7 +7441,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let mk = |name: &str| {
             let store = store.clone();
             let name = name.to_string();
@@ -7542,7 +7542,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let ws = store
             .create_workspace(NewWorkspace { name: "sk".into() })
             .await

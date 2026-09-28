@@ -18,7 +18,7 @@ async fn automation_delivery_pending_and_quarantine_round_trip() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "auto".into(),

@@ -446,7 +446,7 @@ mod tests {
         let stored = events::append(&pool, &ContentKeyring::insecure_dev(), &event, None)
             .await
             .unwrap();
-        let backend = OutboxBackend::postgres(pool.clone());
+        let backend = OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys());
         let pending = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 1)
             .await
             .unwrap();
@@ -490,7 +490,7 @@ mod tests {
                 .unwrap();
         }
 
-        let backend = OutboxBackend::postgres(pool.clone());
+        let backend = OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys());
         let relay =
             OutboxRelay::with_max_attempts(backend, Arc::new(maidan_bus::InMemoryBus::new()), 16);
 
@@ -530,7 +530,7 @@ mod tests {
             .await
             .unwrap();
 
-        let backend = OutboxBackend::postgres(pool.clone());
+        let backend = OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys());
         let relay =
             OutboxRelay::with_max_attempts(backend, Arc::new(FailingBus::new("injected")), 2);
         relay.run_once().await.unwrap();

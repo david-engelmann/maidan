@@ -66,20 +66,21 @@ impl NotifyPointerPayload {
 /// How [`PostgresBus::publish`] delivers to subscribers.
 #[derive(Debug, Clone)]
 pub struct PostgresBusOptions {
-    /// When true (default), publish uses `pg_notify` and a LISTEN task hydrates
-    /// into the local broadcast channel. When false (**polled**), publish only
-    /// uses the local channel (outbox relay is the delivery path).
+    /// When true, publish uses `pg_notify` and a LISTEN task hydrates into the
+    /// local broadcast channel. When false (**polled**), publish only uses the
+    /// local channel (outbox relay is the delivery path).
     pub notify_on_publish: bool,
     /// Opens the sealed message words of the events the listener hydrates;
-    /// must be the store's keyring. Defaults to the insecure development one.
+    /// must be the store's keyring. There is no default.
     pub content_keys: Arc<ContentKeyring>,
 }
 
-impl Default for PostgresBusOptions {
-    fn default() -> Self {
+impl PostgresBusOptions {
+    /// NOTIFY + LISTEN delivery, opening sealed words with `content_keys`.
+    pub fn new(content_keys: Arc<ContentKeyring>) -> Self {
         Self {
             notify_on_publish: true,
-            content_keys: Arc::new(ContentKeyring::insecure_dev()),
+            content_keys,
         }
     }
 }
@@ -97,9 +98,13 @@ pub struct PostgresBus {
 }
 
 impl PostgresBus {
-    /// Connect with default options (NOTIFY + LISTEN).
-    pub async fn connect(pool: PgPool) -> Result<Self, BusError> {
-        Self::connect_with(pool, PostgresBusOptions::default()).await
+    /// Connect with NOTIFY + LISTEN delivery; `content_keys` must be the
+    /// store's keyring.
+    pub async fn connect(
+        pool: PgPool,
+        content_keys: Arc<ContentKeyring>,
+    ) -> Result<Self, BusError> {
+        Self::connect_with(pool, PostgresBusOptions::new(content_keys)).await
     }
 
     /// Connect to Postgres. Starts a LISTEN fan-in task when `notify_on_publish` is true.

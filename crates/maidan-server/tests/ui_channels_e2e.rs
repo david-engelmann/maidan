@@ -43,7 +43,7 @@ async fn spawn_oidc() -> Harness {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let workspace = store
         .create_workspace(NewWorkspace {
             name: "ui-channels".into(),

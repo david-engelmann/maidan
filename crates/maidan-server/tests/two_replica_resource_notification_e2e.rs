@@ -57,7 +57,7 @@ async fn resource_update_on_one_replica_reaches_subscriber_on_another() {
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
 
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let artifacts: Arc<dyn maidan_artifacts::ArtifactStore> =
         Arc::new(maidan_artifacts::LocalFsStore::new(
             std::env::temp_dir().join(format!("maidan-102-{}", uuid::Uuid::new_v4())),

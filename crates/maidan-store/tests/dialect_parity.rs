@@ -38,7 +38,7 @@ async fn parity_between_postgres_and_sqlite() {
         .await
         .expect("connect postgres");
     run_postgres_migrations(&pg_pool).await.expect("pg migrate");
-    let pg = PostgresStore::new(pg_pool);
+    let pg = PostgresStore::for_tests(pg_pool);
 
     let sqlite_pool = SqlitePoolOptions::new()
         .max_connections(4)
@@ -52,7 +52,7 @@ async fn parity_between_postgres_and_sqlite() {
     run_sqlite_migrations(&sqlite_pool)
         .await
         .expect("sqlite migrate");
-    let sqlite = SqliteStore::new(sqlite_pool);
+    let sqlite = SqliteStore::for_tests(sqlite_pool);
 
     let pg_snap = common::run_parity_scenario(&pg).await;
     let sqlite_snap = common::run_parity_scenario(&sqlite).await;

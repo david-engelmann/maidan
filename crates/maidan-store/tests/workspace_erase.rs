@@ -15,7 +15,7 @@ async fn sqlite_store() -> SqliteStore {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 #[tokio::test]

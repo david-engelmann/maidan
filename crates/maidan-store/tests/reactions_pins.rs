@@ -16,7 +16,7 @@ async fn store() -> Arc<dyn Store> {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    Arc::new(SqliteStore::new(pool))
+    Arc::new(SqliteStore::for_tests(pool))
 }
 
 #[tokio::test]

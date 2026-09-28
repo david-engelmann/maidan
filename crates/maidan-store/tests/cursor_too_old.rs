@@ -15,7 +15,7 @@ async fn sqlite() -> SqliteStore {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, Vec<i64>) {
@@ -165,6 +165,6 @@ async fn cursor_too_old_fails_loud_on_pruned_gap_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
 }

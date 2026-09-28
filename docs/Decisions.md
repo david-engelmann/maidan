@@ -1099,6 +1099,57 @@ could not be made valid without a rule exception; 3.1 is.
 **To revisit:** if Redocly's recommended set gains a rule the tests do not
 mirror, or when utoipa 6 is adopted.
 
+### CI tests run under nextest; only quarantined tests retry
+
+**Decision.** `unit tests`, `integration (testcontainers)` and
+`coverage (llvm-cov)` all run `cargo nextest run --profile ci`, configured in
+`.config/nextest.toml`. The default profile reports a test that runs past 60
+seconds and kills it at 3 minutes, and never retries. The `ci` profile runs
+every test, writes a JUnit report that the two required test jobs upload, and
+gives two retries to a named quarantine list and nothing else. A test goes on
+that list only with a failed `main` run to point at and a row in Open Work,
+and comes off when it is fixed. A retry that passes shows as `FLAKY` in the
+log, the summary and the JUnit report. There are no test groups: each test
+runs in its own process, so tests that set environment variables or install a
+global subscriber cannot interfere, and the Postgres suites (one container per
+test) run at the default concurrency without contention.
+
+**Alternative.** `cargo test` for the unit job; a blanket `retries = 2` in CI;
+a serial group for environment-touching tests.
+
+**Why this:** one runner and one config for every test job, with a hang
+failing its own test instead of running into the job's timeout. A blanket retry
+turns every intermittent bug into a silent pass. Per-process isolation makes a
+serial group unnecessary. The required check names are unchanged.
+
+**To revisit:** if a test group becomes necessary (a shared external resource),
+or if the quarantine list grows past a handful.
+
+### Coverage floors are per crate and advisory
+
+**Decision.** `.config/coverage-floors.toml` sets a line-coverage floor for
+the workspace and for every crate, each just under the crate's measured
+coverage (one point off the measurement, rounded down to the half point).
+`scripts/coverage-floors.py` fails the `coverage (llvm-cov)` job when any of
+them is missed, when a crate has no floor, or when a floor names a crate that
+is gone. The job stays out of the required checks. It replaces the single
+`COVERAGE_MIN_LINES` floor of 40% against a measured 86.7%.
+
+**Alternative.** One workspace percentage; floors enforced by making coverage
+a required check.
+
+**Why this:** a workspace number is dominated by the server and the store, so
+a crate like `maidan-auth` (1,300 lines) or `maidan-fsm` (100) could lose a
+third of its tests without moving it; per-crate floors put the gate where the
+risk is and leave thin crates visible as gaps instead of padding them out. The
+job takes about 14 minutes against under 4 for `unit tests`, and it measures the same
+suite the required `integration (testcontainers)` job already gates, so
+making it required would slow every merge to catch coverage drops that a
+red advisory job already shows. Open Work does not call for it.
+
+**To revisit:** if a floor is missed on `main` without anyone noticing, make
+the job required.
+
 ## Workflow
 
 ### Admin-merge instead of local-first push

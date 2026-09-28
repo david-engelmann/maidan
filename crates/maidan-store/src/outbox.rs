@@ -23,27 +23,21 @@ enum Db {
 }
 
 impl OutboxBackend {
-    /// A Postgres outbox with the insecure development keyring; a server sets
-    /// its own via [`Self::with_content_keys`].
-    pub fn postgres(pool: PgPool) -> Self {
+    /// A Postgres outbox that opens sealed words with `keys`, which must be
+    /// the store's keyring.
+    pub fn postgres(pool: PgPool, keys: Arc<ContentKeyring>) -> Self {
         Self {
             db: Db::Postgres(pool),
-            keys: Arc::new(ContentKeyring::insecure_dev()),
+            keys,
         }
     }
 
     /// The SQLite twin of [`Self::postgres`].
-    pub fn sqlite(pool: SqlitePool) -> Self {
+    pub fn sqlite(pool: SqlitePool, keys: Arc<ContentKeyring>) -> Self {
         Self {
             db: Db::Sqlite(pool),
-            keys: Arc::new(ContentKeyring::insecure_dev()),
+            keys,
         }
-    }
-
-    /// Open sealed words with `keys`; must be the store's keyring.
-    pub fn with_content_keys(mut self, keys: Arc<ContentKeyring>) -> Self {
-        self.keys = keys;
-        self
     }
 
     /// Atomically claim relayable rows for this relay. Use this, not

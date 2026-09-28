@@ -389,7 +389,7 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
         .await
         .expect("connect sqlite");
     run_sqlite_migrations(&pool).await.expect("migrate sqlite");
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let workspace = store
         .create_workspace(NewWorkspace {
             name: "loopback-oidc".into(),

@@ -34,7 +34,7 @@ async fn postgres_edit_message_sets_edited_at() {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace {
@@ -125,7 +125,7 @@ async fn postgres_message_content_round_trips_via_jsonb() {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace {

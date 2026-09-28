@@ -34,6 +34,7 @@ default = []
 sqlite-vec = ["maidan-search/sqlite-vec"]
 
 [dev-dependencies]
+maidan-store = { path = "../maidan-store", features = ["test-support"] }
 serde_json.workspace = true
 tempfile = "3"
 testcontainers = "0.23"

@@ -23,7 +23,7 @@ async fn operator_reindex_job_indexes_workspace_messages() {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
 
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool));
     let ws = store
         .create_workspace(NewWorkspace {

@@ -16,7 +16,7 @@ async fn child_cannot_advance_beyond_open_parent() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace {

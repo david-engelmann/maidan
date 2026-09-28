@@ -47,7 +47,7 @@ async fn advance_cursor_is_monotonic_and_get_returns_watermark() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     let ws = store
         .create_workspace(NewWorkspace {
             name: "cursor-ws".into(),
@@ -92,7 +92,7 @@ async fn federation_style_consumer_ids_are_scoped_per_peer() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     let ws = store
         .create_workspace(NewWorkspace {
             name: "fed-style-ws".into(),
@@ -132,7 +132,7 @@ async fn sqlite_pool() -> sqlx::SqlitePool {
 #[tokio::test]
 async fn sqlite_advance_cursor_is_monotonic_and_get_returns_watermark() {
     let pool = sqlite_pool().await;
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
     let ws = store
         .create_workspace(NewWorkspace {
             name: "sqlite-cursor-ws".into(),

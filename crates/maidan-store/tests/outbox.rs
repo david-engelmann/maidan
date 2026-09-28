@@ -57,7 +57,7 @@ async fn append_enqueues_unpublished_outbox_row() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     let event = workspace_created_event("outbox-ws");
     let stored = store.append_event(&event).await.unwrap();
     assert!(outbox::count_pending(&pool).await.unwrap() >= 1);
@@ -75,7 +75,7 @@ async fn record_attempt_increments_attempts_while_row_stays_pending() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     let stored = store
         .append_event(&workspace_created_event("attempts-ws"))
         .await
@@ -108,7 +108,7 @@ async fn mark_published_clears_pending_and_rejects_unknown_id() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     let stored = store
         .append_event(&workspace_created_event("published-ws"))
         .await
@@ -137,7 +137,7 @@ async fn list_pending_joins_the_event_payload() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     let stored = store
         .append_event(&workspace_created_event("payload-ws"))
         .await
@@ -161,7 +161,7 @@ async fn mark_published_batch_clears_all_pending_and_is_idempotent() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     for name in ["batch-a", "batch-b", "batch-c"] {
         store
             .append_event(&workspace_created_event(name))
@@ -190,7 +190,7 @@ async fn list_pending_orders_by_id_and_respects_limit() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     let first = store
         .append_event(&workspace_created_event("order-a"))
         .await
@@ -220,7 +220,7 @@ async fn multiple_appends_enqueue_one_outbox_row_per_event() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     store
         .append_event(&workspace_created_event("multi-a"))
         .await
@@ -243,7 +243,7 @@ async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     store
         .append_event(&workspace_created_event("q-ws"))
         .await
@@ -276,7 +276,7 @@ async fn concurrent_relays_claim_disjoint_outbox_rows() {
     let Some((_container, pool)) = postgres_pool().await else {
         return;
     };
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
 
     // Drain anything a sibling test left behind so the counts below are ours.
     loop {

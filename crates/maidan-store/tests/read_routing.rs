@@ -36,7 +36,11 @@ async fn token_read_is_never_stale_and_replica_serves_reads() {
         .expect("connect replica");
     run_postgres_migrations(&primary).await.expect("migrate");
 
-    let store = PostgresStore::with_replica_reader(primary.clone(), replica.clone());
+    let store = PostgresStore::with_replica_reader(
+        primary.clone(),
+        replica.clone(),
+        maidan_store::test_support::dev_keys(),
+    );
 
     // Write, and capture the causality token for it.
     let ws = store

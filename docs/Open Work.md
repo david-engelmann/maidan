@@ -156,7 +156,7 @@ moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 
 Wave 4 #45: ~~a claimer-crash case in `chaos.rs` (S)~~ **✅** `claimer_crash` (store, both backends: a crashed claim lapses, the takeover reports `ClaimExpired`, the dead claimer is fenced from renew/acknowledge/release, and crashing claimers never double-hold a thread), and ~~a proptest state machine
 for `claim_next` against the real store (M)~~ **✅** `claim_state_machine` (claims, releases, renewals, acknowledgements and expiries against a model; stale tokens change nothing). Then loom, madsim, the A2A TCK,
-~~`openapi-lint`~~ (**✅** — `openapi_well_formed` pins every `$ref` resolving and every operation declaring exactly its path parameters, and the `openapi::lint` unit tests (`every_operation_has_its_own_summary`, `every_operation_documents_a_client_error`, `every_client_error_is_an_rfc_9457_problem` and five more) pin the document Redocly's recommended ruleset passes: a summary on every operation, the client errors each can return as RFC 9457 problems, and OpenAPI 3.1 (utoipa 5) in place of 3.0's `allOf`+`nullable`. `scripts/openapi-lint.sh` runs Redocly itself; six per-operation exceptions (redirect-only OIDC, health probes) are in `.redocly.lint-ignore.yaml`), nextest profiles and coverage floors. ~~A pg-vs-sqlite schema
+~~`openapi-lint`~~ (**✅** — `openapi_well_formed` pins every `$ref` resolving and every operation declaring exactly its path parameters, and the `openapi::lint` unit tests (`every_operation_has_its_own_summary`, `every_operation_documents_a_client_error`, `every_client_error_is_an_rfc_9457_problem` and five more) pin the document Redocly's recommended ruleset passes: a summary on every operation, the client errors each can return as RFC 9457 problems, and OpenAPI 3.1 (utoipa 5) in place of 3.0's `allOf`+`nullable`. `scripts/openapi-lint.sh` runs Redocly itself; six per-operation exceptions (redirect-only OIDC, health probes) are in `.redocly.lint-ignore.yaml`), ~~nextest profiles~~ (**✅** — `.config/nextest.toml`: every CI test job runs `--profile ci`, which kills a test at 3 minutes, writes a JUnit report and retries only a named quarantine of two tests with failed `main` runs behind them; a retried pass shows as `FLAKY`) and ~~coverage floors~~ (**✅** — `.config/coverage-floors.toml`: a line floor for the workspace and each crate just under its measured coverage, enforced by `scripts/coverage-floors.py` in the advisory `coverage (llvm-cov)` job; see [[Decisions]] "Coverage floors are per crate and advisory"). Two follow-ups: **the quarantined tests** — `subscribe_emits_replay_hint_when_bus_subscriber_lags` (a 50 ms settle and a 2 s window, missed on a loaded runner, run 36131376972) and `consumer_surface_is_paginated_read_only_and_fail_closed` (a one-second ticket mint answered 500, run 36366240722) — each needs its race removed and its quarantine entry deleted; and **the MinIO tests** (`s3_roundtrip`, `s3_multipart`) pass in under a second in CI with `s3.rs` at 0% coverage, so they are returning early at container start, which leaves `maidan-artifacts` at 25%. ~~A pg-vs-sqlite schema
 diff~~ **✅** `schema_parity` migrates both backends and compares tables, columns,
 nullability, unique keys and foreign keys. The first run found 101 matching tables
 and five known differences, each allowlisted with its reason: FTS, a `NOT NULL`
@@ -343,7 +343,7 @@ tool (default 100, clamp 1..=500); unbounded variant kept for internal full-list
 `pack`/`prefix`, `WorkSeeded`, `structure_only` template) + Postgres RLS — explicitly DECLINED in
 [[Decisions]] (`## Product scope` + `## Security`); the legacy `/inbox` authz "defect" — verified FALSE
 POSITIVE (bearer-only, sessions 401); outbox multi-replica double-publish (K8) — deferred with a correct
-fix spec; Postgres benchmark numbers / coverage floor / `context_query_count` flake — real but P3.
+fix spec; Postgres benchmark numbers — real but P3. (~~coverage floor~~ **✅** per-crate floors; ~~`context_query_count` flake~~ **✅** a single-connection pool with no acquire ping.)
 
 ## Post-272 forward work (2026-08-25 program — mostly shipped)
 
@@ -731,8 +731,8 @@ are unset = pgvector defaults), `query-embedding-cache`, `search-eval-gate` (ver
 substrate made queryable, from the ontology deep-dive; not a knowledge-graph product).
 
 **Program G — architecture, DX & release governance:** `fitness-catalog` (name Maidan's implicit `-ilities`, one
-fitness fn each — threat-gates/openapi-lint/a11y/mutation/coverage all feed it), `nextest-profiles` (honest
-flaky-quarantine), `semver-gates` (crates + SDKs), `coverage-floors` (risk-based, not blanket %), `migration-parity-gate`
+fitness fn each — threat-gates/openapi-lint/a11y/mutation/coverage all feed it), ~~`nextest-profiles`~~ **✅** (honest
+flaky-quarantine: `.config/nextest.toml`), `semver-gates` (crates + SDKs), ~~`coverage-floors`~~ **✅** (risk-based, not blanket %: per-crate floors in `.config/coverage-floors.toml`), `migration-parity-gate`
 (assert every `.sql` registered both backends + diff the replayed pg-vs-sqlite schema — closes the
 `maidan-migration-register` silent-drop class), `glossary-grounding-lint` (a fitness fn: terms in the context pack /
 docs / `EventKind` lexicon resolve to the flat glossary — grounds the ontology substrate without an OWL reasoner),
@@ -2141,7 +2141,7 @@ Two findings from the **code** audit resolved differently than filed:
   already tested by `dialect_parity`, with `backend_parity` covering module
   parity and `migration_register` covering the register.
 - **F-43 — the full workspace test run is not in per-PR CI.** **Reject as
-  filed.** `unit tests` runs `cargo test --workspace --lib --bins` and
+  filed.** `unit tests` runs `cargo nextest run --workspace --lib --bins` and
   `integration (testcontainers)` runs `cargo nextest run --workspace --tests`;
   together that is the workspace, and there are zero doctests to miss. The real
   concern behind it — that each PR is green against *its own base*, not against

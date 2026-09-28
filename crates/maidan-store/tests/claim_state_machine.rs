@@ -108,7 +108,7 @@ async fn world() -> World {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
     let ws = store
         .create_workspace(NewWorkspace { name: "w".into() })
         .await

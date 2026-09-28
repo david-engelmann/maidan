@@ -46,8 +46,10 @@ async fn round_trip_through_listen_notify_with_pointer_hydrate() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
-    let bus = PostgresBus::connect(pool).await.unwrap();
+    let store = PostgresStore::for_tests(pool.clone());
+    let bus = PostgresBus::connect(pool, maidan_store::test_support::dev_keys())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -104,7 +106,9 @@ async fn pointer_notify_for_missing_log_id_increments_not_found_hydrate_stat() {
         return;
     };
 
-    let bus = PostgresBus::connect(pool.clone()).await.unwrap();
+    let bus = PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let before = bus.hydrate_stats().snapshot();
@@ -127,7 +131,9 @@ async fn publish_rejects_legacy_synthetic_payload_too_large() {
         return;
     };
 
-    let bus = PostgresBus::connect(pool).await.unwrap();
+    let bus = PostgresBus::connect(pool, maidan_store::test_support::dev_keys())
+        .await
+        .unwrap();
 
     let big_body = "x".repeat(10_000);
     let msg = Message {
@@ -164,8 +170,10 @@ async fn pointer_delivery_for_large_persisted_event() {
         return;
     };
 
-    let store = PostgresStore::new(pool.clone());
-    let bus = PostgresBus::connect(pool).await.unwrap();
+    let store = PostgresStore::for_tests(pool.clone());
+    let bus = PostgresBus::connect(pool, maidan_store::test_support::dev_keys())
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -230,13 +238,13 @@ async fn backfill_drains_the_missed_range_onto_the_broadcast() {
     let Some((_container, pool)) = postgres_pool().await else {
         return;
     };
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     // Polled mode: no listener, so nothing auto-hydrates — the gap is explicit.
     let bus = PostgresBus::connect_with(
         pool,
         maidan_bus::PostgresBusOptions {
             notify_on_publish: false,
-            ..Default::default()
+            content_keys: store.content_keys().clone(),
         },
     )
     .await

@@ -27,7 +27,7 @@ async fn peer_create_lookup_and_delete() {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = seed_workspace(&store).await;
 
     let peer = store
@@ -62,7 +62,7 @@ async fn peer_token_hash_is_unique() {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = seed_workspace(&store).await;
     let hash = "b".repeat(64);
 
@@ -104,7 +104,7 @@ async fn federated_ingest_dedupes_by_peer_and_remote_id() {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = seed_workspace(&store).await;
     let peer = store
         .create_peer(NewPeer {
@@ -179,7 +179,7 @@ async fn update_peer_cursor_advances_last_synced_event_id() {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = seed_workspace(&store).await;
     let peer = store
         .create_peer(NewPeer {
@@ -209,7 +209,7 @@ async fn peer_outbound_secret_ciphertext_round_trips_via_auth() {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = seed_workspace(&store).await;
     let key = [0xab; 32];
     let plaintext = "outbound-bearer-secret";

@@ -24,17 +24,24 @@ struct Harness {
 
 async fn spawn_postgres_outbox() -> Option<Harness> {
     let (container, pool) = common::postgres_pool().await?;
-    let bus = Arc::new(PostgresBus::connect(pool.clone()).await.ok()?);
+    let bus = Arc::new(
+        PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
+            .await
+            .ok()?,
+    );
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::PostgresSearch::new(pool.clone()));
     let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().ok()?.path()));
 
     let mut state = AppState::for_tests(store, artifacts, bus.clone(), search);
     state.outbox_relay = true;
-    state.outbox_backend = Some(OutboxBackend::postgres(pool.clone()));
+    state.outbox_backend = Some(OutboxBackend::postgres(
+        pool.clone(),
+        maidan_store::test_support::dev_keys(),
+    ));
 
     maidan_server::metrics::init();
     let app = router(state);
@@ -75,7 +82,10 @@ async fn http_mutation_defers_bus_until_outbox_relay_runs() {
     let no_event = tokio::time::timeout(Duration::from_millis(400), sub.next()).await;
     assert!(no_event.is_err(), "bus should not publish before relay");
 
-    let relay = OutboxRelay::new(OutboxBackend::postgres(h.pool.clone()), h.bus.clone());
+    let relay = OutboxRelay::new(
+        OutboxBackend::postgres(h.pool.clone(), maidan_store::test_support::dev_keys()),
+        h.bus.clone(),
+    );
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())
@@ -97,7 +107,7 @@ async fn metrics_scrape_reports_outbox_pending_on_postgres() {
         return;
     };
 
-    let store = PostgresStore::new(h.pool.clone());
+    let store = PostgresStore::for_tests(h.pool.clone());
     let event = maidan_types::Event::WorkspaceCreated {
         occurred_at: chrono::Utc::now(),
         workspace: maidan_types::Workspace {
@@ -128,7 +138,10 @@ async fn metrics_scrape_reports_outbox_pending_on_postgres() {
         "expected pending gauge in metrics body"
     );
 
-    let relay = OutboxRelay::new(OutboxBackend::postgres(h.pool.clone()), h.bus.clone());
+    let relay = OutboxRelay::new(
+        OutboxBackend::postgres(h.pool.clone(), maidan_store::test_support::dev_keys()),
+        h.bus.clone(),
+    );
     relay.run_once().await.unwrap();
 
     let body = client
@@ -156,14 +169,17 @@ async fn relay_failure_keeps_pending_and_metrics_can_still_scrape() {
         None => return,
     };
     let bus = Arc::new(FailingBus::new("metrics-fail"));
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::PostgresSearch::new(pool.clone()));
     let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path()));
 
     let mut state = AppState::for_tests(store.clone(), artifacts, bus.clone(), search);
     state.outbox_relay = true;
-    state.outbox_backend = Some(OutboxBackend::postgres(pool.clone()));
+    state.outbox_backend = Some(OutboxBackend::postgres(
+        pool.clone(),
+        maidan_store::test_support::dev_keys(),
+    ));
 
     maidan_server::metrics::init();
     let app = router(state);
@@ -185,7 +201,11 @@ async fn relay_failure_keeps_pending_and_metrics_can_still_scrape() {
         .await
         .unwrap();
 
-    let relay = OutboxRelay::with_max_attempts(OutboxBackend::postgres(pool.clone()), bus, 2);
+    let relay = OutboxRelay::with_max_attempts(
+        OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys()),
+        bus,
+        2,
+    );
     relay.run_once().await.unwrap();
     relay.run_once().await.unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
@@ -217,14 +237,17 @@ async fn replay_quarantined_outbox_row_via_http_then_relay_publishes() {
         None => return,
     };
     let bus = Arc::new(FailingBus::new("replay-once"));
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::PostgresSearch::new(pool.clone()));
     let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path()));
 
     let mut state = AppState::for_tests(store.clone(), artifacts, bus.clone(), search);
     state.outbox_relay = true;
-    state.outbox_backend = Some(OutboxBackend::postgres(pool.clone()));
+    state.outbox_backend = Some(OutboxBackend::postgres(
+        pool.clone(),
+        maidan_store::test_support::dev_keys(),
+    ));
 
     maidan_server::metrics::init();
     let app = router(state);
@@ -247,7 +270,11 @@ async fn replay_quarantined_outbox_row_via_http_then_relay_publishes() {
         .await
         .unwrap();
 
-    let relay = OutboxRelay::with_max_attempts(OutboxBackend::postgres(pool.clone()), bus, 2);
+    let relay = OutboxRelay::with_max_attempts(
+        OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys()),
+        bus,
+        2,
+    );
     relay.run_once().await.unwrap();
     relay.run_once().await.unwrap();
     assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
@@ -273,8 +300,15 @@ async fn replay_quarantined_outbox_row_via_http_then_relay_publishes() {
     assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 0);
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
 
-    let ok_bus = Arc::new(PostgresBus::connect(pool.clone()).await.unwrap());
-    let relay2 = OutboxRelay::new(OutboxBackend::postgres(pool.clone()), ok_bus);
+    let ok_bus = Arc::new(
+        PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
+            .await
+            .unwrap(),
+    );
+    let relay2 = OutboxRelay::new(
+        OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys()),
+        ok_bus,
+    );
     relay2.run_once().await.unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
 

@@ -165,7 +165,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        (Arc::new(SqliteStore::new(pool.clone())), pool)
+        (Arc::new(SqliteStore::for_tests(pool.clone())), pool)
     }
 
     fn mcp(store: Arc<dyn Store>, pool: sqlx::SqlitePool) -> McpServer {

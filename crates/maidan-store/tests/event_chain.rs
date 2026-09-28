@@ -17,7 +17,7 @@ async fn sqlite() -> SqliteStore {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 async fn seed(store: &dyn Store) -> (maidan_types::WorkspaceId, maidan_types::Member) {
@@ -195,7 +195,7 @@ async fn append_then_verify_ok_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
 }
 
@@ -229,7 +229,7 @@ async fn tamper_is_detected_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     let (ws, member) = seed(&store).await;
     let stored = store
         .append_event(&Event::MemberJoined {
@@ -470,7 +470,7 @@ async fn exponent_numbers_survive_the_jsonb_round_trip_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     assert_exponent_numbers_survive_the_round_trip(&store).await;
 }
 

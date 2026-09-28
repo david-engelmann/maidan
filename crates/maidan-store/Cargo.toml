@@ -23,7 +23,12 @@ tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
+[features]
+# Test-only constructors under the public development KEK.
+test-support = []
+
 [dev-dependencies]
+maidan-store = { path = ".", features = ["test-support"] }
 maidan-auth = { path = "../maidan-auth" }
 maidan-search = { path = "../maidan-search", default-features = false, features = ["sqlite-vec"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

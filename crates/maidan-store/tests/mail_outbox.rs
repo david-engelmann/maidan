@@ -12,7 +12,7 @@ async fn sqlite() -> SqliteStore {
         .await
         .expect("connect");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 fn mail(to: &str) -> NewMailOutbox {
@@ -162,7 +162,7 @@ async fn mail_outbox_enqueue_claim_retry_deadletter_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
     run_dlq_scope_suite(&store).await;
 }

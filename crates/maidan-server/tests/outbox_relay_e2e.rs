@@ -48,7 +48,9 @@ async fn relay_publishes_enqueued_event_to_bus() {
         return;
     };
 
-    let bus = PostgresBus::connect(pool.clone()).await.unwrap();
+    let bus = PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
@@ -68,7 +70,10 @@ async fn relay_publishes_enqueued_event_to_bus() {
         .unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
 
-    let relay = OutboxRelay::new(OutboxBackend::postgres(pool.clone()), Arc::new(bus));
+    let relay = OutboxRelay::new(
+        OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys()),
+        Arc::new(bus),
+    );
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())
@@ -88,7 +93,9 @@ async fn relay_run_twice_does_not_leave_duplicate_pending_rows() {
         return;
     };
 
-    let bus = PostgresBus::connect(pool.clone()).await.unwrap();
+    let bus = PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
+        .await
+        .unwrap();
     let event = Event::WorkspaceCreated {
         occurred_at: Utc::now(),
         workspace: Workspace {
@@ -104,7 +111,10 @@ async fn relay_run_twice_does_not_leave_duplicate_pending_rows() {
         .unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
 
-    let relay = OutboxRelay::new(OutboxBackend::postgres(pool.clone()), Arc::new(bus));
+    let relay = OutboxRelay::new(
+        OutboxBackend::postgres(pool.clone(), maidan_store::test_support::dev_keys()),
+        Arc::new(bus),
+    );
     relay.run_once().await.unwrap();
     relay.run_once().await.unwrap();
 

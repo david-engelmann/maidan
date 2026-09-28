@@ -18,7 +18,7 @@ async fn sqlite() -> SqliteStore {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 fn target(ws: WorkspaceId, surface: EgressSurface, selector: &str) -> NewEgressTarget {
@@ -238,6 +238,6 @@ async fn egress_targets_allow_list_revoke_and_authorize_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
 }

@@ -220,7 +220,7 @@ async fn workspace_import_sqlite() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    run_suite(&SqliteStore::new(pool)).await;
+    run_suite(&SqliteStore::for_tests(pool)).await;
 }
 
 #[tokio::test]
@@ -253,5 +253,5 @@ async fn workspace_import_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    run_suite(&PostgresStore::new(pool)).await;
+    run_suite(&PostgresStore::for_tests(pool)).await;
 }

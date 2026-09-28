@@ -24,7 +24,7 @@ async fn sqlite() -> (SqliteStore, sqlx::SqlitePool) {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    (SqliteStore::new(pool.clone()), pool)
+    (SqliteStore::for_tests(pool.clone()), pool)
 }
 
 async fn seed_with_message(store: &dyn Store) -> maidan_types::StoredEvent {

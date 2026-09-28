@@ -85,6 +85,7 @@ otel = ["maidan-observability/otel"]
 sqlite-vec = ["maidan-search/sqlite-vec"]
 
 [dev-dependencies]
+maidan-store = { path = "../maidan-store", features = ["test-support"] }
 # Hand-written WAT for the WASI slash e2e.
 wat = "1"
 base64 = "0.22"

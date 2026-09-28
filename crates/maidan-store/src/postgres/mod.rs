@@ -224,7 +224,8 @@ fn unix_millis() -> u64 {
 
 impl PostgresStore {
     /// Single-pool store: reads and writes both use `pool` (reader aliases it).
-    pub fn new(pool: PgPool) -> Self {
+    /// `keys` wraps and unwraps message content keys; there is no default.
+    pub fn new(pool: PgPool, keys: Arc<ContentKeyring>) -> Self {
         Self {
             reader: pool.clone(),
             pool,
@@ -232,15 +233,21 @@ impl PostgresStore {
             replica_replay: Arc::new(AtomicU64::new(0)),
             read_routing: Arc::new(ReadRoutingMetrics::default()),
             replica_health: Arc::new(ReplicaHealth::default()),
-            keys: Arc::new(ContentKeyring::insecure_dev()),
+            keys,
         }
+    }
+
+    /// Single-pool store under the public development KEK, for tests only.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_tests(pool: PgPool) -> Self {
+        Self::new(pool, crate::test_support::dev_keys())
     }
 
     /// Store with a distinct read-replica pool. Writes use `pool`;
     /// token-eligible reads route to `reader`. Spawns a background poller that
     /// keeps the replica's replay LSN cached for cheap per-read routing
     /// decisions.
-    pub fn with_replica_reader(pool: PgPool, reader: PgPool) -> Self {
+    pub fn with_replica_reader(pool: PgPool, reader: PgPool, keys: Arc<ContentKeyring>) -> Self {
         let replica_replay = Arc::new(AtomicU64::new(0));
         let read_routing = Arc::new(ReadRoutingMetrics::default());
         let replica_health = Arc::new(ReplicaHealth::default());
@@ -258,15 +265,8 @@ impl PostgresStore {
             replica_replay,
             read_routing,
             replica_health,
-            keys: Arc::new(ContentKeyring::insecure_dev()),
+            keys,
         }
-    }
-
-    /// Use `keys` to wrap and unwrap message content keys; the constructors
-    /// default to the insecure development keyring.
-    pub fn with_content_keys(mut self, keys: Arc<ContentKeyring>) -> Self {
-        self.keys = keys;
-        self
     }
 
     pub fn content_keys(&self) -> &Arc<ContentKeyring> {

@@ -147,7 +147,7 @@ async fn fair_dispatch_orders_by_aged_priority_sqlite() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
     run_ordering(&store).await;
     run_aging(&store, |tid, when| {
         let pool = pool.clone();
@@ -193,7 +193,7 @@ async fn fair_dispatch_orders_by_aged_priority_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     run_ordering(&store).await;
     run_aging(&store, |tid, when| {
         let pool = pool.clone();

@@ -21,7 +21,7 @@ async fn store_with_member() -> (SqliteStore, WorkspaceId, MemberId) {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace {

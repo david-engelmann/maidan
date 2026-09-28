@@ -23,7 +23,7 @@ async fn occupancy_splits_claimed_from_working_over_http() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
 
     // Set the scenario up through the store (the counts logic is store-tested on
     // both backends; this test proves the HTTP route surfaces it).

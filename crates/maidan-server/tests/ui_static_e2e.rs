@@ -20,7 +20,7 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>) {
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
 
-    let store = Arc::new(SqliteStore::new(pool.clone()));
+    let store = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path()));
     let bus = Arc::new(InMemoryBus::new());

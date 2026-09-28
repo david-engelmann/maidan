@@ -112,7 +112,7 @@ async fn oauth_codes_single_use_and_ttl_sqlite() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     assert_single_use_and_ttl(&store).await;
 }
 
@@ -140,6 +140,6 @@ async fn oauth_codes_single_use_and_ttl_postgres() {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     assert_single_use_and_ttl(&store).await;
 }

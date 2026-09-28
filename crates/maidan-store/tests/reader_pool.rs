@@ -37,7 +37,11 @@ async fn with_replica_reader_store_reads_and_writes() {
     run_postgres_migrations(&pool).await.expect("migrate");
 
     // Reader = the same pool here; the split is what's under test, not routing.
-    let store = PostgresStore::with_replica_reader(pool.clone(), pool.clone());
+    let store = PostgresStore::with_replica_reader(
+        pool.clone(),
+        pool.clone(),
+        maidan_store::test_support::dev_keys(),
+    );
 
     let ws = store
         .create_workspace(NewWorkspace {

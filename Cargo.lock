@@ -2943,6 +2943,7 @@ dependencies = [
  "maidan-auth",
  "maidan-fsm",
  "maidan-search",
+ "maidan-store",
  "maidan-types",
  "metrics",
  "proptest",

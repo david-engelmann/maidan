@@ -57,7 +57,7 @@ async fn sqlite_migration_0004_records_thread_transitions() {
         .await
         .expect("apply sqlite migrations");
 
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
     let (thread_id, actor_id) = seed_thread(&store).await;
 
     sqlx::query("UPDATE maidan_threads SET state = 'in_review', updated_at = ? WHERE id = ?")
@@ -127,7 +127,7 @@ async fn postgres_migration_0004_records_thread_transitions() {
         .await
         .expect("apply postgres migrations");
 
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     let (thread_id, actor_id) = seed_thread(&store).await;
 
     sqlx::query("UPDATE maidan_threads SET state = 'in_review', updated_at = NOW() WHERE id = $1")

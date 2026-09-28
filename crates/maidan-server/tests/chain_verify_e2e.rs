@@ -24,7 +24,7 @@ async fn store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    (Arc::new(SqliteStore::new(pool.clone())), pool)
+    (Arc::new(SqliteStore::for_tests(pool.clone())), pool)
 }
 
 #[tokio::test]

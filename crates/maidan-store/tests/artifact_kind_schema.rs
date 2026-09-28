@@ -48,7 +48,7 @@ async fn sqlite_upsert_artifact_roundtrips_all_kinds() {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     for (i, kind) in [
         ArtifactKind::Screenshot,

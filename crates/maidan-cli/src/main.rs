@@ -144,7 +144,7 @@ async fn run_init(
             run_sqlite_migrations(&pool)
                 .await
                 .context("migrate sqlite")?;
-            Arc::new(SqliteStore::new(pool).with_content_keys(content_keys))
+            Arc::new(SqliteStore::new(pool, content_keys))
         }
         Dialect::Postgres => {
             let pool = PgPoolOptions::new()
@@ -155,7 +155,7 @@ async fn run_init(
             run_postgres_migrations(&pool)
                 .await
                 .context("migrate postgres")?;
-            Arc::new(PostgresStore::new(pool).with_content_keys(content_keys))
+            Arc::new(PostgresStore::new(pool, content_keys))
         }
     };
 
@@ -308,8 +308,7 @@ async fn run_mcp_stdio(
             run_sqlite_migrations(&pool)
                 .await
                 .context("migrate sqlite")?;
-            let store: Arc<dyn Store> =
-                Arc::new(SqliteStore::new(pool.clone()).with_content_keys(content_keys));
+            let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone(), content_keys));
             let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool));
             (store, search)
         }
@@ -322,8 +321,7 @@ async fn run_mcp_stdio(
             run_postgres_migrations(&pool)
                 .await
                 .context("migrate postgres")?;
-            let store: Arc<dyn Store> =
-                Arc::new(PostgresStore::new(pool.clone()).with_content_keys(content_keys));
+            let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone(), content_keys));
             let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool));
             (store, search)
         }

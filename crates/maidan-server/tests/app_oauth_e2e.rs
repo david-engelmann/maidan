@@ -28,7 +28,7 @@ struct Harness {
 
 async fn spawn() -> Option<Harness> {
     let (container, pool) = common::postgres_pool().await?;
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
     let dir = tempfile::tempdir().ok()?;

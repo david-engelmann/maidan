@@ -13,7 +13,7 @@ async fn sqlite_creates_slash_command() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace { name: "w".into() })
         .await

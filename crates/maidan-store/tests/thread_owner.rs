@@ -16,7 +16,7 @@ async fn sqlite() -> SqliteStore {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 async fn run_owner_suite(store: &dyn Store) {
@@ -335,7 +335,7 @@ async fn thread_owner_is_set_cleared_and_orthogonal_to_assignment_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     run_owner_suite(&store).await;
     run_sod_suite(&store).await;
     run_steer_suite(&store).await;

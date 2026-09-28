@@ -41,7 +41,7 @@ async fn oidc_identity_upsert_and_lookup_roundtrip() {
         .await
         .expect("fk");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let workspace_id = seed_workspace(&store).await;
     let member_id = seed_human(&store, workspace_id).await;
 
@@ -75,7 +75,7 @@ async fn oidc_pending_is_single_use() {
         .await
         .expect("fk");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let workspace_id = seed_workspace(&store).await;
 
     store
@@ -111,7 +111,7 @@ async fn session_create_get_and_delete() {
         .await
         .expect("fk");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let workspace_id = seed_workspace(&store).await;
     let member_id = seed_human(&store, workspace_id).await;
 
@@ -144,7 +144,7 @@ async fn get_member_by_handle_resolves_workspace_member() {
         .await
         .expect("fk");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let workspace_id = seed_workspace(&store).await;
     let member_id = seed_human(&store, workspace_id).await;
 

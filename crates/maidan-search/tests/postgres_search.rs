@@ -35,7 +35,7 @@ async fn full_text_search_against_postgres() {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search = PostgresSearch::new(pool);
 
     let fx = common::seed(&*store).await;
@@ -69,7 +69,7 @@ async fn configured_hnsw_build_params_and_ef_search() {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search = PostgresSearch::new(pool.clone()).with_hnsw(HnswParams {
         m: Some(8),
         ef_construction: Some(32),

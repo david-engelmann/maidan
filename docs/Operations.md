@@ -390,14 +390,19 @@ specific commit SHA in `ci.yml`.
 
 ### `unit tests` fails
 
-Run `cargo test --lib --bins --workspace` locally with the same
-toolchain. The toolchain pin is in `rust-toolchain.toml`; if a deep
+Run `cargo nextest run --workspace --lib --bins --profile ci` locally with
+the same toolchain (`cargo test --workspace --lib --bins` runs the same
+tests without nextest). The job uploads a `junit-unit` artifact naming each
+failure. The toolchain pin is in `rust-toolchain.toml`; if a deep
 transitive dep needs a newer rustc, bump the pin.
 
 ### `integration (testcontainers)` fails
 
-Run `cargo nextest run --workspace --tests` locally with Docker
-running. Common failures:
+Run `cargo nextest run --workspace --tests --profile ci` locally with
+Docker running; the job uploads a `junit-integration` artifact. The `ci`
+profile in `.config/nextest.toml` kills a test after 3 minutes and retries
+only the quarantined tests listed there; a quarantined test that passes on a
+retry is reported as `FLAKY`, not hidden. Common failures:
 
 - "syntax error at or near `(`": a migration uses syntax that the
   testcontainer's Postgres major doesn't support. Verify the test is
@@ -413,29 +418,27 @@ running. Common failures:
 
 ### `coverage (llvm-cov)` fails
 
-The CI coverage job now enforces a line-coverage floor with
-`--fail-under-lines` in `.github/workflows/ci.yml`.
+The job runs the whole suite under `cargo llvm-cov nextest` and then
+`scripts/coverage-floors.py`, which fails when the workspace or any crate is
+under its line-coverage floor in `.config/coverage-floors.toml`, when a crate
+has no floor, or when a floor names a crate that no longer exists. It is not a
+required check.
 
-- Reproduce locally:
+- Reproduce locally (Docker running, so the Postgres suites count):
 
   ```sh
-  COVERAGE_MIN_LINES=9.0 \
-  cargo llvm-cov --workspace --lib --bins \
-    --fail-under-lines "$COVERAGE_MIN_LINES"
+  cargo llvm-cov nextest --workspace --profile ci --no-report
+  cargo llvm-cov report --lcov --output-path lcov.info
+  python3 scripts/coverage-floors.py lcov.info
   ```
 
-- Baseline for the initial gate: **9.8%** line coverage from green main
-  run `26485125992` (gate set slightly lower at `9.0` to avoid noise).
-- Raised the floor to **`10.0`** after targeted unit tests
-  (filters, subscribe resume, listener health). Green run `26492169902` (11.0
-  failed on first attempt). Re-measure on `main` before the next bump.
-- Raised the floor to **`10.5`** after targeted tests in
-  `maidan-types` (`EventFilter`), `maidan-bus` (hydrate/error), `maidan-server`
-  (subscribe metrics, hydrate `/metrics` e2e), `maidan-search`, and `maidan-auth`.
-- Raised the floor to **`11.0`** after outbox/relay coverage
-  (PR #173; green CI run `26529705006`). Re-measure on `main` before the next bump.
-- If the floor needs to move, do it in a dedicated CI/docs PR and note
-  the run id used for recalibration.
+  The same table is in the job's step summary, and `lcov.info` is in its
+  `coverage` artifact.
+- A crate under its floor lost tested lines: add tests, or say in the PR why
+  that code no longer needs them and lower the floor there.
+- A new crate needs a floor in the same PR. Take its measured coverage from
+  the job, subtract one point and round down to the half point.
+- Raise a floor when a crate's coverage rises, the same way, citing the run.
 
 ### Codecov (optional)
 

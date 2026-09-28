@@ -20,7 +20,7 @@ async fn sqlite_faceted_search_filters_hits() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search = SqliteSearch::new(pool);
     let fx = common::seed(&*store).await;
     common::assert_faceted_search(&search, &fx).await;
