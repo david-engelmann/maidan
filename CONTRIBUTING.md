@@ -40,7 +40,8 @@ rubber stamp.
    reviewed by the maintainer before merge.
 6. CodeRabbit reviews every non-draft PR to `main` and reviews new pushes
    incrementally (settings in [`.coderabbit.yaml`](.coderabbit.yaml)). Address every
-   comment before merge: fix it, or reply with the reason it does not apply. CodeRabbit is
+   comment before merge, including those it lists outside the diff in its review
+   body: fix it, or reply with the reason it does not apply. CodeRabbit is
    advisory, not a required check; `@coderabbitai review` asks for a fresh review.
 7. Squash-merge — the PR title + body become the commit on `main`.
 

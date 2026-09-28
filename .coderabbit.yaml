@@ -63,8 +63,11 @@ reviews:
         Every schema change lands in both `migrations/postgres/` and
         `migrations/sqlite/` in the same PR (the numbers differ between the
         two directories) and is registered in
-        `crates/maidan-store/src/migrate.rs`. Flag a migration with no
-        counterpart in the other dialect, and an edit to an already-merged
+        `crates/maidan-store/src/migrate.rs`. A pair shares its slug (the
+        name after the number). A migration for one dialect only needs its
+        slug added to `POSTGRES_ONLY_MIGRATIONS` or `SQLITE_ONLY_MIGRATIONS`
+        in `crates/maidan-store/tests/backend_parity.rs` with a reason; flag
+        one without that entry. Also flag an edit to an already-merged
         migration file. `*_down.sql` files are manual rollback only.
     - path: "helm/**"
       instructions: |

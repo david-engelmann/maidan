@@ -209,10 +209,15 @@ common failures and fixes are in "Debugging CI" below.
 
 CodeRabbit reviews every non-draft PR to `main` and reviews new pushes
 incrementally (settings in `.coderabbit.yaml` at the repo root). Before
-merging, address every comment it leaves: fix it, or reply with the
+merging, address every comment it leaves, including those it lists
+outside the diff in its review body: fix it, or reply with the
 reason it does not apply. It is advisory, not a required check, so a
 wrong comment is answered, not obeyed. `@coderabbitai review` asks for
 a fresh review.
+
+If no review arrives (rate limit or tool failure), ask with
+`@coderabbitai review`. CodeRabbit is advisory, so a missing review does
+not block a merge the 8 checks allow.
 
 ### 5. Merge
 
