@@ -6,6 +6,7 @@ use maidan_types::{
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
+use crate::a2a::PendingGateQuery;
 use crate::error::StoreError;
 
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
@@ -102,6 +103,61 @@ pub async fn list_pending(
     .fetch_all(pool)
     .await?;
     Ok(rows.iter().map(row_to_gate).collect())
+}
+
+/// A keyset page of the pending gates, newest first. See [`PendingGateQuery`].
+pub async fn page_pending(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    query: PendingGateQuery,
+) -> Result<Vec<ApprovalGate>, StoreError> {
+    let (before_at, before_id) = match query.before {
+        Some((at, id)) => (Some(at), id.map(|id| id.0)),
+        None => (None, None),
+    };
+    let rows = sqlx::query(&format!(
+        "SELECT {GATE_COLUMNS} FROM maidan_approval_gates
+         WHERE workspace_id = $1 AND state = 'pending'
+           AND ($2::uuid IS NULL OR thread_id = $2)
+           AND ($3::timestamptz IS NULL OR created_at >= $3)
+           AND ($4::timestamptz IS NULL OR created_at < $4
+                OR (created_at = $4 AND $5::uuid IS NOT NULL AND id < $5))
+         ORDER BY created_at DESC, id DESC
+         LIMIT $6"
+    ))
+    .bind(workspace_id.0)
+    .bind(query.thread_id.map(|t| t.0))
+    .bind(query.created_since)
+    .bind(before_at)
+    .bind(before_id)
+    .bind(query.limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(row_to_gate).collect())
+}
+
+/// Pending gates matching `query`'s filters, counted per thread.
+pub async fn count_pending_by_thread(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    query: PendingGateQuery,
+) -> Result<Vec<(Option<ThreadId>, i64)>, StoreError> {
+    let rows: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
+        "SELECT thread_id, COUNT(*) FROM maidan_approval_gates
+         WHERE workspace_id = $1 AND state = 'pending'
+           AND ($2::uuid IS NULL OR thread_id = $2)
+           AND ($3::timestamptz IS NULL OR created_at >= $3)
+         GROUP BY thread_id",
+    )
+    .bind(workspace_id.0)
+    .bind(query.thread_id.map(|t| t.0))
+    .bind(query.created_since)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(thread, count)| (thread.map(ThreadId), count))
+        .collect())
 }
 
 /// Resolve a `Pending` gate to accept/decline/cancel. Compare-and-set on

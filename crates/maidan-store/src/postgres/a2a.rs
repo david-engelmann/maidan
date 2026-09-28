@@ -245,6 +245,25 @@ pub async fn list_task_push_configs(
     Ok(rows.into_iter().map(push_row).collect())
 }
 
+pub async fn page_task_push_configs(
+    pool: &PgPool,
+    task_id: &str,
+    after: Option<&str>,
+    limit: i64,
+) -> Result<Vec<A2aPushConfigRow>, StoreError> {
+    let rows: Vec<PushRow> = sqlx::query_as(&format!(
+        "SELECT {PUSH_COLS} FROM maidan_a2a_task_push_configs
+         WHERE task_id = $1 AND ($2::text IS NULL OR config_id > $2)
+         ORDER BY config_id ASC LIMIT $3"
+    ))
+    .bind(task_id)
+    .bind(after)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(push_row).collect())
+}
+
 pub async fn delete_task_push_config(
     pool: &PgPool,
     task_id: &str,

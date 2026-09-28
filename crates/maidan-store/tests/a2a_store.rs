@@ -302,6 +302,43 @@ async fn run_suite(store: &dyn Store) {
             .len(),
         2
     );
+    // Pages walk the configs in id order, each starting after the last id
+    // of the one before; another task's configs never appear.
+    for id in ["e", "d"] {
+        store
+            .upsert_a2a_task_push_config(&config("t0", id, "https://d.example"))
+            .await
+            .expect("create");
+    }
+    let mut paged = Vec::new();
+    let mut after: Option<String> = None;
+    loop {
+        let page = store
+            .page_a2a_task_push_configs("t0", after.as_deref(), 2)
+            .await
+            .expect("page");
+        assert!(page.len() <= 2);
+        after = page.last().map(|c| c.config_id.clone());
+        paged.extend(page.into_iter().map(|c| c.config_id));
+        if after.is_none() {
+            break;
+        }
+    }
+    assert_eq!(paged, ["a", "b", "d", "e"]);
+    assert_eq!(
+        store
+            .page_a2a_task_push_configs("t0", Some("b"), 10)
+            .await
+            .expect("page")
+            .len(),
+        2
+    );
+    for id in ["d", "e"] {
+        store
+            .delete_a2a_task_push_config("t0", id)
+            .await
+            .expect("delete");
+    }
     assert!(store
         .delete_a2a_task_push_config("t0", "a")
         .await

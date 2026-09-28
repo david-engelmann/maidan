@@ -4,6 +4,7 @@
 //! threads, the author is the caller, tasks hold no words) and the fixes the
 //! TCK drove.
 
+use std::collections::HashSet;
 use std::sync::atomic::AtomicI64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -16,8 +17,8 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState, FederationRuntime, WebhookRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations, A2aTaskWrite};
 use maidan_types::{
-    ApprovalGateState, ChannelId, MemberId, MemberKind, MessageId, NewApiToken, NewApprovalGate,
-    NewChannel, NewMember, NewThread, NewWorkspace, ThreadId, WorkspaceId,
+    ApprovalGateId, ApprovalGateState, ChannelId, MemberId, MemberKind, MessageId, NewApiToken,
+    NewApprovalGate, NewChannel, NewMember, NewThread, NewWorkspace, ThreadId, WorkspaceId,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -212,20 +213,41 @@ impl H {
         self.rest(reqwest::Method::GET, path, None).await
     }
 
+    /// Open a pending approval gate in `thread_id`; its id is its task id.
+    async fn gate(&self, thread_id: ThreadId) -> String {
+        self.store
+            .create_approval_gate(&NewApprovalGate {
+                workspace_id: self.ws,
+                thread_id: Some(thread_id),
+                requested_by: self.member,
+                prompt: "Deploy?".into(),
+                schema: None,
+            })
+            .await
+            .unwrap()
+            .id
+            .0
+            .to_string()
+    }
+
     /// Seed a task that has not finished, which SendMessage never produces.
     async fn working_task(&self, context: ThreadId) -> String {
         let id = uuid::Uuid::now_v7().to_string();
+        let at = chrono::Utc::now();
         self.store
             .upsert_a2a_task(A2aTaskWrite {
                 workspace_id: self.ws,
                 task_id: &id,
                 context_id: Some(&context.0.to_string()),
                 state: "TASK_STATE_WORKING",
-                status_at: chrono::Utc::now(),
+                status_at: at,
                 task_json: json!({
                     "id": id,
                     "contextId": context.0.to_string(),
-                    "status": { "state": "TASK_STATE_WORKING" },
+                    "status": {
+                        "state": "TASK_STATE_WORKING",
+                        "timestamp": at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                    },
                     "metadata": { "maidan": { "threadId": context.0 } },
                 }),
             })
@@ -940,6 +962,60 @@ async fn push_configs_seal_secrets_and_deliver_the_task() {
         .await;
     assert_eq!(listed["configs"].as_array().unwrap().len(), 2);
     assert_eq!(listed["nextPageToken"], "");
+
+    // Pages of one walk both configs in id order over each binding.
+    let mut by_rest = Vec::new();
+    let mut token = String::new();
+    loop {
+        let (status, page) = h
+            .get(&format!(
+                "/tasks/{task_id}/pushNotificationConfigs?pageSize=1&pageToken={token}"
+            ))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{page}");
+        let configs = page["configs"].as_array().unwrap();
+        assert_eq!(configs.len(), 1);
+        by_rest.push(configs[0]["id"].as_str().unwrap().to_string());
+        token = page["nextPageToken"].as_str().unwrap().to_string();
+        if token.is_empty() {
+            break;
+        }
+    }
+    let mut expected = vec![config_id.clone(), "inline".to_string()];
+    expected.sort();
+    assert_eq!(by_rest, expected);
+    let first = h
+        .rpc(
+            "ListTaskPushNotificationConfigs",
+            json!({ "taskId": task_id, "pageSize": 1 }),
+        )
+        .await;
+    let rest = h
+        .rpc(
+            "ListTaskPushNotificationConfigs",
+            json!({ "taskId": task_id, "pageToken": first["result"]["nextPageToken"] }),
+        )
+        .await;
+    assert_eq!(rest["result"]["configs"][0]["id"], json!(expected[1]));
+    assert_eq!(rest["result"]["nextPageToken"], "");
+    for bad in [
+        json!({ "taskId": task_id, "pageSize": 0 }),
+        json!({ "taskId": task_id, "pageSize": 101 }),
+        json!({ "taskId": task_id, "pageToken": "not base64!" }),
+    ] {
+        assert_eq!(
+            error_code(&h.rpc("ListTaskPushNotificationConfigs", bad.clone()).await),
+            -32602,
+            "{bad}"
+        );
+    }
+    let (status, _) = h
+        .get(&format!(
+            "/tasks/{task_id}/pushNotificationConfigs?pageSize=some"
+        ))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
     let path = format!("/tasks/{task_id}/pushNotificationConfigs/{config_id}");
     for _ in 0..2 {
         let (status, _) = h.rest(reqwest::Method::DELETE, &path, None).await;
@@ -1040,6 +1116,127 @@ async fn a_pending_gate_is_an_input_required_task() {
         error_code(&h.rpc("GetTask", json!({ "id": gate_id })).await),
         -32001
     );
+}
+
+/// Every pending gate is listed and counted, however many there are: they
+/// page by the same keyset as stored tasks, merged into one order.
+#[tokio::test]
+async fn list_tasks_pages_through_every_pending_gate() {
+    let h = spawn().await;
+    let general = channel(h.store.as_ref(), h.ws, "general", false).await;
+    let open = thread(h.store.as_ref(), general).await;
+    let secret = channel(h.store.as_ref(), h.ws, "secret", true).await;
+    let hidden = thread(h.store.as_ref(), secret).await;
+    h.store
+        .add_channel_member(secret, h.member, maidan_types::ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    // More gates than any fixed scan would reach, with tasks interleaved and
+    // three gates only the caller can read.
+    let mut created = HashSet::new();
+    for i in 0..520 {
+        created.insert(h.gate(open).await);
+        if i % 200 == 0 {
+            created.insert(h.working_task(open).await);
+        }
+    }
+    let mut private = HashSet::new();
+    for _ in 0..3 {
+        private.insert(h.gate(hidden).await);
+    }
+    let newest = h.gate(hidden).await;
+    private.insert(newest.clone());
+    created.extend(private.iter().cloned());
+
+    let mut seen: Vec<(String, String)> = Vec::new();
+    let mut token = String::new();
+    loop {
+        let page = h
+            .rpc("ListTasks", json!({ "pageSize": 100, "pageToken": token }))
+            .await;
+        assert_eq!(page["result"]["totalSize"], 527, "{page}");
+        for task in page["result"]["tasks"].as_array().unwrap() {
+            seen.push((
+                task["status"]["timestamp"].as_str().unwrap().to_string(),
+                task["id"].as_str().unwrap().to_string(),
+            ));
+        }
+        token = page["result"]["nextPageToken"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        if token.is_empty() {
+            break;
+        }
+    }
+    assert!(
+        seen.windows(2).all(|w| w[0] > w[1]),
+        "newest status first, ties by id"
+    );
+    let ids: Vec<String> = seen.into_iter().map(|(_, id)| id).collect();
+    assert_eq!(ids.len(), created.len(), "nothing listed twice");
+    assert_eq!(ids.iter().cloned().collect::<HashSet<_>>(), created);
+
+    let gates_only = h
+        .rpc(
+            "ListTasks",
+            json!({ "status": "TASK_STATE_INPUT_REQUIRED", "pageSize": 1 }),
+        )
+        .await;
+    assert_eq!(gates_only["result"]["totalSize"], 524);
+    let in_hidden = h
+        .rpc("ListTasks", json!({ "contextId": hidden.0.to_string() }))
+        .await;
+    assert_eq!(in_hidden["result"]["totalSize"], 4);
+    assert_eq!(in_hidden["result"]["tasks"].as_array().unwrap().len(), 4);
+    let not_a_thread = h
+        .rpc(
+            "ListTasks",
+            json!({ "contextId": hidden.0.to_string().to_uppercase() }),
+        )
+        .await;
+    assert_eq!(not_a_thread["result"]["totalSize"], 0);
+
+    // "At or after" a sub-millisecond instant: the gate stamped in the
+    // millisecond before it is excluded, the newer ones kept.
+    let at = h
+        .store
+        .get_approval_gate(ApprovalGateId(uuid::Uuid::parse_str(&newest).unwrap()))
+        .await
+        .unwrap()
+        .unwrap()
+        .created_at;
+    let since = (at + chrono::Duration::microseconds(1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
+    let after = h
+        .rpc("ListTasks", json!({ "statusTimestampAfter": since }))
+        .await;
+    assert_eq!(after["result"]["totalSize"], 0, "{after}");
+    let since = at.to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
+    let at_or_after = h
+        .rpc("ListTasks", json!({ "statusTimestampAfter": since }))
+        .await;
+    assert!(at_or_after["result"]["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["id"] == json!(newest)));
+
+    // Someone outside the private channel sees and counts only the rest.
+    let outsider = member(h.store.as_ref(), h.ws, "outsider").await;
+    let outsider_token = mint(h.store.as_ref(), h.ws, outsider, ALL_CAPS).await;
+    let theirs = h
+        .rpc_as(&outsider_token, "ListTasks", json!({ "pageSize": 5 }))
+        .await;
+    assert_eq!(theirs["result"]["totalSize"], 523);
+    let first: Vec<_> = theirs["result"]["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap().to_string())
+        .collect();
+    let visible: Vec<_> = ids.iter().filter(|id| !private.contains(*id)).collect();
+    assert_eq!(first.iter().collect::<Vec<_>>(), visible[..5]);
 }
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use maidan_types::{
     ApprovalGate, ApprovalGateId, ApprovalGateState, Event, MemberId, NewApprovalGate, StoredEvent,
     ThreadId, WorkspaceId,
@@ -6,10 +6,17 @@ use maidan_types::{
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
+use crate::a2a::PendingGateQuery;
 use crate::error::StoreError;
 
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
      content, resolved_by, requested_actor_id, resolved_actor_id, created_at, resolved_at";
+
+/// The `created_at` text form: always millisecond `...Z`, so rows and cursors
+/// compare correctly as strings.
+fn ts(t: DateTime<Utc>) -> String {
+    t.to_rfc3339_opts(SecondsFormat::Millis, true)
+}
 
 /// Open a new `Pending` approval gate. JSON columns are stored as TEXT in
 /// SQLite.
@@ -30,7 +37,7 @@ async fn create_in_tx(
         .as_ref()
         .map(serde_json::to_string)
         .transpose()?;
-    let now = Utc::now().to_rfc3339();
+    let now = ts(Utc::now());
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_approval_gates
              (id, workspace_id, thread_id, requested_by, prompt, schema, state, created_at,
@@ -112,6 +119,61 @@ pub async fn list_pending(
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_gate).collect()
+}
+
+/// A keyset page of the pending gates, newest first. See [`PendingGateQuery`].
+pub async fn page_pending(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    query: PendingGateQuery,
+) -> Result<Vec<ApprovalGate>, StoreError> {
+    let (before_at, before_id) = match query.before {
+        Some((at, id)) => (Some(ts(at)), id.map(|id| id.0)),
+        None => (None, None),
+    };
+    let rows = sqlx::query(&format!(
+        "SELECT {GATE_COLUMNS} FROM maidan_approval_gates
+         WHERE workspace_id = ?1 AND state = 'pending'
+           AND (?2 IS NULL OR thread_id = ?2)
+           AND (?3 IS NULL OR created_at >= ?3)
+           AND (?4 IS NULL OR created_at < ?4
+                OR (created_at = ?4 AND ?5 IS NOT NULL AND id < ?5))
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?6"
+    ))
+    .bind(workspace_id.0)
+    .bind(query.thread_id.map(|t| t.0))
+    .bind(query.created_since.map(ts))
+    .bind(before_at)
+    .bind(before_id)
+    .bind(query.limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_gate).collect()
+}
+
+/// Pending gates matching `query`'s filters, counted per thread.
+pub async fn count_pending_by_thread(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    query: PendingGateQuery,
+) -> Result<Vec<(Option<ThreadId>, i64)>, StoreError> {
+    let rows: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
+        "SELECT thread_id, COUNT(*) FROM maidan_approval_gates
+         WHERE workspace_id = ?1 AND state = 'pending'
+           AND (?2 IS NULL OR thread_id = ?2)
+           AND (?3 IS NULL OR created_at >= ?3)
+         GROUP BY thread_id",
+    )
+    .bind(workspace_id.0)
+    .bind(query.thread_id.map(|t| t.0))
+    .bind(query.created_since.map(ts))
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(thread, count)| (thread.map(ThreadId), count))
+        .collect())
 }
 
 /// Resolve a `Pending` gate (compare-and-set on `pending` so a double-answer or a

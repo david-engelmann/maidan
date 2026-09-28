@@ -3,9 +3,13 @@
 //! compare-and-set on `pending` (a double-answer is a no-op). Both backends. No
 //! routes/tool yet — the zero-blast-radius foundation.
 
-use maidan_store::{prelude::*, run_sqlite_migrations};
+use std::collections::HashMap;
+
+use chrono::Timelike;
+use maidan_store::{prelude::*, run_sqlite_migrations, PendingGateQuery};
 use maidan_types::{
-    ApprovalGateState, MemberKind, NewApprovalGate, NewChannel, NewMember, NewThread, NewWorkspace,
+    ApprovalGate, ApprovalGateState, MemberKind, NewApprovalGate, NewChannel, NewMember, NewThread,
+    NewWorkspace,
 };
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -203,10 +207,267 @@ async fn run_suite(store: &dyn Store) {
         .is_empty());
 }
 
+/// `ListTasks` pages pending gates with the store's keyset: newest first,
+/// ties by id descending, at millisecond precision, filtered by thread and
+/// age, with resolved gates gone.
+async fn run_paging_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "gate-pages".into(),
+        })
+        .await
+        .expect("ws");
+    let requester = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("requester");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "pages".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let mut threads = Vec::new();
+    for _ in 0..2 {
+        threads.push(
+            store
+                .create_thread(NewThread {
+                    channel_id: channel.id,
+                    parent_thread_id: None,
+                    title: None,
+                })
+                .await
+                .expect("thread")
+                .id,
+        );
+    }
+    // Seven gates: four on the first thread, two on the second, one on none.
+    // Created back to back, several share a millisecond.
+    let mut gates: Vec<ApprovalGate> = Vec::new();
+    for thread_id in [
+        Some(threads[0]),
+        Some(threads[1]),
+        None,
+        Some(threads[0]),
+        Some(threads[0]),
+        Some(threads[1]),
+        Some(threads[0]),
+    ] {
+        gates.push(
+            store
+                .create_approval_gate(&NewApprovalGate {
+                    workspace_id: ws.id,
+                    thread_id,
+                    requested_by: requester.id,
+                    prompt: "ok?".into(),
+                    schema: None,
+                })
+                .await
+                .expect("gate"),
+        );
+    }
+    let resolved = gates.remove(3);
+    store
+        .resolve_approval_gate(resolved.id, requester.id, ApprovalGateState::Accepted, None)
+        .await
+        .expect("resolve")
+        .expect("was pending");
+    for gate in &gates {
+        assert_eq!(gate.created_at.nanosecond() % 1_000_000, 0, "whole ms");
+    }
+    let mut newest_first = gates.clone();
+    newest_first.sort_by(|a, b| (b.created_at, b.id.0).cmp(&(a.created_at, a.id.0)));
+    let ids = |gates: &[ApprovalGate]| gates.iter().map(|g| g.id).collect::<Vec<_>>();
+
+    let page = |query: PendingGateQuery| store.page_pending_approval_gates(ws.id, query);
+    let mut walked = Vec::new();
+    let mut before = None;
+    loop {
+        let batch = page(PendingGateQuery {
+            before,
+            limit: 2,
+            ..Default::default()
+        })
+        .await
+        .expect("page");
+        let Some(last) = batch.last() else { break };
+        before = Some((last.created_at, Some(last.id)));
+        walked.extend(ids(&batch));
+    }
+    assert_eq!(
+        walked,
+        ids(&newest_first),
+        "every pending gate once, in order"
+    );
+
+    // `(at, None)` keeps only the gates opened before `at`.
+    let pivot = &newest_first[2];
+    let older = page(PendingGateQuery {
+        before: Some((pivot.created_at, None)),
+        limit: 50,
+        ..Default::default()
+    })
+    .await
+    .expect("before");
+    let expected: Vec<_> = newest_first
+        .iter()
+        .filter(|g| g.created_at < pivot.created_at)
+        .cloned()
+        .collect();
+    assert_eq!(ids(&older), ids(&expected));
+
+    let first_thread = page(PendingGateQuery {
+        thread_id: Some(threads[0]),
+        limit: 50,
+        ..Default::default()
+    })
+    .await
+    .expect("thread");
+    let expected: Vec<_> = newest_first
+        .iter()
+        .filter(|g| g.thread_id == Some(threads[0]))
+        .cloned()
+        .collect();
+    assert_eq!(ids(&first_thread), ids(&expected));
+
+    let since = pivot.created_at;
+    let recent = page(PendingGateQuery {
+        created_since: Some(since),
+        limit: 50,
+        ..Default::default()
+    })
+    .await
+    .expect("since");
+    let expected: Vec<_> = newest_first
+        .iter()
+        .filter(|g| g.created_at >= since)
+        .cloned()
+        .collect();
+    assert_eq!(ids(&recent), ids(&expected));
+
+    let counts: HashMap<_, _> = store
+        .count_pending_approval_gates_by_thread(ws.id, PendingGateQuery::default())
+        .await
+        .expect("count")
+        .into_iter()
+        .collect();
+    let expected = HashMap::from([(None, 1), (Some(threads[0]), 3), (Some(threads[1]), 2)]);
+    assert_eq!(counts, expected);
+    let counted: i64 = store
+        .count_pending_approval_gates_by_thread(
+            ws.id,
+            PendingGateQuery {
+                thread_id: Some(threads[1]),
+                created_since: Some(since),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("count filtered")
+        .into_iter()
+        .map(|(_, n)| n)
+        .sum();
+    let expected = newest_first
+        .iter()
+        .filter(|g| g.thread_id == Some(threads[1]) && g.created_at >= since)
+        .count();
+    assert_eq!(counted, i64::try_from(expected).expect("small"));
+}
+
 #[tokio::test]
 async fn approval_gate_create_list_resolve_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+    run_paging_suite(&store).await;
+}
+
+/// Migration 0116 rewrites every stored `created_at` to millisecond `...Z`
+/// text, whichever form the row was written in, and leaves that form alone.
+#[tokio::test]
+async fn gate_timestamps_migrate_to_whole_milliseconds_sqlite() {
+    let store = sqlite().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "legacy".into(),
+        })
+        .await
+        .expect("ws");
+    let requester = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("requester");
+    let written = [
+        (
+            "2026-09-28T20:13:05.123456789+00:00",
+            "2026-09-28T20:13:05.123Z",
+        ),
+        (
+            "2026-09-28T20:13:05.987654+00:00",
+            "2026-09-28T20:13:05.987Z",
+        ),
+        ("2026-09-28T20:13:05.042+00:00", "2026-09-28T20:13:05.042Z"),
+        ("2026-09-28T20:13:05+00:00", "2026-09-28T20:13:05.000Z"),
+        ("2026-09-28 20:13:05", "2026-09-28T20:13:05.000Z"),
+        ("2026-09-28T20:13:05.500Z", "2026-09-28T20:13:05.500Z"),
+    ];
+    let mut ids = Vec::new();
+    for (created_at, _) in written {
+        let gate = store
+            .create_approval_gate(&NewApprovalGate {
+                workspace_id: ws.id,
+                thread_id: None,
+                requested_by: requester.id,
+                prompt: "ok?".into(),
+                schema: None,
+            })
+            .await
+            .expect("gate");
+        sqlx::query("UPDATE maidan_approval_gates SET created_at = ? WHERE id = ?")
+            .bind(created_at)
+            .bind(gate.id.0)
+            .execute(store.pool())
+            .await
+            .expect("backdate");
+        ids.push(gate.id);
+    }
+    sqlx::raw_sql(include_str!(
+        "../../../migrations/sqlite/0116_approval_gate_millisecond_positions.sql"
+    ))
+    .execute(store.pool())
+    .await
+    .expect("migrate");
+    for (id, (_, migrated)) in ids.into_iter().zip(written) {
+        let stored: String =
+            sqlx::query_scalar("SELECT created_at FROM maidan_approval_gates WHERE id = ?")
+                .bind(id.0)
+                .fetch_one(store.pool())
+                .await
+                .expect("read");
+        assert_eq!(stored, migrated);
+        let gate = store
+            .get_approval_gate(id)
+            .await
+            .expect("get")
+            .expect("gate");
+        assert_eq!(
+            gate.created_at
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            migrated
+        );
+    }
 }
 
 #[tokio::test]
@@ -241,4 +502,5 @@ async fn approval_gate_create_list_resolve_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
+    run_paging_suite(&store).await;
 }

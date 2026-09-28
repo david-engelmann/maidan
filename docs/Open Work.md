@@ -144,6 +144,7 @@ moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 - ~~`book/src/mcp-reference.md` is git-ignored but still tracked~~ **✅** — tracked, no longer ignored, and `mcp_reference_current` fails if it drifts (#1028)
 - ~~Errors and docs cite RFC 7807~~ **✅** — code and docs cite RFC 9457 (#1028); the one remaining mention is a historical Capabilities row
 - ~~**Request rejections answered in plain text**~~ **✅ fixed (#1062)** — axum's own `Path`, `Query`, `Json`, `Bytes` and `String` extractors answered a malformed path parameter, query string or body, a body not sent as JSON, or one over `MAIDAN_MAX_BODY_BYTES` with `text/plain`, and an unknown route or wrong method with an empty body; the direct-message routes took plain `Json`. Every handler now takes its input through `crate::extract` (`ApiPath`, `ApiQuery`, `ApiJson`, `ApiBytes`, `ApiText`), so these are RFC 9457 problems (400, 413, 415; 404 and 405 from the router fallbacks). SCIM and A2A answer the same rejections in their own envelopes. `no_handler_lets_axum_answer_a_rejection` fails on a handler that takes a raw axum extractor, `every_operation_documents_what_its_extractors_reject` keeps the spec's 400/413/415 in step, and `client_errors_are_problems_e2e` hits real routes. Checking the spec against the handlers also found nine JSON request bodies and one raw upload body missing from the spec, ten operations' query parameters undocumented, and five integer path ids documented as UUIDs; all are declared now
+- **A2A leftovers.** ~~**`ListTasks` saw only the 500 oldest pending approval gates**~~ **✅ fixed** — it merged gates into the task list from one scan of the oldest 500, so in a larger backlog the newest gates never appeared and `totalSize` stopped at 500. Gates now page by the same `(timestamp, id)` keyset as stored tasks (`page_pending_approval_gates`) and are counted per thread (`count_pending_approval_gates_by_thread`), filtered by the caller's thread access like tasks. Gate timestamps are stored at millisecond precision (pg / sqlite 0116), the precision of task timestamps and page tokens, so the store's order is the listing's. A `statusTimestampAfter` with sub-millisecond digits now rounds up instead of down, on both backends. `list_tasks_pages_through_every_pending_gate` lists 524 gates and three tasks; the old code stopped at 503. ~~**Push-config listing ignored `pageSize` and `pageToken`**~~ **✅ fixed** — `ListTaskPushNotificationConfigs` (JSON-RPC and REST) pages in config-id order with a `nextPageToken`. **Still open:** the gRPC binding serves GetTask, CancelTask and ListTasks only (no SendMessage, streaming or push configs); the TCK groups for input-required scenario tasks and push delivery on a follow-up send stay excluded (`scripts/a2a-tck/exclusions.txt`)
 - ~~SMTP has no real-client test~~ **✅ (#1038)** `smtp_real_client_e2e` sends through
   `lettre` to a real SMTP server (Mailpit) and reads the message back, including
   that a CR/LF subject cannot inject a header. The names `slack_egress_e2e`,
@@ -1784,16 +1785,12 @@ edit the original claim, not sit beside it.
 
 Still open, tracked here rather than left to a re-audit:
 
-- **`web_push` is an unguarded member-controlled egress.**
-  `POST /members/:id/push-subscriptions` accepts any endpoint URL, checking only
-  that it is non-empty. `VapidWebPushSender::send` then POSTs to it with a bare
-  client that follows redirects. `grep egress crates/maidan-server/src/{web_push.rs,routes/member.rs}`
-  returns nothing. A member can register `http://169.254.169.254/…`. Blind SSRF
-  — the payload is encrypted and no response is returned — but real, and the
-  exact class #973 closed everywhere else. Fix at registration with
-  `validate_egress_target`, or send through `client_for`. **F-47 is therefore
-  not fully closed**, and the F-47 row's "every operator-controlled outbound
-  surface" is accurate only because this surface is member-controlled.
+- ~~**`web_push` is an unguarded member-controlled egress.**~~ **✅ fixed
+  (#1011)** — registration refuses a non-public endpoint with
+  `validate_egress_target` (`routes/member.rs`), and `VapidWebPushSender::send`
+  goes through `egress_http::client_for`: resolved to public addresses, pinned
+  to them, never redirected. Before, any endpoint URL was accepted and POSTed
+  to with a bare client that followed redirects (blind SSRF).
 - ~~**Impersonator workspace-binding is asymmetric.**~~ **Moot — 411.6.** The
   capability no longer exists, so neither surface has an impersonator to bind.
 - ~~**Three code doc-comments still say "audited".**~~ **Fixed — 411.6.** They
@@ -1940,10 +1937,11 @@ Still open, tracked here rather than left to a re-audit:
   the old deletion fails both. Every existing purge test used one workspace,
   the same "single-tenant tests can't see two-tenant bugs" shape as the
   Cursor-run audit.
-  **Follow-up, open:** the shared row keeps the *first* uploader's
+  ~~**Follow-up, open:** the shared row keeps the *first* uploader's
   `uploaded_by`, so a second workspace reading the artifact's metadata sees a
-  member id from another tenant. It is an opaque id, but it is still a
-  cross-tenant leak; metadata should show the caller's own uploader, or none.
+  member id from another tenant.~~ **✅ fixed** — each workspace's ref carries
+  its own metadata (pg 0109 / sqlite 0108); see "Artifact metadata leaks
+  another tenant's `uploaded_by`" in the launch backlog.
 
 - **Found during 411.6: `member:impersonate` was doing two jobs.** It covered an
   orchestrator acting *as* an agent, which delegation replaces, but also an

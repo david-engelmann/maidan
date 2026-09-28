@@ -1,7 +1,7 @@
 //! A2A task, context and push notification config persistence types.
 
 use chrono::{DateTime, Utc};
-use maidan_types::WorkspaceId;
+use maidan_types::{ApprovalGateId, ThreadId, WorkspaceId};
 
 /// One persisted A2A task. `task_json` is the protocol `Task` without any
 /// message words: history and status messages are rendered from the sealed
@@ -36,6 +36,22 @@ pub struct A2aTaskQuery<'a> {
     /// Keep tasks whose status changed at or after this instant.
     pub updated_since: Option<DateTime<Utc>>,
     pub before: Option<(DateTime<Utc>, &'a str)>,
+    pub limit: i64,
+}
+
+/// A page of a workspace's pending approval gates in `ListTasks` order:
+/// newest first, ties broken by id descending. Gate timestamps are stored at
+/// millisecond precision, the precision task positions and page tokens carry,
+/// so the store's order is the listing's order.
+#[derive(Debug, Clone, Default)]
+pub struct PendingGateQuery {
+    /// Keep only the gates attached to this thread.
+    pub thread_id: Option<ThreadId>,
+    /// Keep gates opened at or after this instant.
+    pub created_since: Option<DateTime<Utc>>,
+    /// The keyset cursor. `(at, Some(id))` keeps the gates that sort after
+    /// the gate at `(at, id)`; `(at, None)` keeps those opened before `at`.
+    pub before: Option<(DateTime<Utc>, Option<ApprovalGateId>)>,
     pub limit: i64,
 }
 
