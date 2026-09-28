@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Deleting an artifact's bytes no longer blocks other writes
+
+- **Fixed:** reaping an orphaned artifact's bytes (after the last reference
+  is erased, or a workspace purge) held the database transaction for the
+  whole blob delete. On SQLite every other write waited on the blob store,
+  and failed after the busy timeout; on Postgres a pooled connection sat idle
+  in a transaction. The reap now takes a per-sha lease (migration 0117),
+  deletes outside any transaction, and gives up on a delete after 30 s. Only
+  an upload of the same bytes waits for it.
+
 ### A2A lists page all the way through
 
 - **Fixed:** `ListTasks` listed pending approval gates from one scan of the

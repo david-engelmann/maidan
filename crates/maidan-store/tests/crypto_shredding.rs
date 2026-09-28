@@ -662,7 +662,7 @@ fn upload(sha: &str, by: MemberId) -> NewArtifact {
     }
 }
 
-/// The bytes of an orphaned sha are deleted under its lock: an upload of the
+/// The bytes of an orphaned sha are deleted under a lease on it: an upload of the
 /// same bytes that arrives during the delete waits, and commits its row only
 /// after it (and then restores the bytes, `restore_if_reaped`). A sha a row
 /// holds again is never deleted.
@@ -729,6 +729,88 @@ async fn an_upload_waits_for_a_blob_reap_in_progress(db: Db) {
     assert!(ran.load(Ordering::SeqCst));
 }
 
+/// A reap's delete runs outside any transaction: other writes, including an
+/// upload of other bytes, go on while it runs, and only an upload of the same
+/// sha waits. A lease a dead reaper left lapses; a live one holds uploads of
+/// its sha until it goes.
+async fn a_blob_reap_holds_back_only_its_own_sha(db: Db) {
+    let store = db.store(kek(1));
+    let room = room(store.as_ref(), "reap-lease").await;
+    let sha = "ef".repeat(32);
+    let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let reaper = {
+        let (store, sha) = (store.clone(), sha.clone());
+        tokio::spawn(async move {
+            store
+                .reap_artifact_blob(
+                    &sha,
+                    recording_delete(ran, Some(entered_tx), Some(release_rx)),
+                )
+                .await
+        })
+    };
+    entered_rx.await.unwrap();
+    let within = Duration::from_secs(3);
+    tokio::time::timeout(
+        within,
+        store.upsert_artifact_with_event(upload(&"01".repeat(32), room.alice.id), Some(room.ws.id)),
+    )
+    .await
+    .expect("an upload of other bytes does not wait for the delete")
+    .unwrap();
+    tokio::time::timeout(
+        within,
+        room_channel(store.as_ref(), room.ws.id, "meanwhile"),
+    )
+    .await
+    .expect("other writes do not wait for the delete");
+    release_tx.send(()).unwrap();
+    assert_eq!(reaper.await.unwrap().unwrap(), BlobReap::Deleted);
+
+    let stale = "a1".repeat(32);
+    db.lease(&stale, false).await;
+    tokio::time::timeout(
+        within,
+        store.upsert_artifact_with_event(upload(&stale, room.alice.id), Some(room.ws.id)),
+    )
+    .await
+    .expect("a lapsed lease holds nothing")
+    .unwrap();
+
+    let held = "b2".repeat(32);
+    db.lease(&held, true).await;
+    let uploader = {
+        let (store, held, who, ws) = (store.clone(), held.clone(), room.alice.id, room.ws.id);
+        tokio::spawn(async move {
+            store
+                .upsert_artifact_with_event(upload(&held, who), Some(ws))
+                .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!uploader.is_finished(), "a live lease holds its sha");
+    db.drop_leases().await;
+    tokio::time::timeout(within, uploader)
+        .await
+        .expect("the upload goes ahead once the lease is gone")
+        .unwrap()
+        .unwrap();
+}
+
+async fn room_channel(store: &dyn Store, ws: WorkspaceId, name: &str) {
+    store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: name.into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+}
+
 impl Db {
     async fn residue(&self, workspace: Option<WorkspaceId>) -> Vec<(Uuid, String)> {
         let found = match self {
@@ -742,6 +824,43 @@ impl Db {
             .collect();
         found.sort();
         found
+    }
+
+    /// Write a reap lease on `sha`, live for a minute or lapsed a second ago.
+    async fn lease(&self, sha: &str, live: bool) {
+        match self {
+            Db::Sqlite(pool) => {
+                let offset = if live { "+60 seconds" } else { "-1 seconds" };
+                sqlx::query(
+                    "INSERT INTO maidan_artifact_reaps (sha256, token, expires_at)
+                     VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?))",
+                )
+                .bind(sha)
+                .bind(Uuid::new_v4())
+                .bind(offset)
+                .execute(pool)
+                .await
+                .map(|_| ())
+            }
+            Db::Pg(pool) => {
+                let offset = if live { 60.0 } else { -1.0 };
+                sqlx::query(
+                    "INSERT INTO maidan_artifact_reaps (sha256, token, expires_at)
+                     VALUES ($1, $2, clock_timestamp() + make_interval(secs => $3))",
+                )
+                .bind(sha)
+                .bind(Uuid::new_v4())
+                .bind(offset)
+                .execute(pool)
+                .await
+                .map(|_| ())
+            }
+        }
+        .unwrap();
+    }
+
+    async fn drop_leases(&self) {
+        self.execute("DELETE FROM maidan_artifact_reaps", &[]).await;
     }
 
     /// Run a statement with uuid parameters, written with `?`.
@@ -918,8 +1037,7 @@ on_both_backends!(
 /// The reap race needs a second connection that can be blocked, so SQLite runs
 /// on a file here, not a single-connection memory database.
 mod blob_reap {
-    #[tokio::test]
-    async fn sqlite_backend() {
+    async fn sqlite_file() -> (tempfile::TempDir, super::Db) {
         let dir = tempfile::tempdir().unwrap();
         let url = format!("sqlite://{}?mode=rwc", dir.path().join("reap.db").display());
         let pool = super::SqlitePoolOptions::new()
@@ -929,7 +1047,13 @@ mod blob_reap {
             .unwrap();
         maidan_store::configure_sqlite_pool(&pool).await.unwrap();
         super::run_sqlite_migrations(&pool).await.unwrap();
-        super::an_upload_waits_for_a_blob_reap_in_progress(super::Db::Sqlite(pool)).await;
+        (dir, super::Db::Sqlite(pool))
+    }
+
+    #[tokio::test]
+    async fn sqlite_backend() {
+        let (_dir, db) = sqlite_file().await;
+        super::an_upload_waits_for_a_blob_reap_in_progress(db).await;
     }
 
     #[tokio::test]
@@ -938,5 +1062,19 @@ mod blob_reap {
             return;
         };
         super::an_upload_waits_for_a_blob_reap_in_progress(db).await;
+    }
+
+    #[tokio::test]
+    async fn only_its_own_sha_sqlite() {
+        let (_dir, db) = sqlite_file().await;
+        super::a_blob_reap_holds_back_only_its_own_sha(db).await;
+    }
+
+    #[tokio::test]
+    async fn only_its_own_sha_postgres() {
+        let Some((_container, db)) = super::postgres().await else {
+            return;
+        };
+        super::a_blob_reap_holds_back_only_its_own_sha(db).await;
     }
 }

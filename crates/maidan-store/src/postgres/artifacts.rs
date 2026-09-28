@@ -38,9 +38,9 @@ const WORKSPACE_VIEW_SQL: &str = "SELECT a.id, a.sha256, a.size_bytes,
        AND (r.workspace_id IS NOT NULL
             OR NOT EXISTS (SELECT 1 FROM maidan_artifact_refs x WHERE x.sha256 = a.sha256))";
 
-/// Serialize artifact-row writes for `sha256` with [`reap_blob`] until the
-/// transaction ends. A 64-bit hash of the sha keys the lock; a collision only
-/// serializes two unrelated shas.
+/// Serialize artifact-row writes for `sha256` with [`reap_blob`]'s claim until
+/// the transaction ends. A 64-bit hash of the sha keys the lock; a collision
+/// only serializes two unrelated shas.
 async fn lock_sha(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     sha256: &str,
@@ -52,10 +52,34 @@ async fn lock_sha(
     Ok(())
 }
 
+/// The transaction an artifact-row write for `sha256` runs in, begun once no
+/// reap holds the sha: the sha is locked, then its lease checked, so a reap
+/// cannot claim it between the check and the write.
+async fn begin_sha_write<'a>(
+    pool: &'a PgPool,
+    sha256: &str,
+) -> Result<sqlx::Transaction<'a, sqlx::Postgres>, StoreError> {
+    loop {
+        let mut tx = pool.begin().await?;
+        lock_sha(&mut tx, sha256).await?;
+        let reaping: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM maidan_artifact_reaps
+                           WHERE sha256 = $1 AND expires_at > clock_timestamp())",
+        )
+        .bind(sha256)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !reaping {
+            return Ok(tx);
+        }
+        tx.rollback().await?;
+        tokio::time::sleep(crate::REAP_POLL).await;
+    }
+}
+
 pub async fn upsert(pool: &PgPool, new: NewArtifact) -> Result<Artifact, StoreError> {
     let id = Uuid::now_v7();
-    let mut tx = pool.begin().await?;
-    lock_sha(&mut tx, &new.sha256).await?;
+    let mut tx = begin_sha_write(pool, &new.sha256).await?;
     let row = sqlx::query(UPSERT_SQL)
         .bind(id)
         .bind(&new.sha256)
@@ -69,15 +93,20 @@ pub async fn upsert(pool: &PgPool, new: NewArtifact) -> Result<Artifact, StoreEr
     row_to_artifact(&row)
 }
 
-/// Delete `sha256`'s bytes if no artifact row holds it, with the sha locked so
-/// no upsert can commit a row in between. See `ArtifactMetaStore::reap_artifact_blob`.
+/// Delete `sha256`'s bytes if no artifact row holds it. See
+/// `ArtifactMetaStore::reap_artifact_blob` and the SQLite twin.
+///
+/// The check and the lease are one short transaction under the sha's lock; the
+/// delete runs outside it, so no connection or lock is held while the blob
+/// store works. Every artifact-row write for the sha waits while the lease is
+/// live.
 pub async fn reap_blob(
     pool: &PgPool,
     sha256: &str,
     delete: crate::BlobDelete<'_>,
 ) -> Result<crate::BlobReap, StoreError> {
-    let mut tx = pool.begin().await?;
-    lock_sha(&mut tx, sha256).await?;
+    let token = Uuid::now_v7();
+    let mut tx = begin_sha_write(pool, sha256).await?;
     let held: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM maidan_artifacts WHERE sha256 = $1)")
             .bind(sha256)
@@ -86,11 +115,28 @@ pub async fn reap_blob(
     if held {
         return Ok(crate::BlobReap::Referenced);
     }
-    let reaped = match delete().await {
-        Ok(()) => crate::BlobReap::Deleted,
-        Err(err) => crate::BlobReap::DeleteFailed(err),
-    };
+    // A lapsed lease left by a reaper that died is replaced.
+    sqlx::query(
+        "INSERT INTO maidan_artifact_reaps (sha256, token, expires_at)
+         VALUES ($1, $2, clock_timestamp() + make_interval(secs => $3))
+         ON CONFLICT (sha256) DO UPDATE
+             SET token = EXCLUDED.token, expires_at = EXCLUDED.expires_at",
+    )
+    .bind(sha256)
+    .bind(token)
+    .bind(crate::REAP_LEASE_SECS as f64)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
+
+    let Some(reaped) = crate::run_blob_delete(delete).await else {
+        return Ok(crate::abandoned_delete());
+    };
+    sqlx::query("DELETE FROM maidan_artifact_reaps WHERE sha256 = $1 AND token = $2")
+        .bind(sha256)
+        .bind(token)
+        .execute(pool)
+        .await?;
     Ok(reaped)
 }
 
@@ -103,8 +149,7 @@ pub async fn upsert_with_event(
     ref_workspace: Option<WorkspaceId>,
 ) -> Result<(Artifact, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
-    let mut tx = pool.begin().await?;
-    lock_sha(&mut tx, &new.sha256).await?;
+    let mut tx = begin_sha_write(pool, &new.sha256).await?;
     let row = sqlx::query(UPSERT_SQL)
         .bind(id)
         .bind(&new.sha256)

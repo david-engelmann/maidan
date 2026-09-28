@@ -33,7 +33,7 @@ test-support = ["dep:testcontainers"]
 maidan-store = { path = ".", features = ["test-support"] }
 maidan-auth = { path = "../maidan-auth" }
 maidan-search = { path = "../maidan-search", default-features = false, features = ["sqlite-vec"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }
 anyhow.workspace = true

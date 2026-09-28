@@ -912,14 +912,22 @@ the key.
   legal hold.
 - **Blob reap.** Deleting bytes races an upload of the same sha: the
   upload writes the bytes (already there), then its row, while the erase
-  deletes them. `reap_artifact_blob` checks for a row and deletes the
-  bytes under a per-sha lock (Postgres advisory xact lock, also taken by
-  every artifact upsert; SQLite `BEGIN IMMEDIATE`, since upserts are
-  writes). An upsert therefore lands before the check (the reap keeps the
-  bytes) or after the delete, and then the uploader writes the bytes
-  back (`restore_if_reaped`). Workspace purge reaps the same way. The
-  lock is held for one blob delete; on SQLite that blocks writers, bounded
-  by the busy timeout.
+  deletes them. `reap_artifact_blob` checks for a row and writes a lease
+  on the sha (`maidan_artifact_reaps`) in one short transaction, under the
+  sha's lock (Postgres advisory xact lock; SQLite `BEGIN IMMEDIATE`).
+  It then deletes the bytes outside any transaction and drops the lease.
+  Every artifact upsert takes the same lock and waits while a live lease
+  holds its sha. An upsert therefore lands before the check (the reap
+  keeps the bytes) or after the delete, and then the uploader writes the
+  bytes back (`restore_if_reaped`). Workspace purge reaps the same way.
+  The delete is bounded by `BLOB_DELETE_TIMEOUT` (30 s); one that overruns
+  is reported as failed and its lease, twice that long, is left to lapse,
+  since it may still land. A lease left by a reaper that crashed lapses
+  the same way. Before, the reap held its transaction for the whole blob
+  delete: on SQLite that blocked every writer, and on Postgres it held a
+  pooled connection idle in a transaction, which
+  `idle_in_transaction_session_timeout` could end with the delete still
+  running.
 
 **Alternative.** Per-author or per-workspace keys: coarser, so a single
 withdrawal cannot be erased without re-encrypting everything else.

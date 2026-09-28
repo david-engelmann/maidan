@@ -43,7 +43,8 @@ impl HoldDisposal {
     }
 }
 /// Deletes one artifact's bytes from the blob store. Run by
-/// [`store::ArtifactMetaStore::reap_artifact_blob`] while it holds the sha's lock.
+/// [`store::ArtifactMetaStore::reap_artifact_blob`] while it holds the sha's
+/// reap lease.
 pub type BlobDelete<'a> = Box<
     dyn FnOnce() -> std::pin::Pin<
             Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>,
@@ -60,6 +61,38 @@ pub enum BlobReap {
     Deleted,
     /// No row held the sha, but deleting the bytes failed.
     DeleteFailed(String),
+}
+
+/// How long a reap's blob delete may run before the reap stops waiting for it.
+pub const BLOB_DELETE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How long a reap's lease on a sha lasts: twice [`BLOB_DELETE_TIMEOUT`], so a
+/// delete that overran has been abandoned well before the lease lapses and an
+/// upload of the same bytes may go ahead. A reaper that crashes mid-delete
+/// holds the sha no longer than this.
+pub(crate) const REAP_LEASE_SECS: i64 = 60;
+
+/// How often an upload, or a second reap, checks whether a reap lease on its
+/// sha has gone.
+pub(crate) const REAP_POLL: std::time::Duration = std::time::Duration::from_millis(25);
+
+/// Run a reap's delete, bounded by [`BLOB_DELETE_TIMEOUT`]. `None` means it
+/// overran and was abandoned; it may still land, so its lease must be left to
+/// lapse rather than released.
+pub(crate) async fn run_blob_delete(delete: BlobDelete<'_>) -> Option<BlobReap> {
+    match tokio::time::timeout(BLOB_DELETE_TIMEOUT, delete()).await {
+        Ok(Ok(())) => Some(BlobReap::Deleted),
+        Ok(Err(err)) => Some(BlobReap::DeleteFailed(err)),
+        Err(_) => None,
+    }
+}
+
+/// What a reap reports for a delete [`run_blob_delete`] abandoned.
+pub(crate) fn abandoned_delete() -> BlobReap {
+    BlobReap::DeleteFailed(format!(
+        "the blob delete did not finish within {}s",
+        BLOB_DELETE_TIMEOUT.as_secs()
+    ))
 }
 
 /// Why a review-requirement write was refused: it would lower the requirement
@@ -155,4 +188,22 @@ pub use store::{
 pub mod prelude {
     pub use crate::store::*;
     pub use crate::{BlobDelete, BlobReap, PostgresStore, SqliteStore, StoreError};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_blob_delete_that_overruns_is_abandoned() {
+        let hung: BlobDelete<'static> = Box::new(|| Box::pin(std::future::pending()));
+        assert_eq!(run_blob_delete(hung).await, None);
+        let failed: BlobDelete<'static> = Box::new(|| Box::pin(async { Err("gone".into()) }));
+        assert_eq!(
+            run_blob_delete(failed).await,
+            Some(BlobReap::DeleteFailed("gone".into()))
+        );
+        let done: BlobDelete<'static> = Box::new(|| Box::pin(async { Ok(()) }));
+        assert_eq!(run_blob_delete(done).await, Some(BlobReap::Deleted));
+    }
 }

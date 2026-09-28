@@ -2102,12 +2102,16 @@ pub trait ArtifactMetaStore: Send + Sync {
         audit: crate::AuditFor<ArtifactErasure>,
     ) -> Result<ArtifactErasure, StoreError>;
 
-    /// Delete the bytes of `sha256` if no artifact row holds it, running
-    /// `delete` under a per-sha lock that every artifact upsert also takes. An
-    /// upload of the same bytes therefore either commits its row first (the
-    /// bytes stay) or after the delete, and then puts them back
-    /// (`maidan_artifacts::restore_if_reaped`). Called after a last-reference
-    /// erase or a workspace purge orphaned the sha.
+    /// Delete the bytes of `sha256` if no artifact row holds it. The check
+    /// and a lease on the sha commit together; `delete` then runs outside any
+    /// transaction, bounded by [`crate::BLOB_DELETE_TIMEOUT`], and every
+    /// artifact upsert of the sha waits while the lease is live. An upload of
+    /// the same bytes therefore either commits its row first (the bytes stay)
+    /// or after the delete, and then puts them back
+    /// (`maidan_artifacts::restore_if_reaped`). A delete that overruns is
+    /// reported as failed and its lease left to lapse, since it may still
+    /// land. Called after a last-reference erase or a workspace purge orphaned
+    /// the sha.
     async fn reap_artifact_blob(
         &self,
         sha256: &str,
