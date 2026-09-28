@@ -59,10 +59,10 @@ workspace (#1060); every client error is an RFC 9457 problem (#1062);
 crypto-shredding of message content, artifact refcount erase and
 `maidan verify-shredding` (#1063, #1064); nextest profiles and per-crate
 coverage floors (#1065); the official A2A TCK in CI (#1066); CodeRabbit review
-in the PR flow (#1067, #1069).
+in the PR flow (#1067, #1069); the two quarantined test races removed and the
+MinIO tests running for real (#1068).
 
-**In progress (not on `main`):** #1068 removes the two quarantined test races
-and makes the MinIO tests run for real; Wave 4 #45's loom, madsim and TLA+
+**In progress (not on `main`):** Wave 4 #45's loom, madsim and TLA+
 models are being written. Row #45 stays open until they land.
 
 Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**–**`v1.4.0`** are complete.

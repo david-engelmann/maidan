@@ -370,9 +370,10 @@ Do **not** interleave with 269–272 import/search PRs.
   compares the two backends' migrated schemas (#1052).
   Make `backend_parity` / `dialect_parity` visibility obvious in CI
   summary or Evidence.md so dual-backend is not tribal knowledge.
-- [ ] **D6. Flake budget** — **🚧 in progress:** the nextest `ci` profile
+- [ ] **D6. Flake budget** — **partial:** the nextest `ci` profile
   retries only a named quarantine and reports a retried pass as `FLAKY`
-  (#1065); removing the two quarantined races is #1068 (open).
+  (#1065); the two quarantined races were fixed and the quarantine is
+  empty (#1068).
   Note known timing-sensitive tests; quarantine or rewrite before
   public contributors hit them.
 

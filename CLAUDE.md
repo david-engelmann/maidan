@@ -325,9 +325,10 @@ Read this before the long narrative below, which is a point-in-time record and
   error (#1062), a Redocly-clean OpenAPI spec (#1061), MCP resource
   subscriptions scoped to session and workspace (#1060), nextest profiles and
   per-crate coverage floors (#1065), the official A2A TCK in CI (#1066) and
-  CodeRabbit review (#1067, #1069); the full list is in
-  [`docs/Roadmap.md`](docs/Roadmap.md). **In progress:** #1068 (quarantined
-  races, real MinIO tests) and the loom/madsim/TLA+ models (Wave 4 #45).
+  CodeRabbit review (#1067, #1069), and the two quarantined races fixed plus
+  real MinIO tests (#1068); the full list is in
+  [`docs/Roadmap.md`](docs/Roadmap.md). **In progress:** the loom/madsim/TLA+
+  models (Wave 4 #45).
 - **Four cross-tenant leaks were found on 2026-09-25**, all the same
   shape: an authorization check that runs only when an optional id is present.
   Live subscriptions without `workspace_id` streamed every tenant's events
