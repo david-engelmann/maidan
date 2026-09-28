@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use maidan_auth::capability;
 use maidan_server::openapi::ApiDoc;
-use utoipa::openapi::path::{Operation, PathItemType};
+use utoipa::openapi::path::{Operation, PathItem};
 use utoipa::OpenApi;
 
 #[derive(Debug, serde::Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -49,31 +49,31 @@ fn operation_has_bearer(op: &Operation) -> bool {
     operation_has_security(op, "bearerAuth")
 }
 
-fn path_item_type_method(item_type: &PathItemType) -> String {
-    match item_type {
-        PathItemType::Get => "GET",
-        PathItemType::Post => "POST",
-        PathItemType::Put => "PUT",
-        PathItemType::Patch => "PATCH",
-        PathItemType::Delete => "DELETE",
-        PathItemType::Options => "OPTIONS",
-        PathItemType::Head => "HEAD",
-        PathItemType::Trace => "TRACE",
-        PathItemType::Connect => "CONNECT",
-    }
-    .to_string()
+fn operations(item: &PathItem) -> impl Iterator<Item = (&'static str, &Operation)> {
+    [
+        ("GET", &item.get),
+        ("POST", &item.post),
+        ("PUT", &item.put),
+        ("PATCH", &item.patch),
+        ("DELETE", &item.delete),
+        ("OPTIONS", &item.options),
+        ("HEAD", &item.head),
+        ("TRACE", &item.trace),
+    ]
+    .into_iter()
+    .filter_map(|(method, op)| op.as_ref().map(|op| (method, op)))
 }
 
 fn collect_openapi_bearer_routes() -> BTreeSet<RouteKey> {
     let doc = ApiDoc::openapi();
     let mut out = BTreeSet::new();
     for (path, item) in doc.paths.paths.iter() {
-        for (item_type, op) in item.operations.iter() {
+        for (method, op) in operations(item) {
             if !operation_has_bearer(op) {
                 continue;
             }
             out.insert(RouteKey {
-                method: path_item_type_method(item_type),
+                method: method.to_owned(),
                 path: path.clone(),
             });
         }
@@ -85,10 +85,10 @@ fn collect_openapi_share_routes() -> BTreeSet<RouteKey> {
     let doc = ApiDoc::openapi();
     let mut out = BTreeSet::new();
     for (path, item) in doc.paths.paths.iter() {
-        for (item_type, op) in item.operations.iter() {
+        for (method, op) in operations(item) {
             if operation_has_security(op, "shareTicketAuth") {
                 out.insert(RouteKey {
-                    method: path_item_type_method(item_type),
+                    method: method.to_owned(),
                     path: path.clone(),
                 });
             }
@@ -200,9 +200,9 @@ fn every_openapi_operation_is_bearer_session_or_public() {
     let doc = ApiDoc::openapi();
     let mut unclassified = Vec::new();
     for (path, item) in doc.paths.paths.iter() {
-        for (item_type, _op) in item.operations.iter() {
+        for (method, _op) in operations(item) {
             let key = RouteKey {
-                method: path_item_type_method(item_type),
+                method: method.to_owned(),
                 path: path.clone(),
             };
             if !bearer.contains(&key) && !share.contains(&key) && !allowlisted.contains(&key) {
@@ -221,11 +221,11 @@ fn every_openapi_operation_is_bearer_session_or_public() {
     // (/metrics, /openapi.json, …) are intentionally not in the ApiDoc, so they
     // are exempt from this check.
     for (method, path) in SESSION_OPERATIONS {
-        let present = doc.paths.paths.get(*path).is_some_and(|item| {
-            item.operations
-                .keys()
-                .any(|t| &path_item_type_method(t) == method)
-        });
+        let present = doc
+            .paths
+            .paths
+            .get(*path)
+            .is_some_and(|item| operations(item).any(|(m, _)| m == *method));
         assert!(
             present,
             "SESSION_OPERATIONS entry not in OpenAPI: {method} {path}"

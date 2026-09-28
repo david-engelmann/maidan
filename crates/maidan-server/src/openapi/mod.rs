@@ -1,10 +1,15 @@
-//! OpenAPI 3.0 document for the Maidan HTTP API (Track W.1).
+//! OpenAPI 3.1 document for the Maidan HTTP API (Track W.1).
 
+#[cfg(test)]
+mod lint;
 mod paths;
+mod responses;
 mod schemas;
 
 use axum::Json;
+use utoipa::openapi::path::{Operation, PathItem};
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::openapi::Ref;
 use utoipa::{Modify, OpenApi};
 
 use crate::dto::*;
@@ -13,6 +18,9 @@ use crate::federation::{IngestSummary, WellKnownA2a, WellKnownMaidan};
 use crate::health::{HealthResponse, SubsystemStatus};
 use crate::land_gate_advisor::{
     LandGateAdvice, LandGateAdviceRequest, LandGateAdviceThresholds, LandGateAdviceUsage,
+};
+use crate::openapi::responses::{
+    BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge, TooManyRequests, Unauthorized,
 };
 use crate::openapi::schemas::{LivenessOk, SearchHit};
 use crate::share_consumer::*;
@@ -48,6 +56,69 @@ impl Modify for SecurityAddon {
     }
 }
 
+/// The responses a middleware layer adds to every operation it wraps (see
+/// `app.rs`), attached here rather than restated on each path stub, so an
+/// operation added later carries them without anyone remembering to:
+///
+/// - **401** — every operation with a security requirement sits behind a layer
+///   that refuses a missing or bad credential: bearer (`auth::middleware`),
+///   session cookie, share ticket, or federation peer.
+/// - **429** — `rate_limit::middleware` wraps every route but the ones
+///   [`rate_limit::exempt_path`] names, and `quota::middleware` enforces
+///   per-token capability quotas on the bearer routes.
+///
+/// Statuses a handler produces itself (400, 403, 404, 409, 413) are declared on
+/// its path stub.
+struct MiddlewareResponses;
+
+impl Modify for MiddlewareResponses {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        for (path, item) in openapi.paths.paths.iter_mut() {
+            let rate_limited = !crate::rate_limit::exempt_path(path);
+            for op in operations_mut(item) {
+                let requires_credential = requires_credential(op);
+                let responses = &mut op.responses.responses;
+                if requires_credential {
+                    responses
+                        .entry("401".to_owned())
+                        .or_insert_with(|| Ref::from_response_name("Unauthorized").into());
+                }
+                if rate_limited {
+                    responses
+                        .entry("429".to_owned())
+                        .or_insert_with(|| Ref::from_response_name("TooManyRequests").into());
+                }
+            }
+        }
+    }
+}
+
+fn operations_mut(item: &mut PathItem) -> impl Iterator<Item = &mut Operation> {
+    [
+        &mut item.get,
+        &mut item.put,
+        &mut item.post,
+        &mut item.delete,
+        &mut item.options,
+        &mut item.head,
+        &mut item.patch,
+        &mut item.trace,
+    ]
+    .into_iter()
+    .filter_map(Option::as_mut)
+}
+
+/// An operation requires a credential when any of its security requirements
+/// names a scheme; `security(())` (an empty requirement) marks a public one.
+fn requires_credential(op: &Operation) -> bool {
+    op.security.iter().flatten().any(|requirement| {
+        serde_json::to_value(requirement)
+            .ok()
+            .and_then(|value| value.as_object().map(|scheme| !scheme.is_empty()))
+            .unwrap_or(false)
+    })
+}
+
 /// Generated OpenAPI document (stable `v1.0.0` HTTP surface).
 #[derive(OpenApi)]
 #[openapi(
@@ -64,6 +135,7 @@ impl Modify for SecurityAddon {
             GET /metrics: Prometheus exposition (HTTP latency + maidan_bus_lag_total, maidan_subscribe_replay_total, maidan_indexer_last_event_age_seconds, maidan_bus_listener_ok, maidan_bus_notify_hydrate_total, maidan_outbox_pending, maidan_outbox_quarantined, maidan_outbox_oldest_pending_seconds, maidan_outbox_relay_total{result} on Postgres). Fixed label cardinality only.",
         license(name = "MIT OR Apache-2.0", url = "https://github.com/david-engelmann/maidan")
     ),
+    servers((url = "/", description = "The server this document is served from")),
     paths(
         paths::health_live,
         paths::health_ready,
@@ -370,7 +442,17 @@ impl Modify for SecurityAddon {
         paths::ui_list_peers,
         paths::ui_list_message_edits,
     ),
-    components(schemas(
+    components(
+    responses(
+        BadRequest,
+        Unauthorized,
+        Forbidden,
+        NotFound,
+        Conflict,
+        PayloadTooLarge,
+        TooManyRequests,
+    ),
+    schemas(
         LivenessOk,
         // Every type a schema or operation names. utoipa 4 does not collect
         // these itself, and an unlisted one is a `$ref` that resolves to nothing
@@ -438,8 +520,6 @@ impl Modify for SecurityAddon {
         MessageBacklinks,
         KindCensus,
         KindCount,
-        ListTombstonesQuery,
-        KindCensusQuery,
         SetWipLimit,
         WipLimitView,
         SetDelegationPolicy,
@@ -482,9 +562,7 @@ impl Modify for SecurityAddon {
         maidan_types::ReindexJob,
         maidan_types::ReindexJobStatus,
         crate::reindex_ops::StartReindexEmbeddings,
-        CreateWorkspace,
         EraseWorkspace,
-        CreateMember,
         CreateChannel,
         CreateThread,
         ThreadTransition,
@@ -495,26 +573,21 @@ impl Modify for SecurityAddon {
         maidan_types::ParentGrounding,
         maidan_types::AcceptedDecision,
         WorkspaceContext,
-        ThreadContextQuery,
-        ToolTranscriptQuery,
         ToolTranscript,
         ToolCallEntry,
         ToolCallResult,
         OrphanToolResult,
-        WorkspaceContextQuery,
         TransitionThread,
         AssignThread,
         SetThreadOwner,
         RenameThread,
-        maidan_types::ThreadBudget,
-        maidan_types::BudgetLimits, BudgetPatch,
+        maidan_types::ThreadBudget, BudgetPatch,
         maidan_types::AccountedUsageRequest,
         maidan_types::TokenUsage,
         maidan_types::PriceSnapshot,
         maidan_types::PayerStamp,
         maidan_types::UsageLedgerEntry,
         maidan_types::DlqEntry,
-        DlqQuery,
         ClaimThread,
         ClaimNextThread,
         ClaimedThread,
@@ -590,7 +663,6 @@ impl Modify for SecurityAddon {
         ThreadResult,
         SetThreadLineage,
         ThreadLineage,
-        RunLineageQuery,
         RunOccupancy,
         ResultDelivery,
         SetThreadSteer,
@@ -610,13 +682,6 @@ impl Modify for SecurityAddon {
         RemoveReaction,
         PinMessage,
         CreateReference,
-        ListEventsQuery,
-        LogSnapshotQuery,
-        CatchUpQuery,
-        ListMessagesQuery,
-        ListMessageEditsQuery,
-        ListMentionsQuery,
-        ListInboxQuery,
         InboxItem,
         InboxItemKind,
         MemberInbox,
@@ -626,8 +691,6 @@ impl Modify for SecurityAddon {
         maidan_types::BuriedDecision,
         maidan_types::ManagerDigest,
         maidan_types::ManagerDigestChannel,
-        DecisionsQuery,
-        ListThreadResultsQuery,
         NotificationPref,
         SetNotificationPref,
         ChannelFollow,
@@ -643,7 +706,6 @@ impl Modify for SecurityAddon {
         EmailDeliveryMode,
         SetDeliveryMode,
         DeliveryModeView,
-        ListNotificationsQuery,
         UnreadCount,
         SnoozeNotification,
         ImportMode,
@@ -652,10 +714,7 @@ impl Modify for SecurityAddon {
         ExportPublicKey,
         maidan_types::TokenPolicy,
         MarkAllRead,
-        ListReferencesQuery,
         SearchMode,
-        SearchQuery,
-        UploadArtifactQuery,
         MintApiToken,
         MintApiTokenResponse,
         AttenuateToken,
@@ -667,7 +726,6 @@ impl Modify for SecurityAddon {
         SetWorkspaceHandle,
         maidan_types::RoomCard,
         maidan_types::RoomDiscovery,
-        maidan_types::RoomUri,
         maidan_types::WorkspaceHandle,
         ApiTokenSummary,
         CreateShareTicket,
@@ -694,11 +752,9 @@ impl Modify for SecurityAddon {
         WellKnownMaidan,
         WellKnownA2a,
         IngestSummary,
-        OidcLoginQuery,
-        OidcCallbackQuery,
         SessionResponse,
     )),
-    modifiers(&SecurityAddon),
+    modifiers(&SecurityAddon, &MiddlewareResponses),
     tags(
         (name = "health", description = "Liveness and readiness"),
         (name = "workspaces", description = "Workspaces and event log"),
@@ -728,22 +784,29 @@ pub struct ApiDoc;
         paths::create_workspace,
         paths::create_member_bootstrap,
     ),
+    modifiers(&MiddlewareResponses),
     tags(
         (name = "bootstrap", description = "Unauthenticated seed routes (require MAIDAN_BOOTSTRAP=1 when auth is enabled)"),
     )
 )]
 pub struct BootstrapApiDoc;
 
-/// `GET /openapi.json`
-pub async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
+/// The document `GET /openapi.json` serves: the stable surface, plus the
+/// bootstrap routes when this build carries them.
+pub fn document() -> utoipa::openapi::OpenApi {
     #[cfg(feature = "bootstrap")]
     {
         let mut doc = ApiDoc::openapi();
         doc.merge(BootstrapApiDoc::openapi());
-        Json(doc)
+        doc
     }
     #[cfg(not(feature = "bootstrap"))]
     {
-        Json(ApiDoc::openapi())
+        ApiDoc::openapi()
     }
+}
+
+/// `GET /openapi.json`
+pub async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
+    Json(document())
 }

@@ -1,6 +1,8 @@
 //! Health probe path docs.
 
+use crate::error::ProblemDetails;
 use crate::health::HealthResponse;
+use crate::openapi::responses::*;
 use crate::openapi::schemas::LivenessOk;
 
 /// Liveness probe (always OK when process is up).
@@ -8,7 +10,10 @@ use crate::openapi::schemas::LivenessOk;
     get,
     path = "/health/live",
     tag = "health",
-    responses((status = 200, description = "Alive", body = LivenessOk))
+    security(()),
+    responses(
+        (status = 200, description = "Alive", body = LivenessOk),
+    )
 )]
 pub fn health_live() {}
 
@@ -17,9 +22,10 @@ pub fn health_live() {}
     get,
     path = "/health/ready",
     tag = "health",
+    security(()),
     responses(
         (status = 200, description = "Ready", body = HealthResponse),
-        (status = 503, description = "Degraded", body = HealthResponse)
+        (status = 503, description = "Degraded", body = HealthResponse),
     )
 )]
 pub fn health_ready() {}
@@ -29,9 +35,10 @@ pub fn health_ready() {}
     get,
     path = "/health",
     tag = "health",
+    security(()),
     responses(
         (status = 200, description = "Ready", body = HealthResponse),
-        (status = 503, description = "Degraded", body = HealthResponse)
+        (status = 503, description = "Degraded", body = HealthResponse),
     )
 )]
 pub fn health() {}

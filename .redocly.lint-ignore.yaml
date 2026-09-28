@@ -1,0 +1,17 @@
+# Per-operation exceptions to the recommended ruleset (see redocly.yaml).
+# Each one is an operation that truly has no response of the kind the rule
+# asks for; crates/maidan-server/src/openapi/lint.rs pins the same lists
+# (REDIRECT_ONLY, NO_CLIENT_ERROR) and asserts they stay true.
+target/openapi/openapi.json:
+  # The OIDC login, callback and logout flows answer only with a 307
+  # redirect to the provider or back to the app. They have no 2xx.
+  operation-2xx-response:
+    - '#/paths/~1auth~1logout/post/responses'
+    - '#/paths/~1auth~1oidc~1callback/get/responses'
+    - '#/paths/~1auth~1oidc~1login/get/responses'
+  # Health probes take no credential, parameters or body and are exempt from
+  # the rate limiter, so no client error is reachable. Not-ready is a 503.
+  operation-4xx-response:
+    - '#/paths/~1health/get/responses'
+    - '#/paths/~1health~1live/get/responses'
+    - '#/paths/~1health~1ready/get/responses'

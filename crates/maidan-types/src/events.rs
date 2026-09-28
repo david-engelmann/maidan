@@ -83,13 +83,25 @@ struct StoredEventOpenApi {
 }
 
 #[cfg(feature = "openapi")]
-impl<'s> utoipa::ToSchema<'s> for StoredEvent {
-    fn schema() -> (
-        &'s str,
-        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+impl utoipa::PartialSchema for StoredEvent {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        <StoredEventOpenApi as utoipa::PartialSchema>::schema()
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::ToSchema for StoredEvent {
+    fn name() -> std::borrow::Cow<'static, str> {
+        "StoredEvent".into()
+    }
+
+    fn schemas(
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
     ) {
-        let (_, schema) = StoredEventOpenApi::schema();
-        ("StoredEvent", schema)
+        <StoredEventOpenApi as utoipa::ToSchema>::schemas(schemas);
     }
 }
 

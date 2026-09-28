@@ -45,7 +45,7 @@ One model, one capability map, four primary transports plus the IT surfaces.
 
 | Surface | Where | Status | Honest caveat |
 |---------|-------|--------|----------------|
-| REST + OpenAPI 3.0 | `GET /openapi.json`, utoipa | Production | No `workspaces.list`. Create via `POST /workspaces`. Hero bootstrap is REST/CLI, not MCP. |
+| REST + OpenAPI 3.1 | `GET /openapi.json`, utoipa | Production | No `workspaces.list`. Create via `POST /workspaces`. Hero bootstrap is REST/CLI, not MCP. |
 | MCP JSON-RPC | `POST /mcp` | Production, **negotiates `2026-07-28`, `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`** | `SUPPORTED_PROTOCOL_VERSIONS`, default `2026-07-28`. `POST /mcp` is stateless (JSON-RPC in/out). |
 | MCP Streamable HTTP | `POST/GET/DELETE /mcp/streamable` | Production; **stateless from `2025-03-26` on** (+ `2024-11-05` session) | A POST from any revision `2025-03-26` or later lands cold: one JSON-RPC response on its own POST, no `Mcp-Session-Id`, a notification answered `202`, optional SEP-2243 `Mcp-Method`/`Mcp-Name` headers. Sessions are opt-in: only a `2024-11-05` client — by its `initialize` or its `MCP-Protocol-Version` header — gets the SSE-session model (first POST opens SSE + `Mcp-Session-Id`). `GET` opens server→client notifications. Live-wait rides `GET /mcp/stream`, not a POST session. |
 | MCP SSE (legacy-shaped) | `GET /mcp/stream`, `GET /mcp/notifications` | Production | Fine for Maidan live-wait. HTTP+SSE is deprecated in the MCP spec (SEP-2596); migrate *clients* toward Streamable HTTP, not a third Maidan transport. |

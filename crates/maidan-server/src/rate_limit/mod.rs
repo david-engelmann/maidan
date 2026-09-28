@@ -90,7 +90,7 @@ fn config_from_env_named(max_var: &str, window_var: &str) -> Option<RateLimitCon
     })
 }
 
-fn exempt_path(path: &str) -> bool {
+pub(crate) fn exempt_path(path: &str) -> bool {
     path.starts_with("/health") || path == "/metrics"
 }
 

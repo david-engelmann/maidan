@@ -2158,20 +2158,21 @@ pub struct NewPin {
 /// [`Other`]: RelationKind::Other
 /// On the wire a relation is its name, a controlled one or any other string.
 #[cfg(feature = "openapi")]
-impl<'s> utoipa::ToSchema<'s> for RelationKind {
-    fn schema() -> (
-        &'s str,
-        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-    ) {
-        (
-            "RelationKind",
-            utoipa::openapi::ObjectBuilder::new()
-                .schema_type(utoipa::openapi::SchemaType::String)
-                .description(Some(
-                    "A relation name: supports, refutes, defines, depends, duplicates, grounds, supersedes, seeded_from, or any other string",
-                ))
-                .into(),
-        )
+impl utoipa::PartialSchema for RelationKind {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::ObjectBuilder::new()
+            .schema_type(utoipa::openapi::schema::Type::String)
+            .description(Some(
+                "A relation name: supports, refutes, defines, depends, duplicates, grounds, supersedes, seeded_from, or any other string",
+            ))
+            .into()
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::ToSchema for RelationKind {
+    fn name() -> std::borrow::Cow<'static, str> {
+        "RelationKind".into()
     }
 }
 
