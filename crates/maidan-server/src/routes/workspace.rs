@@ -8,7 +8,7 @@ use maidan_auth::{
     },
     AuthContext,
 };
-use maidan_store::StoreError;
+use maidan_store::{BlobReap, StoreError};
 use maidan_types::*;
 
 #[cfg(feature = "bootstrap")]
@@ -696,21 +696,35 @@ fn purge_metadata(result: &WorkspacePurgeResult) -> serde_json::Value {
     })
 }
 
-/// Delete the blobs a purge orphaned — shas no workspace references any more.
+/// Delete the blobs a purge or erase orphaned — shas no workspace references
+/// any more.
 ///
-/// The store decides orphanhood inside its transaction; this runs after it, so
-/// a workspace that uploaded the same bytes in between must not lose them. A
-/// blob whose artifact row exists again is kept.
+/// The store decides orphanhood inside its transaction; this runs after it.
+/// Each delete runs under the sha's lock (`reap_artifact_blob`), so a
+/// workspace uploading the same bytes meanwhile either commits its row first,
+/// and the bytes stay, or after, and puts them back.
 pub(super) async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) {
     for sha_hex in shas {
         let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
             continue;
         };
-        if state.store.get_artifact_by_sha(sha_hex).await.is_ok() {
-            continue;
-        }
-        if let Err(err) = state.artifacts.delete(&sha).await {
-            tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
+        let artifacts = state.artifacts.clone();
+        let delete: maidan_store::BlobDelete<'_> = Box::new(move || {
+            Box::pin(async move {
+                match artifacts.delete(&sha).await {
+                    Ok(()) | Err(maidan_artifacts::ArtifactError::NotFound) => Ok(()),
+                    Err(err) => Err(err.to_string()),
+                }
+            })
+        });
+        match state.store.reap_artifact_blob(sha_hex, delete).await {
+            Ok(BlobReap::Deleted | BlobReap::Referenced) => {}
+            Ok(BlobReap::DeleteFailed(err)) => {
+                tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
+            }
+            Err(err) => {
+                tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
+            }
         }
     }
 }

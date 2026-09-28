@@ -181,7 +181,7 @@ pub async fn snapshot_thread_context(
         .map_err(|e| ApiError::Internal(format!("serialize context snapshot: {e}")))?
         .into();
     let size_bytes = body.len() as i64;
-    let sha = state.artifacts.put(body).await?;
+    let sha = state.artifacts.put(body.clone()).await?;
     // Same atomic upsert + per-workspace ref + `ArtifactUpserted` event as a
     // normal upload; the ref/uploader are recorded only for a non-bypass
     // caller.
@@ -200,6 +200,8 @@ pub async fn snapshot_thread_context(
             ref_workspace,
         )
         .await?;
+    // A last-reference erase may have reaped the bytes between the put and the row.
+    maidan_artifacts::restore_if_reaped(state.artifacts.as_ref(), &sha, body).await?;
     publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(artifact)))
 }

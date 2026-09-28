@@ -16,9 +16,10 @@ Postgres across replicas in production.
 ## Try it
 
 ```sh
-# In-memory SQLite. Auth is on, so set a dev signing key of at least 32 bytes.
+# In-memory SQLite. Auth is on, so set a dev signing key of at least 32 bytes,
+# and opt in to the public development content KEK (never for real data).
 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 \
-  cargo run --bin maidan-server &
+MAIDAN_ALLOW_INSECURE_DEV_KEK=1 cargo run --bin maidan-server &
 curl -s localhost:8080/health
 ```
 

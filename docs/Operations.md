@@ -14,7 +14,7 @@ cargo clippy --all-targets --workspace -- -D warnings
 cargo test --workspace            # requires Docker for integration tests
 
 # Run the server against in-memory SQLite (no Docker)
-DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
+MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
 
 # Run the prod-style stack (postgres + minio + server)
 docker compose --profile full up

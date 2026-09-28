@@ -11,6 +11,7 @@ fn mcp_stdio_initialize_roundtrip() {
         // No token here, so the unrestricted context has to be asked for.
         .arg("--allow-insecure-no-auth")
         .env("DATABASE_URL", "sqlite::memory:")
+        .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -52,6 +53,7 @@ fn mcp_stdio_refuses_to_serve_unauthenticated_unless_asked() {
         .env("DATABASE_URL", "sqlite::memory:")
         .env_remove("MAIDAN_MCP_TOKEN")
         .env_remove("MAIDAN_ALLOW_INSECURE_NO_AUTH")
+        .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .stdin(Stdio::null())
         .output()
         .expect("spawn maidan mcp-stdio");

@@ -52,7 +52,7 @@ pub(crate) async fn insert_in_tx(
 
 /// Destroy `subject`'s key, and every queued copy of its events' words that
 /// would otherwise outlive it: webhook deliveries and projector egress built
-/// from those events. Idempotent.
+/// from those events, and notification mail about the message. Idempotent.
 pub(crate) async fn shred_in_tx(
     tx: &mut Transaction<'_, Postgres>,
     subject: Uuid,
@@ -81,6 +81,10 @@ pub(crate) async fn shred_in_tx(
     .bind(subject)
     .execute(&mut **tx)
     .await?;
+    sqlx::query("DELETE FROM maidan_mail_outbox WHERE content_key_id = $1")
+        .bind(subject)
+        .execute(&mut **tx)
+        .await?;
     Ok(shredded)
 }
 

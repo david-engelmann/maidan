@@ -14,3 +14,6 @@ minio:
 
 maidan:
   replicaCount: 1
+  # Required: the content KEK (`--set maidan.contentKek=…`) or
+  # `maidan.existingSecret`; see the maidan chart's values.yaml.
+  contentKek: ""

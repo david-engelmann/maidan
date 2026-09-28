@@ -80,4 +80,6 @@ Production deployments should integrate with one of:
 - AWS Secrets Manager / GCP Secret Manager / Azure Key Vault via CSI driver
 
 The `secret.example.yaml` documents the required keys
-(`DATABASE_URL`, `S3_*`, etc.) but does not contain real values.
+(`DATABASE_URL`, `MAIDAN_CONTENT_KEK`, `S3_*`, etc.) but does not contain real
+values. The deployment reads `MAIDAN_CONTENT_KEK` by name, so a Secret without it
+keeps the pod from starting.

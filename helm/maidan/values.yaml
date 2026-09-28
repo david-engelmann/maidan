@@ -61,10 +61,20 @@ config:
 secrets:
   DATABASE_URL: "postgres://maidan:maidan@postgres:5432/maidan"
 
-# Reference a pre-created Secret (holding DATABASE_URL and any other runtime
-# secrets) instead of rendering one from `.Values.secrets`. When set, the chart
-# creates no Secret of its own and mounts this one via envFrom. Keeps secret
-# material out of values files / release history.
+# Content key-encryption key (KEK): 32 bytes, 64 hex characters or base64
+# (`openssl rand -hex 32`). It wraps the per-message keys that make withdrawn
+# messages unreadable (docs/Production.md, Crypto-shredding). Required: the
+# chart refuses to render without it unless `existingSecret` is set, and that
+# Secret must then hold `MAIDAN_CONTENT_KEK`. Prefer `existingSecret` or
+# `--set contentKek=…` from your secret manager over a values file.
+contentKek: ""
+# Retired KEKs during a rotation (comma-separated); drop them once rewrapped.
+contentKekPrevious: ""
+
+# Reference a pre-created Secret (holding DATABASE_URL, MAIDAN_CONTENT_KEK and
+# any other runtime secrets) instead of rendering one from `.Values.secrets`.
+# When set, the chart creates no Secret of its own and mounts this one via
+# envFrom. Keeps secret material out of values files / release history.
 existingSecret: ""
 
 # Health probes. Startup + liveness hit the SHALLOW /health/live (process

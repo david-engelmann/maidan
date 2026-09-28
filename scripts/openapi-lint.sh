@@ -19,6 +19,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# A throwaway database, so the public development content KEK is acceptable.
+export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 
 port="${MAIDAN_OPENAPI_PORT:-18091}"
 redocly="@redocly/cli@${MAIDAN_REDOCLY_VERSION:-2.54.3}"

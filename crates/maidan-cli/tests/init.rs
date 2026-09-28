@@ -26,6 +26,7 @@ fn init_bootstraps_once_then_refuses() {
 
     // First init succeeds and prints a bearer token exactly once.
     let first = Command::new(bin)
+        .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .args([
             "init",
             "--database-url",
@@ -57,6 +58,7 @@ fn init_bootstraps_once_then_refuses() {
 
     // Second init on the now-populated database is refused (non-zero exit).
     let second = Command::new(bin)
+        .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .args(["init", "--database-url", &url])
         .output()
         .expect("run maidan init again");
@@ -71,5 +73,40 @@ fn init_bootstraps_once_then_refuses() {
         "second init should explain the refusal; got: {combined}"
     );
 
+    cleanup(&db);
+}
+
+/// Without a content KEK, and without the explicit development opt-in, init
+/// refuses before it touches the database: a publicly known key must never
+/// protect real data because a variable was forgotten.
+#[test]
+fn init_refuses_without_a_content_kek() {
+    let bin = env!("CARGO_BIN_EXE_maidan");
+    let db = std::env::temp_dir().join(format!("maidan-init-nokek-{}.db", std::process::id()));
+    cleanup(&db);
+    let url = format!("sqlite://{}?mode=rwc", db.display());
+    let output = Command::new(bin)
+        .env_remove("MAIDAN_CONTENT_KEK")
+        .env_remove("MAIDAN_CONTENT_KEK_PREVIOUS")
+        .env_remove("MAIDAN_ALLOW_INSECURE_DEV_KEK")
+        .args(["init", "--database-url", &url])
+        .output()
+        .expect("run maidan init");
+    assert!(!output.status.success(), "init must refuse without a KEK");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("MAIDAN_CONTENT_KEK"), "stderr: {stderr}");
+    assert!(!db.exists(), "nothing may be written before the refusal");
+
+    let with_kek = Command::new(bin)
+        .env("MAIDAN_CONTENT_KEK", "07".repeat(32))
+        .env_remove("MAIDAN_ALLOW_INSECURE_DEV_KEK")
+        .args(["init", "--database-url", &url])
+        .output()
+        .expect("run maidan init with a KEK");
+    assert!(
+        with_kek.status.success(),
+        "{}",
+        String::from_utf8_lossy(&with_kek.stderr)
+    );
     cleanup(&db);
 }

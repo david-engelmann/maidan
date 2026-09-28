@@ -58,6 +58,7 @@ async fn state_with(mailer: Arc<CountingMailer>) -> (AppState, Arc<dyn Store>) {
 fn queued(to: &str) -> NewMailOutbox {
     NewMailOutbox {
         workspace_id: None,
+        source_log_id: None,
         to_address: to.into(),
         subject: "s".into(),
         body: "b".into(),

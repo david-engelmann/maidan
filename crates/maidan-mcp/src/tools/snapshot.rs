@@ -24,9 +24,10 @@ pub(super) async fn snapshot_thread_context(
     let raw = serde_json::to_vec(&pack)
         .map_err(|e| McpError::Internal(format!("serialize context snapshot: {e}")))?;
     let size_bytes = raw.len() as i64;
+    let bytes = Bytes::from(raw);
     let sha = server
         .artifacts
-        .put(Bytes::from(raw))
+        .put(bytes.clone())
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
     let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
@@ -43,6 +44,10 @@ pub(super) async fn snapshot_thread_context(
             ref_workspace,
         )
         .await?;
+    // A last-reference erase may have reaped the bytes between the put and the row.
+    maidan_artifacts::restore_if_reaped(server.artifacts.as_ref(), &sha, bytes)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
     server.publish_stored(&stored).await;
     Ok(content_json(&artifact))
 }

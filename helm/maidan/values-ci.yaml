@@ -1,4 +1,5 @@
 # Kind / CI smoke: local image, SQLite on PVC, auth off for health-only gate.
+# The content KEK is passed at install time (scripts/helm-install-kind-smoke.sh).
 replicaCount: 1
 
 image:

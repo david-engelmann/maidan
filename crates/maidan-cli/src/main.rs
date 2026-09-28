@@ -63,6 +63,19 @@ enum Commands {
         #[arg(long)]
         workspace_id: Option<uuid::Uuid>,
     },
+    /// Report copies of withdrawn messages' words still held outside the
+    /// sealed event log: message rows, earlier versions, unsealed payloads,
+    /// queued webhook, egress or mail copies, search entries and embeddings.
+    /// Exits non-zero when it finds any. Reads only; run it against a migrated
+    /// database.
+    #[command(name = "verify-shredding")]
+    VerifyShredding {
+        #[arg(long, env = "DATABASE_URL")]
+        database_url: String,
+        /// Check one workspace instead of all of them.
+        #[arg(long)]
+        workspace_id: Option<uuid::Uuid>,
+    },
     /// One-time first-admin bootstrap: create the initial workspace, an admin
     /// member, and an admin bearer token (printed once). Refuses if the database
     /// already has a workspace. Removes the need for public bootstrap HTTP routes
@@ -98,6 +111,10 @@ async fn main() -> anyhow::Result<()> {
             embedding_provider,
             workspace_id,
         } => run_reindex_embeddings(&database_url, &embedding_provider, workspace_id).await,
+        Commands::VerifyShredding {
+            database_url,
+            workspace_id,
+        } => run_verify_shredding(&database_url, workspace_id).await,
         Commands::Init {
             database_url,
             workspace,
@@ -111,6 +128,8 @@ async fn run_init(
     workspace_name: &str,
     admin_handle: &str,
 ) -> anyhow::Result<()> {
+    // Before touching the database: a missing KEK refuses with nothing written.
+    let content_keys = content_keyring()?;
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
     let store: Arc<dyn Store> = match dialect {
         Dialect::Sqlite => {
@@ -125,7 +144,7 @@ async fn run_init(
             run_sqlite_migrations(&pool)
                 .await
                 .context("migrate sqlite")?;
-            Arc::new(SqliteStore::new(pool).with_content_keys(content_keyring()?))
+            Arc::new(SqliteStore::new(pool).with_content_keys(content_keys))
         }
         Dialect::Postgres => {
             let pool = PgPoolOptions::new()
@@ -136,7 +155,7 @@ async fn run_init(
             run_postgres_migrations(&pool)
                 .await
                 .context("migrate postgres")?;
-            Arc::new(PostgresStore::new(pool).with_content_keys(content_keyring()?))
+            Arc::new(PostgresStore::new(pool).with_content_keys(content_keys))
         }
     };
 
@@ -274,6 +293,7 @@ async fn run_mcp_stdio(
     artifact_root: &Path,
     allow_insecure_no_auth: bool,
 ) -> anyhow::Result<()> {
+    let content_keys = content_keyring()?;
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
     let (store, search) = match dialect {
         Dialect::Sqlite => {
@@ -289,7 +309,7 @@ async fn run_mcp_stdio(
                 .await
                 .context("migrate sqlite")?;
             let store: Arc<dyn Store> =
-                Arc::new(SqliteStore::new(pool.clone()).with_content_keys(content_keyring()?));
+                Arc::new(SqliteStore::new(pool.clone()).with_content_keys(content_keys));
             let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool));
             (store, search)
         }
@@ -303,7 +323,7 @@ async fn run_mcp_stdio(
                 .await
                 .context("migrate postgres")?;
             let store: Arc<dyn Store> =
-                Arc::new(PostgresStore::new(pool.clone()).with_content_keys(content_keyring()?));
+                Arc::new(PostgresStore::new(pool.clone()).with_content_keys(content_keys));
             let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool));
             (store, search)
         }
@@ -400,6 +420,46 @@ async fn run_reindex_embeddings(
             );
         }
     }
+    Ok(())
+}
+
+async fn run_verify_shredding(
+    database_url: &str,
+    workspace_id: Option<uuid::Uuid>,
+) -> anyhow::Result<()> {
+    let workspace = workspace_id.map(maidan_types::WorkspaceId);
+    let residue = match Dialect::from_url(database_url).context("detect dialect")? {
+        Dialect::Sqlite => {
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect(database_url)
+                .await
+                .context("connect sqlite")?;
+            maidan_store::find_shred_residue_sqlite(&pool, workspace).await
+        }
+        Dialect::Postgres => {
+            let pool = PgPoolOptions::new()
+                .max_connections(1)
+                .connect(database_url)
+                .await
+                .context("connect postgres")?;
+            maidan_store::find_shred_residue_postgres(&pool, workspace).await
+        }
+    }
+    .context("check shredded messages")?;
+    for found in &residue {
+        println!(
+            "residue: workspace={} subject={} table={}",
+            found.workspace_id.0, found.subject, found.table
+        );
+    }
+    if !residue.is_empty() {
+        anyhow::bail!(
+            "{} copies of withdrawn words remain outside the event log",
+            residue.len()
+        );
+    }
+    println!("no residue: every withdrawn message is gone from derived tables");
     Ok(())
 }
 

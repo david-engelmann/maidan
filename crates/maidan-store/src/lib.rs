@@ -42,6 +42,26 @@ impl HoldDisposal {
         event
     }
 }
+/// Deletes one artifact's bytes from the blob store. Run by
+/// [`store::ArtifactMetaStore::reap_artifact_blob`] while it holds the sha's lock.
+pub type BlobDelete<'a> = Box<
+    dyn FnOnce() -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>,
+        > + Send
+        + 'a,
+>;
+
+/// What [`store::ArtifactMetaStore::reap_artifact_blob`] did with a blob.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlobReap {
+    /// An artifact row holds the sha again; the bytes stay.
+    Referenced,
+    /// No row held the sha and the bytes were deleted.
+    Deleted,
+    /// No row held the sha, but deleting the bytes failed.
+    DeleteFailed(String),
+}
+
 /// Why a review-requirement write was refused: it would lower the requirement
 /// and the caller may not. Checked in the write's transaction.
 pub const REVIEW_LOWER_REFUSAL: &str =
@@ -62,6 +82,7 @@ pub mod outbox;
 pub mod postgres;
 pub mod result_delivery;
 mod share_tickets;
+pub mod shred_residue;
 pub mod sqlite;
 pub mod store;
 pub mod workspace_export;
@@ -76,6 +97,7 @@ pub use outbox::OutboxBackend;
 pub use postgres::outbox::{OutboxRow, QuarantinedOutboxRow};
 pub use postgres::PostgresStore;
 pub use result_delivery::{replay_result_delivery, ResultDeliveryReplay};
+pub use shred_residue::{find_shred_residue_postgres, find_shred_residue_sqlite, ShredResidue};
 pub use sqlite::SqliteStore;
 
 /// Default max connections for a **file-backed SQLite** pool.
@@ -129,5 +151,5 @@ pub use store::{
 /// [`Store`](crate::Store) — the super-trait exposes every method.
 pub mod prelude {
     pub use crate::store::*;
-    pub use crate::{PostgresStore, SqliteStore, StoreError};
+    pub use crate::{BlobDelete, BlobReap, PostgresStore, SqliteStore, StoreError};
 }

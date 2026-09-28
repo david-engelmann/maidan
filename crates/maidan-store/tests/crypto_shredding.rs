@@ -1,8 +1,8 @@
 //! Crypto-shredding on both backends: message words are sealed before they
 //! are hashed, a withdrawal destroys the message's key, and the chain still
 //! verifies over the ciphertext. Also the per-workspace artifact erase, whose
-//! bytes go only with the last reference. Postgres runs under testcontainers
-//! (skipped without Docker).
+//! bytes go only with the last reference, and never under an upload of the
+//! same bytes. Postgres runs under testcontainers (skipped without Docker).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -558,6 +558,309 @@ async fn a_shared_artifact_goes_with_its_last_reference(db: Db) {
     assert!(audits.iter().any(|e| e.action == "artifact.erase"));
 }
 
+async fn enqueue_mail_about(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+    source_log_id: Option<i64>,
+) -> Option<MailOutboxId> {
+    store
+        .enqueue_mail(NewMailOutbox {
+            workspace_id: Some(workspace_id),
+            source_log_id,
+            to_address: "alice@example.test".into(),
+            subject: "New Maidan notification".into(),
+            body: format!("about {source_log_id:?}"),
+        })
+        .await
+        .unwrap()
+}
+
+async fn withdrawal_takes_its_notification_mail(db: Db) {
+    let store = db.store(kek(1));
+    let room = room(store.as_ref(), "mail").await;
+    let (message, posted) = post(store.as_ref(), &room, WORDS).await;
+    let (_, kept) = post(store.as_ref(), &room, "kept words").await;
+    let about = |log_id: Option<i64>| enqueue_mail_about(store.as_ref(), room.ws.id, log_id);
+    // Pending, dead-lettered and sent copies about the message.
+    about(Some(posted.id)).await.expect("queued");
+    let dead = about(Some(posted.id)).await.expect("queued");
+    store
+        .mark_mail_failed(dead, "smtp down", None)
+        .await
+        .unwrap();
+    let sent = about(Some(posted.id)).await.expect("queued");
+    store.mark_mail_delivered(sent).await.unwrap();
+    // Mail about another message, and mail about no message at all.
+    about(Some(kept.id)).await.expect("queued");
+    about(None).await.expect("queued");
+    assert_eq!(store.count_dead_mail().await.unwrap(), 1);
+
+    let linked = "SELECT COUNT(*) FROM maidan_mail_outbox WHERE content_key_id = ?";
+    let in_workspace = "SELECT COUNT(*) FROM maidan_mail_outbox WHERE workspace_id = ?";
+    assert_eq!(db.count(linked, message.id.0).await, 3);
+
+    store
+        .tombstone_message_with_event(message.id, None)
+        .await
+        .unwrap();
+    assert_eq!(db.count(linked, message.id.0).await, 0);
+    assert_eq!(db.count(in_workspace, room.ws.id.0).await, 2);
+    assert_eq!(store.count_dead_mail().await.unwrap(), 0);
+    // A notification about a message withdrawn first is never queued.
+    assert!(about(Some(posted.id)).await.is_none());
+    assert_eq!(db.count(in_workspace, room.ws.id.0).await, 2);
+
+    // Workspace purge destroys the keys, and the mail linked to them with it.
+    store.purge_workspace_messages(room.ws.id).await.unwrap();
+    assert_eq!(db.count(in_workspace, room.ws.id.0).await, 1);
+}
+
+/// Record, rather than perform, a blob delete; optionally park inside it until
+/// released.
+fn recording_delete(
+    ran: Arc<std::sync::atomic::AtomicBool>,
+    entered: Option<tokio::sync::oneshot::Sender<()>>,
+    release: Option<tokio::sync::oneshot::Receiver<()>>,
+) -> BlobDelete<'static> {
+    Box::new(move || {
+        Box::pin(async move {
+            ran.store(true, std::sync::atomic::Ordering::SeqCst);
+            if let Some(entered) = entered {
+                let _ = entered.send(());
+            }
+            if let Some(release) = release {
+                let _ = release.await;
+            }
+            Ok(())
+        })
+    })
+}
+
+fn upload(sha: &str, by: MemberId) -> NewArtifact {
+    NewArtifact {
+        sha256: sha.into(),
+        size_bytes: 4,
+        mime_type: None,
+        kind: ArtifactKind::Attachment,
+        uploaded_by: Some(by),
+    }
+}
+
+/// The bytes of an orphaned sha are deleted under its lock: an upload of the
+/// same bytes that arrives during the delete waits, and commits its row only
+/// after it (and then restores the bytes, `restore_if_reaped`). A sha a row
+/// holds again is never deleted.
+async fn an_upload_waits_for_a_blob_reap_in_progress(db: Db) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let store = db.store(kek(1));
+    let room = room(store.as_ref(), "reap").await;
+    let sha = "cd".repeat(32);
+
+    let ran = Arc::new(AtomicBool::new(false));
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let reaper = {
+        let (store, sha, ran) = (store.clone(), sha.clone(), ran.clone());
+        tokio::spawn(async move {
+            store
+                .reap_artifact_blob(
+                    &sha,
+                    recording_delete(ran, Some(entered_tx), Some(release_rx)),
+                )
+                .await
+        })
+    };
+    entered_rx.await.unwrap();
+    let uploader = {
+        let (store, sha, who, ws) = (store.clone(), sha.clone(), room.alice.id, room.ws.id);
+        tokio::spawn(async move {
+            store
+                .upsert_artifact_with_event(upload(&sha, who), Some(ws))
+                .await
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(
+        !uploader.is_finished(),
+        "an upload of the same bytes must wait for the delete"
+    );
+    release_tx.send(()).unwrap();
+    assert_eq!(reaper.await.unwrap().unwrap(), BlobReap::Deleted);
+    assert!(ran.load(Ordering::SeqCst));
+    uploader.await.unwrap().unwrap();
+
+    // The row exists again, so a later reap keeps the bytes.
+    let ran = Arc::new(AtomicBool::new(false));
+    let kept = store
+        .reap_artifact_blob(&sha, recording_delete(ran.clone(), None, None))
+        .await
+        .unwrap();
+    assert_eq!(kept, BlobReap::Referenced);
+    assert!(!ran.load(Ordering::SeqCst), "a held sha is never deleted");
+
+    // After the last reference goes, the reap deletes.
+    let erased = store
+        .erase_artifact_audited(room.ws.id, &sha, Box::new(erase_audit))
+        .await
+        .unwrap();
+    assert!(erased.last_reference);
+    let ran = Arc::new(AtomicBool::new(false));
+    let reaped = store
+        .reap_artifact_blob(&sha, recording_delete(ran.clone(), None, None))
+        .await
+        .unwrap();
+    assert_eq!(reaped, BlobReap::Deleted);
+    assert!(ran.load(Ordering::SeqCst));
+}
+
+impl Db {
+    async fn residue(&self, workspace: Option<WorkspaceId>) -> Vec<(Uuid, String)> {
+        let found = match self {
+            Db::Sqlite(pool) => maidan_store::find_shred_residue_sqlite(pool, workspace).await,
+            Db::Pg(pool) => maidan_store::find_shred_residue_postgres(pool, workspace).await,
+        };
+        let mut found: Vec<_> = found
+            .unwrap()
+            .into_iter()
+            .map(|r| (r.subject, r.table))
+            .collect();
+        found.sort();
+        found
+    }
+
+    /// Run a statement with uuid parameters, written with `?`.
+    async fn execute(&self, sql: &str, params: &[Uuid]) {
+        match self {
+            Db::Sqlite(pool) => {
+                let mut query = sqlx::query(sql);
+                for param in params {
+                    query = query.bind(*param);
+                }
+                query.execute(pool).await.map(|_| ())
+            }
+            Db::Pg(pool) => {
+                let mut numbered = sql.to_string();
+                for n in 1..=params.len() {
+                    numbered = numbered.replacen('?', &format!("${n}"), 1);
+                }
+                let mut query = sqlx::query(&numbered);
+                for param in params {
+                    query = query.bind(*param);
+                }
+                query.execute(pool).await.map(|_| ())
+            }
+        }
+        .unwrap();
+    }
+}
+
+async fn the_residue_check_finds_words_a_withdrawal_left(db: Db) {
+    let store = db.store(kek(1));
+    let other = room(store.as_ref(), "residue-other").await;
+    let room = room(store.as_ref(), "residue").await;
+    let (message, _) = post(store.as_ref(), &room, WORDS).await;
+    store
+        .edit_message_with_event(
+            message.id,
+            room.alice.id,
+            EditMessage {
+                body: "second words".into(),
+                metadata: serde_json::json!({}),
+                content: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    post(store.as_ref(), &room, "live words").await;
+    store
+        .tombstone_message_with_event(message.id, None)
+        .await
+        .unwrap();
+    // A withdrawal leaves nothing behind, and live messages are not residue.
+    assert_eq!(db.residue(Some(room.ws.id)).await, vec![]);
+
+    // Copies that escaped the withdrawal: words put back on the row, an
+    // earlier version, a vector computed from the words and a log payload
+    // written unsealed.
+    let subject = message.id.0;
+    db.execute(
+        "UPDATE maidan_messages SET body = 'leftover' WHERE id = ?",
+        &[subject],
+    )
+    .await;
+    db.execute(
+        "INSERT INTO maidan_message_edits (message_id, editor_id, body_before, body_after)
+         VALUES (?, ?, 'first words', 'second words')",
+        &[subject, room.alice.id.0],
+    )
+    .await;
+    let vector = match &db {
+        Db::Sqlite(_) => "x'00'",
+        Db::Pg(_) => "array_fill(0, ARRAY[1024])::vector",
+    };
+    db.execute(
+        &format!(
+            "INSERT INTO maidan_emb_hash_v1 (message_id, embedding)
+             VALUES (?, {vector})"
+        ),
+        &[subject],
+    )
+    .await;
+    let unsealed = match &db {
+        Db::Sqlite(_) => "json_set(payload, '$.message.body', 'leftover')",
+        Db::Pg(_) => "jsonb_set(payload, '{message,body}', '\"leftover\"')",
+    };
+    db.execute(
+        &format!(
+            "UPDATE maidan_events SET payload = {unsealed}
+             WHERE id = (SELECT MIN(id) FROM maidan_events WHERE content_key_id = ?)"
+        ),
+        &[subject],
+    )
+    .await;
+    let table = |name: &str| (subject, name.to_string());
+    assert_eq!(
+        db.residue(Some(room.ws.id)).await,
+        vec![
+            table("maidan_emb_hash_v1"),
+            table("maidan_events"),
+            table("maidan_message_edits"),
+            table("maidan_messages"),
+        ]
+    );
+
+    // Scoped to one workspace, or across all of them.
+    let (elsewhere, _) = post(store.as_ref(), &other, WORDS).await;
+    store.tombstone_message(elsewhere.id).await.unwrap();
+    db.execute(
+        "UPDATE maidan_messages SET body = 'leftover' WHERE id = ?",
+        &[elsewhere.id.0],
+    )
+    .await;
+    assert_eq!(
+        db.residue(Some(other.ws.id)).await,
+        vec![(elsewhere.id.0, "maidan_messages".to_string())]
+    );
+    assert_eq!(db.residue(None).await.len(), 5);
+
+    // Under a legal hold the earlier versions stay on purpose.
+    db.execute(
+        "INSERT INTO maidan_preserved_messages (message_id, workspace_id, body, tombstoned_at)
+         VALUES (?, ?, 'first words', CURRENT_TIMESTAMP)",
+        &[subject, room.ws.id.0],
+    )
+    .await;
+    assert_eq!(
+        db.residue(Some(room.ws.id)).await,
+        vec![
+            table("maidan_emb_hash_v1"),
+            table("maidan_events"),
+            table("maidan_messages"),
+        ]
+    );
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -591,4 +894,32 @@ on_both_backends!(
     rotation_rewraps_under_the_new_kek,
     workspace_purge_destroys_its_content_keys,
     a_shared_artifact_goes_with_its_last_reference,
+    withdrawal_takes_its_notification_mail,
+    the_residue_check_finds_words_a_withdrawal_left,
 );
+
+/// The reap race needs a second connection that can be blocked, so SQLite runs
+/// on a file here, not a single-connection memory database.
+mod blob_reap {
+    #[tokio::test]
+    async fn sqlite_backend() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}?mode=rwc", dir.path().join("reap.db").display());
+        let pool = super::SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect(&url)
+            .await
+            .unwrap();
+        maidan_store::configure_sqlite_pool(&pool).await.unwrap();
+        super::run_sqlite_migrations(&pool).await.unwrap();
+        super::an_upload_waits_for_a_blob_reap_in_progress(super::Db::Sqlite(pool)).await;
+    }
+
+    #[tokio::test]
+    async fn postgres_backend() {
+        let Some((_container, db)) = super::postgres().await else {
+            return;
+        };
+        super::an_upload_waits_for_a_blob_reap_in_progress(db).await;
+    }
+}

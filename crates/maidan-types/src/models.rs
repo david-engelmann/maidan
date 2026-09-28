@@ -1091,6 +1091,11 @@ pub struct NewMailOutbox {
     /// row is visible to `operator:global` alone, because it cannot be
     /// attributed to a caller's workspace.
     pub workspace_id: Option<WorkspaceId>,
+    /// The event the mail is about. When it is a message event, the mail is
+    /// linked to the message's content key and goes with it: withdrawing the
+    /// message deletes the mail, and a mail about an already withdrawn message
+    /// is not queued.
+    pub source_log_id: Option<i64>,
     pub to_address: String,
     pub subject: String,
     pub body: String,

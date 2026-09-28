@@ -163,6 +163,10 @@ and is refused outright when `MAIDAN_ENV=production` (see
 ### Run it (SQLite, no Docker)
 
 ```sh
+# Both terminals: local development opts in to the public development content
+# KEK. A real deployment sets MAIDAN_CONTENT_KEK instead (docs/Production.md).
+export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
+
 # Terminal 1 — run the server with auth on. A file-backed SQLite DB lets `maidan init`
 # and the server share one database.
 MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BOOTSTRAP=1 \

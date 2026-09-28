@@ -842,12 +842,24 @@ the key.
   subject id as associated data) and tagged with the KEK's fingerprint.
   Rotation: new primary, old one in `MAIDAN_CONTENT_KEK_PREVIOUS`; the
   server rewraps at startup. An unknown KEK is an error, never read as
-  shredded. Production refuses to start without a KEK.
+  shredded. Without a KEK the server refuses to start (see *The content
+  KEK fails closed*).
 - **Shred.** Appending `message.tombstoned` sets the key row's wrapped
   key to NULL in the same transaction, deletes the subject's pending
-  webhook deliveries and egress outbox rows, and blanks the message
-  row's metadata. A later event for the subject is sealed under a
-  throwaway key. Workspace purge deletes all its keys.
+  webhook deliveries, egress outbox rows and notification mail, and
+  blanks the message row's metadata. A later event for the subject is
+  sealed under a throwaway key. Workspace purge deletes all its keys.
+- **Mail.** A mail row carries the key of the event it notifies about
+  (`content_key_id`, cascading). Mail bodies hold no words, only the
+  notification kind and event number, but a notice that a withdrawn
+  message exists is still a trace of it, so a shred deletes the mail and
+  an enqueue for a shredded subject is skipped (Postgres takes the key
+  row `FOR SHARE`; SQLite checks in the insert).
+- **Verify.** `maidan verify-shredding` lists copies of withdrawn words
+  outside the sealed log (message rows, edits, unsealed payloads,
+  webhook, egress and mail rows, search entries, every embedding table).
+  It is a read-only query per table, so it ships as a CLI rather than an
+  API.
 - **Reads.** Members get events opened; a shredded event reads as an
   empty body with its `sealed` block. Admin catch-up, peer catch-up and
   federation envelopes carry the ciphertext plus the key only while it
@@ -858,6 +870,16 @@ the key.
   reference and its share-ticket grants. The row and the bytes go only
   with the last reference (Postgres locks the row). Refused under a
   legal hold.
+- **Blob reap.** Deleting bytes races an upload of the same sha: the
+  upload writes the bytes (already there), then its row, while the erase
+  deletes them. `reap_artifact_blob` checks for a row and deletes the
+  bytes under a per-sha lock (Postgres advisory xact lock, also taken by
+  every artifact upsert; SQLite `BEGIN IMMEDIATE`, since upserts are
+  writes). An upsert therefore lands before the check (the reap keeps the
+  bytes) or after the delete, and then the uploader writes the bytes
+  back (`restore_if_reaped`). Workspace purge reaps the same way. The
+  lock is held for one blob delete; on SQLite that blocks writers, bounded
+  by the busy timeout.
 
 **Alternative.** Per-author or per-workspace keys: coarser, so a single
 withdrawal cannot be erased without re-encrypting everything else.
@@ -870,8 +892,30 @@ become unrecoverable on every tier that holds only the database.
 **Limits.** A backup taken before a shred, together with the KEK,
 recovers the words (keep KEKs out of data backups). A peer that already
 opened the words keeps them unless it ingests the tombstone. Under a
-legal hold the preserved copy keeps the words by design. The mail
-outbox copy of a notification body is not shredded.
+legal hold the preserved copy keeps the words by design. A mail send
+already handed to SMTP cannot be recalled.
+
+### The content KEK fails closed
+
+**Decision.** The server and `maidan init` refuse to start without
+`MAIDAN_CONTENT_KEK`. The built-in development key is used only with an
+explicit `MAIDAN_ALLOW_INSECURE_DEV_KEK=1`, which is refused together
+with `MAIDAN_ENV=production`. The compose files and dev scripts set the
+flag; the Helm chart fails to render without `contentKek` or an
+`existingSecret`, and the k8s base reads the key from `maidan-secrets`.
+
+**Alternative.** Fall back to the dev key unless `MAIDAN_ENV=production`
+(the previous rule). A deployment that forgot `MAIDAN_ENV` sealed real
+words under a key anyone can read in the source, and nothing said so
+but a log line.
+
+**Why this:** it matches `AUTH_DISABLED`, which needs
+`MAIDAN_ALLOW_INSECURE_NO_AUTH`: the insecure mode is named where it is
+turned on, and a missing variable stops the process instead of weakening
+it. The library's `Store::new` keeps the dev keyring for tests; the
+binaries always build the keyring from the environment.
+
+**To revisit:** never.
 
 ### Postgres NOTIFY pointer delivery (`v7.0.0`)
 

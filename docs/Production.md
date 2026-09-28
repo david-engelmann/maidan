@@ -54,7 +54,8 @@ period is cut, and clients retry.
 | `FEDERATION_ENCRYPTION_KEY` | when federation is used | 32-byte secret (base64 or hex) used to encrypt peer outbound bearer tokens at rest. Required to create peers and for the poll worker after restart. Back up with your DB; rotation requires re-creating peers. |
 | `MAIDAN_EXPORT_SIGNING_KEY` | to *produce* a signed workspace export | 32-byte Ed25519 seed (64-char hex or standard base64). `GET /workspaces/:id/export` and MCP `export_workspace` refuse until set — never an unsigned bundle. Back up with your other operator secrets; losing it does not strand existing files (the public key is in the artifact). |
 | `MAIDAN_EXPORT_VERIFY_KEYS` | no | Comma-separated 32-byte public keys (hex or base64). When set, verify/import accept only those keys (authenticity pin). Empty / unset = integrity against the embedded key only — the blank-instance default. |
-| `MAIDAN_CONTENT_KEK` | yes when `MAIDAN_ENV=production` | 32-byte key-encryption key (64-char hex or standard base64) that wraps the per-message content keys (see *Crypto-shredding*). Production refuses to start without it; elsewhere an insecure built-in dev key is used, with a warning. Keep it in your secret manager, never in data backups. |
+| `MAIDAN_CONTENT_KEK` | yes | 32-byte key-encryption key (64-char hex or standard base64) that wraps the per-message content keys (see *Crypto-shredding*). The server and `maidan init` refuse to start without it. Generate one with `openssl rand -hex 32`, keep it in your secret manager, never in data backups. |
+| `MAIDAN_ALLOW_INSECURE_DEV_KEK` | no | `1` lets a server with no `MAIDAN_CONTENT_KEK` use the built-in development key, which is public, with a warning. For local development and CI only; refused with `MAIDAN_ENV=production`. |
 | `MAIDAN_CONTENT_KEK_PREVIOUS` | during a rotation | Comma-separated retired KEKs still able to unwrap. Requires `MAIDAN_CONTENT_KEK`. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
 | `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). |
@@ -155,7 +156,7 @@ The `maidan` CLI seeds the first admin directly through the store, so a producti
 deployment needs no unauthenticated HTTP routes and no `AUTH_DISABLED`:
 
 ```sh
-DATABASE_URL=postgres://… maidan init --workspace my-team --admin-handle david
+DATABASE_URL=postgres://… MAIDAN_CONTENT_KEK=… maidan init --workspace my-team --admin-handle david
 ```
 
 For containerized deployments, the separately published CLI image runs the
@@ -168,6 +169,7 @@ MAIDAN_TAG=v406.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL=postgres://maidan:…@postgres/maidan \
+  -e MAIDAN_CONTENT_KEK \
   "ghcr.io/david-engelmann/maidan-cli:${MAIDAN_TAG}" \
   init --workspace my-team --admin-handle david
 ```
@@ -854,6 +856,24 @@ ingests the origin's tombstone shreds its copy. Under a legal hold the preserved
 copy keeps the words, as described below.
 
 Content keys live in `maidan_content_keys`, each wrapped by `MAIDAN_CONTENT_KEK`.
+The server refuses to start without the KEK. The Helm chart refuses to render
+without `contentKek` or an `existingSecret` holding `MAIDAN_CONTENT_KEK`, and the
+k8s base reads it from `maidan-secrets`. Only an explicit
+`MAIDAN_ALLOW_INSECURE_DEV_KEK=1` (the compose files and local development set
+it) falls back to the built-in development key, which is public; production
+refuses that flag.
+
+A withdrawal also deletes the notification mail about the message, sent or
+pending, and a notification about a withdrawn message is never queued. (Mail
+bodies name only the notification kind and event number, never the words; a
+send already in flight completes.)
+
+**Check for leftovers.** `maidan verify-shredding --database-url …
+[--workspace-id …]` reads every withdrawn message and lists any copy of its
+words still outside the sealed event log: a message row not blanked, earlier
+versions (kept on purpose under a legal hold), an unsealed event payload, a
+queued webhook, egress or mail copy, a search entry or an embedding. It exits
+non-zero when it finds one.
 
 **Rotate the KEK.** Generate a new key (`openssl rand -hex 32`), set it as
 `MAIDAN_CONTENT_KEK`, move the old one to `MAIDAN_CONTENT_KEK_PREVIOUS`, and
@@ -875,7 +895,10 @@ KEK out of data backups, and expire backups within your erasure deadline.
 **Artifacts.** Artifacts are deduplicated across workspaces. `DELETE
 /artifacts/{sha}` (`token:admin`, audited as `artifact.erase`) removes the
 calling workspace's reference; the bytes are deleted only when the last
-workspace lets go (`last_reference: true`).
+workspace lets go (`last_reference: true`). An upload of the same bytes
+waits for an erase in progress and then writes the bytes back, so a new
+reference never points at deleted bytes; workspace purge uses the same
+protocol.
 
 ## Legal holds
 

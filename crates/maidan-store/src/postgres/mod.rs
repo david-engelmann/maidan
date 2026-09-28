@@ -1115,7 +1115,7 @@ impl MailStore for PostgresStore {
         member_emails::delete(&self.pool, member_id).await
     }
 
-    async fn enqueue_mail(&self, new: NewMailOutbox) -> Result<MailOutboxId, StoreError> {
+    async fn enqueue_mail(&self, new: NewMailOutbox) -> Result<Option<MailOutboxId>, StoreError> {
         mail_outbox::enqueue(&self.pool, new).await
     }
     async fn claim_next_due_mail(
@@ -2550,6 +2550,13 @@ impl ArtifactMetaStore for PostgresStore {
         audit: crate::AuditFor<ArtifactErasure>,
     ) -> Result<ArtifactErasure, StoreError> {
         artifacts::erase_for_workspace(&self.pool, workspace_id, sha256, audit).await
+    }
+    async fn reap_artifact_blob(
+        &self,
+        sha256: &str,
+        delete: crate::BlobDelete<'_>,
+    ) -> Result<crate::BlobReap, StoreError> {
+        artifacts::reap_blob(&self.pool, sha256, delete).await
     }
 }
 

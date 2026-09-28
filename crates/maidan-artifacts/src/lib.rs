@@ -21,4 +21,4 @@ pub use localfs::LocalFsStore;
 pub use s3::{S3Config, S3Store};
 pub use s3_multipart::{CompletedPart, MultipartUpload};
 pub use sha::Sha256;
-pub use store::{put_reader, ArtifactStore};
+pub use store::{put_reader, restore_if_reaped, ArtifactStore};

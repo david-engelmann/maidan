@@ -38,8 +38,24 @@ const WORKSPACE_VIEW_SQL: &str = "SELECT a.id, a.sha256, a.size_bytes,
        AND (r.workspace_id IS NOT NULL
             OR NOT EXISTS (SELECT 1 FROM maidan_artifact_refs x WHERE x.sha256 = a.sha256))";
 
+/// Serialize artifact-row writes for `sha256` with [`reap_blob`] until the
+/// transaction ends. A 64-bit hash of the sha keys the lock; a collision only
+/// serializes two unrelated shas.
+async fn lock_sha(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    sha256: &str,
+) -> Result<(), StoreError> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('maidan.artifact:' || $1, 0))")
+        .bind(sha256)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 pub async fn upsert(pool: &PgPool, new: NewArtifact) -> Result<Artifact, StoreError> {
     let id = Uuid::now_v7();
+    let mut tx = pool.begin().await?;
+    lock_sha(&mut tx, &new.sha256).await?;
     let row = sqlx::query(UPSERT_SQL)
         .bind(id)
         .bind(&new.sha256)
@@ -47,9 +63,35 @@ pub async fn upsert(pool: &PgPool, new: NewArtifact) -> Result<Artifact, StoreEr
         .bind(new.mime_type.as_deref())
         .bind(new.kind.as_str())
         .bind(new.uploaded_by.map(|m| m.0))
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
+    tx.commit().await?;
     row_to_artifact(&row)
+}
+
+/// Delete `sha256`'s bytes if no artifact row holds it, with the sha locked so
+/// no upsert can commit a row in between. See `ArtifactMetaStore::reap_artifact_blob`.
+pub async fn reap_blob(
+    pool: &PgPool,
+    sha256: &str,
+    delete: crate::BlobDelete<'_>,
+) -> Result<crate::BlobReap, StoreError> {
+    let mut tx = pool.begin().await?;
+    lock_sha(&mut tx, sha256).await?;
+    let held: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM maidan_artifacts WHERE sha256 = $1)")
+            .bind(sha256)
+            .fetch_one(&mut *tx)
+            .await?;
+    if held {
+        return Ok(crate::BlobReap::Referenced);
+    }
+    let reaped = match delete().await {
+        Ok(()) => crate::BlobReap::Deleted,
+        Err(err) => crate::BlobReap::DeleteFailed(err),
+    };
+    tx.commit().await?;
+    Ok(reaped)
 }
 
 /// Upsert an artifact, optionally record its per-workspace access ref, and
@@ -62,6 +104,7 @@ pub async fn upsert_with_event(
 ) -> Result<(Artifact, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
     let mut tx = pool.begin().await?;
+    lock_sha(&mut tx, &new.sha256).await?;
     let row = sqlx::query(UPSERT_SQL)
         .bind(id)
         .bind(&new.sha256)

@@ -21,6 +21,27 @@ pub trait ArtifactStore: Send + Sync {
     async fn delete(&self, sha: &Sha256) -> Result<(), ArtifactError>;
 }
 
+/// Put `bytes` back if they are gone. Call it after the artifact row for `sha`
+/// has committed: a last-reference erase may have reaped the bytes between
+/// this upload's `put` and its row. Once the row exists nothing reaps them, so
+/// after this returns the bytes are there for as long as the row is.
+pub async fn restore_if_reaped(
+    store: &dyn ArtifactStore,
+    sha: &Sha256,
+    bytes: Bytes,
+) -> Result<(), ArtifactError> {
+    if store.exists(sha).await? {
+        return Ok(());
+    }
+    let restored = store.put(bytes).await?;
+    if &restored != sha {
+        return Err(ArtifactError::InvalidInput(format!(
+            "restored bytes hash to {restored}, not {sha}"
+        )));
+    }
+    Ok(())
+}
+
 /// Stream bytes from `reader` into the store (buffers internally).
 pub async fn put_reader(
     store: &dyn ArtifactStore,
