@@ -16,7 +16,7 @@ async fn edit_message_sets_body_and_edited_at() {
     maidan_store::run_sqlite_migrations(&pool)
         .await
         .expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace { name: "w".into() })
@@ -95,7 +95,7 @@ async fn edit_message_rejects_tombstoned() {
     maidan_store::run_sqlite_migrations(&pool)
         .await
         .expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace { name: "w".into() })

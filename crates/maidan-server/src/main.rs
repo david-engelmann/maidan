@@ -197,8 +197,7 @@ async fn main() -> anyhow::Result<()> {
                 );
             }
             tracing::info!("search: postgres tsvector");
-            outbox_backend =
-                Some(OutboxBackend::postgres(pool.clone()).with_content_keys(content_keys.clone()));
+            outbox_backend = Some(OutboxBackend::postgres(pool.clone(), content_keys.clone()));
             outbox_relay = outbox_relay_enabled;
             // Read-replica pool: when MAIDAN_DB_REPLICA_URL is set, connect a
             // separate reader pool (validating replica reachability at boot) so
@@ -210,11 +209,10 @@ async fn main() -> anyhow::Result<()> {
                     .await
                     .context("connect to postgres read replica (MAIDAN_DB_REPLICA_URL)")?;
                 tracing::info!("read replica: connected (MAIDAN_DB_REPLICA_URL)");
-                PostgresStore::with_replica_reader(pool.clone(), reader)
+                PostgresStore::with_replica_reader(pool.clone(), reader, content_keys.clone())
             } else {
-                PostgresStore::new(pool.clone())
-            }
-            .with_content_keys(content_keys.clone());
+                PostgresStore::new(pool.clone(), content_keys.clone())
+            };
             read_routing_metrics = config
                 .replica_url
                 .is_some()
@@ -290,11 +288,9 @@ async fn main() -> anyhow::Result<()> {
                 .context("apply sqlite migrations")?;
             tracing::info!("event bus: in-memory");
             tracing::info!("search: sqlite fts5");
-            outbox_backend =
-                Some(OutboxBackend::sqlite(pool.clone()).with_content_keys(content_keys.clone()));
+            outbox_backend = Some(OutboxBackend::sqlite(pool.clone(), content_keys.clone()));
             outbox_relay = outbox_relay_enabled;
-            store =
-                Arc::new(SqliteStore::new(pool.clone()).with_content_keys(content_keys.clone()));
+            store = Arc::new(SqliteStore::new(pool.clone(), content_keys.clone()));
             bus = Arc::new(InMemoryBus::new());
             resource_notifier = Arc::new(InMemoryResourceNotifier::new());
             presence_notifier = None; // single process: legacy local-only presence

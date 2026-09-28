@@ -34,7 +34,7 @@ async fn app_installation_token_resolves_and_subset_caps_enforced() {
     let Some((_c, pool)) = pool().await else {
         return;
     };
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "app-store-ws".into(),

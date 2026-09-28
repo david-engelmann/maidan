@@ -85,7 +85,7 @@ async fn sqlite_harness() -> Harness {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     spawn(
         store,
         Arc::new(maidan_search::SqliteSearch::new(pool)),
@@ -102,7 +102,7 @@ async fn postgres_harness() -> Option<(
     let notifier = maidan_bus::PostgresResourceNotifier::connect(pool.clone())
         .await
         .ok()?;
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let harness = spawn(
         store,
         Arc::new(maidan_search::PostgresSearch::new(pool)),

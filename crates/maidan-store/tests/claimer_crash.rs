@@ -216,7 +216,7 @@ async fn a_crashed_claimer_is_recovered_and_fenced_sqlite() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
     a_crashed_claim_lapses_and_the_dead_claimer_is_fenced(store.as_ref()).await;
     crashing_claimers_never_double_hold_a_thread(store).await;
 }
@@ -249,7 +249,7 @@ async fn a_crashed_claimer_is_recovered_and_fenced_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool));
     a_crashed_claim_lapses_and_the_dead_claimer_is_fenced(store.as_ref()).await;
     crashing_claimers_never_double_hold_a_thread(store).await;
 }

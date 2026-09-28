@@ -26,7 +26,7 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir)
         .expect("connect");
     configure_sqlite_pool(&pool).await.expect("pragmas");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = Arc::new(SqliteStore::new(pool.clone()));
+    let store = Arc::new(SqliteStore::for_tests(pool.clone()));
     let dir = tempfile::tempdir().expect("tempdir");
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());

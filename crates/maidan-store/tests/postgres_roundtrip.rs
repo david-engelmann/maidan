@@ -38,7 +38,7 @@ async fn spawn() -> Option<(PostgresStore, testcontainers::ContainerAsync<Postgr
     run_postgres_migrations(&pool)
         .await
         .expect("apply migrations");
-    Some((PostgresStore::new(pool), container))
+    Some((PostgresStore::for_tests(pool), container))
 }
 
 #[tokio::test]

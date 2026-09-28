@@ -282,7 +282,7 @@ mod tests {
             .await
             .unwrap();
         run_sqlite_migrations(&pool).await.unwrap();
-        let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
         let (ws_a, admin_a, channel_a) = member_of(store.as_ref(), "alpha").await;
         let (_, member_b, channel_b) = member_of(store.as_ref(), "bravo").await;
         let server = McpServer::new(

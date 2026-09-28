@@ -34,7 +34,7 @@ async fn postgres_deep_purge_removes_related_rows() {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store = PostgresStore::new(pool.clone());
+    let store = PostgresStore::for_tests(pool.clone());
     let search = PostgresSearch::new(pool);
 
     let ws = store

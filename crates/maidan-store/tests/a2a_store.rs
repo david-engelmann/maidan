@@ -15,7 +15,7 @@ async fn a2a_push_config_and_task_persist_in_sqlite() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace { name: "a2a".into() })
@@ -70,7 +70,7 @@ async fn list_a2a_tasks_returns_workspace_tasks_within_limit() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws_a = store
         .create_workspace(NewWorkspace { name: "a".into() })
@@ -131,7 +131,7 @@ async fn a2a_task_push_configs_crud() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     store
         .create_a2a_task_push_config("task-1", "cfg-a", "https://a.example")

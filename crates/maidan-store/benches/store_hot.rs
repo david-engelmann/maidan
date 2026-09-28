@@ -21,7 +21,7 @@ fn sqlite_ctx() -> BenchCtx {
         maidan_store::run_sqlite_migrations(&pool)
             .await
             .expect("migrate");
-        let store = SqliteStore::new(pool);
+        let store = SqliteStore::for_tests(pool);
         let ws = store
             .create_workspace(NewWorkspace {
                 name: "bench".into(),

@@ -23,7 +23,7 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -298,7 +298,7 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let state = AppState::for_tests(
@@ -562,7 +562,7 @@ async fn email_delivery_when_configured_and_address_present() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -644,7 +644,7 @@ async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -758,7 +758,7 @@ async fn router_notifies_owner_and_followers_when_a_thread_lands() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -847,7 +847,7 @@ async fn channel_mute_suppresses_firehose_but_mention_breaks_through() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));

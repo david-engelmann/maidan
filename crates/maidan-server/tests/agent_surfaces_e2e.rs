@@ -28,7 +28,7 @@ async fn spawn() -> (
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
     let dir = tempfile::tempdir().unwrap();
@@ -103,7 +103,7 @@ async fn mcp_tool_call_without_capability_is_rejected_when_auth_enabled() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
     let dir = tempfile::tempdir().unwrap();

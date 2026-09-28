@@ -105,7 +105,7 @@ async fn thread_context_query_count_is_independent_of_message_count() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace { name: "qc".into() })

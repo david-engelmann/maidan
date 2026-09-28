@@ -38,7 +38,7 @@ async fn blocked_reason_parks_a_thread_from_dispatch_and_emits_on_clear() {
 
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));

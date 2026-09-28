@@ -29,14 +29,17 @@ async fn spawn_sqlite_outbox() -> Option<(
     run_sqlite_migrations(&pool).await.ok()?;
 
     let bus = Arc::new(InMemoryBus::new());
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
     let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().ok()?.path()));
 
     let mut state = AppState::for_tests(store, artifacts, bus.clone(), search);
     state.outbox_relay = true;
-    state.outbox_backend = Some(OutboxBackend::sqlite(pool.clone()));
+    state.outbox_backend = Some(OutboxBackend::sqlite(
+        pool.clone(),
+        maidan_store::test_support::dev_keys(),
+    ));
 
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok()?;
@@ -70,7 +73,10 @@ async fn sqlite_http_mutation_defers_bus_until_outbox_relay_runs() {
     let no_event = tokio::time::timeout(Duration::from_millis(400), sub.next()).await;
     assert!(no_event.is_err(), "bus should not publish before relay");
 
-    let relay = OutboxRelay::new(OutboxBackend::sqlite(pool.clone()), bus.clone());
+    let relay = OutboxRelay::new(
+        OutboxBackend::sqlite(pool.clone(), maidan_store::test_support::dev_keys()),
+        bus.clone(),
+    );
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())

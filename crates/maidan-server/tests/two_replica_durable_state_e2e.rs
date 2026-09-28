@@ -112,7 +112,7 @@ async fn oauth_code_and_reindex_job_cross_replicas() {
     run_postgres_migrations(&pool).await.unwrap();
 
     // One store + search, shared by both replicas (one database, two servers).
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool.clone()));
     maidan_server::metrics::init();
     let replica_a = spawn_replica(store.clone(), search.clone());

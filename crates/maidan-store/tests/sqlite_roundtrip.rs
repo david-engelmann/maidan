@@ -17,7 +17,7 @@ async fn spawn() -> SqliteStore {
         .await
         .expect("enable foreign keys");
     run_sqlite_migrations(&pool).await.expect("migrate sqlite");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 #[tokio::test]

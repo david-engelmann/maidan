@@ -47,7 +47,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let state = AppState::new(
         store.clone(),
         Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),

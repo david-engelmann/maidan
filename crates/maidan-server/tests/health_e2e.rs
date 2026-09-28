@@ -47,7 +47,7 @@ async fn spawn_server() -> Option<(
     run_postgres_migrations(&pool).await.expect("migrate");
 
     let dir = tempfile::tempdir().expect("tempdir");
-    let store = Arc::new(PostgresStore::new(pool.clone()));
+    let store = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
@@ -151,7 +151,7 @@ async fn health_reports_indexer_embedding_errors() {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
 
-    let store = Arc::new(SqliteStore::new(pool.clone()));
+    let store = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
     let dir = tempfile::tempdir().expect("tempdir");
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
@@ -220,11 +220,11 @@ async fn spawn_server_with_postgres_bus() -> Option<(
     run_postgres_migrations(&pool).await.expect("migrate");
 
     let dir = tempfile::tempdir().expect("tempdir");
-    let store = Arc::new(PostgresStore::new(pool.clone()));
+    let store = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::PostgresSearch::new(pool.clone()));
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let pg_bus = maidan_bus::PostgresBus::connect(pool)
+    let pg_bus = maidan_bus::PostgresBus::connect(pool, maidan_store::test_support::dev_keys())
         .await
         .expect("postgres bus");
     let bus_health = pg_bus.listener_health();
@@ -285,7 +285,7 @@ async fn a_draining_server_is_not_ready_but_still_serves() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = Arc::new(SqliteStore::new(pool.clone()));
+    let store = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
     let dir = tempfile::tempdir().expect("tempdir");
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));

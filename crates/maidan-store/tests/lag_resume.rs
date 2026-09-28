@@ -15,7 +15,7 @@ async fn sqlite() -> SqliteStore {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 #[tokio::test]

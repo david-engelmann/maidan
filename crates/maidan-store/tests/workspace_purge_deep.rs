@@ -115,7 +115,7 @@ async fn deep_purge_removes_messages_embeddings_references_tokens_and_events() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
     let search = SqliteSearch::new(pool);
     let (ws, _alice, th, msg) = seed_workspace(&store, &search).await;
 
@@ -154,7 +154,7 @@ async fn list_audit_for_workspace_scopes_to_workspace_actors_and_targets() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws_a = store
         .create_workspace(NewWorkspace {
             name: "ws-a".into(),

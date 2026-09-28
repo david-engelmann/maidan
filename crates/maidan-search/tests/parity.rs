@@ -35,7 +35,7 @@ async fn rust_query_returns_same_ids() {
         .await
         .unwrap();
     run_postgres_migrations(&pg_pool).await.unwrap();
-    let pg_store: Arc<dyn Store> = Arc::new(PostgresStore::new(pg_pool.clone()));
+    let pg_store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pg_pool.clone()));
     let pg_search = PostgresSearch::new(pg_pool);
 
     let sqlite_pool = SqlitePoolOptions::new()
@@ -48,7 +48,7 @@ async fn rust_query_returns_same_ids() {
         .await
         .unwrap();
     run_sqlite_migrations(&sqlite_pool).await.unwrap();
-    let sqlite_store: Arc<dyn Store> = Arc::new(SqliteStore::new(sqlite_pool.clone()));
+    let sqlite_store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(sqlite_pool.clone()));
     let sqlite_search = SqliteSearch::new(sqlite_pool);
 
     let pg_fx = common::seed(&*pg_store).await;

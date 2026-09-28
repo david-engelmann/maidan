@@ -96,7 +96,7 @@ async fn spawn(kek: u8) -> Ctx {
     maidan_store::configure_sqlite_pool(&pool).await.unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let keys = Arc::new(ContentKeyring::new([kek; 32], Vec::new()));
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()).with_content_keys(keys));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone(), keys));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));

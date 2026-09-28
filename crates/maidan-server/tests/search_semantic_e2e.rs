@@ -37,7 +37,7 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
 
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool));
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);
@@ -175,7 +175,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
 
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool));
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);
@@ -364,7 +364,7 @@ async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
 
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool));
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);
@@ -494,7 +494,7 @@ async fn sqlite_http_semantic_search_honors_embedding_model_param() {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
 
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool));
     let embedding_provider: Arc<dyn maidan_search::EmbeddingProvider> =
         Arc::new(maidan_search::HashV1Provider);

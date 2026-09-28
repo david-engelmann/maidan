@@ -29,8 +29,10 @@ async fn verify_shredding_reports_words_a_withdrawal_left() {
         .unwrap();
     maidan_store::configure_sqlite_pool(&pool).await.unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool.clone())
-        .with_content_keys(Arc::new(ContentKeyring::new([7; 32], Vec::new())));
+    let store = SqliteStore::new(
+        pool.clone(),
+        Arc::new(ContentKeyring::new([7; 32], Vec::new())),
+    );
     let ws = store
         .create_workspace(NewWorkspace { name: "w".into() })
         .await

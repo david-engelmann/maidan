@@ -27,8 +27,8 @@ enum Db {
 impl Db {
     fn store(&self, keys: Arc<ContentKeyring>) -> Arc<dyn Store> {
         match self {
-            Db::Sqlite(pool) => Arc::new(SqliteStore::new(pool.clone()).with_content_keys(keys)),
-            Db::Pg(pool) => Arc::new(PostgresStore::new(pool.clone()).with_content_keys(keys)),
+            Db::Sqlite(pool) => Arc::new(SqliteStore::new(pool.clone(), keys)),
+            Db::Pg(pool) => Arc::new(PostgresStore::new(pool.clone(), keys)),
         }
     }
 
@@ -456,6 +456,22 @@ async fn rotation_rewraps_under_the_new_kek(db: Db) {
     assert_eq!(message_of(&read.opened_event().unwrap()).body, WORDS);
     assert!(matches!(
         old.get_stored_event(posted.id).await,
+        Err(StoreError::ContentKey(_))
+    ));
+}
+
+/// A store seals under the keyring it was built with. Nothing falls back to
+/// the public development KEK, so that keyring opens none of it.
+async fn a_store_seals_under_the_keyring_it_is_given(db: Db) {
+    let store = db.store(kek(3));
+    let room = room(store.as_ref(), "given").await;
+    let (_, posted) = post(store.as_ref(), &room, WORDS).await;
+
+    let read = store.get_stored_event(posted.id).await.unwrap();
+    assert_eq!(message_of(&read.opened_event().unwrap()).body, WORDS);
+    let dev = db.store(Arc::new(ContentKeyring::insecure_dev()));
+    assert!(matches!(
+        dev.get_stored_event(posted.id).await,
         Err(StoreError::ContentKey(_))
     ));
 }
@@ -892,6 +908,7 @@ on_both_backends!(
     federated_subjects_belong_to_their_origin,
     an_event_the_origin_shredded_arrives_as_ciphertext,
     rotation_rewraps_under_the_new_kek,
+    a_store_seals_under_the_keyring_it_is_given,
     workspace_purge_destroys_its_content_keys,
     a_shared_artifact_goes_with_its_last_reference,
     withdrawal_takes_its_notification_mail,

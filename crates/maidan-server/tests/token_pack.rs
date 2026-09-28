@@ -52,7 +52,7 @@ async fn token_pack_evidence() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
 
     // A realistic-ish channel: several threads of substantive messages, so the
     // numbers reflect real content, not "msg 1".

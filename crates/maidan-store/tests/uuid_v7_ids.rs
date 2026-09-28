@@ -11,7 +11,7 @@ async fn store_minted_ids_are_v7_and_sort_by_creation() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let mut ids = Vec::new();
     for name in ["a", "b", "c"] {
         let ws = store

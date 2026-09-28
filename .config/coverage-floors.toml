@@ -1,0 +1,33 @@
+# Line-coverage floors, enforced by the `coverage (llvm-cov)` CI job through
+# scripts/coverage-floors.py. Coverage counts the whole suite (unit and
+# integration tests, Postgres under testcontainers).
+#
+# Floors are per crate, not one blanket percentage: a regression in a small,
+# security-critical crate (auth, fsm, router, types) cannot hide behind the
+# size of the server or the store, and a crate that is thin today is a
+# recorded gap, not a number the rest of the workspace pads out.
+#
+# Each floor sits just under the crate's measured coverage: the measurement
+# rounded down to the half point after taking one point off, which clears the
+# run-to-run jitter seen on `main` (at most 0.7 points, in maidan-search).
+# Measured on CI run 36435128021 (2026-09-28). Raise a floor when a crate's
+# coverage rises; lowering one needs a reason in the PR that does it.
+
+[workspace]
+lines = 85.5 # measured 86.66
+
+[crates]
+maidan-a2a = 80.0           # 81.38
+maidan-artifacts = 23.5     # 24.76; the MinIO tests return early in CI, so s3.rs is uncovered
+maidan-auth = 92.5          # 93.92
+maidan-bus = 86.0           # 87.46
+maidan-cli = 86.5           # 87.72
+maidan-fsm = 97.0           # 98.08
+maidan-mcp = 92.5           # 93.57
+maidan-observability = 54.5 # 55.91; OTLP init runs in the otlp smoke job, outside coverage
+maidan-router = 96.0        # 97.18
+maidan-search = 78.0        # 79.13
+maidan-server = 77.5        # 78.98
+maidan-store = 87.5         # 88.51
+maidan-types = 94.5         # 95.53
+maidan-wasi = 70.0          # 71.10

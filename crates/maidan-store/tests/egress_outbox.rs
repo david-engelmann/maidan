@@ -20,7 +20,7 @@ async fn sqlite() -> SqliteStore {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 fn slack(ws: WorkspaceId, thread: ThreadId, log_id: i64, body: &str) -> NewEgressOutbox {
@@ -330,7 +330,7 @@ async fn egress_outbox_enqueue_claim_retry_deadletter_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
     run_dedup_suite(&store).await;
     run_dlq_scope_suite(&store).await;

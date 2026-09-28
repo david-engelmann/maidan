@@ -46,7 +46,7 @@ async fn spawn(replica_enabled: bool) -> Option<Case> {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
 
     // Seed a member to target the (bypass-auth) mutation at.

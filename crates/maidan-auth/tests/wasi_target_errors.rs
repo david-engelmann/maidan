@@ -22,7 +22,7 @@ async fn store_with_workspace() -> (SqliteStore, sqlx::SqlitePool, WorkspaceId, 
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
 
     let ws = store
         .create_workspace(NewWorkspace {

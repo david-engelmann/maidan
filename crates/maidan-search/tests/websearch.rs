@@ -34,7 +34,7 @@ async fn postgres_websearch_operator_pass_through() {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search = PostgresSearch::new(pool);
     let fx = common::seed(&*store).await;
     let filters = SearchFilters::default();

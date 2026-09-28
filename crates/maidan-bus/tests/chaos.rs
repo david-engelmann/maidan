@@ -107,8 +107,10 @@ async fn notify_floor_survives_periodic_listener_kills_under_load() {
     let kill_every = env_u64("MAIDAN_CHAOS_KILL_EVERY", 10);
     let delay_ms = env_u64("MAIDAN_CHAOS_DELAY_MS", 50);
 
-    let store = PostgresStore::new(pool.clone());
-    let bus = PostgresBus::connect(pool.clone()).await.unwrap();
+    let store = PostgresStore::for_tests(pool.clone());
+    let bus = PostgresBus::connect(pool.clone(), maidan_store::test_support::dev_keys())
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Collect every delivered log_id in the background for the whole run.

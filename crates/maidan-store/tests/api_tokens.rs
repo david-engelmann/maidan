@@ -37,7 +37,7 @@ async fn api_token_create_lookup_and_revoke() {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let (workspace_id, member_id) = seed_member(&store).await;
     let token = store
@@ -82,7 +82,7 @@ async fn expired_api_token_is_not_active() {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let (workspace_id, member_id) = seed_member(&store).await;
     store
@@ -116,7 +116,7 @@ async fn api_token_hash_is_unique() {
         .await
         .expect("foreign_keys");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let (workspace_id, member_id) = seed_member(&store).await;
     let hash = "c".repeat(64);

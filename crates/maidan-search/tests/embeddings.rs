@@ -45,7 +45,7 @@ async fn semantic_search_orders_by_cosine_distance() {
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
 
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search = PostgresSearch::new(pool);
     let fx = common::seed(&*store).await;
 
@@ -113,7 +113,7 @@ async fn upsert_replaces_existing_embedding() {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search = PostgresSearch::new(pool);
 
     let ws = store
@@ -280,7 +280,7 @@ async fn semantic_search_respects_author_channel_and_kind_facets() {
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
 
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search = PostgresSearch::new(pool);
     let fx = common::seed(&*store).await;
 

@@ -116,7 +116,7 @@ async fn a_withdrawn_message_leaves_no_embeddings_sqlite() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search = SqliteSearch::new(pool.clone());
     run_suite(store.as_ref(), &search, || {
         let pool = pool.clone();
@@ -155,7 +155,7 @@ async fn a_withdrawn_message_leaves_no_embeddings_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search = PostgresSearch::new(pool.clone());
     run_suite(store.as_ref(), &search, || {
         let pool = pool.clone();

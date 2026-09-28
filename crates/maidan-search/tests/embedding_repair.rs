@@ -82,7 +82,7 @@ async fn fixture() -> Option<Fixture> {
     let search = Arc::new(PostgresSearch::new(pool.clone()));
     search.ensure_model(&HashV1Provider).await.unwrap();
     Some(Fixture {
-        store: Arc::new(PostgresStore::new(pool.clone())),
+        store: Arc::new(PostgresStore::for_tests(pool.clone())),
         search,
         pool,
         _container: container,

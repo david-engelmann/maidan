@@ -112,19 +112,16 @@ pub struct SqliteStore {
 }
 
 impl SqliteStore {
-    /// Store with the insecure development keyring; a server replaces it via
-    /// [`Self::with_content_keys`].
-    pub fn new(pool: SqlitePool) -> Self {
-        Self {
-            pool,
-            keys: Arc::new(ContentKeyring::insecure_dev()),
-        }
+    /// Store that wraps and unwraps message content keys with `keys`. There is
+    /// no default: a caller that means the public development KEK says so.
+    pub fn new(pool: SqlitePool, keys: Arc<ContentKeyring>) -> Self {
+        Self { pool, keys }
     }
 
-    /// Use `keys` to wrap and unwrap message content keys.
-    pub fn with_content_keys(mut self, keys: Arc<ContentKeyring>) -> Self {
-        self.keys = keys;
-        self
+    /// Store under the public development KEK, for tests only.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_tests(pool: SqlitePool) -> Self {
+        Self::new(pool, crate::test_support::dev_keys())
     }
 
     pub fn content_keys(&self) -> &Arc<ContentKeyring> {

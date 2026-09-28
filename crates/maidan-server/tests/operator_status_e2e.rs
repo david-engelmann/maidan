@@ -56,7 +56,7 @@ async fn operator_status_reports_phase_backfill_and_queues() {
     run_sqlite_migrations(&pool).await.unwrap();
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
     let dir = tempfile::tempdir().unwrap();
     let state = AppState::new(
         store.clone(),

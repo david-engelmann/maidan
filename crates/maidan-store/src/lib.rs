@@ -85,6 +85,8 @@ mod share_tickets;
 pub mod shred_residue;
 pub mod sqlite;
 pub mod store;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 pub mod workspace_export;
 
 pub use automation_deliveries::AutomationDeliveryFilter;

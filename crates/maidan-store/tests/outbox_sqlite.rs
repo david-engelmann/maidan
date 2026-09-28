@@ -35,7 +35,7 @@ fn workspace_created_event(name: &str) -> Event {
 #[tokio::test]
 async fn append_enqueues_unpublished_outbox_row() {
     let pool = sqlite_pool().await;
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
     store
         .append_event(&workspace_created_event("sqlite-outbox-ws"))
         .await
@@ -46,7 +46,7 @@ async fn append_enqueues_unpublished_outbox_row() {
 #[tokio::test]
 async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
     let pool = sqlite_pool().await;
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
     store
         .append_event(&workspace_created_event("sqlite-quarantine"))
         .await
@@ -65,7 +65,7 @@ async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
 #[tokio::test]
 async fn a_claimed_row_is_excluded_until_its_lease_expires() {
     let pool = sqlite_pool().await;
-    let store = SqliteStore::new(pool.clone());
+    let store = SqliteStore::for_tests(pool.clone());
     store
         .append_event(&workspace_created_event("sqlite-claim"))
         .await
@@ -113,7 +113,7 @@ async fn a_claimed_row_is_excluded_until_its_lease_expires() {
 async fn claimed_rows_open_live_words_and_not_shredded_ones() {
     let pool = sqlite_pool().await;
     let keys = std::sync::Arc::new(ContentKeyring::new([7; 32], Vec::new()));
-    let store = SqliteStore::new(pool.clone()).with_content_keys(keys.clone());
+    let store = SqliteStore::new(pool.clone(), keys.clone());
     let ws = store
         .create_workspace(NewWorkspace {
             name: "relay".into(),

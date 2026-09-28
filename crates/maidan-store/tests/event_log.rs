@@ -15,7 +15,7 @@ async fn append_and_replay_events_in_order() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace {
@@ -87,7 +87,7 @@ async fn list_events_after_stable_gates_on_insert_time() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace {
@@ -163,7 +163,7 @@ async fn get_stored_event_returns_row_and_missing_is_not_found() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let ws = store
         .create_workspace(NewWorkspace {
@@ -210,7 +210,7 @@ async fn create_with_event_commits_row_and_event() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "tx-outbox".to_string(),
@@ -272,7 +272,7 @@ async fn social_with_event_appends_atomically() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "social-tx".to_string(),
@@ -374,7 +374,7 @@ async fn pins_and_mentions_with_event_append_atomically() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "pin-tx".to_string(),
@@ -485,7 +485,7 @@ async fn transition_with_event_appends_atomically() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "transition-tx".to_string(),
@@ -556,7 +556,7 @@ async fn assignment_with_event_appends_atomically() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "assign-tx".to_string(),
@@ -695,7 +695,7 @@ async fn dm_post_with_event_appends_atomically() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "dm-tx".to_string(),
@@ -787,7 +787,7 @@ async fn message_post_finalize_with_event_appends_atomically() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "post-finalize".to_string(),
@@ -905,7 +905,7 @@ async fn edit_and_tombstone_with_event_append_atomically() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "edit-tomb-tx".to_string(),
@@ -1008,7 +1008,7 @@ async fn create_workspace_and_member_with_event_append_atomically() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
 
     let (ws, ws_ev) = store
         .create_workspace_with_event(NewWorkspace {
@@ -1063,7 +1063,7 @@ async fn reference_and_artifact_with_event_append_atomically() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     let ws = store
         .create_workspace(NewWorkspace {
             name: "ref-art-tx".to_string(),

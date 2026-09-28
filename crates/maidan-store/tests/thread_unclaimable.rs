@@ -14,7 +14,7 @@ async fn sqlite() -> SqliteStore {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::new(pool)
+    SqliteStore::for_tests(pool)
 }
 
 async fn run_suite(store: &dyn Store) {
@@ -241,7 +241,7 @@ async fn thread_unclaimable_mark_clear_get_list_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
     run_claim_skip_suite(&store).await;
 }

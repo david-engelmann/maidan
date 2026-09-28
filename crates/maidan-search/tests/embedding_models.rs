@@ -78,7 +78,7 @@ async fn sqlite_mixed_dimension_models_coexist() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search = SqliteSearch::new(pool.clone());
 
     let ws = store

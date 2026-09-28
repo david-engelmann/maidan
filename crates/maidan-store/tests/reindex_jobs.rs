@@ -76,7 +76,7 @@ async fn reindex_job_upsert_and_get_sqlite() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    let store = SqliteStore::new(pool);
+    let store = SqliteStore::for_tests(pool);
     assert_upsert_and_get(&store).await;
 }
 
@@ -104,6 +104,6 @@ async fn reindex_job_upsert_and_get_postgres() {
         .await
         .unwrap();
     run_postgres_migrations(&pool).await.unwrap();
-    let store = PostgresStore::new(pool);
+    let store = PostgresStore::for_tests(pool);
     assert_upsert_and_get(&store).await;
 }

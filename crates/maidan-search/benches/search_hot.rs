@@ -35,7 +35,7 @@ fn sqlite_ctx() -> BenchCtx {
             .expect("connect");
         configure_sqlite_pool(&pool).await.expect("pragmas");
         run_sqlite_migrations(&pool).await.expect("migrate");
-        let store = SqliteStore::new(pool.clone());
+        let store = SqliteStore::for_tests(pool.clone());
         let search = SqliteSearch::new(pool);
 
         let ws = store

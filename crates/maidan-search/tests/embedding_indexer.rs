@@ -38,7 +38,7 @@ async fn embedding_handler_upserts_on_message_posted() {
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
 
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool));
     let bus: Arc<dyn EventBus> = Arc::new(InMemoryBus::with_capacity(64));
     let handler = Arc::new(EmbeddingHandler::new(
@@ -151,7 +151,7 @@ async fn batching_handler_embeds_posted_messages_and_records_metrics() {
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
 
-    let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool));
     let bus: Arc<dyn EventBus> = Arc::new(InMemoryBus::with_capacity(64));
 

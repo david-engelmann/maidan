@@ -1,0 +1,48 @@
+# cargo-nextest configuration. CI runs `--profile ci`; a bare
+# `cargo nextest run` uses `default`.
+#
+# Every test runs in its own process, so a test that sets an environment
+# variable or installs a global tracing subscriber cannot leak into another.
+# That is why there is no serial test group: nothing here shares process
+# state. Postgres-backed tests each start their own container and run at the
+# default concurrency (one test per CPU) without contention, so there is no
+# database test group either.
+
+[store]
+dir = "target/nextest"
+
+[profile.default]
+# The slowest test takes about 30 s (it waits out a streaming timeout on
+# purpose); most finish in well under a second. Report anything past 60 s and
+# kill it at 3 minutes, so a hang fails its own test instead of the job.
+slow-timeout = { period = "60s", terminate-after = 3 }
+# No retries by default: a test that fails once has failed.
+retries = 0
+
+[profile.ci]
+# Run everything and report every failure, not just the first.
+fail-fast = false
+# The end-of-run summary names what failed, what needed a retry and what was
+# slow, so a quarantined flake stays visible even when its retry passes.
+final-status-level = "slow"
+
+[profile.ci.junit]
+# Written to target/nextest/ci/junit.xml and uploaded by the test jobs.
+path = "junit.xml"
+
+# Quarantine. Each test below has failed on `main` for a reason other than a
+# code change, and gets two retries in CI only. A retry that passes is
+# reported as FLAKY in the log and in the JUnit report; it does not hide the
+# test. Every entry has a row in docs/Open Work.md, and comes out when the
+# test is fixed. Add an entry only with a failed `main` run to point at.
+[[profile.ci.overrides]]
+# Floods the bus and expects a replay hint within 2 s of a 50 ms settle; a
+# loaded runner misses the window (run 36131376972).
+filter = "package(maidan-server) & binary(ws_subscribe_e2e) & test(=subscribe_emits_replay_hint_when_bus_subscriber_lags)"
+retries = 2
+
+[[profile.ci.overrides]]
+# Minting a ticket that expires in one second returned 500 instead of 201 on
+# a loaded runner (run 36366240722).
+filter = "package(maidan-server) & binary(share_ticket_consumer_e2e) & test(=consumer_surface_is_paginated_read_only_and_fail_closed)"
+retries = 2
