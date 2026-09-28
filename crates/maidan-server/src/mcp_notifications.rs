@@ -2,7 +2,9 @@
 //!
 //! Distinct from [`crate::mcp_stream`] (`GET /mcp/stream`), which replays workspace bus
 //! events. This endpoint carries JSON-RPC notifications such as
-//! `notifications/resources/updated` for HTTP MCP clients.
+//! `notifications/resources/updated` for HTTP MCP clients: only for what this
+//! caller subscribed to over stateless `POST /mcp`, for as long as it can read
+//! it. An open listener keeps those subscriptions alive.
 
 use std::convert::Infallible;
 use std::time::Duration;
@@ -13,7 +15,7 @@ use axum::{
     Extension,
 };
 use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
-use tokio_stream::wrappers::BroadcastStream;
+use maidan_mcp::McpSession;
 use tokio_stream::{Stream, StreamExt as _};
 
 use crate::error::ApiError;
@@ -28,13 +30,15 @@ pub async fn stream(
             .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
     }
 
-    let rx = state.mcp.subscribe_notifications();
-    let notification_stream = BroadcastStream::new(rx).filter_map(move |item| {
-        let scoped = item.ok().filter(|s| s.visible_to(&auth))?;
-        serde_json::to_string(&scoped.notification)
-            .ok()
-            .map(|data| Ok(Event::default().data(data)))
-    });
+    let notification_stream = state
+        .mcp
+        .listen(&auth, McpSession::Stateless)
+        .into_stream()
+        .filter_map(|notification| {
+            serde_json::to_string(&notification)
+                .ok()
+                .map(|data| Ok(Event::default().data(data)))
+        });
 
     Ok(Sse::new(notification_stream).keep_alive(
         KeepAlive::new()

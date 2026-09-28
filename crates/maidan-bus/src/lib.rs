@@ -33,7 +33,9 @@ pub use presence_notify::{
     InMemoryPresenceNotifier, PostgresPresenceNotifier, PresenceEvent, PresenceEventKind,
     PresenceNotifier,
 };
-pub use resource_notify::{InMemoryResourceNotifier, PostgresResourceNotifier, ResourceNotifier};
+pub use resource_notify::{
+    InMemoryResourceNotifier, PostgresResourceNotifier, ResourceNotifier, ResourceUpdate,
+};
 pub use stream::EventStream;
 pub use traits::EventBus;
 

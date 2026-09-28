@@ -116,56 +116,92 @@ async fn streamable_post_returns_sse_response_and_resource_notification() {
     let thread_id = th["id"].as_str().unwrap();
     let uri = format!("maidan://threads/{thread_id}");
 
-    let subscribe_body = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "resources/subscribe",
-        "params": { "uri": uri }
-    });
-    // Subscribe as the member that posts: a subscription belongs to its
-    // caller's workspace, and only that workspace's callers are notified.
-    let sub_resp: Value = client
-        .post(format!("{base}/mcp"))
-        .header("maidan-test-member-id", alice_id)
-        .json(&subscribe_body)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert!(sub_resp["error"].is_null());
-
-    let post_body = json!({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/call",
-        "params": {
-            "name": "post_message",
-            "arguments": {
-                "thread_id": thread_id,
-                "body": "via streamable"
-            }
-        }
-    });
-    let resp2 = client
+    // A subscription belongs to the session it is made in: open a session as
+    // the member, subscribe on it, and the update arrives on that session's
+    // stream — and not on a stateless listener of the same member.
+    let init = client
         .post(format!("{base}/mcp/streamable"))
         .header("mcp-protocol-version", SESSION_REVISION)
         .header("maidan-test-member-id", alice_id)
-        .json(&post_body)
+        .json(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp2.status(), StatusCode::OK);
+    assert_eq!(init.status(), StatusCode::OK);
+    let session = init
+        .headers()
+        .get("mcp-session-id")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let stateless = client
+        .get(format!("{base}/mcp/notifications"))
+        .header("maidan-test-member-id", alice_id)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stateless.status(), StatusCode::OK);
+
+    let subscribe = client
+        .post(format!("{base}/mcp/streamable"))
+        .header("mcp-protocol-version", SESSION_REVISION)
+        .header("maidan-test-member-id", alice_id)
+        .header("mcp-session-id", &session)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "resources/subscribe",
+            "params": { "uri": uri }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(subscribe.status(), StatusCode::ACCEPTED);
+
+    let post = client
+        .post(format!("{base}/mcp"))
+        .header("maidan-test-member-id", alice_id)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "post_message",
+                "arguments": { "thread_id": thread_id, "body": "via streamable" }
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(post.status(), StatusCode::OK);
+
     let mut buf = String::new();
-    let mut stream = resp2.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
-        if buf.contains("\"id\":2") && buf.contains("notifications/resources/updated") {
-            break;
+    let mut stream = init.bytes_stream();
+    let read = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(chunk) = stream.next().await {
+            buf.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
+            if buf.contains("\"id\":2") && buf.contains("notifications/resources/updated") {
+                break;
+            }
         }
-    }
+    })
+    .await;
+    assert!(read.is_ok(), "no notification on the session stream: {buf}");
     assert!(buf.contains(&uri));
+
+    let mut other = String::new();
+    let mut stateless = stateless.bytes_stream();
+    let _ = tokio::time::timeout(Duration::from_millis(500), async {
+        while let Some(Ok(chunk)) = stateless.next().await {
+            other.push_str(&String::from_utf8_lossy(&chunk));
+        }
+    })
+    .await;
+    assert!(
+        !other.contains("notifications/resources/updated"),
+        "the session's subscription reached a listener outside the session: {other}"
+    );
 
     server.abort();
 }

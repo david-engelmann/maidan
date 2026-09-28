@@ -5,14 +5,16 @@
 //! `PostgresResourceNotifier` and listener. A client subscribed on replica A
 //! must receive `notifications/resources/updated` when the corresponding
 //! mutation is handled on replica B — behavior that per-process in-memory
-//! notifications could not provide before this cluster.
+//! notifications could not provide before this cluster. The update carries
+//! the workspace it happened in across the replica boundary, so a listener on
+//! replica A from another workspace still hears nothing.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use maidan_auth::AuthContext;
-use maidan_bus::{PostgresResourceNotifier, ResourceNotifier};
-use maidan_mcp::{JsonRpcRequest, McpServer};
+use maidan_bus::{PostgresResourceNotifier, ResourceNotifier, ResourceUpdate};
+use maidan_mcp::{JsonRpcRequest, McpServer, McpSession};
 use maidan_search::{EmbeddingProvider, HashV1Provider, PostgresSearch, Search};
 use maidan_store::{prelude::*, run_postgres_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
@@ -70,7 +72,7 @@ async fn resource_update_on_one_replica_reaches_subscriber_on_another() {
         })
         .await
         .unwrap();
-    let _member = store
+    let member = store
         .create_member(NewMember {
             workspace_id: ws.id,
             handle: "a".into(),
@@ -132,32 +134,59 @@ async fn resource_update_on_one_replica_reaches_subscriber_on_another() {
     // Let both LISTEN tasks attach before publishing.
     tokio::time::sleep(Duration::from_millis(400)).await;
 
-    // The subscriber lives on replica A.
-    let auth = AuthContext::bypass();
+    // The subscriber lives on replica A; so does a listener from another
+    // workspace.
+    let read = vec![maidan_auth::capability::WORKSPACE_READ.to_string()];
+    let auth = AuthContext::from_session(member.id, ws.id, read.clone());
+    let other_ws = store
+        .create_workspace(NewWorkspace {
+            name: "other-ws".into(),
+        })
+        .await
+        .unwrap();
+    let other_member = store
+        .create_member(NewMember {
+            workspace_id: other_ws.id,
+            handle: "b".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let other = AuthContext::from_session(other_member.id, other_ws.id, read);
+    let mut sse_a = replica_a.listen(&auth, McpSession::Stateless);
+    let mut sse_other = replica_a.listen(&other, McpSession::Stateless);
     let sub = replica_a.handle(subscribe_request(&uri), &auth).await;
     assert!(sub.error.is_none(), "subscribe failed: {sub:?}");
-    let mut sse_a = replica_a.subscribe_notifications();
 
-    // A mutation handled on replica B fans the URI out cross-replica.
-    replica_b.publish_resource_uris(vec![uri.clone()]).await;
+    // A mutation handled on replica B fans the update out cross-replica.
+    replica_b
+        .publish_resource_uris(vec![ResourceUpdate::new(ws.id, uri.clone())])
+        .await;
 
     // Replica A's listener delivers it to A's own SSE subscriber.
     let got = tokio::time::timeout(Duration::from_secs(5), sse_a.recv())
         .await
         .expect("timeout waiting for cross-replica resource notification")
         .expect("notification channel closed");
-    assert_eq!(got.notification.method, "notifications/resources/updated");
-    assert_eq!(got.notification.params["uri"], uri);
+    assert_eq!(got.method, "notifications/resources/updated");
+    assert_eq!(got.params["uri"], uri);
 
     // A URI the subscriber did NOT subscribe to must not be delivered.
     replica_b
-        .publish_resource_uris(vec![
-            "maidan://threads/00000000-0000-0000-0000-000000000000".into(),
-        ])
+        .publish_resource_uris(vec![ResourceUpdate::new(
+            ws.id,
+            "maidan://threads/00000000-0000-0000-0000-000000000000",
+        )])
         .await;
     let unexpected = tokio::time::timeout(Duration::from_millis(500), sse_a.recv()).await;
     assert!(
         unexpected.is_err(),
         "unsubscribed URI should not be delivered, got {unexpected:?}"
+    );
+    let leaked = tokio::time::timeout(Duration::from_millis(200), sse_other.recv()).await;
+    assert!(
+        leaked.is_err(),
+        "another workspace's listener received the update: {leaked:?}"
     );
 }

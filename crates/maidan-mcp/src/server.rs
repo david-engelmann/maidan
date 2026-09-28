@@ -1,21 +1,26 @@
 //! MCP dispatcher. Takes JSON-RPC requests and returns responses.
 //! Transport-agnostic; `maidan-server` wraps it behind `POST /mcp`.
 
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use maidan_artifacts::ArtifactStore;
 use maidan_auth::AuthContext;
-use maidan_bus::{EventBus, ResourceNotifier};
+use maidan_bus::{EventBus, ResourceNotifier, ResourceUpdate};
 use maidan_search::{EmbeddingProvider, Search};
 use maidan_store::Store;
 use maidan_types::{BusEnvelope, Event, MemberId, OccupancyPresence, StoredEvent, WorkspaceId};
 use serde_json::{json, Value};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
 
-use crate::streamable_session::StreamableSessionRegistry;
+use crate::streamable_session::{streamable_session_ttl, StreamableSessionRegistry};
+use crate::subscriptions::{
+    AddressedNotification, McpSession, NotificationListener, Principal, ResourceSubscriptions,
+    Subscriber, SubscriptionLimit, MAX_SUBSCRIPTIONS_PER_SUBSCRIBER,
+};
 
-const NOTIFICATION_BROADCAST_CAPACITY: usize = 64;
+/// Every addressed notification reaches every open listener, which keeps its
+/// own; sized for many subscribers per mutation.
+const NOTIFICATION_BROADCAST_CAPACITY: usize = 1024;
 
 /// Read-only bridge to the server's ephemeral presence hub. Kept transport-
 /// agnostic so embedded MCP users may omit it; omission reads as offline.
@@ -86,63 +91,6 @@ pub fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
         .unwrap_or_else(preferred_protocol_version)
 }
 
-/// Who watches a resource URI: the workspaces whose members subscribed, and
-/// whether a bypass (in-process, unscoped) caller did — which only routes a
-/// copy to the unscoped inline queue.
-#[derive(Debug, Clone, Default)]
-pub struct Audience {
-    workspaces: HashSet<maidan_types::WorkspaceId>,
-    everyone: bool,
-}
-
-impl Audience {
-    fn add(&mut self, auth: &AuthContext) {
-        if auth.bypass {
-            self.everyone = true;
-        } else {
-            self.workspaces.insert(auth.workspace_id);
-        }
-    }
-
-    fn remove(&mut self, auth: &AuthContext) -> bool {
-        if auth.bypass {
-            std::mem::replace(&mut self.everyone, false)
-        } else {
-            self.workspaces.remove(&auth.workspace_id)
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        !self.everyone && self.workspaces.is_empty()
-    }
-
-    /// A bypass listener sees everything. A bypass *subscriber* only decides
-    /// that the unscoped inline queue gets a copy; it must not widen who else
-    /// receives the update.
-    fn includes(&self, auth: &AuthContext) -> bool {
-        auth.bypass || self.workspaces.contains(&auth.workspace_id)
-    }
-}
-
-/// A resource notification and the audience it may reach. Subscriptions were
-/// one process-wide set and every listener got every update, so a tenant saw
-/// other tenants' resource URIs; each listener now checks [`Self::visible_to`].
-#[derive(Debug, Clone)]
-pub struct ScopedNotification {
-    pub notification: JsonRpcNotification,
-    audience: Arc<Audience>,
-}
-
-impl ScopedNotification {
-    pub fn visible_to(&self, auth: &AuthContext) -> bool {
-        self.audience.includes(auth)
-    }
-}
-
-/// Inline notifications waiting for a caller of the same workspace; bounded
-/// so an idle workspace's queue cannot grow without limit.
-const PENDING_NOTIFICATIONS_PER_WORKSPACE: usize = 256;
-
 #[derive(Clone)]
 pub struct McpServer {
     pub(crate) store: Arc<dyn Store>,
@@ -151,11 +99,8 @@ pub struct McpServer {
     pub(crate) embedding_provider: Arc<dyn EmbeddingProvider>,
     server_name: String,
     server_version: String,
-    subscriptions: Arc<Mutex<HashMap<String, Audience>>>,
-    /// Keyed by workspace; `None` holds bypass subscribers' notifications.
-    pending_notifications:
-        Arc<Mutex<HashMap<Option<maidan_types::WorkspaceId>, Vec<JsonRpcNotification>>>>,
-    notification_tx: broadcast::Sender<ScopedNotification>,
+    subscriptions: Arc<ResourceSubscriptions>,
+    notification_tx: broadcast::Sender<AddressedNotification>,
     streamable_sessions: Arc<StreamableSessionRegistry>,
     pub(crate) event_bus: Option<Arc<dyn EventBus>>,
     resource_notifier: Option<Arc<dyn ResourceNotifier>>,
@@ -191,8 +136,7 @@ impl McpServer {
             embedding_provider,
             server_name: "maidan".into(),
             server_version: env!("CARGO_PKG_VERSION").into(),
-            subscriptions: Arc::new(Mutex::new(HashMap::new())),
-            pending_notifications: Arc::new(Mutex::new(HashMap::new())),
+            subscriptions: Arc::new(ResourceSubscriptions::new(streamable_session_ttl())),
             notification_tx,
             streamable_sessions: Arc::new(StreamableSessionRegistry::new()),
             event_bus: None,
@@ -323,11 +267,16 @@ impl McpServer {
         self.streamable_sessions.clone()
     }
 
-    /// Register a new streamable HTTP session id, or validate an existing open session.
-    pub async fn touch_streamable_session(&self, existing: Option<&str>) -> String {
+    /// Register a new streamable HTTP session id, or validate an existing
+    /// session this caller opened.
+    pub async fn touch_streamable_session(
+        &self,
+        existing: Option<&str>,
+        auth: &AuthContext,
+    ) -> String {
         let registry = self.streamable_sessions();
         if let Some(id) = existing.filter(|s| !s.is_empty()) {
-            if registry.is_open(id).await {
+            if registry.is_open_for(id, &Principal::of(auth)).await {
                 registry.touch(id).await;
                 return id.to_string();
             }
@@ -335,11 +284,41 @@ impl McpServer {
         uuid::Uuid::new_v4().to_string()
     }
 
-    /// Live stream of MCP JSON-RPC notifications (HTTP SSE transport). Each
-    /// item carries its audience; forward only what
-    /// [`ScopedNotification::visible_to`] the listener's caller.
-    pub fn subscribe_notifications(&self) -> broadcast::Receiver<ScopedNotification> {
-        self.notification_tx.subscribe()
+    /// Close a streamable session this caller opened, and end every
+    /// subscription made in it.
+    pub async fn close_streamable_session(&self, session_id: &str, auth: &AuthContext) {
+        if self
+            .streamable_sessions
+            .close_for(session_id, &Principal::of(auth))
+            .await
+        {
+            self.subscriptions.end_session(session_id);
+        }
+    }
+
+    /// Expire idle streamable sessions and every subscription that outlived
+    /// its session. Returns how many sessions remain open.
+    pub async fn reap_streamable_sessions(&self) -> usize {
+        let open = self.streamable_sessions.open_ids().await;
+        self.subscriptions.reap(&open);
+        open.len()
+    }
+
+    /// How many resources are watched, summed over subscribers.
+    pub fn resource_subscription_count(&self) -> usize {
+        self.subscriptions.len()
+    }
+
+    /// Open a notification stream for `auth` in `session`. It yields only the
+    /// `notifications/resources/updated` for what this caller subscribed to in
+    /// this session, and keeps those subscriptions alive while it is open.
+    pub fn listen(&self, auth: &AuthContext, session: McpSession) -> NotificationListener {
+        NotificationListener::open(
+            self.notification_tx.subscribe(),
+            Subscriber::new(auth, session),
+            auth,
+            self.subscriptions.clone(),
+        )
     }
 
     /// Invoke a tool by name (used by slash-command dispatch and tests).
@@ -366,7 +345,19 @@ impl McpServer {
         result
     }
 
+    /// Handle a request on a stateless transport.
     pub async fn handle(&self, request: JsonRpcRequest, auth: &AuthContext) -> JsonRpcResponse {
+        self.handle_in(request, auth, &McpSession::Stateless).await
+    }
+
+    /// Handle a request that arrived in `session`; a `resources/subscribe`
+    /// belongs to that session.
+    pub async fn handle_in(
+        &self,
+        request: JsonRpcRequest,
+        auth: &AuthContext,
+        session: &McpSession,
+    ) -> JsonRpcResponse {
         let id = request.id.clone().unwrap_or(Value::Null);
         let action = if request.method == "tools/call" {
             request
@@ -378,7 +369,7 @@ impl McpServer {
         } else {
             request.method.clone()
         };
-        let result = self.dispatch(&request, auth).await;
+        let result = self.dispatch(&request, auth, session).await;
         maidan_auth::record_delegated_authorization(
             self.store.as_ref(),
             auth,
@@ -404,6 +395,7 @@ impl McpServer {
         &self,
         request: &JsonRpcRequest,
         auth: &AuthContext,
+        session: &McpSession,
     ) -> Result<Value, McpError> {
         match request.method.as_str() {
             "initialize" => self.initialize(&request.params).await,
@@ -417,8 +409,14 @@ impl McpServer {
                 Ok(json!({ "resourceTemplates": resources::templates() }))
             }
             "resources/read" => self.resources_read(&request.params, auth).await,
-            "resources/subscribe" => self.resources_subscribe(&request.params, auth).await,
-            "resources/unsubscribe" => self.resources_unsubscribe(&request.params, auth).await,
+            "resources/subscribe" => {
+                self.resources_subscribe(&request.params, auth, session)
+                    .await
+            }
+            "resources/unsubscribe" => {
+                self.resources_unsubscribe(&request.params, auth, session)
+                    .await
+            }
             "prompts/list" => Ok(json!({ "prompts": prompts::catalog() })),
             "prompts/get" => self.prompts_get(&request.params, auth).await,
             other => Err(McpError::MethodNotFound(other.into())),
@@ -541,7 +539,8 @@ impl McpServer {
                     deadline.as_secs()
                 ))
             })??;
-        self.queue_resource_updates(name, &args, &result).await;
+        self.queue_resource_updates(name, &args, &result, auth)
+            .await;
         Ok(result)
     }
 
@@ -643,6 +642,7 @@ impl McpServer {
         &self,
         params: &Value,
         auth: &AuthContext,
+        session: &McpSession,
     ) -> Result<Value, McpError> {
         if !auth.bypass {
             maidan_auth::require_observed_capability(
@@ -658,8 +658,15 @@ impl McpServer {
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
         resources::validate_uri(uri)?;
         self.authorize_resource(uri, auth).await?;
-        let mut subscriptions = self.subscriptions.lock().await;
-        subscriptions.entry(uri.to_string()).or_default().add(auth);
+        self.reap_streamable_sessions().await;
+        self.subscriptions
+            .subscribe(Subscriber::new(auth, session.clone()), auth, uri)
+            .map_err(|SubscriptionLimit| {
+                McpError::InvalidParams(format!(
+                    "already subscribed to {MAX_SUBSCRIPTIONS_PER_SUBSCRIBER} resources; \
+                     unsubscribe from one first"
+                ))
+            })?;
         Ok(json!({
             "ok": true,
             "uri": uri
@@ -670,6 +677,7 @@ impl McpServer {
         &self,
         params: &Value,
         auth: &AuthContext,
+        session: &McpSession,
     ) -> Result<Value, McpError> {
         if !auth.bypass {
             maidan_auth::require_observed_capability(
@@ -684,17 +692,9 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
         resources::validate_uri(uri)?;
-        let mut subscriptions = self.subscriptions.lock().await;
-        let removed = match subscriptions.get_mut(uri) {
-            Some(audience) => {
-                let removed = audience.remove(auth);
-                if audience.is_empty() {
-                    subscriptions.remove(uri);
-                }
-                removed
-            }
-            None => false,
-        };
+        let removed = self
+            .subscriptions
+            .unsubscribe(&Subscriber::new(auth, session.clone()), uri);
         Ok(json!({
             "ok": true,
             "uri": uri,
@@ -702,91 +702,83 @@ impl McpServer {
         }))
     }
 
-    async fn queue_resource_updates(&self, tool_name: &str, args: &Value, result: &Value) {
-        let uris = crate::resource_updates::uris_for_tool_mutation(
+    async fn queue_resource_updates(
+        &self,
+        tool_name: &str,
+        args: &Value,
+        result: &Value,
+        auth: &AuthContext,
+    ) {
+        let updates = crate::resource_updates::uris_for_tool_mutation(
             self.store.as_ref(),
+            auth.workspace_id,
             tool_name,
             args,
             result,
         )
         .await;
-        self.publish_resource_uris(uris).await;
+        self.publish_resource_uris(updates).await;
     }
 
-    /// Fan-out `notifications/resources/updated` for HTTP and tool mutations.
+    /// Fan out `notifications/resources/updated` for a mutation's updates.
     ///
-    /// Two delivery surfaces:
-    /// 1. **Inline** — matching URIs are queued for the current request's caller
-    ///    ([`McpServer::take_pending_notifications`]); local and synchronous.
-    /// 2. **Live SSE** — when a [`ResourceNotifier`] is wired, the
-    ///    *unfiltered* URI set is published cluster-wide and each replica's
-    ///    listener ([`McpServer::spawn_resource_notify_listener`]) delivers to
-    ///    its own SSE subscribers. Without a notifier, SSE delivery happens
-    ///    locally (legacy single-process path).
-    pub async fn publish_resource_uris(&self, uris: Vec<String>) {
-        if uris.is_empty() {
+    /// With a [`ResourceNotifier`] wired, the unfiltered set is published
+    /// cluster-wide and every replica's listener
+    /// ([`McpServer::spawn_resource_notify_listener`]) delivers to its own
+    /// subscribers — this one included, so there is a single delivery path.
+    /// Without one, delivery happens here.
+    pub async fn publish_resource_uris(&self, updates: Vec<ResourceUpdate>) {
+        if updates.is_empty() {
             return;
         }
-        self.queue_pending_for_subscriptions(&uris).await;
         match &self.resource_notifier {
             Some(notifier) => {
-                let _ = notifier.publish_uris(uris).await;
+                if let Err(err) = notifier.publish(updates).await {
+                    tracing::warn!(error = %err, "mcp resource-notify publish failed");
+                }
             }
-            None => {
-                self.broadcast_to_subscribed_sse(&uris).await;
-            }
+            None => self.deliver_resource_updates(&updates).await,
         }
     }
 
-    /// Queue matching URIs for the current request's caller (inline response).
-    async fn queue_pending_for_subscriptions(&self, uris: &[String]) {
-        let subscriptions = self.subscriptions.lock().await;
-        let mut pending = self.pending_notifications.lock().await;
-        for uri in uris {
-            let Some(audience) = subscriptions.get(uri) else {
-                continue;
-            };
-            let keys = audience
-                .workspaces
-                .iter()
-                .copied()
-                .map(Some)
-                .chain(audience.everyone.then_some(None));
-            for key in keys {
-                let queue = pending.entry(key).or_default();
-                queue.push(JsonRpcNotification::new(
-                    NOTIFY_RESOURCE_UPDATED,
-                    json!({ "uri": uri }),
-                ));
-                if queue.len() > PENDING_NOTIFICATIONS_PER_WORKSPACE {
-                    queue.remove(0);
+    /// Address each update to the subscribers that may hear it: those that
+    /// subscribed to its URI, from the workspace the change happened in, and
+    /// can still read the resource. A subscriber that has lost access loses
+    /// the subscription; a store error withholds this delivery only.
+    pub(crate) async fn deliver_resource_updates(&self, updates: &[ResourceUpdate]) {
+        for update in updates {
+            for (subscriber, auth) in self.subscriptions.watchers(&update.uri) {
+                if !auth.bypass && auth.workspace_id != update.workspace_id {
+                    continue;
+                }
+                match self.authorize_resource(&update.uri, &auth).await {
+                    Ok(()) => {
+                        let _ = self.notification_tx.send(AddressedNotification {
+                            subscriber: Arc::new(subscriber),
+                            notification: JsonRpcNotification::new(
+                                NOTIFY_RESOURCE_UPDATED,
+                                json!({ "uri": update.uri }),
+                            ),
+                        });
+                    }
+                    Err(McpError::Internal(err)) => {
+                        tracing::warn!(
+                            error = %err,
+                            uri = %update.uri,
+                            "mcp resource notification withheld: access re-check failed"
+                        );
+                    }
+                    Err(_) => {
+                        self.subscriptions.unsubscribe(&subscriber, &update.uri);
+                    }
                 }
             }
         }
     }
 
-    /// Deliver matching URIs to this process's live SSE subscribers
-    /// ([`McpServer::subscribe_notifications`]). Used directly in the
-    /// no-notifier path and by the cross-replica listener loop.
-    pub(crate) async fn broadcast_to_subscribed_sse(&self, uris: &[String]) {
-        let subscriptions = self.subscriptions.lock().await;
-        for uri in uris {
-            let Some(audience) = subscriptions.get(uri) else {
-                continue;
-            };
-            let _ = self.notification_tx.send(ScopedNotification {
-                notification: JsonRpcNotification::new(
-                    NOTIFY_RESOURCE_UPDATED,
-                    json!({ "uri": uri }),
-                ),
-                audience: Arc::new(audience.clone()),
-            });
-        }
-    }
-
-    /// Spawn the loop delivering cross-replica resource URIs to this process's
-    /// SSE subscribers. No-op when no [`ResourceNotifier`] is wired. Call once
-    /// at startup after wrapping the server in an `Arc`.
+    /// Spawn the loop delivering cross-replica resource updates to this
+    /// process's subscribers. No-op when no [`ResourceNotifier`] is wired.
+    /// Call once at startup after wrapping the server in an `Arc`.
     pub fn spawn_resource_notify_listener(self: &Arc<Self>) {
         let Some(notifier) = self.resource_notifier.clone() else {
             return;
@@ -796,7 +788,7 @@ impl McpServer {
         tokio::spawn(async move {
             loop {
                 match rx.recv().await {
-                    Ok(uris) => server.broadcast_to_subscribed_sse(&uris).await,
+                    Ok(updates) => server.deliver_resource_updates(&updates).await,
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
                         tracing::warn!(skipped, "mcp resource-notify listener lagged");
                     }
@@ -804,14 +796,6 @@ impl McpServer {
                 }
             }
         });
-    }
-
-    /// The inline notifications waiting for this caller's workspace. A bypass
-    /// caller takes its own (unscoped subscriptions') queue.
-    pub async fn take_pending_notifications(&self, auth: &AuthContext) -> Vec<JsonRpcNotification> {
-        let key = (!auth.bypass).then_some(auth.workspace_id);
-        let mut pending = self.pending_notifications.lock().await;
-        pending.remove(&key).unwrap_or_default()
     }
 }
 
@@ -7728,110 +7712,116 @@ mod tests {
         assert_eq!(init.result.unwrap()["protocolVersion"], "2026-07-28");
     }
 
-    #[tokio::test]
-    async fn subscribe_and_post_message_emits_resource_updated_notification() {
-        let (server, thread_id, member_id) = mk_server().await;
-        let member = server.store.get_member(member_id).await.unwrap();
-        let auth = AuthContext::from_session(
+    fn member_auth(member_id: MemberId, workspace_id: WorkspaceId) -> AuthContext {
+        AuthContext::from_session(
             member_id,
-            member.workspace_id,
+            workspace_id,
             vec![
                 maidan_auth::capability::MESSAGE_POST.to_string(),
                 maidan_auth::capability::WORKSPACE_READ.to_string(),
             ],
-        );
-        let uri = format!("maidan://threads/{}", thread_id.0);
+        )
+    }
 
-        let subscribe = server
-            .handle(
+    async fn add_member(server: &McpServer, ws: WorkspaceId, handle: &str) -> MemberId {
+        server
+            .store
+            .create_member(NewMember {
+                workspace_id: ws,
+                handle: handle.into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap()
+            .id
+    }
+
+    async fn subscribe_in(
+        server: &McpServer,
+        auth: &AuthContext,
+        session: &McpSession,
+        uri: &str,
+    ) -> JsonRpcResponse {
+        server
+            .handle_in(
                 request(1, "resources/subscribe", json!({ "uri": uri })),
-                &auth,
+                auth,
+                session,
             )
-            .await;
-        assert!(subscribe.error.is_none());
+            .await
+    }
 
-        let _ = server
+    async fn post(server: &McpServer, auth: &AuthContext, thread_id: ThreadId) {
+        let resp = server
             .handle(
                 request(
                     2,
                     "tools/call",
                     json!({
                         "name": "post_message",
-                        "arguments": {
-                            "thread_id": thread_id.0,
-                            "body": "hello"
-                        }
+                        "arguments": { "thread_id": thread_id.0, "body": "hello" }
                     }),
                 ),
-                &auth,
+                auth,
             )
             .await;
+        assert!(resp.error.is_none(), "{:?}", resp.error);
+    }
 
-        let notifications = server.take_pending_notifications(&auth).await;
+    fn uris(notifications: &[JsonRpcNotification]) -> Vec<String> {
+        notifications
+            .iter()
+            .map(|n| n.params["uri"].as_str().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn subscribe_and_post_message_emits_resource_updated_notification() {
+        let (server, thread_id, member_id) = mk_server().await;
+        let member = server.store.get_member(member_id).await.unwrap();
+        let auth = member_auth(member_id, member.workspace_id);
+        let uri = format!("maidan://threads/{}", thread_id.0);
+        let mut listener = server.listen(&auth, McpSession::Stdio);
+
+        let subscribe = subscribe_in(&server, &auth, &McpSession::Stdio, &uri).await;
+        assert!(subscribe.error.is_none());
+        post(&server, &auth, thread_id).await;
+
+        let notifications = listener.drain();
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].method, NOTIFY_RESOURCE_UPDATED);
-        assert_eq!(
-            notifications[0].params["uri"],
-            format!("maidan://threads/{}", thread_id.0)
-        );
+        assert_eq!(notifications[0].params["uri"], uri);
     }
 
     #[tokio::test]
     async fn unsubscribe_suppresses_future_notifications() {
         let (server, thread_id, member_id) = mk_server().await;
         let member = server.store.get_member(member_id).await.unwrap();
-        let auth = AuthContext::from_session(
-            member_id,
-            member.workspace_id,
-            vec![
-                maidan_auth::capability::MESSAGE_POST.to_string(),
-                maidan_auth::capability::WORKSPACE_READ.to_string(),
-            ],
-        );
+        let auth = member_auth(member_id, member.workspace_id);
         let uri = format!("maidan://threads/{}", thread_id.0);
+        let mut listener = server.listen(&auth, McpSession::Stdio);
 
-        let _ = server
-            .handle(
-                request(1, "resources/subscribe", json!({ "uri": uri.clone() })),
-                &auth,
-            )
-            .await;
-        let _ = server
-            .handle(
+        subscribe_in(&server, &auth, &McpSession::Stdio, &uri).await;
+        let unsubscribe = server
+            .handle_in(
                 request(2, "resources/unsubscribe", json!({ "uri": uri })),
                 &auth,
+                &McpSession::Stdio,
             )
             .await;
+        assert_eq!(unsubscribe.result.unwrap()["removed"], true);
+        post(&server, &auth, thread_id).await;
 
-        let _ = server
-            .handle(
-                request(
-                    3,
-                    "tools/call",
-                    json!({
-                        "name": "post_message",
-                        "arguments": {
-                            "thread_id": thread_id.0,
-                            "body": "hello"
-                        }
-                    }),
-                ),
-                &auth,
-            )
-            .await;
-
-        assert!(server.take_pending_notifications(&auth).await.is_empty());
+        assert!(listener.drain().is_empty());
+        assert_eq!(server.resource_subscription_count(), 0);
     }
 
-    /// Resource subscriptions and their notifications were one process-wide
-    /// set: a tenant could subscribe to another's resources, every SSE
-    /// listener received every update, and inline notifications went to
-    /// whichever caller asked next. `resources/read` of another workspace's URI
-    /// also returned its record.
+    /// A tenant cannot subscribe to another tenant's resources or read its
+    /// workspace record, and its listener receives nothing of theirs — not
+    /// even when an in-process (bypass) caller watches the same URI.
     #[tokio::test]
     async fn resource_notifications_stay_in_the_subscribers_workspace() {
-        use maidan_auth::capability::WORKSPACE_READ;
-
         let (server, thread_a, member_a) = mk_server().await;
         let ws_a = server
             .store
@@ -7844,18 +7834,9 @@ mod tests {
             .create_workspace(NewWorkspace { name: "b".into() })
             .await
             .unwrap();
-        let member_b = server
-            .store
-            .create_member(NewMember {
-                workspace_id: ws_b.id,
-                handle: "bob".into(),
-                display_name: None,
-                kind: MemberKind::Agent,
-            })
-            .await
-            .unwrap();
-        let auth_a = AuthContext::from_session(member_a, ws_a, vec![WORKSPACE_READ.into()]);
-        let auth_b = AuthContext::from_session(member_b.id, ws_b.id, vec![WORKSPACE_READ.into()]);
+        let member_b = add_member(&server, ws_b.id, "bob").await;
+        let auth_a = member_auth(member_a, ws_a);
+        let auth_b = member_auth(member_b, ws_b.id);
         let uri_a = format!("maidan://threads/{}", thread_a.0);
         let call = |id: i64, method: &str, uri: &str| request(id, method, json!({ "uri": uri }));
 
@@ -7875,39 +7856,244 @@ mod tests {
             .error
             .is_none());
 
-        assert!(server
-            .handle(call(4, "resources/subscribe", &uri_a), &auth_a)
-            .await
-            .error
-            .is_none());
-        // An in-process (bypass) subscriber to the same URI must not widen
-        // who is notified.
-        assert!(server
-            .handle(
-                call(5, "resources/subscribe", &uri_a),
-                &AuthContext::bypass()
-            )
-            .await
-            .error
-            .is_none());
-        let mut sse = server.subscribe_notifications();
-        server.publish_resource_uris(vec![uri_a.clone()]).await;
-        let got = sse.recv().await.unwrap();
-        assert!(got.visible_to(&auth_a));
-        assert!(got.visible_to(&AuthContext::bypass()));
+        let bypass = AuthContext::bypass();
+        let mut listen_a = server.listen(&auth_a, McpSession::Stateless);
+        let mut listen_b = server.listen(&auth_b, McpSession::Stateless);
+        let mut listen_bypass = server.listen(&bypass, McpSession::Stateless);
         assert!(
-            !got.visible_to(&auth_b),
-            "B's listener would receive A's update"
+            subscribe_in(&server, &auth_a, &McpSession::Stateless, &uri_a)
+                .await
+                .error
+                .is_none()
         );
+        assert!(
+            subscribe_in(&server, &bypass, &McpSession::Stateless, &uri_a)
+                .await
+                .error
+                .is_none()
+        );
+        post(&server, &auth_a, thread_a).await;
 
-        assert!(server.take_pending_notifications(&auth_b).await.is_empty());
-        let pending = server.take_pending_notifications(&auth_a).await;
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].params["uri"], uri_a);
+        assert!(uris(&listen_a.drain()).contains(&uri_a));
+        assert!(uris(&listen_bypass.drain()).contains(&uri_a));
+        assert!(
+            listen_b.drain().is_empty(),
+            "B's listener received A's update"
+        );
+    }
+
+    /// Subscriptions were keyed by workspace, so every listener in the
+    /// workspace heard what any one member subscribed to, and one member's
+    /// unsubscribe silenced everyone else's.
+    #[tokio::test]
+    async fn a_subscription_is_heard_only_by_the_caller_and_session_that_made_it() {
+        let (server, thread_id, alice) = mk_server().await;
+        let ws = server.store.get_member(alice).await.unwrap().workspace_id;
+        let bob = add_member(&server, ws, "bob").await;
+        let auth_alice = member_auth(alice, ws);
+        let auth_bob = member_auth(bob, ws);
+        let uri = format!("maidan://threads/{}", thread_id.0);
+        let alice_session = McpSession::Streamable("alice-session".into());
+        server
+            .streamable_sessions()
+            .open("alice-session".into(), Principal::of(&auth_alice))
+            .await;
+
+        let mut alice_stateless = server.listen(&auth_alice, McpSession::Stateless);
+        let mut alice_in_session = server.listen(&auth_alice, alice_session.clone());
+        let mut bob_stateless = server.listen(&auth_bob, McpSession::Stateless);
+        assert!(subscribe_in(&server, &auth_alice, &alice_session, &uri)
+            .await
+            .error
+            .is_none());
+        // Bob unsubscribing from what he never subscribed to changes nothing.
+        let bob_unsub = server
+            .handle(
+                request(3, "resources/unsubscribe", json!({ "uri": uri })),
+                &auth_bob,
+            )
+            .await;
+        assert_eq!(bob_unsub.result.unwrap()["removed"], false);
+        post(&server, &auth_bob, thread_id).await;
+
+        assert_eq!(uris(&alice_in_session.drain()), vec![uri.clone()]);
+        assert!(
+            alice_stateless.drain().is_empty(),
+            "a subscription made in a session leaked to another of the caller's listeners"
+        );
+        assert!(
+            bob_stateless.drain().is_empty(),
+            "another member received a subscription he never made"
+        );
+    }
+
+    /// Access is re-checked at delivery the way the live event streams bind
+    /// private channels: a member outside a private channel never hears about
+    /// its threads, and a member removed from one stops hearing and loses the
+    /// subscription.
+    #[tokio::test]
+    async fn a_private_thread_update_reaches_only_members_who_can_still_read_it() {
+        let (server, _public_thread, alice) = mk_server().await;
+        let ws = server.store.get_member(alice).await.unwrap().workspace_id;
+        let bob = add_member(&server, ws, "bob").await;
+        let private = server
+            .store
+            .create_channel(NewChannel {
+                workspace_id: ws,
+                name: "private".into(),
+                topic: None,
+                private: true,
+            })
+            .await
+            .unwrap();
+        for member in [alice, bob] {
+            server
+                .store
+                .add_channel_member(private.id, member, ChannelMemberRole::Member)
+                .await
+                .unwrap();
+        }
+        let thread = server
+            .store
+            .create_thread(NewThread {
+                channel_id: private.id,
+                parent_thread_id: None,
+                title: Some("secret".into()),
+            })
+            .await
+            .unwrap();
+        let auth_alice = member_auth(alice, ws);
+        let auth_bob = member_auth(bob, ws);
+        let carol = add_member(&server, ws, "carol").await;
+        let auth_carol = member_auth(carol, ws);
+        let uri = format!("maidan://threads/{}", thread.id.0);
+
+        let mut alice_listener = server.listen(&auth_alice, McpSession::Stateless);
+        let mut bob_listener = server.listen(&auth_bob, McpSession::Stateless);
+        let mut carol_listener = server.listen(&auth_carol, McpSession::Stateless);
+        let refused = subscribe_in(&server, &auth_carol, &McpSession::Stateless, &uri).await;
+        assert!(refused.error.is_some(), "a non-member subscribed");
+        for auth in [&auth_alice, &auth_bob] {
+            assert!(subscribe_in(&server, auth, &McpSession::Stateless, &uri)
+                .await
+                .error
+                .is_none());
+        }
+        post(&server, &auth_alice, thread.id).await;
+        assert_eq!(uris(&alice_listener.drain()), vec![uri.clone()]);
+        assert_eq!(uris(&bob_listener.drain()), vec![uri.clone()]);
+        assert!(carol_listener.drain().is_empty());
+
+        server
+            .store
+            .remove_channel_member(private.id, bob)
+            .await
+            .unwrap();
+        post(&server, &auth_alice, thread.id).await;
+        assert_eq!(uris(&alice_listener.drain()), vec![uri.clone()]);
+        assert!(
+            bob_listener.drain().is_empty(),
+            "a member removed from the channel still heard about it"
+        );
+        assert_eq!(
+            server.resource_subscription_count(),
+            1,
+            "the removed member's subscription outlived his access"
+        );
+    }
+
+    /// Artifacts are content-addressed and shared: two workspaces that
+    /// uploaded the same bytes both hold `maidan://artifacts/{sha}`. One
+    /// workspace's upload is not the other's news.
+    #[tokio::test]
+    async fn an_artifact_update_reaches_only_the_workspace_it_happened_in() {
+        let (server, _thread, member_a) = mk_server().await;
+        let ws_a = server
+            .store
+            .get_member(member_a)
+            .await
+            .unwrap()
+            .workspace_id;
+        let ws_b = server
+            .store
+            .create_workspace(NewWorkspace { name: "b".into() })
+            .await
+            .unwrap()
+            .id;
+        let member_b = add_member(&server, ws_b, "bob").await;
+        let sha = "b".repeat(64);
+        server
+            .store
+            .upsert_artifact(NewArtifact {
+                sha256: sha.clone(),
+                size_bytes: 1,
+                mime_type: None,
+                kind: ArtifactKind::Attachment,
+                uploaded_by: None,
+            })
+            .await
+            .unwrap();
+        for ws in [ws_a, ws_b] {
+            server.store.record_artifact_ref(ws, &sha).await.unwrap();
+        }
+        let uri = format!("maidan://artifacts/{sha}");
+        let auth_a = member_auth(member_a, ws_a);
+        let auth_b = member_auth(member_b, ws_b);
+        let mut listen_a = server.listen(&auth_a, McpSession::Stateless);
+        let mut listen_b = server.listen(&auth_b, McpSession::Stateless);
+        for auth in [&auth_a, &auth_b] {
+            assert!(subscribe_in(&server, auth, &McpSession::Stateless, &uri)
+                .await
+                .error
+                .is_none());
+        }
+
+        server
+            .publish_resource_uris(vec![ResourceUpdate::new(ws_a, uri.clone())])
+            .await;
+        assert_eq!(uris(&listen_a.drain()), vec![uri.clone()]);
+        assert!(
+            listen_b.drain().is_empty(),
+            "another workspace heard about this workspace's upload"
+        );
     }
 
     #[tokio::test]
-    async fn resource_notifier_delivers_to_local_sse_subscribers_via_listener() {
+    async fn closing_a_session_ends_its_subscriptions() {
+        let (server, thread_id, member_id) = mk_server().await;
+        let ws = server
+            .store
+            .get_member(member_id)
+            .await
+            .unwrap()
+            .workspace_id;
+        let auth = member_auth(member_id, ws);
+        let stranger = member_auth(add_member(&server, ws, "mallory").await, ws);
+        server
+            .streamable_sessions()
+            .open("s1".into(), Principal::of(&auth))
+            .await;
+        let session = McpSession::Streamable("s1".into());
+        let uri = format!("maidan://threads/{}", thread_id.0);
+        assert!(subscribe_in(&server, &auth, &session, &uri)
+            .await
+            .error
+            .is_none());
+        assert_eq!(server.resource_subscription_count(), 1);
+
+        server.close_streamable_session("s1", &stranger).await;
+        assert_eq!(
+            server.resource_subscription_count(),
+            1,
+            "another caller closed the session"
+        );
+        server.close_streamable_session("s1", &auth).await;
+        assert_eq!(server.resource_subscription_count(), 0);
+        assert_eq!(server.reap_streamable_sessions().await, 0);
+    }
+
+    #[tokio::test]
+    async fn resource_notifier_delivers_to_local_subscribers_via_listener() {
         use maidan_bus::InMemoryResourceNotifier;
 
         let (server, thread_id, _member_id) = mk_server().await;
@@ -7917,28 +8103,21 @@ mod tests {
 
         let auth = AuthContext::bypass();
         let uri = format!("maidan://threads/{}", thread_id.0);
-        let _ = server
-            .handle(
-                request(1, "resources/subscribe", json!({ "uri": uri.clone() })),
-                &auth,
-            )
+        let mut listener = server.listen(&auth, McpSession::Stateless);
+        subscribe_in(&server, &auth, &McpSession::Stateless, &uri).await;
+        server
+            .publish_resource_uris(vec![ResourceUpdate::new(
+                WorkspaceId(uuid::Uuid::new_v4()),
+                uri.clone(),
+            )])
             .await;
 
-        // SSE subscriber registers before the mutation publishes.
-        let mut sse = server.subscribe_notifications();
-        server.publish_resource_uris(vec![uri.clone()]).await;
-
         // Delivery routes through the notifier and the listener loop.
-        let got = tokio::time::timeout(std::time::Duration::from_secs(2), sse.recv())
+        let got = tokio::time::timeout(std::time::Duration::from_secs(2), listener.recv())
             .await
-            .expect("timed out waiting for SSE notification")
+            .expect("timed out waiting for notification")
             .expect("notification channel closed");
-        assert_eq!(got.notification.method, NOTIFY_RESOURCE_UPDATED);
-        assert_eq!(got.notification.params["uri"], uri);
-
-        // Inline pending delivery still works (local, synchronous).
-        let pending = server.take_pending_notifications(&auth).await;
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].params["uri"], uri);
+        assert_eq!(got.method, NOTIFY_RESOURCE_UPDATED);
+        assert_eq!(got.params["uri"], uri);
     }
 }

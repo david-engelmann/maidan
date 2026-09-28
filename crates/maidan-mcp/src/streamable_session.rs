@@ -1,11 +1,14 @@
 //! Active `POST /mcp/streamable` sessions, keyed by `Mcp-Session-Id` and
-//! expired on a TTL.
+//! expired on a TTL. A session belongs to the caller that opened it: another
+//! caller presenting its id is treated as presenting no session at all.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
+
+use crate::subscriptions::Principal;
 
 /// Per-session SSE buffer bound. A slow client that fills this is disconnected
 /// (push returns false) instead of growing server memory without limit — the
@@ -22,6 +25,7 @@ const SESSION_LOG_CAP: usize = 256;
 const MAX_SESSIONS: usize = 10_000;
 
 struct SessionEntry {
+    owner: Principal,
     tx: tokio::sync::mpsc::Sender<(u64, String)>,
     last_touch: Instant,
     /// Monotonic SSE event id assigned to the next pushed message.
@@ -76,7 +80,11 @@ impl StreamableSessionRegistry {
     /// Open a new session and return the SSE consumer side. Each item is the
     /// `(event_id, payload)` pair; the transport renders the id as the SSE
     /// `id:` field so a client can resume with `Last-Event-ID`.
-    pub async fn open(&self, id: String) -> tokio::sync::mpsc::Receiver<(u64, String)> {
+    pub async fn open(
+        &self,
+        id: String,
+        owner: Principal,
+    ) -> tokio::sync::mpsc::Receiver<(u64, String)> {
         self.prune_expired().await;
         let (tx, rx) = tokio::sync::mpsc::channel(SESSION_BUFFER);
         let mut sessions = self.sessions.lock().await;
@@ -92,6 +100,7 @@ impl StreamableSessionRegistry {
         sessions.insert(
             id,
             SessionEntry {
+                owner,
                 tx,
                 last_touch: Instant::now(),
                 next_event_id: 0,
@@ -107,9 +116,20 @@ impl StreamableSessionRegistry {
         }
     }
 
-    pub async fn is_open(&self, id: &str) -> bool {
+    /// Whether `id` is an open session that `owner` opened.
+    pub async fn is_open_for(&self, id: &str, owner: &Principal) -> bool {
         self.prune_expired().await;
-        self.sessions.lock().await.contains_key(id)
+        self.sessions
+            .lock()
+            .await
+            .get(id)
+            .is_some_and(|entry| &entry.owner == owner)
+    }
+
+    /// The ids of every unexpired session.
+    pub async fn open_ids(&self) -> HashSet<String> {
+        self.prune_expired().await;
+        self.sessions.lock().await.keys().cloned().collect()
     }
 
     pub async fn push(&self, id: &str, data: String) -> bool {
@@ -161,8 +181,15 @@ impl StreamableSessionRegistry {
             .collect()
     }
 
-    pub async fn close(&self, id: &str) {
-        self.sessions.lock().await.remove(id);
+    /// Close `id` if `owner` opened it; whether it did.
+    pub async fn close_for(&self, id: &str, owner: &Principal) -> bool {
+        let mut sessions = self.sessions.lock().await;
+        if sessions.get(id).is_some_and(|entry| &entry.owner == owner) {
+            sessions.remove(id);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -179,22 +206,41 @@ pub fn streamable_session_ttl() -> Duration {
 mod tests {
     use super::*;
 
+    const OWNER: Principal = Principal::Bypass;
+
     #[tokio::test]
     async fn open_push_and_close() {
         let reg = StreamableSessionRegistry::with_ttl(Duration::from_secs(60));
-        let mut rx = reg.open("sess".to_string()).await;
-        assert!(reg.is_open("sess").await);
+        let mut rx = reg.open("sess".to_string(), OWNER).await;
+        assert!(reg.is_open_for("sess", &OWNER).await);
         assert!(reg.push("sess", "payload".into()).await);
         assert_eq!(rx.recv().await.unwrap(), (0, "payload".to_string()));
-        reg.close("sess").await;
-        assert!(!reg.is_open("sess").await);
+        assert!(reg.close_for("sess", &OWNER).await);
+        assert!(!reg.is_open_for("sess", &OWNER).await);
         assert!(!reg.push("sess", "x".into()).await);
+    }
+
+    #[tokio::test]
+    async fn a_session_is_open_only_to_the_caller_that_opened_it() {
+        let reg = StreamableSessionRegistry::with_ttl(Duration::from_secs(60));
+        let _rx = reg.open("sess".to_string(), OWNER).await;
+        let stranger = Principal::Caller {
+            workspace_id: maidan_types::WorkspaceId(uuid::Uuid::new_v4()),
+            member_id: maidan_types::MemberId(uuid::Uuid::new_v4()),
+            actor_id: maidan_types::MemberId(uuid::Uuid::new_v4()),
+            token_id: None,
+            app_installation_id: None,
+            delegation_grant_id: None,
+        };
+        assert!(!reg.is_open_for("sess", &stranger).await);
+        assert!(!reg.close_for("sess", &stranger).await);
+        assert!(reg.is_open_for("sess", &OWNER).await);
     }
 
     #[tokio::test]
     async fn replay_after_returns_only_newer_frames() {
         let reg = StreamableSessionRegistry::with_ttl(Duration::from_secs(60));
-        let _rx = reg.open("sess".to_string()).await;
+        let _rx = reg.open("sess".to_string(), OWNER).await;
         for i in 0..3 {
             assert!(reg.push("sess", format!("m{i}")).await);
         }
@@ -209,8 +255,8 @@ mod tests {
     #[tokio::test]
     async fn full_session_buffer_fails_push_without_blocking() {
         let reg = StreamableSessionRegistry::with_ttl(Duration::from_secs(60));
-        let _rx = reg.open("sess".to_string()).await; // never drained
-                                                      // Fill the bounded buffer.
+        let _rx = reg.open("sess".to_string(), OWNER).await; // never drained
+                                                             // Fill the bounded buffer.
         for _ in 0..SESSION_BUFFER {
             assert!(reg.push("sess", "x".into()).await);
         }
@@ -222,8 +268,8 @@ mod tests {
     #[tokio::test]
     async fn expired_session_is_not_open() {
         let reg = StreamableSessionRegistry::with_ttl(Duration::from_millis(1));
-        let _rx = reg.open("sess".to_string()).await;
+        let _rx = reg.open("sess".to_string(), OWNER).await;
         tokio::time::sleep(Duration::from_millis(5)).await;
-        assert!(!reg.is_open("sess").await);
+        assert!(!reg.is_open_for("sess", &OWNER).await);
     }
 }

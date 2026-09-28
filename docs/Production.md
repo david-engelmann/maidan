@@ -287,6 +287,9 @@ Real-time subscribers use **`GET /ws/subscribe`** (WebSocket) or **`GET /mcp/str
 MCP resource subscription notifications use **`GET /mcp/notifications`** (SSE JSON-RPC
 lines) with **`POST /mcp`** for `resources/subscribe` / `tools/call` — requires
 `workspace:read` (same as resource read). Distinct from `/mcp/stream` workspace events.
+A listener receives only what its own credential subscribed to, for resources it can
+still read. Subscriptions are held by the replica that took them, so behind a load
+balancer route a client's subscribe and its listener to the same replica.
 
 **Semantic search:** Postgres uses `pgvector`; SQLite uses stored 1024-dim embeddings
 with cosine ranking (dev parity, no HNSW index on SQLite).
