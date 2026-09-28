@@ -241,7 +241,7 @@ async fn a_hold_keeps_what_is_withdrawn_postgres() {
     {
         Ok(container) => container,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

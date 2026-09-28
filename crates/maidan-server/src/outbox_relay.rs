@@ -409,21 +409,24 @@ mod tests {
         {
             Ok(c) => c,
             Err(err) => {
-                eprintln!("skipping outbox_relay unit tests: docker unavailable ({err})");
+                maidan_store::test_support::docker::skip_start_failure(err).await;
                 return None;
             }
         };
 
-        let host = container.get_host().await.ok()?;
-        let port = container.get_host_port_ipv4(5432).await.ok()?;
+        let host = container.get_host().await.expect("container host");
+        let port = container
+            .get_host_port_ipv4(5432)
+            .await
+            .expect("container port");
         let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
         let pool = PgPoolOptions::new()
             .max_connections(4)
             .acquire_timeout(std::time::Duration::from_secs(15))
             .connect(&url)
             .await
-            .ok()?;
-        run_postgres_migrations(&pool).await.ok()?;
+            .expect("connect");
+        run_postgres_migrations(&pool).await.expect("migrate");
         Some((container, pool))
     }
 

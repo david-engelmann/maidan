@@ -126,7 +126,7 @@ async fn oauth_codes_single_use_and_ttl_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping oauth_codes postgres: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

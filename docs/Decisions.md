@@ -1190,6 +1190,29 @@ red advisory job already shows. Open Work does not call for it.
 **To revisit:** if a floor is missed on `main` without anyone noticing, make
 the job required.
 
+### Testcontainers tests skip only when no Docker daemon answers
+
+**Decision.** A testcontainers test whose container fails to start calls
+`maidan_store::test_support::docker::skip_start_failure(err)`. It returns,
+so the test can skip, only when the daemon testcontainers would use does not
+answer a ping; with a daemon up it panics with the start error. Once the
+container is up, host, port, connect and migrate errors `expect` instead of
+returning `None`.
+
+**Alternative.** Skip on any start error, the old pattern; or never skip and
+require Docker for `cargo test`.
+
+**Why this:** skipping on any start error let `s3_roundtrip` and
+`s3_multipart` pass in CI for as long as `minio/minio` could not be pulled,
+with `s3.rs` at 0% coverage. A pull failure, a missing tag or a readiness
+message that never comes looks exactly like "no Docker" under that pattern,
+and a `.ok()?` after the start hid a migration that failed the same way.
+Contributors without Docker can still run the suite.
+
+**To revisit:** if CI ever runs a test job without Docker, which would turn
+the integration tests back into skips; the integration job's test count
+would show it.
+
 ### The A2A TCK is a non-required CI job that fails on regressions
 
 **Decision.** The `a2a tck` job runs `scripts/a2a-tck.sh`: the official

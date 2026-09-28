@@ -226,7 +226,7 @@ async fn postgres_and_sqlite_migrations_build_the_same_schema() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping schema_parity: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

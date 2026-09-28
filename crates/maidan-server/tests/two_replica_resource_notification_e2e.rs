@@ -42,7 +42,7 @@ async fn resource_update_on_one_replica_reaches_subscriber_on_another() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping two-replica notify e2e: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

@@ -269,7 +269,7 @@ async fn an_authority_change_needs_its_record_postgres() {
     {
         Ok(container) => container,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

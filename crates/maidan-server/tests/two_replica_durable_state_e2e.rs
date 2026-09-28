@@ -96,7 +96,7 @@ async fn oauth_code_and_reindex_job_cross_replicas() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping two-replica durable-state e2e: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

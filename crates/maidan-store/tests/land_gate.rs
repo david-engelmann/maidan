@@ -210,7 +210,7 @@ async fn land_gate_pointer_require_pass_amber_and_sod_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

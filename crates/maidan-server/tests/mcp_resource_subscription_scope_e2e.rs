@@ -101,7 +101,7 @@ async fn postgres_harness() -> Option<(
     let (container, pool) = common::postgres_pool().await?;
     let notifier = maidan_bus::PostgresResourceNotifier::connect(pool.clone())
         .await
-        .ok()?;
+        .expect("connect the resource notifier");
     let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let harness = spawn(
         store,

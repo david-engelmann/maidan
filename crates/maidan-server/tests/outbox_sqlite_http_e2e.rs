@@ -21,18 +21,20 @@ async fn spawn_sqlite_outbox() -> Option<(
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
-        .ok()?;
+        .expect("connect");
     sqlx::query("PRAGMA foreign_keys = ON")
         .execute(&pool)
         .await
-        .ok()?;
-    run_sqlite_migrations(&pool).await.ok()?;
+        .expect("enable foreign keys");
+    run_sqlite_migrations(&pool).await.expect("migrate");
 
     let bus = Arc::new(InMemoryBus::new());
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
-    let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().ok()?.path()));
+    let artifacts = Arc::new(LocalFsStore::new(
+        tempfile::tempdir().expect("tempdir").path(),
+    ));
 
     let mut state = AppState::for_tests(store, artifacts, bus.clone(), search);
     state.outbox_relay = true;
@@ -42,8 +44,10 @@ async fn spawn_sqlite_outbox() -> Option<(
     ));
 
     let app = router(state);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok()?;
-    let addr = listener.local_addr().ok()?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("local addr");
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
     Some((addr, pool, bus, server))

@@ -236,7 +236,7 @@ async fn a_crashed_claimer_is_recovered_and_fenced_postgres() {
     {
         Ok(container) => container,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

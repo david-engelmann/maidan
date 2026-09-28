@@ -19,13 +19,16 @@ async fn pg_pool() -> Option<(testcontainers::ContainerAsync<Postgres>, sqlx::Pg
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping resource_notify_pg: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return None;
         }
     };
 
-    let host = container.get_host().await.ok()?;
-    let port = container.get_host_port_ipv4(5432).await.ok()?;
+    let host = container.get_host().await.expect("container host");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("container port");
     let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
 
     // No migrations needed: the notifier only uses pg_notify / LISTEN.
@@ -34,7 +37,7 @@ async fn pg_pool() -> Option<(testcontainers::ContainerAsync<Postgres>, sqlx::Pg
         .acquire_timeout(Duration::from_secs(15))
         .connect(&url)
         .await
-        .ok()?;
+        .expect("connect");
     Some((container, pool))
 }
 

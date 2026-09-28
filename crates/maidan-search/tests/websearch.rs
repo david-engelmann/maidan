@@ -20,7 +20,7 @@ async fn postgres_websearch_operator_pass_through() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping websearch test: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

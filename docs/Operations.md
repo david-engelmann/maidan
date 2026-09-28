@@ -428,10 +428,11 @@ retry is reported as `FLAKY`, not hidden. Common failures:
   extension.
 - "cannot DELETE from contentless fts5 table": the FTS5 schema was
   reverted to `content=''`. It must stay non-contentless.
-- "docker unavailable": expected on CI runners without DinD. The
-  test's `match Postgres::default().start().await { Err(..) => return,
-  ... }` pattern handles this; if it still fails, the pattern was
-  removed.
+- "the container failed to start with a Docker daemon running": Docker
+  answered, so the test does not skip. The image could not be pulled or its
+  readiness message never came; the error after the colon says which. A
+  test skips (printing "skipping: no Docker daemon") only when no daemon
+  answers, which is not the case on CI.
 - `s3_roundtrip` or `s3_multipart` fails at "start the S3 container": the
   image in `crates/maidan-artifacts/tests/common/mod.rs` could not be pulled
   or did not log `API:`. These tests skip only when no Docker daemon answers,

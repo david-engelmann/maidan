@@ -27,7 +27,7 @@ async fn a_message_sent_over_smtp_arrives_intact() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

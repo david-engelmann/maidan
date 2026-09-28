@@ -132,7 +132,7 @@ async fn attribution_postgres() {
     {
         Ok(container) => container,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };
