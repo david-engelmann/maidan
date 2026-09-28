@@ -10,6 +10,10 @@ services:
       dockerfile: examples/recipes/Dockerfile.source
     image: maidan-recipe:source
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
@@ -35,6 +39,10 @@ services:
       maidan:
         condition: service_healthy
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
     # init refuses a database that already has a workspace, so a rerun keeps
     # the first run's output instead of calling it again.

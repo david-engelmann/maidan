@@ -48,8 +48,11 @@ echo "==> kind load image"
 kind load docker-image "${image}" --name "${cluster}"
 
 echo "==> helm install ${release}"
+# A fresh content KEK per install, as production would pass one from its
+# secret manager; the chart refuses to render without it.
 if ! helm install "${release}" "${chart}" \
   -f "${values}" \
+  --set contentKek="$(openssl rand -hex 32)" \
   --namespace maidan \
   --create-namespace \
   --wait \

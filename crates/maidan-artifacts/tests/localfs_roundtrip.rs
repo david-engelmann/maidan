@@ -104,3 +104,31 @@ fn count_body_files(root: &std::path::Path) -> usize {
     }
     walk(root)
 }
+
+/// An upload whose `put` raced a last-reference erase: the bytes were reaped
+/// before its row committed, so it puts them back; bytes still there are left
+/// alone.
+#[tokio::test]
+async fn restore_if_reaped_puts_back_only_missing_bytes() {
+    let (store, _dir) = store();
+    let payload = Bytes::from_static(b"raced upload");
+    let sha = store.put(payload.clone()).await.unwrap();
+    store.delete(&sha).await.unwrap();
+
+    maidan_artifacts::restore_if_reaped(&store, &sha, payload.clone())
+        .await
+        .unwrap();
+    assert_eq!(store.get(&sha).await.unwrap(), payload);
+    maidan_artifacts::restore_if_reaped(&store, &sha, payload.clone())
+        .await
+        .unwrap();
+    assert_eq!(store.get(&sha).await.unwrap(), payload);
+
+    let wrong = Sha256::compute(b"other bytes");
+    assert!(
+        maidan_artifacts::restore_if_reaped(&store, &wrong, payload)
+            .await
+            .is_err(),
+        "bytes that do not hash to the sha are refused"
+    );
+}

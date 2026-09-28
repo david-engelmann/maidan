@@ -42,6 +42,14 @@ spec:
                 name: maidan-config
             - secretRef:
                 name: maidan-secrets
+          # Required: without the content KEK in maidan-secrets the pod does not
+          # start (CreateContainerConfigError). See secret.example.yaml.
+          env:
+            - name: MAIDAN_CONTENT_KEK
+              valueFrom:
+                secretKeyRef:
+                  name: maidan-secrets
+                  key: MAIDAN_CONTENT_KEK
           volumeMounts:
             - name: artifact-data
               mountPath: /data

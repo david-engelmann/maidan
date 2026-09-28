@@ -54,6 +54,32 @@ pub async fn upsert(pool: &SqlitePool, new: NewArtifact) -> Result<Artifact, Sto
     row_to_artifact(&row)
 }
 
+/// Delete `sha256`'s bytes if no artifact row holds it. `BEGIN IMMEDIATE` takes
+/// SQLite's write lock before the check, and every upsert is a write, so none
+/// can commit a row until the delete is done. See
+/// `ArtifactMetaStore::reap_artifact_blob`.
+pub async fn reap_blob(
+    pool: &SqlitePool,
+    sha256: &str,
+    delete: crate::BlobDelete<'_>,
+) -> Result<crate::BlobReap, StoreError> {
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let held: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM maidan_artifacts WHERE sha256 = ?)")
+            .bind(sha256)
+            .fetch_one(&mut *tx)
+            .await?;
+    if held {
+        return Ok(crate::BlobReap::Referenced);
+    }
+    let reaped = match delete().await {
+        Ok(()) => crate::BlobReap::Deleted,
+        Err(err) => crate::BlobReap::DeleteFailed(err),
+    };
+    tx.commit().await?;
+    Ok(reaped)
+}
+
 /// Upsert an artifact, optionally record its per-workspace access ref, and
 /// append its `ArtifactUpserted` event — all in one transaction `ref_workspace`
 /// is `Some` for a non-bypass upload (mirrors the route's `record_artifact_ref`

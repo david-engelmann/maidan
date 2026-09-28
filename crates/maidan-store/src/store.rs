@@ -701,8 +701,10 @@ pub trait MailStore: Send + Sync {
     /// `lease_secs` so a crashed worker's row is retried);
     /// `mark_mail_delivered` finishes it; `mark_mail_failed` reschedules
     /// (`retry_at = Some`) or dead-letters (`None`); `count_dead_mail` is the
-    /// DLQ depth. No worker/wiring yet — a zero-blast-radius foundation.
-    async fn enqueue_mail(&self, new: NewMailOutbox) -> Result<MailOutboxId, StoreError>;
+    /// DLQ depth. `enqueue_mail` returns `None`, queueing nothing, when the
+    /// mail is about a message that has been withdrawn (its content key is
+    /// shredded); see [`NewMailOutbox::source_log_id`].
+    async fn enqueue_mail(&self, new: NewMailOutbox) -> Result<Option<MailOutboxId>, StoreError>;
     async fn claim_next_due_mail(
         &self,
         now: DateTime<Utc>,
@@ -2084,6 +2086,18 @@ pub trait ArtifactMetaStore: Send + Sync {
         sha256: &str,
         audit: crate::AuditFor<ArtifactErasure>,
     ) -> Result<ArtifactErasure, StoreError>;
+
+    /// Delete the bytes of `sha256` if no artifact row holds it, running
+    /// `delete` under a per-sha lock that every artifact upsert also takes. An
+    /// upload of the same bytes therefore either commits its row first (the
+    /// bytes stay) or after the delete, and then puts them back
+    /// (`maidan_artifacts::restore_if_reaped`). Called after a last-reference
+    /// erase or a workspace purge orphaned the sha.
+    async fn reap_artifact_blob(
+        &self,
+        sha256: &str,
+        delete: crate::BlobDelete<'_>,
+    ) -> Result<crate::BlobReap, StoreError>;
 }
 
 #[async_trait]

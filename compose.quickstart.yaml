@@ -23,6 +23,10 @@ services:
       args:
         MAIDAN_VERSION: ${MAIDAN_VERSION:-v410.0.0}
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: sqlite:///data/maidan.db?mode=rwc
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts

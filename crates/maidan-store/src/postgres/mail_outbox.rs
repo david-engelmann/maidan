@@ -4,26 +4,56 @@
 
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
+use uuid::Uuid;
 
 use crate::StoreError;
 use maidan_types::{DeadMail, MailOutbox, MailOutboxId, NewMailOutbox, WorkspaceId};
 
-/// Enqueue an email for durable delivery: `pending`, due now.
-pub async fn enqueue(pool: &PgPool, new: NewMailOutbox) -> Result<MailOutboxId, StoreError> {
+/// Enqueue an email for durable delivery: `pending`, due now. A mail about a
+/// message event is linked to the message's content key, which is locked
+/// `FOR SHARE`: a concurrent shred either commits first, and nothing is queued
+/// (`None`), or waits for this row and then deletes it with the key.
+pub async fn enqueue(
+    pool: &PgPool,
+    new: NewMailOutbox,
+) -> Result<Option<MailOutboxId>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let mut content_key_id: Option<Uuid> = None;
+    if let Some(log_id) = new.source_log_id {
+        let key = sqlx::query(
+            "SELECT k.id, k.shredded_at IS NOT NULL AS shredded
+             FROM maidan_events e
+             JOIN maidan_content_keys k ON k.id = e.content_key_id
+             WHERE e.id = $1
+             FOR SHARE OF k",
+        )
+        .bind(log_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(key) = key {
+            if key.get::<bool, _>("shredded") {
+                return Ok(None);
+            }
+            content_key_id = Some(key.get("id"));
+        }
+    }
     let id = MailOutboxId::new();
     sqlx::query(
         "INSERT INTO maidan_mail_outbox
-           (id, workspace_id, to_address, subject, body, status, attempts, next_attempt_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, 'pending', 0, now(), now(), now())",
+           (id, workspace_id, content_key_id, to_address, subject, body, status, attempts,
+            next_attempt_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', 0, now(), now(), now())",
     )
     .bind(id.0)
     .bind(new.workspace_id.map(|w| w.0))
+    .bind(content_key_id)
     .bind(&new.to_address)
     .bind(&new.subject)
     .bind(&new.body)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-    Ok(id)
+    tx.commit().await?;
+    Ok(Some(id))
 }
 
 /// Atomically claim the oldest due pending row: lease it forward

@@ -905,13 +905,17 @@ pub async fn deliver_notification_email(
             // The row is attributable, so the operator DLQ can be scoped to a
             // tenant instead of showing everyone's mail to any workspace admin.
             workspace_id: Some(workspace_id),
+            // Links the mail to the message's content key, so withdrawing the
+            // message deletes it.
+            source_log_id: Some(source_log_id),
             to_address: address,
             subject,
             body,
         })
         .await
     {
-        Ok(_) => crate::metrics::record_email_delivered("enqueued"),
+        Ok(Some(_)) => crate::metrics::record_email_delivered("enqueued"),
+        Ok(None) => crate::metrics::record_email_delivered("skipped_withdrawn"),
         Err(err) => {
             warn!(error = %err, "notification email: enqueue failed");
             crate::metrics::record_email_delivered("failed");

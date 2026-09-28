@@ -59,6 +59,10 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts

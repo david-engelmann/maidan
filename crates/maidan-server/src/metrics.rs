@@ -283,6 +283,8 @@ pub fn record_notification_suppressed(reason: &str) {
 ///   presence window.
 /// - `skipped_digest` — suppressed because the recipient is in digest mode;
 ///   the digest sweeper emails them instead.
+/// - `skipped_withdrawn` — not queued because the message it is about was
+///   withdrawn first.
 /// - `digest` / `digest_failed` — a periodic digest rollup send.
 ///
 /// Best-effort: a `failed` send is logged + counted, not retried (a

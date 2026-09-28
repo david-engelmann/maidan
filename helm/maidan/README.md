@@ -6,11 +6,15 @@ for local reference.
 ## Quick start
 
 ```bash
-helm template maidan ./helm/maidan -f ./helm/maidan/values.yaml
-helm install maidan ./helm/maidan -f ./helm/maidan/values-prod.yaml -n maidan --create-namespace
+helm template maidan ./helm/maidan --set contentKek="$(openssl rand -hex 32)"
+helm install maidan ./helm/maidan -f ./helm/maidan/values-prod.yaml \
+  --set contentKek="$KEK_FROM_YOUR_SECRET_MANAGER" -n maidan --create-namespace
 ```
 
 Set `secrets.DATABASE_URL` and image coordinates before production install.
+The chart refuses to render without `contentKek` (the content key-encryption
+key) unless `existingSecret` names a Secret holding `MAIDAN_CONTENT_KEK`. Keep
+the same KEK across upgrades: losing it makes every stored message unreadable.
 
 Production overlays (OTel, Redis quotas, S3) are documented in [PROFILES.md](PROFILES.md).
 
@@ -26,6 +30,7 @@ Production overlays (OTel, Redis quotas, S3) are documented in [PROFILES.md](PRO
 ```bash
 helm install maidan ./helm/maidan \
   -f ./helm/maidan/values-cert-manager.yaml \
+  --set contentKek="$KEK_FROM_YOUR_SECRET_MANAGER" \
   -n maidan --create-namespace
 ```
 
@@ -37,6 +42,7 @@ Requires cert-manager and an Ingress controller (e.g. nginx) in the cluster.
 ```bash
 helm install maidan ./helm/maidan-stack \
   -f ./helm/maidan-stack/values-prod.yaml \
+  --set maidan.contentKek="$KEK_FROM_YOUR_SECRET_MANAGER" \
   -n maidan --create-namespace
 ```
 

@@ -11,25 +11,38 @@ use uuid::Uuid;
 use crate::StoreError;
 use maidan_types::{DeadMail, MailOutbox, MailOutboxId, NewMailOutbox, WorkspaceId};
 
-pub async fn enqueue(pool: &SqlitePool, new: NewMailOutbox) -> Result<MailOutboxId, StoreError> {
+/// One statement, so it is atomic against a shred: a mail about a message event
+/// is linked to the message's content key, and nothing is queued (`None`) when
+/// that key is already shredded.
+pub async fn enqueue(
+    pool: &SqlitePool,
+    new: NewMailOutbox,
+) -> Result<Option<MailOutboxId>, StoreError> {
     let id = MailOutboxId::new();
     let now = Utc::now().to_rfc3339();
-    sqlx::query(
+    let inserted = sqlx::query(
         "INSERT INTO maidan_mail_outbox
-           (id, workspace_id, to_address, subject, body, status, attempts, next_attempt_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)",
+           (id, workspace_id, content_key_id, to_address, subject, body, status, attempts,
+            next_attempt_at, created_at, updated_at)
+         SELECT ?1, ?2, (SELECT content_key_id FROM maidan_events WHERE id = ?3),
+                ?4, ?5, ?6, 'pending', 0, ?7, ?7, ?7
+         WHERE NOT EXISTS (
+             SELECT 1 FROM maidan_events e
+             JOIN maidan_content_keys k ON k.id = e.content_key_id
+             WHERE e.id = ?3 AND k.shredded_at IS NOT NULL
+         )",
     )
     .bind(id.0)
     .bind(new.workspace_id.map(|w| w.0))
+    .bind(new.source_log_id)
     .bind(&new.to_address)
     .bind(&new.subject)
     .bind(&new.body)
     .bind(&now)
-    .bind(&now)
-    .bind(&now)
     .execute(pool)
-    .await?;
-    Ok(id)
+    .await?
+    .rows_affected();
+    Ok((inserted > 0).then_some(id))
 }
 
 pub async fn claim_next_due(

@@ -16,6 +16,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# A throwaway database, so the public development content KEK is acceptable.
+export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 
 port="${MAIDAN_A2A_PORT:-8080}"
 grpc_port="${MAIDAN_A2A_GRPC_PORT:-50251}"

@@ -12,7 +12,8 @@
 # NOT backed up (restore these out of band): secrets/config — DATABASE_URL,
 # MAIDAN_SESSION_SECRET, FEDERATION_ENCRYPTION_KEY (+ FEDERATION_DECRYPT_KEYS),
 # MAIDAN_CONTENT_KEK (+ _PREVIOUS), SMTP/OIDC creds. Keeping the KEK out of the
-# dump matters: a dump taken before a withdrawal plus the KEK recovers the words. They live in your secret manager, not in the data backup.
+# dump matters: a dump taken before a withdrawal plus the KEK recovers the words.
+# They live in your secret manager, not in the data backup.
 #
 # Usage:
 #   DATABASE_URL=postgres://…  scripts/backup.sh [BACKUP_DIR]

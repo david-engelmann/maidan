@@ -38,6 +38,15 @@ spec:
                 name: {{ include "maidan.fullname" . }}-config
             - secretRef:
                 name: {{ include "maidan.secretName" . }}
+          # Named explicitly so a Secret without the content KEK stops the pod
+          # (CreateContainerConfigError) instead of starting a server that cannot
+          # seal message content.
+          env:
+            - name: MAIDAN_CONTENT_KEK
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "maidan.secretName" . }}
+                  key: MAIDAN_CONTENT_KEK
           volumeMounts:
             - name: artifact-data
               mountPath: /data

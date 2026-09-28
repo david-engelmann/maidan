@@ -87,7 +87,7 @@ The production-safe path is the `maidan init` CLI, which writes through the stor
 unauthenticated HTTP routes, no `AUTH_DISABLED` ([Production.md](Production.md#maidan-init-recommended)):
 
 ```sh
-DATABASE_URL=… maidan init --workspace my-team
+DATABASE_URL=… MAIDAN_CONTENT_KEK=… maidan init --workspace my-team
 ```
 
 It creates the initial workspace + an admin member, mints an all-capabilities bearer

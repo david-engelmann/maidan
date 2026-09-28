@@ -67,8 +67,11 @@ test "$(docker inspect "$postgres" --format '{{.State.Health.Status}}')" = healt
 
 # Keep the one-time bearer token out of logs. Its only use is the authenticated
 # request below, and the captured initialization output is discarded afterward.
+# The published images run as production would: with a real content KEK.
+content_kek="$(openssl rand -hex 32)"
 init_output="$(docker run --rm --network "$network" \
   -e DATABASE_URL="$database_url" \
+  -e MAIDAN_CONTENT_KEK="$content_kek" \
   "$cli_image" init --workspace release-smoke --admin-handle release-smoke-admin)"
 admin_token="$(awk '$1 ~ /^maid_/ { print $1 }' <<<"$init_output")"
 test "$(wc -w <<<"$admin_token" | tr -d ' ')" = 1
@@ -79,6 +82,7 @@ docker run -d --name "$server" --network "$network" \
   --tmpfs /data:rw,uid=65532,gid=65532,mode=0700 \
   -p 127.0.0.1::8080 \
   -e DATABASE_URL="$database_url" \
+  -e MAIDAN_CONTENT_KEK="$content_kek" \
   -e ARTIFACT_BACKEND=localfs \
   -e ARTIFACT_LOCALFS_ROOT=/data/artifacts \
   -e MAIDAN_SESSION_SECRET=release-smoke-session-secret-32bytes \

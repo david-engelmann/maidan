@@ -4,7 +4,7 @@ use maidan_types::WorkspaceId;
 
 use crate::error::StoreError;
 
-fn assert_registry_table(table: &str) -> Result<(), StoreError> {
+pub(crate) fn assert_registry_table(table: &str) -> Result<(), StoreError> {
     if !table.starts_with("maidan_emb_") {
         return Err(StoreError::InvalidInput(format!(
             "invalid embedding table name in registry: {table}"

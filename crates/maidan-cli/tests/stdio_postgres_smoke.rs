@@ -30,6 +30,7 @@ async fn mcp_stdio_postgres_initialize_roundtrip() {
         // No token here, so the unrestricted context has to be asked for.
         .arg("--allow-insecure-no-auth")
         .env("DATABASE_URL", &database_url)
+        .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

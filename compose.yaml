@@ -85,6 +85,10 @@ services:
       minio-init:
         condition: service_completed_successfully
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: s3
       S3_ENDPOINT: http://minio:9000
@@ -127,6 +131,10 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
@@ -167,6 +175,10 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts
@@ -250,6 +262,10 @@ services:
       minio-scale-init:
         condition: service_completed_successfully
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: s3
       S3_ENDPOINT: http://minio-scale:9000
@@ -290,6 +306,10 @@ services:
       minio-scale-init:
         condition: service_completed_successfully
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: s3
       S3_ENDPOINT: http://minio-scale:9000
@@ -358,6 +378,10 @@ services:
       otel-collector:
         condition: service_started
     environment:
+      # Development stack: an explicit opt-in to the public development content
+      # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
+      MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
+      MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts

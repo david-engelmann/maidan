@@ -18,6 +18,7 @@ async fn sqlite() -> SqliteStore {
 fn mail(to: &str) -> NewMailOutbox {
     NewMailOutbox {
         workspace_id: None,
+        source_log_id: None,
         to_address: to.into(),
         subject: "s".into(),
         body: "b".into(),
@@ -27,6 +28,7 @@ fn mail(to: &str) -> NewMailOutbox {
 fn mail_for(ws: maidan_types::WorkspaceId, to: &str) -> NewMailOutbox {
     NewMailOutbox {
         workspace_id: Some(ws),
+        source_log_id: None,
         to_address: to.into(),
         subject: "s".into(),
         body: "b".into(),
@@ -38,7 +40,8 @@ async fn run_suite(store: &dyn Store) {
     let id = store
         .enqueue_mail(mail("a@example.com"))
         .await
-        .expect("enqueue");
+        .expect("enqueue")
+        .expect("queued");
     let claimed = store
         .claim_next_due_mail(Utc::now(), 300)
         .await
@@ -85,7 +88,8 @@ async fn run_suite(store: &dyn Store) {
     let id2 = store
         .enqueue_mail(mail("c@example.com"))
         .await
-        .expect("enqueue2");
+        .expect("enqueue2")
+        .expect("queued");
     let c2 = store
         .claim_next_due_mail(Utc::now(), 300)
         .await
@@ -185,7 +189,8 @@ async fn run_dlq_scope_suite(store: &dyn Store) {
         let id = store
             .enqueue_mail(mail_for(w, addr))
             .await
-            .expect("enqueue");
+            .expect("enqueue")
+            .expect("queued");
         // Dead-letter it: fail past the ceiling.
         for _ in 0..10 {
             let _ = store.mark_mail_failed(id, "nope", None).await;

@@ -55,6 +55,7 @@ To leave the server outside the container and only run the deps:
 
 ```sh
 docker compose -f compose.dev.yaml up postgres minio
+MAIDAN_ALLOW_INSECURE_DEV_KEK=1 \
 DATABASE_URL=postgres://maidan:maidan@localhost:5432/maidan cargo run --bin maidan-server
 ```
 
@@ -63,14 +64,18 @@ DATABASE_URL=postgres://maidan:maidan@localhost:5432/maidan cargo run --bin maid
 For pure host development against SQLite — no `docker compose` needed:
 
 ```sh
-DATABASE_URL=sqlite://./dev.db cargo run --bin maidan-server
+MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite://./dev.db cargo run --bin maidan-server
 ```
 
 Or against an in-memory SQLite (lost on shutdown):
 
 ```sh
-DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
+MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
 ```
+
+`MAIDAN_ALLOW_INSECURE_DEV_KEK=1` is the explicit development opt-in to a public
+content key-encryption key; without it, or a real `MAIDAN_CONTENT_KEK`, the server
+refuses to start ([Production.md](Production.md#crypto-shredding)).
 
 The server detects the dialect from the `DATABASE_URL` prefix
 (`postgres://`, `postgresql://`, or `sqlite:`) and selects the

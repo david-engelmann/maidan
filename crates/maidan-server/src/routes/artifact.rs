@@ -113,6 +113,8 @@ pub async fn complete_multipart_artifact(
             ref_workspace,
         )
         .await?;
+    // A last-reference erase may have reaped the bytes between the put and the row.
+    maidan_artifacts::restore_if_reaped(state.artifacts.as_ref(), &sha, bytes).await?;
     super::publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(artifact)))
 }
@@ -158,6 +160,8 @@ pub async fn upload_artifact(
             ref_workspace,
         )
         .await?;
+    // A last-reference erase may have reaped the bytes between the put and the row.
+    maidan_artifacts::restore_if_reaped(state.artifacts.as_ref(), &sha, body).await?;
     super::publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(artifact)))
 }

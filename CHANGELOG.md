@@ -22,6 +22,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   instead of the words; catch-up and federation events carry `content_key`
   while the message is live.
 
+### Crypto-shredding follow-ups
+
+- **Changed:** the server and `maidan init` refuse to start without
+  `MAIDAN_CONTENT_KEK`. The public development key needs
+  `MAIDAN_ALLOW_INSECURE_DEV_KEK=1` and is refused in production. The Helm
+  chart requires `contentKek` or an existing secret; the k8s base reads it from
+  `maidan-secrets`.
+- **Fixed:** withdrawing a message deletes the notification mail about it, and
+  no mail is queued for a withdrawn message.
+- **Fixed:** an upload racing the erase of the same bytes could leave a
+  reference to deleted bytes (artifact erase and workspace purge).
+- **Added:** `maidan verify-shredding` lists copies of withdrawn words left
+  outside the sealed event log.
+
 ### A withdrawn message leaves no embeddings
 
 - **Fixed:** withdrawing a message left its embeddings, vectors derived from the
