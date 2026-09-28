@@ -181,7 +181,7 @@ async fn append_then_verify_ok_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };
@@ -215,7 +215,7 @@ async fn tamper_is_detected_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };
@@ -456,7 +456,7 @@ async fn exponent_numbers_survive_the_jsonb_round_trip_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

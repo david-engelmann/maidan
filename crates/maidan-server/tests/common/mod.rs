@@ -16,13 +16,16 @@ pub async fn postgres_pool() -> Option<(testcontainers::ContainerAsync<Postgres>
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping postgres server test: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return None;
         }
     };
 
-    let host = container.get_host().await.ok()?;
-    let port = container.get_host_port_ipv4(5432).await.ok()?;
+    let host = container.get_host().await.expect("container host");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("container port");
     let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
 
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -30,8 +33,10 @@ pub async fn postgres_pool() -> Option<(testcontainers::ContainerAsync<Postgres>
         .acquire_timeout(Duration::from_secs(15))
         .connect(&url)
         .await
-        .ok()?;
+        .expect("connect");
 
-    maidan_store::run_postgres_migrations(&pool).await.ok()?;
+    maidan_store::run_postgres_migrations(&pool)
+        .await
+        .expect("migrate");
     Some((container, pool))
 }

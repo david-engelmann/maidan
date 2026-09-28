@@ -20,7 +20,7 @@ async fn concurrent_boot_migrations_all_succeed() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping concurrent migrations: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

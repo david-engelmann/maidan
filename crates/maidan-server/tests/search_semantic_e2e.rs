@@ -22,7 +22,7 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping semantic e2e: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };
@@ -160,7 +160,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping semantic facet e2e: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

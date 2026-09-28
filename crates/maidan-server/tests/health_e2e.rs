@@ -29,7 +29,7 @@ async fn spawn_server() -> Option<(
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping health_e2e: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return None;
         }
     };
@@ -202,7 +202,7 @@ async fn spawn_server_with_postgres_bus() -> Option<(
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping health_e2e postgres bus: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return None;
         }
     };

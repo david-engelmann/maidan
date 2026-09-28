@@ -145,7 +145,7 @@ async fn review_gate_blocks_close_until_approved_and_unrefuted_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

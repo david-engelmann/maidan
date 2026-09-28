@@ -151,7 +151,7 @@ async fn cursor_too_old_fails_loud_on_pruned_gap_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

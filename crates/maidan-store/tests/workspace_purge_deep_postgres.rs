@@ -20,7 +20,7 @@ async fn postgres_deep_purge_removes_related_rows() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

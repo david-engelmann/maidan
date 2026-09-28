@@ -164,16 +164,20 @@ The full version is in [`docs/Operations.md`](docs/Operations.md).
   {
       Ok(c) => c,
       Err(err) => {
-          eprintln!("skipping: docker unavailable ({err})");
+          maidan_store::test_support::docker::skip_start_failure(err).await;
           return;
       }
   };
   ```
 
-- **Postgres tests skip gracefully if Docker is unavailable** —
-  every integration test that uses testcontainers wraps `.start()`
-  in a `match` with `eprintln!` + `return` on Err. Do not panic; CI
-  for fork PRs may run without Docker.
+- **Testcontainers tests skip only when no Docker daemon answers** —
+  `skip_start_failure` returns (so the test can `return`) only when the
+  daemon testcontainers would use does not answer a ping; with Docker
+  running, a start failure (an image that can't be pulled, a readiness
+  message that never comes) panics. Once the container is up, setup
+  errors `expect`, never `.ok()?`: a skip there would hide a broken
+  migration. The helper is behind `maidan-store`'s `test-support`
+  feature; `maidan-artifacts` has its own copy in `tests/common`.
 - **SQLite tests use `sqlite::memory:`** with `PRAGMA foreign_keys =
   ON` explicitly turned on (off by default in SQLite).
 - **Shared assertions go in `tests/common/mod.rs`**. Each test crate

@@ -16,7 +16,7 @@ async fn mcp_stdio_postgres_initialize_roundtrip() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

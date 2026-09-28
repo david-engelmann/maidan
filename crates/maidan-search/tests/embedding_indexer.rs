@@ -24,7 +24,7 @@ async fn embedding_handler_upserts_on_message_posted() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping embedding_handler_upserts: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };
@@ -137,7 +137,7 @@ async fn batching_handler_embeds_posted_messages_and_records_metrics() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping batching_handler_embeds: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

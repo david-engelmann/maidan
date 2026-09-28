@@ -32,7 +32,7 @@ async fn spawn(replica_enabled: bool) -> Option<Case> {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping consistency_token_e2e: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return None;
         }
     };

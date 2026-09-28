@@ -110,7 +110,7 @@ async fn postgres_migration_0004_records_thread_transitions() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping postgres_migration_0004: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

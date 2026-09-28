@@ -224,7 +224,7 @@ async fn egress_targets_allow_list_revoke_and_authorize_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

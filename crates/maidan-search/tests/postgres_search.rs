@@ -21,7 +21,7 @@ async fn full_text_search_against_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping postgres_search: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };
@@ -55,7 +55,7 @@ async fn configured_hnsw_build_params_and_ef_search() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping hnsw params test: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

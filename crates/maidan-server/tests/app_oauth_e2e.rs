@@ -31,7 +31,7 @@ async fn spawn() -> Option<Harness> {
     let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let dir = tempfile::tempdir().ok()?;
+    let dir = tempfile::tempdir().expect("tempdir");
     let artifacts = Arc::new(maidan_artifacts::LocalFsStore::new(dir.path()));
 
     let mut state = AppState::new(
@@ -49,8 +49,10 @@ async fn spawn() -> Option<Harness> {
     state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
     maidan_server::metrics::init();
     let app = router(state);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok()?;
-    let addr = listener.local_addr().ok()?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("local addr");
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
     Some(Harness {

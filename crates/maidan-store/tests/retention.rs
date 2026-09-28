@@ -171,7 +171,7 @@ async fn retention_prunes_by_age_and_respects_the_delivery_floor_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };

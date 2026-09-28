@@ -22,7 +22,7 @@ async fn spawn() -> Option<(PostgresStore, testcontainers::ContainerAsync<Postgr
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping postgres_roundtrip: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return None;
         }
     };

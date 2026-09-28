@@ -43,7 +43,7 @@ async fn spawn_postgres() -> Option<Harness> {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping http_crud_e2e[postgres]: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return None;
         }
     };

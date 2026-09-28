@@ -321,7 +321,7 @@ async fn thread_owner_is_set_cleared_and_orthogonal_to_assignment_postgres() {
     {
         Ok(c) => c,
         Err(err) => {
-            eprintln!("skipping: docker unavailable ({err})");
+            maidan_store::test_support::docker::skip_start_failure(err).await;
             return;
         }
     };
