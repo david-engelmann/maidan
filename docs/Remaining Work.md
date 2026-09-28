@@ -40,7 +40,7 @@ From [[Open Work]] — unchanged except where a release mitigated.
 - **Bootstrap / `AUTH_DISABLED` misconfiguration** — catastrophic in production; compile-time strip (**91**) removes the path entirely in hardened builds.
 - **Indexer staleness** — opt-in `INDEXER_STALE_SECS`.
 - **PostgresBus listener recovery** — best-effort; `/health/ready` reflects retry state.
-- **Coverage floor ≥40%** — enforced in CI over the full suite (v114); opportunistic depth increases beyond the floor.
+- **Coverage floors** — per crate, just under measured coverage, in the advisory `coverage (llvm-cov)` job (#1065; replaced the blanket 40% of v114). The MinIO tests run for real since #1068, which took `maidan-artifacts` from 24.8% to 62.5%.
 - **`hash-v1` default** — `openai-compatible` provider (v117) for real semantics; `hash-v1` is the offline/dev default.
 - **No `v93`–`v100` tags** — clusters 93–101 shipped as one batch (PR #264) → `v101.0.0`; not a backlog. All four gate tags cut.
 
