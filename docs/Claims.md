@@ -34,7 +34,7 @@ post-gate hardening (no new gate tag).
 | "Single static binary, laptop SQLite → multi-replica Postgres cluster" | One binary selected by `DATABASE_URL`; `scale-out smoke` required CI job; workspace-sharded fan-out; LSN causal read-replica routing (`read_routing` e2e vs real streaming replication) | Shipped (`maidan-scale-1.0`) |
 | "Built to be run, not just demoed — probes, Prometheus, OTLP, durable event log + replay, cross-replica correctness" | `/health/{live,ready}`; `/metrics`; `otlp smoke` + `promtool (alert rules)` required CI; transactional outbox (events commit atomically with their domain write); **leased outbox claim so N replicas relay each row once** (`concurrent_relays_claim_disjoint_outbox_rows`); self-healing NOTIFY floor (chaos-validated 40/40) | Shipped |
 | "Signed release artifacts" | Keyless cosign bundles + SBOM on every release (`release.yml`); per-arch tarballs SHA-256-pinned in the quickstart image. Verify: see [SECURITY.md](https://github.com/david-engelmann/maidan/blob/main/SECURITY.md#verifying-a-release) | Shipped |
-| "A2A transport" | A2A v1.0 over **JSON-RPC + REST §11** (complete); **gRPC §10 exposes task read/cancel/list** (`get_task`/`cancel_task`/`list_tasks`) — **`SendMessage`/push/streaming over gRPC are not yet implemented; send a message over JSON-RPC or REST**. Agent Card §4.4.1; interop conformance client + report-only `a2a interop` CI job | Shipped (JSON-RPC/REST complete; gRPC partial) |
+| "A2A transport" | A2A v1.0 over **JSON-RPC + REST §11** (complete); **gRPC §10 exposes task read/cancel/list** (`get_task`/`cancel_task`/`list_tasks`) — **`SendMessage`/push/streaming over gRPC are not yet implemented; send a message over JSON-RPC or REST**. Agent Card §4.4.1; the official A2A TCK runs in the non-required `a2a tck` CI job (JSON-RPC and HTTP+JSON; exclusions listed in `scripts/a2a-tck/exclusions.txt`) | Shipped (JSON-RPC/REST complete; gRPC partial) |
 | "Off-platform reach: notifications, email, Slack, GitHub" | Per-recipient notification ledger + router + unified inbox; SMTP transport + durable mail retry queue (outbox + worker + DLQ); Slack + GitHub projectors (bidirectional, loop-safe) | **Shipped, config-gated** — inert until you set `MAIDAN_SMTP_*` / `MAIDAN_SLACK_*` / `MAIDAN_GITHUB_*` and create the apps |
 | "Client SDKs" | Four 0.1.0 clients (TypeScript, Python, Go, Rust) to the frozen v1 contract, each black-box-verified (`scripts/sdk-test.sh`) + a report-only `sdk interop` CI job | Shipped (0.1.0, early) |
 
@@ -75,7 +75,7 @@ exclusions, so the scope is not mistaken for a gap:
 
 - New public claims add a row here in the same PR.
 - The required CI checks (lint, secrets scan, unit, integration, docker-compose smoke,
-  scale-out smoke, promtool, otlp smoke) gate every merge; the report-only jobs (`a2a
-  interop`, `sdk interop`) prove the client/interop surface without blocking.
+  scale-out smoke, promtool, otlp smoke) gate every merge; the non-required `a2a tck` job and the report-only
+  `sdk interop` job prove the client/interop surface without blocking.
 - Release artifacts are cosign-signed; verify before trusting a tag
   ([SECURITY.md](https://github.com/david-engelmann/maidan/blob/main/SECURITY.md#verifying-a-release)).

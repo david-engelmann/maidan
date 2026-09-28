@@ -1,9 +1,10 @@
 //! A2A v1.0 gRPC binding (§10).
 //!
 //! A tonic server exposing the A2A task read/cancel/list operations, as thin
-//! adapters over the same `dispatch_*` handlers the JSON-RPC and REST bindings
-//! use. The proto is compiled locally and the generated code vendored
-//! (`generated.rs`) so no build-time `protoc` is needed in CI or the image.
+//! adapters over the same operations the JSON-RPC and HTTP+JSON bindings use.
+//! Calls name their protocol version in `a2a-version` metadata. The proto is
+//! compiled locally and the generated code vendored (`generated.rs`) so no
+//! build-time `protoc` is needed in CI or the image.
 //!
 //! Config-gated: the server only starts when `MAIDAN_A2A_GRPC_ADDR` is set, so
 //! default deployments, CI, and tests are unaffected. Streaming ops
@@ -24,7 +25,7 @@ use std::net::SocketAddr;
 use maidan_auth::{resolve_bearer, AuthContext};
 use tonic::{Request, Response, Status};
 
-use crate::a2a_agent;
+use crate::a2a_agent::{self, ops};
 use crate::state::AppState;
 use generated::a2a_service_server::{A2aService, A2aServiceServer};
 use generated::{
@@ -53,51 +54,32 @@ async fn auth_from_grpc<T>(state: &AppState, request: &Request<T>) -> Result<Aut
         .map_err(|_| Status::unauthenticated("invalid token"))
 }
 
-/// Map an operation's `JsonRpcResponse` result into a gRPC value or `Status`.
-/// (Maidan overloads `-32001` for auth failures → `permission_denied`, and
-/// `-32602` for both invalid-params and not-found → `invalid_argument`.)
-fn op_value(
-    result: Result<maidan_a2a::JsonRpcResponse, maidan_a2a::JsonRpcResponse>,
-) -> Result<serde_json::Value, Status> {
-    let resp = match result {
-        Ok(r) => r,
-        Err(r) => r,
+/// An operation failure as the gRPC status its kind maps to (§10.6).
+fn status(err: maidan_a2a::A2aError) -> Status {
+    use tonic::Code;
+    let code = match err.kind.rpc_status() {
+        "NOT_FOUND" => Code::NotFound,
+        "FAILED_PRECONDITION" => Code::FailedPrecondition,
+        "UNIMPLEMENTED" => Code::Unimplemented,
+        "PERMISSION_DENIED" => Code::PermissionDenied,
+        "INVALID_ARGUMENT" => Code::InvalidArgument,
+        _ => Code::Internal,
     };
-    if let Some(value) = resp.result {
-        return Ok(value);
-    }
-    let (code, message) = resp
-        .error
-        .map(|e| (e.code, e.message))
-        .unwrap_or((-32603, "internal error".to_string()));
-    Err(match code {
-        -32001 => Status::permission_denied(message),
-        -32602 => Status::invalid_argument(message),
-        -32603 => Status::internal(message),
-        _ => Status::invalid_argument(message),
-    })
+    Status::new(code, err.message)
 }
 
-/// Build the proto [`Task`] from Maidan's task JSON.
-fn task_from_json(v: &serde_json::Value) -> Task {
+/// The caller's auth, after checking the protocol version it names.
+async fn caller<T>(state: &AppState, request: &Request<T>) -> Result<AuthContext, Status> {
+    a2a_agent::check_grpc_version(request.metadata()).map_err(status)?;
+    auth_from_grpc(state, request).await
+}
+
+fn task(task: maidan_a2a::Task) -> Task {
     Task {
-        id: v
-            .get("id")
-            .and_then(|x| x.as_str())
-            .unwrap_or_default()
-            .to_string(),
-        context_id: v
-            .get("contextId")
-            .and_then(|x| x.as_str())
-            .unwrap_or_default()
-            .to_string(),
+        id: task.id,
+        context_id: task.context_id.unwrap_or_default(),
         status: Some(TaskStatus {
-            state: v
-                .get("status")
-                .and_then(|s| s.get("state"))
-                .and_then(|x| x.as_str())
-                .unwrap_or_default()
-                .to_string(),
+            state: task.status.state,
         }),
     }
 }
@@ -105,57 +87,49 @@ fn task_from_json(v: &serde_json::Value) -> Task {
 #[tonic::async_trait]
 impl A2aService for GrpcA2a {
     async fn get_task(&self, request: Request<GetTaskRequest>) -> Result<Response<Task>, Status> {
-        let auth = auth_from_grpc(&self.state, &request).await?;
-        let id = request.into_inner().id;
-        let params = serde_json::json!({ "id": id });
-        let value = op_value(
-            a2a_agent::dispatch_get_task(&self.state, &auth, a2a_agent::rest_id(), params).await,
-        )?;
-        Ok(Response::new(task_from_json(&value)))
+        let auth = caller(&self.state, &request).await?;
+        let req = maidan_a2a::GetTaskRequest {
+            id: request.into_inner().id,
+            history_length: None,
+        };
+        let found = ops::get_task(&self.state, &auth, req)
+            .await
+            .map_err(status)?;
+        Ok(Response::new(task(found)))
     }
 
     async fn cancel_task(
         &self,
         request: Request<CancelTaskRequest>,
     ) -> Result<Response<Task>, Status> {
-        let auth = auth_from_grpc(&self.state, &request).await?;
-        let id = request.into_inner().id;
-        let params = serde_json::json!({ "id": id });
-        let value = op_value(
-            a2a_agent::dispatch_tasks_cancel(&self.state, &auth, a2a_agent::rest_id(), params)
-                .await,
-        )?;
-        Ok(Response::new(task_from_json(&value)))
+        let auth = caller(&self.state, &request).await?;
+        let req = maidan_a2a::CancelTaskRequest {
+            id: request.into_inner().id,
+            metadata: None,
+        };
+        let canceled = ops::cancel_task(&self.state, &auth, req)
+            .await
+            .map_err(status)?;
+        Ok(Response::new(task(canceled)))
     }
 
     async fn list_tasks(
         &self,
         request: Request<ListTasksRequest>,
     ) -> Result<Response<ListTasksResponse>, Status> {
-        let auth = auth_from_grpc(&self.state, &request).await?;
+        let auth = caller(&self.state, &request).await?;
         let req = request.into_inner();
-        let mut params = serde_json::Map::new();
-        if !req.context_id.is_empty() {
-            params.insert(
-                "contextId".into(),
-                serde_json::Value::String(req.context_id),
-            );
-        }
-        if req.page_size > 0 {
-            params.insert("pageSize".into(), serde_json::Value::from(req.page_size));
-        }
-        let value = op_value(
-            a2a_agent::dispatch_list_tasks(&self.state, &auth, a2a_agent::rest_id(), params.into())
-                .await,
-        )?;
-        let tasks = value
-            .get("tasks")
-            .and_then(|t| t.as_array())
-            .map(|arr| arr.iter().map(task_from_json).collect())
-            .unwrap_or_default();
+        let req = maidan_a2a::ListTasksRequest {
+            context_id: (!req.context_id.is_empty()).then_some(req.context_id),
+            page_size: (req.page_size > 0).then_some(req.page_size),
+            ..Default::default()
+        };
+        let listed = ops::list_tasks(&self.state, &auth, req)
+            .await
+            .map_err(status)?;
         Ok(Response::new(ListTasksResponse {
-            tasks,
-            next_page_token: String::new(),
+            tasks: listed.tasks.into_iter().map(task).collect(),
+            next_page_token: listed.next_page_token,
         }))
     }
 }

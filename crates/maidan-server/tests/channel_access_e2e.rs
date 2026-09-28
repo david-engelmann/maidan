@@ -577,12 +577,16 @@ async fn a2a_ingress_denies_non_members_in_private_channels() {
         .unwrap();
     let tid = th["id"].as_str().unwrap().to_string();
 
-    let a2a_body = |member: uuid::Uuid| {
+    let a2a_body = |message_id: &str| {
         json!({
             "jsonrpc": "2.0", "id": 1, "method": "SendMessage",
             "params": {
-                "message": {"role": "user", "parts": [{"type": "text", "text": "via a2a"}]},
-                "metadata": {"maidan": {"threadId": tid, "authorId": member}}
+                "message": {
+                    "messageId": message_id,
+                    "contextId": tid,
+                    "role": "ROLE_USER",
+                    "parts": [{"text": "via a2a"}]
+                }
             }
         })
     };
@@ -591,8 +595,9 @@ async fn a2a_ingress_denies_non_members_in_private_channels() {
     let denied: Value = ctx
         .client
         .post(format!("{base}/a2a/v1/rpc"))
+        .header("A2A-Version", "1.0")
         .header("Authorization", auth(&mallory_tok))
-        .json(&a2a_body(mallory.id.0))
+        .json(&a2a_body("m-mallory"))
         .send()
         .await
         .unwrap()
@@ -609,8 +614,9 @@ async fn a2a_ingress_denies_non_members_in_private_channels() {
     let ok: Value = ctx
         .client
         .post(format!("{base}/a2a/v1/rpc"))
+        .header("A2A-Version", "1.0")
         .header("Authorization", auth(&alice_tok))
-        .json(&a2a_body(alice.id.0))
+        .json(&a2a_body("m-alice"))
         .send()
         .await
         .unwrap()
@@ -780,17 +786,21 @@ async fn a2a_list_tasks_filters_private_and_extended_card() {
         let client = ctx.client.clone();
         let base = base.clone();
         let tok = alice_tok.clone();
-        let member = alice.id.0;
         let tid = tid.to_string();
         async move {
             client
                 .post(format!("{base}/a2a/v1/rpc"))
+                .header("A2A-Version", "1.0")
                 .header("Authorization", auth(&tok))
                 .json(&json!({
                     "jsonrpc": "2.0", "id": 1, "method": "SendMessage",
                     "params": {
-                        "message": {"role": "user", "parts": [{"type": "text", "text": "hi"}]},
-                        "metadata": {"maidan": {"threadId": tid, "authorId": member}}
+                        "message": {
+                            "messageId": format!("m-{tid}"),
+                            "contextId": tid,
+                            "role": "ROLE_USER",
+                            "parts": [{"text": "hi"}]
+                        }
                     }
                 }))
                 .send()
@@ -810,6 +820,7 @@ async fn a2a_list_tasks_filters_private_and_extended_card() {
         async move {
             client
                 .post(format!("{base}/a2a/v1/rpc"))
+                .header("A2A-Version", "1.0")
                 .header("Authorization", auth(&tok))
                 .json(&json!({"jsonrpc": "2.0", "id": 2, "method": "ListTasks", "params": {}}))
                 .send()
@@ -844,6 +855,7 @@ async fn a2a_list_tasks_filters_private_and_extended_card() {
     let card: Value = ctx
         .client
         .post(format!("{base}/a2a/v1/rpc"))
+        .header("A2A-Version", "1.0")
         .header("Authorization", auth(&alice_tok))
         .json(&json!({"jsonrpc": "2.0", "id": 3, "method": "GetExtendedAgentCard"}))
         .send()

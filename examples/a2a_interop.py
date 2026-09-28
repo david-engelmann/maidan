@@ -1,11 +1,10 @@
-"""A2A v1.0 interop / conformance check against a running Maidan.
+"""A2A v1.0 walkthrough against a running Maidan, checking each answer.
 
-Validates the Agent Card shape (§4.4.1) and exercises the JSON-RPC and REST
-bindings with the spec's canonical operation names — a lightweight, dependency-
-light conformance client (httpx only, no A2A SDK) that doubles as an example.
-
-Run it against the quickstart, which runs with **auth on** — so mint a token
-first and pass it; without one the A2A calls are refused, not skipped:
+A dependency-light client (httpx only, no A2A SDK) that shows the protocol as
+Maidan speaks it: the Agent Card, a conversation over the JSON-RPC binding
+(a context is a Maidan thread), the same task over the HTTP+JSON binding, a
+streamed send, and version negotiation. The official conformance suite is
+`scripts/a2a-tck.sh`; this is the readable example.
 
     docker compose -f compose.quickstart.yaml up -d --build --wait   # Maidan on :8080
     docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
@@ -18,6 +17,7 @@ MAIDAN_URL targets a deployment other than localhost:8080.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import uuid
@@ -26,114 +26,92 @@ import httpx
 
 BASE = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080")
 TOKEN = os.environ.get("MAIDAN_TOKEN")
-HEADERS = {"content-type": "application/json"}
-if TOKEN:
-    HEADERS["authorization"] = f"Bearer {TOKEN}"
+# Every A2A request names the protocol version it speaks (§3.6.2).
+HEADERS = {"A2A-Version": "1.0", "authorization": f"Bearer {TOKEN}"}
 
 _failures: list[str] = []
 
 
 def check(cond: bool, msg: str) -> None:
-    status = "ok  " if cond else "FAIL"
-    print(f"  [{status}] {msg}")
+    print(f"  [{'ok  ' if cond else 'FAIL'}] {msg}")
     if not cond:
         _failures.append(msg)
 
 
 def rpc(client: httpx.Client, method: str, params: dict | None = None) -> dict:
-    body = {"jsonrpc": "2.0", "id": 1, "method": method}
-    if params is not None:
-        body["params"] = params
+    body = {"jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": method, "params": params or {}}
     return client.post(f"{BASE}/a2a/v1/rpc", headers=HEADERS, json=body).json()
 
 
+def message(text: str, context_id: str | None = None) -> dict:
+    msg = {"messageId": str(uuid.uuid4()), "role": "ROLE_USER", "parts": [{"text": text}]}
+    if context_id:
+        msg["contextId"] = context_id
+    return {"message": msg}
+
+
 def main() -> int:
+    if not TOKEN:
+        print("set MAIDAN_TOKEN to a token from `maidan init`", file=sys.stderr)
+        return 2
     with httpx.Client(timeout=10.0) as client:
-        # 1) Agent Card conformance (§4.4.1).
-        print("Agent Card (/.well-known/agent-card.json):")
-        card = client.get(f"{BASE}/.well-known/agent-card.json").json()
-        check(bool(card.get("name")), "has name")
-        check(bool(card.get("description")), "has description")
-        check(bool(card.get("version")), "has version")
-        ifaces = card.get("supportedInterfaces") or []
-        check(len(ifaces) >= 1, "has >=1 supportedInterfaces")
-        bindings = {i.get("protocolBinding") for i in ifaces}
-        check("JSONRPC" in bindings, "advertises a JSONRPC interface")
+        print("Agent Card:")
+        card = client.get(f"{BASE}/.well-known/agent-card.json")
+        check(card.status_code == 200 and "etag" in card.headers, "served with an ETag")
+        card = card.json()
+        bindings = {i["protocolBinding"] for i in card.get("supportedInterfaces", [])}
+        check({"JSONRPC", "HTTP+JSON"} <= bindings, "advertises JSONRPC and HTTP+JSON")
+        check("bearer" in card.get("securitySchemes", {}), "declares bearer auth")
+
+        print("JSON-RPC: a conversation")
+        first = rpc(client, "SendMessage", message("hello from an A2A client")).get("result", {})
+        task = first.get("task", {})
+        context = task.get("contextId")
+        check(task.get("status", {}).get("state") == "TASK_STATE_COMPLETED", "delivered")
+        check(bool(context), "a new context (a new Maidan thread)")
+        reply = rpc(client, "SendMessage", message("a follow-up", context)).get("result", {})
+        check(reply.get("task", {}).get("contextId") == context, "the follow-up joins it")
+        got = rpc(client, "GetTask", {"id": task.get("id"), "historyLength": 1}).get("result", {})
+        history = got.get("history", [])
         check(
-            all(i.get("protocolVersion") for i in ifaces),
-            "every interface has a protocolVersion",
+            history and history[0]["parts"][0]["text"] == "hello from an A2A client",
+            "GetTask renders the message as history",
         )
-        caps = card.get("capabilities") or {}
-        check(isinstance(caps, dict), "capabilities is an object")
-        check(isinstance(card.get("skills"), list) and card["skills"], "has skills")
+        listed = rpc(client, "ListTasks", {"contextId": context}).get("result", {})
+        check(len(listed.get("tasks", [])) == 2, "ListTasks finds both tasks in the context")
+        missing = rpc(client, "GetTask", {"id": str(uuid.uuid4())})
+        check(missing.get("error", {}).get("code") == -32001, "unknown task: TaskNotFound")
 
-        # 2) Seed a channel/thread to target. With a token (auth on, as the
-        # quickstart runs), work inside the token's own workspace as its own
-        # member: creating a workspace is a bootstrap route. Without one (an
-        # auth-disabled dev server, as CI runs), create a fresh workspace.
-        print("Seeding a workspace/thread:")
-        if TOKEN:
-            me = client.get(f"{BASE}/me", headers=HEADERS).json()
-            wid = me["workspace_id"]
-            member = {"id": me["member_id"]}
-        else:
-            ws = client.post(
-                f"{BASE}/workspaces", headers=HEADERS, json={"name": "a2a-interop"}
-            ).json()
-            wid = ws["id"]
-            member = client.post(
-                f"{BASE}/workspaces/{wid}/members",
-                headers=HEADERS,
-                json={"handle": f"agent-{uuid.uuid4().hex[:6]}", "kind": "agent"},
-            ).json()
-        ch = client.post(
-            f"{BASE}/workspaces/{wid}/channels",
-            headers=HEADERS,
-            json={"name": f"a2a-{uuid.uuid4().hex[:6]}"},
-        ).json()
-        th = client.post(
-            f"{BASE}/channels/{ch['id']}/threads", headers=HEADERS, json={"title": "interop"}
-        ).json()
-        check(bool(th.get("id")), "created a thread")
-
-        # 3) JSON-RPC binding: SendMessage → GetTask (canonical method names, §5.3).
-        print("JSON-RPC binding:")
-        sent = rpc(
-            client,
-            "SendMessage",
-            {
-                "message": {"role": "user", "parts": [{"type": "text", "text": "hi from a2a"}]},
-                "metadata": {"maidan": {"threadId": th["id"], "authorId": member["id"]}},
-            },
-        )
-        task = sent.get("result", {}).get("task", {})
-        task_id = task.get("id")
-        check(bool(task_id), "SendMessage returned a task id")
+        print("HTTP+JSON: the same task")
+        rest = client.get(f"{BASE}/a2a/v1/tasks/{task.get('id')}", headers=HEADERS)
+        check(rest.status_code == 200 and rest.json().get("id") == task.get("id"), "GET /tasks/{id}")
+        with client.stream(
+            "POST", f"{BASE}/a2a/v1/message:stream", headers=HEADERS, json=message("streamed", context)
+        ) as stream:
+            events = [
+                json.loads(line[5:]) for line in stream.iter_lines() if line.startswith("data:")
+            ]
         check(
-            str(task.get("status", {}).get("state", "")).startswith("TASK_STATE_"),
-            "task state is a TASK_STATE_* enum value",
+            [next(iter(e)) for e in events] == ["task", "statusUpdate"],
+            "message:stream sends the task, then its completion",
         )
-        got = rpc(client, "GetTask", {"id": task_id})
-        check(got.get("result", {}).get("id") == task_id, "GetTask round-trips the task")
-        listed = rpc(client, "ListTasks", {})
-        check("tasks" in listed.get("result", {}), "ListTasks returns a tasks array")
-        # An unknown method is a proper JSON-RPC method-not-found.
-        bad = rpc(client, "NoSuchMethod", {})
-        check(bad.get("error", {}).get("code") == -32601, "unknown method → -32601")
 
-        # 4) REST binding (§11): the same task over GET /a2a/v1/tasks/{id}.
-        print("REST binding:")
-        rest_task = client.get(f"{BASE}/a2a/v1/tasks/{task_id}", headers=HEADERS)
-        check(rest_task.status_code == 200, "GET /a2a/v1/tasks/{id} → 200")
-        check(rest_task.json().get("id") == task_id, "REST GetTask round-trips the task")
-        rest_card = client.get(f"{BASE}/a2a/v1/extendedAgentCard", headers=HEADERS)
-        check(rest_card.status_code == 200, "GET /a2a/v1/extendedAgentCard → 200")
+        print("Version negotiation:")
+        old = client.get(
+            f"{BASE}/a2a/v1/tasks/{task.get('id')}",
+            headers={**HEADERS, "A2A-Version": "0.3"},
+        )
+        check(
+            old.status_code == 400
+            and old.json()["error"]["details"][0]["reason"] == "VERSION_NOT_SUPPORTED",
+            "A2A-Version 0.3 is refused",
+        )
 
     print()
     if _failures:
-        print(f"A2A interop: {len(_failures)} FAILED")
+        print(f"A2A walkthrough: {len(_failures)} FAILED")
         return 1
-    print("A2A interop: all checks passed")
+    print("A2A walkthrough: all checks passed")
     return 0
 
 

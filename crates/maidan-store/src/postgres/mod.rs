@@ -98,6 +98,7 @@ use chrono::{DateTime, Utc};
 use maidan_types::*;
 use sqlx::PgPool;
 
+use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite};
 use crate::error::StoreError;
 use crate::store::*;
 
@@ -3428,56 +3429,66 @@ impl A2aStore for PostgresStore {
         a2a::get_push_config(&self.pool, workspace_id).await
     }
 
-    async fn upsert_a2a_task(
-        &self,
-        workspace_id: WorkspaceId,
-        task_id: &str,
-        task_json: serde_json::Value,
-    ) -> Result<(), StoreError> {
-        a2a::upsert_task(&self.pool, workspace_id, task_id, task_json).await
+    async fn upsert_a2a_task(&self, task: A2aTaskWrite<'_>) -> Result<(), StoreError> {
+        a2a::upsert_task(&self.pool, task).await
     }
 
-    async fn get_a2a_task(&self, task_id: &str) -> Result<Option<serde_json::Value>, StoreError> {
+    async fn get_a2a_task(&self, task_id: &str) -> Result<Option<A2aTaskRow>, StoreError> {
         a2a::get_task(&self.pool, task_id).await
-    }
-
-    async fn get_a2a_task_workspace(
-        &self,
-        task_id: &str,
-    ) -> Result<Option<WorkspaceId>, StoreError> {
-        a2a::get_task_workspace(&self.pool, task_id).await
     }
 
     async fn list_a2a_tasks(
         &self,
         workspace_id: WorkspaceId,
-        limit: i64,
-        updated_after: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> Result<Vec<serde_json::Value>, StoreError> {
-        a2a::list_tasks(self.read_pool(), workspace_id, limit, updated_after).await
+        query: A2aTaskQuery<'_>,
+    ) -> Result<Vec<A2aTaskRow>, StoreError> {
+        a2a::list_tasks(&self.pool, workspace_id, query).await
     }
 
-    async fn create_a2a_task_push_config(
+    async fn count_a2a_tasks_by_context(
         &self,
-        task_id: &str,
-        config_id: &str,
-        url: &str,
+        workspace_id: WorkspaceId,
+        query: A2aTaskQuery<'_>,
+    ) -> Result<Vec<(Option<String>, i64)>, StoreError> {
+        a2a::count_tasks_by_context(&self.pool, workspace_id, query).await
+    }
+
+    async fn get_a2a_context_thread(
+        &self,
+        workspace_id: WorkspaceId,
+        context_id: &str,
+    ) -> Result<Option<ThreadId>, StoreError> {
+        a2a::get_context_thread(&self.pool, workspace_id, context_id).await
+    }
+
+    async fn bind_a2a_context(
+        &self,
+        workspace_id: WorkspaceId,
+        context_id: &str,
+        thread_id: ThreadId,
+    ) -> Result<ThreadId, StoreError> {
+        a2a::bind_context(&self.pool, workspace_id, context_id, thread_id).await
+    }
+
+    async fn upsert_a2a_task_push_config(
+        &self,
+        config: &A2aPushConfigRow,
     ) -> Result<(), StoreError> {
-        a2a::create_task_push_config(&self.pool, task_id, config_id, url).await
+        a2a::upsert_task_push_config(&self.pool, config).await
     }
 
     async fn get_a2a_task_push_config(
         &self,
         task_id: &str,
         config_id: &str,
-    ) -> Result<Option<String>, StoreError> {
+    ) -> Result<Option<A2aPushConfigRow>, StoreError> {
         a2a::get_task_push_config(&self.pool, task_id, config_id).await
     }
 
     async fn list_a2a_task_push_configs(
         &self,
         task_id: &str,
-    ) -> Result<Vec<(String, String)>, StoreError> {
+    ) -> Result<Vec<A2aPushConfigRow>, StoreError> {
         a2a::list_task_push_configs(&self.pool, task_id).await
     }
 

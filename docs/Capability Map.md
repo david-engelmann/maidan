@@ -73,9 +73,12 @@ MCP protocol methods (not tools):
 
 ## A2A protocol (`POST /a2a/v1/rpc`)
 
+The HTTP+JSON binding (`/a2a/v1/...`) checks the same capabilities.
+
 | Capability | JSON-RPC methods |
 |------------|------------------|
-| `message:post` | `SendMessage`, `GetTask` |
+| `message:post` | `SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`, `GetExtendedAgentCard` |
+| `workspace:write` | the four push-config methods; a `SendMessage` that opens a new context thread |
 
 ## Tests
 

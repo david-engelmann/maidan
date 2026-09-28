@@ -306,8 +306,9 @@ async fn a2a_answers_an_unreadable_request_in_json_rpc_and_its_rest_binding() {
         rest.headers()
             .get(header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok()),
-        Some("application/a2a+json")
+        Some("application/json")
     );
     let body: Value = rest.json().await.unwrap();
-    assert_eq!(body["error"]["code"], -32700);
+    assert_eq!(body["error"]["code"], 400);
+    assert_eq!(body["error"]["status"], "INVALID_ARGUMENT");
 }

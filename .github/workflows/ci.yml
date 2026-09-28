@@ -121,16 +121,15 @@ jobs:
           path: target/nextest/ci/junit.xml
           if-no-files-found: ignore
 
-  a2a-interop:
-    name: a2a interop (report-only)
+  a2a-tck:
+    name: a2a tck
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    # Boots a source-built server and runs the external A2A conformance client
-    # (examples/a2a_interop.py). Report-only (continue-on-error) and NOT a required
-    # check: the A2A binding behavior is gated by the required Rust e2e tests
-    # (a2a_protocol_e2e / a2a_grpc_e2e / channel_access_e2e); this job proves a
-    # non-Rust client interops end-to-end, without ever blocking a merge.
-    continue-on-error: true
+    timeout-minutes: 30
+    # Runs the official A2A TCK (pinned in scripts/a2a-tck.sh) against a
+    # source-built server over the JSON-RPC and HTTP+JSON bindings. Fails on any
+    # TCK failure, a stale exclusion, or a pass count below the recorded floor.
+    # Not a required check (docs/Decisions.md); the binding behaviour is also
+    # gated by the required Rust e2e tests.
     steps:
       - uses: actions/checkout@v4
       - name: install rust
@@ -141,10 +140,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: install httpx
-        run: pip install "httpx>=0.27"
-      - name: a2a conformance
-        run: scripts/a2a-interop.sh
+      - name: a2a tck
+        run: scripts/a2a-tck.sh
 
   mcp-inspector:
     name: mcp inspector (report-only)

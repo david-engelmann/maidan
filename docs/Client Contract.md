@@ -32,12 +32,13 @@ Ignore unknown JSON fields and unknown WS `kind` strings
 |------|------|--------------------------|
 | REST + WS | Default. Agent they wrote. Slack adapter later | **This is the SDK.** Methods below |
 | MCP | LangChain / AutoGen / Cursor / any MCP host | Not a method. `client.mcp_url` is `{base_url}/mcp/streamable`. Tool names in §6 must stay twins of the SDK names. Until J3 the server negotiates **`2024-11-05` only** |
-| A2A | Another vendor's agent | Not in the v1 SDK. Cookbook POSTs `SendMessage` to `/a2a/v1/rpc`. Agent Card at `GET /.well-known/agent-card.json` is **custom** until J4 (no `supportedInterfaces`). Egress parts are text-only (v267) |
+| A2A | Another vendor's agent | Not in the v1 SDK. Use any A2A v1.0 client; `examples/a2a_interop.py` is a walkthrough. Agent Card at `GET /.well-known/agent-card.json` |
 | Webhooks | n8n / Zapier | Not in the v1 SDK. REST `POST /workspaces/{wid}/webhooks` already exists. OpenAPI is the contract |
 
 Do not add a fourth protocol. Do not wrap MCP or A2A as the
-primary SDK transport. Do not pretend A2A is a drop-in v1.0 SDK
-target until the card passes a strict reader (J4).
+primary SDK transport. A2A clients use an A2A SDK; the server passes
+the official A2A TCK (`scripts/a2a-tck.sh`) apart from the cases listed,
+with reasons, in `scripts/a2a-tck/exclusions.txt`.
 
 ---
 
@@ -239,16 +240,19 @@ examples, not in the SDK. Protocol until J3: `2024-11-05`.
 
 ---
 
-## 7. A2A (recipe only until J4)
+## 7. A2A (a recipe, not an SDK surface)
 
-Production *subset*. Do not generate an A2A client in 0.1.
+A2A v1.0 over JSON-RPC and HTTP+JSON, checked by the official A2A TCK
+(`scripts/a2a-tck.sh`; excluded cases in `scripts/a2a-tck/exclusions.txt`).
+Do not generate an A2A client in 0.1; A2A SDKs already exist.
 
-| Call | HTTP | Honest caveat |
-|------|------|----------------|
-| Agent Card | `GET /.well-known/agent-card.json` | Custom fields (`rpc_url`, `capabilities[]`). Spec v1.0 wants `supportedInterfaces[]`. A strict SDK may reject this card. J4 |
-| RPC | `POST /a2a/v1/rpc` | SendMessage, SendStreamingMessage, GetTask, SubscribeToTask, tasks/cancel, resubscribe, pushNotificationConfig get/set |
-| Events | `POST /a2a/v1/events` | |
-| Egress | parts | **Text-only** (v267). File/data parts are J5 |
+| Call | HTTP | Note |
+|------|------|------|
+| Agent Card | `GET /.well-known/agent-card.json` | Spec v1.0 card |
+| JSON-RPC | `POST /a2a/v1/rpc` | Every v1.0 operation. Send `A2A-Version: 1.0` |
+| HTTP+JSON | `/a2a/v1/message:send`, `/a2a/v1/tasks`, … | Same operations, AIP-193 errors |
+| Parts | | Text or URL. File/data parts are J5 |
+| Events | `POST /a2a/v1/events` | Federation ingest, not A2A |
 
 Federation card `GET /.well-known/maidan.json` is Maidan-to-Maidan,
 not A2A. Do not confuse them.

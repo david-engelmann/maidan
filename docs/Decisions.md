@@ -455,6 +455,46 @@ keeps a raw extractor out.
 
 **To revisit:** on the move to axum 0.8, whose rejection types change.
 
+### A2A v1.0 as the official TCK reads it
+
+**Decision.** The A2A endpoint follows A2A v1.0.0 as the official TCK
+checks it, over JSON-RPC (`/a2a/v1/rpc`) and HTTP+JSON (`/a2a/v1/...`):
+
+- **Version.** A request names its version in the `A2A-Version` header (or
+  the `A2A-Version` query parameter). A missing version means 0.3, which is
+  refused with `VersionNotSupportedError`; only `1.0` is served.
+- **Contexts are threads.** A `contextId` Maidan has seen maps to its
+  thread; a thread id from the caller's workspace is that thread; any other
+  string opens a thread in the workspace's public `a2a` channel. A task
+  continues only in its own context.
+- **The author is the caller.** `SendMessage` posts as the token's member,
+  never a `metadata` field, and a bypass token is refused: the message must
+  have a real author.
+- **Tasks carry no words.** The task row stores ids, state and timestamps;
+  history is rendered from the stored message, so a tombstoned or shredded
+  message is gone from the task too. The migration strips old
+  `status.message` copies.
+- **Push secrets are sealed.** A push config's `token` and credentials are
+  encrypted with the at-rest key (`FEDERATION_ENCRYPTION_KEY`), never
+  returned, and a server without the key refuses them.
+- **Errors** are the spec's: JSON-RPC codes with a `google.rpc.ErrorInfo`,
+  and AIP-193 bodies with the matching HTTP status on the REST binding,
+  which answers `application/json`. A task the caller cannot read is
+  `TaskNotFoundError`, never a hint that it exists.
+- **Listing** pages by an opaque `(updated_at, id)` cursor; `totalSize` is
+  exact after the channel-RBAC filter, and `statusTimestampAfter` is
+  inclusive, as the proto says.
+
+**Alternative.** Keep the Maidan subset (`metadata.maidan.threadId` and
+`authorId`, `application/a2a+json`, no version check) and document the
+differences.
+
+**Why this:** a generic A2A client could not talk to the subset, and
+trusting a body `authorId` let one member post as another.
+
+**To revisit:** a new A2A major version, or when the gRPC binding (task
+read/cancel/list only) grows to the full surface and joins the TCK run.
+
 ## Security
 
 ### The search tap resumes; the verifier verifies (`v402.2.0`)
@@ -1149,6 +1189,33 @@ red advisory job already shows. Open Work does not call for it.
 
 **To revisit:** if a floor is missed on `main` without anyone noticing, make
 the job required.
+
+### The A2A TCK is a non-required CI job that fails on regressions
+
+**Decision.** The `a2a tck` job runs `scripts/a2a-tck.sh`: the official
+A2A TCK at a pinned commit (tag `1.0.0.alpha2` plus harness fixes) against
+a source-built, auth-enabled server over JSON-RPC and HTTP+JSON. It fails
+on any TCK failure, on an exclusion that no longer matches a test, and when
+fewer tests pass than the recorded floor (a failed set-up request makes the
+TCK skip, so a regression can surface as a skip). It is not a required
+check and has no `continue-on-error`: a red run is visible without blocking
+a merge. It replaces the report-only `a2a interop` job, whose client
+(`examples/a2a_interop.py`) now runs first in the same job.
+`scripts/a2a-tck/exclusions.txt` holds the tests Maidan does not run, each
+with its reason: the artifact and direct-Message tests need the TCK's
+scripted reference agent, and `CORE-SEND-003` has no expected error in the
+TCK, so its generic runner demands success from a request that must fail.
+
+**Alternative.** A required check; or report-only (`continue-on-error`), as
+`a2a interop` was.
+
+**Why this:** Open Work does not say required. The TCK is an alpha fetched
+from GitHub at run time, so a network or upstream problem would block
+merges, and the A2A behaviour it covers is also pinned by the required Rust
+e2e tests. Report-only would hide a regression behind a green tick.
+
+**To revisit:** when the TCK cuts a stable release: pin it, raise the floor,
+and consider making the job required.
 
 ## Workflow
 

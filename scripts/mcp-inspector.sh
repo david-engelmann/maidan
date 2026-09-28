@@ -12,8 +12,8 @@
 #   2. runs the Inspector CLI against `/mcp` and `/mcp/streamable`.
 # Exits non-zero on the first failed check.
 #
-# Like scripts/a2a-interop.sh this is a reproducible harness for local use and
-# a report-only CI job, not a required gate.
+# A reproducible harness for local use and a report-only CI job, not a
+# required gate.
 #
 # Usage:  scripts/mcp-inspector.sh
 # Env:    MAIDAN_MCP_PORT (default 18090)

@@ -1,7 +1,9 @@
-use maidan_types::WorkspaceId;
+use chrono::{DateTime, Utc};
+use maidan_types::{ThreadId, WorkspaceId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite};
 use crate::error::StoreError;
 
 pub async fn upsert_push_config(
@@ -35,84 +37,179 @@ pub async fn get_push_config(
     Ok(row.map(|r| r.0))
 }
 
-pub async fn upsert_task(
-    pool: &PgPool,
-    workspace_id: WorkspaceId,
-    task_id: &str,
-    task_json: serde_json::Value,
-) -> Result<(), StoreError> {
+type TaskRow = (String, Uuid, DateTime<Utc>, serde_json::Value);
+
+fn task_row((id, workspace_id, updated_at, task_json): TaskRow) -> A2aTaskRow {
+    A2aTaskRow {
+        id,
+        workspace_id: WorkspaceId(workspace_id),
+        updated_at,
+        task_json,
+    }
+}
+
+pub async fn upsert_task(pool: &PgPool, task: A2aTaskWrite<'_>) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_a2a_tasks (id, workspace_id, task_json)
-         VALUES ($1, $2, $3)
+        "INSERT INTO maidan_a2a_tasks (id, workspace_id, context_id, state, task_json, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (id) DO UPDATE SET
+            context_id = EXCLUDED.context_id,
+            state = EXCLUDED.state,
             task_json = EXCLUDED.task_json,
-            updated_at = NOW()",
+            updated_at = EXCLUDED.updated_at",
     )
-    .bind(task_id)
-    .bind(workspace_id.0)
-    .bind(task_json)
+    .bind(task.task_id)
+    .bind(task.workspace_id.0)
+    .bind(task.context_id)
+    .bind(task.state)
+    .bind(task.task_json)
+    .bind(task.status_at)
     .execute(pool)
     .await?;
     Ok(())
 }
 
-pub async fn get_task(
-    pool: &PgPool,
-    task_id: &str,
-) -> Result<Option<serde_json::Value>, StoreError> {
-    let row: Option<(serde_json::Value,)> =
-        sqlx::query_as("SELECT task_json FROM maidan_a2a_tasks WHERE id = $1")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await?;
-    Ok(row.map(|r| r.0))
-}
-
-pub async fn get_task_workspace(
-    pool: &PgPool,
-    task_id: &str,
-) -> Result<Option<WorkspaceId>, StoreError> {
-    let row: Option<Uuid> =
-        sqlx::query_scalar("SELECT workspace_id FROM maidan_a2a_tasks WHERE id = $1")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await?;
-    Ok(row.map(WorkspaceId))
+pub async fn get_task(pool: &PgPool, task_id: &str) -> Result<Option<A2aTaskRow>, StoreError> {
+    let row: Option<TaskRow> = sqlx::query_as(
+        "SELECT id, workspace_id, updated_at, task_json FROM maidan_a2a_tasks WHERE id = $1",
+    )
+    .bind(task_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(task_row))
 }
 
 pub async fn list_tasks(
     pool: &PgPool,
     workspace_id: WorkspaceId,
-    limit: i64,
-    updated_after: Option<chrono::DateTime<chrono::Utc>>,
-) -> Result<Vec<serde_json::Value>, StoreError> {
-    let rows: Vec<(serde_json::Value,)> = sqlx::query_as(
-        "SELECT task_json FROM maidan_a2a_tasks
-         WHERE workspace_id = $1 AND ($3::timestamptz IS NULL OR updated_at > $3)
-         ORDER BY updated_at DESC, id DESC LIMIT $2",
+    query: A2aTaskQuery<'_>,
+) -> Result<Vec<A2aTaskRow>, StoreError> {
+    let (before_at, before_id) = match query.before {
+        Some((at, id)) => (Some(at), Some(id)),
+        None => (None, None),
+    };
+    let rows: Vec<TaskRow> = sqlx::query_as(
+        "SELECT id, workspace_id, updated_at, task_json FROM maidan_a2a_tasks
+         WHERE workspace_id = $1
+           AND ($2::text IS NULL OR context_id = $2)
+           AND ($3::text IS NULL OR state = $3)
+           AND ($4::timestamptz IS NULL OR updated_at >= $4)
+           AND ($5::timestamptz IS NULL OR (updated_at, id) < ($5, $6::text))
+         ORDER BY updated_at DESC, id DESC LIMIT $7",
     )
     .bind(workspace_id.0)
-    .bind(limit)
-    .bind(updated_after)
+    .bind(query.context_id)
+    .bind(query.state)
+    .bind(query.updated_since)
+    .bind(before_at)
+    .bind(before_id)
+    .bind(query.limit)
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().map(|r| r.0).collect())
+    Ok(rows.into_iter().map(task_row).collect())
 }
 
-pub async fn create_task_push_config(
+pub async fn count_tasks_by_context(
     pool: &PgPool,
-    task_id: &str,
-    config_id: &str,
-    url: &str,
+    workspace_id: WorkspaceId,
+    query: A2aTaskQuery<'_>,
+) -> Result<Vec<(Option<String>, i64)>, StoreError> {
+    Ok(sqlx::query_as(
+        "SELECT context_id, COUNT(*) FROM maidan_a2a_tasks
+         WHERE workspace_id = $1
+           AND ($2::text IS NULL OR context_id = $2)
+           AND ($3::text IS NULL OR state = $3)
+           AND ($4::timestamptz IS NULL OR updated_at >= $4)
+         GROUP BY context_id",
+    )
+    .bind(workspace_id.0)
+    .bind(query.context_id)
+    .bind(query.state)
+    .bind(query.updated_since)
+    .fetch_all(pool)
+    .await?)
+}
+
+pub async fn get_context_thread(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    context_id: &str,
+) -> Result<Option<ThreadId>, StoreError> {
+    let row: Option<Uuid> = sqlx::query_scalar(
+        "SELECT thread_id FROM maidan_a2a_contexts WHERE workspace_id = $1 AND context_id = $2",
+    )
+    .bind(workspace_id.0)
+    .bind(context_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(ThreadId))
+}
+
+pub async fn bind_context(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    context_id: &str,
+    thread_id: ThreadId,
+) -> Result<ThreadId, StoreError> {
+    let bound: Uuid = sqlx::query_scalar(
+        "INSERT INTO maidan_a2a_contexts (workspace_id, context_id, thread_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (workspace_id, context_id) DO UPDATE SET context_id = EXCLUDED.context_id
+         RETURNING thread_id",
+    )
+    .bind(workspace_id.0)
+    .bind(context_id)
+    .bind(thread_id.0)
+    .fetch_one(pool)
+    .await?;
+    Ok(ThreadId(bound))
+}
+
+type PushRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+const PUSH_COLS: &str = "task_id, config_id, push_url, token_ciphertext, auth_scheme, \
+                         auth_credentials_ciphertext";
+
+fn push_row(
+    (task_id, config_id, url, token_ciphertext, auth_scheme, auth_credentials_ciphertext): PushRow,
+) -> A2aPushConfigRow {
+    A2aPushConfigRow {
+        task_id,
+        config_id,
+        url,
+        token_ciphertext,
+        auth_scheme,
+        auth_credentials_ciphertext,
+    }
+}
+
+pub async fn upsert_task_push_config(
+    pool: &PgPool,
+    config: &A2aPushConfigRow,
 ) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_a2a_task_push_configs (task_id, config_id, push_url)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (task_id, config_id) DO UPDATE SET push_url = EXCLUDED.push_url",
+        "INSERT INTO maidan_a2a_task_push_configs
+            (task_id, config_id, push_url, token_ciphertext, auth_scheme, auth_credentials_ciphertext)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (task_id, config_id) DO UPDATE SET
+            push_url = EXCLUDED.push_url,
+            token_ciphertext = EXCLUDED.token_ciphertext,
+            auth_scheme = EXCLUDED.auth_scheme,
+            auth_credentials_ciphertext = EXCLUDED.auth_credentials_ciphertext",
     )
-    .bind(task_id)
-    .bind(config_id)
-    .bind(url)
+    .bind(&config.task_id)
+    .bind(&config.config_id)
+    .bind(&config.url)
+    .bind(&config.token_ciphertext)
+    .bind(&config.auth_scheme)
+    .bind(&config.auth_credentials_ciphertext)
     .execute(pool)
     .await?;
     Ok(())
@@ -122,29 +219,30 @@ pub async fn get_task_push_config(
     pool: &PgPool,
     task_id: &str,
     config_id: &str,
-) -> Result<Option<String>, StoreError> {
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT push_url FROM maidan_a2a_task_push_configs WHERE task_id = $1 AND config_id = $2",
-    )
+) -> Result<Option<A2aPushConfigRow>, StoreError> {
+    let row: Option<PushRow> = sqlx::query_as(&format!(
+        "SELECT {PUSH_COLS} FROM maidan_a2a_task_push_configs
+         WHERE task_id = $1 AND config_id = $2"
+    ))
     .bind(task_id)
     .bind(config_id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|r| r.0))
+    Ok(row.map(push_row))
 }
 
 pub async fn list_task_push_configs(
     pool: &PgPool,
     task_id: &str,
-) -> Result<Vec<(String, String)>, StoreError> {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT config_id, push_url FROM maidan_a2a_task_push_configs
-         WHERE task_id = $1 ORDER BY created_at ASC, config_id ASC",
-    )
+) -> Result<Vec<A2aPushConfigRow>, StoreError> {
+    let rows: Vec<PushRow> = sqlx::query_as(&format!(
+        "SELECT {PUSH_COLS} FROM maidan_a2a_task_push_configs
+         WHERE task_id = $1 ORDER BY created_at ASC, config_id ASC"
+    ))
     .bind(task_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows)
+    Ok(rows.into_iter().map(push_row).collect())
 }
 
 pub async fn delete_task_push_config(

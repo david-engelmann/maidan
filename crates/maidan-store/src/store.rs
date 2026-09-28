@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use maidan_types::*;
 
+use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite};
 use crate::error::StoreError;
 
 /// Backend-agnostic Maidan storage interface.
@@ -2740,46 +2741,57 @@ pub trait A2aStore: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Option<String>, StoreError>;
 
-    async fn upsert_a2a_task(
-        &self,
-        workspace_id: WorkspaceId,
-        task_id: &str,
-        task_json: serde_json::Value,
-    ) -> Result<(), StoreError>;
-    async fn get_a2a_task(&self, task_id: &str) -> Result<Option<serde_json::Value>, StoreError>;
-    async fn get_a2a_task_workspace(
-        &self,
-        task_id: &str,
-    ) -> Result<Option<WorkspaceId>, StoreError>;
-    /// List a workspace's A2A task JSON blobs, most-recently-updated first, up
-    /// to `limit`. The A2A `ListTasks` operation filters + paginates over this.
-    /// A workspace's A2A tasks, most-recently-updated first. `updated_after`
-    /// keeps only tasks whose status changed strictly after the given instant.
+    /// Insert or replace a task. The row's `updated_at` is the task's
+    /// status timestamp, so list order matches what the task reports.
+    async fn upsert_a2a_task(&self, task: A2aTaskWrite<'_>) -> Result<(), StoreError>;
+    async fn get_a2a_task(&self, task_id: &str) -> Result<Option<A2aTaskRow>, StoreError>;
+    /// A workspace's tasks matching `query`, newest status first (ties by id
+    /// descending), at most `query.limit`.
     async fn list_a2a_tasks(
         &self,
         workspace_id: WorkspaceId,
-        limit: i64,
-        updated_after: Option<chrono::DateTime<chrono::Utc>>,
-    ) -> Result<Vec<serde_json::Value>, StoreError>;
-
-    /// Per-task A2A push notification configs (A2A v1.0 spec model: many configs per
-    /// task, each with a stable `config_id`). Upsert by `(task_id, config_id)`.
-    async fn create_a2a_task_push_config(
+        query: A2aTaskQuery<'_>,
+    ) -> Result<Vec<A2aTaskRow>, StoreError>;
+    /// How many of a workspace's tasks match `query`'s filters, per
+    /// `context_id` (`before` and `limit` are ignored). Grouped so a caller
+    /// can drop the contexts it may not read without loading every row.
+    async fn count_a2a_tasks_by_context(
         &self,
-        task_id: &str,
-        config_id: &str,
-        url: &str,
+        workspace_id: WorkspaceId,
+        query: A2aTaskQuery<'_>,
+    ) -> Result<Vec<(Option<String>, i64)>, StoreError>;
+
+    /// The thread a client-chosen A2A `contextId` names in a workspace.
+    async fn get_a2a_context_thread(
+        &self,
+        workspace_id: WorkspaceId,
+        context_id: &str,
+    ) -> Result<Option<ThreadId>, StoreError>;
+    /// Bind a client-chosen `contextId` to a thread. If a concurrent request
+    /// bound it first, that binding wins and its thread is returned.
+    async fn bind_a2a_context(
+        &self,
+        workspace_id: WorkspaceId,
+        context_id: &str,
+        thread_id: ThreadId,
+    ) -> Result<ThreadId, StoreError>;
+
+    /// Per-task A2A push notification configs (many per task, each with a
+    /// stable `config_id`). Upsert by `(task_id, config_id)`.
+    async fn upsert_a2a_task_push_config(
+        &self,
+        config: &A2aPushConfigRow,
     ) -> Result<(), StoreError>;
     async fn get_a2a_task_push_config(
         &self,
         task_id: &str,
         config_id: &str,
-    ) -> Result<Option<String>, StoreError>;
-    /// Returns `(config_id, url)` pairs for the task, oldest first.
+    ) -> Result<Option<A2aPushConfigRow>, StoreError>;
+    /// A task's configs, oldest first.
     async fn list_a2a_task_push_configs(
         &self,
         task_id: &str,
-    ) -> Result<Vec<(String, String)>, StoreError>;
+    ) -> Result<Vec<A2aPushConfigRow>, StoreError>;
     /// Returns `true` if a config was removed, `false` if none matched.
     async fn delete_a2a_task_push_config(
         &self,

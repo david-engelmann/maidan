@@ -1,7 +1,9 @@
-use maidan_types::WorkspaceId;
+use chrono::{DateTime, SecondsFormat, Utc};
+use maidan_types::{ThreadId, WorkspaceId};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite};
 use crate::error::StoreError;
 
 pub async fn upsert_push_config(
@@ -35,93 +37,192 @@ pub async fn get_push_config(
     Ok(row.map(|r| r.0))
 }
 
-pub async fn upsert_task(
-    pool: &SqlitePool,
-    workspace_id: WorkspaceId,
-    task_id: &str,
-    task_json: serde_json::Value,
-) -> Result<(), StoreError> {
-    let json = serde_json::to_string(&task_json)?;
+/// The `updated_at` text form: always millisecond `...Z`, so rows and cursors
+/// compare correctly as strings.
+fn ts(t: DateTime<Utc>) -> String {
+    t.to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+fn parse_ts(s: &str) -> Result<DateTime<Utc>, StoreError> {
+    DateTime::parse_from_rfc3339(s)
+        .map(|d| d.with_timezone(&Utc))
+        .map_err(|e| StoreError::InvalidInput(format!("bad timestamp: {e}")))
+}
+
+type TaskRow = (String, Uuid, String, String);
+
+fn task_row((id, workspace_id, updated_at, json): TaskRow) -> Result<A2aTaskRow, StoreError> {
+    Ok(A2aTaskRow {
+        id,
+        workspace_id: WorkspaceId(workspace_id),
+        updated_at: parse_ts(&updated_at)?,
+        task_json: serde_json::from_str(&json)?,
+    })
+}
+
+pub async fn upsert_task(pool: &SqlitePool, task: A2aTaskWrite<'_>) -> Result<(), StoreError> {
+    let json = serde_json::to_string(&task.task_json)?;
     sqlx::query(
-        "INSERT INTO maidan_a2a_tasks (id, workspace_id, task_json)
-         VALUES (?, ?, ?)
+        "INSERT INTO maidan_a2a_tasks (id, workspace_id, context_id, state, task_json, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
+            context_id = excluded.context_id,
+            state = excluded.state,
             task_json = excluded.task_json,
-            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            updated_at = excluded.updated_at",
     )
-    .bind(task_id)
-    .bind(workspace_id.0)
+    .bind(task.task_id)
+    .bind(task.workspace_id.0)
+    .bind(task.context_id)
+    .bind(task.state)
     .bind(json)
+    .bind(ts(task.status_at))
     .execute(pool)
     .await?;
     Ok(())
 }
 
-pub async fn get_task(
-    pool: &SqlitePool,
-    task_id: &str,
-) -> Result<Option<serde_json::Value>, StoreError> {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT task_json FROM maidan_a2a_tasks WHERE id = ?")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await?;
-    row.map(|r| serde_json::from_str(&r.0).map_err(StoreError::from))
-        .transpose()
-}
-
-pub async fn get_task_workspace(
-    pool: &SqlitePool,
-    task_id: &str,
-) -> Result<Option<WorkspaceId>, StoreError> {
-    let row: Option<Uuid> =
-        sqlx::query_scalar("SELECT workspace_id FROM maidan_a2a_tasks WHERE id = ?")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await?;
-    Ok(row.map(WorkspaceId))
+pub async fn get_task(pool: &SqlitePool, task_id: &str) -> Result<Option<A2aTaskRow>, StoreError> {
+    let row: Option<TaskRow> = sqlx::query_as(
+        "SELECT id, workspace_id, updated_at, task_json FROM maidan_a2a_tasks WHERE id = ?",
+    )
+    .bind(task_id)
+    .fetch_optional(pool)
+    .await?;
+    row.map(task_row).transpose()
 }
 
 pub async fn list_tasks(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
-    limit: i64,
-    updated_after: Option<chrono::DateTime<chrono::Utc>>,
-) -> Result<Vec<serde_json::Value>, StoreError> {
-    // `updated_at` is stored `...Z` (ms) while chrono emits `...+00:00`; wrap both
-    // in `datetime(...)` so the compare is on a normalized UTC value, not the raw
-    // string (avoids the `Z`-vs-`+00:00` lexical trap). Second precision is fine
-    // for `statusTimestampAfter`.
-    let after = updated_after.map(|t| t.to_rfc3339());
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT task_json FROM maidan_a2a_tasks
-         WHERE workspace_id = ?1 AND (?2 IS NULL OR datetime(updated_at) > datetime(?2))
-         ORDER BY updated_at DESC, id DESC LIMIT ?3",
+    query: A2aTaskQuery<'_>,
+) -> Result<Vec<A2aTaskRow>, StoreError> {
+    let (before_at, before_id) = match query.before {
+        Some((at, id)) => (Some(ts(at)), Some(id)),
+        None => (None, None),
+    };
+    let rows: Vec<TaskRow> = sqlx::query_as(
+        "SELECT id, workspace_id, updated_at, task_json FROM maidan_a2a_tasks
+         WHERE workspace_id = ?1
+           AND (?2 IS NULL OR context_id = ?2)
+           AND (?3 IS NULL OR state = ?3)
+           AND (?4 IS NULL OR updated_at >= ?4)
+           AND (?5 IS NULL OR updated_at < ?5 OR (updated_at = ?5 AND id < ?6))
+         ORDER BY updated_at DESC, id DESC LIMIT ?7",
     )
     .bind(workspace_id.0)
-    .bind(after)
-    .bind(limit)
+    .bind(query.context_id)
+    .bind(query.state)
+    .bind(query.updated_since.map(ts))
+    .bind(before_at)
+    .bind(before_id)
+    .bind(query.limit)
     .fetch_all(pool)
     .await?;
-    rows.into_iter()
-        .map(|r| serde_json::from_str(&r.0).map_err(StoreError::from))
-        .collect()
+    rows.into_iter().map(task_row).collect()
 }
 
-pub async fn create_task_push_config(
+pub async fn count_tasks_by_context(
     pool: &SqlitePool,
-    task_id: &str,
-    config_id: &str,
-    url: &str,
+    workspace_id: WorkspaceId,
+    query: A2aTaskQuery<'_>,
+) -> Result<Vec<(Option<String>, i64)>, StoreError> {
+    Ok(sqlx::query_as(
+        "SELECT context_id, COUNT(*) FROM maidan_a2a_tasks
+         WHERE workspace_id = ?1
+           AND (?2 IS NULL OR context_id = ?2)
+           AND (?3 IS NULL OR state = ?3)
+           AND (?4 IS NULL OR updated_at >= ?4)
+         GROUP BY context_id",
+    )
+    .bind(workspace_id.0)
+    .bind(query.context_id)
+    .bind(query.state)
+    .bind(query.updated_since.map(ts))
+    .fetch_all(pool)
+    .await?)
+}
+
+pub async fn get_context_thread(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    context_id: &str,
+) -> Result<Option<ThreadId>, StoreError> {
+    let row: Option<Uuid> = sqlx::query_scalar(
+        "SELECT thread_id FROM maidan_a2a_contexts WHERE workspace_id = ? AND context_id = ?",
+    )
+    .bind(workspace_id.0)
+    .bind(context_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(ThreadId))
+}
+
+pub async fn bind_context(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    context_id: &str,
+    thread_id: ThreadId,
+) -> Result<ThreadId, StoreError> {
+    let bound: Uuid = sqlx::query_scalar(
+        "INSERT INTO maidan_a2a_contexts (workspace_id, context_id, thread_id)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(workspace_id, context_id) DO UPDATE SET context_id = excluded.context_id
+         RETURNING thread_id",
+    )
+    .bind(workspace_id.0)
+    .bind(context_id)
+    .bind(thread_id.0)
+    .fetch_one(pool)
+    .await?;
+    Ok(ThreadId(bound))
+}
+
+type PushRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+const PUSH_COLS: &str = "task_id, config_id, push_url, token_ciphertext, auth_scheme, \
+                         auth_credentials_ciphertext";
+
+fn push_row(
+    (task_id, config_id, url, token_ciphertext, auth_scheme, auth_credentials_ciphertext): PushRow,
+) -> A2aPushConfigRow {
+    A2aPushConfigRow {
+        task_id,
+        config_id,
+        url,
+        token_ciphertext,
+        auth_scheme,
+        auth_credentials_ciphertext,
+    }
+}
+
+pub async fn upsert_task_push_config(
+    pool: &SqlitePool,
+    config: &A2aPushConfigRow,
 ) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_a2a_task_push_configs (task_id, config_id, push_url)
-         VALUES (?, ?, ?)
-         ON CONFLICT(task_id, config_id) DO UPDATE SET push_url = excluded.push_url",
+        "INSERT INTO maidan_a2a_task_push_configs
+            (task_id, config_id, push_url, token_ciphertext, auth_scheme, auth_credentials_ciphertext)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(task_id, config_id) DO UPDATE SET
+            push_url = excluded.push_url,
+            token_ciphertext = excluded.token_ciphertext,
+            auth_scheme = excluded.auth_scheme,
+            auth_credentials_ciphertext = excluded.auth_credentials_ciphertext",
     )
-    .bind(task_id)
-    .bind(config_id)
-    .bind(url)
+    .bind(&config.task_id)
+    .bind(&config.config_id)
+    .bind(&config.url)
+    .bind(&config.token_ciphertext)
+    .bind(&config.auth_scheme)
+    .bind(&config.auth_credentials_ciphertext)
     .execute(pool)
     .await?;
     Ok(())
@@ -131,29 +232,29 @@ pub async fn get_task_push_config(
     pool: &SqlitePool,
     task_id: &str,
     config_id: &str,
-) -> Result<Option<String>, StoreError> {
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT push_url FROM maidan_a2a_task_push_configs WHERE task_id = ? AND config_id = ?",
-    )
+) -> Result<Option<A2aPushConfigRow>, StoreError> {
+    let row: Option<PushRow> = sqlx::query_as(&format!(
+        "SELECT {PUSH_COLS} FROM maidan_a2a_task_push_configs WHERE task_id = ? AND config_id = ?"
+    ))
     .bind(task_id)
     .bind(config_id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|r| r.0))
+    Ok(row.map(push_row))
 }
 
 pub async fn list_task_push_configs(
     pool: &SqlitePool,
     task_id: &str,
-) -> Result<Vec<(String, String)>, StoreError> {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT config_id, push_url FROM maidan_a2a_task_push_configs
-         WHERE task_id = ? ORDER BY created_at ASC, config_id ASC",
-    )
+) -> Result<Vec<A2aPushConfigRow>, StoreError> {
+    let rows: Vec<PushRow> = sqlx::query_as(&format!(
+        "SELECT {PUSH_COLS} FROM maidan_a2a_task_push_configs
+         WHERE task_id = ? ORDER BY created_at ASC, config_id ASC"
+    ))
     .bind(task_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows)
+    Ok(rows.into_iter().map(push_row).collect())
 }
 
 pub async fn delete_task_push_config(

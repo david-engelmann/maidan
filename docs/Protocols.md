@@ -51,8 +51,8 @@ One model, one capability map, four primary transports plus the IT surfaces.
 | MCP SSE (legacy-shaped) | `GET /mcp/stream`, `GET /mcp/notifications` | Production | Fine for Maidan live-wait. HTTP+SSE is deprecated in the MCP spec (SEP-2596); migrate *clients* toward Streamable HTTP, not a third Maidan transport. |
 | MCP stdio | `maidan mcp-stdio` | Production | The desktop-client path (Claude Desktop / local Cursor). Same JSON-RPC, SQLite or Postgres. |
 | WebSocket | `GET /ws/subscribe` | Production | Resumable cursors, capability `event:subscribe`. This is Maidan's agent↔UI live path. |
-| A2A JSON-RPC v1.0 | `POST /a2a/v1/rpc`, `POST /a2a/v1/events` | Production subset | Methods: SendMessage, SendStreamingMessage, GetTask, SubscribeToTask, tasks/cancel, resubscribe, pushNotificationConfig get/set. **Egress parts are text-only** (v267). **gRPC binding is partial** — the `A2AService` exposes `get_task`/`cancel_task`/`list_tasks` only; `SendMessage`, push configs, and streaming are JSON-RPC/REST only. |
-| A2A Agent Card | `GET /.well-known/agent-card.json` | Present, **custom schema** | Fields: `name`, `version`, `protocol_version`, `rpc_url`, `ingress_url`, `capabilities[]`. Spec v1.0 wants `supportedInterfaces[]` (`JSONRPC` / `GRPC` / `HTTP+JSON`), skills, auth. A strict A2A SDK may reject this card. |
+| A2A v1.0 (JSON-RPC, HTTP+JSON) | `POST /a2a/v1/rpc`, `/a2a/v1/message:send` and the rest of §11 | Production; **checked by the official A2A TCK** in CI (`scripts/a2a-tck.sh`; excluded cases in `scripts/a2a-tck/exclusions.txt`) | Every v1.0 operation: SendMessage, SendStreamingMessage, GetTask, ListTasks, CancelTask, SubscribeToTask, the four push-config operations, GetExtendedAgentCard. Requests send `A2A-Version: 1.0`; a request without it is 0.3 and refused. A `contextId` is a Maidan thread, and the message is posted as the token's member. Parts are text or URL. **gRPC binding is partial** — `GetTask`/`CancelTask`/`ListTasks` only, and not TCK-checked. `POST /a2a/v1/events` is federation ingest, not A2A. |
+| A2A Agent Card | `GET /.well-known/agent-card.json` | Production (spec v1.0) | `supportedInterfaces` (`JSONRPC`, `HTTP+JSON`, optional `GRPC`), capabilities, skills, a bearer `securitySchemes` entry; cacheable (`ETag`, `Cache-Control`). The extended card needs a token. |
 | Federation card | `GET /.well-known/maidan.json` | Production | Maidan-to-Maidan, not A2A. |
 | Outbound webhooks | `/workspaces/:wid/webhooks`, mention-webhook | Production | Signed POSTs of event envelopes. The n8n / Zapier / Make path. |
 | Slash commands | `/workspaces/:wid/slash-commands` | Production | HTTP callbacks, Slack-shaped. |
@@ -110,7 +110,7 @@ until the upgrade lands is not the same as accepting 2024 forever.
 | Protocol | Code today (2026-08-25) | Required | ID |
 |----------|-------------------------|----------|-----|
 | **MCP** | ✅ **`2026-07-28` shipped** (default; `2025-11-25`, `2025-06-18`, `2025-03-26` and `2024-11-05` accepted since Cluster 412). Stateless Streamable HTTP (no `Mcp-Session-Id`), SEP-2243 `Mcp-Method`/`Mcp-Name` headers, live-wait on `GET /mcp/stream`/WS. | Done–303. | **J3** ✅ |
-| **A2A Agent Card** | Custom `{rpc_url, capabilities[]}` | Spec v1.0 `supportedInterfaces` (`JSONRPC`) | J4 |
+| **A2A Agent Card** | ✅ Spec v1.0 card, TCK-checked | Spec v1.0 `supportedInterfaces` (`JSONRPC`) | **J4** ✅ |
 | **A2A parts** | Egress text-only (v267) | File/data parts when artifacts exist | J5 |
 | MCP OAuth (RFC 8707) | Capability bearers | Only if a real 2026 host refuses bearer after J3 | J6 |
 
@@ -153,7 +153,7 @@ J3 shipped (`2026-07-28`). The rest is adapters + honesty. No new native protoco
 | **J1** | This page | Docs | **Written 2026-08-25.** Keep true when `SUPPORTED_PROTOCOL_VERSIONS` changes. |
 | **J2** | ✅ Retired | Docs | Was: "temporary honesty (today 2024-11-05)". No longer needed — J3 shipped; README/Integration now advertise `2026-07-28`. |
 | **J3** | ✅ MCP `2026-07-28` **shipped** | Done | Negotiation → stateless streamable core → SEP-2243 routing headers → advertise (default flip + card/reference/Integration). `2024-11-05` still accepted. |
-| **J4** | A2A Agent Card → spec v1.0 `supportedInterfaces` | Small | Keep JSON-RPC URL. Advertise `protocolBinding: JSONRPC`. Do not add gRPC just to fill the array. Signed JWS cards are enterprise-later. |
+| **J4** | ✅ A2A Agent Card → spec v1.0 `supportedInterfaces` | Done | Keep JSON-RPC URL. Advertise `protocolBinding: JSONRPC`. Do not add gRPC just to fill the array. Signed JWS cards are enterprise-later. |
 | **J5** | A2A file/data parts | Cluster (after 267 text) | Ingress already preserves structured content; egress is text-only. Round-trip files when an artifact already exists. |
 | **J6** | MCP OAuth resource-server (RFC 8707) | Spike, then maybe | Remote Claude/Cursor may insist. Today: capability bearers. Implement only if a real host refuses the bearer. Do not replace workspace capabilities with a second ACL. |
 | **J7** | Webhook + OpenAPI recipe for n8n/Zapier | Docs | They already work. Show one signed webhook + one REST post. |
