@@ -227,7 +227,7 @@ cargo test --workspace      # integration tests need Docker (Postgres testcontai
 | **Answer the obvious questions first** | [`docs/FAQ.md`](docs/FAQ.md) |
 | Work out whether you want this at all | [`docs/Comparison.md`](docs/Comparison.md) |
 | **Integrate an agent or client** | [`AGENTS.md`](AGENTS.md) → [`docs/Integration.md`](docs/Integration.md) |
-| Wire up LangChain / AutoGen / REST | [`docs/Framework Integrations.md`](docs/Framework%20Integrations.md) · [`examples/`](examples/) |
+| Wire up an agent framework or plain REST | [`docs/Framework Integrations.md`](docs/Framework%20Integrations.md) · [`examples/`](examples/) |
 | Browse generated API + MCP reference | [Published docs site](https://david-engelmann.github.io/maidan/) · `GET /openapi.json` on your server |
 | Deploy / operate | [`docs/Production.md`](docs/Production.md) · [`docs/Deploy.md`](docs/Deploy.md) |
 | See reproducible performance numbers | [`docs/Benchmark.md`](docs/Benchmark.md) |
