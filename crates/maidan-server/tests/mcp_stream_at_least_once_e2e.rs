@@ -5,7 +5,8 @@
 //! delivered in order and the durable delivery cursor advances. The
 //! cross-reconnect floor / no- re-delivery property is shared
 //! `reconcile_deliver` logic, covered deterministically by the WebSocket e2e
-//! (`ws_subscribe_e2e`).
+//! (`ws_subscribe_e2e`). A resume must also keep an event published while the
+//! stream is still subscribing, on the optimistic path too.
 
 use std::{
     net::SocketAddr,
@@ -27,6 +28,18 @@ async fn spawn() -> (
     tokio::task::JoinHandle<()>,
     tempfile::TempDir,
 ) {
+    spawn_with_bus(Arc::new(maidan_bus::InMemoryBus::with_capacity(256))).await
+}
+
+async fn spawn_with_bus(
+    bus: Arc<dyn maidan_bus::EventBus>,
+) -> (
+    SocketAddr,
+    reqwest::Client,
+    Arc<dyn Store>,
+    tokio::task::JoinHandle<()>,
+    tempfile::TempDir,
+) {
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -41,7 +54,6 @@ async fn spawn() -> (
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
-    let bus = Arc::new(maidan_bus::InMemoryBus::with_capacity(256));
     let mut state = AppState::new(
         store.clone(),
         artifacts,
@@ -190,9 +202,9 @@ async fn mcp_stream_filters_by_event_kind() {
         .unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
 
-    // Let the subscription attach, then fire a member_joined (excluded) followed
-    // by a channel_created (included).
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The response only starts once the stream holds its bus subscription, so
+    // a member_joined (excluded) and then a channel_created (included) both
+    // reach it.
     let _: Value = client
         .post(format!("{base}/workspaces/{workspace_id}/members"))
         .json(&json!({"handle": "bob", "kind": "human"}))
@@ -320,5 +332,87 @@ async fn mcp_stream_lean_frames_omit_the_event_payload() {
         frame.get("workspace").is_none(),
         "lean frame must drop the embedded event payload: {frame}"
     );
+    server.abort();
+}
+
+/// A bus that holds each `subscribe` call until the test releases it, so a
+/// test can publish while the server is mid-subscribe.
+struct GatedSubscribeBus {
+    inner: maidan_bus::InMemoryBus,
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+
+#[async_trait::async_trait]
+impl maidan_bus::EventBus for GatedSubscribeBus {
+    async fn publish(
+        &self,
+        envelope: maidan_types::BusEnvelope,
+    ) -> Result<(), maidan_bus::BusError> {
+        self.inner.publish(envelope).await
+    }
+
+    async fn subscribe(
+        &self,
+        filter: maidan_types::EventFilter,
+    ) -> Result<maidan_bus::EventStream, maidan_bus::BusError> {
+        self.entered.notify_one();
+        self.release.notified().await;
+        self.inner.subscribe(filter).await
+    }
+}
+
+#[tokio::test]
+async fn mcp_stream_resume_keeps_events_published_while_it_subscribes() {
+    let bus = Arc::new(GatedSubscribeBus {
+        inner: maidan_bus::InMemoryBus::with_capacity(256),
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+    });
+    let (addr, client, store, server, _dir) = spawn_with_bus(bus.clone()).await;
+    let base = format!("http://{addr}");
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "resume"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    let after_id = store.max_event_id().await.unwrap();
+    assert!(after_id > 0, "a resume needs a position to resume from");
+
+    // The response arrives only after the subscribe returns, so open the
+    // stream on its own task.
+    let open = tokio::spawn(
+        client
+            .get(format!(
+                "{base}/mcp/stream?workspace_id={workspace_id}&after_id={after_id}"
+            ))
+            .send(),
+    );
+    tokio::time::timeout(Duration::from_secs(10), bus.entered.notified())
+        .await
+        .expect("timeout waiting for the stream to subscribe");
+    // Committed and published while the subscription is still being set up.
+    // When the stream replayed first and subscribed after, the replay had
+    // already run and the bus had nobody to deliver to, so this was lost.
+    let joined = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "during", "kind": "agent"}))
+        .send()
+        .await
+        .unwrap();
+    assert!(joined.status().is_success());
+    bus.release.notify_one();
+
+    let resp = open.await.unwrap().unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let frame = first_event_frame(resp).await;
+    assert_eq!(frame["kind"], "member_joined");
+    assert_eq!(frame["member"]["handle"], "during");
+
     server.abort();
 }

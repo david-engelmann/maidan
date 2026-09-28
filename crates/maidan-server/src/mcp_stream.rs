@@ -113,6 +113,16 @@ pub async fn stream(
         }
     });
 
+    // Subscribe before the replay and the ack, as `/ws/subscribe` does: an event
+    // published after the replay's read waits in the subscription instead of
+    // being lost, and the watermark drops the ones the replay already sent.
+    let bus_filter = filter.clone();
+    let subscriber = state
+        .bus
+        .subscribe(filter.clone())
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
     let lean = q.lean;
     let mut high_water = after_id;
     // At-least-once mode delivers the backlog via the reconcile loop's first
@@ -159,13 +169,6 @@ pub async fn stream(
             "stream closed before subscribe_ack".into(),
         ));
     }
-
-    let bus_filter = filter.clone();
-    let subscriber = state
-        .bus
-        .subscribe(filter)
-        .await
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let bus_store = state.store.clone();
     if let Some((workspace_id, consumer_id)) = reconcile {

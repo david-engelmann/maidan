@@ -297,6 +297,8 @@ const SQLITE_UP_V111: &str =
 const SQLITE_UP_V112: &str = include_str!("../../../migrations/sqlite/0112_content_keys.sql");
 const SQLITE_UP_V113: &str = include_str!("../../../migrations/sqlite/0113_mail_content_key.sql");
 const SQLITE_UP_V114: &str = include_str!("../../../migrations/sqlite/0114_a2a_v1_conformance.sql");
+const SQLITE_UP_V115: &str =
+    include_str!("../../../migrations/sqlite/0115_share_ticket_expiry_precision.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -598,6 +600,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 112, SQLITE_UP_V112).await?;
     apply_sqlite(pool, 113, SQLITE_UP_V113).await?;
     apply_sqlite(pool, 114, SQLITE_UP_V114).await?;
+    apply_sqlite(pool, 115, SQLITE_UP_V115).await?;
     Ok(())
 }
 

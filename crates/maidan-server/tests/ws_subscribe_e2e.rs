@@ -52,6 +52,28 @@ async fn spawn_server() -> (
     (addr, client, server, dir)
 }
 
+type WsClient =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Read frames until the `subscribe_ack`. The server sends it after it has
+/// subscribed to the bus, so every event published from here on reaches `ws`.
+async fn await_subscribe_ack(ws: &mut WsClient) {
+    let wait = async {
+        while let Some(frame) = ws.next().await {
+            if let Message::Text(payload) = frame.expect("ws frame") {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v.get("type").and_then(|t| t.as_str()) == Some("subscribe_ack") {
+                    return;
+                }
+            }
+        }
+        panic!("socket closed before subscribe_ack");
+    };
+    tokio::time::timeout(Duration::from_secs(10), wait)
+        .await
+        .expect("timeout waiting for subscribe_ack");
+}
+
 fn is_control_frame(v: &serde_json::Value) -> bool {
     matches!(
         v.get("type").and_then(|t| t.as_str()),
@@ -78,8 +100,9 @@ async fn subscribe_receives_matching_events_in_order() {
         .await
         .unwrap();
 
-    // give the bus subscription a beat to attach before producing events
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // The server subscribes to the bus before it acks, so events produced
+    // after the ack are all delivered.
+    await_subscribe_ack(&mut ws).await;
 
     // produce three events via HTTP
     let ws_resp: serde_json::Value = client
@@ -157,7 +180,7 @@ async fn subscribe_filters_by_kind() {
     .await
     .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    await_subscribe_ack(&mut ws).await;
 
     // setup workspace/member/channel/thread
     let ws_resp: serde_json::Value = client
@@ -288,7 +311,11 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
     ws.send(Message::Text(json!({"filter": {}}).to_string()))
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // Flood only once the server holds its bus subscription (it acks after
+    // subscribing). A fixed sleep here was the flake: on a loaded runner the
+    // flood landed before the subscription existed, nothing lagged, and no
+    // replay hint came.
+    await_subscribe_ack(&mut ws).await;
 
     let ws_id = uuid::Uuid::new_v4();
     for i in 0..12 {
@@ -322,7 +349,8 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
             }
         }
     };
-    tokio::time::timeout(Duration::from_secs(2), wait)
+    // A deadline, not a wait: the hint arrives as soon as the flood is read.
+    tokio::time::timeout(Duration::from_secs(10), wait)
         .await
         .expect("timeout waiting for replay_hint");
     assert!(saw_hint);
@@ -490,7 +518,7 @@ async fn subscribe_resumes_after_id_from_event_log() {
     ws.send(Message::Text(json!({"filter": {}}).to_string()))
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    await_subscribe_ack(&mut ws).await;
 
     let ws_resp: serde_json::Value = client
         .post(format!("{base}/workspaces"))
@@ -729,6 +757,124 @@ async fn subscribe_with_invalid_filter_closes_with_1008() {
     server.abort();
 }
 
+/// A bus that holds each `subscribe` call until the test releases it, so a
+/// test can publish while the server is mid-subscribe.
+struct GatedSubscribeBus {
+    inner: InMemoryBus,
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+
+#[async_trait::async_trait]
+impl maidan_bus::EventBus for GatedSubscribeBus {
+    async fn publish(
+        &self,
+        envelope: maidan_types::BusEnvelope,
+    ) -> Result<(), maidan_bus::BusError> {
+        self.inner.publish(envelope).await
+    }
+
+    async fn subscribe(
+        &self,
+        filter: maidan_types::EventFilter,
+    ) -> Result<maidan_bus::EventStream, maidan_bus::BusError> {
+        self.entered.notify_one();
+        self.release.notified().await;
+        self.inner.subscribe(filter).await
+    }
+}
+
+#[tokio::test]
+async fn a_resume_keeps_events_published_while_the_server_subscribes() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(GatedSubscribeBus {
+        inner: InMemoryBus::with_capacity(256),
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+    });
+    let app = router(AppState::for_tests(
+        store.clone(),
+        artifacts,
+        bus.clone(),
+        search,
+    ));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let room: serde_json::Value = client
+        .post(format!("http://{addr}/workspaces"))
+        .json(&json!({"name": "room"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = room["id"].as_str().unwrap().to_owned();
+    let after_id = store.max_event_id().await.unwrap();
+    assert!(after_id > 0, "a resume needs a position to resume from");
+
+    let req = format!("ws://{addr}/ws/subscribe")
+        .into_client_request()
+        .unwrap();
+    let (mut ws, _resp) = connect_async(req).await.expect("ws connect");
+    // Resume from the current head, so only newer events are owed.
+    ws.send(Message::Text(
+        json!({"filter": {"workspace_id": workspace_id}, "after_id": after_id}).to_string(),
+    ))
+    .await
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(10), bus.entered.notified())
+        .await
+        .expect("timeout waiting for the server to subscribe");
+    // Committed and published while the subscription is still being set up.
+    // When the server replayed first and subscribed after, the replay had
+    // already run and the bus had nobody to deliver to, so this was lost.
+    let joined = client
+        .post(format!("http://{addr}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "during", "kind": "agent"}))
+        .send()
+        .await
+        .unwrap();
+    assert!(joined.status().is_success());
+    bus.release.notify_one();
+
+    let delivered = async {
+        while let Some(frame) = ws.next().await {
+            if let Message::Text(payload) = frame.expect("ws frame") {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if v["kind"].as_str() == Some(EventKind::MemberJoined.as_str()) {
+                    return v;
+                }
+            }
+        }
+        panic!("socket closed before the event arrived");
+    };
+    let event = tokio::time::timeout(Duration::from_secs(10), delivered)
+        .await
+        .expect("timeout waiting for the event published mid-subscribe");
+    assert_eq!(event["member"]["handle"], "during");
+
+    server.abort();
+}
+
 #[tokio::test]
 async fn subscribe_receives_many_sequential_events() {
     let (addr, client, server, _dir) = spawn_server().await;
@@ -740,7 +886,7 @@ async fn subscribe_receives_many_sequential_events() {
     ws.send(Message::Text(json!({"filter": {}}).to_string()))
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    await_subscribe_ack(&mut ws).await;
 
     let ws_resp: serde_json::Value = client
         .post(format!("{base}/workspaces"))

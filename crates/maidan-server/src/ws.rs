@@ -221,6 +221,25 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
         text_tx
     };
 
+    // Subscribe before the replay and the ack. An event published after the
+    // replay's read then waits in the subscription, and the watermark drops
+    // the ones the replay already sent. Subscribing after the replay lost
+    // every event published in between. It also makes the ack a promise that
+    // the client is live.
+    let subscriber = match state.bus.subscribe(request.filter.clone()).await {
+        Ok(s) => s,
+        Err(err) => {
+            tracing::warn!(error = %err, "bus subscribe failed");
+            let _ = socket
+                .send(WsMessage::Close(Some(CloseFrame {
+                    code: 1011,
+                    reason: Cow::Borrowed("bus unavailable"),
+                })))
+                .await;
+            return;
+        }
+    };
+
     let mut high_water = request.after_id;
     // At-least-once mode delivers the backlog via the reconcile loop's first
     // pass (stability-gated), so skip the optimistic replay here.
@@ -270,20 +289,6 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
             return;
         }
     }
-
-    let subscriber = match state.bus.subscribe(request.filter.clone()).await {
-        Ok(s) => s,
-        Err(err) => {
-            tracing::warn!(error = %err, "bus subscribe failed");
-            let _ = socket
-                .send(WsMessage::Close(Some(CloseFrame {
-                    code: 1011,
-                    reason: Cow::Borrowed("bus unavailable"),
-                })))
-                .await;
-            return;
-        }
-    };
 
     let bus_filter = request.filter.clone();
     let bus_store = state.store.clone();

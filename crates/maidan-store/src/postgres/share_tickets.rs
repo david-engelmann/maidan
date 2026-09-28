@@ -15,7 +15,11 @@ pub(crate) async fn create_on(
     conn: &mut sqlx::PgConnection,
     new: NewShareTicket,
 ) -> Result<ShareTicket, StoreError> {
-    let artifacts = share_tickets::validate_new(&new, Utc::now())?;
+    // One instant for the validation and for `created_at`: the table's CHECK
+    // compares the expiry with `created_at`, so a database-stamped creation
+    // time, taken later, could fail an expiry the validation just accepted.
+    let now = Utc::now();
+    let artifacts = share_tickets::validate_new(&new, now)?;
     let id = ShareTicketId::new();
     let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let scope_valid: bool = sqlx::query_scalar(
@@ -43,8 +47,8 @@ pub(crate) async fn create_on(
     }
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_share_tickets
-            (id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING {COLUMNS}"
     ))
     .bind(id.0)
@@ -54,6 +58,7 @@ pub(crate) async fn create_on(
     .bind(new.created_by.0)
     .bind(&new.token_hash)
     .bind(new.expires_at)
+    .bind(now)
     .fetch_one(&mut *tx)
     .await?;
     let ticket = row_to_ticket(&row);

@@ -15,7 +15,11 @@ pub(crate) async fn create_on(
     conn: &mut sqlx::SqliteConnection,
     new: NewShareTicket,
 ) -> Result<ShareTicket, StoreError> {
-    let artifacts = share_tickets::validate_new(&new, Utc::now())?;
+    // One instant for the validation and for `created_at`: the table's CHECK
+    // compares the expiry with `created_at`, so a database-stamped creation
+    // time, taken later, could fail an expiry the validation just accepted.
+    let now = Utc::now();
+    let artifacts = share_tickets::validate_new(&new, now)?;
     let id = ShareTicketId::new();
     let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let scope_valid: bool = sqlx::query_scalar(
@@ -43,8 +47,8 @@ pub(crate) async fn create_on(
     }
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_share_tickets
-            (id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            (id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          RETURNING {COLUMNS}"
     ))
     .bind(id.0)
@@ -54,6 +58,7 @@ pub(crate) async fn create_on(
     .bind(new.created_by.0)
     .bind(&new.token_hash)
     .bind(new.expires_at)
+    .bind(now)
     .fetch_one(&mut *tx)
     .await?;
     let ticket = row_to_ticket(&row);
@@ -113,7 +118,7 @@ pub async fn resolve(
     let row = sqlx::query(&format!(
         "SELECT {COLUMNS} FROM maidan_share_tickets
          WHERE token_hash = ?1 AND revoked_at IS NULL
-           AND datetime(expires_at) > datetime(?2)"
+           AND julianday(expires_at) > julianday(?2)"
     ))
     .bind(token_hash)
     .bind(now)
@@ -173,7 +178,7 @@ pub async fn allows_artifact(
             JOIN maidan_share_tickets t ON t.id = a.ticket_id
             WHERE a.ticket_id = ?1 AND a.sha256 = ?2
               AND t.revoked_at IS NULL
-              AND datetime(t.expires_at) > datetime(?3)
+              AND julianday(t.expires_at) > julianday(?3)
         )",
     )
     .bind(id.0)
