@@ -104,9 +104,9 @@ needs David to un-hold.
 | A5 | CONTRIBUTING/SECURITY "pre-release" tone | open |
 | A6 | Fix `mail.rs` module-doc lie (wired, best-effort, no retry) | open (overlaps Bet 4 E.1) |
 | B1–B5 | Split monster files (mcp server 2230, pg/sqlite mods, models, Store) | open; not during 270 |
-| C1–C4 | Error shape, naming drift, OpenAPI freshness, deprecation policy | open |
+| C1–C4 | Error shape, naming drift, OpenAPI freshness, deprecation policy | C1 **partial** (REST RFC 9457 everywhere #1062; A2A taxonomy #1066); C3 **✅** (#1028, #1053, #1061); C2, C4 open |
 | C5 | MCP version honesty until J3, then 2026 copy | **partial** (Integration names 2024 + J3; root README does not) |
-| D1–D6 | Evidence.md, ignored-test guide, panic audit, coverage intent, parity, flake | open |
+| D1–D6 | Evidence.md, ignored-test guide, panic audit, coverage intent, parity, flake | D4 **partial** (per-crate floors #1065); D5 **partial** (`schema_parity` #1052); D6 **in progress** (quarantine #1065, races #1068 open); D1–D3 open |
 | E1 | `examples/` directory | open (Bet 2 M.1 is the content) |
 | E2 | README first screen: docker/binary before `cargo run` | open |
 | E3–E5 | Architecture diagram, "what Maidan is not", freeze stale plans | open |

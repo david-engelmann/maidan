@@ -182,9 +182,11 @@ grouping config."
 
 ### Testing & evidence — **P1** (confidence), **P2** (coverage number)
 
-- Coverage floor is **40%** lines (`COVERAGE_MIN_LINES` in
-  `.github/workflows/ci.yml`). Fine as a regression floor; weak as a
-  public quality claim. Do not raise the number blindly — raise
+- ~~Coverage floor is **40%** lines (`COVERAGE_MIN_LINES` in
+  `.github/workflows/ci.yml`).~~ **Superseded (#1065):** per-crate line
+  floors in `.config/coverage-floors.toml`, each just under the crate's
+  measured coverage, enforced by the advisory `coverage (llvm-cov)` job.
+  A floor is a regression guard; still weak as a public quality claim. Do not raise the number blindly — raise
   *meaningful* coverage on authz, delivery, and store dual-write paths
   first, then consider 50–60%.
 - `#[ignore]`d soaks exist and are honest tools (loadgen, chaos,
@@ -306,7 +308,10 @@ Do **not** interleave with 269–272 import/search PRs.
 
 ### C. API / contract consistency (**P1**)
 
-- [ ] **C1. Error shape audit**
+- [ ] **C1. Error shape audit** — **partly shipped:** every REST client
+  error is an RFC 9457 problem, with contract tests (#1062, ADR in
+  Decisions.md); A2A errors follow the spec's taxonomy (#1066). The
+  one-page REST/MCP/A2A comparison is not written.
   One page (or ADR): REST error JSON, MCP JSON-RPC errors, A2A errors —
   status codes, capability failures, not-found vs forbidden (esp. after
   channel RBAC). Add contract tests where missing.
@@ -318,7 +323,10 @@ Do **not** interleave with 269–272 import/search PRs.
   `message_posted` / `thread_result_set` / `mention_recorded`).
   Fix only *user-visible* inconsistencies; document intentional
   asymmetries (store helper `threads::claim_next` is internal).
-- [ ] **C3. OpenAPI / MCP reference freshness**
+- [x] **C3. OpenAPI / MCP reference freshness** — **✅** `mcp_reference_current`
+  fails if the tracked MCP reference drifts (#1028); the OpenAPI document
+  resolves every reference (#1053), passes Redocly's recommended ruleset
+  (#1061) and documents what each extractor rejects (#1062).
   Confirm `gen-mcp-reference` + OpenAPI are required in CI (or
   clearly generated on release) so the published site cannot drift.
   `openapi/paths/api.rs` is 844 lines — freeze a 7-method subset
@@ -351,15 +359,20 @@ Do **not** interleave with 269–272 import/search PRs.
   `state.rs` `subscribe_resume_secret` (K3). Other `panic!`/`expect` hits
   are `#[cfg(test)]` or benches. HMAC `unreachable!` in cookie/webhook/
   resume sign is acceptable.
-- [ ] **D4. Coverage with intent**
+- [ ] **D4. Coverage with intent** — **partly shipped:** per-crate floors
+  (#1065) keep a small security crate from hiding behind the big ones;
+  raising coverage on the modules below is still open.
   Pick 3–5 critical modules (channel access, DM participation,
   outbox/`*_with_event`, notification router, consistency middleware).
   Add tests until those are strong; *then* consider raising
   `COVERAGE_MIN_LINES`.
-- [ ] **D5. Backend parity ritual**
+- [ ] **D5. Backend parity ritual** — **partly shipped:** `schema_parity`
+  compares the two backends' migrated schemas (#1052).
   Make `backend_parity` / `dialect_parity` visibility obvious in CI
   summary or Evidence.md so dual-backend is not tribal knowledge.
-- [ ] **D6. Flake budget**
+- [ ] **D6. Flake budget** — **🚧 in progress:** the nextest `ci` profile
+  retries only a named quarantine and reports a retried pass as `FLAKY`
+  (#1065); removing the two quarantined races is #1068 (open).
   Note known timing-sensitive tests; quarantine or rewrite before
   public contributors hit them.
 

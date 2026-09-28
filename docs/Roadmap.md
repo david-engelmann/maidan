@@ -48,6 +48,23 @@ against code:
 - **417:** a tested DR drill.
 - **418:** Wave 4 adoption (recipes, verified examples, a Goose claimant).
 
+**Since 418 (2026-09-25 → 2026-09-28), merged to `main`, untagged:** schema
+parity across backends (#1052); OpenAPI references resolve (#1053) and the spec
+is clean under Redocly's recommended ruleset (#1061); request changes sends work
+back for rework (#1054); the event log reads back only what the reader may see
+and a withdrawn message reads back withdrawn (#1055, #1058); legal holds keep
+what is withdrawn and are per matter (#1056, #1057); a withdrawn message leaves
+no embeddings (#1059); MCP resource subscriptions are scoped to session and
+workspace (#1060); every client error is an RFC 9457 problem (#1062);
+crypto-shredding of message content, artifact refcount erase and
+`maidan verify-shredding` (#1063, #1064); nextest profiles and per-crate
+coverage floors (#1065); the official A2A TCK in CI (#1066); CodeRabbit review
+in the PR flow (#1067, #1069).
+
+**In progress (not on `main`):** #1068 removes the two quarantined test races
+and makes the MinIO tests run for real; Wave 4 #45's loom, madsim and TLA+
+models are being written. Row #45 stays open until they land.
+
 Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**–**`v1.4.0`** are complete.
 
 Post-1.0 work is organized in [Post-1.0.md](Post-1.0.md) and [Tracks/README.md](Tracks/README.md).
