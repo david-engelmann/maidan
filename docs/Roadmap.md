@@ -61,7 +61,8 @@ crypto-shredding of message content, artifact refcount erase and
 coverage floors (#1065); the official A2A TCK in CI (#1066); CodeRabbit review
 in the PR flow (#1067, #1069); the two quarantined test races removed and the
 MinIO tests running for real (#1068); container tests that skip only without a
-Docker daemon and otherwise fail loud (#1072).
+Docker daemon and otherwise fail loud (#1072); A2A lists page all the way
+through (#1076); blob reaps run under a lease, not a held transaction (#1077).
 
 **In progress (not on `main`):** Wave 4 #45's loom, madsim and TLA+
 models are in review (#1073–#1075). Row #45 stays open until they land.

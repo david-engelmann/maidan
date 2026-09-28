@@ -46,7 +46,7 @@ detailed change log; cluster plans and retros explain how the work was built.
 
 The first release since `v410.0.0`. `v411.0.0` was recorded but never tagged;
 its delegated-authority work (#996–#1008) ships here, together with Clusters
-412–418 and the fixes merged after them (#1011–#1072). The subsections below
+412–418 and the fixes merged after them (#1011–#1077). The subsections below
 are the cluster records; the table first lists what landed outside a cluster.
 
 | Change | Where |
@@ -59,6 +59,8 @@ are the cluster records; the table first lists what landed outside a cluster.
 | **Errors and OpenAPI:** every client error is an RFC 9457 problem (#1028, #1062); every `$ref` resolves and every path parameter is declared (#1053); the spec passes Redocly's recommended ruleset (#1061). | `crates/maidan-server/src/extract.rs`, `crates/maidan-server/src/openapi/` |
 | **A2A v1.0 (#1066):** the official TCK runs in CI; requests send `A2A-Version: 1.0`. | `scripts/a2a-tck.sh`, `crates/maidan-a2a/` |
 | **Verification depth:** `claimer_crash` (#1034), `claim_state_machine` (#1039), `schema_parity` (#1052), a real SMTP server (#1038), claim only open threads (#1046); nextest profiles and per-crate coverage floors (#1065); the two quarantined races fixed and the MinIO tests run for real (#1068); container tests skip only without Docker (#1072). | `crates/maidan-store/tests/`, `.config/nextest.toml`, `.config/coverage-floors.toml` |
+| **A2A lists page all the way through (#1076):** `ListTasks` pages and counts every pending approval gate, and push-config lists honour `pageSize`/`pageToken`. | `crates/maidan-a2a/`, `crates/maidan-store/` |
+| **Blob reaps under a lease (#1077):** deleting an orphaned artifact's bytes no longer holds a database transaction; only an upload of the same bytes waits. | `crates/maidan-store/src/*/artifacts.rs` |
 | **Docs and review:** CodeRabbit in the PR flow (#1067, #1069); roadmap sync (#1070); a README that shows a real handoff (#1071). | `.coderabbit.yaml`, `README.md` |
 
 ### Cluster 418 — the adoption surface

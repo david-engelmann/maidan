@@ -319,15 +319,16 @@ Read this before the long narrative below, which is a point-in-time record and
   in-process drain, blocking trivy, pinned quickstart) and `GET /operator/status`;
   416 UUIDv7 ids (credentials stay v4; `uuid_v7_contract`); 417 PITR with a
   drill CI runs; 418 the adoption surface (verified examples, compose recipes,
-  a Goose claimant). 411–418 and the fixes through #1072 ship in **`v412.0.0`**.
-- **Since 418 (#1052–#1072, in `v412.0.0`):** crypto-shredding of message content
+  a Goose claimant). 411–418 and the fixes through #1077 ship in **`v412.0.0`**.
+- **Since 418 (#1052–#1077, in `v412.0.0`):** crypto-shredding of message content
   and artifact refcount erase (#1063, #1064), RFC 9457 problems for every client
   error (#1062), a Redocly-clean OpenAPI spec (#1061), MCP resource
   subscriptions scoped to session and workspace (#1060), nextest profiles and
   per-crate coverage floors (#1065), the official A2A TCK in CI (#1066),
   CodeRabbit review (#1067, #1069), the two quarantined races fixed plus real
   MinIO tests (#1068), and container tests that fail loud unless Docker is
-  absent (#1072); the full list is in
+  absent (#1072), A2A lists that page all the way through (#1076) and blob
+  reaps under a lease (#1077); the full list is in
   [`docs/Roadmap.md`](docs/Roadmap.md). **In progress:** the loom/madsim/TLA+
   models (Wave 4 #45; #1073–#1075, open).
 - **Four cross-tenant leaks were found on 2026-09-25**, all the same
