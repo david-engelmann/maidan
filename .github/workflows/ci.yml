@@ -20,7 +20,6 @@ env:
   # binaries and exhausts the runner's linker (recurring `ld` SIGBUS / core
   # dump while linking maidan-server test targets).
   RUSTFLAGS: -D warnings -C debuginfo=line-tables-only
-  COVERAGE_MIN_LINES: "40.0"
 
 jobs:
   lint:
@@ -100,6 +99,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+      - name: install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
       - name: build
         # Only lib+bin targets: the test/bench binaries are compiled by the
         # `lint` (clippy --all-targets) and `integration` (nextest --tests)
@@ -107,7 +110,16 @@ jobs:
         # linker pressure.
         run: cargo build --workspace --lib --bins
       - name: test (unit only)
-        run: cargo test --workspace --lib --bins
+        # Profiles live in .config/nextest.toml; `ci` runs every test, applies
+        # the slow-test timeout and writes a JUnit report.
+        run: cargo nextest run --workspace --lib --bins --profile ci
+      - name: upload JUnit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-unit
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: ignore
 
   a2a-interop:
     name: a2a interop (report-only)
@@ -216,7 +228,14 @@ jobs:
         with:
           tool: cargo-nextest
       - name: integration tests
-        run: cargo nextest run --workspace --tests --no-fail-fast
+        run: cargo nextest run --workspace --tests --profile ci
+      - name: upload JUnit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-integration
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: ignore
 
   sqlite-vec:
     name: sqlite-vec (optional feature)
@@ -278,6 +297,9 @@ jobs:
     # number reflects code actually exercised — most store/server logic is
     # covered by integration tests, not inline units. Postgres-backed tests
     # need a Docker daemon (testcontainers), same as the `integration` job.
+    # The job fails when the workspace or any crate drops under its floor in
+    # .config/coverage-floors.toml. It is not a required check (see
+    # docs/Decisions.md, "Coverage floors are per crate and advisory").
     services:
       docker:
         image: docker:dind
@@ -294,13 +316,24 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest,cargo-llvm-cov
+      - name: test the floor check
+        run: python3 scripts/test-coverage-floors.py
+      - name: drop instrumented binaries from the restored cache
+        # The report reads every test binary under the target dir. One
+        # restored from an older commit's cache adds that commit's lines again,
+        # all uncovered, which pulled maidan-store from 88.5% to 81.4% on a
+        # stale cache.
+        run: cargo llvm-cov clean --workspace
       - name: run instrumented test suite
-        run: cargo llvm-cov nextest --workspace --no-fail-fast --no-report
-      - name: line gate + lcov + html
+        run: cargo llvm-cov nextest --workspace --profile ci --no-report
+      - name: lcov + html
         run: |
-          cargo llvm-cov report --fail-under-lines "$COVERAGE_MIN_LINES" --lcov --output-path lcov.info
+          cargo llvm-cov report --lcov --output-path lcov.info
           cargo llvm-cov report --html --output-dir coverage-html
+      - name: line coverage floors
+        run: python3 scripts/coverage-floors.py lcov.info
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
           name: coverage
           path: |
