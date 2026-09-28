@@ -10,6 +10,7 @@ mod blocks;
 mod budget;
 mod channel_members;
 mod channels;
+mod content_keys;
 mod data_audited;
 mod delegation_grants;
 pub mod delivery_cursor;
@@ -141,6 +142,8 @@ pub struct PostgresStore {
     /// configured (a single-pool store leaves it at zero).
     read_routing: Arc<ReadRoutingMetrics>,
     replica_health: Arc<ReplicaHealth>,
+    /// Wraps the per-message content keys (crypto-shredding).
+    keys: Arc<ContentKeyring>,
 }
 
 /// Cumulative read-routing outcomes. The server snapshots this into
@@ -229,6 +232,7 @@ impl PostgresStore {
             replica_replay: Arc::new(AtomicU64::new(0)),
             read_routing: Arc::new(ReadRoutingMetrics::default()),
             replica_health: Arc::new(ReplicaHealth::default()),
+            keys: Arc::new(ContentKeyring::insecure_dev()),
         }
     }
 
@@ -254,7 +258,19 @@ impl PostgresStore {
             replica_replay,
             read_routing,
             replica_health,
+            keys: Arc::new(ContentKeyring::insecure_dev()),
         }
+    }
+
+    /// Use `keys` to wrap and unwrap message content keys; the constructors
+    /// default to the insecure development keyring.
+    pub fn with_content_keys(mut self, keys: Arc<ContentKeyring>) -> Self {
+        self.keys = keys;
+        self
+    }
+
+    pub fn content_keys(&self) -> &Arc<ContentKeyring> {
+        &self.keys
     }
 
     pub fn pool(&self) -> &PgPool {
@@ -2212,7 +2228,7 @@ impl MessageStore for PostgresStore {
         new: NewMessage,
         dm_conversation_id: Option<DmConversationId>,
     ) -> Result<(Message, StoredEvent), StoreError> {
-        messages::create_with_event(&self.pool, new, dm_conversation_id).await
+        messages::create_with_event(&self.pool, &self.keys, new, dm_conversation_id).await
     }
     async fn edit_message_with_posted_event(
         &self,
@@ -2221,7 +2237,15 @@ impl MessageStore for PostgresStore {
         edit: EditMessage,
         dm_conversation_id: Option<DmConversationId>,
     ) -> Result<(Message, StoredEvent), StoreError> {
-        messages::edit_with_posted_event(&self.pool, id, editor_id, edit, dm_conversation_id).await
+        messages::edit_with_posted_event(
+            &self.pool,
+            &self.keys,
+            id,
+            editor_id,
+            edit,
+            dm_conversation_id,
+        )
+        .await
     }
     async fn edit_message(
         &self,
@@ -2238,7 +2262,15 @@ impl MessageStore for PostgresStore {
         edit: EditMessage,
         dm_conversation_id: Option<DmConversationId>,
     ) -> Result<(Message, StoredEvent), StoreError> {
-        messages::edit_with_event(&self.pool, id, editor_id, edit, dm_conversation_id).await
+        messages::edit_with_event(
+            &self.pool,
+            &self.keys,
+            id,
+            editor_id,
+            edit,
+            dm_conversation_id,
+        )
+        .await
     }
     async fn list_message_edits(
         &self,
@@ -2510,6 +2542,15 @@ impl ArtifactMetaStore for PostgresStore {
     ) -> Result<bool, StoreError> {
         artifacts::ref_exists(&self.pool, workspace_id, sha256).await
     }
+
+    async fn erase_artifact_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+        audit: crate::AuditFor<ArtifactErasure>,
+    ) -> Result<ArtifactErasure, StoreError> {
+        artifacts::erase_for_workspace(&self.pool, workspace_id, sha256, audit).await
+    }
 }
 
 #[async_trait]
@@ -2531,18 +2572,34 @@ impl EventStore for PostgresStore {
     }
 
     async fn append_event(&self, event: &Event) -> Result<StoredEvent, StoreError> {
-        events::append(&self.pool, event).await
+        events::append(&self.pool, &self.keys, event, None).await
+    }
+
+    async fn append_federated_event(
+        &self,
+        event: &Event,
+        origin: PeerId,
+    ) -> Result<StoredEvent, StoreError> {
+        events::append(&self.pool, &self.keys, event, Some(origin)).await
+    }
+
+    async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError> {
+        content_keys::rewrap(&self.pool, &self.keys, limit).await
+    }
+
+    async fn content_keys_needing_rewrap(&self) -> Result<u64, StoreError> {
+        content_keys::count_needing_rewrap(&self.pool, &self.keys).await
     }
 
     async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError> {
-        events::get_by_id(&self.pool, log_id).await
+        events::get_by_id(&self.pool, &self.keys, log_id).await
     }
     async fn list_thread_events_through(
         &self,
         thread_id: ThreadId,
         through_id: i64,
     ) -> Result<Vec<StoredEvent>, StoreError> {
-        events::list_through(self.read_pool(), thread_id, through_id).await
+        events::list_through(self.read_pool(), &self.keys, thread_id, through_id).await
     }
 
     async fn list_events_after(
@@ -2551,7 +2608,7 @@ impl EventStore for PostgresStore {
         after_id: i64,
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError> {
-        events::list_after(&self.pool, workspace_id, after_id, limit).await
+        events::list_after(&self.pool, Some(&self.keys), workspace_id, after_id, limit).await
     }
 
     async fn list_events_after_stable(
@@ -2561,7 +2618,15 @@ impl EventStore for PostgresStore {
         stable_before: chrono::DateTime<chrono::Utc>,
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError> {
-        events::list_after_stable(&self.pool, workspace_id, after_id, stable_before, limit).await
+        events::list_after_stable(
+            &self.pool,
+            &self.keys,
+            workspace_id,
+            after_id,
+            stable_before,
+            limit,
+        )
+        .await
     }
 
     async fn min_event_id(&self, workspace_id: WorkspaceId) -> Result<Option<i64>, StoreError> {
@@ -2593,7 +2658,7 @@ impl EventStore for PostgresStore {
         after_id: i64,
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError> {
-        events::list_after_global(&self.pool, after_id, limit).await
+        events::list_after_global(&self.pool, &self.keys, after_id, limit).await
     }
 
     async fn verify_event_chain(

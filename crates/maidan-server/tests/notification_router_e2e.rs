@@ -216,6 +216,7 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         thread_id: thread.id,
         dm_conversation_id: None,
         message: msg,
+        sealed: None,
     };
     notification_router::route_event(&state, 5, &posted)
         .await
@@ -269,6 +270,7 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
         thread_id: thread.id,
         dm_conversation_id: None,
         message: msg2,
+        sealed: None,
     };
     notification_router::route_event(&state, 6, &posted2)
         .await
@@ -914,6 +916,7 @@ async fn channel_mute_suppresses_firehose_but_mention_breaks_through() {
         thread_id: thread.id,
         dm_conversation_id: None,
         message: msg,
+        sealed: None,
     };
     notification_router::route_event(&state, 1, &posted)
         .await

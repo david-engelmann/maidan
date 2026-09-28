@@ -543,7 +543,10 @@ pub fn router(state: AppState) -> Router {
             "/artifacts/multipart/:upload_id/parts/:part_number",
             put(routes::upload_multipart_artifact_part),
         )
-        .route("/artifacts/:sha", get(routes::get_artifact))
+        .route(
+            "/artifacts/:sha",
+            get(routes::get_artifact).delete(routes::erase_artifact),
+        )
         .route("/artifacts/:sha/meta", get(routes::get_artifact_metadata))
         .route(
             "/references",

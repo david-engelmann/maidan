@@ -2487,6 +2487,22 @@ pub fn upload_artifact() {}
     ))]
 pub fn get_artifact() {}
 
+/// Erase this workspace's copy of an artifact
+///
+/// `token:admin`; audited as `artifact.erase`. The bytes are deleted only
+/// with the last workspace reference (`last_reference`).
+#[utoipa::path(delete, path = "/artifacts/{sha}", tag = "artifacts",
+    params(("sha" = String, Path, description = "SHA-256 hex")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ArtifactErasure),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn erase_artifact() {}
+
 /// Get an artifact's metadata
 #[utoipa::path(get, path = "/artifacts/{sha}/meta", tag = "artifacts",
     params(("sha" = String, Path, description = "SHA-256 hex")),

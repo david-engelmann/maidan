@@ -153,7 +153,7 @@ impl OutboxRelay {
         for row in pending {
             let outbox_id = row.id;
             let log_id = row.log_id;
-            match self.relay_one(log_id, row.payload).await {
+            match self.relay_one(log_id, row.payload, row.content_key).await {
                 Ok(()) => {
                     published.push(outbox_id);
                     counter!("maidan_outbox_relay_total", "result" => "ok").increment(1);
@@ -205,8 +205,10 @@ impl OutboxRelay {
         &self,
         log_id: i64,
         payload: serde_json::Value,
+        content_key: Option<maidan_types::ContentKey>,
     ) -> Result<(), maidan_store::StoreError> {
-        let envelope = BusEnvelope::from_stored_payload(log_id, payload)?;
+        let envelope = BusEnvelope::from_sealed_payload(log_id, payload, content_key.as_ref())
+            .map_err(|err| maidan_store::StoreError::InvalidInput(err.to_string()))?;
         self.bus
             .publish(envelope)
             .await
@@ -441,9 +443,13 @@ mod tests {
                 tombstoned_at: None,
             },
         };
-        let stored = events::append(&pool, &event).await.unwrap();
-        let backend = OutboxBackend::Postgres(pool.clone());
-        let pending = outbox::list_pending(&pool, 1).await.unwrap();
+        let stored = events::append(&pool, &ContentKeyring::insecure_dev(), &event, None)
+            .await
+            .unwrap();
+        let backend = OutboxBackend::postgres(pool.clone());
+        let pending = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 1)
+            .await
+            .unwrap();
         let row = &pending[0];
 
         let relay =
@@ -451,7 +457,9 @@ mod tests {
         relay.run_once().await.unwrap();
 
         assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
-        let after = outbox::list_pending(&pool, 1).await.unwrap();
+        let after = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 1)
+            .await
+            .unwrap();
         assert_eq!(after[0].id, row.id);
         assert_eq!(after[0].log_id, stored.id);
         assert_eq!(after[0].attempts, 1);
@@ -477,10 +485,12 @@ mod tests {
                     tombstoned_at: None,
                 },
             };
-            events::append(&pool, &event).await.unwrap();
+            events::append(&pool, &ContentKeyring::insecure_dev(), &event, None)
+                .await
+                .unwrap();
         }
 
-        let backend = OutboxBackend::Postgres(pool.clone());
+        let backend = OutboxBackend::postgres(pool.clone());
         let relay =
             OutboxRelay::with_max_attempts(backend, Arc::new(maidan_bus::InMemoryBus::new()), 16);
 
@@ -516,9 +526,11 @@ mod tests {
                 tombstoned_at: None,
             },
         };
-        events::append(&pool, &event).await.unwrap();
+        events::append(&pool, &ContentKeyring::insecure_dev(), &event, None)
+            .await
+            .unwrap();
 
-        let backend = OutboxBackend::Postgres(pool.clone());
+        let backend = OutboxBackend::postgres(pool.clone());
         let relay =
             OutboxRelay::with_max_attempts(backend, Arc::new(FailingBus::new("injected")), 2);
         relay.run_once().await.unwrap();
@@ -528,6 +540,11 @@ mod tests {
         relay.run_once().await.unwrap();
         assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
         assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
-        assert!(outbox::list_pending(&pool, 8).await.unwrap().is_empty());
+        assert!(
+            outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 8)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }

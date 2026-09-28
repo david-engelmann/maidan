@@ -9,6 +9,10 @@ use crate::error::FederationError;
 pub struct FederationEnvelope {
     pub origin_peer_id: PeerId,
     pub remote_event_id: i64,
+    /// Sealed as the origin stored it, with its live content key: the
+    /// receiver re-seals the words under its own key, and an event whose key
+    /// the origin shredded arrives as ciphertext only.
+    #[serde(serialize_with = "maidan_types::serialize_keyed_event")]
     pub event: StoredEvent,
 }
 

@@ -28,22 +28,7 @@ pub fn encryption_key_from_env() -> Result<[u8; 32], PeerSecretError> {
 }
 
 fn parse_key_bytes(raw: &str) -> Result<[u8; 32], PeerSecretError> {
-    let trimmed = raw.trim();
-    if trimmed.len() == 64 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
-        let mut key = [0u8; 32];
-        for (i, chunk) in trimmed.as_bytes().chunks(2).enumerate() {
-            if i >= 32 {
-                return Err(PeerSecretError::InvalidKey);
-            }
-            let s = std::str::from_utf8(chunk).map_err(|_| PeerSecretError::InvalidKey)?;
-            key[i] = u8::from_str_radix(s, 16).map_err(|_| PeerSecretError::InvalidKey)?;
-        }
-        return Ok(key);
-    }
-    let bytes = STANDARD
-        .decode(trimmed)
-        .map_err(|_| PeerSecretError::InvalidKey)?;
-    bytes.try_into().map_err(|_| PeerSecretError::InvalidKey)
+    maidan_types::parse_key_32(raw).map_err(|_| PeerSecretError::InvalidKey)
 }
 
 pub fn encrypt_peer_secret(plaintext: &str, key: &[u8; 32]) -> Result<String, PeerSecretError> {

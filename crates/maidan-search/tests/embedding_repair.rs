@@ -140,6 +140,7 @@ async fn post(store: &dyn Store, n: usize) -> Vec<(Message, Event)> {
             thread_id: thread.id,
             dm_conversation_id: None,
             message: message.clone(),
+            sealed: None,
         };
         out.push((message, event));
     }

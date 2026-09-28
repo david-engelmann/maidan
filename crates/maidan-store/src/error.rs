@@ -37,6 +37,12 @@ pub enum StoreError {
 
     #[error("serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
+
+    /// A content key could not be wrapped or unwrapped, or sealed words failed
+    /// authentication. A KEK missing from the configuration lands here, never
+    /// as a shredded key.
+    #[error("content key error: {0}")]
+    ContentKey(#[from] maidan_types::SealError),
 }
 
 impl StoreError {

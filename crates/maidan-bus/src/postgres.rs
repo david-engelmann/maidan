@@ -18,7 +18,7 @@
 use crate::sharded::ShardedBroadcast;
 use async_trait::async_trait;
 use futures::StreamExt;
-use maidan_types::{BusEnvelope, EventFilter};
+use maidan_types::{BusEnvelope, ContentKeyring, EventFilter};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgListener;
 use sqlx::PgPool;
@@ -64,18 +64,22 @@ impl NotifyPointerPayload {
 }
 
 /// How [`PostgresBus::publish`] delivers to subscribers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct PostgresBusOptions {
     /// When true (default), publish uses `pg_notify` and a LISTEN task hydrates
     /// into the local broadcast channel. When false (**polled**), publish only
     /// uses the local channel (outbox relay is the delivery path).
     pub notify_on_publish: bool,
+    /// Opens the sealed message words of the events the listener hydrates;
+    /// must be the store's keyring. Defaults to the insecure development one.
+    pub content_keys: Arc<ContentKeyring>,
 }
 
 impl Default for PostgresBusOptions {
     fn default() -> Self {
         Self {
             notify_on_publish: true,
+            content_keys: Arc::new(ContentKeyring::insecure_dev()),
         }
     }
 }
@@ -83,6 +87,7 @@ impl Default for PostgresBusOptions {
 #[derive(Clone)]
 pub struct PostgresBus {
     pool: PgPool,
+    keys: Arc<ContentKeyring>,
     // Workspace-sharded local fan-out. The LISTEN task and polled-mode
     // publishes feed this; subscribers read their workspace's shard.
     local: Arc<ShardedBroadcast>,
@@ -111,6 +116,7 @@ impl PostgresBus {
 
             let health = listener_health.clone();
             let stats = hydrate_stats.clone();
+            let keys = options.content_keys.clone();
             tokio::spawn(async move {
                 // High-water mark of the last event id delivered to the local
                 // broadcast. Seeded from the current log head so we back-fill only
@@ -132,6 +138,7 @@ impl PostgresBus {
                                     if log_id > last_seen + 1 {
                                         drain_new_events(
                                             &listener_pool,
+                                            &keys,
                                             &listener_tx,
                                             last_seen,
                                             Some(log_id),
@@ -142,7 +149,7 @@ impl PostgresBus {
                                     // Always hydrate the pointer's own id — never
                                     // skipping on `<= last_seen`, so a lower id that
                                     // committed late still gets delivered.
-                                    match hydrate_envelope(&listener_pool, log_id).await {
+                                    match hydrate_envelope(&listener_pool, &keys, log_id).await {
                                         Ok(envelope) => {
                                             stats.record(HydrateResult::Ok);
                                             listener_tx.publish(envelope);
@@ -176,6 +183,7 @@ impl PostgresBus {
                             // resuming live delivery.
                             last_seen = drain_new_events(
                                 &listener_pool,
+                                &keys,
                                 &listener_tx,
                                 last_seen,
                                 None,
@@ -190,6 +198,7 @@ impl PostgresBus {
 
         Ok(Self {
             pool,
+            keys: options.content_keys,
             local: tx,
             notify_on_publish: options.notify_on_publish,
             listener_health,
@@ -214,7 +223,15 @@ impl PostgresBus {
     /// automatically on a gap or reconnect; it is exposed so an operator (or a
     /// test) can force a heal without waiting for the next NOTIFY.
     pub async fn backfill(&self, after_id: i64) -> i64 {
-        drain_new_events(&self.pool, &self.local, after_id, None, &self.hydrate_stats).await
+        drain_new_events(
+            &self.pool,
+            &self.keys,
+            &self.local,
+            after_id,
+            None,
+            &self.hydrate_stats,
+        )
+        .await
     }
 }
 
@@ -248,8 +265,12 @@ fn record_hydrate_error(stats: &HydrateStats, err: &BusError) {
     }
 }
 
-async fn hydrate_envelope(pool: &PgPool, log_id: i64) -> Result<BusEnvelope, BusError> {
-    let stored = maidan_store::postgres::events::get_by_id(pool, log_id)
+async fn hydrate_envelope(
+    pool: &PgPool,
+    keys: &ContentKeyring,
+    log_id: i64,
+) -> Result<BusEnvelope, BusError> {
+    let stored = maidan_store::postgres::events::get_by_id(pool, keys, log_id)
         .await
         .map_err(|err| match err {
             maidan_store::StoreError::NotFound => BusError::HydrateNotFound { log_id },
@@ -263,7 +284,10 @@ async fn hydrate_envelope(pool: &PgPool, log_id: i64) -> Result<BusEnvelope, Bus
 }
 
 fn envelope_from_stored(stored: maidan_types::StoredEvent) -> Result<BusEnvelope, BusError> {
-    Ok(BusEnvelope::from_stored_payload(stored.id, stored.payload)?)
+    BusEnvelope::from_stored(&stored).map_err(|err| BusError::HydrateFailed {
+        log_id: stored.id,
+        reason: err.to_string(),
+    })
 }
 
 /// Drain every event with `id > from_exclusive` from the log onto the local
@@ -275,6 +299,7 @@ fn envelope_from_stored(stored: maidan_types::StoredEvent) -> Result<BusEnvelope
 /// NOTIFY.
 async fn drain_new_events(
     pool: &PgPool,
+    keys: &ContentKeyring,
     tx: &ShardedBroadcast,
     from_exclusive: i64,
     to_exclusive: Option<i64>,
@@ -284,6 +309,7 @@ async fn drain_new_events(
     loop {
         let batch = match maidan_store::postgres::events::list_after_global(
             pool,
+            keys,
             cursor,
             BACKFILL_BATCH,
         )

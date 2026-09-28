@@ -97,6 +97,7 @@ async fn seed_workspace(
             thread_id: th.id,
             dm_conversation_id: None,
             message: msg.clone(),
+            sealed: None,
         })
         .await
         .unwrap();

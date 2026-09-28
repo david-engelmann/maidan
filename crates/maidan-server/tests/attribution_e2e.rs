@@ -217,7 +217,10 @@ impl World {
             .await
             .unwrap()
             .into_iter()
-            .find(|e| e.kind == EventKind::MessagePosted && e.payload["message"]["body"] == body)
+            .find(|e| {
+                e.kind == EventKind::MessagePosted
+                    && e.opened_payload().unwrap()["message"]["body"] == body
+            })
             .unwrap_or_else(|| panic!("no MessagePosted event for {body}"))
     }
 }

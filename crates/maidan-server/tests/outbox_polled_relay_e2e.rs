@@ -52,6 +52,7 @@ async fn polled_relay_delivers_to_subscribers_without_pg_notify() {
         pool.clone(),
         PostgresBusOptions {
             notify_on_publish: false,
+            ..Default::default()
         },
     )
     .await
@@ -70,10 +71,12 @@ async fn polled_relay_delivers_to_subscribers_without_pg_notify() {
             tombstoned_at: None,
         },
     };
-    let stored = events::append(&pool, &event).await.unwrap();
+    let stored = events::append(&pool, &ContentKeyring::insecure_dev(), &event, None)
+        .await
+        .unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
 
-    let relay = OutboxRelay::new(OutboxBackend::Postgres(pool.clone()), Arc::new(bus));
+    let relay = OutboxRelay::new(OutboxBackend::postgres(pool.clone()), Arc::new(bus));
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(2), sub.next())

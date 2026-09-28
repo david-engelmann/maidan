@@ -46,6 +46,7 @@ async fn indexer_observes_message_posted_within_500ms() {
         thread_id: th_id,
         dm_conversation_id: None,
         message: msg,
+        sealed: None,
     }))
     .await
     .unwrap();

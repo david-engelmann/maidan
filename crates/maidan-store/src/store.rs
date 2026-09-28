@@ -2073,6 +2073,17 @@ pub trait ArtifactMetaStore: Send + Sync {
         workspace_id: WorkspaceId,
         sha256: &str,
     ) -> Result<bool, StoreError>;
+
+    /// Erase `workspace_id`'s reference to `sha256`, with its audit row in the
+    /// same transaction. The artifact row goes with the last reference; the
+    /// caller then deletes the blob. `NotFound` without a reference,
+    /// `Conflict` under a legal hold.
+    async fn erase_artifact_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+        audit: crate::AuditFor<ArtifactErasure>,
+    ) -> Result<ArtifactErasure, StoreError>;
 }
 
 #[async_trait]
@@ -2086,6 +2097,20 @@ pub trait EventStore: Send + Sync {
     ) -> Result<Vec<AuditEvent>, StoreError>;
 
     async fn append_event(&self, event: &Event) -> Result<StoredEvent, StoreError>;
+    /// Append an event that arrived from federation peer `origin`. A message's
+    /// words are sealed under a key scoped to `(origin, message)`, so only that
+    /// peer's tombstone can shred them; an event the origin already shredded
+    /// (sealed, no key) is stored as ciphertext under a shredded key row.
+    async fn append_federated_event(
+        &self,
+        event: &Event,
+        origin: PeerId,
+    ) -> Result<StoredEvent, StoreError>;
+    /// Re-wrap up to `limit` content keys still wrapped by a previous KEK under
+    /// the primary one. Returns how many were re-wrapped; `0` means done.
+    async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError>;
+    /// Live content keys not yet wrapped by the primary KEK.
+    async fn content_keys_needing_rewrap(&self) -> Result<u64, StoreError>;
     async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError>;
     /// A thread's events with `id <= through_id`, in `id` order — the immutable
     /// substrate for as-of context replay.

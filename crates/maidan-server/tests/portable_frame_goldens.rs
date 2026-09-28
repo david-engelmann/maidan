@@ -191,6 +191,7 @@ fn snapshot_and_catch_up_match_normalized_golden() {
         thread_id: export.threads[0].id,
         dm_conversation_id: None,
         message: export.messages[0].clone(),
+        sealed: None,
     };
     let payload = serde_json::to_value(&message_event).expect("event payload");
     let first = link_for(10, &json!({"kind": "checkpoint"}), None).expect("first link");
@@ -214,6 +215,7 @@ fn snapshot_and_catch_up_match_normalized_golden() {
         occurred_at: timestamp(),
         prev_hash: next.prev_hash,
         content_hash: next.content_hash,
+        content_key: None,
     };
     let catch_up = CatchUpPage::new(
         export.workspace.id,

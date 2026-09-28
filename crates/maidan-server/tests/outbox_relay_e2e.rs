@@ -63,10 +63,12 @@ async fn relay_publishes_enqueued_event_to_bus() {
             tombstoned_at: None,
         },
     };
-    let stored = events::append(&pool, &event).await.unwrap();
+    let stored = events::append(&pool, &ContentKeyring::insecure_dev(), &event, None)
+        .await
+        .unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
 
-    let relay = OutboxRelay::new(OutboxBackend::Postgres(pool.clone()), Arc::new(bus));
+    let relay = OutboxRelay::new(OutboxBackend::postgres(pool.clone()), Arc::new(bus));
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())
@@ -97,10 +99,12 @@ async fn relay_run_twice_does_not_leave_duplicate_pending_rows() {
             tombstoned_at: None,
         },
     };
-    events::append(&pool, &event).await.unwrap();
+    events::append(&pool, &ContentKeyring::insecure_dev(), &event, None)
+        .await
+        .unwrap();
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 1);
 
-    let relay = OutboxRelay::new(OutboxBackend::Postgres(pool.clone()), Arc::new(bus));
+    let relay = OutboxRelay::new(OutboxBackend::postgres(pool.clone()), Arc::new(bus));
     relay.run_once().await.unwrap();
     relay.run_once().await.unwrap();
 

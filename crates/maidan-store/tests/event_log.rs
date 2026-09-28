@@ -849,7 +849,7 @@ async fn message_post_finalize_with_event_appends_atomically() {
         .expect("finalize");
     assert_eq!(stored.kind, EventKind::MessagePosted);
     // The event carries the post-edit message.
-    match serde_json::from_value::<Event>(stored.payload.clone()).expect("event") {
+    match stored.opened_event().expect("event") {
         Event::MessagePosted { message, .. } => {
             assert_eq!(message.id, finalized.id);
             assert_eq!(message.metadata["slash_command"], "deploy");

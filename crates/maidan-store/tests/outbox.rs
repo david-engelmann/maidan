@@ -62,7 +62,9 @@ async fn append_enqueues_unpublished_outbox_row() {
     let stored = store.append_event(&event).await.unwrap();
     assert!(outbox::count_pending(&pool).await.unwrap() >= 1);
 
-    let pending = outbox::list_pending(&pool, 8).await.unwrap();
+    let pending = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 8)
+        .await
+        .unwrap();
     assert!(pending.iter().any(|row| row.log_id == stored.id));
     assert_eq!(pending[0].attempts, 0);
 }
@@ -78,7 +80,9 @@ async fn record_attempt_increments_attempts_while_row_stays_pending() {
         .append_event(&workspace_created_event("attempts-ws"))
         .await
         .unwrap();
-    let pending = outbox::list_pending(&pool, 1).await.unwrap();
+    let pending = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 1)
+        .await
+        .unwrap();
     let row = pending
         .into_iter()
         .find(|r| r.log_id == stored.id)
@@ -87,7 +91,9 @@ async fn record_attempt_increments_attempts_while_row_stays_pending() {
     assert_eq!(outbox::record_attempt(&pool, row.id).await.unwrap(), 1);
     assert_eq!(outbox::record_attempt(&pool, row.id).await.unwrap(), 2);
 
-    let again = outbox::list_pending(&pool, 8).await.unwrap();
+    let again = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 8)
+        .await
+        .unwrap();
     let updated = again
         .into_iter()
         .find(|r| r.id == row.id)
@@ -107,7 +113,9 @@ async fn mark_published_clears_pending_and_rejects_unknown_id() {
         .append_event(&workspace_created_event("published-ws"))
         .await
         .unwrap();
-    let pending = outbox::list_pending(&pool, 1).await.unwrap();
+    let pending = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 1)
+        .await
+        .unwrap();
     let row = pending
         .into_iter()
         .find(|r| r.log_id == stored.id)
@@ -134,7 +142,9 @@ async fn list_pending_joins_the_event_payload() {
         .append_event(&workspace_created_event("payload-ws"))
         .await
         .unwrap();
-    let pending = outbox::list_pending(&pool, 8).await.unwrap();
+    let pending = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 8)
+        .await
+        .unwrap();
     let row = pending
         .into_iter()
         .find(|r| r.log_id == stored.id)
@@ -158,7 +168,7 @@ async fn mark_published_batch_clears_all_pending_and_is_idempotent() {
             .await
             .unwrap();
     }
-    let ids: Vec<i64> = outbox::list_pending(&pool, 8)
+    let ids: Vec<i64> = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 8)
         .await
         .unwrap()
         .iter()
@@ -190,11 +200,15 @@ async fn list_pending_orders_by_id_and_respects_limit() {
         .await
         .unwrap();
 
-    let one = outbox::list_pending(&pool, 1).await.unwrap();
+    let one = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 1)
+        .await
+        .unwrap();
     assert_eq!(one.len(), 1);
     assert_eq!(one[0].log_id, first.id);
 
-    let two = outbox::list_pending(&pool, 2).await.unwrap();
+    let two = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 2)
+        .await
+        .unwrap();
     assert_eq!(two.len(), 2);
     assert!(two[0].id < two[1].id);
     assert_eq!(two[1].log_id, second.id);
@@ -234,12 +248,19 @@ async fn quarantined_rows_are_excluded_from_pending_list_and_count() {
         .append_event(&workspace_created_event("q-ws"))
         .await
         .unwrap();
-    let pending = outbox::list_pending(&pool, 1).await.unwrap();
+    let pending = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 1)
+        .await
+        .unwrap();
     outbox::quarantine(&pool, pending[0].id).await.unwrap();
 
     assert_eq!(outbox::count_pending(&pool).await.unwrap(), 0);
     assert_eq!(outbox::count_quarantined(&pool).await.unwrap(), 1);
-    assert!(outbox::list_pending(&pool, 8).await.unwrap().is_empty());
+    assert!(
+        outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 8)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// Two relays must not claim the same row.
@@ -259,7 +280,9 @@ async fn concurrent_relays_claim_disjoint_outbox_rows() {
 
     // Drain anything a sibling test left behind so the counts below are ours.
     loop {
-        let drained = outbox::claim_pending(&pool, 256, 0).await.unwrap();
+        let drained = outbox::claim_pending(&pool, &ContentKeyring::insecure_dev(), 256, 0)
+            .await
+            .unwrap();
         if drained.is_empty() {
             break;
         }
@@ -278,8 +301,12 @@ async fn concurrent_relays_claim_disjoint_outbox_rows() {
 
     // Prove the hazard is real before proving the fix: the unlocked read that
     // the relay used to call hands BOTH callers the same rows.
-    let listed_a = outbox::list_pending(&pool, 6).await.unwrap();
-    let listed_b = outbox::list_pending(&pool, 6).await.unwrap();
+    let listed_a = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 6)
+        .await
+        .unwrap();
+    let listed_b = outbox::list_pending(&pool, &ContentKeyring::insecure_dev(), 6)
+        .await
+        .unwrap();
     let la: std::collections::HashSet<i64> = listed_a.iter().map(|r| r.log_id).collect();
     let lb: std::collections::HashSet<i64> = listed_b.iter().map(|r| r.log_id).collect();
     assert!(
@@ -288,8 +315,9 @@ async fn concurrent_relays_claim_disjoint_outbox_rows() {
     );
 
     // Two relays claim concurrently, exactly as two replicas would.
-    let a = outbox::claim_pending(&pool, 6, 60);
-    let b = outbox::claim_pending(&pool, 6, 60);
+    let keys = ContentKeyring::insecure_dev();
+    let a = outbox::claim_pending(&pool, &keys, 6, 60);
+    let b = outbox::claim_pending(&pool, &keys, 6, 60);
     let (claimed_a, claimed_b) = tokio::join!(a, b);
     let claimed_a = claimed_a.unwrap();
     let claimed_b = claimed_b.unwrap();
@@ -312,7 +340,7 @@ async fn concurrent_relays_claim_disjoint_outbox_rows() {
 
     // A claimed row is not claimable again while the lease holds...
     assert!(
-        outbox::claim_pending(&pool, 6, 60)
+        outbox::claim_pending(&pool, &ContentKeyring::insecure_dev(), 6, 60)
             .await
             .unwrap()
             .is_empty(),
@@ -321,7 +349,9 @@ async fn concurrent_relays_claim_disjoint_outbox_rows() {
     // ...but a failure releases it, so a retry is not stuck behind the lease.
     let first = claimed_a.first().or_else(|| claimed_b.first()).unwrap();
     outbox::record_attempt(&pool, first.id).await.unwrap();
-    let reclaimed = outbox::claim_pending(&pool, 6, 60).await.unwrap();
+    let reclaimed = outbox::claim_pending(&pool, &ContentKeyring::insecure_dev(), 6, 60)
+        .await
+        .unwrap();
     assert_eq!(
         reclaimed.len(),
         1,
@@ -330,7 +360,9 @@ async fn concurrent_relays_claim_disjoint_outbox_rows() {
     assert_eq!(reclaimed[0].id, first.id);
 
     // And an expired lease is reclaimable, so a crashed relay strands nothing.
-    let stale = outbox::claim_pending(&pool, 6, 0).await.unwrap();
+    let stale = outbox::claim_pending(&pool, &ContentKeyring::insecure_dev(), 6, 0)
+        .await
+        .unwrap();
     assert!(
         !stale.is_empty(),
         "an expired claim must be reclaimable — otherwise a crashed relay strands the row"

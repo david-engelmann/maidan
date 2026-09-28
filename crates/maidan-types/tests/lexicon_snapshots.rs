@@ -306,6 +306,7 @@ fn sample_event(kind: EventKind) -> Event {
             thread_id,
             dm_conversation_id: None,
             message: message(),
+            sealed: None,
         },
         EventKind::MessageEdited => Event::MessageEdited {
             occurred_at,
@@ -315,6 +316,7 @@ fn sample_event(kind: EventKind) -> Event {
             dm_conversation_id: None,
             editor_id: member_id,
             message: message(),
+            sealed: None,
         },
         EventKind::MessageTombstoned => Event::MessageTombstoned {
             occurred_at,

@@ -102,6 +102,12 @@
     "surface": "http"
   },
   {
+    "method": "DELETE",
+    "path": "/artifacts/{sha}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/artifacts/{sha}/meta",
     "capability": "workspace:read",

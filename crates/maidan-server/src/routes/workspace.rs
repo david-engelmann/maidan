@@ -690,6 +690,7 @@ fn purge_metadata(result: &WorkspacePurgeResult) -> serde_json::Value {
         "references_removed": result.references_removed,
         "api_tokens_revoked": result.api_tokens_revoked,
         "events_removed": result.events_removed,
+        "content_keys_destroyed": result.content_keys_destroyed,
         "artifacts_removed": result.artifacts_removed,
         "artifact_blobs_orphaned": result.artifact_shas.len(),
     })
@@ -700,7 +701,7 @@ fn purge_metadata(result: &WorkspacePurgeResult) -> serde_json::Value {
 /// The store decides orphanhood inside its transaction; this runs after it, so
 /// a workspace that uploaded the same bytes in between must not lose them. A
 /// blob whose artifact row exists again is kept.
-async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) {
+pub(super) async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) {
     for sha_hex in shas {
         let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
             continue;
@@ -946,7 +947,7 @@ pub async fn list_events(
     ApiQuery(q): ApiQuery<ListEventsQuery>,
     auth: Option<Extension<AuthContext>>,
     peer: Option<Extension<PeerContext>>,
-) -> ApiResult<Json<Vec<StoredEvent>>> {
+) -> ApiResult<Json<Vec<KeyedEvent>>> {
     let workspace_id = WorkspaceId(workspace_id);
     ensure_event_log_read(&auth, &peer, workspace_id)?;
     if q.after_id < 0 {
@@ -979,17 +980,36 @@ pub async fn list_events(
     let mut visibility = auth.as_ref().map(|Extension(auth)| {
         crate::event_visibility::EventVisibility::new(state.store.as_ref(), auth)
     });
-    Ok(Json(
-        crate::delivery::list_events_for_shape(
-            state.store.as_ref(),
-            &shape,
-            after_id,
-            q.limit.clamp(1, 500),
-            visibility.as_mut(),
-        )
-        .await
-        .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?,
-    ))
+    let events = crate::delivery::list_events_for_shape(
+        state.store.as_ref(),
+        &shape,
+        after_id,
+        q.limit.clamp(1, 500),
+        visibility.as_mut(),
+    )
+    .await
+    .map_err(|e| ApiError::from(e).with_snapshot(workspace_id))?;
+    // A whole-log reader (peer, bypass) gets each event sealed as hashed, with
+    // its live content key, so it can verify the chain and still read the
+    // words. A member gets the words opened. Either way shredded words stay
+    // ciphertext: there is no key left to send.
+    let whole_log = match &auth {
+        Some(Extension(auth)) => auth.bypass,
+        None => true,
+    };
+    events
+        .into_iter()
+        .map(|mut event| {
+            if !whole_log {
+                event.open().map_err(|e| {
+                    tracing::error!(error = %e, log_id = event.id, "event words do not open");
+                    ApiError::Internal("event words do not open".into())
+                })?;
+            }
+            Ok(KeyedEvent(event))
+        })
+        .collect::<ApiResult<Vec<_>>>()
+        .map(Json)
 }
 
 /// Reading the log whole — every event, bodies included, as one hash chain —

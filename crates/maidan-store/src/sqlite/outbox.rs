@@ -1,6 +1,6 @@
 //! SQLite transactional outbox rows relayed to the in-process bus after commit.
 
-use maidan_types::WorkspaceId;
+use maidan_types::{ContentKeyring, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 
 use crate::error::StoreError;
@@ -18,6 +18,7 @@ const RELAYABLE: &str = "published_at IS NULL AND quarantined_at IS NULL";
 /// publish** — at-least-once is preserved.
 pub async fn claim_pending(
     pool: &SqlitePool,
+    keys: &ContentKeyring,
     limit: i64,
     lease_secs: i64,
 ) -> Result<Vec<OutboxRow>, StoreError> {
@@ -50,9 +51,10 @@ pub async fn claim_pending(
     }
     let placeholders = vec!["?"; ids.len()].join(",");
     let sql = format!(
-        "SELECT o.id, o.log_id, o.attempts, e.payload
+        "SELECT o.id, o.log_id, o.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped
          FROM maidan_outbox o
          JOIN maidan_events e ON e.id = o.log_id
+         LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id
          WHERE o.id IN ({placeholders})
          ORDER BY o.id ASC"
     );
@@ -70,16 +72,27 @@ pub async fn claim_pending(
                 log_id: row.get("log_id"),
                 attempts: row.get("attempts"),
                 payload: serde_json::from_str(&payload)?,
+                content_key: crate::content_keys::unwrap_joined(
+                    Some(keys),
+                    row.get("content_key_id"),
+                    row.get("key_kek_id"),
+                    row.get("key_wrapped"),
+                )?,
             })
         })
         .collect()
 }
 
-pub async fn list_pending(pool: &SqlitePool, limit: i64) -> Result<Vec<OutboxRow>, StoreError> {
+pub async fn list_pending(
+    pool: &SqlitePool,
+    keys: &ContentKeyring,
+    limit: i64,
+) -> Result<Vec<OutboxRow>, StoreError> {
     let rows = sqlx::query(&format!(
-        "SELECT o.id, o.log_id, o.attempts, e.payload
+        "SELECT o.id, o.log_id, o.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped
          FROM maidan_outbox o
          JOIN maidan_events e ON e.id = o.log_id
+         LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id
          WHERE {RELAYABLE}
          ORDER BY o.id ASC
          LIMIT ?"
@@ -95,6 +108,12 @@ pub async fn list_pending(pool: &SqlitePool, limit: i64) -> Result<Vec<OutboxRow
                 log_id: row.get("log_id"),
                 attempts: row.get("attempts"),
                 payload: serde_json::from_str(&payload)?,
+                content_key: crate::content_keys::unwrap_joined(
+                    Some(keys),
+                    row.get("content_key_id"),
+                    row.get("key_kek_id"),
+                    row.get("key_wrapped"),
+                )?,
             })
         })
         .collect()

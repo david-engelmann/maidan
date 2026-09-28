@@ -36,7 +36,7 @@ async fn spawn_sqlite_outbox() -> Option<(
 
     let mut state = AppState::for_tests(store, artifacts, bus.clone(), search);
     state.outbox_relay = true;
-    state.outbox_backend = Some(OutboxBackend::Sqlite(pool.clone()));
+    state.outbox_backend = Some(OutboxBackend::sqlite(pool.clone()));
 
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok()?;
@@ -70,7 +70,7 @@ async fn sqlite_http_mutation_defers_bus_until_outbox_relay_runs() {
     let no_event = tokio::time::timeout(Duration::from_millis(400), sub.next()).await;
     assert!(no_event.is_err(), "bus should not publish before relay");
 
-    let relay = OutboxRelay::new(OutboxBackend::Sqlite(pool.clone()), bus.clone());
+    let relay = OutboxRelay::new(OutboxBackend::sqlite(pool.clone()), bus.clone());
     relay.run_once().await.unwrap();
 
     let received = tokio::time::timeout(Duration::from_secs(5), sub.next())

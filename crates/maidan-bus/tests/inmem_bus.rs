@@ -102,6 +102,7 @@ async fn subscribers_with_different_filters_see_only_matching_events() {
             thread_id: th_a1.id,
             dm_conversation_id: None,
             message: msg,
+            sealed: None,
         });
     }
     for body in ["hi-b-1", "hi-b-2"] {
@@ -113,6 +114,7 @@ async fn subscribers_with_different_filters_see_only_matching_events() {
             thread_id: th_b1.id,
             dm_conversation_id: None,
             message: msg,
+            sealed: None,
         });
     }
     posted.push(Event::ThreadCreated {

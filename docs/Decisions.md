@@ -821,6 +821,58 @@ still reference tombstoned ids without dangling foreign keys.
 
 **To revisit:** never. This is a load-bearing semantic.
 
+### Crypto-shredding of message content
+
+**Decision.** A message's words (body, metadata, content blocks) are
+sealed before its event is hashed, and withdrawing the message destroys
+the key.
+
+- **Subject: one message.** Withdraw and purge act on one message, so
+  one key per message erases exactly what was withdrawn. Its posted and
+  edited events share the key. A replicated message's subject is
+  `uuid5(origin peer, message id)`, so only the origin's tombstone can
+  shred it.
+- **Crypto.** XChaCha20-Poly1305 (`chacha20poly1305`, RustCrypto) with a
+  random 24-byte nonce. The event keeps `message.body = ""`, drops
+  metadata and content, and carries `sealed {alg, nonce, ciphertext}`.
+  The hash chain and signatures cover the ciphertext, so verification
+  needs no key and passes after a shred.
+- **Keys.** `maidan_content_keys` holds one 256-bit key per subject,
+  wrapped by the key-encryption key (`MAIDAN_CONTENT_KEK`, same AEAD,
+  subject id as associated data) and tagged with the KEK's fingerprint.
+  Rotation: new primary, old one in `MAIDAN_CONTENT_KEK_PREVIOUS`; the
+  server rewraps at startup. An unknown KEK is an error, never read as
+  shredded. Production refuses to start without a KEK.
+- **Shred.** Appending `message.tombstoned` sets the key row's wrapped
+  key to NULL in the same transaction, deletes the subject's pending
+  webhook deliveries and egress outbox rows, and blanks the message
+  row's metadata. A later event for the subject is sealed under a
+  throwaway key. Workspace purge deletes all its keys.
+- **Reads.** Members get events opened; a shredded event reads as an
+  empty body with its `sealed` block. Admin catch-up, peer catch-up and
+  federation envelopes carry the ciphertext plus the key only while it
+  is live (`content_key`); a peer that ingests the tombstone shreds its
+  copy. Exports, snapshots, search and embeddings never see shredded
+  words.
+- **Artifacts.** `DELETE /artifacts/:sha` drops one workspace's
+  reference and its share-ticket grants. The row and the bytes go only
+  with the last reference (Postgres locks the row). Refused under a
+  legal hold.
+
+**Alternative.** Per-author or per-workspace keys: coarser, so a single
+withdrawal cannot be erased without re-encrypting everything else.
+Rewriting history instead: breaks the hash chain and every signature
+peers hold.
+
+**Why this:** the log stays append-only and verifiable while the words
+become unrecoverable on every tier that holds only the database.
+
+**Limits.** A backup taken before a shred, together with the KEK,
+recovers the words (keep KEKs out of data backups). A peer that already
+opened the words keeps them unless it ingests the tombstone. Under a
+legal hold the preserved copy keeps the words by design. The mail
+outbox copy of a notification body is not shredded.
+
 ### Postgres NOTIFY pointer delivery (`v7.0.0`)
 
 **Decision.** On Postgres, `PostgresBus::publish` sends a small NOTIFY

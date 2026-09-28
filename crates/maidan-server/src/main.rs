@@ -131,6 +131,12 @@ async fn main() -> anyhow::Result<()> {
         outbox_relay_enabled,
     )
     .map_err(anyhow::Error::msg)?;
+    // Wraps the per-message keys that crypto-shredding destroys on withdrawal.
+    let content_keys = Arc::new(
+        maidan_store::content_keyring::from_env(maidan_server::config::is_production())
+            .map_err(anyhow::Error::msg)?,
+    );
+    tracing::info!(kek_id = content_keys.primary_id(), "content keyring loaded");
 
     let outbox_relay;
     let outbox_backend: Option<OutboxBackend>;
@@ -172,10 +178,15 @@ async fn main() -> anyhow::Result<()> {
                 .context("apply postgres migrations")?;
             let notify_on_publish =
                 outbox_relay_mode == maidan_server::outbox_relay::OutboxRelayMode::Notify;
-            let pg_bus =
-                PostgresBus::connect_with(pool.clone(), PostgresBusOptions { notify_on_publish })
-                    .await
-                    .context("connect postgres bus")?;
+            let pg_bus = PostgresBus::connect_with(
+                pool.clone(),
+                PostgresBusOptions {
+                    notify_on_publish,
+                    content_keys: content_keys.clone(),
+                },
+            )
+            .await
+            .context("connect postgres bus")?;
             bus_listener_health = Some(pg_bus.listener_health());
             bus_hydrate_stats = Some(pg_bus.hydrate_stats());
             if notify_on_publish {
@@ -186,7 +197,8 @@ async fn main() -> anyhow::Result<()> {
                 );
             }
             tracing::info!("search: postgres tsvector");
-            outbox_backend = Some(OutboxBackend::Postgres(pool.clone()));
+            outbox_backend =
+                Some(OutboxBackend::postgres(pool.clone()).with_content_keys(content_keys.clone()));
             outbox_relay = outbox_relay_enabled;
             // Read-replica pool: when MAIDAN_DB_REPLICA_URL is set, connect a
             // separate reader pool (validating replica reachability at boot) so
@@ -201,7 +213,8 @@ async fn main() -> anyhow::Result<()> {
                 PostgresStore::with_replica_reader(pool.clone(), reader)
             } else {
                 PostgresStore::new(pool.clone())
-            };
+            }
+            .with_content_keys(content_keys.clone());
             read_routing_metrics = config
                 .replica_url
                 .is_some()
@@ -277,9 +290,11 @@ async fn main() -> anyhow::Result<()> {
                 .context("apply sqlite migrations")?;
             tracing::info!("event bus: in-memory");
             tracing::info!("search: sqlite fts5");
-            outbox_backend = Some(OutboxBackend::Sqlite(pool.clone()));
+            outbox_backend =
+                Some(OutboxBackend::sqlite(pool.clone()).with_content_keys(content_keys.clone()));
             outbox_relay = outbox_relay_enabled;
-            store = Arc::new(SqliteStore::new(pool.clone()));
+            store =
+                Arc::new(SqliteStore::new(pool.clone()).with_content_keys(content_keys.clone()));
             bus = Arc::new(InMemoryBus::new());
             resource_notifier = Arc::new(InMemoryResourceNotifier::new());
             presence_notifier = None; // single process: legacy local-only presence
@@ -291,6 +306,9 @@ async fn main() -> anyhow::Result<()> {
             read_routing_metrics = None;
         }
     };
+
+    // Finish a KEK rotation: rewrap keys still under a previous KEK.
+    maidan_server::content_keys::spawn_rewrap(store.clone(), std::time::Duration::from_secs(30));
 
     let artifacts: Arc<dyn maidan_artifacts::ArtifactStore> = match &config.artifact_backend {
         ArtifactBackend::LocalFs { root } => {

@@ -301,6 +301,7 @@ mod tests {
             thread_id: message.thread_id,
             dm_conversation_id: None,
             message,
+            sealed: None,
         };
         let out = agui_events_for(&ev);
         let types: Vec<String> = out.iter().map(type_of).collect();

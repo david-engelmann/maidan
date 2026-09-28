@@ -115,6 +115,7 @@ async fn postgres_deep_purge_removes_related_rows() {
             thread_id: th.id,
             dm_conversation_id: None,
             message: msg.clone(),
+            sealed: None,
         })
         .await
         .unwrap();

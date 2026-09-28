@@ -8,7 +8,7 @@ use std::sync::{
 use futures::StreamExt;
 use maidan_bus::BusItem;
 use maidan_store::Store;
-use maidan_types::{inject_type, BusEnvelope, EventFilter, StoredEvent};
+use maidan_types::{inject_type, BusEnvelope, EventFilter, OpenEventError, StoredEvent};
 use serde::Serialize;
 use tokio::sync::mpsc;
 
@@ -80,8 +80,8 @@ pub struct ReplayHint {
     pub replay: Option<String>,
 }
 
-pub fn envelope_from_stored(stored: &StoredEvent) -> Result<BusEnvelope, serde_json::Error> {
-    BusEnvelope::from_stored_payload(stored.id, stored.payload.clone())
+pub fn envelope_from_stored(stored: &StoredEvent) -> Result<BusEnvelope, OpenEventError> {
+    BusEnvelope::from_stored(stored)
 }
 
 pub fn replay_truncated_payload(

@@ -148,6 +148,7 @@ async fn publish_rejects_legacy_synthetic_payload_too_large() {
         thread_id: ThreadId(uuid::Uuid::new_v4()),
         dm_conversation_id: None,
         message: msg,
+        sealed: None,
     };
 
     let err = bus
@@ -194,6 +195,7 @@ async fn pointer_delivery_for_large_persisted_event() {
             edited_at: None,
             tombstoned_at: None,
         },
+        sealed: None,
     };
     let stored = store.append_event(&event).await.unwrap();
 
@@ -234,6 +236,7 @@ async fn backfill_drains_the_missed_range_onto_the_broadcast() {
         pool,
         maidan_bus::PostgresBusOptions {
             notify_on_publish: false,
+            ..Default::default()
         },
     )
     .await
