@@ -86,7 +86,8 @@ fn envelope(body: Value) -> Result<Envelope, (JsonRpcId, A2aError)> {
                 ))
             }
         },
-        Some(Value::Null) => JsonRpcId::Null,
+        // A2A has no notifications, and a null id is the one error responses
+        // use, so a caller could not tell its answer from a rejection.
         None => return Err(invalid(JsonRpcId::Null, "id is required")),
         Some(_) => {
             return Err(invalid(
@@ -257,6 +258,10 @@ mod tests {
         );
         assert_eq!(
             rejected(json!({ "jsonrpc": "2.0", "id": 1.5, "method": "GetTask" })),
+            (JsonRpcId::Null, InvalidRequest)
+        );
+        assert_eq!(
+            rejected(json!({ "jsonrpc": "2.0", "id": null, "method": "GetTask" })),
             (JsonRpcId::Null, InvalidRequest)
         );
         assert_eq!(

@@ -36,8 +36,8 @@ Ignore unknown JSON fields and unknown WS `kind` strings
 | Webhooks | n8n / Zapier | Not in the v1 SDK. REST `POST /workspaces/{wid}/webhooks` already exists. OpenAPI is the contract |
 
 Do not add a fourth protocol. Do not wrap MCP or A2A as the
-primary SDK transport. Do not pretend A2A is a drop-in v1.0 SDK
-target until the card passes a strict reader (J4).
+primary SDK transport. A2A clients use an A2A SDK; the server passes
+the official A2A TCK (`scripts/a2a-tck.sh`).
 
 ---
 

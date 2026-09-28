@@ -737,7 +737,9 @@ pub(super) async fn subscribe(
             return;
         }
         for _ in 0..SUBSCRIBE_MAX_POLLS {
-            tokio::time::sleep(SUBSCRIBE_POLL).await;
+            if !wait_unless_closed(&tx, SUBSCRIBE_POLL).await {
+                return;
+            }
             let current = match state.store.get_a2a_task(&task_id).await {
                 Ok(Some(row)) => match serde_json::from_value::<Task>(row.task_json) {
                     Ok(task) => task,
@@ -770,6 +772,15 @@ pub(super) async fn subscribe(
         }
     });
     Ok(ReceiverStream::new(rx))
+}
+
+/// Sleep for `period`, unless the subscriber hangs up first. False when it
+/// did, so an abandoned stream stops polling the store at once.
+async fn wait_unless_closed<T>(tx: &tokio::sync::mpsc::Sender<T>, period: Duration) -> bool {
+    tokio::select! {
+        () = tx.closed() => false,
+        () = tokio::time::sleep(period) => true,
+    }
 }
 
 // ===== ListTasks =====
@@ -1004,6 +1015,19 @@ pub(crate) async fn list_tasks(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_subscriber_hanging_up_ends_the_wait_at_once() {
+        let (tx, rx) = tokio::sync::mpsc::channel::<()>(1);
+        assert!(wait_unless_closed(&tx, Duration::from_millis(1)).await);
+        drop(rx);
+        let waited = tokio::time::timeout(
+            Duration::from_secs(5),
+            wait_unless_closed(&tx, Duration::from_secs(3600)),
+        )
+        .await;
+        assert_eq!(waited, Ok(false));
+    }
 
     #[test]
     fn page_tokens_round_trip_and_reject_garbage() {

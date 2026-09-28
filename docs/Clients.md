@@ -41,8 +41,9 @@ Working through this pack should leave a stranger able to:
    the recipes that already live in `examples/` (the SDK does not
    reimplement MCP).
 3. Point another vendor's agent at Maidan over **A2A** using the
-   honest recipe in Protocols.md (production *subset*, custom Agent
-   Card, text-only egress). Not a fourth client library.
+   recipe in Protocols.md (A2A v1.0 over JSON-RPC and HTTP+JSON,
+   checked by the official TCK; text and URL parts). Not a fourth
+   client library.
 4. Hook n8n / Zapier on **webhooks + OpenAPI** without an SDK.
 
 The packages are how people *stay*. MCP / A2A / webhooks are how
