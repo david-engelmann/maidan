@@ -323,10 +323,13 @@ Do **not** interleave with 269–272 import/search PRs.
   `message_posted` / `thread_result_set` / `mention_recorded`).
   Fix only *user-visible* inconsistencies; document intentional
   asymmetries (store helper `threads::claim_next` is internal).
-- [x] **C3. OpenAPI / MCP reference freshness** — **✅** `mcp_reference_current`
-  fails if the tracked MCP reference drifts (#1028); the OpenAPI document
-  resolves every reference (#1053), passes Redocly's recommended ruleset
-  (#1061) and documents what each extractor rejects (#1062).
+- [x] **C3. OpenAPI / MCP reference freshness** — **✅** both run in required
+  CI checks. `mcp_reference_current` (`crates/maidan-mcp/tests`, in the
+  required `integration (testcontainers)` job) fails if the tracked MCP
+  reference drifts (#1028). `openapi_well_formed` (same job) keeps every
+  reference resolving (#1053), and the `openapi::lint` unit tests (the required
+  `unit tests` job) keep the document clean under Redocly's recommended ruleset
+  (#1061) and documenting what each extractor rejects (#1062).
   Confirm `gen-mcp-reference` + OpenAPI are required in CI (or
   clearly generated on release) so the published site cannot drift.
   `openapi/paths/api.rs` is 844 lines — freeze a 7-method subset
@@ -364,8 +367,8 @@ Do **not** interleave with 269–272 import/search PRs.
   raising coverage on the modules below is still open.
   Pick 3–5 critical modules (channel access, DM participation,
   outbox/`*_with_event`, notification router, consistency middleware).
-  Add tests until those are strong; *then* consider raising
-  `COVERAGE_MIN_LINES`.
+  Add tests until those are strong; *then* raise those crates' floors in
+  `.config/coverage-floors.toml`.
 - [ ] **D5. Backend parity ritual** — **partly shipped:** `schema_parity`
   compares the two backends' migrated schemas (#1052).
   Make `backend_parity` / `dialect_parity` visibility obvious in CI

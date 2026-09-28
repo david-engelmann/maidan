@@ -437,11 +437,13 @@ than minting a new one.
   ([[Retros/Cluster 352]]). Delivered: `status` incl. `input-required`/`INPUT_REQUIRED` (`normalize_task_state`
   accepts every spelling); `statusTimestampAfter`; `includeArtifacts` (omitted when false); `application/a2a+json`;
   `pageSize` max **100**; and a pending Cluster-350 gate surfaces as a synthetic `input-required` A2A task so an
-  external agent discovers it via `tasks/list?status=input-required`. **DEFERRED — 352.5 real `nextPageToken`
+  external agent discovers it via `tasks/list?status=input-required`. ~~**DEFERRED — 352.5 real `nextPageToken`
   keyset paging** (`nextPageToken` MUST be present, `""` on last page): correct paging needs the per-channel RBAC
   filter pushed **into** the store query — the current post-fetch RBAC filter drops rows, so a keyset/offset cursor
-  cannot reliably fill a page or know it is the last one. The always-`""` token is already conformant for the
-  ≤`pageSize` common case H12 hits (a handful of pending gates); this only bites a workspace with **>100** tasks.
+  cannot reliably fill a page or know it is the last one.~~ **✅ #1066** — `ListTasks` pages by a keyset
+  `nextPageToken` and keeps reading and RBAC-filtering store batches until the page is full, with an exact
+  RBAC-filtered `totalSize` (`a2a_agent/ops.rs`). Still open, for scale only: pushing the RBAC filter into the
+  store query, so a workspace full of unreadable tasks costs fewer batch reads.
   Also still open: Stripe-style client auto-page + idempotency keys on retries (SDK 0.2, `NEW-sdk-ergonomics`);
   ~~a2a-tck MUST failures as an external verifier `/test` (`NEW-a2a-tck-ci`)~~ **✅ #1066** — the `a2a tck` CI job; keyset
   `nextPageToken` paging with an exact RBAC-filtered `totalSize` shipped with it.
