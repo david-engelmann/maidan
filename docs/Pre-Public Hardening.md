@@ -329,10 +329,9 @@ Do **not** interleave with 269–272 import/search PRs.
   reference drifts (#1028). `openapi_well_formed` (same job) keeps every
   reference resolving (#1053), and the `openapi::lint` unit tests (the required
   `unit tests` job) keep the document clean under Redocly's recommended ruleset
-  (#1061) and documenting what each extractor rejects (#1062). The
-  published site cannot drift from the binary. (Separate from C3, and
-  still open: freezing a small method subset before any SDK, Expansion
-  Bet 3; `openapi/paths/api.rs` is 2,642 lines now, up from 844.)
+  (#1061) and documenting what each extractor rejects (#1062). Separately,
+  freezing a small method subset before any SDK is still open (Expansion
+  Bet 3); `openapi/paths/api.rs` is 2,642 lines now, up from 844.
 - [ ] **C4. Deprecation policy**
   Short ADR: how you rename/remove a tool or field post-public (window,
   changelog section, capability bit).
