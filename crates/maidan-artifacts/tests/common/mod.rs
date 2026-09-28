@@ -51,8 +51,10 @@ pub async fn s3_store(bucket: &str) -> Option<(ContainerAsync<GenericImage>, S3S
     Some((container, store))
 }
 
+/// Pings the daemon testcontainers itself would use, so `DOCKER_HOST` and its
+/// rootless and Docker Desktop socket fallbacks count as Docker being there.
 async fn docker_available() -> bool {
-    match testcontainers::bollard::Docker::connect_with_defaults() {
+    match testcontainers::core::client::docker_client_instance().await {
         Ok(docker) => docker.ping().await.is_ok(),
         Err(_) => false,
     }
