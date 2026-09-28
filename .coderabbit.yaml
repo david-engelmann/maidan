@@ -18,6 +18,8 @@ reviews:
     enabled: true
     drafts: false
     auto_incremental_review: true
+    # Review every push; the default pauses after five reviewed commits.
+    auto_pause_after_reviewed_commits: 0
   pre_merge_checks:
     # Doc comments are written where the why is not obvious, not to a quota.
     docstrings:
@@ -77,29 +79,38 @@ reviews:
         stay in place, and that changes stay consistent with the Helm chart.
     - path: "docs/**"
       instructions: |
-        These are public docs. Flag internal or third-party product names;
-        examples use `example.*` kinds and generic names. A sentence about
+        These are public docs. Flag internal project names, and other
+        companies' products used as examples or sample data; examples use
+        `example.*` kinds and generic names. Naming a tool, service or
+        dependency the project actually uses (GitHub, Redocly, CodeRabbit) is
+        fine. A sentence about
         what Maidan does must be backed by a row in `docs/Claims.md`; flag
         "production-ready", "secure", "1.0" or performance numbers without a
         gate or benchmark behind them. Prefer short, plain sentences.
     - path: "book/src/**"
       instructions: |
-        These are public docs. Flag internal or third-party product names;
-        examples use `example.*` kinds and generic names. A sentence about
+        These are public docs. Flag internal project names, and other
+        companies' products used as examples or sample data; examples use
+        `example.*` kinds and generic names. Naming a tool, service or
+        dependency the project actually uses (GitHub, Redocly, CodeRabbit) is
+        fine. A sentence about
         what Maidan does must be backed by a row in `docs/Claims.md`; flag
         "production-ready", "secure", "1.0" or performance numbers without a
         gate or benchmark behind them. Prefer short, plain sentences.
     - path: "examples/**"
       instructions: |
-        These are public docs. Flag internal or third-party product names;
-        examples use `example.*` kinds and generic names. A sentence about
+        These are public docs. Flag internal project names, and other
+        companies' products used as examples or sample data; examples use
+        `example.*` kinds and generic names. Naming a tool, service or
+        dependency the project actually uses (GitHub, Redocly, CodeRabbit) is
+        fine. A sentence about
         what Maidan does must be backed by a row in `docs/Claims.md`; flag
         "production-ready", "secure", "1.0" or performance numbers without a
         gate or benchmark behind them. Prefer short, plain sentences.
     - path: "*.md"
       instructions: |
-        Same rules as docs/: no internal or third-party product names, no
-        unbacked claims. README, CLAUDE.md and CONTRIBUTING.md must agree on
+        Same rules as docs/: no internal project names or other products as
+        examples, no unbacked claims. README, CLAUDE.md and CONTRIBUTING.md must agree on
         the PR flow and the eight required CI checks.
     - path: ".github/workflows/**"
       instructions: |
