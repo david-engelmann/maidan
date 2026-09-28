@@ -224,6 +224,37 @@ replacing `/mcp/stream` or implementing the full transport spec.
 **To revisit:** session-scoped MCP servers per bearer token; broader resource
 fan-out beyond `post_message`.
 
+### MCP resource subscriptions belong to a caller and session
+
+**Decision.** A `resources/subscribe` belongs to one subscriber: the caller's
+identity (workspace, member, actor, credential, grant) plus the MCP session it
+arrived in — a `2024-11-05` `Mcp-Session-Id`, the stdio process, or, on the
+stateless transports, the credential itself. A notification is addressed to a
+subscriber and only that subscriber's listeners forward it. Every resource
+update carries the workspace it happened in (across replicas too), and each
+delivery re-checks the subscriber's access to the resource; losing access ends
+the subscription. A session's subscriptions end with it; a stateless caller's
+end after the session TTL with no open listener; one subscriber may watch at
+most 1024 resources. A streamable session is open only to the caller that
+opened it.
+
+**Alternative.** Keep one set per workspace (the first fix) and filter at the
+listener by workspace; or require a server-minted listener id on every
+stateless subscribe.
+
+**Why this:** per-workspace keying still told every member about private
+threads one member watched, let one member's unsubscribe silence the rest, and
+could not scope a content-addressed artifact, whose URI names a resource in
+every workspace that uploaded the same bytes. A listener id would add a handle
+the stateless revisions do not define; the credential is already the stateless
+caller's identity.
+
+**To revisit:** stateless subscriptions live in the replica that took them, so
+a client must subscribe and listen on the same replica (it fails closed: an
+update is missed, never misdelivered). `2026-07-28` `subscriptions/listen`
+replaces `resources/subscribe` and makes the listen request carry its own
+subscriptions, which removes that constraint.
+
 ### Resource notifications ride a dedicated NOTIFY channel (`v102.0.0`)
 
 **Decision.** MCP resource-update notifications fan out across replicas on a

@@ -27,9 +27,21 @@ pub fn markdown() -> String {
          - `tools/list`, `tools/call`\n\
          - `resources/list`, `resources/templates/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`\n\
          - `prompts/list`, `prompts/get`\n\n\
-         **Notification:** `notifications/resources/updated` with `{ \"uri\": \"maidan://...\" }` \
-         (stdio after each response; HTTP via `GET /mcp/notifications` or `POST /mcp/streamable`). \
-         Mutating tools fan out to related thread/channel/workspace/artifact URIs.\n\n",
+         **Notification:** `notifications/resources/updated` with `{ \"uri\": \"maidan://...\" }`. \
+         Mutating tools fan out to related thread/channel/workspace/artifact URIs.\n\n\
+         A subscription belongs to the caller that made it, in the session it made it in, and an \
+         update reaches it only from its own workspace and only while it can still read the \
+         resource (private channels and DMs included; losing access ends the subscription). \
+         Subscribing to a resource you cannot read is refused like `resources/read`. Where it arrives:\n\n\
+         - **stdio:** after each response.\n\
+         - **Stateless HTTP** (`POST /mcp`, or `POST /mcp/streamable` from `2025-03-26` on): on your own \
+         `GET /mcp/notifications` or `GET /mcp/streamable` listener. Subscribe and listen on the same \
+         replica; subscriptions are held in the process that took them.\n\
+         - **`2024-11-05` session:** on that session's stream (or `GET /mcp/streamable` with its \
+         `Mcp-Session-Id`), until it is closed or expires.\n\n\
+         Subscriptions end with their session; a stateless caller's end once it has had no listener \
+         for the session TTL (`MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS`, default 3600). A caller may \
+         watch at most 1024 resources at once.\n\n",
     );
 
     out.push_str("## Tools\n\n");

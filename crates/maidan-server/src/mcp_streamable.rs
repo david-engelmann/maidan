@@ -13,12 +13,15 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
-use maidan_mcp::{JsonRpcRequest, JsonRpcResponse};
-use tokio_stream::wrappers::BroadcastStream;
+use maidan_mcp::{JsonRpcRequest, JsonRpcResponse, McpSession, Principal};
 use tokio_stream::StreamExt as _;
 
 use crate::error::ApiError;
 use crate::state::AppState;
+
+/// How often a session's notification task checks that the session is still
+/// open.
+const SESSION_LIVENESS_CHECK: Duration = Duration::from_secs(15);
 
 /// Whether the client's `Accept` header permits an SSE response. Absent →
 /// `true` (preserve the streaming default). MCP spec: the server may answer a
@@ -65,10 +68,11 @@ pub async fn streamable(
         return Ok(Json(resp).into_response());
     }
 
-    // A follow-up on an open `2024-11-05` session stays on it.
+    // A follow-up on an open `2024-11-05` session stays on it — if this caller
+    // opened it; anyone else's session id is no session at all.
     let registry = state.mcp.streamable_sessions();
     if let Some(existing) = session_header.filter(|s| !s.is_empty()) {
-        if registry.is_open(existing).await {
+        if registry.is_open_for(existing, &Principal::of(&auth)).await {
             return follow_up_on_open_session(&state, &auth, existing, request).await;
         }
     }
@@ -104,14 +108,12 @@ async fn follow_up_on_open_session(
     session_id: &str,
     request: JsonRpcRequest,
 ) -> Result<Response, ApiError> {
-    let response = state.mcp.handle(request, auth).await;
+    let session = McpSession::Streamable(session_id.to_string());
+    let response = state.mcp.handle_in(request, auth, &session).await;
     // Mux onto the open SSE leg (202). If that leg has since dropped — the
     // session survives it now, for reconnect — the response was still logged
     // for replay; answer it inline (200) rather than failing.
-    let mut resp = if push_response_and_notifications(state, auth, session_id, &response)
-        .await
-        .is_ok()
-    {
+    let mut resp = if push_response(state, session_id, &response).await.is_ok() {
         StatusCode::ACCEPTED.into_response()
     } else {
         Json(response).into_response()
@@ -126,30 +128,42 @@ async fn open_new_streamable_session(
     session_header: Option<&str>,
     request: JsonRpcRequest,
 ) -> Result<Response, ApiError> {
-    let session_id = state.mcp.touch_streamable_session(session_header).await;
+    let session_id = state
+        .mcp
+        .touch_streamable_session(session_header, auth)
+        .await;
     let registry = state.mcp.streamable_sessions();
-    let sse_rx = registry.open(session_id.clone()).await;
+    let sse_rx = registry.open(session_id.clone(), Principal::of(auth)).await;
+    let session = McpSession::Streamable(session_id.clone());
 
-    let response = state.mcp.handle(request, auth).await;
-    push_response_and_notifications(state, auth, &session_id, &response).await?;
+    // Listen before handling, so an update the first request causes is not
+    // missed. The session's notifications ride its own stream until it closes.
+    let mut listener = state.mcp.listen(auth, session.clone());
+    let response = state.mcp.handle_in(request, auth, &session).await;
+    push_response(state, &session_id, &response).await?;
 
-    let mut notify_rx = state.mcp.subscribe_notifications();
     let registry_bg = registry.clone();
     let session_bg = session_id.clone();
-    let auth_bg = auth.clone();
+    let owner = Principal::of(auth);
     tokio::spawn(async move {
+        // A closed or expired session gets no more notifications, so it is
+        // noticed by checking, not by a failed push that never comes.
+        let mut liveness = tokio::time::interval(SESSION_LIVENESS_CHECK);
         loop {
-            match notify_rx.recv().await {
-                Ok(scoped) if !scoped.visible_to(&auth_bg) => continue,
-                Ok(scoped) => {
-                    if let Ok(data) = serde_json::to_string(&scoped.notification) {
+            tokio::select! {
+                next = listener.recv() => {
+                    let Some(notification) = next else { break };
+                    if let Ok(data) = serde_json::to_string(&notification) {
                         if !registry_bg.push(&session_bg, data).await {
                             break;
                         }
                     }
                 }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(_) => break,
+                _ = liveness.tick() => {
+                    if !registry_bg.is_open_for(&session_bg, &owner).await {
+                        break;
+                    }
+                }
             }
         }
     });
@@ -177,28 +191,21 @@ async fn open_new_streamable_session(
     Ok(resp)
 }
 
-async fn push_response_and_notifications(
+async fn push_response(
     state: &AppState,
-    auth: &AuthContext,
     session_id: &str,
     response: &JsonRpcResponse,
 ) -> Result<(), ApiError> {
-    let registry = state.mcp.streamable_sessions();
     let json = serde_json::to_string(response).map_err(|e| ApiError::Internal(e.to_string()))?;
-    if !registry.push(session_id, json).await {
+    if !state.mcp.streamable_sessions().push(session_id, json).await {
         return Err(ApiError::Internal("streamable session closed".into()));
-    }
-    for notification in state.mcp.take_pending_notifications(auth).await {
-        let data =
-            serde_json::to_string(&notification).map_err(|e| ApiError::Internal(e.to_string()))?;
-        if !registry.push(session_id, data).await {
-            break;
-        }
     }
     Ok(())
 }
 
-/// Close an open streamable session (`DELETE /mcp/streamable`).
+/// Close an open streamable session (`DELETE /mcp/streamable`), and with it
+/// every resource subscription made in it. Another caller's session id is
+/// left alone.
 pub async fn close_session(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -215,14 +222,15 @@ pub async fn close_session(
     else {
         return Err(ApiError::BadRequest("missing Mcp-Session-Id header".into()));
     };
-    state.mcp.streamable_sessions().close(session_id).await;
+    state.mcp.close_streamable_session(session_id, &auth).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// Server→client SSE stream for a streamable session (`GET /mcp/streamable`).
 /// Delivers unsolicited server notifications (e.g. resource updates) per the
-/// MCP spec's server-initiated GET stream; touches and echoes an open
-/// `Mcp-Session-Id` when supplied.
+/// MCP spec's server-initiated GET stream: with an open `Mcp-Session-Id` this
+/// caller owns, what it subscribed to in that session (touched and echoed);
+/// otherwise what it subscribed to statelessly.
 pub async fn stream_get(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -235,8 +243,9 @@ pub async fn stream_get(
     crate::mcp::validate_protocol_version(&headers)?;
 
     let registry = state.mcp.streamable_sessions();
+    let owner = Principal::of(&auth);
     let session_id = match headers.get("mcp-session-id").and_then(|v| v.to_str().ok()) {
-        Some(id) if !id.is_empty() && registry.is_open(id).await => {
+        Some(id) if !id.is_empty() && registry.is_open_for(id, &owner).await => {
             registry.touch(id).await;
             Some(id.to_string())
         }
@@ -253,14 +262,18 @@ pub async fn stream_get(
         Ok::<Event, Infallible>(Event::default().id(event_id.to_string()).data(data))
     }));
 
-    let rx = state.mcp.subscribe_notifications();
-    let listener = auth.clone();
-    let notifications = BroadcastStream::new(rx).filter_map(move |item| {
-        let scoped = item.ok().filter(|s| s.visible_to(&listener))?;
-        serde_json::to_string(&scoped.notification)
-            .ok()
-            .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
-    });
+    let session = session_id
+        .clone()
+        .map_or(McpSession::Stateless, McpSession::Streamable);
+    let notifications = state
+        .mcp
+        .listen(&auth, session)
+        .into_stream()
+        .filter_map(|notification| {
+            serde_json::to_string(&notification)
+                .ok()
+                .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
+        });
 
     let stream = replay.chain(notifications);
 

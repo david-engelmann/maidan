@@ -1,18 +1,24 @@
-//! Map MCP tool mutations to `maidan://` resource URIs for subscription fan-out.
+//! Map mutations to the `maidan://` resource URIs they touched, each scoped to
+//! the workspace the mutation happened in, for subscription fan-out.
 
 use std::collections::HashSet;
 
+use maidan_bus::ResourceUpdate;
 use maidan_router::resolve_thread_context;
 use maidan_store::Store;
 use maidan_types::*;
 use serde_json::Value;
 
+/// `caller_workspace` scopes what only the caller's workspace can say it
+/// touched: an artifact is content-addressed and shared across workspaces, so
+/// an upload is news only to the workspace it was uploaded into.
 pub async fn uris_for_tool_mutation(
     store: &dyn Store,
+    caller_workspace: WorkspaceId,
     tool_name: &str,
     args: &Value,
     result: &Value,
-) -> Vec<String> {
+) -> Vec<ResourceUpdate> {
     let mut uris = HashSet::new();
     match tool_name {
         "post_message" => {
@@ -40,7 +46,10 @@ pub async fn uris_for_tool_mutation(
         "upload_artifact" | "complete_artifact_multipart" => {
             if let Some(body) = tool_result_json(result) {
                 if let Some(sha) = body.get("sha256").and_then(|v| v.as_str()) {
-                    uris.insert(format!("maidan://artifacts/{sha}"));
+                    uris.insert(ResourceUpdate::new(
+                        caller_workspace,
+                        format!("maidan://artifacts/{sha}"),
+                    ));
                 }
             }
         }
@@ -75,7 +84,7 @@ pub async fn uris_for_tool_mutation(
 }
 
 /// URIs to notify after HTTP message tombstone or other message-scoped mutations.
-pub async fn uris_for_message(store: &dyn Store, message_id: MessageId) -> Vec<String> {
+pub async fn uris_for_message(store: &dyn Store, message_id: MessageId) -> Vec<ResourceUpdate> {
     let mut uris = HashSet::new();
     if let Ok(msg) = store.get_message(message_id).await {
         push_thread_chain(store, msg.thread_id, &mut uris).await;
@@ -84,29 +93,54 @@ pub async fn uris_for_message(store: &dyn Store, message_id: MessageId) -> Vec<S
 }
 
 /// URIs to notify after HTTP message tombstone.
-pub async fn uris_for_message_tombstone(store: &dyn Store, message_id: MessageId) -> Vec<String> {
+pub async fn uris_for_message_tombstone(
+    store: &dyn Store,
+    message_id: MessageId,
+) -> Vec<ResourceUpdate> {
     uris_for_message(store, message_id).await
 }
 
 /// URIs to notify after workspace deep purge.
-pub fn uris_for_workspace_purge(workspace_id: WorkspaceId) -> Vec<String> {
-    vec![format!("maidan://workspaces/{}", workspace_id.0)]
+pub fn uris_for_workspace_purge(workspace_id: WorkspaceId) -> Vec<ResourceUpdate> {
+    vec![ResourceUpdate::new(
+        workspace_id,
+        format!("maidan://workspaces/{}", workspace_id.0),
+    )]
 }
 
 /// URIs to notify after thread FSM transition.
-pub async fn uris_for_thread_transition(store: &dyn Store, thread_id: ThreadId) -> Vec<String> {
+pub async fn uris_for_thread_transition(
+    store: &dyn Store,
+    thread_id: ThreadId,
+) -> Vec<ResourceUpdate> {
     let mut uris = HashSet::new();
     push_thread_chain(store, thread_id, &mut uris).await;
     uris.into_iter().collect()
 }
 
-async fn push_thread_chain(store: &dyn Store, thread_id: ThreadId, uris: &mut HashSet<String>) {
-    uris.insert(format!("maidan://threads/{}", thread_id.0));
+/// A thread whose workspace cannot be resolved notifies nobody: an update
+/// with no workspace has no audience it may reach.
+async fn push_thread_chain(
+    store: &dyn Store,
+    thread_id: ThreadId,
+    uris: &mut HashSet<ResourceUpdate>,
+) {
     let Ok(ctx) = resolve_thread_context(store, thread_id).await else {
         return;
     };
-    uris.insert(format!("maidan://channels/{}", ctx.channel_id.0));
-    uris.insert(format!("maidan://workspaces/{}", ctx.workspace_id.0));
+    let ws = ctx.workspace_id;
+    uris.insert(ResourceUpdate::new(
+        ws,
+        format!("maidan://threads/{}", thread_id.0),
+    ));
+    uris.insert(ResourceUpdate::new(
+        ws,
+        format!("maidan://channels/{}", ctx.channel_id.0),
+    ));
+    uris.insert(ResourceUpdate::new(
+        ws,
+        format!("maidan://workspaces/{}", ws.0),
+    ));
 }
 
 async fn push_ref_side(
@@ -114,7 +148,7 @@ async fn push_ref_side(
     args: &Value,
     kind_key: &str,
     id_key: &str,
-    uris: &mut HashSet<String>,
+    uris: &mut HashSet<ResourceUpdate>,
 ) {
     let Some(kind) = args.get(kind_key).and_then(|v| v.as_str()) else {
         return;
@@ -175,7 +209,13 @@ mod tests {
     async fn workspace_purge_uri_targets_workspace() {
         let ws_id = WorkspaceId(uuid::Uuid::new_v4());
         let uris = uris_for_workspace_purge(ws_id);
-        assert_eq!(uris, vec![format!("maidan://workspaces/{}", ws_id.0)]);
+        assert_eq!(
+            uris,
+            vec![ResourceUpdate::new(
+                ws_id,
+                format!("maidan://workspaces/{}", ws_id.0)
+            )]
+        );
     }
 
     #[tokio::test]
@@ -232,9 +272,40 @@ mod tests {
             "author_id": member.id.0,
             "body": "hi"
         });
-        let uris = uris_for_tool_mutation(store.as_ref(), "post_message", &args, &result).await;
-        assert!(uris.contains(&format!("maidan://threads/{}", thread.id.0)));
-        assert!(uris.contains(&format!("maidan://channels/{}", ch.id.0)));
-        assert!(uris.contains(&format!("maidan://workspaces/{}", ws.id.0)));
+        let uris =
+            uris_for_tool_mutation(store.as_ref(), ws.id, "post_message", &args, &result).await;
+        for uri in [
+            format!("maidan://threads/{}", thread.id.0),
+            format!("maidan://channels/{}", ch.id.0),
+            format!("maidan://workspaces/{}", ws.id.0),
+        ] {
+            assert!(uris.contains(&ResourceUpdate::new(ws.id, uri)));
+        }
+    }
+
+    #[tokio::test]
+    async fn an_artifact_upload_is_scoped_to_the_uploading_workspace() {
+        let store = store().await;
+        let uploader = WorkspaceId(uuid::Uuid::new_v4());
+        let sha = "a".repeat(64);
+        let result = json!({
+            "content": [{ "type": "text", "text": json!({ "sha256": sha }).to_string() }],
+            "isError": false
+        });
+        let uris = uris_for_tool_mutation(
+            store.as_ref(),
+            uploader,
+            "upload_artifact",
+            &json!({}),
+            &result,
+        )
+        .await;
+        assert_eq!(
+            uris,
+            vec![ResourceUpdate::new(
+                uploader,
+                format!("maidan://artifacts/{sha}")
+            )]
+        );
     }
 }

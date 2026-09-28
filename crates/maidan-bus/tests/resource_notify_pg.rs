@@ -1,10 +1,11 @@
 //! Cross-process resource-notification fan-out over Postgres LISTEN/NOTIFY. Two
 //! `PostgresResourceNotifier`s on the same database stand in for two server
-//! replicas: a `publish_uris` on one must reach a subscriber on the other.
+//! replicas: a `publish` on one must reach a subscriber on the other.
 
 use std::time::Duration;
 
-use maidan_bus::{PostgresResourceNotifier, ResourceNotifier};
+use maidan_bus::{PostgresResourceNotifier, ResourceNotifier, ResourceUpdate};
+use maidan_types::WorkspaceId;
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
@@ -38,7 +39,7 @@ async fn pg_pool() -> Option<(testcontainers::ContainerAsync<Postgres>, sqlx::Pg
 }
 
 #[tokio::test]
-async fn resource_uris_fan_out_across_replicas() {
+async fn resource_updates_fan_out_across_replicas_with_their_workspace() {
     let Some((_container, pool)) = pg_pool().await else {
         return;
     };
@@ -55,19 +56,20 @@ async fn resource_uris_fan_out_across_replicas() {
 
     let mut sub_b = replica_b.subscribe();
 
-    replica_a
-        .publish_uris(vec![
-            "maidan://threads/t1".into(),
-            "maidan://workspaces/w1".into(),
-        ])
-        .await
-        .unwrap();
+    let workspace = WorkspaceId(uuid::Uuid::new_v4());
+    let sent = vec![
+        ResourceUpdate::new(workspace, "maidan://threads/t1"),
+        ResourceUpdate::new(workspace, "maidan://workspaces/w1"),
+    ];
+    replica_a.publish(sent.clone()).await.unwrap();
 
     let got = tokio::time::timeout(Duration::from_secs(5), sub_b.recv())
         .await
         .expect("timeout waiting for cross-replica resource notify")
         .expect("channel closed");
 
-    assert!(got.contains(&"maidan://threads/t1".to_string()));
-    assert!(got.contains(&"maidan://workspaces/w1".to_string()));
+    assert_eq!(
+        got, sent,
+        "the origin workspace crosses the replica boundary"
+    );
 }
