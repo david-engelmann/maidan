@@ -1,7 +1,7 @@
 # HTTP API reference
 
 Maidan serves a machine-readable OpenAPI document at **`GET /openapi.json`**
-(OpenAPI 3.0) on any running `maidan-server` instance. Import it into Swagger UI,
+(OpenAPI 3.1) on any running `maidan-server` instance. Import it into Swagger UI,
 Redoc, or your client generator.
 
 The spec documents REST routes and `application/problem+json` errors. MCP

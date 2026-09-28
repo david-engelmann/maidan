@@ -253,7 +253,7 @@ Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 
 | Endpoint            | Use                                      |
 |---------------------|------------------------------------------|
-| `GET /openapi.json` | Machine-readable OpenAPI 3.0 (Track W.1). HTTP routes and `application/problem+json` errors; subscribe/resume protocol summary in `info.description`. Auth/session routes are under the `auth` tag (`/auth/oidc/*`, `/auth/session`, `/ui/api/...`). |
+| `GET /openapi.json` | Machine-readable OpenAPI 3.1 (Track W.1). HTTP routes and `application/problem+json` errors; subscribe/resume protocol summary in `info.description`. Auth/session routes are under the `auth` tag (`/auth/oidc/*`, `/auth/session`, `/ui/api/...`). |
 
 ## A2A transports (`v282.0.0`+)
 

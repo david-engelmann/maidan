@@ -55,12 +55,15 @@ were skipped too. An omitted workspace now means the caller's own
 
 **Open, found in the same trace:**
 
-- **Artifact dedupe hands another tenant's metadata back.** The shared
+- ~~**Artifact dedupe hands another tenant's metadata back.** The shared
   `maidan_artifacts` row keeps the first uploader, so a second tenant uploading
   the same bytes gets the first tenant's `uploaded_by` member id and
   `created_at` in the upload response (REST and MCP) and from `/artifacts/:sha/meta`.
   A second tenant's upload also overwrites the shared row's `kind` and
-  `mime_type`. Fix: per-workspace metadata on the ref, not the shared row (S–M).
+  `mime_type`. Fix: per-workspace metadata on the ref, not the shared row (S–M).~~
+  **✅ fixed** — #1033 moved the metadata onto each workspace's ref (pg 0109 /
+  sqlite 0108), and every read on behalf of a workspace goes through
+  `get_artifact_for_workspace`; see Correctness and hygiene.
 - ~~**MCP resource notifications are one global set.** `resources/subscribe`
   inserts into a process-wide `HashSet`, and `/mcp/notifications` and
   `GET /mcp/streamable` forward every update to every listener, so a tenant
@@ -152,7 +155,7 @@ moment. CI runs it on every PR (`pitr drill`, not required). Size M.
 
 Wave 4 #45: ~~a claimer-crash case in `chaos.rs` (S)~~ **✅** `claimer_crash` (store, both backends: a crashed claim lapses, the takeover reports `ClaimExpired`, the dead claimer is fenced from renew/acknowledge/release, and crashing claimers never double-hold a thread), and ~~a proptest state machine
 for `claim_next` against the real store (M)~~ **✅** `claim_state_machine` (claims, releases, renewals, acknowledgements and expiries against a model; stale tokens change nothing). Then loom, madsim, the A2A TCK,
-`openapi-lint` (**structural half ✅** — `openapi_well_formed` pins every `$ref` resolving and every operation declaring exactly its path parameters; Redocly still reports missing summaries and 4xx responses, and utoipa 4's `allOf`+`nullable` pattern), nextest profiles and coverage floors. ~~A pg-vs-sqlite schema
+~~`openapi-lint`~~ (**✅** — `openapi_well_formed` pins every `$ref` resolving and every operation declaring exactly its path parameters, and the `openapi::lint` unit tests (`every_operation_has_its_own_summary`, `every_operation_documents_a_client_error`, `every_client_error_is_an_rfc_9457_problem` and five more) pin the document Redocly's recommended ruleset passes: a summary on every operation, the client errors each can return as RFC 9457 problems, and OpenAPI 3.1 (utoipa 5) in place of 3.0's `allOf`+`nullable`. `scripts/openapi-lint.sh` runs Redocly itself; six per-operation exceptions (redirect-only OIDC, health probes) are in `.redocly.lint-ignore.yaml`), nextest profiles and coverage floors. ~~A pg-vs-sqlite schema
 diff~~ **✅** `schema_parity` migrates both backends and compares tables, columns,
 nullability, unique keys and foreign keys. The first run found 101 matching tables
 and five known differences, each allowlisted with its reason: FTS, a `NOT NULL`

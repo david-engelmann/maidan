@@ -49,7 +49,7 @@ async fn openapi_json_serves_document() {
         .expect("request");
     assert_eq!(resp.status(), 200);
     let doc: serde_json::Value = resp.json().await.expect("json");
-    assert_eq!(doc["openapi"].as_str(), Some("3.0.3"));
+    assert_eq!(doc["openapi"].as_str(), Some("3.1.0"));
     assert_eq!(doc["info"]["title"].as_str(), Some("Maidan API"));
     let paths = doc["paths"].as_object().expect("paths object");
     assert!(paths.contains_key("/health/live"));

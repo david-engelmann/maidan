@@ -32,10 +32,6 @@ id = "RUSTSEC-2026-0098"
 reason = "rustls-webpki 0.101 via aws-sdk; URI name constraints unused for MinIO HTTP"
 
 [[advisories.ignore]]
-id = "RUSTSEC-2024-0370"
-reason = "proc-macro-error unmaintained via utoipa-gen; compile-time only, no runtime surface"
-
-[[advisories.ignore]]
 id = "RUSTSEC-2023-0071"
 reason = "rsa via openidconnect for RS256 id_token verify; no fixed release; network timing risk accepted for OIDC (v2.0.2)"
 

@@ -1,53 +1,63 @@
 //! OIDC and browser session routes (no bearer on login/callback).
 
+use crate::openapi::responses::*;
 use uuid::Uuid;
 
 use crate::dto::{
-    ListAuditQuery, ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery,
-    MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, PeerResponse, SearchQuery,
-    SessionResponse,
+    CreateChannel, CreateMessage, CreateThread, ListAuditQuery, ListEventsQuery,
+    ListMessageEditsQuery, ListMessagesQuery, MintApiTokenResponse, OidcCallbackQuery,
+    OidcLoginQuery, PeerResponse, SearchQuery, SessionResponse,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread};
 
+/// Start an OIDC login
 #[utoipa::path(
     get,
     path = "/auth/oidc/login",
     tag = "auth",
     params(OidcLoginQuery),
+    security(()),
     responses(
         (status = 307, description = "Redirect to IdP (or mock callback when MAIDAN_OIDC_MOCK=1)"),
-        (status = 403, body = ProblemDetails, description = "OIDC disabled"),
-        (status = 404, body = ProblemDetails, description = "Workspace not found"),
+        (status = 403, description = "OIDC disabled", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "Workspace not found", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn oidc_login() {}
 
+/// Finish an OIDC login
 #[utoipa::path(
     get,
     path = "/auth/oidc/callback",
     tag = "auth",
     params(OidcCallbackQuery),
+    security(()),
     responses(
         (status = 307, description = "Redirect after session cookie is set"),
-        (status = 400, body = ProblemDetails),
-        (status = 403, body = ProblemDetails),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
     )
 )]
 pub fn oidc_callback() {}
 
+/// Log out of the browser session
 #[utoipa::path(
     post,
     path = "/auth/logout",
     tag = "auth",
+    security(()),
     responses(
         (status = 307, description = "Redirect to /ui/ or IdP end-session when configured"),
-        (status = 403, body = ProblemDetails, description = "OIDC disabled"),
+        (status = 403, description = "OIDC disabled", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, response = NotFound),
     )
 )]
 pub fn oidc_logout() {}
 
+/// Get the browser session
 #[utoipa::path(
     get,
     path = "/auth/session",
@@ -55,12 +65,13 @@ pub fn oidc_logout() {}
     security(("sessionCookie" = [])),
     responses(
         (status = 200, body = SessionResponse),
-        (status = 401, body = ProblemDetails),
-        (status = 403, body = ProblemDetails, description = "OIDC disabled"),
+        (status = 403, description = "OIDC disabled", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, response = NotFound),
     )
 )]
 pub fn get_auth_session() {}
 
+/// Mint the first admin token from the browser session
 #[utoipa::path(
     post,
     path = "/auth/session/mint",
@@ -68,12 +79,13 @@ pub fn get_auth_session() {}
     security(("sessionCookie" = [])),
     responses(
         (status = 201, body = MintApiTokenResponse, description = "First token:admin in workspace"),
-        (status = 401, body = ProblemDetails),
-        (status = 403, body = ProblemDetails),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
     )
 )]
 pub fn mint_auth_session_token() {}
 
+/// List a workspace's events (console)
 #[utoipa::path(
     get,
     path = "/ui/api/workspaces/{wid}/events",
@@ -88,12 +100,15 @@ pub fn mint_auth_session_token() {}
     ),
     responses(
         (status = 200, body = Vec<StoredEvent>),
-        (status = 401, body = ProblemDetails),
-        (status = 409, description = "Cursor too old; must_refetch", body = ProblemDetails),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, description = "Cursor too old; must_refetch", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn ui_list_events() {}
 
+/// List a workspace's channels (console)
 #[utoipa::path(
     get,
     path = "/ui/api/workspaces/{wid}/channels",
@@ -105,11 +120,12 @@ pub fn ui_list_events() {}
     ),
     responses(
         (status = 200, body = Vec<Channel>),
-        (status = 401, body = ProblemDetails),
+        (status = 403, response = Forbidden),
     )
 )]
 pub fn ui_list_channels() {}
 
+/// Create a channel (console)
 #[utoipa::path(
     post,
     path = "/ui/api/workspaces/{wid}/channels",
@@ -122,12 +138,14 @@ pub fn ui_list_channels() {}
     ),
     responses(
         (status = 201, body = Channel),
-        (status = 401, body = ProblemDetails),
-        (status = 403, body = ProblemDetails),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn ui_create_channel() {}
 
+/// Create a thread in a channel (console)
 #[utoipa::path(
     post,
     path = "/ui/api/channels/{cid}/threads",
@@ -140,12 +158,16 @@ pub fn ui_create_channel() {}
     ),
     responses(
         (status = 201, body = Thread),
-        (status = 401, body = ProblemDetails),
-        (status = 403, body = ProblemDetails),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn ui_create_thread() {}
 
+/// Post a message to a thread (console)
 #[utoipa::path(
     post,
     path = "/ui/api/threads/{tid}/messages",
@@ -158,12 +180,16 @@ pub fn ui_create_thread() {}
     ),
     responses(
         (status = 201, body = Message),
-        (status = 401, body = ProblemDetails),
-        (status = 403, body = ProblemDetails),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn ui_post_message() {}
 
+/// List a channel's threads (console)
 #[utoipa::path(
     get,
     path = "/ui/api/channels/{cid}/threads",
@@ -173,10 +199,15 @@ pub fn ui_post_message() {}
         ("bearerAuth" = []),
         ("sessionCookie" = []),
     ),
-    responses((status = 200, body = Vec<Thread>))
+    responses(
+        (status = 200, body = Vec<Thread>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
 )]
 pub fn ui_list_threads() {}
 
+/// List a thread's messages (console)
 #[utoipa::path(
     get,
     path = "/ui/api/threads/{tid}/messages",
@@ -189,10 +220,15 @@ pub fn ui_list_threads() {}
         ("bearerAuth" = []),
         ("sessionCookie" = []),
     ),
-    responses((status = 200, body = Vec<Message>))
+    responses(
+        (status = 200, body = Vec<Message>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
 )]
 pub fn ui_list_messages() {}
 
+/// Search a workspace's messages (console)
 #[utoipa::path(
     get,
     path = "/ui/api/workspaces/{wid}/search",
@@ -205,10 +241,15 @@ pub fn ui_list_messages() {}
         ("bearerAuth" = []),
         ("sessionCookie" = []),
     ),
-    responses((status = 200, body = Vec<SearchHit>))
+    responses(
+        (status = 200, body = Vec<SearchHit>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
 )]
 pub fn ui_search_messages() {}
 
+/// List a workspace's audit events (console)
 #[utoipa::path(
     get,
     path = "/ui/api/workspaces/{wid}/audit",
@@ -221,10 +262,14 @@ pub fn ui_search_messages() {}
         ("bearerAuth" = []),
         ("sessionCookie" = []),
     ),
-    responses((status = 200, body = Vec<AuditEvent>))
+    responses(
+        (status = 200, body = Vec<AuditEvent>),
+        (status = 403, response = Forbidden),
+    )
 )]
 pub fn ui_list_audit() {}
 
+/// List a workspace's federation peers (console)
 #[utoipa::path(
     get,
     path = "/ui/api/workspaces/{wid}/peers",
@@ -234,10 +279,14 @@ pub fn ui_list_audit() {}
         ("bearerAuth" = []),
         ("sessionCookie" = []),
     ),
-    responses((status = 200, body = Vec<PeerResponse>))
+    responses(
+        (status = 200, body = Vec<PeerResponse>),
+        (status = 403, response = Forbidden),
+    )
 )]
 pub fn ui_list_peers() {}
 
+/// List a message's edit history (console)
 #[utoipa::path(
     get,
     path = "/ui/api/messages/{mid}/edits",
@@ -250,6 +299,10 @@ pub fn ui_list_peers() {}
         ("bearerAuth" = []),
         ("sessionCookie" = []),
     ),
-    responses((status = 200, body = Vec<MessageEdit>))
+    responses(
+        (status = 200, body = Vec<MessageEdit>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
 )]
 pub fn ui_list_message_edits() {}

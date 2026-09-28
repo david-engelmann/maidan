@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use maidan_server::openapi::ApiDoc;
-use utoipa::openapi::path::PathItemType;
+use utoipa::openapi::path::{Operation, PathItem};
 use utoipa::OpenApi;
 
 const HTML: &str = include_str!("../static/index.html");
@@ -19,18 +19,19 @@ struct RouteKey {
     path: String,
 }
 
-fn method_name(kind: &PathItemType) -> &'static str {
-    match kind {
-        PathItemType::Get => "GET",
-        PathItemType::Post => "POST",
-        PathItemType::Put => "PUT",
-        PathItemType::Patch => "PATCH",
-        PathItemType::Delete => "DELETE",
-        PathItemType::Options => "OPTIONS",
-        PathItemType::Head => "HEAD",
-        PathItemType::Trace => "TRACE",
-        PathItemType::Connect => "CONNECT",
-    }
+fn operations(item: &PathItem) -> impl Iterator<Item = (&'static str, &Operation)> {
+    [
+        ("GET", &item.get),
+        ("POST", &item.post),
+        ("PUT", &item.put),
+        ("PATCH", &item.patch),
+        ("DELETE", &item.delete),
+        ("OPTIONS", &item.options),
+        ("HEAD", &item.head),
+        ("TRACE", &item.trace),
+    ]
+    .into_iter()
+    .filter_map(|(method, op)| op.as_ref().map(|op| (method, op)))
 }
 
 /// Normalize both Axum (`:id`) and OpenAPI (`{id}`) parameters to `{}`. UI
@@ -54,8 +55,8 @@ fn openapi_routes() -> BTreeSet<RouteKey> {
         .paths
         .iter()
         .flat_map(|(path, item)| {
-            item.operations.keys().map(move |kind| RouteKey {
-                method: method_name(kind).to_owned(),
+            operations(item).map(move |(method, _)| RouteKey {
+                method: method.to_owned(),
                 path: normalize_contract_path(path),
             })
         })

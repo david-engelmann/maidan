@@ -952,6 +952,30 @@ default runner that GitHub still provides; it works without flags.
 either drop the target or move to a build matrix that uses
 `rustc --target` cross-compile from arm64 with sysroot setup.
 
+### The OpenAPI lint is a unit test; Redocly is a local script
+
+**Decision.** The `openapi::lint` unit tests in `maidan-server` assert what
+Redocly's recommended ruleset checks on the served document: a summary on
+every operation, a 4xx on every operation that can return one, each client
+error an RFC 9457 problem, 401 and 429 wherever the auth and rate-limit
+middleware can answer them, unique operation ids, OpenAPI 3.1 with servers and
+no unused components. `scripts/openapi-lint.sh` runs Redocly (pinned) against
+a live server. The middleware responses are added by one utoipa `Modify`
+(`MiddlewareResponses`) from the security requirement and
+`rate_limit::exempt_path`, not by hand on 300 path stubs. utoipa 5 emits
+OpenAPI 3.1, which writes a nullable reference as `oneOf [null, $ref]`.
+
+**Alternative.** A CI job running `@redocly/cli`. Stay on utoipa 4 and
+disable `nullable-type-sibling`.
+
+**Why this:** the unit test runs in the required `unit tests` job with no
+Node toolchain and fails with the operation that regressed. A new CI job
+would be report-only until branch protection names it. The 3.0 output
+could not be made valid without a rule exception; 3.1 is.
+
+**To revisit:** if Redocly's recommended set gains a rule the tests do not
+mirror, or when utoipa 6 is adopted.
+
 ## Workflow
 
 ### Admin-merge instead of local-first push

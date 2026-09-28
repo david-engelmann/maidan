@@ -1,0 +1,10 @@
+# Redocly lint config for the OpenAPI document `GET /openapi.json` serves.
+#
+# The recommended ruleset, unmodified. `scripts/openapi-lint.sh` fetches the
+# document from a running server into target/openapi/openapi.json and lints
+# it. The same properties are enforced without Node by the unit tests in
+# crates/maidan-server/src/openapi/lint.rs, which run in the `unit tests` job.
+#
+# The only exceptions are per-operation, in .redocly.lint-ignore.yaml.
+extends:
+  - recommended

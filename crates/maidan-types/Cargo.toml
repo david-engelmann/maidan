@@ -19,7 +19,7 @@ sha2.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
-utoipa = { version = "4.2", optional = true, features = ["chrono", "uuid"] }
+utoipa = { version = "5", optional = true, features = ["chrono", "uuid"] }
 
 [dev-dependencies]
 serde_json.workspace = true
