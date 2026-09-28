@@ -17,7 +17,7 @@ use maidan_a2a::{
 };
 use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_WRITE};
 use maidan_auth::{AuthContext, AuthError, ThreadScope};
-use maidan_store::{A2aTaskQuery, A2aTaskWrite, StoreError};
+use maidan_store::{A2aTaskQuery, A2aTaskWrite, PendingGateQuery, StoreError};
 use maidan_types::{
     ApprovalGate, ApprovalGateId, ApprovalGateState, ChannelId, MessageId, NewChannel, NewMessage,
     NewThread, StrongRef, ThreadId, WorkspaceId,
@@ -34,8 +34,6 @@ use crate::state::AppState;
 pub(super) const A2A_CHANNEL: &str = "a2a";
 const DEFAULT_PAGE_SIZE: i32 = 50;
 const MAX_PAGE_SIZE: i32 = 100;
-/// Pending gates considered per `ListTasks` call.
-const GATE_SCAN_LIMIT: i64 = 500;
 const SUBSCRIBE_POLL: Duration = Duration::from_millis(100);
 const SUBSCRIBE_MAX_POLLS: u32 = 300;
 
@@ -48,12 +46,35 @@ fn to_millis(at: DateTime<Utc>) -> DateTime<Utc> {
     DateTime::from_timestamp_millis(at.timestamp_millis()).unwrap_or(at)
 }
 
+/// The first millisecond instant at or after `at`: task and gate timestamps
+/// are whole milliseconds, so "at or after `at`" is "at or after this".
+fn ceil_millis(at: DateTime<Utc>) -> DateTime<Utc> {
+    let floor = to_millis(at);
+    if floor < at {
+        floor + chrono::Duration::milliseconds(1)
+    } else {
+        floor
+    }
+}
+
 fn timestamp(at: DateTime<Utc>) -> String {
     at.to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
 fn require(auth: &AuthContext, capability: &str) -> Result<(), A2aError> {
     auth.require_capability(capability).map_err(denied)
+}
+
+/// A list call's `pageSize`: unset means the default; outside `1..=100` is
+/// refused.
+pub(super) fn page_size(requested: Option<i32>) -> Result<i32, A2aError> {
+    match requested {
+        None => Ok(DEFAULT_PAGE_SIZE),
+        Some(n) if (1..=MAX_PAGE_SIZE).contains(&n) => Ok(n),
+        Some(n) => Err(A2aError::invalid_params(format!(
+            "pageSize must be between 1 and {MAX_PAGE_SIZE}, got {n}"
+        ))),
+    }
 }
 
 /// `historyLength`: unset means the full history; negative is refused.
@@ -854,15 +875,7 @@ pub(crate) async fn list_tasks(
     req: ListTasksRequest,
 ) -> Result<ListTasksResponse, A2aError> {
     require(auth, MESSAGE_POST)?;
-    let page_size = match req.page_size {
-        None => DEFAULT_PAGE_SIZE,
-        Some(n) if (1..=MAX_PAGE_SIZE).contains(&n) => n,
-        Some(n) => {
-            return Err(A2aError::invalid_params(format!(
-                "pageSize must be between 1 and {MAX_PAGE_SIZE}, got {n}"
-            )))
-        }
-    };
+    let page_size = page_size(req.page_size)?;
     let history_length = history_length(req.history_length)?;
     let status = match req.status.as_deref().filter(|s| !s.is_empty()) {
         None => None,
@@ -877,7 +890,7 @@ pub(crate) async fn list_tasks(
         .filter(|s| !s.is_empty())
     {
         None => None,
-        Some(s) => Some(
+        Some(s) => Some(ceil_millis(
             DateTime::parse_from_rfc3339(s)
                 .map_err(|_| {
                     A2aError::invalid_params(format!(
@@ -885,7 +898,7 @@ pub(crate) async fn list_tasks(
                     ))
                 })?
                 .with_timezone(&Utc),
-        ),
+        )),
     };
     let cursor = match req.page_token.as_deref().filter(|t| !t.is_empty()) {
         None => None,
@@ -940,30 +953,72 @@ pub(crate) async fn list_tasks(
         }
     }
 
-    // Pending gates, filtered like tasks.
+    // Pending gates, fetched the same way. A gate's context is its thread,
+    // so a context that is not a thread id matches no gate.
+    let gate_thread = match context_id {
+        None => Some(None),
+        Some(context) => Uuid::parse_str(context)
+            .ok()
+            .filter(|id| id.to_string() == context)
+            .map(|id| Some(ThreadId(id))),
+    };
+    let gate_filter = |thread_id| PendingGateQuery {
+        thread_id,
+        created_since: since,
+        before: None,
+        limit: 0,
+    };
     let mut gates_total = 0;
-    if status.is_none_or(|s| s == TASK_STATE_INPUT_REQUIRED) {
-        let gates = state
-            .store
-            .list_pending_approval_gates(workspace_id, GATE_SCAN_LIMIT)
-            .await
-            .map_err(store)?;
-        for gate in gates {
-            let at = to_millis(gate.created_at);
-            let id = gate.id.0.to_string();
-            let thread = gate.thread_id.map(|t| t.0.to_string());
-            if context_id.is_some_and(|c| thread.as_deref() != Some(c))
-                || since.is_some_and(|s| at < s)
-                || !access.thread(gate.thread_id).await?
-            {
-                continue;
-            }
-            gates_total += 1;
-            if cursor
-                .as_ref()
-                .is_none_or(|(c_at, c_id)| (at, id.as_str()) < (*c_at, c_id.as_str()))
-            {
+    if let Some(thread_id) =
+        gate_thread.filter(|_| status.is_none_or(|s| s == TASK_STATE_INPUT_REQUIRED))
+    {
+        // Gates in the cursor's millisecond sort on either side of it by id,
+        // so the first batch starts after that millisecond and the cursor
+        // itself decides.
+        let mut before = cursor
+            .as_ref()
+            .map(|(at, _)| (*at + chrono::Duration::milliseconds(1), None));
+        let mut gates_listed = 0;
+        loop {
+            let gates = state
+                .store
+                .page_pending_approval_gates(
+                    workspace_id,
+                    PendingGateQuery {
+                        before,
+                        limit: want as i64,
+                        ..gate_filter(thread_id)
+                    },
+                )
+                .await
+                .map_err(store)?;
+            let exhausted = gates.len() < want;
+            for gate in gates {
+                before = Some((gate.created_at, Some(gate.id)));
+                let at = to_millis(gate.created_at);
+                let id = gate.id.0.to_string();
+                if cursor
+                    .as_ref()
+                    .is_some_and(|(c_at, c_id)| (at, id.as_str()) >= (*c_at, c_id.as_str()))
+                    || !access.thread(gate.thread_id).await?
+                {
+                    continue;
+                }
+                gates_listed += 1;
                 entries.push((at, id, Entry::Gate(gate_as_task(&gate))));
+            }
+            if exhausted || gates_listed >= want {
+                break;
+            }
+        }
+        for (thread, count) in state
+            .store
+            .count_pending_approval_gates_by_thread(workspace_id, gate_filter(thread_id))
+            .await
+            .map_err(store)?
+        {
+            if access.thread(thread).await? {
+                gates_total += count;
             }
         }
     }

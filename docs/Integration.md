@@ -718,9 +718,12 @@ request is 0.3 and refused with `VersionNotSupportedError`.
 - **Push configs** (`workspace:write`) keep `token` and `authentication`
   sealed with `FEDERATION_ENCRYPTION_KEY` and never return them. A push
   POSTs the task as `{"task": …}` with `Authorization` and
-  `X-A2A-Notification-Token`.
+  `X-A2A-Notification-Token`. Listing a task's configs pages in id order
+  with `pageSize` (1–100, default 50) and `nextPageToken`.
 - A task you cannot read is `TaskNotFoundError`. `ListTasks` pages with
-  `nextPageToken` and an exact `totalSize`.
+  `nextPageToken` and an exact `totalSize`; every pending approval gate the
+  caller can read is listed as an `input-required` task, however many there
+  are.
 
 A message's `metadata.maidan.citations` is an optional list of
 `{uri, content_hash}` strong refs (`sha256:<hex>`). Citations persist on

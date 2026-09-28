@@ -98,7 +98,7 @@ use chrono::{DateTime, Utc};
 use maidan_types::*;
 use sqlx::PgPool;
 
-use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite};
+use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingGateQuery};
 use crate::error::StoreError;
 use crate::store::*;
 
@@ -840,6 +840,20 @@ impl ApprovalGateStore for PostgresStore {
         limit: i64,
     ) -> Result<Vec<ApprovalGate>, StoreError> {
         approval_gates::list_pending(&self.pool, workspace_id, limit).await
+    }
+    async fn page_pending_approval_gates(
+        &self,
+        workspace_id: WorkspaceId,
+        query: PendingGateQuery,
+    ) -> Result<Vec<ApprovalGate>, StoreError> {
+        approval_gates::page_pending(&self.pool, workspace_id, query).await
+    }
+    async fn count_pending_approval_gates_by_thread(
+        &self,
+        workspace_id: WorkspaceId,
+        query: PendingGateQuery,
+    ) -> Result<Vec<(Option<ThreadId>, i64)>, StoreError> {
+        approval_gates::count_pending_by_thread(&self.pool, workspace_id, query).await
     }
     async fn resolve_approval_gate(
         &self,
@@ -3490,6 +3504,15 @@ impl A2aStore for PostgresStore {
         task_id: &str,
     ) -> Result<Vec<A2aPushConfigRow>, StoreError> {
         a2a::list_task_push_configs(&self.pool, task_id).await
+    }
+
+    async fn page_a2a_task_push_configs(
+        &self,
+        task_id: &str,
+        after: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<A2aPushConfigRow>, StoreError> {
+        a2a::page_task_push_configs(&self.pool, task_id, after, limit).await
     }
 
     async fn delete_a2a_task_push_config(

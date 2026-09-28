@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A2A lists page all the way through
+
+- **Fixed:** `ListTasks` listed pending approval gates from one scan of the
+  oldest 500, so in a larger backlog the newest gates never appeared and
+  `totalSize` stopped counting. Gates now page with the tasks and every one
+  the caller can read is listed and counted. Gate timestamps are stored at
+  millisecond precision (migration 0116 truncates existing ones).
+- **Fixed:** a `statusTimestampAfter` with sub-millisecond digits kept a task
+  stamped in the millisecond before it on SQLite; it now rounds up on both
+  backends.
+- **Added:** `ListTaskPushNotificationConfigs` honours `pageSize` and
+  `pageToken` (JSON-RPC and HTTP+JSON), in config-id order.
+
 ### A2A passes the official TCK
 
 - **Added:** `scripts/a2a-tck.sh` runs the official A2A TCK (pinned) over

@@ -6,6 +6,7 @@
 
 use std::time::Duration;
 
+use base64::Engine as _;
 use maidan_a2a::{
     A2aError, A2aErrorKind, AuthenticationInfo, DeleteTaskPushNotificationConfigRequest,
     GetTaskPushNotificationConfigRequest, ListTaskPushNotificationConfigsRequest,
@@ -18,7 +19,7 @@ use maidan_store::A2aPushConfigRow;
 use uuid::Uuid;
 
 use super::error::{denied, internal, store};
-use super::ops::{find, Found};
+use super::ops::{find, page_size, Found};
 use crate::state::AppState;
 
 const MAX_ATTEMPTS: u32 = 3;
@@ -164,24 +165,48 @@ pub(super) async fn get(
         })
 }
 
+/// A task's configs in id order, keyset-paged: `nextPageToken` encodes the
+/// last config's id.
 pub(super) async fn list(
     state: &AppState,
     auth: &AuthContext,
     req: ListTaskPushNotificationConfigsRequest,
 ) -> Result<ListTaskPushNotificationConfigsResponse, A2aError> {
     target(state, auth, &req.task_id).await?;
-    let configs = state
+    let page_size = page_size(req.page_size)?;
+    let after = match req.page_token.as_deref().filter(|t| !t.is_empty()) {
+        None => None,
+        Some(token) => Some(decode_page_token(token)?),
+    };
+    let mut rows = state
         .store
-        .list_a2a_task_push_configs(&req.task_id)
+        .page_a2a_task_push_configs(&req.task_id, after.as_deref(), i64::from(page_size) + 1)
         .await
-        .map_err(store)?
-        .into_iter()
-        .map(shown)
-        .collect();
+        .map_err(store)?;
+    let next_page_token = if rows.len() > page_size as usize {
+        rows.truncate(page_size as usize);
+        rows.last()
+            .map(|row| encode_page_token(&row.config_id))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
     Ok(ListTaskPushNotificationConfigsResponse {
-        configs,
-        next_page_token: String::new(),
+        configs: rows.into_iter().map(shown).collect(),
+        next_page_token,
     })
+}
+
+fn encode_page_token(config_id: &str) -> String {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(config_id)
+}
+
+fn decode_page_token(token: &str) -> Result<String, A2aError> {
+    let invalid = || A2aError::invalid_params("invalid pageToken");
+    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(token)
+        .map_err(|_| invalid())?;
+    String::from_utf8(raw).map_err(|_| invalid())
 }
 
 /// Deleting a config that is already gone succeeds: the call is idempotent.

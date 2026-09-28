@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use maidan_types::*;
 
-use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite};
+use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingGateQuery};
 use crate::error::StoreError;
 
 /// Backend-agnostic Maidan storage interface.
@@ -444,6 +444,20 @@ pub trait ApprovalGateStore: Send + Sync {
         workspace_id: WorkspaceId,
         limit: i64,
     ) -> Result<Vec<ApprovalGate>, StoreError>;
+    /// A keyset page of the pending gates, newest first (see
+    /// [`PendingGateQuery`]).
+    async fn page_pending_approval_gates(
+        &self,
+        workspace_id: WorkspaceId,
+        query: PendingGateQuery,
+    ) -> Result<Vec<ApprovalGate>, StoreError>;
+    /// How many pending gates match `query` (its `before` and `limit` are
+    /// ignored), per thread; `None` counts the gates attached to no thread.
+    async fn count_pending_approval_gates_by_thread(
+        &self,
+        workspace_id: WorkspaceId,
+        query: PendingGateQuery,
+    ) -> Result<Vec<(Option<ThreadId>, i64)>, StoreError>;
     async fn resolve_approval_gate(
         &self,
         id: ApprovalGateId,
@@ -2791,6 +2805,14 @@ pub trait A2aStore: Send + Sync {
     async fn list_a2a_task_push_configs(
         &self,
         task_id: &str,
+    ) -> Result<Vec<A2aPushConfigRow>, StoreError>;
+    /// A keyset page of a task's configs in `config_id` order: at most
+    /// `limit` whose id sorts after `after`.
+    async fn page_a2a_task_push_configs(
+        &self,
+        task_id: &str,
+        after: Option<&str>,
+        limit: i64,
     ) -> Result<Vec<A2aPushConfigRow>, StoreError>;
     /// Returns `true` if a config was removed, `false` if none matched.
     async fn delete_a2a_task_push_config(

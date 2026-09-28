@@ -315,14 +315,26 @@ pub async fn rest_list_push_configs(
     headers: HeaderMap,
     uri: Uri,
     RestPath(task_id): RestPath<String>,
+    RestQuery(query): RestQuery<ListPushConfigsQuery>,
 ) -> Response {
     versioned!(headers, uri);
+    let page_size = match int("pageSize", query.page_size.as_deref()) {
+        Ok(page_size) => page_size,
+        Err(err) => return error(&err),
+    };
     let req = ListTaskPushNotificationConfigsRequest {
         task_id,
-        page_size: None,
-        page_token: None,
+        page_size,
+        page_token: query.page_token,
     };
     reply(push::list(&state, &auth, req).await)
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListPushConfigsQuery {
+    page_size: Option<String>,
+    page_token: Option<String>,
 }
 
 /// `GET /tasks/{id}/pushNotificationConfigs/{configId}`
