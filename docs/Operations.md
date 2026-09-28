@@ -427,13 +427,16 @@ required check.
 - Reproduce locally (Docker running, so the Postgres suites count):
 
   ```sh
+  cargo llvm-cov clean --workspace
   cargo llvm-cov nextest --workspace --profile ci --no-report
   cargo llvm-cov report --lcov --output-path lcov.info
   python3 scripts/coverage-floors.py lcov.info
   ```
 
   The same table is in the job's step summary, and `lcov.info` is in its
-  `coverage` artifact.
+  `coverage` artifact. Skip the `clean` and the report also counts test
+  binaries left over from an older build, whose lines show as uncovered: a
+  crate far under its floor with more lines than its source has is that.
 - A crate under its floor lost tested lines: add tests, or say in the PR why
   that code no longer needs them and lower the floor there.
 - A new crate needs a floor in the same PR. Take its measured coverage from
