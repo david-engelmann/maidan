@@ -1,9 +1,6 @@
 //! Operator HTTP API for automation delivery queue.
 
-use axum::{
-    extract::{Path, Query, State},
-    Extension, Json,
-};
+use axum::{extract::State, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -11,9 +8,11 @@ use maidan_auth::{
 use maidan_store::AutomationDeliveryFilter;
 use maidan_types::{AutomationDelivery, NewAuditEvent, WorkspaceId};
 use serde::Deserialize;
+use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::error::ApiError;
+use crate::extract::{ApiPath, ApiQuery};
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -26,12 +25,16 @@ fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<
     auth.ensure_workspace(workspace_id).map_err(Into::into)
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListAutomationDeliveriesQuery {
+    /// Only dead-lettered deliveries.
     #[serde(default)]
     pub quarantined: bool,
+    /// Only delivered ones (ignored with `quarantined`).
     #[serde(default)]
     pub delivered: bool,
+    /// Max rows (default 50).
     #[serde(default = "default_list_limit")]
     pub limit: i64,
 }
@@ -53,7 +56,7 @@ fn parse_status_filter(q: &ListAutomationDeliveriesQuery) -> AutomationDeliveryF
 pub async fn list_quarantined_automation_deliveries(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<Uuid>,
+    ApiPath(wid): ApiPath<Uuid>,
 ) -> ApiResult<Json<Vec<AutomationDelivery>>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
@@ -69,8 +72,8 @@ pub async fn list_quarantined_automation_deliveries(
 pub async fn list_automation_deliveries(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<Uuid>,
-    Query(q): Query<ListAutomationDeliveriesQuery>,
+    ApiPath(wid): ApiPath<Uuid>,
+    ApiQuery(q): ApiQuery<ListAutomationDeliveriesQuery>,
 ) -> ApiResult<Json<Vec<AutomationDelivery>>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
@@ -86,7 +89,7 @@ pub async fn list_automation_deliveries(
 pub async fn replay_automation_delivery(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, delivery_id)): Path<(Uuid, i64)>,
+    ApiPath((wid, delivery_id)): ApiPath<(Uuid, i64)>,
 ) -> ApiResult<Json<AutomationDelivery>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_WRITE)?;
@@ -119,7 +122,7 @@ pub async fn replay_automation_delivery(
 pub async fn get_automation_delivery(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, delivery_id)): Path<(Uuid, i64)>,
+    ApiPath((wid, delivery_id)): ApiPath<(Uuid, i64)>,
 ) -> ApiResult<Json<AutomationDelivery>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;

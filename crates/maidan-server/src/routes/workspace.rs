@@ -1,11 +1,7 @@
 //! Workspace lifecycle handlers: create/get, context, purge/erase, audit,
 //! events, and the quarantined-outbox replay/list endpoints.
 
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{
         AUDIT_READ_GLOBAL, OPERATOR_GLOBAL, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
@@ -19,7 +15,8 @@ use maidan_types::*;
 use super::publish_stored;
 use super::{cap, clamp_context_transition_limit, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath, ApiQuery};
 use crate::federation::PeerContext;
 use crate::state::AppState;
 
@@ -48,7 +45,7 @@ pub async fn create_workspace(
 pub async fn get_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Workspace>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -63,7 +60,7 @@ pub async fn get_workspace(
 pub async fn export_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<SignedExport>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
@@ -138,7 +135,7 @@ pub async fn export_public_key(
 pub async fn import_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Query(q): Query<crate::dto::ImportQuery>,
+    ApiQuery(q): ApiQuery<crate::dto::ImportQuery>,
     ApiJson(envelope): ApiJson<SignedExport>,
 ) -> ApiResult<Json<crate::dto::ImportResult>> {
     use crate::dto::ImportMode;
@@ -202,7 +199,7 @@ pub async fn import_workspace(
 pub async fn get_workspace_usage(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<WorkspaceUsage>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -218,8 +215,8 @@ pub async fn get_workspace_usage(
 pub async fn list_workspace_tombstones(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ListTombstonesQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListTombstonesQuery>,
 ) -> ApiResult<Json<Vec<TombstoneRecord>>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -260,8 +257,8 @@ pub async fn list_workspace_tombstones(
 pub async fn get_workspace_kind_census(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<KindCensusQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<KindCensusQuery>,
 ) -> ApiResult<Json<KindCensus>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -294,8 +291,8 @@ pub async fn get_workspace_kind_census(
 pub async fn list_workspace_results(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ListThreadResultsQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListThreadResultsQuery>,
 ) -> ApiResult<Json<Vec<ThreadResult>>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -324,8 +321,8 @@ pub async fn list_workspace_results(
 pub async fn list_run_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<RunLineageQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<RunLineageQuery>,
 ) -> ApiResult<Json<Vec<Thread>>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -359,8 +356,8 @@ pub async fn list_run_threads(
 pub async fn get_run_occupancy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<RunLineageQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<RunLineageQuery>,
 ) -> ApiResult<Json<RunOccupancy>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -385,7 +382,7 @@ pub async fn get_run_occupancy(
 pub async fn set_wip_limit(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetWipLimit>,
 ) -> ApiResult<Json<WipLimitView>> {
     let workspace_id = WorkspaceId(id);
@@ -405,7 +402,7 @@ pub async fn set_wip_limit(
 pub async fn get_wip_limit(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<WipLimitView>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -423,7 +420,7 @@ pub async fn get_wip_limit(
 pub async fn set_delegation_policy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<crate::dto::SetDelegationPolicy>,
 ) -> ApiResult<Json<maidan_types::DelegationPolicy>> {
     let workspace_id = WorkspaceId(id);
@@ -455,7 +452,7 @@ pub async fn set_delegation_policy(
 pub async fn get_delegation_policy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<maidan_types::DelegationPolicy>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -472,7 +469,7 @@ pub async fn get_delegation_policy(
 pub async fn set_spawn_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetSpawnBudget>,
 ) -> ApiResult<Json<SpawnBudgetView>> {
     let workspace_id = WorkspaceId(id);
@@ -508,7 +505,7 @@ pub async fn set_spawn_budget(
 pub async fn get_spawn_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<SpawnBudgetView>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -524,7 +521,7 @@ pub async fn get_spawn_budget(
 pub async fn replay_quarantined_outbox(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, outbox_id)): Path<(uuid::Uuid, i64)>,
+    ApiPath((wid, outbox_id)): ApiPath<(uuid::Uuid, i64)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_WRITE)?;
@@ -554,8 +551,10 @@ pub async fn replay_quarantined_outbox(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct QuarantinedOutboxQuery {
+    /// Max rows (default 50).
     #[serde(default = "default_outbox_list_limit")]
     pub limit: i64,
 }
@@ -567,8 +566,8 @@ fn default_outbox_list_limit() -> i64 {
 pub async fn list_quarantined_outbox(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
-    Query(q): Query<QuarantinedOutboxQuery>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<QuarantinedOutboxQuery>,
 ) -> ApiResult<Json<Vec<maidan_store::QuarantinedOutboxRow>>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
@@ -586,8 +585,8 @@ pub async fn list_quarantined_outbox(
 pub async fn get_workspace_context(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
-    Query(q): Query<WorkspaceContextQuery>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<WorkspaceContextQuery>,
 ) -> ApiResult<Json<crate::thread_context::WorkspaceContext>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
@@ -647,7 +646,7 @@ pub async fn get_workspace_context(
 pub async fn purge_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<WorkspacePurgeResult>> {
     let workspace_id = WorkspaceId(id);
     // Destroying a workspace's content is authority over the workspace, not work
@@ -718,7 +717,7 @@ async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) {
 pub async fn erase_workspace(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<crate::dto::EraseWorkspace>,
 ) -> ApiResult<Json<WorkspaceEraseResult>> {
     let workspace_id = WorkspaceId(id);
@@ -759,7 +758,7 @@ pub async fn erase_workspace(
 pub async fn place_legal_hold(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<PlaceLegalHold>,
 ) -> ApiResult<(StatusCode, Json<LegalHold>)> {
     let workspace_id = WorkspaceId(id);
@@ -798,7 +797,7 @@ pub async fn place_legal_hold(
 pub async fn lift_legal_hold(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, hold_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, hold_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
@@ -831,7 +830,7 @@ pub async fn lift_legal_hold(
 pub async fn list_workspace_legal_holds(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<LegalHold>>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
@@ -848,7 +847,7 @@ pub async fn list_workspace_legal_holds(
 pub async fn get_preserved_messages(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<PreservedMessage>>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
@@ -889,8 +888,8 @@ pub async fn list_legal_holds(
 pub async fn list_workspace_audit(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
-    Query(q): Query<ListAuditQuery>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListAuditQuery>,
 ) -> ApiResult<Json<Vec<AuditEvent>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
@@ -910,7 +909,7 @@ pub async fn list_workspace_audit(
 pub async fn list_global_audit(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Query(q): Query<ListAuditQuery>,
+    ApiQuery(q): ApiQuery<ListAuditQuery>,
 ) -> ApiResult<Json<Vec<AuditEvent>>> {
     cap(&auth, AUDIT_READ_GLOBAL)?;
     let limit = q.limit.clamp(1, 500);
@@ -943,8 +942,8 @@ fn ensure_event_log_read(
 
 pub async fn list_events(
     State(state): State<AppState>,
-    Path(workspace_id): Path<uuid::Uuid>,
-    Query(q): Query<ListEventsQuery>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListEventsQuery>,
     auth: Option<Extension<AuthContext>>,
     peer: Option<Extension<PeerContext>>,
 ) -> ApiResult<Json<Vec<StoredEvent>>> {
@@ -1017,7 +1016,7 @@ fn ensure_whole_log_read(
 /// process.
 pub async fn verify_event_chain(
     State(state): State<AppState>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     auth: Option<Extension<AuthContext>>,
     peer: Option<Extension<PeerContext>>,
 ) -> ApiResult<Json<ChainVerifyReport>> {
@@ -1038,8 +1037,8 @@ pub async fn verify_event_chain(
 /// registered peer (same bar as export).
 pub async fn get_log_snapshot(
     State(state): State<AppState>,
-    Path(workspace_id): Path<uuid::Uuid>,
-    Query(q): Query<LogSnapshotQuery>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<LogSnapshotQuery>,
     auth: Option<Extension<AuthContext>>,
     peer: Option<Extension<PeerContext>>,
 ) -> ApiResult<Json<LogSnapshot>> {
@@ -1073,8 +1072,8 @@ pub async fn get_log_snapshot(
 /// `event-log-broken`.
 pub async fn catch_up_events(
     State(state): State<AppState>,
-    Path(workspace_id): Path<uuid::Uuid>,
-    Query(q): Query<CatchUpQuery>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<CatchUpQuery>,
     auth: Option<Extension<AuthContext>>,
     peer: Option<Extension<PeerContext>>,
 ) -> ApiResult<Json<CatchUpPage>> {

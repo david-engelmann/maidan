@@ -3,7 +3,7 @@
 //! routes are deliberately outside the ordinary bearer-authenticated router.
 
 use axum::{
-    extract::{Path, Query, Request, State},
+    extract::{Request, State},
     http::{header, HeaderMap, HeaderValue},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ApiError;
+use crate::extract::{ApiPath, ApiQuery};
 use crate::state::AppState;
 
 const SHARE_SECRET_PREFIX: &str = "maid_share_";
@@ -197,7 +198,7 @@ pub async fn manifest(
 pub async fn list_threads(
     State(state): State<AppState>,
     Extension(context): Extension<ShareTicketContext>,
-    Query(query): Query<SharePageQuery>,
+    ApiQuery(query): ApiQuery<SharePageQuery>,
 ) -> Result<Json<SharedThreadPage>, ApiError> {
     let limit = page_limit(query.limit);
     let mut rows = state
@@ -227,8 +228,8 @@ pub async fn list_threads(
 pub async fn list_messages(
     State(state): State<AppState>,
     Extension(context): Extension<ShareTicketContext>,
-    Path(thread_id): Path<uuid::Uuid>,
-    Query(query): Query<SharePageQuery>,
+    ApiPath(thread_id): ApiPath<uuid::Uuid>,
+    ApiQuery(query): ApiQuery<SharePageQuery>,
 ) -> Result<Json<SharedMessagePage>, ApiError> {
     let thread_id = ThreadId(thread_id);
     let thread = state.store.get_thread(thread_id).await?;
@@ -265,7 +266,7 @@ pub async fn list_messages(
 pub async fn download_artifact(
     State(state): State<AppState>,
     Extension(context): Extension<ShareTicketContext>,
-    Path(sha_hex): Path<String>,
+    ApiPath(sha_hex): ApiPath<String>,
 ) -> Result<Response, ApiError> {
     let sha = Sha256::from_hex(&sha_hex).map_err(|_| ApiError::NotFound)?;
     if !state

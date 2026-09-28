@@ -4,21 +4,19 @@
 //! one replica can be exchanged on any replica and survives restart. Only the
 //! SHA-256 hash of the plaintext code is stored.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
 use maidan_auth::{capability, hash_secret, AuthContext, TokenSecret};
 use maidan_types::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::dto::MintAppTokenResponse;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::routes::{cap, ensure_workspace};
 use crate::state::AppState;
 
@@ -27,7 +25,7 @@ type ApiResult<T> = Result<T, ApiError>;
 /// One-time authorization codes live this long before the store rejects them.
 const CODE_TTL_SECS: i64 = 600;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AuthorizeAppInstall {
     pub redirect_uri: String,
     pub state: String,
@@ -54,7 +52,7 @@ pub struct ExchangeAppCode {
 pub async fn authorize_app_install(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, app_id)): Path<(Uuid, Uuid)>,
+    ApiPath((workspace_id, app_id)): ApiPath<(Uuid, Uuid)>,
     ApiJson(body): ApiJson<AuthorizeAppInstall>,
 ) -> ApiResult<(StatusCode, Json<AuthorizeAppInstallResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);

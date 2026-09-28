@@ -1,10 +1,6 @@
 //! Installed app registry and app-scoped API tokens.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{self, validate_list, validate_subset},
     hash_secret, AuthContext, TokenSecret,
@@ -15,7 +11,8 @@ use crate::dto::{
     AppInstallationResponse, AppResponse, InstallApp, MintAppToken, MintAppTokenResponse,
     RegisterApp,
 };
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::routes::{cap, ensure_workspace};
 use crate::state::AppState;
 
@@ -24,7 +21,7 @@ type ApiResult<T> = Result<T, ApiError>;
 pub async fn register_app(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<RegisterApp>,
 ) -> ApiResult<(StatusCode, Json<AppResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -48,7 +45,7 @@ pub async fn register_app(
 pub async fn list_apps(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<AppResponse>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, capability::WORKSPACE_READ)?;
@@ -60,7 +57,7 @@ pub async fn list_apps(
 pub async fn install_app(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, app_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, app_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
     ApiJson(body): ApiJson<InstallApp>,
 ) -> ApiResult<(StatusCode, Json<AppInstallationResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -110,7 +107,7 @@ pub async fn install_app(
 pub async fn list_app_installations(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<AppInstallationResponse>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, capability::WORKSPACE_READ)?;
@@ -126,7 +123,7 @@ pub async fn list_app_installations(
 pub async fn revoke_app_installation(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, installation_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, installation_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<Json<AppInstallationResponse>> {
     let workspace_id = WorkspaceId(workspace_id);
     let installation_id = AppInstallationId(installation_id);
@@ -157,7 +154,7 @@ pub async fn revoke_app_installation(
 pub async fn mint_app_token(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, installation_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, installation_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
     ApiJson(body): ApiJson<MintAppToken>,
 ) -> ApiResult<(StatusCode, Json<MintAppTokenResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);

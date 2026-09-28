@@ -17,6 +17,7 @@ use maidan_mcp::{JsonRpcRequest, JsonRpcResponse, McpSession, Principal};
 use tokio_stream::StreamExt as _;
 
 use crate::error::ApiError;
+use crate::extract::ApiBytes;
 use crate::state::AppState;
 
 /// How often a session's notification task checks that the session is still
@@ -48,7 +49,7 @@ pub async fn streamable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     headers: HeaderMap,
-    body: axum::body::Bytes,
+    ApiBytes(body): ApiBytes,
 ) -> Result<Response, ApiError> {
     if !auth.bypass {
         auth.require_capability(WORKSPACE_READ)

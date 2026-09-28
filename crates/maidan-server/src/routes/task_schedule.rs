@@ -3,11 +3,7 @@
 //! its channel when due, so the write surfaces are gated on `workspace:write` +
 //! access to the target channel.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -17,13 +13,14 @@ use maidan_types::*;
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 pub async fn create_task_schedule(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateTaskSchedule>,
 ) -> ApiResult<(StatusCode, Json<TaskSchedule>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -82,7 +79,7 @@ pub async fn create_task_schedule(
 pub async fn list_task_schedules(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<TaskSchedule>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
@@ -107,7 +104,7 @@ async fn authorize_schedule(
 pub async fn set_task_schedule_active(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetTaskScheduleActive>,
 ) -> ApiResult<Json<TaskSchedule>> {
     cap(&auth, WORKSPACE_WRITE)?;
@@ -123,7 +120,7 @@ pub async fn set_task_schedule_active(
 pub async fn delete_task_schedule(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
     let id = TaskScheduleId(id);

@@ -2,11 +2,13 @@
 //!
 //! Every error the API returns is an `application/problem+json`
 //! [`ProblemDetails`](crate::error::ProblemDetails) body. An operation names the
-//! statuses its handler can produce with `(status = 404, response = NotFound)`;
-//! the two a middleware layer adds to every operation it wraps (401 from the
+//! statuses its handler can produce with `(status = 404, response = NotFound)`.
+//! The ones a middleware layer adds to every operation it wraps (401 from the
 //! authentication layers, 429 from the rate limiter and per-token quotas) are
-//! attached by [`MiddlewareResponses`](super::MiddlewareResponses) instead, so a
-//! new route cannot forget them.
+//! attached by [`MiddlewareResponses`](super::MiddlewareResponses), and the ones
+//! the request extractors answer with (400, 413, 415) by
+//! [`ExtractorResponses`](super::ExtractorResponses), so a new route cannot
+//! forget them.
 
 use utoipa::openapi::header::HeaderBuilder;
 use utoipa::openapi::response::{Response, ResponseBuilder};
@@ -37,7 +39,8 @@ macro_rules! problem_response {
 }
 
 problem_response!(
-    /// 400: the handler rejected the request body or parameters.
+    /// 400: the request's parameters or body are malformed, or the handler
+    /// rejected them.
     BadRequest,
     "The request body or parameters are malformed or fail validation."
 );
@@ -62,9 +65,14 @@ problem_response!(
     "The request conflicts with the resource's current state."
 );
 problem_response!(
-    /// 413: the JSON body exceeds `MAIDAN_MAX_BODY_BYTES`.
+    /// 413: the request body exceeds `MAIDAN_MAX_BODY_BYTES`.
     PayloadTooLarge,
     "The request body exceeds the server's body-size limit (`MAIDAN_MAX_BODY_BYTES`)."
+);
+problem_response!(
+    /// 415: a JSON body sent without a JSON `Content-Type`.
+    UnsupportedMediaType,
+    "The body is not declared as JSON; send `Content-Type: application/json`."
 );
 
 /// 429: added by [`MiddlewareResponses`](super::MiddlewareResponses).

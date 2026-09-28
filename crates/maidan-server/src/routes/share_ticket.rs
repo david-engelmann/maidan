@@ -2,23 +2,20 @@
 //! consumer surface is deliberately separate and unauthenticated by ordinary
 //! workspace bearer middleware; this module only issues, lists, and revokes.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{capability::TOKEN_ADMIN, hash_secret, AuthContext, ShareTicketSecret};
 use maidan_types::{ChannelId, NewAuditEvent, NewShareTicket, ShareTicketId, WorkspaceId};
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::{CreateShareTicket, MintShareTicketResponse, ShareTicketResponse};
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 pub async fn create_share_ticket(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateShareTicket>,
 ) -> ApiResult<(StatusCode, Json<MintShareTicketResponse>)> {
     let workspace_id = WorkspaceId(wid);
@@ -74,7 +71,7 @@ pub async fn create_share_ticket(
 pub async fn list_share_tickets(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ShareTicketResponse>>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, TOKEN_ADMIN)?;
@@ -94,7 +91,7 @@ pub async fn list_share_tickets(
 pub async fn revoke_share_ticket(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, tid)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((wid, tid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(wid);
     let ticket_id = ShareTicketId(tid);

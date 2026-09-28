@@ -15,6 +15,7 @@ use maidan_auth::AuthContext;
 use maidan_mcp::{is_supported_protocol_version, JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 
 use crate::error::ApiError;
+use crate::extract::ApiBytes;
 use crate::state::AppState;
 
 /// Validate the `MCP-Protocol-Version` header (MCP spec: clients send it on
@@ -111,7 +112,7 @@ pub async fn handler(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     headers: HeaderMap,
-    body: axum::body::Bytes,
+    ApiBytes(body): ApiBytes,
 ) -> Response {
     if let Err(err) = validate_protocol_version(&headers) {
         return err.into_response();

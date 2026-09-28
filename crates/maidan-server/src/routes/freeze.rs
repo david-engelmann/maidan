@@ -3,17 +3,14 @@
 //! them — and unfreezes to lift it. Freeze/unfreeze are audited (a
 //! security-sensitive mutation). Not G4 PAUSE.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{capability::TOKEN_ADMIN, AuthContext};
 use maidan_types::*;
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 /// Resolve the target member and authorize the caller for their workspace.
@@ -30,7 +27,7 @@ async fn authorize_member(
 pub async fn freeze_member(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FreezeMember>,
 ) -> ApiResult<Json<FreezeResult>> {
     cap(&auth, TOKEN_ADMIN)?;
@@ -63,7 +60,7 @@ pub async fn freeze_member(
 pub async fn unfreeze_member(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, TOKEN_ADMIN)?;
     let member_id = MemberId(id);
@@ -90,7 +87,7 @@ pub async fn unfreeze_member(
 pub async fn get_member_freeze(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MemberFreeze>> {
     cap(&auth, TOKEN_ADMIN)?;
     let member_id = MemberId(id);
@@ -106,7 +103,7 @@ pub async fn get_member_freeze(
 pub async fn list_frozen_members(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<MemberFreeze>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, TOKEN_ADMIN)?;

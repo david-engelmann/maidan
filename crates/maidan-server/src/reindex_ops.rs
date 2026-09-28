@@ -3,11 +3,7 @@
 //! Jobs are persisted in the store, not held per-replica, so a job started on
 //! one replica is visible from any replica and survives restart.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::Utc;
 use maidan_auth::{
     capability::{TOKEN_ADMIN, WORKSPACE_WRITE},
@@ -19,6 +15,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -39,7 +36,7 @@ fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<
 pub async fn start_reindex_embeddings(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Json(body): Json<StartReindexEmbeddings>,
+    ApiJson(body): ApiJson<StartReindexEmbeddings>,
 ) -> ApiResult<(StatusCode, Json<ReindexJob>)> {
     let workspace_id = body.workspace_id.map(WorkspaceId);
     match workspace_id {
@@ -119,7 +116,7 @@ pub async fn start_reindex_embeddings(
 pub async fn get_reindex_embeddings_job(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(job_id): Path<Uuid>,
+    ApiPath(job_id): ApiPath<Uuid>,
 ) -> ApiResult<Json<ReindexJob>> {
     let Some(job) = state.store.get_reindex_job(job_id).await? else {
         cap(&auth, TOKEN_ADMIN)?;

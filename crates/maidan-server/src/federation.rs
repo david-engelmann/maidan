@@ -3,12 +3,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension, Json};
 use maidan_a2a::{FederatedEventBatch, FederationEnvelope, FederationError};
 use maidan_auth::{
     capability::{FEDERATION_ADMIN, FEDERATION_INGEST},
@@ -20,7 +15,8 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::dto::{CreatePeer, MintPeerResponse, PeerResponse};
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::routes::publish;
 use crate::state::AppState;
 
@@ -719,7 +715,7 @@ fn federation_err(err: FederationError) -> ApiError {
 pub async fn create_peer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreatePeer>,
 ) -> ApiResult<(StatusCode, Json<MintPeerResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -771,7 +767,7 @@ pub async fn create_peer(
 pub async fn list_peers(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<PeerResponse>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, FEDERATION_ADMIN)?;
@@ -783,7 +779,7 @@ pub async fn list_peers(
 pub async fn delete_peer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, peer_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, peer_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(workspace_id);
     let peer_id = PeerId(peer_id);

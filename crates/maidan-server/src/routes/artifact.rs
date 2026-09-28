@@ -5,8 +5,7 @@
 use std::sync::Arc;
 
 use axum::{
-    body::Bytes,
-    extract::{Path, Query, State},
+    extract::State,
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Extension, Json,
@@ -20,7 +19,8 @@ use maidan_types::*;
 
 use super::{cap, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiBytes, ApiJson, ApiPath, ApiQuery};
 use crate::state::AppState;
 
 fn s3_artifacts(artifacts: &Arc<dyn ArtifactStore>) -> Result<&S3Store, ApiError> {
@@ -62,9 +62,9 @@ pub async fn begin_multipart_artifact(
 pub async fn upload_multipart_artifact_part(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((upload_id, part_number)): Path<(String, i32)>,
-    Query(q): Query<MultipartUploadQuery>,
-    body: Bytes,
+    ApiPath((upload_id, part_number)): ApiPath<(String, i32)>,
+    ApiQuery(q): ApiQuery<MultipartUploadQuery>,
+    ApiBytes(body): ApiBytes,
 ) -> ApiResult<Json<MultipartPartResponse>> {
     cap(&auth, ARTIFACT_UPLOAD)?;
     if body.is_empty() {
@@ -80,7 +80,7 @@ pub async fn upload_multipart_artifact_part(
 pub async fn complete_multipart_artifact(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(upload_id): Path<String>,
+    ApiPath(upload_id): ApiPath<String>,
     ApiJson(body): ApiJson<CompleteMultipartArtifact>,
 ) -> ApiResult<(StatusCode, Json<Artifact>)> {
     cap(&auth, ARTIFACT_UPLOAD)?;
@@ -120,7 +120,7 @@ pub async fn complete_multipart_artifact(
 pub async fn abort_multipart_artifact(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Query(q): Query<AbortMultipartQuery>,
+    ApiQuery(q): ApiQuery<AbortMultipartQuery>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, ARTIFACT_UPLOAD)?;
     let upload = multipart_upload(&q.upload_id, &q.object_key);
@@ -133,8 +133,8 @@ pub async fn abort_multipart_artifact(
 pub async fn upload_artifact(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Query(q): Query<UploadArtifactQuery>,
-    body: Bytes,
+    ApiQuery(q): ApiQuery<UploadArtifactQuery>,
+    ApiBytes(body): ApiBytes,
 ) -> ApiResult<(StatusCode, Json<Artifact>)> {
     cap(&auth, ARTIFACT_UPLOAD)?;
     if body.is_empty() {
@@ -183,7 +183,7 @@ async fn ensure_artifact_ref(state: &AppState, auth: &AuthContext, sha256: &str)
 pub async fn get_artifact(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(sha_hex): Path<String>,
+    ApiPath(sha_hex): ApiPath<String>,
 ) -> ApiResult<Response> {
     cap(&auth, WORKSPACE_READ)?;
     let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -205,7 +205,7 @@ pub async fn get_artifact(
 pub async fn get_artifact_metadata(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(sha_hex): Path<String>,
+    ApiPath(sha_hex): ApiPath<String>,
 ) -> ApiResult<Json<Artifact>> {
     cap(&auth, WORKSPACE_READ)?;
     Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;

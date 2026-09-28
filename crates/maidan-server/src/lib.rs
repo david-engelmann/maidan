@@ -34,6 +34,7 @@ pub mod error;
 pub mod event_stream;
 pub mod event_visibility;
 pub mod export;
+pub mod extract;
 pub mod federation;
 pub mod federation_worker;
 pub mod fsm_hook_worker;

@@ -13,7 +13,7 @@
 //! reuses [`crate::webhooks::verify_signature`].
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::State,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Extension, Json,
@@ -25,7 +25,8 @@ use maidan_types::{
 };
 
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
-use crate::error::ApiJson;
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath, ApiQuery, ApiText};
 use crate::routes::{cap, ensure_workspace, ApiResult};
 use crate::state::AppState;
 
@@ -63,17 +64,17 @@ impl GithubConfig {
 pub async fn github_events(
     State(state): State<AppState>,
     headers: HeaderMap,
-    body: String,
+    ApiText(body): ApiText,
 ) -> Response {
     let Some(cfg) = state.github.as_ref() else {
-        return StatusCode::NOT_FOUND.into_response();
+        return ApiError::NotFound.into_response();
     };
     let signature = headers
         .get("x-hub-signature-256")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     if !crate::webhooks::verify_signature(&cfg.webhook_secret, &body, signature) {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return ApiError::SignatureInvalid.into_response();
     }
     let event = headers
         .get("x-github-event")
@@ -632,7 +633,7 @@ pub async fn route_message_to_github(
 pub async fn link_github_issue(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<LinkGithubIssue>,
 ) -> ApiResult<(StatusCode, Json<GithubIssueLink>)> {
     cap(&auth, WORKSPACE_WRITE)?;
@@ -664,7 +665,7 @@ pub async fn link_github_issue(
 pub async fn list_github_issue_links(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<GithubIssueLink>>> {
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, WorkspaceId(wid))?;
@@ -682,8 +683,8 @@ pub async fn list_github_issue_links(
 pub async fn unlink_github_issue(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
-    Query(q): Query<UnlinkGithubQuery>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<UnlinkGithubQuery>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, WorkspaceId(wid))?;
@@ -698,12 +699,12 @@ pub async fn unlink_github_issue(
         .await?
     {
         Some(link) if link.workspace_id == WorkspaceId(wid) => {}
-        _ => return Err(crate::error::ApiError::NotFound),
+        _ => return Err(ApiError::NotFound),
     }
     if state.store.unlink_github_issue(&repo, issue_number).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(crate::error::ApiError::NotFound)
+        Err(ApiError::NotFound)
     }
 }
 

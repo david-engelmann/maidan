@@ -3,11 +3,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
@@ -25,7 +21,8 @@ use utoipa::ToSchema;
 use crate::dto::{
     CreateWebhook, MentionWebhookConfig, MintWebhookResponse, SetMentionWebhook, WebhookResponse,
 };
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::{AppState, WebhookRuntime};
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -125,7 +122,7 @@ fn parse_event_kinds(kinds: &[String]) -> ApiResult<Vec<String>> {
 pub async fn create_webhook(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateWebhook>,
 ) -> ApiResult<(StatusCode, Json<MintWebhookResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -170,7 +167,7 @@ pub async fn create_webhook(
 pub async fn list_webhooks(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<WebhookResponse>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
@@ -182,7 +179,7 @@ pub async fn list_webhooks(
 pub async fn get_mention_webhook(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MentionWebhookConfig>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
@@ -197,7 +194,7 @@ pub async fn get_mention_webhook(
 pub async fn set_mention_webhook(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetMentionWebhook>,
 ) -> ApiResult<Json<MentionWebhookConfig>> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -222,7 +219,7 @@ pub async fn set_mention_webhook(
 pub async fn revoke_webhook(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, webhook_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, webhook_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(workspace_id);
     let webhook_id = WebhookSubscriptionId(webhook_id);

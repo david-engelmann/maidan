@@ -4,11 +4,7 @@
 //! appears only in a create request and a resolve response, never in the event
 //! log. `secret:admin` writes; `secret:read` reads/resolves.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{SECRET_ADMIN, SECRET_READ},
     decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext,
@@ -17,7 +13,8 @@ use maidan_types::*;
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 /// The at-rest encryption key, or a clear error when the deployment hasn't
@@ -43,7 +40,7 @@ fn validate_name(name: &str) -> ApiResult<()> {
 pub async fn create_secret(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateSecret>,
 ) -> ApiResult<(StatusCode, Json<Secret>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -86,7 +83,7 @@ pub async fn create_secret(
 pub async fn list_secrets(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Secret>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SECRET_READ)?;
@@ -97,7 +94,7 @@ pub async fn list_secrets(
 pub async fn resolve_secret(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, name)): Path<(uuid::Uuid, String)>,
+    ApiPath((workspace_id, name)): ApiPath<(uuid::Uuid, String)>,
 ) -> ApiResult<Json<SecretValue>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SECRET_READ)?;
@@ -127,7 +124,7 @@ pub async fn resolve_secret(
 pub async fn delete_secret(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, name)): Path<(uuid::Uuid, String)>,
+    ApiPath((workspace_id, name)): ApiPath<(uuid::Uuid, String)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SECRET_ADMIN)?;

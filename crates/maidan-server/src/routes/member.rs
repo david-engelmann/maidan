@@ -1,16 +1,14 @@
 //! Member handlers: list/get members, mentions-for-member, and inbox.
 
 use axum::http::StatusCode;
-use axum::{
-    extract::{Path, Query, State},
-    Extension, Json,
-};
+use axum::{extract::State, Extension, Json};
 use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
 use maidan_types::*;
 
 use super::{cap, ensure_own_personal_state, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath, ApiQuery};
 use crate::state::AppState;
 
 /// `GET /me` — the caller's own identity. Reflects the request's auth
@@ -34,7 +32,7 @@ pub async fn get_me(Extension(auth): Extension<AuthContext>) -> ApiResult<Json<W
 #[cfg(feature = "bootstrap")]
 pub async fn create_member(
     State(state): State<AppState>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMember>,
 ) -> ApiResult<(StatusCode, Json<Member>)> {
     let (m, stored) = state
@@ -53,7 +51,7 @@ pub async fn create_member(
 pub async fn list_members(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Member>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
@@ -64,7 +62,7 @@ pub async fn list_members(
 pub async fn get_member(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Member>> {
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -75,8 +73,8 @@ pub async fn get_member(
 pub async fn list_mentions_for_member(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ListMentionsQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListMentionsQuery>,
 ) -> ApiResult<Json<Vec<Mention>>> {
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -96,8 +94,8 @@ pub async fn list_mentions_for_member(
 pub async fn get_member_inbox(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ListInboxQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListInboxQuery>,
 ) -> ApiResult<Json<MemberInbox>> {
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -115,7 +113,7 @@ pub async fn get_member_inbox(
 pub async fn mark_member_inbox_read(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<MarkInboxRead>,
 ) -> ApiResult<Json<MemberInbox>> {
     let member = state.store.get_member(MemberId(id)).await?;
@@ -136,8 +134,8 @@ pub async fn mark_member_inbox_read(
 pub async fn list_member_notifications(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ListNotificationsQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListNotificationsQuery>,
 ) -> ApiResult<Json<Vec<Notification>>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -160,8 +158,8 @@ pub async fn list_member_notifications(
 pub async fn list_member_notifications_grouped(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ListNotificationsQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListNotificationsQuery>,
 ) -> ApiResult<Json<Vec<NotificationThreadGroup>>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -182,8 +180,8 @@ pub async fn list_member_notifications_grouped(
 pub async fn list_member_decisions(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<DecisionsQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<DecisionsQuery>,
 ) -> ApiResult<Json<Vec<BuriedDecision>>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -206,8 +204,8 @@ pub async fn list_member_decisions(
 pub async fn get_member_manager_digest(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ManagerDigestQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ManagerDigestQuery>,
 ) -> ApiResult<Json<ManagerDigest>> {
     cap(&auth, WORKSPACE_READ)?;
     let member_id = MemberId(id);
@@ -229,7 +227,7 @@ pub async fn get_member_manager_digest(
 pub async fn member_unread_notification_count(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<UnreadCount>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -245,7 +243,7 @@ pub async fn member_unread_notification_count(
 pub async fn mark_member_notification_read(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, nid)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, nid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<Json<UnreadCount>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -268,7 +266,7 @@ pub async fn mark_member_notification_read(
 pub async fn snooze_member_notification(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, nid)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, nid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
     ApiJson(body): ApiJson<SnoozeNotification>,
 ) -> ApiResult<Json<UnreadCount>> {
     cap(&auth, WORKSPACE_READ)?;
@@ -290,7 +288,7 @@ pub async fn snooze_member_notification(
 pub async fn mark_all_member_notifications_read(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MarkAllRead>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -308,7 +306,7 @@ pub async fn mark_all_member_notifications_read(
 pub async fn set_member_notification_pref(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetNotificationPref>,
 ) -> ApiResult<Json<NotificationPref>> {
     cap(&auth, WORKSPACE_READ)?;
@@ -327,7 +325,7 @@ pub async fn set_member_notification_pref(
 pub async fn list_member_notification_prefs(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<NotificationPref>>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -343,7 +341,7 @@ pub async fn list_member_notification_prefs(
 pub async fn follow_member_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FollowChannel>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
@@ -362,7 +360,7 @@ pub async fn follow_member_channel(
 pub async fn unfollow_member_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, cid)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, cid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -383,7 +381,7 @@ pub async fn unfollow_member_channel(
 pub async fn list_member_channel_follows(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ChannelFollow>>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -397,7 +395,7 @@ pub async fn list_member_channel_follows(
 pub async fn follow_member_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FollowThread>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
@@ -416,7 +414,7 @@ pub async fn follow_member_thread(
 pub async fn unfollow_member_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, tid)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, tid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -437,7 +435,7 @@ pub async fn unfollow_member_thread(
 pub async fn list_member_thread_follows(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ThreadFollow>>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -451,7 +449,7 @@ pub async fn list_member_thread_follows(
 pub async fn follow_member_occupancy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<FollowMember>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
@@ -477,7 +475,7 @@ pub async fn follow_member_occupancy(
 pub async fn unfollow_member_occupancy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, followed_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, followed_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
     let follower_id = MemberId(id);
@@ -500,7 +498,7 @@ pub async fn unfollow_member_occupancy(
 pub async fn list_member_occupancy_follows(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<MemberFollow>>> {
     cap(&auth, WORKSPACE_READ)?;
     let follower_id = MemberId(id);
@@ -515,7 +513,7 @@ pub async fn list_member_occupancy_follows(
 pub async fn get_member_occupancy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MemberOccupancy>> {
     cap(&auth, WORKSPACE_READ)?;
     let member_id = MemberId(id);
@@ -551,7 +549,7 @@ pub async fn get_member_occupancy(
 pub async fn set_member_email(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetEmail>,
 ) -> ApiResult<Json<MemberEmail>> {
     cap(&auth, WORKSPACE_READ)?;
@@ -571,7 +569,7 @@ pub async fn set_member_email(
 pub async fn get_member_email(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MemberEmail>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -588,7 +586,7 @@ pub async fn get_member_email(
 pub async fn delete_member_email(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -607,7 +605,7 @@ pub async fn delete_member_email(
 pub async fn set_member_delivery_mode(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetDeliveryMode>,
 ) -> ApiResult<Json<DeliveryModeView>> {
     cap(&auth, WORKSPACE_READ)?;
@@ -626,7 +624,7 @@ pub async fn set_member_delivery_mode(
 pub async fn get_member_delivery_mode(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<DeliveryModeView>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -644,8 +642,8 @@ pub async fn get_member_delivery_mode(
 pub async fn get_member_waiting(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<WaitingQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<WaitingQuery>,
 ) -> ApiResult<Json<WaitingInbox>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -686,7 +684,7 @@ pub async fn get_member_waiting(
 pub async fn register_push_subscription(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<RegisterPushSubscription>,
 ) -> ApiResult<Json<PushSubscription>> {
     cap(&auth, WORKSPACE_READ)?;
@@ -726,7 +724,7 @@ pub async fn register_push_subscription(
 pub async fn list_push_subscriptions(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<PushSubscription>>> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;
@@ -742,7 +740,7 @@ pub async fn list_push_subscriptions(
 pub async fn delete_push_subscription(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, sub_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, sub_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
     let member = state.store.get_member(MemberId(id)).await?;

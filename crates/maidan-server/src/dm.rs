@@ -1,17 +1,15 @@
 //! Direct message HTTP routes and subscribe filter expansion.
 
 use crate::routes::publish_routed_mentions;
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 use maidan_auth::AuthContext;
 use maidan_types::*;
 use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath, ApiQuery};
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -24,12 +22,14 @@ fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> Result<(),
     auth.ensure_workspace(workspace_id).map_err(Into::into)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct DmMemberQuery {
+    /// Member whose conversations are listed.
     pub member_id: uuid::Uuid,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OpenDmBody {
     pub other_member_id: uuid::Uuid,
@@ -89,8 +89,8 @@ pub async fn expand_event_filter(
 pub async fn open_dm_conversation(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
-    Json(body): Json<OpenDmBody>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<OpenDmBody>,
 ) -> ApiResult<Json<DmConversation>> {
     // Opening a conversation *creates shared state*, so it is a write — and the
     // MCP twin has always required `message:post` for the same operation. REST
@@ -115,8 +115,8 @@ pub async fn open_dm_conversation(
 pub async fn list_dm_conversations(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
-    Query(q): Query<DmMemberQuery>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<DmMemberQuery>,
 ) -> ApiResult<Json<Vec<DmConversation>>> {
     cap(&auth, WORKSPACE_READ)?;
     let workspace_id = WorkspaceId(workspace_id);
@@ -134,7 +134,7 @@ pub async fn list_dm_conversations(
 pub async fn get_dm_conversation(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<DmConversation>> {
     cap(&auth, WORKSPACE_READ)?;
     let dm = state
@@ -156,8 +156,8 @@ pub async fn get_dm_conversation(
 pub async fn post_dm_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Json(body): Json<PostDmMessage>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<PostDmMessage>,
 ) -> ApiResult<(StatusCode, Json<Message>)> {
     cap(&auth, MESSAGE_POST)?;
     let dm = state
@@ -191,8 +191,8 @@ pub async fn post_dm_message(
 pub async fn list_dm_messages(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<crate::dto::ListMessagesQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<crate::dto::ListMessagesQuery>,
 ) -> ApiResult<Json<Vec<Message>>> {
     cap(&auth, WORKSPACE_READ)?;
     let dm = state

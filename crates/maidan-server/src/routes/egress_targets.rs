@@ -13,11 +13,7 @@
 //! precisely so the revoke is routable: a GitHub selector is `owner/name`, and
 //! a `/` in a path segment is not.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{capability::TOKEN_ADMIN, AuthContext};
 use maidan_types::{
     AllowedEgressTarget, EgressTargetId, NewAuditEvent, NewEgressTarget, WorkspaceId,
@@ -25,7 +21,8 @@ use maidan_types::{
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::AllowEgressTarget;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 /// `POST /workspaces/:wid/egress-targets` — bless a destination. Idempotent: a
@@ -35,7 +32,7 @@ use crate::state::AppState;
 pub async fn allow_egress_target(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AllowEgressTarget>,
 ) -> ApiResult<(StatusCode, Json<AllowedEgressTarget>)> {
     let workspace_id = WorkspaceId(wid);
@@ -79,7 +76,7 @@ fn egress_target_allowed_event(
 pub async fn list_egress_targets(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<AllowedEgressTarget>>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, TOKEN_ADMIN)?;
@@ -94,7 +91,7 @@ pub async fn list_egress_targets(
 pub async fn revoke_egress_target(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, tid)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((wid, tid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, TOKEN_ADMIN)?;

@@ -5,7 +5,7 @@ use std::sync::{atomic::AtomicI64, Arc};
 use std::time::Duration;
 
 use axum::{
-    extract::{Query, State},
+    extract::State,
     response::sse::{Event, KeepAlive, Sse},
     Extension,
 };
@@ -20,6 +20,7 @@ use crate::error::ApiError;
 use crate::event_stream::{
     self, emit_replay_truncated_if_needed, replay_matching_events, subscribe_ack_payload,
 };
+use crate::extract::ApiQuery;
 use crate::state::AppState;
 use crate::subscribe_resume;
 
@@ -64,7 +65,7 @@ pub struct McpStreamQuery {
 pub async fn stream(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Query(q): Query<McpStreamQuery>,
+    ApiQuery(q): ApiQuery<McpStreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
     auth.require_capability(EVENT_SUBSCRIBE)
         .map_err(|_| ApiError::Forbidden("missing event:subscribe capability".into()))?;

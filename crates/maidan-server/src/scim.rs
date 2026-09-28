@@ -10,7 +10,7 @@
 //! are intentionally outside the OpenAPI doc + capability-map (like `/mcp`) —
 //! SCIM has its own schema and error envelope; auth is enforced inline here.
 
-use axum::extract::{Path, RawQuery, State};
+use axum::extract::{FromRequest, Path, RawQuery, Request, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Extension;
@@ -48,6 +48,40 @@ fn scim_error(status: StatusCode, detail: &str) -> Response {
             "detail": detail,
         }),
     )
+}
+
+/// An axum rejection in SCIM's error envelope, so a malformed id or an
+/// oversized body is an error an IdP can read.
+fn scim_rejected(status: StatusCode, detail: String) -> Response {
+    let (status, detail) = crate::extract::rejection(status, detail);
+    scim_error(status, &detail)
+}
+
+crate::extract::wrap_extractor!(
+    /// A SCIM path parameter, rejected in SCIM's error envelope.
+    ScimPath,
+    parts Path,
+    Response,
+    scim_rejected
+);
+
+/// A SCIM request body as text (the handler parses it as SCIM JSON), rejected
+/// in SCIM's error envelope when it is over the body-size limit or not UTF-8.
+pub struct ScimText(pub String);
+
+#[axum::async_trait]
+impl<S> FromRequest<S> for ScimText
+where
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Response> {
+        String::from_request(req, state)
+            .await
+            .map(Self)
+            .map_err(|e| scim_rejected(e.status(), e.body_text()))
+    }
 }
 
 /// Require `token:admin` (bypass callers pass). Returns `Some(<403 error>)` when
@@ -206,7 +240,7 @@ pub async fn service_provider_config(Extension(auth): Extension<AuthContext>) ->
 pub async fn create_user(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    body: String,
+    ScimText(body): ScimText,
 ) -> Response {
     if let Some(resp) = require_admin(&auth) {
         return resp;
@@ -281,7 +315,7 @@ pub async fn create_user(
 pub async fn get_user(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ScimPath(id): ScimPath<uuid::Uuid>,
 ) -> Response {
     if let Some(resp) = require_admin(&auth) {
         return resp;
@@ -367,8 +401,8 @@ fn parse_username_filter(raw_query: &str) -> Option<String> {
 pub async fn replace_user(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    body: String,
+    ScimPath(id): ScimPath<uuid::Uuid>,
+    ScimText(body): ScimText,
 ) -> Response {
     if let Some(resp) = require_admin(&auth) {
         return resp;
@@ -415,8 +449,8 @@ struct ScimPatchOperation {
 pub async fn patch_user(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    body: String,
+    ScimPath(id): ScimPath<uuid::Uuid>,
+    ScimText(body): ScimText,
 ) -> Response {
     if let Some(resp) = require_admin(&auth) {
         return resp;
@@ -516,7 +550,7 @@ async fn apply_update(
 pub async fn delete_user(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ScimPath(id): ScimPath<uuid::Uuid>,
 ) -> Response {
     if let Some(resp) = require_admin(&auth) {
         return resp;
