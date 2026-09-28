@@ -450,7 +450,7 @@ than minting a new one.
 
 ### KEEP remaining — splice after occupancy (#2), before later ADD (not a new cluster)
 
-- **README visual media / paste-ready invite** (a recorded terminal GIF + a README contact line). Thickeners: an
+- **README visual media / paste-ready invite** (~~a recorded terminal GIF~~ **✅ #1071** — a real two-agent handoff recording, a model diagram and an agent's MCP session transcript; + a README contact line). Thickeners: an
   honest one-paragraph not-a-harness / not-Slack / not-Temporal; a CONTRIBUTING handbook-lite (occupy / disclose /
   cut a release — shape, not a handbook site); SECURITY.md dated-or-omit numbers; GHCR pin = HEAD; `llms.txt` + copy-to-agent.
 - **SDK 0.2 typed DTOs** (all four SDKs return generic JSON today) + `NEW-sdk-ergonomics` (client idempotency keys
