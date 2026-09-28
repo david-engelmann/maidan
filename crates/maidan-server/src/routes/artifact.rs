@@ -12,7 +12,7 @@ use axum::{
 };
 use maidan_artifacts::{ArtifactStore, CompletedPart, MultipartUpload, S3Store, Sha256};
 use maidan_auth::{
-    capability::{ARTIFACT_UPLOAD, WORKSPACE_READ},
+    capability::{ARTIFACT_UPLOAD, TOKEN_ADMIN, WORKSPACE_READ},
     AuthContext,
 };
 use maidan_types::*;
@@ -211,6 +211,43 @@ pub async fn get_artifact_metadata(
     Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     ensure_artifact_ref(&state, &auth, &sha_hex).await?;
     Ok(Json(artifact_as_seen_by(&state, &auth, &sha_hex).await?))
+}
+
+/// `DELETE /artifacts/:sha` — erase the caller's workspace's copy of an
+/// artifact. `token:admin`, audited as `artifact.erase`, refused (409) under a
+/// legal hold. Artifacts are deduplicated across workspaces: the workspace
+/// loses access at once, and the bytes are deleted only when no other
+/// workspace references them.
+pub async fn erase_artifact(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(sha_hex): ApiPath<String>,
+) -> ApiResult<Json<ArtifactErasure>> {
+    cap(&auth, TOKEN_ADMIN)?;
+    let sha = Sha256::from_hex(&sha_hex).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let actor = auth.actor_id;
+    let erasure = state
+        .store
+        .erase_artifact_audited(
+            auth.workspace_id,
+            &sha.to_hex(),
+            Box::new(move |erasure| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "artifact.erase".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(erasure.workspace_id.0),
+                metadata: serde_json::json!({
+                    "sha256": erasure.sha256,
+                    "last_reference": erasure.last_reference,
+                }),
+            }),
+        )
+        .await?;
+    if erasure.last_reference {
+        super::workspace::delete_orphaned_blobs(&state, std::slice::from_ref(&erasure.sha256))
+            .await;
+    }
+    Ok(Json(erasure))
 }
 
 /// The artifact with the caller's workspace's own metadata. The shared row's

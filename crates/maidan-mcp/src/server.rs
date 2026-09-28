@@ -255,9 +255,7 @@ impl McpServer {
     /// Unlike [`Self::publish_event`], this does NOT append (no double-log).
     pub(crate) async fn publish_stored(&self, stored: &StoredEvent) {
         if let Some(bus) = self.event_bus.as_ref() {
-            if let Ok(envelope) =
-                BusEnvelope::from_stored_payload(stored.id, stored.payload.clone())
-            {
+            if let Ok(envelope) = BusEnvelope::from_stored(stored) {
                 let _ = bus.publish(envelope).await;
             }
         }

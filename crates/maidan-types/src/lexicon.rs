@@ -91,11 +91,83 @@ pub fn stored_event_wire(event: &StoredEvent) -> Result<Value, serde_json::Error
     Ok(value)
 }
 
+/// Never writes `content_key`: a surface that forgets to open an event before
+/// serving it serves ciphertext, not words. See [`KeyedEvent`].
 impl Serialize for StoredEvent {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         stored_event_wire(self)
             .map_err(serde::ser::Error::custom)?
             .serialize(serializer)
+    }
+}
+
+/// A log row for a whole-log reader — a federation peer, or catch-up: the
+/// sealed payload the hash covers, plus `content_key` while the words are live.
+/// A shredded event has no key to send, so the reader gets ciphertext only.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(transparent)]
+pub struct KeyedEvent(pub StoredEvent);
+
+/// [`stored_event_wire`] plus `content_key` when there is one.
+pub fn keyed_event_wire(event: &StoredEvent) -> Result<Value, serde_json::Error> {
+    let mut value = stored_event_wire(event)?;
+    if let (Some(key), Value::Object(map)) = (&event.content_key, &mut value) {
+        map.insert("content_key".to_string(), serde_json::to_value(key)?);
+    }
+    Ok(value)
+}
+
+impl Serialize for KeyedEvent {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        keyed_event_wire(&self.0)
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+/// `serialize_with` for one event bound for a whole-log reader.
+pub fn serialize_keyed_event<S: serde::Serializer>(
+    event: &StoredEvent,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    keyed_event_wire(event)
+        .map_err(serde::ser::Error::custom)?
+        .serialize(serializer)
+}
+
+/// `serialize_with` for a whole-log list of events.
+pub fn serialize_keyed_events<S: serde::Serializer>(
+    events: &[StoredEvent],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeSeq;
+    let mut seq = serializer.serialize_seq(Some(events.len()))?;
+    for event in events {
+        seq.serialize_element(&keyed_event_wire(event).map_err(serde::ser::Error::custom)?)?;
+    }
+    seq.end()
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::PartialSchema for KeyedEvent {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        <StoredEvent as utoipa::PartialSchema>::schema()
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::ToSchema for KeyedEvent {
+    fn name() -> std::borrow::Cow<'static, str> {
+        <StoredEvent as utoipa::ToSchema>::name()
+    }
+
+    fn schemas(
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
+    ) {
+        <StoredEvent as utoipa::ToSchema>::schemas(schemas);
     }
 }
 
@@ -382,6 +454,7 @@ mod tests {
             prev_hash: crate::genesis_hash(),
             content_hash: crate::content_hash(&json!({"kind": "message_posted", "body": "hi"}))
                 .expect("hash"),
+            content_key: None,
         };
         let wire = stored_event_wire(&stored).expect("wire");
         assert_eq!(wire["$type"], "maidan.event.message_posted/1");

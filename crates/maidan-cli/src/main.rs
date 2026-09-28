@@ -125,7 +125,7 @@ async fn run_init(
             run_sqlite_migrations(&pool)
                 .await
                 .context("migrate sqlite")?;
-            Arc::new(SqliteStore::new(pool))
+            Arc::new(SqliteStore::new(pool).with_content_keys(content_keyring()?))
         }
         Dialect::Postgres => {
             let pool = PgPoolOptions::new()
@@ -136,7 +136,7 @@ async fn run_init(
             run_postgres_migrations(&pool)
                 .await
                 .context("migrate postgres")?;
-            Arc::new(PostgresStore::new(pool))
+            Arc::new(PostgresStore::new(pool).with_content_keys(content_keyring()?))
         }
     };
 
@@ -260,6 +260,15 @@ async fn resolve_stdio_auth(
     }
 }
 
+/// The same content keyring the server uses, so messages written here are
+/// sealed under keys the server can unwrap.
+fn content_keyring() -> anyhow::Result<Arc<maidan_types::ContentKeyring>> {
+    let production = std::env::var("MAIDAN_ENV").as_deref() == Ok("production");
+    maidan_store::content_keyring::from_env(production)
+        .map(Arc::new)
+        .map_err(anyhow::Error::msg)
+}
+
 async fn run_mcp_stdio(
     database_url: &str,
     artifact_root: &Path,
@@ -279,7 +288,8 @@ async fn run_mcp_stdio(
             run_sqlite_migrations(&pool)
                 .await
                 .context("migrate sqlite")?;
-            let store: Arc<dyn Store> = Arc::new(SqliteStore::new(pool.clone()));
+            let store: Arc<dyn Store> =
+                Arc::new(SqliteStore::new(pool.clone()).with_content_keys(content_keyring()?));
             let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool));
             (store, search)
         }
@@ -292,7 +302,8 @@ async fn run_mcp_stdio(
             run_postgres_migrations(&pool)
                 .await
                 .context("migrate postgres")?;
-            let store: Arc<dyn Store> = Arc::new(PostgresStore::new(pool.clone()));
+            let store: Arc<dyn Store> =
+                Arc::new(PostgresStore::new(pool.clone()).with_content_keys(content_keyring()?));
             let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool));
             (store, search)
         }

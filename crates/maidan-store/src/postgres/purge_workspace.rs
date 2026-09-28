@@ -55,7 +55,7 @@ pub(crate) async fn purge_on(
     .await?;
 
     let tombstone = sqlx::query(
-        "UPDATE maidan_messages SET tombstoned_at = NOW(), body = '', content = NULL
+        "UPDATE maidan_messages SET tombstoned_at = NOW(), body = '', metadata = '{}', content = NULL
          WHERE tombstoned_at IS NULL
            AND thread_id IN (
              SELECT t.id FROM maidan_threads t
@@ -92,6 +92,13 @@ pub(crate) async fn purge_on(
         .bind(workspace_id.0)
         .execute(&mut *tx)
         .await?;
+    // The content keys go with the events: ciphertext of this workspace held
+    // anywhere else can no longer be opened here.
+    let content_keys_destroyed =
+        sqlx::query("DELETE FROM maidan_content_keys WHERE workspace_id = $1")
+            .bind(workspace_id.0)
+            .execute(&mut *tx)
+            .await?;
 
     // Artifacts are content-addressed and shared: one row and one blob per
     // sha, whoever uploaded it first, and per-workspace access lives in
@@ -152,6 +159,7 @@ pub(crate) async fn purge_on(
         references_removed: references_removed.rows_affected(),
         api_tokens_revoked: api_tokens_revoked.rows_affected(),
         events_removed: events_removed.rows_affected(),
+        content_keys_destroyed: content_keys_destroyed.rows_affected(),
         artifacts_removed,
         artifact_shas,
         occurred_at: Utc::now(),

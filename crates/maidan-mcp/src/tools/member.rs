@@ -203,7 +203,8 @@ async fn lookback_member_event(
             if !kinds.contains(&stored.kind) {
                 continue;
             }
-            let event: Event = serde_json::from_value(stored.payload.clone())
+            let event: Event = stored
+                .opened_event()
                 .map_err(|e| McpError::Internal(e.to_string()))?;
             if event.member_id() != Some(member_id) {
                 continue;

@@ -266,6 +266,7 @@ mod tests {
             occurred_at: Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
             prev_hash: link.prev_hash,
             content_hash: link.content_hash,
+            content_key: None,
         }
     }
 
@@ -323,6 +324,7 @@ mod tests {
                 occurred_at: Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
                 prev_hash: link.prev_hash,
                 content_hash: link.content_hash,
+                content_key: None,
             }
         };
 

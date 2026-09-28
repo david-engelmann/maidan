@@ -21,6 +21,7 @@ pub mod bootstrap;
 pub mod chain_verify;
 pub mod config;
 pub mod consistency;
+pub mod content_keys;
 pub mod delivery;
 pub mod delivery_ops;
 pub mod digest;

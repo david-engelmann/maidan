@@ -57,7 +57,8 @@ async fn lookback_event(
                     continue;
                 }
             }
-            let event: Event = serde_json::from_value(stored.payload.clone())
+            let event: Event = stored
+                .opened_event()
                 .map_err(|e| McpError::Internal(e.to_string()))?;
             if rbac_thread && !auth.bypass {
                 if let Some(tid) = event.thread_id() {

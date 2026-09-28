@@ -17,7 +17,7 @@ use utoipa::ToSchema;
 use crate::dto::{CreatePeer, MintPeerResponse, PeerResponse};
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
-use crate::routes::publish;
+use crate::routes::publish_federated;
 use crate::state::AppState;
 
 /// Authenticated federation peer (ingress or event-tail read).
@@ -203,7 +203,7 @@ pub(crate) async fn ingest_envelope(
         return Ok(IngestOutcome::SkippedNotFederatable);
     }
     event = remap_event_workspace(event, peer.workspace_id)?;
-    let Some(log_id) = publish(state, event).await else {
+    let Some(log_id) = publish_federated(state, event, peer.id).await else {
         return Err(ApiError::Internal("event log append failed".into()));
     };
     let recorded = state
@@ -234,8 +234,12 @@ pub(crate) async fn ingest_envelope(
     Ok(IngestOutcome::Ingested)
 }
 
+/// The event with its words opened by the key the origin sent. Without a key
+/// (the origin shredded them) it keeps its `sealed` block and empty body, and
+/// the append stores it as ciphertext under a shredded key.
 fn event_from_stored(stored: &maidan_types::StoredEvent) -> ApiResult<Event> {
-    serde_json::from_value(stored.payload.clone())
+    stored
+        .opened_event()
         .map_err(|e| ApiError::BadRequest(format!("invalid event payload: {e}")))
 }
 
@@ -494,6 +498,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             thread_id,
             dm_conversation_id,
             message,
+            sealed,
         } => MessagePosted {
             occurred_at,
             workspace_id,
@@ -501,6 +506,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             thread_id,
             dm_conversation_id,
             message,
+            sealed,
         },
         MessageEdited {
             occurred_at,
@@ -510,6 +516,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             dm_conversation_id,
             editor_id,
             message,
+            sealed,
         } => MessageEdited {
             occurred_at,
             workspace_id,
@@ -518,6 +525,7 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             dm_conversation_id,
             editor_id,
             message,
+            sealed,
         },
         MessageTombstoned {
             occurred_at,

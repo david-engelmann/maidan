@@ -291,7 +291,14 @@ could see elsewhere: no private channel they are not in, no DM they are not
 part of. A page skips withheld rows rather than coming back short, so an empty
 page still means the member is caught up. A message withdrawn since it was
 logged reads back withdrawn: its posted and edited events keep their place, with
-the body blank and no content, as the message itself reads. Withheld rows break the hash chain, so
+the body blank and no content, as the message itself reads.
+
+**Sealed words.** A message event's body, metadata and content are encrypted
+under a key for that message, and the chain hashes the ciphertext. Member reads
+return the words opened. Catch-up and federation carry the ciphertext in
+`payload.sealed` and, while the message is live, its key in `content_key`.
+Withdrawing a message destroys its key, so every tier then holds only
+ciphertext, and the chain still verifies. Withheld rows break the hash chain, so
 a filtered page cannot be verified as one; verify with
 `GET /workspaces/{id}/events/verify` (a report, no bodies) instead.
 

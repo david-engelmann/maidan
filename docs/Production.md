@@ -54,6 +54,8 @@ period is cut, and clients retry.
 | `FEDERATION_ENCRYPTION_KEY` | when federation is used | 32-byte secret (base64 or hex) used to encrypt peer outbound bearer tokens at rest. Required to create peers and for the poll worker after restart. Back up with your DB; rotation requires re-creating peers. |
 | `MAIDAN_EXPORT_SIGNING_KEY` | to *produce* a signed workspace export | 32-byte Ed25519 seed (64-char hex or standard base64). `GET /workspaces/:id/export` and MCP `export_workspace` refuse until set — never an unsigned bundle. Back up with your other operator secrets; losing it does not strand existing files (the public key is in the artifact). |
 | `MAIDAN_EXPORT_VERIFY_KEYS` | no | Comma-separated 32-byte public keys (hex or base64). When set, verify/import accept only those keys (authenticity pin). Empty / unset = integrity against the embedded key only — the blank-instance default. |
+| `MAIDAN_CONTENT_KEK` | yes when `MAIDAN_ENV=production` | 32-byte key-encryption key (64-char hex or standard base64) that wraps the per-message content keys (see *Crypto-shredding*). Production refuses to start without it; elsewhere an insecure built-in dev key is used, with a warning. Keep it in your secret manager, never in data backups. |
+| `MAIDAN_CONTENT_KEK_PREVIOUS` | during a rotation | Comma-separated retired KEKs still able to unwrap. Requires `MAIDAN_CONTENT_KEK`. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
 | `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). |
 | `MAIDAN_EMBEDDING_PROVIDER` | no | `hash-v1` (default) or `openai-compatible`. |
@@ -771,7 +773,7 @@ Two operator scripts implement it:
 `DATABASE_URL`, `MAIDAN_SESSION_SECRET` (subscribe-resume/session signing),
 `FEDERATION_ENCRYPTION_KEY` (+ any `FEDERATION_DECRYPT_KEYS` — see the
 rotation keyring), `MAIDAN_EXPORT_SIGNING_KEY` (and any
-`MAIDAN_EXPORT_VERIFY_KEYS` pin), and SMTP/OIDC credentials. A DB dump without the session secret
+`MAIDAN_EXPORT_VERIFY_KEYS` pin), `MAIDAN_CONTENT_KEK` (+ any `MAIDAN_CONTENT_KEK_PREVIOUS`; without it no message words can be read), and SMTP/OIDC credentials. A DB dump without the session secret
 still restores all data; only signed-token continuity needs the same secret.
 
 **RPO / RTO.** A periodic `backup.sh` (e.g. hourly cron) gives an RPO of one backup
@@ -840,6 +842,41 @@ public key (`GET /operator/export-public-key` on the origin). A blank
 instance with neither key still verifies integrity (tamper-evident).
 See [Integration.md](Integration.md#workspace-portability-signed-export).
 
+## Crypto-shredding
+
+A message's words (body, metadata, content blocks) are encrypted with a key
+of their own (XChaCha20-Poly1305) before the event is hashed. Withdrawing the
+message destroys that key, so the words are gone from the event log, admin and
+peer catch-up, exports, snapshots and search, while the hash chain and
+signatures still verify. Workspace purge destroys every key in the workspace;
+its audit row counts them (`metadata.content_keys_destroyed`). A replica that
+ingests the origin's tombstone shreds its copy. Under a legal hold the preserved
+copy keeps the words, as described below.
+
+Content keys live in `maidan_content_keys`, each wrapped by `MAIDAN_CONTENT_KEK`.
+
+**Rotate the KEK.** Generate a new key (`openssl rand -hex 32`), set it as
+`MAIDAN_CONTENT_KEK`, move the old one to `MAIDAN_CONTENT_KEK_PREVIOUS`, and
+roll the replicas. Each rewraps the keys still under an old KEK at startup.
+Remove the old KEK once no key needs it:
+
+```sql
+SELECT count(*) FROM maidan_content_keys
+ WHERE wrapped_key IS NOT NULL AND kek_id <> '<new kek id>';
+```
+
+The KEK id is logged at startup. A key wrapped by a KEK the server does not
+have fails the read with a 500; it is never shown as withdrawn.
+
+**Backups.** A database backup taken before a withdrawal still holds that
+message's key. Anyone with that backup and the KEK can read the words. Keep the
+KEK out of data backups, and expire backups within your erasure deadline.
+
+**Artifacts.** Artifacts are deduplicated across workspaces. `DELETE
+/artifacts/{sha}` (`token:admin`, audited as `artifact.erase`) removes the
+calling workspace's reference; the bytes are deleted only when the last
+workspace lets go (`last_reference: true`).
+
 ## Legal holds
 
 A legal hold stops a workspace's data from being destroyed while litigation is
@@ -856,8 +893,8 @@ DELETE /workspaces/{id}/legal-holds/{hold_id}
 
 While a workspace has any hold:
 
-- workspace purge and erase, message purge, and an import that replaces the
-  workspace are refused (409), inside the destroying transaction;
+- workspace purge and erase, message purge, artifact erase, and an import that
+  replaces the workspace are refused (409), inside the destroying transaction;
 - its event-log rows are exempt from retention pruning, and audit pruning is
   frozen;
 - **a withdrawn message keeps its words.** When a member (or a moderator)

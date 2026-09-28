@@ -232,9 +232,38 @@ where
 ///
 /// Returns the new `log_id` when the append succeeded.
 pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
+    publish_from(state, event, None).await
+}
+
+/// [`publish`] for an event ingested from federation peer `origin`: its words
+/// are sealed under a key only that peer's tombstone shreds.
+pub(crate) async fn publish_federated(
+    state: &AppState,
+    event: Event,
+    origin: maidan_types::PeerId,
+) -> Option<i64> {
+    publish_from(state, event, Some(origin)).await
+}
+
+async fn append_from(
+    store: &dyn maidan_store::Store,
+    event: &Event,
+    origin: Option<maidan_types::PeerId>,
+) -> Result<StoredEvent, maidan_store::StoreError> {
+    match origin {
+        None => store.append_event(event).await,
+        Some(origin) => store.append_federated_event(event, origin).await,
+    }
+}
+
+async fn publish_from(
+    state: &AppState,
+    event: Event,
+    origin: Option<maidan_types::PeerId>,
+) -> Option<i64> {
     // First attempt on the hot path borrows `event` (no clone). Only on failure
     // do we clone for the (rare) retry loop.
-    let stored = match state.store.append_event(&event).await {
+    let stored = match append_from(state.store.as_ref(), &event, origin).await {
         Ok(row) => row,
         Err(first) => {
             tracing::warn!(error = %first, "event log append failed; retrying");
@@ -244,7 +273,7 @@ pub(crate) async fn publish(state: &AppState, event: Event) -> Option<i64> {
                 move || {
                     let store = store.clone();
                     let ev = ev.clone();
-                    async move { store.append_event(&ev).await }
+                    async move { append_from(store.as_ref(), &ev, origin).await }
                 },
                 EVENT_APPEND_ATTEMPTS,
                 EVENT_APPEND_BACKOFF,
@@ -319,7 +348,7 @@ pub(crate) async fn publish_stored(state: &AppState, stored: StoredEvent) {
         return;
     }
     // In-memory / notify bus: hydrate the event from the stored payload.
-    match BusEnvelope::from_stored_payload(stored.id, stored.payload) {
+    match BusEnvelope::from_stored(&stored) {
         Ok(envelope) => {
             if let Err(err) = state.bus.publish(envelope).await {
                 tracing::warn!(error = %err, "bus publish failed");

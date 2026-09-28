@@ -95,6 +95,7 @@ pub(super) async fn post_dm_message(
                 thread_id: dm.thread_id,
                 dm_conversation_id: Some(dm.id),
                 message: msg.clone(),
+                sealed: None,
             })
             .await;
     }

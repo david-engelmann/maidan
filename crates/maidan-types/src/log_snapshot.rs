@@ -218,6 +218,9 @@ pub struct CatchUpPage {
     pub head_lsn: i64,
     /// Global room head. Not a catch-up cursor — other tenants move it.
     pub room_lsn: i64,
+    /// The whole log, sealed as it is hashed, with each live event's
+    /// `content_key` ([`crate::KeyedEvent`]).
+    #[serde(serialize_with = "crate::lexicon::serialize_keyed_events")]
     pub events: Vec<StoredEvent>,
     pub chain: ChainVerifyReport,
     pub truncated: bool,
@@ -363,6 +366,7 @@ mod tests {
             occurred_at: Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
             prev_hash: link.prev_hash,
             content_hash: link.content_hash,
+            content_key: None,
         }
     }
 

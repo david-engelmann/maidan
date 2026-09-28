@@ -1,18 +1,51 @@
 //! Dialect-neutral outbox access for relay and metrics.
 
-use maidan_types::WorkspaceId;
+use std::sync::Arc;
+
+use maidan_types::{ContentKeyring, WorkspaceId};
 use sqlx::{PgPool, SqlitePool};
 
 use crate::error::StoreError;
 use crate::postgres::outbox::{OutboxRow, QuarantinedOutboxRow};
 
+/// The outbox of one store, with the keyring that opens the rows' sealed
+/// message words.
 #[derive(Clone)]
-pub enum OutboxBackend {
+pub struct OutboxBackend {
+    db: Db,
+    keys: Arc<ContentKeyring>,
+}
+
+#[derive(Clone)]
+enum Db {
     Postgres(PgPool),
     Sqlite(SqlitePool),
 }
 
 impl OutboxBackend {
+    /// A Postgres outbox with the insecure development keyring; a server sets
+    /// its own via [`Self::with_content_keys`].
+    pub fn postgres(pool: PgPool) -> Self {
+        Self {
+            db: Db::Postgres(pool),
+            keys: Arc::new(ContentKeyring::insecure_dev()),
+        }
+    }
+
+    /// The SQLite twin of [`Self::postgres`].
+    pub fn sqlite(pool: SqlitePool) -> Self {
+        Self {
+            db: Db::Sqlite(pool),
+            keys: Arc::new(ContentKeyring::insecure_dev()),
+        }
+    }
+
+    /// Open sealed words with `keys`; must be the store's keyring.
+    pub fn with_content_keys(mut self, keys: Arc<ContentKeyring>) -> Self {
+        self.keys = keys;
+        self
+    }
+
     /// Atomically claim relayable rows for this relay. Use this, not
     /// [`Self::list_pending`], from the relay loop: the relay runs in every
     /// replica, so an unlocked read relays every row once per replica.
@@ -21,53 +54,53 @@ impl OutboxBackend {
         limit: i64,
         lease_secs: i64,
     ) -> Result<Vec<OutboxRow>, StoreError> {
-        match self {
-            Self::Postgres(pool) => {
-                crate::postgres::outbox::claim_pending(pool, limit, lease_secs).await
+        match &self.db {
+            Db::Postgres(pool) => {
+                crate::postgres::outbox::claim_pending(pool, &self.keys, limit, lease_secs).await
             }
-            Self::Sqlite(pool) => {
-                crate::sqlite::outbox::claim_pending(pool, limit, lease_secs).await
+            Db::Sqlite(pool) => {
+                crate::sqlite::outbox::claim_pending(pool, &self.keys, limit, lease_secs).await
             }
         }
     }
 
     /// Unlocked read of relayable rows — metrics and tests only.
     pub async fn list_pending(&self, limit: i64) -> Result<Vec<OutboxRow>, StoreError> {
-        match self {
-            Self::Postgres(pool) => crate::postgres::outbox::list_pending(pool, limit).await,
-            Self::Sqlite(pool) => crate::sqlite::outbox::list_pending(pool, limit).await,
+        match &self.db {
+            Db::Postgres(pool) => {
+                crate::postgres::outbox::list_pending(pool, &self.keys, limit).await
+            }
+            Db::Sqlite(pool) => crate::sqlite::outbox::list_pending(pool, &self.keys, limit).await,
         }
     }
 
     pub async fn mark_published(&self, outbox_id: i64) -> Result<(), StoreError> {
-        match self {
-            Self::Postgres(pool) => crate::postgres::outbox::mark_published(pool, outbox_id).await,
-            Self::Sqlite(pool) => crate::sqlite::outbox::mark_published(pool, outbox_id).await,
+        match &self.db {
+            Db::Postgres(pool) => crate::postgres::outbox::mark_published(pool, outbox_id).await,
+            Db::Sqlite(pool) => crate::sqlite::outbox::mark_published(pool, outbox_id).await,
         }
     }
 
     pub async fn mark_published_batch(&self, outbox_ids: &[i64]) -> Result<(), StoreError> {
-        match self {
-            Self::Postgres(pool) => {
+        match &self.db {
+            Db::Postgres(pool) => {
                 crate::postgres::outbox::mark_published_batch(pool, outbox_ids).await
             }
-            Self::Sqlite(pool) => {
-                crate::sqlite::outbox::mark_published_batch(pool, outbox_ids).await
-            }
+            Db::Sqlite(pool) => crate::sqlite::outbox::mark_published_batch(pool, outbox_ids).await,
         }
     }
 
     pub async fn record_attempt(&self, outbox_id: i64) -> Result<i32, StoreError> {
-        match self {
-            Self::Postgres(pool) => crate::postgres::outbox::record_attempt(pool, outbox_id).await,
-            Self::Sqlite(pool) => crate::sqlite::outbox::record_attempt(pool, outbox_id).await,
+        match &self.db {
+            Db::Postgres(pool) => crate::postgres::outbox::record_attempt(pool, outbox_id).await,
+            Db::Sqlite(pool) => crate::sqlite::outbox::record_attempt(pool, outbox_id).await,
         }
     }
 
     pub async fn quarantine(&self, outbox_id: i64) -> Result<(), StoreError> {
-        match self {
-            Self::Postgres(pool) => crate::postgres::outbox::quarantine(pool, outbox_id).await,
-            Self::Sqlite(pool) => crate::sqlite::outbox::quarantine(pool, outbox_id).await,
+        match &self.db {
+            Db::Postgres(pool) => crate::postgres::outbox::quarantine(pool, outbox_id).await,
+            Db::Sqlite(pool) => crate::sqlite::outbox::quarantine(pool, outbox_id).await,
         }
     }
 
@@ -76,20 +109,20 @@ impl OutboxBackend {
         outbox_id: i64,
         workspace_id: WorkspaceId,
     ) -> Result<(), StoreError> {
-        match self {
-            Self::Postgres(pool) => {
+        match &self.db {
+            Db::Postgres(pool) => {
                 crate::postgres::outbox::replay_quarantined(pool, outbox_id, workspace_id).await
             }
-            Self::Sqlite(pool) => {
+            Db::Sqlite(pool) => {
                 crate::sqlite::outbox::replay_quarantined(pool, outbox_id, workspace_id).await
             }
         }
     }
 
     pub async fn count_pending(&self) -> Result<i64, StoreError> {
-        match self {
-            Self::Postgres(pool) => crate::postgres::outbox::count_pending(pool).await,
-            Self::Sqlite(pool) => crate::sqlite::outbox::count_pending(pool).await,
+        match &self.db {
+            Db::Postgres(pool) => crate::postgres::outbox::count_pending(pool).await,
+            Db::Sqlite(pool) => crate::sqlite::outbox::count_pending(pool).await,
         }
     }
 
@@ -98,12 +131,12 @@ impl OutboxBackend {
         workspace_id: WorkspaceId,
         limit: i64,
     ) -> Result<Vec<QuarantinedOutboxRow>, StoreError> {
-        match self {
-            Self::Postgres(pool) => {
+        match &self.db {
+            Db::Postgres(pool) => {
                 crate::postgres::outbox::list_quarantined_for_workspace(pool, workspace_id, limit)
                     .await
             }
-            Self::Sqlite(pool) => {
+            Db::Sqlite(pool) => {
                 crate::sqlite::outbox::list_quarantined_for_workspace(pool, workspace_id, limit)
                     .await
             }
@@ -111,18 +144,18 @@ impl OutboxBackend {
     }
 
     pub async fn count_quarantined(&self) -> Result<i64, StoreError> {
-        match self {
-            Self::Postgres(pool) => crate::postgres::outbox::count_quarantined(pool).await,
-            Self::Sqlite(pool) => crate::sqlite::outbox::count_quarantined(pool).await,
+        match &self.db {
+            Db::Postgres(pool) => crate::postgres::outbox::count_quarantined(pool).await,
+            Db::Sqlite(pool) => crate::sqlite::outbox::count_quarantined(pool).await,
         }
     }
 
     pub async fn oldest_relayable_pending_age_secs(&self) -> Result<Option<f64>, StoreError> {
-        match self {
-            Self::Postgres(pool) => {
+        match &self.db {
+            Db::Postgres(pool) => {
                 crate::postgres::outbox::oldest_relayable_pending_age_secs(pool).await
             }
-            Self::Sqlite(pool) => {
+            Db::Sqlite(pool) => {
                 crate::sqlite::outbox::oldest_relayable_pending_age_secs(pool).await
             }
         }
@@ -132,9 +165,11 @@ impl OutboxBackend {
         &self,
         log_id: i64,
     ) -> Result<maidan_types::StoredEvent, StoreError> {
-        match self {
-            Self::Postgres(pool) => crate::postgres::events::get_by_id(pool, log_id).await,
-            Self::Sqlite(pool) => crate::sqlite::events::get_by_id(pool, log_id).await,
+        match &self.db {
+            Db::Postgres(pool) => {
+                crate::postgres::events::get_by_id(pool, &self.keys, log_id).await
+            }
+            Db::Sqlite(pool) => crate::sqlite::events::get_by_id(pool, &self.keys, log_id).await,
         }
     }
 }

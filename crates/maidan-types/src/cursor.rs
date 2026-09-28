@@ -204,6 +204,7 @@ mod tests {
             occurred_at: chrono::Utc::now(),
             prev_hash: crate::genesis_hash(),
             content_hash: crate::content_hash(&serde_json::json!({})).unwrap(),
+            content_key: None,
         };
         assert!(shape.matches_stored(&stored));
         let other = StoredEvent {

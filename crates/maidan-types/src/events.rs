@@ -38,6 +38,12 @@ pub struct StoredEvent {
     /// SHA-256 of canonical JSON of [`StoredEvent::payload`].
     #[serde(default)]
     pub content_hash: String,
+    /// The key that opens this event's sealed words, while they are live
+    /// ([`crate::content_seal`]). `None` when nothing is sealed or the words
+    /// were shredded. `StoredEvent`'s own `Serialize` never writes it; a
+    /// whole-log reader gets it through [`crate::KeyedEvent`].
+    #[serde(default)]
+    pub content_key: Option<crate::ContentKey>,
 }
 
 impl StoredEvent {
@@ -48,6 +54,33 @@ impl StoredEvent {
         self.payload
             .get("attribution")
             .and_then(|value| serde_json::from_value(value.clone()).ok())
+    }
+
+    /// The payload with its words restored where the key is live. A shredded
+    /// event comes back as stored: its `sealed` block and an empty body.
+    pub fn opened_payload(&self) -> Result<serde_json::Value, crate::SealError> {
+        let mut payload = self.payload.clone();
+        crate::open_payload(&mut payload, self.content_key.as_ref())?;
+        Ok(payload)
+    }
+
+    /// Open the payload in place and drop the key: the event as a reader who
+    /// is not handed keys sees it. The content hash no longer matches an
+    /// opened payload; only a sealed one verifies.
+    pub fn open(&mut self) -> Result<(), crate::SealError> {
+        crate::open_payload(&mut self.payload, self.content_key.as_ref())?;
+        self.content_key = None;
+        Ok(())
+    }
+
+    /// The event, its words opened when the key is live.
+    pub fn opened_event(&self) -> Result<Event, OpenEventError> {
+        Ok(serde_json::from_value(self.opened_payload()?)?)
+    }
+
+    /// Whether this event's words were sealed and their key is gone.
+    pub fn is_shredded(&self) -> bool {
+        self.payload.get("sealed").is_some() && self.content_key.is_none()
     }
 
     /// Chain fields a peer verifies without trusting the host.
@@ -80,6 +113,11 @@ struct StoredEventOpenApi {
     occurred_at: DateTime<Utc>,
     prev_hash: String,
     content_hash: String,
+    /// Base64 key that opens `payload.sealed`. Only on whole-log reads (a
+    /// federation peer, catch-up) and only while the words are live. A
+    /// `sealed` block without it means the words were shredded.
+    #[schema(nullable = false)]
+    content_key: Option<String>,
 }
 
 #[cfg(feature = "openapi")]
@@ -591,6 +629,11 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         dm_conversation_id: Option<DmConversationId>,
         message: Message,
+        /// The message's words as the log stores them. `None` in memory;
+        /// `Some` on a payload read back whose key is gone, where `message`
+        /// has an empty body ([`crate::content_seal`]).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sealed: Option<crate::SealedContent>,
     },
     MessageEdited {
         occurred_at: DateTime<Utc>,
@@ -601,6 +644,9 @@ pub enum Event {
         dm_conversation_id: Option<DmConversationId>,
         editor_id: MemberId,
         message: Message,
+        /// See [`Event::MessagePosted`].
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        sealed: Option<crate::SealedContent>,
     },
     MessageTombstoned {
         occurred_at: DateTime<Utc>,
@@ -905,12 +951,25 @@ impl BusEnvelope {
         }
     }
 
-    /// The envelope for a stored event's payload, attribution included. Every
-    /// path from the log to the bus goes through here.
-    pub fn from_stored_payload(
+    /// The envelope for a stored event, words opened and attribution
+    /// included. Every path from the log to the bus goes through here.
+    pub fn from_stored(stored: &StoredEvent) -> Result<Self, OpenEventError> {
+        let payload = stored.opened_payload()?;
+        Ok(Self::from_payload(stored.id, payload)?)
+    }
+
+    /// [`Self::from_stored`] for a reader that holds the stored payload and its
+    /// content key apart (the outbox relay's claim join).
+    pub fn from_sealed_payload(
         log_id: i64,
-        payload: serde_json::Value,
-    ) -> Result<Self, serde_json::Error> {
+        mut payload: serde_json::Value,
+        content_key: Option<&crate::ContentKey>,
+    ) -> Result<Self, OpenEventError> {
+        crate::open_payload(&mut payload, content_key)?;
+        Ok(Self::from_payload(log_id, payload)?)
+    }
+
+    fn from_payload(log_id: i64, payload: serde_json::Value) -> Result<Self, serde_json::Error> {
         // Lenient, like [`StoredEvent::attribution`]: a malformed value is a
         // chain-verification finding, not a reason to stall the live stream.
         let attribution = payload
@@ -922,6 +981,15 @@ impl BusEnvelope {
             attribution,
         })
     }
+}
+
+/// Why a stored event could not be opened into an [`Event`].
+#[derive(Debug, thiserror::Error)]
+pub enum OpenEventError {
+    #[error("sealed words could not be opened: {0}")]
+    Seal(#[from] crate::SealError),
+    #[error("event payload does not parse: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1058,12 +1126,15 @@ impl EventFilter {
 /// and non-message events are ignored. Pass the thread's events with `id <=
 /// as_of` ([`crate` consumers use `Store::list_thread_events_through`]) to get
 /// the as-of message set — deterministic over the immutable log, no current-row
-/// reads.
+/// reads. A message whose words were shredded since appears with an empty body.
 pub fn reconstruct_messages_through(events: &[StoredEvent]) -> Vec<Message> {
     let mut order: Vec<MessageId> = Vec::new();
     let mut by_id: std::collections::HashMap<MessageId, Message> = std::collections::HashMap::new();
     for stored in events {
-        let Ok(ev) = serde_json::from_value::<Event>(stored.payload.clone()) else {
+        let Ok(payload) = stored.opened_payload() else {
+            continue;
+        };
+        let Ok(ev) = serde_json::from_value::<Event>(payload) else {
             continue;
         };
         match ev {

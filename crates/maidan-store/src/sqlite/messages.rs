@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, ContentBlock, DmConversationId, EditMessage, Event, MemberId, Message, MessageId,
-    NewMessage, SpawnAxis, SpawnDenial, StoredEvent, ThreadId, WorkspaceId,
+    ChannelId, ContentBlock, ContentKeyring, DmConversationId, EditMessage, Event, MemberId,
+    Message, MessageId, NewMessage, SpawnAxis, SpawnDenial, StoredEvent, ThreadId, WorkspaceId,
 };
 use sqlx::{Row, SqliteConnection, SqlitePool};
 use uuid::Uuid;
@@ -95,6 +95,7 @@ pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, Store
 /// the pre-migration events).
 pub async fn create_with_event(
     pool: &SqlitePool,
+    keys: &ContentKeyring,
     new: NewMessage,
     dm_conversation_id: Option<DmConversationId>,
 ) -> Result<(Message, StoredEvent), StoreError> {
@@ -132,8 +133,9 @@ pub async fn create_with_event(
         thread_id,
         dm_conversation_id,
         message: message.clone(),
+        sealed: None,
     };
-    let stored = events::append_in_tx(&mut tx, &event).await?;
+    let stored = events::append_with_keys_in_tx(&mut tx, Some(keys), &event, None).await?;
     // A post bumps its thread's activity clock (`updated_at`) so a
     // recently-active view can float it to the top. In-tx, atomic with the
     // post.
@@ -332,6 +334,7 @@ async fn edit_in_tx(
 /// Edit a message and append its `MessageEdited` event in one transaction.
 pub async fn edit_with_event(
     pool: &SqlitePool,
+    keys: &ContentKeyring,
     id: MessageId,
     editor_id: MemberId,
     edit: EditMessage,
@@ -349,8 +352,9 @@ pub async fn edit_with_event(
         dm_conversation_id,
         editor_id,
         message: message.clone(),
+        sealed: None,
     };
-    let stored = events::append_in_tx(&mut tx, &event).await?;
+    let stored = events::append_with_keys_in_tx(&mut tx, Some(keys), &event, None).await?;
     tx.commit().await?;
     Ok((message, stored))
 }
@@ -362,6 +366,7 @@ pub async fn edit_with_event(
 /// post-slash message.
 pub async fn edit_with_posted_event(
     pool: &SqlitePool,
+    keys: &ContentKeyring,
     id: MessageId,
     editor_id: MemberId,
     edit: EditMessage,
@@ -378,8 +383,9 @@ pub async fn edit_with_posted_event(
         thread_id,
         dm_conversation_id,
         message: message.clone(),
+        sealed: None,
     };
-    let stored = events::append_in_tx(&mut tx, &event).await?;
+    let stored = events::append_with_keys_in_tx(&mut tx, Some(keys), &event, None).await?;
     // A post bumps its thread's activity clock (`updated_at`) so a
     // recently-active view can float it to the top. In-tx, atomic with the
     // post.
@@ -398,7 +404,7 @@ pub async fn tombstone(pool: &SqlitePool, id: MessageId) -> Result<(), StoreErro
     crate::embeddings_purge::purge_message_embeddings_sqlite(&mut tx, id).await?;
     let now = Utc::now();
     let res = sqlx::query(
-        "UPDATE maidan_messages SET tombstoned_at = ?, body = '', content = NULL WHERE id = ? AND tombstoned_at IS NULL",
+        "UPDATE maidan_messages SET tombstoned_at = ?, body = '', metadata = '{}', content = NULL WHERE id = ? AND tombstoned_at IS NULL",
     )
     .bind(now)
     .bind(id.0)
@@ -407,6 +413,7 @@ pub async fn tombstone(pool: &SqlitePool, id: MessageId) -> Result<(), StoreErro
     if res.rows_affected() == 0 {
         return Err(StoreError::NotFound);
     }
+    super::content_keys::shred_in_tx(&mut tx, id.0).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -423,7 +430,7 @@ pub async fn tombstone_with_event(
     crate::embeddings_purge::purge_message_embeddings_sqlite(&mut tx, id).await?;
     let now = Utc::now();
     let res = sqlx::query(
-        "UPDATE maidan_messages SET tombstoned_at = ?, body = '', content = NULL WHERE id = ? AND tombstoned_at IS NULL",
+        "UPDATE maidan_messages SET tombstoned_at = ?, body = '', metadata = '{}', content = NULL WHERE id = ? AND tombstoned_at IS NULL",
     )
     .bind(now)
     .bind(id.0)

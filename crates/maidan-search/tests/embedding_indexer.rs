@@ -100,6 +100,7 @@ async fn embedding_handler_upserts_on_message_posted() {
             thread_id: thread.id,
             dm_conversation_id: None,
             message: msg.clone(),
+            sealed: None,
         },
     ))
     .await
@@ -226,6 +227,7 @@ async fn batching_handler_embeds_posted_messages_and_records_metrics() {
                 thread_id: thread.id,
                 dm_conversation_id: None,
                 message: msg,
+                sealed: None,
             },
         ))
         .await

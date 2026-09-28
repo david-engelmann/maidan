@@ -1,8 +1,14 @@
 use maidan_types::{
-    content_hash, next_prev_hash, ChainVerifyReport, ChannelId, Event, EventLink, MessageId,
-    StoredEvent, ThreadId, WorkspaceId,
+    content_hash, next_prev_hash, ChainVerifyReport, ChannelId, ContentKeyring, Event, EventLink,
+    MessageId, PeerId, StoredEvent, ThreadId, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
+
+/// Every column a [`StoredEvent`] is built from, with its content key joined
+/// in. Pair with [`EVENTS_FROM`]; filter and order on `e.` columns.
+pub(crate) const EVENT_COLUMNS: &str = "e.id, e.kind, e.workspace_id, e.channel_id, e.thread_id, e.payload, e.occurred_at, e.prev_hash, e.content_hash, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped";
+pub(crate) const EVENTS_FROM: &str =
+    "maidan_events e LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id";
 
 /// Rows per batch when filling pre-chain fields.
 const CHAIN_BACKFILL_BATCH: i64 = 256;
@@ -56,18 +62,36 @@ pub async fn thread_scope_in_tx(
     ))
 }
 
-pub async fn append(pool: &PgPool, event: &Event) -> Result<StoredEvent, StoreError> {
+pub async fn append(
+    pool: &PgPool,
+    keys: &ContentKeyring,
+    event: &Event,
+    origin: Option<PeerId>,
+) -> Result<StoredEvent, StoreError> {
     let mut tx = pool.begin().await?;
-    let stored = append_in_tx(&mut tx, event).await?;
+    let stored = append_with_keys_in_tx(&mut tx, Some(keys), event, origin).await?;
     tx.commit().await?;
     Ok(stored)
 }
 
 /// Append the event + its outbox row on a caller-supplied transaction, without
-/// committing — see the SQLite twin.
+/// committing — see the SQLite twin. Refuses an event that carries message
+/// words: those go through [`append_with_keys_in_tx`].
 pub async fn append_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     event: &Event,
+) -> Result<StoredEvent, StoreError> {
+    append_with_keys_in_tx(tx, None, event, None).await
+}
+
+/// Append, sealing a message's words under its content key before the event is
+/// hashed, and shredding the key when the event withdraws the message.
+/// `origin` is the federation peer the event arrived from.
+pub async fn append_with_keys_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    keys: Option<&ContentKeyring>,
+    event: &Event,
+    origin: Option<PeerId>,
 ) -> Result<StoredEvent, StoreError> {
     let mut payload = serde_json::to_value(event)?;
     crate::attribution::attach_to_payload(&mut payload)?;
@@ -75,6 +99,13 @@ pub async fn append_in_tx(
     // a jsonb round trip can change one without the other — see
     // `normalize_payload_numbers`.
     maidan_types::normalize_payload_numbers(&mut payload);
+    let sealing = super::content_keys::prepare_in_tx(
+        tx,
+        keys,
+        crate::content_keys::Plan::for_event(event, origin),
+        &mut payload,
+    )
+    .await?;
     let ws = event.workspace_id().map(|w| w.0);
     // Serialize chain head per workspace so two concurrent first-events cannot
     // fork genesis. `hashtextextended` is stable across backends in the cluster.
@@ -90,8 +121,8 @@ pub async fn append_in_tx(
     // `inserted_at` is the DB insert wall-clock, distinct from the
     // caller-supplied `occurred_at`.
     let row = sqlx::query(
-        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at, prev_hash, content_hash)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at, prev_hash, content_hash, content_key_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash",
     )
     .bind(event.kind().as_str())
@@ -103,47 +134,56 @@ pub async fn append_in_tx(
     .bind(chrono::Utc::now())
     .bind(&prev)
     .bind(&content)
+    .bind(sealing.content_key_id)
     .fetch_one(&mut **tx)
     .await?;
-    let stored = row_to_stored(&row)?;
+    let mut stored = row_to_stored(&row, None)?;
+    stored.content_key = sealing.content_key;
     outbox::enqueue_in_tx(tx, stored.id).await?;
     Ok(stored)
 }
 
-pub async fn get_by_id(pool: &PgPool, log_id: i64) -> Result<StoredEvent, StoreError> {
-    let row = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
-         FROM maidan_events
-         WHERE id = $1",
-    )
+pub async fn get_by_id(
+    pool: &PgPool,
+    keys: &ContentKeyring,
+    log_id: i64,
+) -> Result<StoredEvent, StoreError> {
+    let row = sqlx::query(&format!(
+        "SELECT {EVENT_COLUMNS}
+         FROM {EVENTS_FROM}
+         WHERE e.id = $1"
+    ))
     .bind(log_id)
     .fetch_optional(pool)
     .await?;
     let Some(row) = row else {
         return Err(StoreError::NotFound);
     };
-    row_to_stored(&row)
+    row_to_stored(&row, Some(keys))
 }
 
+/// `keys` is `None` only for chain verification, which reads the sealed
+/// payloads the hashes cover and never needs a key.
 pub async fn list_after(
     pool: &PgPool,
+    keys: Option<&ContentKeyring>,
     workspace_id: WorkspaceId,
     after_id: i64,
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
-    let rows = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
-         FROM maidan_events
-         WHERE workspace_id = $1 AND id > $2
-         ORDER BY id ASC
-         LIMIT $3",
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT {EVENT_COLUMNS}
+         FROM {EVENTS_FROM}
+         WHERE e.workspace_id = $1 AND e.id > $2
+         ORDER BY e.id ASC
+         LIMIT $3"
+    ))
     .bind(workspace_id.0)
     .bind(after_id)
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    rows.iter().map(row_to_stored).collect()
+    rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
 /// Replay rows with `id > after_id` that are **stable** — inserted at or before
@@ -152,25 +192,28 @@ pub async fn list_after(
 /// in flight.
 pub async fn list_after_stable(
     pool: &PgPool,
+    keys: &ContentKeyring,
     workspace_id: WorkspaceId,
     after_id: i64,
     stable_before: chrono::DateTime<chrono::Utc>,
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
-    let rows = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
-         FROM maidan_events
-         WHERE workspace_id = $1 AND id > $2 AND inserted_at <= $3
-         ORDER BY id ASC
-         LIMIT $4",
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT {EVENT_COLUMNS}
+         FROM {EVENTS_FROM}
+         WHERE e.workspace_id = $1 AND e.id > $2 AND e.inserted_at <= $3
+         ORDER BY e.id ASC
+         LIMIT $4"
+    ))
     .bind(workspace_id.0)
     .bind(after_id)
     .bind(stable_before)
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    rows.iter().map(row_to_stored).collect()
+    rows.iter()
+        .map(|row| row_to_stored(row, Some(keys)))
+        .collect()
 }
 
 /// Cross-workspace events with `id > after_id`, in `id` order, capped at
@@ -180,21 +223,24 @@ pub async fn list_after_stable(
 /// events onto the local broadcast (which then routes by workspace shard).
 pub async fn list_after_global(
     pool: &PgPool,
+    keys: &ContentKeyring,
     after_id: i64,
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
-    let rows = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
-         FROM maidan_events
-         WHERE id > $1
-         ORDER BY id ASC
-         LIMIT $2",
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT {EVENT_COLUMNS}
+         FROM {EVENTS_FROM}
+         WHERE e.id > $1
+         ORDER BY e.id ASC
+         LIMIT $2"
+    ))
     .bind(after_id)
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    rows.iter().map(row_to_stored).collect()
+    rows.iter()
+        .map(|row| row_to_stored(row, Some(keys)))
+        .collect()
 }
 
 /// A thread's events with `id <= through_id`, in `id` order — the immutable
@@ -202,20 +248,23 @@ pub async fn list_after_global(
 /// into the message set as it stood at that log position.
 pub async fn list_through(
     pool: &PgPool,
+    keys: &ContentKeyring,
     thread_id: maidan_types::ThreadId,
     through_id: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
-    let rows = sqlx::query(
-        "SELECT id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash
-         FROM maidan_events
-         WHERE thread_id = $1 AND id <= $2
-         ORDER BY id ASC",
-    )
+    let rows = sqlx::query(&format!(
+        "SELECT {EVENT_COLUMNS}
+         FROM {EVENTS_FROM}
+         WHERE e.thread_id = $1 AND e.id <= $2
+         ORDER BY e.id ASC"
+    ))
     .bind(thread_id.0)
     .bind(through_id)
     .fetch_all(pool)
     .await?;
-    rows.iter().map(row_to_stored).collect()
+    rows.iter()
+        .map(|row| row_to_stored(row, Some(keys)))
+        .collect()
 }
 
 /// Lowest retained `id` in `workspace_id` (`None` when the workspace has no
@@ -244,10 +293,25 @@ pub async fn max_event_id(pool: &PgPool) -> Result<i64, StoreError> {
     Ok(row.get::<i64, _>("max_id"))
 }
 
-fn row_to_stored(row: &sqlx::postgres::PgRow) -> Result<StoredEvent, StoreError> {
+/// Build a [`StoredEvent`], unwrapping its joined content key when `keys` is
+/// given. A row selected without the key columns (an append's `RETURNING`)
+/// gets `content_key: None`.
+fn row_to_stored(
+    row: &sqlx::postgres::PgRow,
+    keys: Option<&ContentKeyring>,
+) -> Result<StoredEvent, StoreError> {
     let kind_str: String = row.get("kind");
     let kind = parse_kind(&kind_str)?;
     let id: i64 = row.get("id");
+    let content_key = match keys {
+        Some(keys) => crate::content_keys::unwrap_joined(
+            Some(keys),
+            row.get("content_key_id"),
+            row.get("key_kek_id"),
+            row.get("key_wrapped"),
+        )?,
+        None => None,
+    };
     Ok(StoredEvent {
         id,
         lsn: id,
@@ -265,6 +329,7 @@ fn row_to_stored(row: &sqlx::postgres::PgRow) -> Result<StoredEvent, StoreError>
         occurred_at: row.get("occurred_at"),
         prev_hash: row.get("prev_hash"),
         content_hash: row.get("content_hash"),
+        content_key,
     })
 }
 
@@ -368,7 +433,7 @@ pub async fn verify_chain(
     let mut after = 0i64;
     let mut verifier = maidan_types::ChainVerifier::new();
     loop {
-        let page = list_after(pool, workspace_id, after, PAGE).await?;
+        let page = list_after(pool, None, workspace_id, after, PAGE).await?;
         if page.is_empty() {
             return Ok(verifier.finish());
         }

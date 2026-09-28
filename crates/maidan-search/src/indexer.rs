@@ -231,7 +231,13 @@ async fn project_row(
     handler: &dyn EventHandler,
     row: maidan_types::StoredEvent,
 ) -> Result<(), maidan_types::TapFault> {
-    let event = serde_json::from_value::<Event>(row.payload)
+    // Shredded words have nothing to index; the withdrawal already removed
+    // what was indexed from them.
+    if row.is_shredded() {
+        return Ok(());
+    }
+    let event: Event = row
+        .opened_event()
         .map_err(|_| maidan_types::TapFault::MissingHistory)?;
     handler.handle(&event).await;
     Ok(())
@@ -370,5 +376,76 @@ impl IndexerHandle {
         if let Err(err) = self.join.await {
             error!(error = %err, "indexer task join failed");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use maidan_types::{ContentKey, StoredEvent};
+
+    #[derive(Default)]
+    struct Bodies(tokio::sync::Mutex<Vec<String>>);
+
+    #[async_trait]
+    impl EventHandler for Bodies {
+        async fn handle(&self, event: &Event) {
+            if let Event::MessagePosted { message, .. } = event {
+                self.0.lock().await.push(message.body.clone());
+            }
+        }
+    }
+
+    fn sealed_row(key: &ContentKey) -> StoredEvent {
+        let thread_id = maidan_types::ThreadId::new();
+        let mut payload = serde_json::to_value(Event::MessagePosted {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: maidan_types::WorkspaceId::new(),
+            channel_id: maidan_types::ChannelId::new(),
+            thread_id,
+            dm_conversation_id: None,
+            message: maidan_types::Message {
+                id: maidan_types::MessageId::new(),
+                thread_id,
+                author_id: maidan_types::MemberId::new(),
+                body: "indexed words".into(),
+                metadata: serde_json::json!({}),
+                content: None,
+                posted_at: chrono::Utc::now(),
+                edited_at: None,
+                tombstoned_at: None,
+            },
+            sealed: None,
+        })
+        .unwrap();
+        maidan_types::seal_payload(&mut payload, key).unwrap();
+        StoredEvent {
+            id: 1,
+            lsn: 1,
+            kind: EventKind::MessagePosted,
+            workspace_id: None,
+            channel_id: None,
+            thread_id: None,
+            payload,
+            occurred_at: chrono::Utc::now(),
+            prev_hash: String::new(),
+            content_hash: String::new(),
+            content_key: Some(key.clone()),
+        }
+    }
+
+    #[tokio::test]
+    async fn backfill_indexes_live_words_and_skips_shredded_ones() {
+        let key = ContentKey::generate();
+        let handler = Bodies::default();
+        project_row(&handler, sealed_row(&key)).await.unwrap();
+        assert_eq!(*handler.0.lock().await, vec!["indexed words".to_string()]);
+
+        let shredded = StoredEvent {
+            content_key: None,
+            ..sealed_row(&key)
+        };
+        project_row(&handler, shredded).await.unwrap();
+        assert_eq!(handler.0.lock().await.len(), 1);
     }
 }

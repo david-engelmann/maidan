@@ -396,6 +396,7 @@ async fn assert_exponent_numbers_survive_the_round_trip(store: &dyn Store) {
                 edited_at: None,
                 tombstoned_at: None,
             },
+            sealed: None,
         })
         .await
         .expect("append with exponent numbers");
@@ -412,7 +413,9 @@ async fn assert_exponent_numbers_survive_the_round_trip(store: &dyn Store) {
         .list_events_after(ws, stored.id - 1, 1)
         .await
         .expect("read back");
-    let got = &read_back[0].payload["message"]["metadata"];
+    // The metadata is sealed; its numbers were normalized before sealing.
+    let opened = read_back[0].opened_payload().expect("open");
+    let got = &opened["message"]["metadata"];
     assert_eq!(
         got["at_the_boundary"],
         serde_json::json!(10_000_000_000_000_000u64)

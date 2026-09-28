@@ -1,6 +1,6 @@
 //! Postgres transactional outbox rows relayed to `PostgresBus` after commit.
 
-use maidan_types::WorkspaceId;
+use maidan_types::{ContentKey, ContentKeyring, WorkspaceId};
 use sqlx::{PgPool, Row};
 
 use crate::error::StoreError;
@@ -14,8 +14,11 @@ pub struct OutboxRow {
     pub attempts: i32,
     /// The event payload, JOINed from `maidan_events` so the relay publishes
     /// directly from the pending list instead of a per-row `get_stored_event`
-    /// round-trip.
+    /// round-trip. Sealed as stored: open it with `content_key`.
     pub payload: serde_json::Value,
+    /// The message's content key, `None` for an event without one or with a
+    /// shredded one.
+    pub content_key: Option<ContentKey>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -41,6 +44,7 @@ pub struct QuarantinedOutboxRow {
 /// **at-least-once is preserved: a claim is not a publish.**
 pub async fn claim_pending(
     pool: &PgPool,
+    keys: &ContentKeyring,
     limit: i64,
     lease_secs: i64,
 ) -> Result<Vec<OutboxRow>, StoreError> {
@@ -61,31 +65,44 @@ pub async fn claim_pending(
              WHERE o.id = c.id
              RETURNING o.id, o.log_id, o.attempts
          )
-         SELECT c.id, c.log_id, c.attempts, e.payload
+         SELECT c.id, c.log_id, c.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped
          FROM claimed c
          JOIN maidan_events e ON e.id = c.log_id
+         LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id
          ORDER BY c.id ASC"
     ))
     .bind(limit)
     .bind(lease_secs as f64)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .iter()
-        .map(|row| OutboxRow {
-            id: row.get("id"),
-            log_id: row.get("log_id"),
-            attempts: row.get("attempts"),
-            payload: row.get("payload"),
+    rows.iter()
+        .map(|row| {
+            Ok(OutboxRow {
+                id: row.get("id"),
+                log_id: row.get("log_id"),
+                attempts: row.get("attempts"),
+                payload: row.get("payload"),
+                content_key: crate::content_keys::unwrap_joined(
+                    Some(keys),
+                    row.get("content_key_id"),
+                    row.get("key_kek_id"),
+                    row.get("key_wrapped"),
+                )?,
+            })
         })
-        .collect())
+        .collect()
 }
 
-pub async fn list_pending(pool: &PgPool, limit: i64) -> Result<Vec<OutboxRow>, StoreError> {
+pub async fn list_pending(
+    pool: &PgPool,
+    keys: &ContentKeyring,
+    limit: i64,
+) -> Result<Vec<OutboxRow>, StoreError> {
     let rows = sqlx::query(&format!(
-        "SELECT o.id, o.log_id, o.attempts, e.payload
+        "SELECT o.id, o.log_id, o.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped
          FROM maidan_outbox o
          JOIN maidan_events e ON e.id = o.log_id
+         LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id
          WHERE {RELAYABLE}
          ORDER BY o.id ASC
          LIMIT $1"
@@ -93,15 +110,22 @@ pub async fn list_pending(pool: &PgPool, limit: i64) -> Result<Vec<OutboxRow>, S
     .bind(limit)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .iter()
-        .map(|row| OutboxRow {
-            id: row.get("id"),
-            log_id: row.get("log_id"),
-            attempts: row.get("attempts"),
-            payload: row.get("payload"),
+    rows.iter()
+        .map(|row| {
+            Ok(OutboxRow {
+                id: row.get("id"),
+                log_id: row.get("log_id"),
+                attempts: row.get("attempts"),
+                payload: row.get("payload"),
+                content_key: crate::content_keys::unwrap_joined(
+                    Some(keys),
+                    row.get("content_key_id"),
+                    row.get("key_kek_id"),
+                    row.get("key_wrapped"),
+                )?,
+            })
         })
-        .collect())
+        .collect()
 }
 
 pub async fn mark_published(pool: &PgPool, outbox_id: i64) -> Result<(), StoreError> {

@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Crypto-shredding: withdrawn words are unreadable everywhere
+
+- **Added:** a message's body, metadata and content are encrypted under a key
+  for that message (XChaCha20-Poly1305) before its event is hashed. Withdrawing
+  the message destroys the key, so admin catch-up, exports, snapshots, search
+  and federation peers can no longer read the words, and the hash chain and
+  signatures still verify. Workspace purge destroys every key in the workspace.
+  Keys are wrapped by `MAIDAN_CONTENT_KEK`, required in production; rotate with
+  `MAIDAN_CONTENT_KEK_PREVIOUS` (rewrapped at startup).
+- **Added:** `DELETE /artifacts/:sha` (`token:admin`) erases the workspace's
+  reference to a shared artifact; the bytes go with the last reference.
+- **Changed:** event payloads for posted and edited messages carry `sealed`
+  instead of the words; catch-up and federation events carry `content_key`
+  while the message is live.
+
 ### A withdrawn message leaves no embeddings
 
 - **Fixed:** withdrawing a message left its embeddings, vectors derived from the

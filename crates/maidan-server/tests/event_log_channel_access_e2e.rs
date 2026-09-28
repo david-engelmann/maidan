@@ -333,11 +333,23 @@ async fn the_event_log_hides_what_the_reader_cannot_see() {
         .await
         .unwrap();
     assert_eq!(whole.status(), StatusCode::OK);
+    // The chain verified (200) over sealed payloads. Live words open with the
+    // keys the page carries; the withdrawn message's key was shredded, so its
+    // words are ciphertext nobody can open, admins included.
     let whole = whole.text().await.unwrap();
-    assert!(
-        whole.contains("withdrawn-words"),
-        "the raw chain is unchanged"
-    );
+    assert!(!whole.contains("withdrawn-words"));
+    let page: Value = serde_json::from_str(&whole).unwrap();
+    let opened: String = page["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|event| {
+            let event: maidan_types::StoredEvent = serde_json::from_value(event.clone()).unwrap();
+            event.opened_payload().unwrap().to_string()
+        })
+        .collect();
+    assert!(opened.contains("public-words"));
+    assert!(!opened.contains("withdrawn-words"));
 
     let alice_sees = what_reader_sees(&ctx, &alice_t, ws).await;
     assert!(

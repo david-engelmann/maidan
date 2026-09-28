@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    Artifact, ArtifactId, ArtifactKind, Event, MemberId, NewArtifact, StoredEvent, WorkspaceId,
+    Artifact, ArtifactErasure, ArtifactId, ArtifactKind, Event, MemberId, NewArtifact, StoredEvent,
+    WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -192,4 +193,59 @@ fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> Result<Artifact, StoreError
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
     })
+}
+
+/// Erase `workspace_id`'s reference to the artifact `sha256`, and the artifact
+/// row with it when no other workspace still references it, auditing in the
+/// same transaction. `NotFound` without a reference; `Conflict` under a legal
+/// hold. The caller deletes the blob when `last_reference` is set.
+pub async fn erase_for_workspace(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    sha256: &str,
+    audit_for: crate::AuditFor<ArtifactErasure>,
+) -> Result<ArtifactErasure, StoreError> {
+    let mut tx = pool.begin().await?;
+    super::legal_hold::refuse_if_held(&mut tx, workspace_id).await?;
+    // SQLite serializes writers: an upload of the same bytes cannot land its
+    // reference between the delete and the check below.
+    let removed =
+        sqlx::query("DELETE FROM maidan_artifact_refs WHERE workspace_id = ?1 AND sha256 = ?2")
+            .bind(workspace_id.0)
+            .bind(sha256)
+            .execute(&mut *tx)
+            .await?;
+    if removed.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    // This workspace's share tickets stop granting the artifact.
+    sqlx::query(
+        "DELETE FROM maidan_share_ticket_artifacts
+         WHERE sha256 = ?1
+           AND ticket_id IN (SELECT id FROM maidan_share_tickets WHERE workspace_id = ?2)",
+    )
+    .bind(sha256)
+    .bind(workspace_id.0)
+    .execute(&mut *tx)
+    .await?;
+    // A row nobody references reads as unscoped (readable by any workspace),
+    // so the last reference must take the row with it.
+    let last_reference = sqlx::query(
+        "DELETE FROM maidan_artifacts WHERE sha256 = ?1
+         AND NOT EXISTS (SELECT 1 FROM maidan_artifact_refs WHERE sha256 = ?1)",
+    )
+    .bind(sha256)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        > 0;
+    let erasure = ArtifactErasure {
+        workspace_id,
+        sha256: sha256.to_string(),
+        last_reference,
+        occurred_at: Utc::now(),
+    };
+    super::audit::append_counted(&mut tx, audit_for(&erasure)).await?;
+    tx.commit().await?;
+    Ok(erasure)
 }
