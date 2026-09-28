@@ -21,6 +21,12 @@ WS="${MAIDAN_WORKSPACE:?set MAIDAN_WORKSPACE (printed by maidan init)}"
 PAUSE="${DEMO_PAUSE:-0}"
 SUFFIX="${DEMO_SUFFIX:-}"
 
+# The script sends bearer tokens on every call: plain http only to loopback.
+case "$BASE" in
+  https://* | http://127.0.0.1[:/]* | http://127.0.0.1 | http://localhost[:/]* | http://localhost | "http://[::1]"*) ;;
+  *) echo "refusing to send tokens to $BASE over plain http; use https or a loopback address" >&2; exit 1 ;;
+esac
+
 for cmd in curl jq; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd" >&2; exit 1; }
 done
@@ -42,7 +48,7 @@ mcp() { # mcp <token> <tool> <json-args>  -> the tool's JSON result
   fi
   jq -r '.result.content[0].text' <<<"$out"
 }
-mcp_refused() { # mcp_refused <token> <tool> <json-args>  -> the refusal text; fails if the call succeeds
+mcp_refused() { # mcp_refused <token> <tool> <json-args> <expected>  -> the refusal text; fails unless refused for <expected>
   local out
   out=$(curl -fsS -H "authorization: Bearer $1" -H 'content-type: application/json' "$BASE/mcp" \
     --data "$(jq -nc --arg n "$2" --argjson a "$3" \
@@ -50,7 +56,9 @@ mcp_refused() { # mcp_refused <token> <tool> <json-args>  -> the refusal text; f
   if [ "$(jq -r '.result.isError // false' <<<"$out")" != true ] && ! jq -e '.error' <<<"$out" >/dev/null; then
     echo "MCP $2 was expected to be refused: $out" >&2; exit 1
   fi
-  jq -r '.error.message // .result.content[0].text' <<<"$out"
+  local why
+  why=$(jq -r '.error.message // .result.content[0].text' <<<"$out")
+  case "$why" in *"$4"*) printf '%s\n' "$why" ;; *) echo "MCP $2 was refused for another reason: $why" >&2; exit 1 ;; esac
 }
 step() { sleep "$PAUSE"; printf '\n%s%s%s %s▸%s %s\n' "$1" "$2" "$R" "$D" "$R" "$3"; }
 say()  { printf '  %s\n' "$*"; }
@@ -88,7 +96,7 @@ mcp "$CT" post_message "{\"thread_id\":\"$tid\",\"body\":\"Session save wasn't a
 result=$(mcp "$CT" set_thread_result "{\"thread_id\":\"$tid\",\"result\":{\"status\":\"fixed\",\"runs\":500,\"failures\":0}}")
 review=$(mcp "$CT" transition_thread "{\"thread_id\":\"$tid\",\"action\":\"start_review\"}")
 say "${G}✓${R} result $(jq -c .result <<<"$result")  state=$(jq -r .state <<<"$review")"
-refusal=$(mcp_refused "$CT" transition_thread "{\"thread_id\":\"$tid\",\"action\":\"close\"}")
+refusal=$(mcp_refused "$CT" transition_thread "{\"thread_id\":\"$tid\",\"action\":\"close\"}" "review requirement not met")
 say "${X}✗${R} coder tries to close it → ${X}refused${R}:"
 say "  ${D}${refusal#invalid params: }${R}"
 

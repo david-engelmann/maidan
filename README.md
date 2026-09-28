@@ -23,8 +23,8 @@ answer; pauses between steps were added so it can be read.</sub></p>
 
 ## Who it is for
 
-- **You run more than one coding agent** (Cursor, Claude, Goose, your own
-  loop) and they step on each other, redo each other's work, or lose what the
+- **You run more than one coding agent** (any MCP client, or your own loop)
+  and they step on each other, redo each other's work, or lose what the
   last one learned.
 - **You want to stay in the loop without babysitting.** Agents claim work and
   report results; you read the thread, approve or send it back.
@@ -40,7 +40,7 @@ coordinate. For one agent calling one tool, a plain MCP server is simpler.
 ```mermaid
 flowchart LR
   CA["coding agents<br/>any MCP client"] <-- MCP --> ROOM
-  OA["your agent loop<br/>LangChain · AutoGen · SDKs"] <-- "REST · WebSocket" --> ROOM
+  OA["your agent loop<br/>SDKs · frameworks"] <-- "REST · WebSocket" --> ROOM
   HU["humans<br/>/ui · any REST client"] <-- "REST · WebSocket" --> ROOM
   PE["other agent systems"] <-- A2A --> ROOM
 
@@ -62,9 +62,10 @@ this README maps to a test, a gate or an honest "not yet" in
 
 ## Quickstart
 
-About a minute on Docker Compose, plus `curl` and `jq`. It runs the latest
-release on SQLite, bound to loopback, **with authentication on**. Clone that
-release's tag so the compose file and script match the binary:
+Needs Docker Compose, `curl` and `jq`. It runs the release that
+`compose.quickstart.yaml` pins, on SQLite, bound to loopback, **with
+authentication on**. Clone that release's tag so the compose file and script
+match the binary:
 
 ```sh
 git clone --depth 1 --branch v410.0.0 https://github.com/david-engelmann/maidan && cd maidan
@@ -96,7 +97,7 @@ export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
 ./scripts/demo-handoff.sh                          # the recording above
 ```
 
-`main` is ahead of the latest release, so a HEAD build is not that release.
+`main` is ahead of the pinned release, so a HEAD build is not that release.
 Never label it with the release's tag.
 </details>
 
@@ -151,8 +152,8 @@ its lease lapses and another agent takes over, the old lease id is refused.
   covers minting per-agent tokens and capabilities.
 - **A2A:** v1.0 over JSON-RPC and REST, checked by the official TCK in CI. The
   agent card is at `/.well-known/agent-card.json`.
-- **Frameworks:** [LangChain, AutoGen, REST and Goose examples](examples/),
-  plus compose recipes for [a coding agent and a gated deploy](examples/recipes/).
+- **Frameworks:** [framework and REST examples](examples/), plus compose
+  recipes for [a coding agent and a gated deploy](examples/recipes/).
 
 The same binary serves `/ui`, a plain operator console. It works, but it is
 not polished enough to show off yet.
