@@ -4,11 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
@@ -24,7 +20,8 @@ use serde_json::{json, Value};
 use utoipa::ToSchema;
 
 use crate::dto::{CreateSlashCommand, MintSlashCommandResponse, SlashCommandResponse};
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::{AppState, SlashRuntime};
 use crate::webhooks::sign_payload;
 
@@ -111,7 +108,7 @@ fn validate_mcp_target(tool: &str) -> ApiResult<()> {
 pub async fn create_slash_command(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateSlashCommand>,
 ) -> ApiResult<(StatusCode, Json<MintSlashCommandResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -197,7 +194,7 @@ pub async fn create_slash_command(
 pub async fn list_slash_commands(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<SlashCommandResponse>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
@@ -214,7 +211,7 @@ pub async fn list_slash_commands(
 pub async fn revoke_slash_command(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, command_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, command_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(workspace_id);
     let command_id = SlashCommandId(command_id);

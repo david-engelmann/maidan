@@ -1,10 +1,6 @@
 //! Social-signal handlers: votes, reactions, and pins.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -13,13 +9,13 @@ use maidan_types::*;
 
 use super::{cap, publish_stored, ApiResult};
 use crate::dto::*;
-use crate::error::ApiJson;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 pub async fn cast_vote(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(message_id): Path<uuid::Uuid>,
+    ApiPath(message_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateVote>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
@@ -55,7 +51,7 @@ pub async fn cast_vote(
 pub async fn list_votes(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(message_id): Path<uuid::Uuid>,
+    ApiPath(message_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Vote>>> {
     cap(&auth, WORKSPACE_READ)?;
     // Drop resolve_message_chain + ensure_workspace; ensure_message_access
@@ -72,7 +68,7 @@ pub async fn list_votes(
 pub async fn add_reaction(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(message_id): Path<uuid::Uuid>,
+    ApiPath(message_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateReaction>,
 ) -> ApiResult<StatusCode> {
     let message_id = MessageId(message_id);
@@ -101,7 +97,7 @@ pub async fn add_reaction(
 pub async fn remove_reaction(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(message_id): Path<uuid::Uuid>,
+    ApiPath(message_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<RemoveReaction>,
 ) -> ApiResult<StatusCode> {
     let message_id = MessageId(message_id);
@@ -129,7 +125,7 @@ pub async fn remove_reaction(
 pub async fn list_reactions(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(message_id): Path<uuid::Uuid>,
+    ApiPath(message_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Reaction>>> {
     cap(&auth, WORKSPACE_READ)?;
     // Drop resolve_message_chain + ensure_workspace; ensure_message_access
@@ -146,7 +142,7 @@ pub async fn list_reactions(
 pub async fn pin_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(thread_id): Path<uuid::Uuid>,
+    ApiPath(thread_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<PinMessage>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(thread_id);
@@ -175,7 +171,7 @@ pub async fn pin_message(
 pub async fn unpin_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(thread_id): Path<uuid::Uuid>,
+    ApiPath(thread_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<PinMessage>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(thread_id);
@@ -206,7 +202,7 @@ pub async fn unpin_message(
 pub async fn list_pins(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(thread_id): Path<uuid::Uuid>,
+    ApiPath(thread_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Pin>>> {
     cap(&auth, WORKSPACE_READ)?;
     // Drop the redundant `resolve_thread_context` + `ensure_workspace`.

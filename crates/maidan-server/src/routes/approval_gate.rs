@@ -7,10 +7,7 @@
 //! resolve. The resolve is a compare-and-set on `pending`, so a second answer —
 //! or a late answer after cancel — is a no-op (silence is not consent).
 
-use axum::{
-    extract::{Path, State},
-    Extension, Json,
-};
+use axum::{extract::State, Extension, Json};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
@@ -22,7 +19,8 @@ use subtle::ConstantTimeEq;
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -51,7 +49,7 @@ fn verify_request_state(token: &str, gate_id: ApprovalGateId, secret: &[u8]) -> 
 pub async fn list_approval_gates(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ApprovalGateView>>> {
     cap(&auth, WORKSPACE_READ)?;
     let workspace_id = WorkspaceId(wid);
@@ -86,7 +84,7 @@ pub async fn list_approval_gates(
 pub async fn answer_approval_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AnswerApprovalGate>,
 ) -> ApiResult<Json<ApprovalGate>> {
     cap(&auth, WORKSPACE_WRITE)?;

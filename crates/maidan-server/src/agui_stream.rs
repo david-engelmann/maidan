@@ -21,7 +21,7 @@ use std::convert::Infallible;
 use std::time::Duration;
 
 use axum::{
-    extract::{Query, State},
+    extract::State,
     http::HeaderMap,
     response::sse::{Event as SseEvent, KeepAlive, Sse},
     Extension,
@@ -39,6 +39,7 @@ use tokio_stream::Stream;
 use crate::agui::agui_events_for;
 use crate::error::ApiError;
 use crate::event_stream::{envelope_from_stored, REPLAY_LIMIT};
+use crate::extract::ApiQuery;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -60,7 +61,7 @@ pub async fn stream(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     headers: HeaderMap,
-    Query(q): Query<AgUiStreamQuery>,
+    ApiQuery(q): ApiQuery<AgUiStreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, ApiError> {
     auth.require_capability(EVENT_SUBSCRIBE)
         .map_err(|_| ApiError::Forbidden("missing event:subscribe capability".into()))?;

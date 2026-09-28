@@ -7,9 +7,9 @@ mod responses;
 mod schemas;
 
 use axum::Json;
-use utoipa::openapi::path::{Operation, PathItem};
+use utoipa::openapi::path::{Operation, Parameter, ParameterIn, PathItem};
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
-use utoipa::openapi::Ref;
+use utoipa::openapi::{Ref, Required};
 use utoipa::{Modify, OpenApi};
 
 use crate::dto::*;
@@ -21,6 +21,7 @@ use crate::land_gate_advisor::{
 };
 use crate::openapi::responses::{
     BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge, TooManyRequests, Unauthorized,
+    UnsupportedMediaType,
 };
 use crate::openapi::schemas::{LivenessOk, SearchHit};
 use crate::share_consumer::*;
@@ -67,8 +68,9 @@ impl Modify for SecurityAddon {
 ///   [`rate_limit::exempt_path`] names, and `quota::middleware` enforces
 ///   per-token capability quotas on the bearer routes.
 ///
-/// Statuses a handler produces itself (400, 403, 404, 409, 413) are declared on
-/// its path stub.
+/// The client errors [`crate::extract`] answers with are attached by
+/// [`ExtractorResponses`]; the rest a handler produces itself (400, 403, 404,
+/// 409) are declared on its path stub.
 struct MiddlewareResponses;
 
 impl Modify for MiddlewareResponses {
@@ -90,6 +92,68 @@ impl Modify for MiddlewareResponses {
                 }
             }
         }
+    }
+}
+
+/// The client errors the request extractors in [`crate::extract`] answer with,
+/// derived from what each operation declares it takes:
+///
+/// - **400** — a path parameter (a UUID or number that does not parse, or a
+///   segment that is not UTF-8), a query parameter that is required or typed,
+///   or a JSON body that does not parse or match its schema.
+/// - **413** — any request body over `MAIDAN_MAX_BODY_BYTES`.
+/// - **415** — a JSON body sent without a JSON `Content-Type`.
+///
+/// An operation's own description of a status, where it has one, is kept.
+struct ExtractorResponses;
+
+impl Modify for ExtractorResponses {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        for item in openapi.paths.paths.values_mut() {
+            for op in operations_mut(item) {
+                let body = op.request_body.as_ref().map(|body| &body.content);
+                let json_body =
+                    body.is_some_and(|content| content.contains_key("application/json"));
+                let rejectable_parameter = op
+                    .parameters
+                    .iter()
+                    .flatten()
+                    .any(parameter_can_be_rejected);
+                let responses = &mut op.responses.responses;
+                if json_body || rejectable_parameter {
+                    responses
+                        .entry("400".to_owned())
+                        .or_insert_with(|| Ref::from_response_name("BadRequest").into());
+                }
+                if body.is_some() {
+                    responses
+                        .entry("413".to_owned())
+                        .or_insert_with(|| Ref::from_response_name("PayloadTooLarge").into());
+                }
+                if json_body {
+                    responses
+                        .entry("415".to_owned())
+                        .or_insert_with(|| Ref::from_response_name("UnsupportedMediaType").into());
+                }
+            }
+        }
+    }
+}
+
+/// Whether [`crate::extract`] can refuse a request over this parameter. Any
+/// path segment can fail to percent-decode to UTF-8. A query parameter can be
+/// missing when required, or fail to parse when it is anything but free text.
+fn parameter_can_be_rejected(parameter: &Parameter) -> bool {
+    match parameter.parameter_in {
+        ParameterIn::Path => true,
+        ParameterIn::Query => {
+            matches!(parameter.required, Required::True)
+                || parameter.schema.as_ref().is_some_and(|schema| {
+                    serde_json::to_value(schema).ok()
+                        != Some(serde_json::json!({ "type": "string" }))
+                })
+        }
+        ParameterIn::Header | ParameterIn::Cookie => false,
     }
 }
 
@@ -450,6 +514,7 @@ fn requires_credential(op: &Operation) -> bool {
         NotFound,
         Conflict,
         PayloadTooLarge,
+        UnsupportedMediaType,
         TooManyRequests,
     ),
     schemas(
@@ -754,7 +819,7 @@ fn requires_credential(op: &Operation) -> bool {
         IngestSummary,
         SessionResponse,
     )),
-    modifiers(&SecurityAddon, &MiddlewareResponses),
+    modifiers(&SecurityAddon, &MiddlewareResponses, &ExtractorResponses),
     tags(
         (name = "health", description = "Liveness and readiness"),
         (name = "workspaces", description = "Workspaces and event log"),
@@ -784,7 +849,7 @@ pub struct ApiDoc;
         paths::create_workspace,
         paths::create_member_bootstrap,
     ),
-    modifiers(&MiddlewareResponses),
+    modifiers(&MiddlewareResponses, &ExtractorResponses),
     tags(
         (name = "bootstrap", description = "Unauthenticated seed routes (require MAIDAN_BOOTSTRAP=1 when auth is enabled)"),
     )

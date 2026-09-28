@@ -2,17 +2,14 @@
 //! Slack/GitHub deliveries and requeue one for another attempt. Global +
 //! system-level, so gated on `token:admin` — the mail DLQ shape.
 
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{capability::TOKEN_ADMIN, AuthContext};
 use maidan_types::{DeadEgress, EgressOutboxId};
 use serde::Deserialize;
 
 use super::{cap, ApiResult};
 use crate::error::ApiError;
+use crate::extract::{ApiPath, ApiQuery};
 use crate::state::AppState;
 
 fn default_limit() -> i64 {
@@ -36,7 +33,7 @@ pub struct ListDeadEgressQuery {
 pub async fn list_dead_egress(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Query(q): Query<ListDeadEgressQuery>,
+    ApiQuery(q): ApiQuery<ListDeadEgressQuery>,
 ) -> ApiResult<Json<Vec<DeadEgress>>> {
     cap(&auth, TOKEN_ADMIN)?;
     let limit = q.limit.clamp(1, 500);
@@ -57,7 +54,7 @@ pub async fn list_dead_egress(
 pub async fn requeue_dead_egress(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, TOKEN_ADMIN)?;
     // Scoped like the list: another tenant's id is a 404, not a re-send into

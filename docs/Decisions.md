@@ -428,6 +428,33 @@ Semantic: `score = rank`. Lexical: min-max normalize ranks within the response.
 **Why this:** clients can compare hit quality across Postgres and SQLite within
 one mode without parsing backend-specific `rank` ranges.
 
+### Request rejections are problems; an unreadable request is a 400
+
+**Decision.** Handlers take their input through `crate::extract` (`ApiPath`,
+`ApiQuery`, `ApiJson`, `ApiBytes`, `ApiText`), never axum's extractors
+directly, so a rejection is an RFC 9457 problem. A path parameter, query
+string or JSON body that does not deserialize is a 400, whether it fails to
+parse or parses to the wrong shape; a body not sent as JSON is a 415; a body
+over `MAIDAN_MAX_BODY_BYTES` is a 413. An unknown route is a 404 and a wrong
+method a 405 (with `Allow`), from router fallbacks. SCIM and A2A declare their
+own wrappers with `wrap_extractor!` and answer in their envelopes (a SCIM
+error; a JSON-RPC error with a null id, or the REST binding's error body). The
+spec's 400/413/415 are derived from what each operation declares it takes
+(`ExtractorResponses`).
+
+**Alternative.** axum's 422 for a body of the wrong shape. A response-mapping
+layer that rewrites axum's text rejections after the fact.
+
+**Why this:** the API already answered every malformed body with 400
+(`ApiJson` mapped axum's 422 to it), and clients and the spec relied on that;
+one status for "the request cannot be read" is simpler to handle than two. A
+rewriting layer would have to parse axum's text back into a status and
+detail, and would miss nothing only by accident; the extractors fail with the
+right problem at the source, and `no_handler_lets_axum_answer_a_rejection`
+keeps a raw extractor out.
+
+**To revisit:** on the move to axum 0.8, whose rejection types change.
+
 ## Security
 
 ### The search tap resumes; the verifier verifies (`v402.2.0`)

@@ -3,7 +3,6 @@
 use maidan_auth::AuthContext;
 use maidan_mcp::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 
-use crate::error::ApiError;
 use crate::quota;
 use crate::state::AppState;
 
@@ -31,35 +30,7 @@ pub async fn enforce_mcp_quota(
     };
     if let Err(err) = quota::enforce_token_quota(state, token_id, cap).await {
         let id = request.id.clone().unwrap_or(serde_json::Value::Null);
-        let msg = match err {
-            ApiError::TooManyRequests(m) => m,
-            ApiError::Forbidden(m) => m,
-            ApiError::BadRequest(m) => m,
-            ApiError::PayloadTooLarge(m) => m,
-            ApiError::Unauthorized => "unauthorized".into(),
-            ApiError::NotFound => "not found".into(),
-            ApiError::Conflict(m) => m,
-            ApiError::BadGateway(m) => m,
-            ApiError::Internal(m) => m,
-            ApiError::CursorTooOld {
-                after_id,
-                oldest_id,
-                snapshot,
-            } => {
-                let mut msg = format!(
-                    "subscribe cursor after_id={after_id} is behind the oldest retained event {oldest_id}; must refetch"
-                );
-                if let Some(path) = snapshot {
-                    msg.push_str("; snapshot ");
-                    msg.push_str(&path);
-                }
-                msg
-            }
-            ApiError::EventLogBroken { break_at, reason } => match break_at {
-                Some(id) => format!("event log chain broken at id={id}: {}", reason.as_str()),
-                None => format!("event log chain broken: {}", reason.as_str()),
-            },
-        };
+        let msg = err.detail();
         return Err(JsonRpcResponse::failure(
             id,
             JsonRpcError {

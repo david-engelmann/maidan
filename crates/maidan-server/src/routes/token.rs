@@ -1,10 +1,6 @@
 //! API-token handlers: mint, list, revoke, and holder-side attenuation.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::{DateTime, Utc};
 use maidan_auth::{
     capability::{self, TOKEN_ADMIN, WORKSPACE_READ},
@@ -15,7 +11,8 @@ use maidan_types::*;
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 fn holder_grant(auth: &AuthContext) -> Vec<String> {
@@ -39,7 +36,7 @@ async fn parent_expires_at(
 pub async fn mint_api_token(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, member_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, member_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
     ApiJson(body): ApiJson<MintApiToken>,
 ) -> ApiResult<(StatusCode, Json<MintApiTokenResponse>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -124,7 +121,7 @@ pub async fn mint_api_token(
 pub async fn list_api_tokens(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, member_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, member_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<Json<Vec<crate::dto::ApiTokenSummary>>> {
     let workspace_id = WorkspaceId(workspace_id);
     let member_id = MemberId(member_id);
@@ -160,7 +157,7 @@ pub async fn list_api_tokens(
 pub async fn revoke_api_token(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ApiToken>> {
     cap(&auth, TOKEN_ADMIN)?;
     let token_id = ApiTokenId(id);
@@ -413,7 +410,7 @@ pub async fn delegate_api_token(
 pub async fn create_delegation_grant(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateDelegationGrant>,
 ) -> ApiResult<(StatusCode, Json<DelegationGrant>)> {
     cap(&auth, TOKEN_ADMIN)?;
@@ -483,7 +480,7 @@ pub async fn create_delegation_grant(
 pub async fn list_delegation_grants(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<DelegationGrant>>> {
     cap(&auth, TOKEN_ADMIN)?;
     let workspace_id = WorkspaceId(workspace_id);
@@ -496,7 +493,7 @@ pub async fn list_delegation_grants(
 pub async fn revoke_delegation_grant(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, grant_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, grant_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<Json<DelegationGrant>> {
     cap(&auth, TOKEN_ADMIN)?;
     let workspace_id = WorkspaceId(workspace_id);

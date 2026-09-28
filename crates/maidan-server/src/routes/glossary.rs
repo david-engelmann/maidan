@@ -4,11 +4,7 @@
 //! upserts. Surfaces the 321 foundation over REST; MCP twins live in
 //! `maidan-mcp`.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -17,7 +13,8 @@ use maidan_types::*;
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 /// `PUT /workspaces/:wid/glossary/:term` — define (or redefine) a term. Upserts on
@@ -25,7 +22,7 @@ use crate::state::AppState;
 pub async fn set_glossary_term(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, term)): Path<(uuid::Uuid, String)>,
+    ApiPath((wid, term)): ApiPath<(uuid::Uuid, String)>,
     ApiJson(body): ApiJson<SetGlossaryTerm>,
 ) -> ApiResult<Json<GlossaryTerm>> {
     let workspace_id = WorkspaceId(wid);
@@ -55,7 +52,7 @@ pub async fn set_glossary_term(
 pub async fn list_glossary_terms(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<GlossaryTerm>>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
@@ -68,7 +65,7 @@ pub async fn list_glossary_terms(
 pub async fn get_glossary_term(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, term)): Path<(uuid::Uuid, String)>,
+    ApiPath((wid, term)): ApiPath<(uuid::Uuid, String)>,
 ) -> ApiResult<Json<GlossaryTerm>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
@@ -83,7 +80,7 @@ pub async fn get_glossary_term(
 pub async fn delete_glossary_term(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, term)): Path<(uuid::Uuid, String)>,
+    ApiPath((wid, term)): ApiPath<(uuid::Uuid, String)>,
 ) -> ApiResult<StatusCode> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_WRITE)?;

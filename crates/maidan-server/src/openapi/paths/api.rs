@@ -24,7 +24,6 @@ use maidan_types::*;
         (status = 201, description = "Created", body = Workspace),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_workspace() {}
 
@@ -38,7 +37,6 @@ pub fn create_workspace() {}
         (status = 201, description = "Created", body = Member),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_member_bootstrap() {}
 
@@ -69,7 +67,6 @@ pub fn get_workspace() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn erase_workspace() {}
@@ -166,7 +163,6 @@ pub fn list_members() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn mint_api_token() {}
 
@@ -199,7 +195,6 @@ pub fn list_api_tokens() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_delegation_grant() {}
 
@@ -236,7 +231,6 @@ pub fn revoke_delegation_grant() {}
         (status = 201, body = MintShareTicketResponse),
         (status = 400, description = "Invalid scope or expiry", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_share_ticket() {}
 
@@ -326,7 +320,6 @@ pub fn list_channels() {}
         (status = 201, body = Channel),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_channel() {}
 
@@ -356,7 +349,6 @@ pub fn list_peers() {}
         (status = 201, body = MintPeerResponse),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn create_peer() {}
@@ -405,7 +397,6 @@ pub fn list_webhooks() {}
         (status = 201, body = MintWebhookResponse),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn create_webhook() {}
@@ -456,7 +447,6 @@ pub fn get_mention_webhook() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn set_mention_webhook() {}
@@ -487,7 +477,6 @@ pub fn list_slash_commands() {}
         (status = 201, body = MintSlashCommandResponse),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn create_slash_command() {}
@@ -536,7 +525,6 @@ pub fn list_fsm_hooks() {}
         (status = 201, body = MintFsmHookResponse),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn create_fsm_hook() {}
@@ -610,7 +598,6 @@ pub fn get_member_inbox() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn mark_member_inbox_read() {}
 
@@ -733,7 +720,6 @@ pub fn mark_member_notification_read() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, description = "Not this member's notification", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn snooze_member_notification() {}
 
@@ -747,7 +733,6 @@ pub fn snooze_member_notification() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_member_notification_pref() {}
 
@@ -772,7 +757,6 @@ pub fn list_member_notification_prefs() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn follow_member_channel() {}
 
@@ -811,7 +795,6 @@ pub fn list_member_channel_follows() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn follow_member_thread() {}
 
@@ -850,7 +833,6 @@ pub fn list_member_thread_follows() {}
         (status = 400, description = "Self-follow", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn follow_member_occupancy() {}
 
@@ -900,7 +882,6 @@ pub fn get_member_occupancy() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_member_email() {}
 
@@ -936,7 +917,6 @@ pub fn delete_member_email() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_member_delivery_mode() {}
 
@@ -961,7 +941,6 @@ pub fn get_member_delivery_mode() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn register_push_subscription() {}
 
@@ -1087,7 +1066,6 @@ pub fn list_channel_dlq() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn add_channel_member() {}
 
@@ -1149,7 +1127,6 @@ pub fn list_recently_active_threads() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_thread() {}
 
@@ -1219,7 +1196,6 @@ pub fn get_tool_transcript() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn transition_thread() {}
 
@@ -1233,7 +1209,6 @@ pub fn transition_thread() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn assign_thread() {}
 
@@ -1247,7 +1222,6 @@ pub fn assign_thread() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn unassign_thread() {}
 
@@ -1261,7 +1235,6 @@ pub fn unassign_thread() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_thread_owner() {}
 
@@ -1286,7 +1259,6 @@ pub fn remove_thread_owner() {}
         (status = 400, description = "Empty title", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn rename_thread() {}
 
@@ -1300,7 +1272,6 @@ pub fn rename_thread() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_thread_budget() {}
 
@@ -1314,7 +1285,6 @@ pub fn set_thread_budget() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn patch_thread_budget() {}
 
@@ -1340,7 +1310,6 @@ pub fn get_thread_budget() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn report_thread_usage() {}
 
@@ -1355,7 +1324,6 @@ pub fn report_thread_usage() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn claim_thread() {}
 
@@ -1369,7 +1337,6 @@ pub fn claim_thread() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn mark_thread_unclaimable() {}
 
@@ -1394,7 +1361,6 @@ pub fn mark_thread_claimable() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_thread_block() {}
 
@@ -1430,7 +1396,6 @@ pub fn clear_thread_block() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_thread_wait() {}
 
@@ -1466,7 +1431,6 @@ pub fn get_thread_wait() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_thread_priority() {}
 
@@ -1506,7 +1470,6 @@ pub fn list_messages() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn post_message() {}
 
@@ -1544,7 +1507,6 @@ pub fn list_message_backlinks() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn edit_message() {}
 
@@ -1583,7 +1545,6 @@ pub fn tombstone_message() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_mention() {}
 
@@ -1598,7 +1559,6 @@ pub fn create_mention() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn seed_from_message() {}
 
@@ -1612,7 +1572,6 @@ pub fn seed_from_message() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn cast_vote() {}
 
@@ -1637,7 +1596,6 @@ pub fn list_votes() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn add_reaction() {}
 
@@ -1651,7 +1609,6 @@ pub fn add_reaction() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn remove_reaction() {}
 
@@ -1676,7 +1633,6 @@ pub fn list_reactions() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn pin_message() {}
 
@@ -1690,7 +1646,6 @@ pub fn pin_message() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn unpin_message() {}
 
@@ -1715,7 +1670,6 @@ pub fn list_pins() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn add_thread_dependency() {}
 
@@ -1767,7 +1721,6 @@ pub fn list_thread_dependents() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_task_schedule() {}
 
@@ -1791,7 +1744,6 @@ pub fn list_task_schedules() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_task_schedule_active() {}
 
@@ -1818,7 +1770,6 @@ pub fn delete_task_schedule() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_recipe() {}
 
@@ -1867,7 +1818,6 @@ pub fn delete_recipe() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn instantiate_recipe() {}
 
@@ -1882,7 +1832,6 @@ pub fn instantiate_recipe() {}
         (status = 201, body = Secret),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_secret() {}
 
@@ -1932,7 +1881,6 @@ pub fn delete_secret() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn freeze_member() {}
 
@@ -1980,7 +1928,6 @@ pub fn list_frozen_members() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_memory_block() {}
 
@@ -2017,7 +1964,6 @@ pub fn get_memory_block() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_memory_block_value() {}
 
@@ -2083,7 +2029,6 @@ pub fn detach_memory_block() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_review_requirement() {}
 
@@ -2119,7 +2064,6 @@ pub fn clear_review_requirement() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn add_reviewer() {}
 
@@ -2157,7 +2101,6 @@ pub fn remove_reviewer() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn submit_review() {}
 
@@ -2195,7 +2138,6 @@ pub fn get_review_status() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_land_gate() {}
 
@@ -2242,7 +2184,6 @@ pub fn require_land_gate() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, description = "Experimental advisor disabled", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 413, response = PayloadTooLarge),
         (status = 502, description = "Decision provider unavailable", body = ProblemDetails, content_type = "application/problem+json"),
     ))]
 pub fn advise_land_gate() {}
@@ -2258,7 +2199,6 @@ pub fn advise_land_gate() {}
         (status = 200, body = SpawnBudgetView, description = "The spawn budget (set or cleared)"),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_spawn_budget() {}
 
@@ -2284,7 +2224,6 @@ pub fn get_spawn_budget() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn add_member_skill() {}
 
@@ -2323,7 +2262,6 @@ pub fn remove_member_skill() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn add_thread_required_skill() {}
 
@@ -2365,7 +2303,6 @@ pub fn remove_thread_required_skill() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_thread_result() {}
 
@@ -2416,7 +2353,6 @@ pub fn replay_thread_delivery() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_thread_lineage() {}
 
@@ -2452,7 +2388,6 @@ pub fn clear_thread_lineage() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn set_thread_steer() {}
 
@@ -2523,7 +2458,6 @@ pub fn list_approval_gates() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn answer_approval_gate() {}
 
@@ -2584,6 +2518,7 @@ pub fn begin_multipart_artifact_doc() {}
     delete,
     path = "/artifacts/multipart",
     tag = "artifacts",
+    params(AbortMultipartQuery),
     security(("bearerAuth" = [])),
     responses(
         (status = 204, description = "Aborted"),
@@ -2598,13 +2533,13 @@ pub fn abort_multipart_artifact_doc() {}
     post,
     path = "/artifacts/multipart/{upload_id}/complete",
     params(("upload_id" = String, Path, description = "Multipart upload id")),
+    request_body = CompleteMultipartArtifact,
     tag = "artifacts",
     security(("bearerAuth" = [])),
     responses(
         (status = 200, body = Artifact),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn complete_multipart_artifact_doc() {}
@@ -2613,7 +2548,8 @@ pub fn complete_multipart_artifact_doc() {}
 #[utoipa::path(
     put,
     path = "/artifacts/multipart/{upload_id}/parts/{part_number}",
-    params(("upload_id" = String, Path, description = "Multipart upload id"), ("part_number" = i32, Path, description = "Part number, from 1")),
+    params(("upload_id" = String, Path, description = "Multipart upload id"), ("part_number" = i32, Path, description = "Part number, from 1"), MultipartUploadQuery),
+    request_body(content = String, description = "The part's raw bytes", content_type = "application/octet-stream"),
     tag = "artifacts",
     security(("bearerAuth" = [])),
     responses(
@@ -2635,7 +2571,6 @@ pub fn upload_multipart_artifact_part_doc() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn create_reference() {}
 
@@ -2686,7 +2621,6 @@ pub fn well_known() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn ingest_events() {}

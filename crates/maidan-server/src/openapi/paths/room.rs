@@ -64,7 +64,6 @@ pub fn get_workspace_handle() {}
         (status = 200, body = WorkspaceHandle),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn set_workspace_handle() {}
@@ -94,7 +93,6 @@ pub fn list_capability_sets() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn attenuate_api_token() {}
@@ -111,7 +109,6 @@ pub fn attenuate_api_token() {}
         (status = 401, description = "Grant expired or revoked", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, description = "Wrong delegate or workspace", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ),
     security(("bearerAuth" = ["workspace:read"]))
 )]

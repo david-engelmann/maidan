@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::dto::{
     CreateChannel, CreateMessage, CreateThread, ListAuditQuery, ListEventsQuery,
-    ListMessageEditsQuery, ListMessagesQuery, MintApiTokenResponse, OidcCallbackQuery,
-    OidcLoginQuery, PeerResponse, SearchQuery, SessionResponse,
+    ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse,
+    OidcCallbackQuery, OidcLoginQuery, PeerResponse, SearchQuery, SessionResponse,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
@@ -140,7 +140,6 @@ pub fn ui_list_channels() {}
         (status = 201, body = Channel),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn ui_create_channel() {}
@@ -162,7 +161,6 @@ pub fn ui_create_channel() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn ui_create_thread() {}
@@ -184,7 +182,6 @@ pub fn ui_create_thread() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, response = Conflict),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn ui_post_message() {}
@@ -194,7 +191,7 @@ pub fn ui_post_message() {}
     get,
     path = "/ui/api/channels/{cid}/threads",
     tag = "auth",
-    params(("cid" = Uuid, Path, description = "Channel id")),
+    params(("cid" = Uuid, Path, description = "Channel id"), ListThreadsQuery),
     security(
         ("bearerAuth" = []),
         ("sessionCookie" = []),

@@ -5,11 +5,7 @@
 //! `workspace:read`/`workspace:write`; attach/detach additionally require
 //! access to the target thread.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -18,13 +14,14 @@ use maidan_types::*;
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 pub async fn create_memory_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMemoryBlock>,
 ) -> ApiResult<(StatusCode, Json<MemoryBlock>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -55,7 +52,7 @@ pub async fn create_memory_block(
 pub async fn list_memory_blocks(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<MemoryBlock>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
@@ -85,7 +82,7 @@ async fn resolve_block(
 pub async fn get_memory_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, block_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, block_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<Json<MemoryBlock>> {
     cap(&auth, WORKSPACE_READ)?;
     let block = resolve_block(
@@ -101,7 +98,7 @@ pub async fn get_memory_block(
 pub async fn set_memory_block_value(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, block_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, block_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
     ApiJson(body): ApiJson<SetMemoryBlockValue>,
 ) -> ApiResult<Json<MemoryBlock>> {
     cap(&auth, WORKSPACE_WRITE)?;
@@ -131,7 +128,7 @@ pub async fn set_memory_block_value(
 pub async fn delete_memory_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, block_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, block_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
     let block_id = MemoryBlockId(block_id);
@@ -171,7 +168,7 @@ async fn authorize_attachment(
 pub async fn attach_memory_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((thread_id, block_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((thread_id, block_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
     let thread_id = ThreadId(thread_id);
@@ -184,7 +181,7 @@ pub async fn attach_memory_block(
 pub async fn detach_memory_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((thread_id, block_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((thread_id, block_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
     let thread_id = ThreadId(thread_id);
@@ -200,7 +197,7 @@ pub async fn detach_memory_block(
 pub async fn list_thread_memory_blocks(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(thread_id): Path<uuid::Uuid>,
+    ApiPath(thread_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<MemoryBlock>>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(thread_id);

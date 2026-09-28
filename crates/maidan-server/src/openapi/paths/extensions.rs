@@ -54,12 +54,12 @@ pub fn export_workspace() {}
     post,
     path = "/workspaces/export/verify",
     tag = "workspaces",
+    request_body(content = serde_json::Value, description = "A signed `maidan.workspace.export/1` envelope"),
     security(("bearerAuth" = [])),
     responses(
         (status = 200, body = VerifyExportResult, description = "Signature valid; tokens die on export"),
         (status = 400, description = "Tamper, bad signature, secret fields, or key not in pin", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn verify_workspace_export() {}
@@ -84,6 +84,7 @@ pub fn export_public_key() {}
     path = "/workspaces/import",
     tag = "workspaces",
     params(ImportQuery),
+    request_body(content = serde_json::Value, description = "A signed `maidan.workspace.export/1` envelope"),
     security(("bearerAuth" = [])),
     responses(
         (status = 200, body = ImportResult, description = "Imported after signature verify; body is a signed maidan.workspace.export/1 envelope"),
@@ -91,7 +92,6 @@ pub fn export_public_key() {}
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
         (status = 409, description = "restore mode: a workspace with the bundle's id already exists (retry with force=true)", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn import_workspace() {}
@@ -213,7 +213,6 @@ pub fn get_run_occupancy() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     ))]
 pub fn place_legal_hold() {}
 
@@ -283,7 +282,6 @@ pub fn operator_status() {}
         (status = 200, body = WipLimitView, description = "The WIP limit (set or cleared)"),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn set_wip_limit() {}
@@ -314,7 +312,6 @@ pub fn get_wip_limit() {}
         (status = 200, body = DelegationPolicy, description = "The grant ceiling now in force"),
         (status = 400, description = "Ceiling outside 1–3650 days", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, description = "Requires token:admin", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn set_delegation_policy() {}
@@ -392,7 +389,6 @@ pub fn list_glossary_terms() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn set_glossary_term() {}
@@ -461,7 +457,6 @@ pub fn list_assigned_threads() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn claim_next_thread() {}
@@ -479,7 +474,6 @@ pub fn claim_next_thread() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn renew_claim() {}
@@ -497,7 +491,6 @@ pub fn renew_claim() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn acknowledge_claim() {}
@@ -515,7 +508,6 @@ pub fn acknowledge_claim() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn release_claim() {}
@@ -559,7 +551,7 @@ pub fn get_workspace_context() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/outbox/quarantined",
-    params(("wid" = Uuid, Path, description = "Workspace id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), crate::routes::QuarantinedOutboxQuery),
     tag = "workspaces",
     security(("bearerAuth" = [])),
     responses(
@@ -577,7 +569,7 @@ pub fn list_quarantined_outbox() {}
     tag = "workspaces",
     params(
         ("wid" = Uuid, Path, description = "Workspace id"),
-        ("oid" = Uuid, Path, description = "Outbox row id"),
+        ("oid" = i64, Path, description = "Outbox row id"),
     ),
     security(("bearerAuth" = [])),
     responses(
@@ -594,13 +586,13 @@ pub fn replay_quarantined_outbox() {}
     path = "/workspaces/{wid}/apps",
     tag = "apps",
     params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = RegisterApp,
     security(("bearerAuth" = [])),
     responses(
         (status = 201, description = "App registered"),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn register_app() {}
@@ -624,6 +616,7 @@ pub fn list_apps() {}
     post,
     path = "/workspaces/{wid}/apps/{app_id}/install",
     params(("wid" = Uuid, Path, description = "Workspace id"), ("app_id" = Uuid, Path, description = "App id")),
+    request_body = InstallApp,
     tag = "apps",
     security(("bearerAuth" = [])),
     responses(
@@ -631,7 +624,6 @@ pub fn list_apps() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn install_app() {}
@@ -641,6 +633,7 @@ pub fn install_app() {}
     post,
     path = "/workspaces/{wid}/apps/{app_id}/oauth/authorize",
     params(("wid" = Uuid, Path, description = "Workspace id"), ("app_id" = Uuid, Path, description = "App id")),
+    request_body = crate::app_oauth::AuthorizeAppInstall,
     tag = "apps",
     security(("bearerAuth" = [])),
     responses(
@@ -648,7 +641,6 @@ pub fn install_app() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn authorize_app_install() {}
@@ -687,6 +679,7 @@ pub fn revoke_app_installation() {}
     post,
     path = "/workspaces/{wid}/app-installations/{iid}/tokens",
     params(("wid" = Uuid, Path, description = "Workspace id"), ("iid" = Uuid, Path, description = "App installation id")),
+    request_body = MintAppToken,
     tag = "apps",
     security(("bearerAuth" = [])),
     responses(
@@ -694,7 +687,6 @@ pub fn revoke_app_installation() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn mint_app_token() {}
@@ -706,6 +698,7 @@ pub fn mint_app_token() {}
     params(("wid" = Uuid, Path, description = "Workspace id")),
     tag = "dm",
     security(("bearerAuth" = [])),
+    request_body = crate::dm::OpenDmBody,
     responses(
         (status = 201, description = "DM conversation"),
         (status = 400, response = BadRequest),
@@ -720,7 +713,7 @@ pub fn open_dm_conversation() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/dm",
-    params(("wid" = Uuid, Path, description = "Workspace id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), crate::dm::DmMemberQuery),
     tag = "dm",
     security(("bearerAuth" = [])),
     responses(
@@ -752,6 +745,7 @@ pub fn get_dm_conversation() {}
     params(("id" = Uuid, Path, description = "DM conversation id")),
     tag = "dm",
     security(("bearerAuth" = [])),
+    request_body = PostDmMessage,
     responses(
         (status = 201, body = Message),
         (status = 403, response = Forbidden),
@@ -765,7 +759,7 @@ pub fn post_dm_message() {}
 #[utoipa::path(
     get,
     path = "/dm/{id}/messages",
-    params(("id" = Uuid, Path, description = "DM conversation id")),
+    params(("id" = Uuid, Path, description = "DM conversation id"), ListMessagesQuery),
     tag = "dm",
     security(("bearerAuth" = [])),
     responses(
@@ -874,7 +868,7 @@ pub fn list_automation_dlq() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/automation/deliveries",
-    params(("wid" = Uuid, Path, description = "Workspace id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), crate::automation_deliveries::ListAutomationDeliveriesQuery),
     tag = "automation",
     security(("bearerAuth" = [])),
     responses(
@@ -888,7 +882,7 @@ pub fn list_automation_deliveries() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/automation/deliveries/{did}",
-    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = Uuid, Path, description = "Delivery id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = i64, Path, description = "Delivery id")),
     tag = "automation",
     security(("bearerAuth" = [])),
     responses(
@@ -903,7 +897,7 @@ pub fn get_automation_delivery() {}
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/automation/deliveries/{did}/replay",
-    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = Uuid, Path, description = "Delivery id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = i64, Path, description = "Delivery id")),
     tag = "automation",
     security(("bearerAuth" = [])),
     responses(
@@ -918,7 +912,7 @@ pub fn replay_automation_delivery() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/deliveries",
-    params(("wid" = Uuid, Path, description = "Workspace id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), crate::delivery_ops::ListDeliveriesQuery),
     tag = "operator",
     security(("bearerAuth" = [])),
     responses(
@@ -933,7 +927,7 @@ pub fn list_unified_deliveries() {}
 #[utoipa::path(
     get,
     path = "/workspaces/{wid}/deliveries/{did}",
-    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = Uuid, Path, description = "Delivery id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = i64, Path, description = "Delivery id"), crate::delivery_ops::DeliveryKindQuery),
     tag = "operator",
     security(("bearerAuth" = [])),
     responses(
@@ -949,7 +943,7 @@ pub fn get_unified_delivery() {}
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/deliveries/{did}/replay",
-    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = Uuid, Path, description = "Delivery id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), ("did" = i64, Path, description = "Delivery id"), crate::delivery_ops::DeliveryKindQuery),
     tag = "operator",
     security(("bearerAuth" = [])),
     responses(
@@ -1075,7 +1069,6 @@ pub fn requeue_dead_egress() {}
         (status = 201, description = "Destination blessed (idempotent: a re-bless returns the existing entry)", body = AllowedEgressTarget),
         (status = 400, description = "Selector is a name rather than an id (a Slack #name, or owner/name#123)", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, description = "Missing token:admin capability", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn allow_egress_target() {}
@@ -1125,7 +1118,6 @@ pub fn revoke_egress_target() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn link_slack_channel() {}
@@ -1175,7 +1167,6 @@ pub fn unlink_slack_channel() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 413, response = PayloadTooLarge),
     )
 )]
 pub fn link_github_issue() {}

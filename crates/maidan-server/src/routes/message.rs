@@ -1,11 +1,7 @@
 //! Message handlers: post/list/get messages, edits, tombstone/purge, and
 //! mention recording.
 
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{CHANNEL_ADMIN, MESSAGE_POST, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -14,13 +10,14 @@ use maidan_types::*;
 
 use super::{cap, ensure_message_edit, publish_routed_mentions, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath, ApiQuery};
 use crate::state::AppState;
 
 pub async fn post_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(thread_id): Path<uuid::Uuid>,
+    ApiPath(thread_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMessage>,
 ) -> ApiResult<(StatusCode, Json<Message>)> {
     cap(&auth, MESSAGE_POST)?;
@@ -128,7 +125,7 @@ pub async fn post_message(
 pub async fn seed_from_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(message_id): Path<uuid::Uuid>,
+    ApiPath(message_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SeedFromMessage>,
 ) -> ApiResult<(StatusCode, Json<Thread>)> {
     let source_id = MessageId(message_id);
@@ -206,7 +203,7 @@ pub async fn seed_from_message(
 pub async fn edit_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(message_id): Path<uuid::Uuid>,
+    ApiPath(message_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<EditMessageRequest>,
 ) -> ApiResult<Json<Message>> {
     let message_id = MessageId(message_id);
@@ -255,8 +252,8 @@ pub async fn edit_message(
 pub async fn list_messages(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(thread_id): Path<uuid::Uuid>,
-    Query(q): Query<ListMessagesQuery>,
+    ApiPath(thread_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListMessagesQuery>,
 ) -> ApiResult<Json<Vec<Message>>> {
     cap(&auth, WORKSPACE_READ)?;
     // `ensure_thread_access` already resolves + workspace-checks the thread, so
@@ -274,7 +271,7 @@ pub async fn list_messages(
 pub async fn get_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Message>> {
     cap(&auth, WORKSPACE_READ)?;
     // Drop resolve_message_chain + ensure_workspace; one fetch authorizes.
@@ -288,7 +285,7 @@ pub async fn get_message(
 pub async fn list_message_backlinks(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MessageBacklinks>> {
     cap(&auth, WORKSPACE_READ)?;
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(id)).await?;
@@ -300,8 +297,8 @@ pub async fn list_message_backlinks(
 pub async fn list_message_edits(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<crate::dto::ListMessageEditsQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<crate::dto::ListMessageEditsQuery>,
 ) -> ApiResult<Json<Vec<MessageEdit>>> {
     let message_id = MessageId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -328,7 +325,7 @@ pub async fn list_message_edits(
 pub async fn tombstone_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, MESSAGE_POST)?;
     // One message→thread→channel fetch resolves the scope + authorizes.
@@ -360,7 +357,7 @@ pub async fn tombstone_message(
 pub async fn purge_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     // A purge removes a message and its history outright, for anyone's message
     // the caller can see — this checks channel access, not authorship. A
@@ -393,7 +390,7 @@ pub async fn purge_message(
 pub async fn create_mention(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(message_id): Path<uuid::Uuid>,
+    ApiPath(message_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateMention>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;

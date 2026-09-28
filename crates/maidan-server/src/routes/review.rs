@@ -12,11 +12,7 @@
 //! loosen: clearing the requirement, lowering `k`, and un-designating a
 //! reviewer (an empty named set means *any* non-implementer approval counts).
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{CHANNEL_ADMIN, THREAD_TRANSITION, WORKSPACE_READ},
     AuthContext,
@@ -25,13 +21,14 @@ use maidan_types::*;
 
 use super::{cap, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 pub async fn set_review_requirement(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetReviewRequirement>,
 ) -> ApiResult<Json<ThreadReviewRequirement>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -91,7 +88,7 @@ fn review_requirement_event(
 pub async fn get_review_requirement(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ThreadReviewRequirement>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -109,7 +106,7 @@ pub async fn get_review_requirement(
 pub async fn clear_review_requirement(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
@@ -137,7 +134,7 @@ pub async fn clear_review_requirement(
 pub async fn add_reviewer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AddReviewer>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -158,7 +155,7 @@ pub async fn add_reviewer(
 pub async fn remove_reviewer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, member_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, member_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     // Un-designating is `channel:admin` unconditionally rather than only when it
     // empties the set: "is this the last one?" is a read-then-write, so two
@@ -190,7 +187,7 @@ pub async fn remove_reviewer(
 pub async fn list_reviewers(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<MemberId>>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -201,7 +198,7 @@ pub async fn list_reviewers(
 pub async fn submit_review(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SubmitReview>,
 ) -> ApiResult<Json<ThreadReview>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -234,7 +231,7 @@ pub async fn submit_review(
 pub async fn list_reviews(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ThreadReview>>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -245,7 +242,7 @@ pub async fn list_reviews(
 pub async fn get_review_status(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ReviewStatus>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);

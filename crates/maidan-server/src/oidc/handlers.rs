@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::State,
     http::HeaderMap,
     response::{IntoResponse, Redirect, Response},
 };
@@ -14,6 +14,7 @@ use rand::RngCore;
 
 use crate::dto::{OidcCallbackQuery, OidcLoginQuery};
 use crate::error::ApiError;
+use crate::extract::ApiQuery;
 use crate::oidc::member::{resolve_member_for_login, touch_identity};
 use crate::session::{clear_session_cookie, parse_session_cookie, set_session_cookie};
 use crate::state::AppState;
@@ -38,7 +39,7 @@ fn with_auto_mint_hint(location: String) -> String {
 
 pub async fn login(
     State(state): State<AppState>,
-    Query(q): Query<OidcLoginQuery>,
+    ApiQuery(q): ApiQuery<OidcLoginQuery>,
 ) -> Result<Response, ApiError> {
     let oidc = state
         .oidc
@@ -101,7 +102,7 @@ pub async fn login(
 
 pub async fn callback(
     State(state): State<AppState>,
-    Query(q): Query<OidcCallbackQuery>,
+    ApiQuery(q): ApiQuery<OidcCallbackQuery>,
 ) -> Result<Response, ApiError> {
     let oidc = state
         .oidc

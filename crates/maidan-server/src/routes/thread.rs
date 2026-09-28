@@ -1,11 +1,7 @@
 //! Thread handlers: create/list/get threads, thread context, and FSM
 //! transitions.
 
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{ARTIFACT_UPLOAD, THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -19,13 +15,14 @@ use super::{
     ApiResult,
 };
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath, ApiQuery};
 use crate::state::AppState;
 
 pub async fn create_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(channel_id): Path<uuid::Uuid>,
+    ApiPath(channel_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateThread>,
 ) -> ApiResult<(StatusCode, Json<Thread>)> {
     let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
@@ -53,8 +50,8 @@ pub async fn create_thread(
 pub async fn list_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(channel_id): Path<uuid::Uuid>,
-    Query(q): Query<ListThreadsQuery>,
+    ApiPath(channel_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListThreadsQuery>,
 ) -> ApiResult<Json<Vec<Thread>>> {
     let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -77,8 +74,8 @@ pub async fn list_threads(
 pub async fn list_recently_active_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(channel_id): Path<uuid::Uuid>,
-    Query(q): Query<ListThreadsQuery>,
+    ApiPath(channel_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ListThreadsQuery>,
 ) -> ApiResult<Json<Vec<Thread>>> {
     let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -96,7 +93,7 @@ pub async fn list_recently_active_threads(
 pub async fn get_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Thread>> {
     let thread = state.store.get_thread(ThreadId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -112,8 +109,8 @@ pub async fn get_thread(
 pub async fn get_thread_context(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ThreadContextQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ThreadContextQuery>,
 ) -> ApiResult<Json<crate::thread_context::ThreadContext>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -152,8 +149,8 @@ pub async fn get_thread_context(
 pub async fn snapshot_thread_context(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ThreadContextQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ThreadContextQuery>,
 ) -> ApiResult<(StatusCode, Json<Artifact>)> {
     let thread_id = ThreadId(id);
     cap(&auth, ARTIFACT_UPLOAD)?;
@@ -213,8 +210,8 @@ pub async fn snapshot_thread_context(
 pub async fn get_tool_transcript(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Query(q): Query<ToolTranscriptQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ToolTranscriptQuery>,
 ) -> ApiResult<Json<ToolTranscript>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -229,7 +226,7 @@ pub async fn get_tool_transcript(
 pub async fn transition_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<TransitionThread>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -288,7 +285,7 @@ pub async fn transition_thread(
 pub async fn set_thread_result(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetThreadResult>,
 ) -> ApiResult<Json<ThreadResult>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -345,7 +342,7 @@ pub async fn set_thread_result(
 pub async fn get_thread_result(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ThreadResult>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -365,7 +362,7 @@ pub async fn get_thread_result(
 pub async fn list_thread_deliveries(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ResultDelivery>>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -379,7 +376,7 @@ pub async fn list_thread_deliveries(
 pub async fn replay_thread_delivery(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, did)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, did)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<Json<ResultDelivery>> {
     cap(&auth, WORKSPACE_WRITE)?;
     let thread_id = ThreadId(id);
@@ -426,7 +423,7 @@ pub async fn replay_thread_delivery(
 pub async fn set_thread_steer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetThreadSteer>,
 ) -> ApiResult<Json<ThreadSteer>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -444,7 +441,7 @@ pub async fn set_thread_steer(
 pub async fn get_thread_steer(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ThreadSteer>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -462,7 +459,7 @@ pub async fn get_thread_steer(
 pub async fn set_thread_lineage(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetThreadLineage>,
 ) -> ApiResult<Json<ThreadLineage>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -480,7 +477,7 @@ pub async fn set_thread_lineage(
 pub async fn get_thread_lineage(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ThreadLineage>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -496,7 +493,7 @@ pub async fn get_thread_lineage(
 pub async fn clear_thread_lineage(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
@@ -514,7 +511,7 @@ pub async fn clear_thread_lineage(
 pub async fn list_child_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ChildThreadSummary>>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -528,7 +525,7 @@ pub async fn list_child_threads(
 pub async fn mute_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -541,7 +538,7 @@ pub async fn mute_thread(
 pub async fn unmute_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -568,7 +565,7 @@ pub async fn unmute_thread(
 pub async fn set_thread_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<BudgetPatch>,
 ) -> ApiResult<Json<ThreadBudget>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -597,7 +594,7 @@ pub async fn set_thread_budget(
 pub async fn patch_thread_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(patch): ApiJson<BudgetPatch>,
 ) -> ApiResult<Json<ThreadBudget>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -612,7 +609,7 @@ pub async fn patch_thread_budget(
 pub async fn get_thread_budget(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ThreadBudget>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -630,7 +627,7 @@ pub async fn get_thread_budget(
 pub async fn report_thread_usage(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AccountedUsageRequest>,
 ) -> ApiResult<Json<UsageLedgerEntry>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -659,7 +656,7 @@ pub async fn report_thread_usage(
 pub async fn assign_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AssignThread>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -684,7 +681,7 @@ pub async fn assign_thread(
 pub async fn unassign_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(_body): ApiJson<UnassignThread>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -708,7 +705,7 @@ pub async fn unassign_thread(
 pub async fn rename_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<RenameThread>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -732,7 +729,7 @@ pub async fn rename_thread(
 pub async fn set_thread_owner(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetThreadOwner>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -749,7 +746,7 @@ pub async fn set_thread_owner(
 pub async fn remove_thread_owner(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
@@ -761,7 +758,7 @@ pub async fn remove_thread_owner(
 pub async fn claim_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(_body): ApiJson<ClaimThread>,
 ) -> ApiResult<Json<ThreadClaimResult>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -818,7 +815,7 @@ pub async fn claim_thread(
 pub async fn mark_thread_unclaimable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<MarkUnclaimable>,
 ) -> ApiResult<Json<ThreadUnclaimable>> {
     let thread_id = ThreadId(id);
@@ -842,7 +839,7 @@ pub async fn mark_thread_unclaimable(
 pub async fn set_thread_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetThreadBlock>,
 ) -> ApiResult<Json<ThreadBlock>> {
     let thread_id = ThreadId(id);
@@ -861,7 +858,7 @@ pub async fn set_thread_block(
 pub async fn get_thread_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ThreadBlock>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -878,7 +875,7 @@ pub async fn get_thread_block(
 pub async fn clear_thread_block(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(id);
     cap(&auth, THREAD_TRANSITION)?;
@@ -903,7 +900,7 @@ pub async fn clear_thread_block(
 pub async fn mark_thread_claimable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(id);
     cap(&auth, THREAD_TRANSITION)?;
@@ -922,7 +919,7 @@ pub async fn mark_thread_claimable(
 pub async fn set_thread_wait(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetThreadWait>,
 ) -> ApiResult<Json<ThreadWait>> {
     let thread_id = ThreadId(id);
@@ -952,7 +949,7 @@ pub async fn set_thread_wait(
 pub async fn cancel_thread_wait(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(id);
     cap(&auth, THREAD_TRANSITION)?;
@@ -969,7 +966,7 @@ pub async fn cancel_thread_wait(
 pub async fn get_thread_wait(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ThreadWait>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -987,7 +984,7 @@ pub async fn get_thread_wait(
 pub async fn set_thread_priority(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetThreadPriority>,
 ) -> ApiResult<Json<ThreadPriority>> {
     let thread_id = ThreadId(id);
@@ -1006,7 +1003,7 @@ pub async fn set_thread_priority(
 pub async fn get_thread_priority(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ThreadPriority>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -1022,7 +1019,7 @@ pub async fn get_thread_priority(
 pub async fn list_assigned_threads(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Thread>>> {
     cap(&auth, WORKSPACE_READ)?;
     let member_id = MemberId(id);
@@ -1050,7 +1047,7 @@ pub async fn list_assigned_threads(
 pub async fn get_member_wip(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<MemberWipView>> {
     cap(&auth, WORKSPACE_READ)?;
     let member_id = MemberId(id);
@@ -1069,7 +1066,7 @@ pub async fn get_member_wip(
 pub async fn claim_next_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(cid): Path<uuid::Uuid>,
+    ApiPath(cid): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<ClaimNextThread>,
 ) -> ApiResult<Json<Option<ClaimedThread>>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -1108,7 +1105,7 @@ pub async fn claim_next_thread(
 pub async fn renew_claim(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<RenewClaim>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -1135,7 +1132,7 @@ pub async fn renew_claim(
 pub async fn acknowledge_claim(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AcknowledgeClaim>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -1155,7 +1152,7 @@ pub async fn acknowledge_claim(
 pub async fn release_claim(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<ReleaseClaim>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -1176,7 +1173,7 @@ pub async fn release_claim(
 pub async fn add_thread_dependency(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AddThreadDependency>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -1202,7 +1199,7 @@ pub async fn add_thread_dependency(
 pub async fn list_thread_dependencies(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ThreadDependenciesView>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -1222,7 +1219,7 @@ pub async fn list_thread_dependencies(
 pub async fn remove_thread_dependency(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, dep_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((id, dep_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
@@ -1245,7 +1242,7 @@ pub async fn remove_thread_dependency(
 pub async fn list_thread_dependents(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ThreadDependency>>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);

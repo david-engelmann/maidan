@@ -75,7 +75,7 @@ async fn openapi_omits_bootstrap_paths_without_feature() {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    assert!(!tags.iter().any(|name| *name == "bootstrap"));
+    assert!(!tags.contains(&"bootstrap"));
 
     server.abort();
 }

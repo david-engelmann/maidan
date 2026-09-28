@@ -8,11 +8,7 @@
 //! workspace; `operator:global` widens that to the whole instance, and is the
 //! only way to reach a row whose workspace is `NULL`.
 
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{OPERATOR_GLOBAL, TOKEN_ADMIN},
     AuthContext,
@@ -22,6 +18,7 @@ use serde::Deserialize;
 
 use super::{cap, ApiResult};
 use crate::error::ApiError;
+use crate::extract::{ApiPath, ApiQuery};
 use crate::state::AppState;
 
 fn default_limit() -> i64 {
@@ -53,7 +50,7 @@ fn dlq_scope(auth: &AuthContext) -> Option<maidan_types::WorkspaceId> {
 pub async fn list_dead_mail(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Query(q): Query<ListDeadMailQuery>,
+    ApiQuery(q): ApiQuery<ListDeadMailQuery>,
 ) -> ApiResult<Json<Vec<DeadMail>>> {
     cap(&auth, TOKEN_ADMIN)?;
     let limit = q.limit.clamp(1, 500);
@@ -67,7 +64,7 @@ pub async fn list_dead_mail(
 pub async fn requeue_dead_mail(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, TOKEN_ADMIN)?;
     // Scoped like the list: another tenant's id is a 404, not a re-send of

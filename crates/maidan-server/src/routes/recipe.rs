@@ -3,11 +3,7 @@
 //! threads into its target channel, so the write surfaces are gated on
 //! `workspace:write` + access to that channel.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -16,13 +12,14 @@ use maidan_types::*;
 
 use super::{cap, ensure_workspace, publish_stored, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 pub async fn create_recipe(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateRecipe>,
 ) -> ApiResult<(StatusCode, Json<Recipe>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -59,7 +56,7 @@ pub async fn create_recipe(
 pub async fn list_recipes(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Recipe>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
@@ -86,7 +83,7 @@ async fn resolve_recipe(
 pub async fn get_recipe(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, recipe_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, recipe_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<Json<Recipe>> {
     cap(&auth, WORKSPACE_READ)?;
     let recipe = resolve_recipe(
@@ -102,7 +99,7 @@ pub async fn get_recipe(
 pub async fn delete_recipe(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, recipe_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, recipe_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
     let recipe_id = RecipeId(recipe_id);
@@ -118,7 +115,7 @@ pub async fn delete_recipe(
 pub async fn instantiate_recipe(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((workspace_id, recipe_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((workspace_id, recipe_id)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
     ApiJson(body): ApiJson<InstantiateRecipe>,
 ) -> ApiResult<(StatusCode, Json<RecipeRun>)> {
     cap(&auth, WORKSPACE_WRITE)?;

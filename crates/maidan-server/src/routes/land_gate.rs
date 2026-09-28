@@ -11,11 +11,7 @@
 //! the `maidan.agent.worker` bundle. Guarding both with it let the constrained
 //! agent delete its own constraint in one extra call, and left no trace.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{CHANNEL_ADMIN, THREAD_TRANSITION, WORKSPACE_READ},
     AuthContext,
@@ -24,7 +20,8 @@ use maidan_types::*;
 
 use super::{cap, ApiResult};
 use crate::dto::SetLandGate;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorError};
 use crate::state::AppState;
 
@@ -34,7 +31,7 @@ use crate::state::AppState;
 pub async fn advise_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<LandGateAdviceRequest>,
 ) -> ApiResult<Json<LandGateAdvice>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -56,7 +53,7 @@ pub async fn advise_land_gate(
 pub async fn set_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetLandGate>,
 ) -> ApiResult<Json<LandGateStanding>> {
     cap(&auth, THREAD_TRANSITION)?;
@@ -77,7 +74,7 @@ pub async fn set_land_gate(
 pub async fn get_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<LandGateStanding>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
@@ -91,7 +88,7 @@ pub async fn get_land_gate(
 pub async fn clear_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
@@ -119,7 +116,7 @@ pub async fn clear_land_gate(
 pub async fn require_land_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<LandGateStanding>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);

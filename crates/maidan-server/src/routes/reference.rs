@@ -1,10 +1,6 @@
 //! Reference handlers: create and list cross-entity references.
 
-use axum::{
-    extract::{Query, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -13,7 +9,8 @@ use maidan_types::*;
 
 use super::{cap, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiQuery};
 use crate::state::AppState;
 
 /// Ensure the caller may access a referenced entity — and, via the `ensure_*`
@@ -59,7 +56,7 @@ pub async fn create_reference(
 pub async fn list_references(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Query(q): Query<ListReferencesQuery>,
+    ApiQuery(q): ApiQuery<ListReferencesQuery>,
 ) -> ApiResult<Json<Vec<Reference>>> {
     cap(&auth, WORKSPACE_READ)?;
     let mut refs = match (q.src_kind, q.src_id, q.dst_kind, q.dst_id) {

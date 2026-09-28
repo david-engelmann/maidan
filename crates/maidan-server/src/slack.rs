@@ -11,7 +11,7 @@
 //! then returns `404`), so an unconfigured deployment is unchanged.
 
 use axum::{
-    extract::{Path, State},
+    extract::State,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Extension, Json,
@@ -25,7 +25,8 @@ use maidan_types::{
 use sha2::Sha256;
 
 use crate::dto::LinkSlackChannel;
-use crate::error::ApiJson;
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath, ApiText};
 use crate::routes::{cap, ensure_workspace, ApiResult};
 use crate::state::AppState;
 
@@ -98,10 +99,10 @@ pub fn verify_slack_signature(
 pub async fn slack_events(
     State(state): State<AppState>,
     headers: HeaderMap,
-    body: String,
+    ApiText(body): ApiText,
 ) -> Response {
     let Some(cfg) = state.slack.as_ref() else {
-        return StatusCode::NOT_FOUND.into_response();
+        return ApiError::NotFound.into_response();
     };
     let timestamp = headers
         .get("x-slack-request-timestamp")
@@ -113,12 +114,14 @@ pub async fn slack_events(
         .unwrap_or("");
     let now = chrono::Utc::now().timestamp();
     if !verify_slack_signature(&cfg.signing_secret, timestamp, &body, signature, now) {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return ApiError::SignatureInvalid.into_response();
     }
 
     let payload: serde_json::Value = match serde_json::from_str(&body) {
         Ok(v) => v,
-        Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+        Err(e) => {
+            return ApiError::BadRequest(format!("invalid event payload: {e}")).into_response()
+        }
     };
     match payload.get("type").and_then(|v| v.as_str()) {
         // App setup: echo the challenge so Slack accepts the events URL.
@@ -418,7 +421,7 @@ pub async fn route_message_to_slack(
 pub async fn link_slack_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<LinkSlackChannel>,
 ) -> ApiResult<(StatusCode, Json<SlackChannelLink>)> {
     cap(&auth, WORKSPACE_WRITE)?;
@@ -449,7 +452,7 @@ pub async fn link_slack_channel(
 pub async fn list_slack_channel_links(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<uuid::Uuid>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<SlackChannelLink>>> {
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, WorkspaceId(wid))?;
@@ -466,7 +469,7 @@ pub async fn list_slack_channel_links(
 pub async fn unlink_slack_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, slack_channel_id)): Path<(uuid::Uuid, String)>,
+    ApiPath((wid, slack_channel_id)): ApiPath<(uuid::Uuid, String)>,
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, WorkspaceId(wid))?;
@@ -477,12 +480,12 @@ pub async fn unlink_slack_channel(
         .await?
     {
         Some(link) if link.workspace_id == WorkspaceId(wid) => {}
-        _ => return Err(crate::error::ApiError::NotFound),
+        _ => return Err(ApiError::NotFound),
     }
     if state.store.unlink_slack_channel(&slack_channel_id).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err(crate::error::ApiError::NotFound)
+        Err(ApiError::NotFound)
     }
 }
 

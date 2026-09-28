@@ -170,6 +170,54 @@ fn every_operation_behind_a_credential_or_the_rate_limiter_says_so() {
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
+/// Whether `crate::extract` can refuse a request over this parameter: any
+/// path segment (it may not percent-decode to UTF-8), and a query parameter
+/// that is required or is anything but free text.
+fn rejectable(parameter: &Value) -> bool {
+    match parameter["in"].as_str() {
+        Some("path") => true,
+        Some("query") => {
+            parameter["required"] == Value::Bool(true)
+                || parameter["schema"] != serde_json::json!({ "type": "string" })
+        }
+        _ => false,
+    }
+}
+
+#[test]
+fn every_operation_documents_what_its_extractors_reject() {
+    let doc = document();
+    let mut problems = Vec::new();
+    for (method, path, op) in operations(&doc) {
+        let codes = statuses(op);
+        let id = format!("{} {path}", method.to_uppercase());
+        let body = op["requestBody"]["content"].as_object();
+        let json_body = body.is_some_and(|content| content.contains_key("application/json"));
+        let parameters = op["parameters"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let mut expect = Vec::new();
+        if json_body || parameters.iter().any(rejectable) {
+            expect.push("400");
+        }
+        if body.is_some() {
+            expect.push("413");
+        }
+        if json_body {
+            expect.push("415");
+        }
+        for status in expect {
+            if !codes.contains(status) {
+                problems.push(format!(
+                    "{id}: its extractors can answer {status}; not documented"
+                ));
+            }
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
 #[test]
 fn every_client_error_is_an_rfc_9457_problem() {
     let doc = document();

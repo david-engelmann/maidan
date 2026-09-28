@@ -38,6 +38,7 @@ use uuid::Uuid;
 use crate::state::AppState;
 
 const ERR_PARSE: i32 = -32700;
+const ERR_INVALID_REQUEST: i32 = -32600;
 const ERR_METHOD: i32 = -32601;
 const ERR_PARAMS: i32 = -32602;
 const ERR_INTERNAL: i32 = -32603;
@@ -45,10 +46,40 @@ const ERR_UNSUPPORTED: i32 = -32005;
 const SUBSCRIBE_POLL_MS: u64 = 100;
 const SUBSCRIBE_MAX_POLLS: u32 = 300;
 
+/// A JSON-RPC body the transport could not read, answered as JSON-RPC 2.0
+/// says: an error object with a null `id`. JSON that does not parse is a Parse
+/// error (-32700) and JSON that is not a request object an Invalid Request
+/// (-32600), both HTTP 200 like every JSON-RPC error here. A body over the
+/// size limit or not sent as JSON keeps its HTTP status (413, 415).
+fn rpc_rejected(status: StatusCode, detail: String) -> Response {
+    let (status, code, detail) = match status {
+        StatusCode::BAD_REQUEST => (StatusCode::OK, ERR_PARSE, detail),
+        StatusCode::UNPROCESSABLE_ENTITY => (StatusCode::OK, ERR_INVALID_REQUEST, detail),
+        status => {
+            let (status, detail) = crate::extract::rejection(status, detail);
+            (status, ERR_INVALID_REQUEST, detail)
+        }
+    };
+    let error = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": null,
+        "error": { "code": code, "message": detail },
+    });
+    (status, Json(error)).into_response()
+}
+
+crate::extract::wrap_extractor!(
+    /// The JSON-RPC request body, rejected as a JSON-RPC error.
+    RpcJson,
+    body Json,
+    Response,
+    rpc_rejected
+);
+
 pub async fn json_rpc(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Json(body): Json<JsonRpcRequest>,
+    RpcJson(body): RpcJson<JsonRpcRequest>,
 ) -> Response {
     if body.jsonrpc != "2.0" {
         return Json(JsonRpcResponse::error(
@@ -1013,6 +1044,54 @@ fn a2a_rest_json(status: StatusCode, value: serde_json::Value) -> Response {
         .into_response()
 }
 
+/// A request the REST binding could not read, in the binding's error body.
+fn rest_rejected(status: StatusCode, code: i32, detail: String) -> Response {
+    let (status, detail) = crate::extract::rejection(status, detail);
+    a2a_rest_json(
+        status,
+        serde_json::json!({ "error": { "code": code, "message": detail } }),
+    )
+}
+
+/// A path parameter or query string that does not deserialize: Invalid params
+/// (-32602).
+fn rest_rejected_params(status: StatusCode, detail: String) -> Response {
+    rest_rejected(status, ERR_PARAMS, detail)
+}
+
+/// A body that is not JSON: Parse error (-32700). JSON of the wrong shape, or
+/// a body over the size limit or not sent as JSON: Invalid params (-32602).
+fn rest_rejected_body(status: StatusCode, detail: String) -> Response {
+    let code = if status == StatusCode::BAD_REQUEST {
+        ERR_PARSE
+    } else {
+        ERR_PARAMS
+    };
+    rest_rejected(status, code, detail)
+}
+
+crate::extract::wrap_extractor!(
+    /// A REST binding path parameter, rejected in the binding's error body.
+    RestPath,
+    parts Path,
+    Response,
+    rest_rejected_params
+);
+crate::extract::wrap_extractor!(
+    /// A REST binding query string, rejected in the binding's error body.
+    RestQuery,
+    parts Query,
+    Response,
+    rest_rejected_params
+);
+crate::extract::wrap_extractor!(
+    /// A REST binding JSON body, rejected in the binding's error body.
+    RestJson,
+    body Json,
+    Response,
+    rest_rejected_body
+);
+
 fn rest_response(result: Result<JsonRpcResponse, JsonRpcResponse>) -> Response {
     let resp = match result {
         Ok(r) => r,
@@ -1041,7 +1120,7 @@ fn rest_response(result: Result<JsonRpcResponse, JsonRpcResponse>) -> Response {
 pub async fn rest_send_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Json(body): Json<serde_json::Value>,
+    RestJson(body): RestJson<serde_json::Value>,
 ) -> Response {
     rest_response(dispatch_send_message(&state, &auth, rest_id(), body).await)
 }
@@ -1049,7 +1128,7 @@ pub async fn rest_send_message(
 pub async fn rest_list_tasks(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Query(q): Query<HashMap<String, String>>,
+    RestQuery(q): RestQuery<HashMap<String, String>>,
 ) -> Response {
     let mut params = serde_json::Map::new();
     if let Some(ctx) = q.get("contextId") {
@@ -1073,7 +1152,7 @@ pub async fn rest_list_tasks(
 pub async fn rest_get_task(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<String>,
+    RestPath(id): RestPath<String>,
 ) -> Response {
     let params = serde_json::json!({ "id": id });
     rest_response(dispatch_get_task(&state, &auth, rest_id(), params).await)
@@ -1086,7 +1165,7 @@ pub async fn rest_get_task(
 pub async fn rest_task_custom_method(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(task_action): Path<String>,
+    RestPath(task_action): RestPath<String>,
 ) -> Response {
     let Some((id, action)) = task_action.rsplit_once(':') else {
         return (
@@ -1111,8 +1190,8 @@ pub async fn rest_task_custom_method(
 pub async fn rest_create_push_config(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<String>,
-    Json(mut body): Json<serde_json::Value>,
+    RestPath(id): RestPath<String>,
+    RestJson(mut body): RestJson<serde_json::Value>,
 ) -> Response {
     if let Some(obj) = body.as_object_mut() {
         obj.insert("taskId".into(), serde_json::Value::String(id));
@@ -1123,7 +1202,7 @@ pub async fn rest_create_push_config(
 pub async fn rest_get_push_config(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, config_id)): Path<(String, String)>,
+    RestPath((id, config_id)): RestPath<(String, String)>,
 ) -> Response {
     let params = serde_json::json!({ "taskId": id, "id": config_id });
     rest_response(dispatch_get_push_config(&state, &auth, rest_id(), params).await)
@@ -1132,7 +1211,7 @@ pub async fn rest_get_push_config(
 pub async fn rest_list_push_configs(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<String>,
+    RestPath(id): RestPath<String>,
 ) -> Response {
     let params = serde_json::json!({ "taskId": id });
     rest_response(dispatch_list_push_configs(&state, &auth, rest_id(), params).await)
@@ -1141,7 +1220,7 @@ pub async fn rest_list_push_configs(
 pub async fn rest_delete_push_config(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, config_id)): Path<(String, String)>,
+    RestPath((id, config_id)): RestPath<(String, String)>,
 ) -> Response {
     let params = serde_json::json!({ "taskId": id, "id": config_id });
     rest_response(dispatch_delete_push_config(&state, &auth, rest_id(), params).await)

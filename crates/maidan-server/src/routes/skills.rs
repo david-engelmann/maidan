@@ -2,11 +2,7 @@
 //! and set / list / remove a task's required skills. Skill routing reads both
 //! to gate `claim_next`.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{CHANNEL_ADMIN, THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -15,7 +11,8 @@ use maidan_types::*;
 
 use super::{cap, ensure_own_personal_state, ensure_workspace, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 // --- member skills ---
@@ -23,7 +20,7 @@ use crate::state::AppState;
 pub async fn add_member_skill(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AddSkill>,
 ) -> ApiResult<StatusCode> {
     let member = state.store.get_member(MemberId(id)).await?;
@@ -70,7 +67,7 @@ pub async fn add_member_skill(
 pub async fn list_member_skills(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<MemberSkill>>> {
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -82,7 +79,7 @@ pub async fn list_member_skills(
 pub async fn remove_member_skill(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, skill)): Path<(uuid::Uuid, String)>,
+    ApiPath((id, skill)): ApiPath<(uuid::Uuid, String)>,
 ) -> ApiResult<StatusCode> {
     let member = state.store.get_member(MemberId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
@@ -105,7 +102,7 @@ pub async fn remove_member_skill(
 pub async fn add_thread_required_skill(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AddSkill>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(id);
@@ -126,7 +123,7 @@ pub async fn add_thread_required_skill(
 pub async fn list_thread_required_skills(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ThreadRequiredSkill>>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -140,7 +137,7 @@ pub async fn list_thread_required_skills(
 pub async fn remove_thread_required_skill(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((id, skill)): Path<(uuid::Uuid, String)>,
+    ApiPath((id, skill)): ApiPath<(uuid::Uuid, String)>,
 ) -> ApiResult<StatusCode> {
     let thread_id = ThreadId(id);
     cap(&auth, THREAD_TRANSITION)?;

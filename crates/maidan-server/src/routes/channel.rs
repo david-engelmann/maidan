@@ -1,10 +1,6 @@
 //! Channel handlers: create/list/get channels.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{CHANNEL_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -13,13 +9,14 @@ use maidan_types::*;
 
 use super::{cap, ensure_workspace, publish_stored, ApiResult};
 use crate::dto::*;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath, ApiQuery};
 use crate::state::AppState;
 
 pub async fn create_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<CreateChannel>,
 ) -> ApiResult<(StatusCode, Json<Channel>)> {
     let workspace_id = WorkspaceId(workspace_id);
@@ -68,7 +65,7 @@ pub async fn create_channel(
 pub async fn list_channels(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<Channel>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
@@ -94,7 +91,7 @@ pub async fn list_channels(
 pub async fn get_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Channel>> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -109,7 +106,7 @@ pub async fn get_channel(
 pub async fn get_channel_queue_depth(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<QueueDepth>> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -124,7 +121,7 @@ pub async fn get_channel_queue_depth(
 pub async fn list_channel_unclaimable(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ThreadUnclaimable>>> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -141,7 +138,7 @@ pub async fn list_channel_unclaimable(
 pub async fn list_channel_blocked(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ThreadBlock>>> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -156,7 +153,7 @@ pub async fn list_channel_blocked(
 pub async fn get_channel_occupancy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<ChannelOccupancy>> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -173,7 +170,7 @@ pub async fn get_channel_occupancy(
 pub async fn mute_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -187,7 +184,7 @@ pub async fn mute_channel(
 pub async fn unmute_channel(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<StatusCode> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -211,8 +208,8 @@ pub async fn unmute_channel(
 pub async fn list_channel_dlq(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    axum::extract::Query(q): axum::extract::Query<DlqQuery>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<DlqQuery>,
 ) -> ApiResult<Json<Vec<DlqEntry>>> {
     let channel = state.store.get_channel(ChannelId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
@@ -226,7 +223,7 @@ pub async fn list_channel_dlq(
 pub async fn add_channel_member(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(cid): Path<uuid::Uuid>,
+    ApiPath(cid): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AddChannelMember>,
 ) -> ApiResult<(StatusCode, Json<ChannelMember>)> {
     let channel = state.store.get_channel(ChannelId(cid)).await?;
@@ -265,7 +262,7 @@ pub async fn add_channel_member(
 pub async fn list_channel_members(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(cid): Path<uuid::Uuid>,
+    ApiPath(cid): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<ChannelMember>>> {
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     cap(&auth, CHANNEL_ADMIN)?;
@@ -276,7 +273,7 @@ pub async fn list_channel_members(
 pub async fn remove_channel_member(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((cid, mid)): Path<(uuid::Uuid, uuid::Uuid)>,
+    ApiPath((cid, mid)): ApiPath<(uuid::Uuid, uuid::Uuid)>,
 ) -> ApiResult<StatusCode> {
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     cap(&auth, CHANNEL_ADMIN)?;

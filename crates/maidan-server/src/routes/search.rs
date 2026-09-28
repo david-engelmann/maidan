@@ -1,22 +1,20 @@
 //! Search handler: lexical and semantic message search.
 
-use axum::{
-    extract::{Path, Query, State},
-    Extension, Json,
-};
+use axum::{extract::State, Extension, Json};
 use maidan_auth::{capability::SEARCH_QUERY, AuthContext};
 use maidan_types::*;
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
 use crate::error::ApiError;
+use crate::extract::{ApiPath, ApiQuery};
 use crate::state::AppState;
 
 pub async fn search_messages(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
-    Query(q): Query<SearchQuery>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<SearchQuery>,
 ) -> ApiResult<Json<Vec<maidan_search::SearchHit>>> {
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, SEARCH_QUERY)?;

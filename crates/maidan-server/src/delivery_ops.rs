@@ -1,9 +1,6 @@
 //! Unified operator HTTP API for webhook + automation deliveries.
 
-use axum::{
-    extract::{Path, Query, State},
-    Extension, Json,
-};
+use axum::{extract::State, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -11,27 +8,36 @@ use maidan_auth::{
 use maidan_store::AutomationDeliveryFilter;
 use maidan_types::{NewAuditEvent, OperatorDelivery, WorkspaceId};
 use serde::Deserialize;
+use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::error::ApiError;
+use crate::extract::{ApiPath, ApiQuery};
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListDeliveriesQuery {
+    /// `webhook`, `automation` or `all` (the default).
     #[serde(default)]
     pub kind: Option<String>,
+    /// Only dead-lettered deliveries.
     #[serde(default)]
     pub quarantined: bool,
+    /// Only delivered ones (ignored with `quarantined`).
     #[serde(default)]
     pub delivered: bool,
+    /// Max rows (default 50).
     #[serde(default = "default_list_limit")]
     pub limit: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct DeliveryKindQuery {
+    /// `webhook` or `automation`: the table the delivery id belongs to.
     pub kind: String,
 }
 
@@ -79,8 +85,8 @@ fn parse_delivery_kind(kind: &str) -> ApiResult<&'static str> {
 pub async fn list_deliveries(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(wid): Path<Uuid>,
-    Query(q): Query<ListDeliveriesQuery>,
+    ApiPath(wid): ApiPath<Uuid>,
+    ApiQuery(q): ApiQuery<ListDeliveriesQuery>,
 ) -> ApiResult<Json<Vec<OperatorDelivery>>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
@@ -124,8 +130,8 @@ fn delivery_sort_key(row: &OperatorDelivery) -> (chrono::DateTime<chrono::Utc>, 
 pub async fn get_delivery(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, delivery_id)): Path<(Uuid, i64)>,
-    Query(q): Query<DeliveryKindQuery>,
+    ApiPath((wid, delivery_id)): ApiPath<(Uuid, i64)>,
+    ApiQuery(q): ApiQuery<DeliveryKindQuery>,
 ) -> ApiResult<Json<OperatorDelivery>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
@@ -156,8 +162,8 @@ pub async fn get_delivery(
 pub async fn replay_delivery(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path((wid, delivery_id)): Path<(Uuid, i64)>,
-    Query(q): Query<DeliveryKindQuery>,
+    ApiPath((wid, delivery_id)): ApiPath<(Uuid, i64)>,
+    ApiQuery(q): ApiQuery<DeliveryKindQuery>,
 ) -> ApiResult<Json<OperatorDelivery>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_WRITE)?;

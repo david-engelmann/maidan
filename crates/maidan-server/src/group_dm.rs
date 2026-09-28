@@ -1,15 +1,12 @@
 //! Multi-member group direct message routes.
 
-use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 use maidan_auth::AuthContext;
 use maidan_types::*;
 
 use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath, ApiQuery};
 use crate::routes::publish_routed_mentions;
 use crate::state::AppState;
 
@@ -31,8 +28,8 @@ pub struct GroupDmMemberQuery {
 pub async fn open_group_dm(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
-    Json(body): Json<OpenGroupDmBody>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<OpenGroupDmBody>,
 ) -> ApiResult<(StatusCode, Json<GroupDmConversation>)> {
     cap(&auth, WORKSPACE_READ)?;
     let workspace_id = WorkspaceId(workspace_id);
@@ -48,8 +45,8 @@ pub async fn open_group_dm(
 pub async fn list_group_dms(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(workspace_id): Path<uuid::Uuid>,
-    Query(q): Query<GroupDmMemberQuery>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<GroupDmMemberQuery>,
 ) -> ApiResult<Json<Vec<GroupDmConversation>>> {
     cap(&auth, WORKSPACE_READ)?;
     let workspace_id = WorkspaceId(workspace_id);
@@ -67,7 +64,7 @@ pub async fn list_group_dms(
 pub async fn get_group_dm(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<GroupDmConversation>> {
     cap(&auth, WORKSPACE_READ)?;
     let group = state
@@ -87,8 +84,8 @@ pub async fn get_group_dm(
 pub async fn post_group_dm_message(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
-    Json(body): Json<PostDmMessage>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<PostDmMessage>,
 ) -> ApiResult<(StatusCode, Json<Message>)> {
     cap(&auth, MESSAGE_POST)?;
     let group_id = GroupDmConversationId(id);

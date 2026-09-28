@@ -4,10 +4,7 @@
 //! Handle writes rename the alias; the workspace UUID (and every stored
 //! `maidan://{uuid}/…` URI) stays put.
 
-use axum::{
-    extract::{Path, State},
-    Extension, Json,
-};
+use axum::{extract::State, Extension, Json};
 use maidan_auth::{
     capability::{WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -16,7 +13,8 @@ use maidan_types::{RoomCard, RoomDiscovery, WorkspaceHandle, WorkspaceId};
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::SetWorkspaceHandle;
-use crate::error::{ApiError, ApiJson};
+use crate::error::ApiError;
+use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 /// Public discovery document. No auth — and no workspace list.
@@ -27,7 +25,7 @@ pub async fn well_known_room() -> Json<RoomDiscovery> {
 pub async fn get_workspace_room(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<RoomCard>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -44,7 +42,7 @@ pub async fn get_workspace_room(
 pub async fn get_workspace_handle(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<WorkspaceHandle>> {
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_READ)?;
@@ -60,7 +58,7 @@ pub async fn get_workspace_handle(
 pub async fn set_workspace_handle(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    Path(id): Path<uuid::Uuid>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<SetWorkspaceHandle>,
 ) -> ApiResult<Json<WorkspaceHandle>> {
     let workspace_id = WorkspaceId(id);
