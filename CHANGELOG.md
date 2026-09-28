@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [412.0.0] — 2026-09-28
+
+The first release since 410.0.0. **411.0.0 was never tagged; its delegated
+authority work (#996–#1008, below) ships in 412.0.0**, with Clusters 412–418
+and everything merged through #1077.
+
 ### Deleting an artifact's bytes no longer blocks other writes
 
 - **Fixed:** reaping an orphaned artifact's bytes (after the last reference
@@ -29,6 +35,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   backends.
 - **Added:** `ListTaskPushNotificationConfigs` honours `pageSize` and
   `pageToken` (JSON-RPC and HTTP+JSON), in config-id order.
+### Tenant isolation
+
+- **Fixed:** `/ws/subscribe`, `/mcp/stream` and `/agui/stream` checked the
+  workspace only when the subscriber named one; a subscription is now bound to
+  its token's workspace (#1029).
+- **Fixed:** MCP resource subscriptions were one process-wide set, then one set
+  per workspace. A subscription now belongs to one caller, access is re-checked
+  at delivery, and an artifact update notifies only its own workspace (#1031,
+  #1060).
+- **Fixed:** the MCP channel-membership tools stay in the caller's workspace
+  (#1018); artifact metadata is per workspace (#1033); purging a workspace
+  never destroys another workspace's artifact (#1012).
+- **Fixed:** web-push endpoints must be public https and are delivered through
+  the outbound trust boundary; audit-write failures are counted and alert
+  (#1011).
+
+### Errors, tests and CI
+
+- **Changed:** every client error, including axum's own extractor rejections,
+  is an RFC 9457 problem (#1028, #1062). The OpenAPI document passes Redocly's
+  recommended ruleset (#1061).
+- **Added:** `claimer_crash` (#1034), `claim_state_machine` (#1039),
+  `schema_parity` (#1052) and a real-SMTP transport test (#1038).
+- **Changed:** CI runs cargo-nextest with a `ci` profile, and coverage is
+  checked against per-crate floors (#1065). The two quarantined races are fixed
+  and the MinIO tests run for real (#1068). Container tests skip only when no
+  Docker daemon answers (#1072).
+- **Docs:** CodeRabbit review in the PR flow (#1067, #1069); the roadmaps
+  synced (#1070); the README shows a real handoff (#1071).
 
 ### A2A passes the official TCK
 
@@ -228,7 +263,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Fixed:** nullable tool-schema fields use `anyOf`, which clients that read
   `type` as a string accept.
 
-## [411.0.0] — 2026-09-23
+## [411.0.0] — 2026-09-23 (never tagged; ships in 412.0.0)
 
 Post-gate hardening (Phase XXIV). **Delegated authority: a token acts as
 exactly one member, and acting for someone else is explicit, bounded and on the

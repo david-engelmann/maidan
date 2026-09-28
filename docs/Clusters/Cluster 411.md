@@ -1,6 +1,6 @@
 # Cluster 411 — grant-backed delegated authority
 
-> Post-gate hardening · target tag `v411.0.0` · umbrella issue #994
+> Post-gate hardening · target tag `v411.0.0` (never cut; ships in `v412.0.0`) · umbrella issue #994
 
 ## Contract
 

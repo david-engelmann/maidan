@@ -1,6 +1,6 @@
 # Cluster 415 retro — deploys are immutable and rolling restarts are safe
 
-> Post-gate hardening · source record (no `v415.0.0` tag yet; the tag is the maintainer's) · PRs #1021, #1022 + close record
+> Post-gate hardening · ships in `v412.0.0` · PRs #1021, #1022 + close record
 
 ## Outcome
 

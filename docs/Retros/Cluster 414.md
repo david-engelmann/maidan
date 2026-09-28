@@ -1,6 +1,6 @@
 # Cluster 414 retro — nothing grows without bound, nothing hangs forever
 
-> Post-gate hardening · source record (no `v414.0.0` tag yet; the tag is the maintainer's) · PRs #1015, #1020 + close record
+> Post-gate hardening · ships in `v412.0.0` · PRs #1015, #1020 + close record
 
 ## Outcome
 

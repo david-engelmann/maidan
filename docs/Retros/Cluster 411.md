@@ -1,6 +1,6 @@
 # Cluster 411 retro — delegated authority
 
-> Post-gate hardening · `v411.0.0` · PRs #996/#997/#999/#1000/#1001/#1002/#1003/#1004/#1005/#1006/#1007/#1008 + close record
+> Post-gate hardening · `v411.0.0` was never tagged; ships in `v412.0.0` · PRs #996/#997/#999/#1000/#1001/#1002/#1003/#1004/#1005/#1006/#1007/#1008 + close record
 
 ## Outcome
 
