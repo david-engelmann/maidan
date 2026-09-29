@@ -109,6 +109,17 @@ async fn run_suite(store: &dyn Store) {
         vec![a, b],
         "oldest first"
     );
+    // Touching an older request (here a claim on it while it waits) must not
+    // move it behind a newer one: the queue is ordered by when review began.
+    store
+        .claim_thread(a, worker)
+        .await
+        .expect("claim a while it waits");
+    assert_eq!(
+        requested(store, ws, human).await,
+        vec![a, b],
+        "still oldest review first after a is touched"
+    );
     assert!(
         requested(store, ws, bystander).await.is_empty(),
         "a member nobody named is not asked"
