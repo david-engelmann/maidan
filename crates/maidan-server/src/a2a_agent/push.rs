@@ -49,8 +49,19 @@ pub(super) fn prepare(
     if url.is_empty() {
         return Err(A2aError::invalid_params("url is required"));
     }
-    maidan_auth::validate_egress_target(&url)
+    let target = maidan_auth::validate_egress_target(&url)
         .map_err(|e| A2aError::invalid_params(e.to_string()))?;
+    // A push carries the task and the caller's notification credentials, so it
+    // goes over TLS. Plain http is only for a development receiver on this host,
+    // behind the same flag that lets egress reach a private address.
+    if !scheme_allowed(
+        target.scheme(),
+        maidan_auth::private_egress_explicitly_allowed(),
+    ) {
+        return Err(A2aError::invalid_params(
+            "push notification url must be https",
+        ));
+    }
     let seal = |secret: Option<String>| -> Result<Option<String>, A2aError> {
         let Some(secret) = secret.filter(|s| !s.is_empty()) else {
             return Ok(None);
@@ -83,6 +94,10 @@ pub(super) fn prepare(
         auth_scheme,
         auth_credentials_ciphertext: seal(credentials)?,
     })
+}
+
+fn scheme_allowed(scheme: &str, private_egress_allowed: bool) -> bool {
+    scheme == "https" || private_egress_allowed
 }
 
 /// Store a prepared config for `task_id`.
@@ -389,6 +404,14 @@ async fn deliver_a2a_push(
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)] // mock servers, not the API
 mod tests {
+
+    #[test]
+    fn a_push_url_is_https_unless_private_egress_is_on_for_development() {
+        assert!(super::scheme_allowed("https", false));
+        assert!(!super::scheme_allowed("http", false));
+        assert!(super::scheme_allowed("http", true));
+    }
+
     use super::*;
     use std::sync::{
         atomic::{AtomicU32, Ordering},

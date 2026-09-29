@@ -286,10 +286,41 @@ pub fn service(state: AppState) -> A2aServiceServer<GrpcA2a> {
 
 /// Serve the A2A gRPC binding on `addr` until the process exits. Called from
 /// `main.rs` only when `MAIDAN_A2A_GRPC_ADDR` is set.
+/// Acknowledges that the gRPC listener is plaintext on purpose, because TLS is
+/// terminated by a proxy or load balancer in front of it.
+pub const PLAINTEXT_ACK: &str = "MAIDAN_A2A_GRPC_PLAINTEXT";
+
+/// Whether a plaintext gRPC listener on `addr` may start. The binding serves
+/// bearer tokens and task content over HTTP/2 with no TLS of its own, so off
+/// the loopback interface it needs the operator to say TLS is handled in front.
+pub fn check_plaintext_bind(addr: SocketAddr, acknowledged: bool) -> Result<(), String> {
+    if addr.ip().is_loopback() || acknowledged {
+        return Ok(());
+    }
+    Err(format!(
+        "the A2A gRPC listener on {addr} is plaintext and not on loopback; terminate TLS \
+         in front of it and set {PLAINTEXT_ACK}=1, or bind it to 127.0.0.1"
+    ))
+}
+
 pub async fn serve(state: AppState, addr: SocketAddr) -> Result<(), tonic::transport::Error> {
     tonic::transport::Server::builder()
         .layer(crate::trace_context::GrpcTraceLayer)
         .add_service(service(state))
         .serve(addr)
         .await
+}
+
+#[cfg(test)]
+mod plaintext_tests {
+    use super::check_plaintext_bind;
+
+    #[test]
+    fn a_plaintext_listener_off_loopback_needs_the_acknowledgement() {
+        let public = "0.0.0.0:50051".parse().unwrap();
+        assert!(check_plaintext_bind(public, false).is_err());
+        assert!(check_plaintext_bind(public, true).is_ok());
+        assert!(check_plaintext_bind("127.0.0.1:50051".parse().unwrap(), false).is_ok());
+        assert!(check_plaintext_bind("[::1]:50051".parse().unwrap(), false).is_ok());
+    }
 }

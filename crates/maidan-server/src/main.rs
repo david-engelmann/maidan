@@ -734,20 +734,22 @@ async fn main() -> anyhow::Result<()> {
     // `0.0.0.0:50051`). Serves the tonic A2AService on a separate port; the
     // HTTP surface (REST + JSON-RPC) is unaffected.
     if let Ok(grpc_addr) = std::env::var("MAIDAN_A2A_GRPC_ADDR") {
-        match grpc_addr.parse::<std::net::SocketAddr>() {
-            Ok(addr) => {
-                let grpc_state = state.clone();
-                tokio::spawn(async move {
-                    if let Err(err) = maidan_server::a2a_grpc::serve(grpc_state, addr).await {
-                        tracing::error!(error = %err, "a2a gRPC server exited");
-                    }
-                });
-                tracing::info!(%addr, "a2a gRPC server listening");
+        // A set but unusable address is refused, not logged: the operator
+        // asked for gRPC and would otherwise get a server without it.
+        let addr: std::net::SocketAddr = grpc_addr
+            .parse()
+            .with_context(|| format!("invalid MAIDAN_A2A_GRPC_ADDR {grpc_addr:?}"))?;
+        let acknowledged =
+            std::env::var(maidan_server::a2a_grpc::PLAINTEXT_ACK).as_deref() == Ok("1");
+        maidan_server::a2a_grpc::check_plaintext_bind(addr, acknowledged)
+            .map_err(anyhow::Error::msg)?;
+        let grpc_state = state.clone();
+        tokio::spawn(async move {
+            if let Err(err) = maidan_server::a2a_grpc::serve(grpc_state, addr).await {
+                tracing::error!(error = %err, "a2a gRPC server exited");
             }
-            Err(err) => {
-                tracing::error!(error = %err, addr = %grpc_addr, "invalid MAIDAN_A2A_GRPC_ADDR")
-            }
-        }
+        });
+        tracing::info!(%addr, "a2a gRPC server listening");
     }
 
     let app = router(state.clone());

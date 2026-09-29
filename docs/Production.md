@@ -289,13 +289,15 @@ deployment:
 
 | Env | Effect |
 |-----|--------|
-| `MAIDAN_A2A_GRPC_ADDR` | Bind address for the gRPC server (e.g. `0.0.0.0:50051`). Unset ⇒ gRPC off. |
+| `MAIDAN_A2A_GRPC_ADDR` | Bind address for the gRPC server (e.g. `0.0.0.0:50051`). Unset ⇒ gRPC off. An address that does not parse refuses boot. |
+| `MAIDAN_A2A_GRPC_PLAINTEXT` | `1` acknowledges that TLS is terminated in front of the gRPC listener. Required when `MAIDAN_A2A_GRPC_ADDR` is not a loopback address; without it the server refuses to start. |
 | `MAIDAN_A2A_PUBLIC_ORIGIN` | e.g. `https://maidan.example`. Makes the card's HTTP interface URLs absolute. Unset ⇒ host-relative. |
 | `MAIDAN_A2A_GRPC_PUBLIC_ADDR` | The reachable gRPC `host:port` to advertise (distinct from the bind address, so it's correct behind a proxy/LB). Set this to add a `GRPC` interface to the card. |
 
 The gRPC listener speaks plaintext HTTP/2 and does not terminate TLS, and calls
-carry the bearer token in their metadata. Do not expose it to an untrusted
-network: put it behind a TLS-terminating ingress or proxy, and keep the hop from
+carry the bearer token in their metadata, so the server refuses to bind it off
+loopback until `MAIDAN_A2A_GRPC_PLAINTEXT=1` says TLS is handled in front. Do
+not expose it to an untrusted network: put it behind a TLS-terminating ingress or proxy, and keep the hop from
 the proxy to Maidan on a trusted private network. Expose the gRPC port in your
 deployment (Kubernetes Service / compose port) only that way; the HTTP bindings
 share the main HTTP port.

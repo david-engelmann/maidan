@@ -722,7 +722,8 @@ request is 0.3 and refused with `VersionNotSupportedError`.
   sealed with `FEDERATION_ENCRYPTION_KEY` and never return them. A push
   POSTs the task as `{"task": …}` with `Authorization` and
   `X-A2A-Notification-Token`. Listing a task's configs pages in id order
-  with `pageSize` (1–100, default 50) and `nextPageToken`. A task holds at
+  with `pageSize` (1–100, default 50) and `nextPageToken`. A push `url` must be
+  `https`: a push carries the task and your notification credentials. A task holds at
   most 10 configs; an eleventh is `-32602` until you delete one (re-sending an
   existing `id` replaces it). Your receiver has 10 s to answer each push.
 - A task you cannot read is `TaskNotFoundError`. `ListTasks` pages with
