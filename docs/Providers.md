@@ -6,7 +6,7 @@ surfaces (embeddings, object store, IdP, mail) are already traits with
 one or two implementations.
 
 This page is the operator-facing matrix. The workstream that keeps it
-honest is [Pre-Public Hardening.md](Pre-Public%20Hardening.md) section
+honest is [Pre-Public Hardening.md](archive/Pre-Public%20Hardening.md) section
 **I**. Embeddings detail: [Embeddings.md](Embeddings.md). Deploy:
 [Deploy.md](Deploy.md).
 
@@ -120,11 +120,11 @@ implies Postgres.
 
 ## See also
 
-- [Handoff.md](Handoff.md) — session pickup
+- [Handoff.md](archive/Handoff.md) — session pickup
 - [Protocols.md](Protocols.md) — wires (MCP/A2A/REST), not hosts
 - [Embeddings.md](Embeddings.md)
 - [Production.md](Production.md)
 - [Deploy.md](Deploy.md)
 - [Pi.md](Pi.md)
-- [Pre-Public Hardening.md](Pre-Public%20Hardening.md) (section I)
-- [Path to Impressive.md](Path%20to%20Impressive.md) (ecosystem / provider matrix)
+- [Pre-Public Hardening.md](archive/Pre-Public%20Hardening.md) (section I)
+- [Path to Impressive.md](archive/Path%20to%20Impressive.md) (ecosystem / provider matrix)

@@ -1,5 +1,5 @@
 > **Reconciled (Cluster 291, 2026-08-27):** David gave the go — the actionable items from
-> this pack are folded into [Open Work](Open%20Work.md), the single canonical backlog
+> this pack are folded into [Open Work](../Open%20Work.md), the single canonical backlog
 > ("Adoption & ecosystem" section). The "new-files-only / do not fold / do not splice into
 > Open Work" rules below are **superseded**; this doc now serves as the detailed spec/index
 > behind those backlog items. The four SDKs under `sdk/` have since shipped and are published

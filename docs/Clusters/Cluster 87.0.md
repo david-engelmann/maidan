@@ -20,7 +20,7 @@ Deferred from [[Clusters/Product Ladder 77+]] and [[Remaining Work]] — see Pha
 |-------|-------------|
 | **Core** | `POST` operator route to enqueue embedding reindex + job status polling. |
 | **Tests** | e2e or store parity per cluster theme |
-| **Docs** | Update [[Agent Integration]] / [[Production]] / [[Capabilities]] as needed |
+| **Docs** | Update [[Integration]] / [[Production]] / [[Capabilities]] as needed |
 
 ---
 

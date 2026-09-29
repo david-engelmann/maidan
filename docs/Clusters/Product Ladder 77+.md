@@ -50,7 +50,7 @@
 | Cluster | Theme | Tag | Exit (one line) |
 |---------|--------|-----|-----------------|
 | **77** | HTTP capability map complete | `v77.0.0` ✓ | `contracts/http-capability-map.json` + OpenAPI parity CI + `http_capability_matrix_e2e` |
-| **78** | MCP streamable bidirectional | `v78.0.0` ✓ | Multiplexed JSON-RPC over streamable session per documented 2024-11-05 subset; client example in [[Agent Integration]] |
+| **78** | MCP streamable bidirectional | `v78.0.0` ✓ | Multiplexed JSON-RPC over streamable session per documented 2024-11-05 subset; client example in [[Integration]] |
 | **79** | A2A long-running tasks | `v79.0.0` ✓ | `tasks/cancel`, progress events on `SubscribeToTask`, terminal semantics tested |
 | **80** | Delivery ops unified | `v80.0.0` ✓ | Single operator API shape to list/replay webhook + automation deliveries (tables may stay separate) |
 | **81** | Subscribe grants v3 | `v81.0.0` ✓ | WS filter schema requires explicit channel grants; private-channel deny e2e |
@@ -197,5 +197,5 @@ Agents retain **`maidan-agent-1.0`** guarantees from **`v76.0.0`**; this ladder 
 
 ## References
 
-- [[Clusters/Product Ladder 68+]], [[Retros/Cluster 76.0]], [[Agent Integration]]
+- [[Clusters/Product Ladder 68+]], [[Retros/Cluster 76.0]], [[Integration]]
 - [[Remaining Work]], [[Open Work]], [[Roadmap]], [[Production]]

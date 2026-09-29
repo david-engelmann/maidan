@@ -5,7 +5,7 @@
 ## What shipped
 
 - `contracts/ws-subscribe-filter.schema.json` + CI schema test.
-- [[Agent Integration]] EventKind forward-compat policy.
+- [[Integration]] EventKind forward-compat policy.
 - `scripts/check-mcp-resource-notifications.sh` in `check-agent-contract.sh`.
 
 ## Forward look

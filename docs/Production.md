@@ -540,7 +540,7 @@ registration fails delivery rather than being contacted.
 
 ### Agent observability (`v76.0.0`)
 
-Scrape `GET /metrics` for agent-substrate health (see [Agent Integration](Agent%20Integration.md)). Gate e2e: `agent_substrate_gate_e2e.rs`.
+Scrape `GET /metrics` for agent-substrate health (see [Integration](Integration.md)). Gate e2e: `agent_substrate_gate_e2e.rs`.
 
 | Metric / signal | Symptom | Suggested action |
 |-----------------|---------|------------------|

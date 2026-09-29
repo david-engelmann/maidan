@@ -12,7 +12,7 @@
 
 | Cluster | Theme | Tag | Exit |
 |---------|--------|-----|------|
-| **59** | Agent integration charter | `v59.0.0` | [[Agent Integration]] + contract golden files in CI |
+| **59** | Agent integration charter | `v59.0.0` | [[Integration]] + contract golden files in CI |
 
 ## Phase IX — Transport & trust
 

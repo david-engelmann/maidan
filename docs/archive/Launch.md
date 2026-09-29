@@ -9,7 +9,7 @@ Polish lives in [Pre-Public Hardening.md](Pre-Public%20Hardening.md).
 
 Snapshot: 2026-08-25 (drafted while 270–272 were in flight; they have since
 shipped — tags now run through **v273**; current state is
-[Open Work.md](Open%20Work.md)). Engineering tags are at **v273**. Product
+[Open Work.md](../Open%20Work.md)). Engineering tags are at **v273**. Product
 gates (`maidan-2.0`, `maidan-agent-1.0`, `maidan-operator-1.0`,
 `maidan-scale-1.0` at **v120**) already exist. Cargo workspace is
 `version = "0.0.0"`, `publish = false`. The "first major release" for
@@ -50,8 +50,8 @@ main, or cut from main and name the in-flight work in L4.
 
 ### Operator production (already in tree)
 
-Do not rebuild this. Point the launch at [Production.md](Production.md)
-+ [Deploy.md](Deploy.md) + [Providers.md](Providers.md):
+Do not rebuild this. Point the launch at [Production.md](../Production.md)
++ [Deploy.md](../Deploy.md) + [Providers.md](../Providers.md):
 
 - Fail-closed `AUTH_DISABLED` unless `MAIDAN_ALLOW_INSECURE_NO_AUTH` (never with `MAIDAN_ENV=production`)
 - Bootstrap feature stripped in the prod image
@@ -76,7 +76,7 @@ engineering record.
 | Docker | `ghcr.io/david-engelmann/maidan-server:<tag>` multi-arch + cosign | Point the README at this tag, not `:latest` as the story. |
 | Product gates | Already tagged at v120 | Mention in the post ("gates exist; this is the public preview of that surface"). Do not mint `maidan-public-1.0` as a fourth gate unless Evidence needs it. |
 
-**Tag process** is already in [Operations.md](Operations.md) (annotated
+**Tag process** is already in [Operations.md](../Operations.md) (annotated
 tag, push, wait for release.yml, verify cosign). Launch day is that
 process plus L3 notes plus the post. No second release machine.
 
@@ -157,10 +157,10 @@ David un-holds. Not a separate project before L1–L4.
 | Question | Doc |
 |----------|-----|
 | Can I start Slack/Git/SDK? | No, not for launch. [Expansion Bets.md](Expansion%20Bets.md) after the cut. |
-| Is the binary prod-shaped? | [Production.md](Production.md), [Threat-Model.md](Threat-Model.md) |
-| Which hosts / wires? | [Providers.md](Providers.md), [Protocols.md](Protocols.md) |
+| Is the binary prod-shaped? | [Production.md](../Production.md), [Threat-Model.md](../Threat-Model.md) |
+| Which hosts / wires? | [Providers.md](../Providers.md), [Protocols.md](../Protocols.md) |
 | Polish leftover? | [Pre-Public Hardening.md](Pre-Public%20Hardening.md) |
-| How to tag? | [Operations.md](Operations.md) |
+| How to tag? | [Operations.md](../Operations.md) |
 
 ---
 
@@ -169,5 +169,5 @@ David un-holds. Not a separate project before L1–L4.
 - [Handoff.md](Handoff.md)
 - [Pre-Public Hardening.md](Pre-Public%20Hardening.md) (definition of done)
 - [Expansion Bets.md](Expansion%20Bets.md)
-- [Operations.md](Operations.md)
+- [Operations.md](../Operations.md)
 - [Promotion.md](Promotion.md) — how to actually tell people

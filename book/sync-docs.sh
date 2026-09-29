@@ -36,7 +36,7 @@ mkdir -p "$src_docs/Gates" "$src_docs/Clusters" "$src_docs/Retros" "$src_docs/as
 # deliberately stays out of the published book. Space-named sources are staged
 # under hyphenated names (space -> hyphen).
 top_pages=(
-  "Integration" "Capability Map" "Agent Integration" "Result Delivery"
+  "Integration" "Capability Map" "Result Delivery"
   "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "FAQ" "Comparison"
   "Architecture" "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
@@ -68,22 +68,19 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
 
   # 2) links to the hyphen-renamed space-files (any `docs/` prefix, %20-encoded)
   perl -pi -e 's{Capability%20Map\.md}{Capability-Map.md}g' "$f"
-  perl -pi -e 's{Agent%20Integration\.md}{Agent-Integration.md}g' "$f"
   perl -pi -e 's{Open%20Work\.md}{Open-Work.md}g' "$f"
   perl -pi -e 's{Cluster%20A\.md}{Cluster-A.md}g' "$f"
   perl -pi -e 's{Framework%20Integrations\.md}{Framework-Integrations.md}g' "$f"
   perl -pi -e 's{Result%20Delivery\.md}{Result-Delivery.md}g' "$f"
 
   # 3) links to docs/ pages that are NOT in the published set -> GitHub
-  perl -pi -e 's{\]\((?:\.\./)?(OIDC\.md|Query-Tuning\.md|Post-1\.0\.md|Handoff-\d{4}-\d{2}-\d{2}\.md|Cluster-history\.md)\)}{]($ENV{GH}/docs/$1)}g' "$f"
-  # The strategy pack is planning material written for the maintainer. It stays
-  # in the repo and off the published site, so links to it leave the book.
-  perl -pi -e 's{\]\((?:\.\./)?(Handoff\.md|Launch\.md|Promotion\.md)\)}{]($ENV{GH}/docs/$1)}g' "$f"
-  perl -pi -e 's{\]\(Pre-Public%20Hardening\.md\)}{]($ENV{GH}/docs/Pre-Public%20Hardening.md)}g' "$f"
-  perl -pi -e 's{\]\(Path%20to%20Impressive\.md\)}{]($ENV{GH}/docs/Path%20to%20Impressive.md)}g' "$f"
-  perl -pi -e 's{\]\(Expansion%20Bets\.md\)}{]($ENV{GH}/docs/Expansion%20Bets.md)}g' "$f"
+  perl -pi -e 's{\]\((?:\.\./)?(OIDC\.md|Query-Tuning\.md|Cluster-history\.md)\)}{]($ENV{GH}/docs/$1)}g' "$f"
+  # docs/archive/ is history (old plans, handoffs, the strategy pack): it stays
+  # in the repo and off the published site, so links into it leave the book.
+  perl -pi -e 's{\]\((?:\.\./)?archive/([^)]*)\)}{]($ENV{GH}/docs/archive/$1)}g' "$f"
   perl -pi -e 's{\]\(Presence%20and%20Roster\.md\)}{]($ENV{GH}/docs/Presence%20and%20Roster.md)}g' "$f"
-  perl -pi -e 's{\]\(Remaining%20Work\.md\)}{]($ENV{GH}/docs/Remaining%20Work.md)}g' "$f"
+  perl -pi -e 's{\]\(Client%20Contract\.md\)}{]($ENV{GH}/docs/Client%20Contract.md)}g' "$f"
+  perl -pi -e 's{\]\(SDK%20Release\.md\)}{]($ENV{GH}/docs/SDK%20Release.md)}g' "$f"
   perl -pi -e 's{\]\(Clusters/Product%20Ladder%20102\+\.md\)}{]($ENV{GH}/docs/Clusters/Product%20Ladder%20102+.md)}g' "$f"
   perl -pi -e 's{\]\(Clusters/Product%20Ladder%2077\+\.md\)}{]($ENV{GH}/docs/Clusters/Product%20Ladder%2077+.md)}g' "$f"
   perl -pi -e 's{\]\(Tracks/README\.md\)}{]($ENV{GH}/docs/Tracks/README.md)}g' "$f"

@@ -4,7 +4,7 @@
 
 ## What shipped
 
-- `streamable_delete_closes_session` e2e; session lifecycle documented in [[Agent Integration]].
+- `streamable_delete_closes_session` e2e; session lifecycle documented in [[Integration]].
 - Confirms `DELETE /mcp/streamable` + follow-up opens a new session id.
 
 ## Forward look

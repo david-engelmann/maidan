@@ -116,7 +116,7 @@ See [[Clusters/Product Ladder 68+]] for the committed ladder (**71–76**). Oppo
 |------|--------|
 | Vault snapshot vs **`v76`** | Cluster **70** + ongoing retro discipline |
 | Per-cluster retros **23–27** | Historical; capabilities in [[CHANGELOG]] |
-| mdBook vs vault drift | Prefer vault + [[Agent Integration]]; mdBook follows on merge |
+| mdBook vs vault drift | Prefer vault + [[Integration]]; mdBook follows on merge |
 
 ---
 
@@ -136,4 +136,4 @@ _Both prior entries were stale (verified v126) and are corrected:_
 2. Open a cluster issue per [[Operations]].
 3. On ship: update [[Capabilities]], [[CHANGELOG]], trim via retro PR.
 
-See also: [[Open Work]], [[Roadmap]], [[Agent Integration]].
+See also: [[Open Work]], [[Roadmap]], [[Integration]].

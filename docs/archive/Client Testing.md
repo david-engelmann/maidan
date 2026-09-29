@@ -1,5 +1,5 @@
 > **Reconciled (Cluster 291, 2026-08-27):** David gave the go — the actionable items from
-> this pack are folded into [Open Work](Open%20Work.md), the single canonical backlog
+> this pack are folded into [Open Work](../Open%20Work.md), the single canonical backlog
 > ("Adoption & ecosystem" section). The "new-files-only / do not fold / do not splice into
 > Open Work" rules below are **superseded**; this doc now serves as the detailed spec/index
 > behind those backlog items. **UPDATE (2026-08-28):** the SDKs are **implemented and
@@ -14,7 +14,7 @@
 This file is the test plan for the clients **and** a way to hit
 the running server from the outside.
 
-**Companions:** [Clients.md](Clients.md), [Client Contract.md](Client%20Contract.md).
+**Companions:** [Clients.md](Clients.md), [Client Contract.md](../Client%20Contract.md).
 
 **New-files-only.** Do not splice this into Open Work, Handoff,
 README, `.github/workflows/ci.yml`, or book/SUMMARY until David

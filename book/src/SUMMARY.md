@@ -6,7 +6,6 @@
 
 - [Integrating with Maidan](docs/Integration.md)
 - [Capability map](docs/Capability-Map.md)
-- [Agent integration (alias)](docs/Agent-Integration.md)
 - [Provider matrix](docs/Providers.md)
 - [Integration protocols](docs/Protocols.md)
 - [Framework integrations](docs/Framework-Integrations.md)

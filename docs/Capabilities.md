@@ -2780,7 +2780,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 | Capability | Where |
 |------------|-------|
 | WS filter schema | `contracts/ws-subscribe-filter.schema.json` |
-| EventKind forward-compat | [[Agent Integration]] |
+| EventKind forward-compat | [[Integration]] |
 
 ## [v70.0.0](https://github.com/david-engelmann/maidan/releases/tag/v70.0.0) — Vault truth pass
 
@@ -2788,7 +2788,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 |------------|-------|
 | Architecture snapshot `v69` | [[Architecture]] |
 | Reconciled backlog docs | [[Remaining Work]], [[Open Work]] |
-| Agent integration README pitch | Root `README.md`, [[Agent Integration]] |
+| Agent integration README pitch | Root `README.md`, [[Integration]] |
 
 ## [v69.0.0](https://github.com/david-engelmann/maidan/releases/tag/v69.0.0) — Capabilities matrix complete
 
@@ -2841,7 +2841,7 @@ _Closes Product Ladder 102+ (gate **`maidan-scale-1.0`** at **`v120.0.0`**)._
 
 | Capability | Where |
 |------------|-------|
-| Agent integration guide | [[Agent Integration]] |
+| Agent integration guide | [[Integration]] |
 | Event/tool contract CI | `scripts/check-agent-contract.sh` |
 
 ## Maidan 2.0 product gate (`maidan-2.0`)

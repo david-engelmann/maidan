@@ -17,13 +17,13 @@ Language clients for Maidan. The **server** crate is unpublished
 **Live here.** Independent SemVer from the server. A `vX.0.0`
 server tag does not publish these — publish only on an explicit
 `sdk-*` tag (`.github/workflows/sdk-release.yml`). Details in
-[docs/Clients.md](../docs/Clients.md) §2.
+[docs/Clients.md](../docs/archive/Clients.md) §2.
 
 Implement from:
 
-- [docs/Clients.md](../docs/Clients.md) — doors, work order, repo
+- [docs/Clients.md](../docs/archive/Clients.md) — doors, work order, repo
 - [docs/Client Contract.md](../docs/Client%20Contract.md) — method map
-- [docs/Client Testing.md](../docs/Client%20Testing.md) — scenarios
+- [docs/Client Testing.md](../docs/archive/Client%20Testing.md) — scenarios
 
 The SDK is REST + WebSocket. MCP is the LangChain / AutoGen /
 Cursor door (`client.mcp_url` is a string, not a dependency).

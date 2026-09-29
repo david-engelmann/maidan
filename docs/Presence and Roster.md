@@ -53,5 +53,5 @@ members on other replicas, refreshed by a heartbeat.
 
 ## Related
 
-- [[Agent Integration]] — HTTP capability map
+- [[Integration]] — HTTP capability map
 - [[Clusters/Cluster 99.0]] — cluster exit criteria

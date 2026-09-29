@@ -11,7 +11,7 @@ work on **270–272** is the Claude agent's ladder (269 shipped v269.0.0) — do
 This doc is reputation: cleanup, evidence, presentation. Polish, not
 features. Expansion lives in [Expansion Bets.md](Expansion%20Bets.md).
 
-**Non-goals:** product gaps in [Open Work.md](Open%20Work.md) /
+**Non-goals:** product gaps in [Open Work.md](../Open%20Work.md) /
 [Remaining Work.md](Remaining%20Work.md) (DAG follow-ups, Slack UX
 polish). Clusters **265–266** (read-replica) are **SHIPPED**. Federation
 egress (`content → parts`) is **SHIPPED** at v267. Do not list those as
@@ -97,7 +97,7 @@ not stub code. Details and slices: section **K**.
 - **Lie:** `mail.rs` module docs still say "Not wired into the notification
   router yet." Router `notify` spawns `deliver_notification_email` (249),
   with presence skip (253) and digest mode (255). **A6 / K1.**
-- **Lie:** [Open Work.md](Open%20Work.md) baseline `v143` and still lists
+- **Lie:** [Open Work.md](../Open%20Work.md) baseline `v143` and still lists
   generic-thread DM as "**next: Cluster 180**". Code has
   `ensure_thread_access` / `ensure_dm_participant` on `GET /threads/:id`.
   **K2 / E5.**
@@ -269,7 +269,7 @@ A5, `mail.rs` module docs) **can** land in parallel with that sweep.
   Replace `[[...]]` with relative Markdown links in anything linked from
   mdBook SUMMARY Integrate/Reference (and Architecture/Decisions if
   published). Leave Clusters/Retros alone if they stay vault-only.
-  Confirmed 2026-08-25: **Production.md** still has `[[Agent Integration]]`
+  Confirmed 2026-08-25: **Production.md** still has `[[Integration]]`
   and `[[Production#…]]`. Integration.md only *mentions* wikilinks.
   Open Work / Remaining Work are vault-archive (A3) unless you publish them.
 - [ ] **A5. Tone pass on CONTRIBUTING + SECURITY**
@@ -339,7 +339,7 @@ Do **not** interleave with 269–272 import/search PRs.
   Until J3: README + Integration say **today `2024-11-05`, 2026-07-28 upgrade is required**.
   After J3: they say **`2026-07-28`**. Never imply 2026 Streamable HTTP while
   `SUPPORTED_PROTOCOL_VERSIONS` is 2024-only. Pack/deeplinks wait on J3.
-  Full track: [Protocols.md](Protocols.md) § Required protocol upgrades.
+  Full track: [Protocols.md](../Protocols.md) § Required protocol upgrades.
 
 ### D. Testing, CI, and runnable evidence (**P0** for claims you will publish)
 
@@ -564,7 +564,7 @@ transports.
 **MCP `2024-11-05`-only is not acceptable.** Current spec is `2026-07-28`
 (stateless Streamable HTTP, `Mcp-Method`/`Mcp-Name`). J3 is a required
 upgrade cluster, not a freeze-on-2024 decision. J2 is only so we do not
-lie *until* J3 lands. See [Protocols.md](Protocols.md) § Required protocol
+lie *until* J3 lands. See [Protocols.md](../Protocols.md) § Required protocol
 upgrades.
 
 **What is already on the wire (code, 2026-08-25):**
@@ -579,7 +579,7 @@ upgrades.
 | Webhooks / slash / FSM hooks | HTTP callbacks | The n8n/Zapier path. |
 | OIDC + app OAuth + Prometheus | humans / apps / scrape | Agents stay on capability bearers. Not MCP resource-server OAuth yet. |
 
-Operator page: [Protocols.md](Protocols.md). Do not duplicate Slack projector
+Operator page: [Protocols.md](../Protocols.md). Do not duplicate Slack projector
 (Bet 1), MCP `examples/` pack (Bet 2), or the TS SDK (Bet 3) here.
 
 **Slices:**
@@ -706,15 +706,15 @@ rg -n '\[\[|\]\]' docs --glob '!Clusters/**' --glob '!Retros/**' | head
 
 ## See also
 
-- [Open Work.md](Open%20Work.md) — product/risk backlog (not this doc)
+- [Open Work.md](../Open%20Work.md) — product/risk backlog (not this doc)
 - [Remaining Work.md](Remaining%20Work.md) — Slack parity / exhaustive matrix
 - [Expansion Bets.md](Expansion%20Bets.md) — feature expansion after 270–272 (not this doc)
 - [Path to Impressive.md](Path%20to%20Impressive.md) — strategy companion
 - [Handoff.md](Handoff.md) — session pickup / master ID list
 - [Launch.md](Launch.md) — when to announce; extras L1–L6 on top of this DoD
-- [Providers.md](Providers.md) — host matrix (Hardening I)
-- [Protocols.md](Protocols.md) — wire matrix (Hardening J)
-- [Operations.md](Operations.md) — PR/CI/release mechanics
-- [Threat-Model.md](Threat-Model.md) — security assets
+- [Providers.md](../Providers.md) — host matrix (Hardening I)
+- [Protocols.md](../Protocols.md) — wire matrix (Hardening J)
+- [Operations.md](../Operations.md) — PR/CI/release mechanics
+- [Threat-Model.md](../Threat-Model.md) — security assets
 - `AGENTS.md` — integrator entry (keep thin)
 - `CLAUDE.md` — in-repo agent operating manual

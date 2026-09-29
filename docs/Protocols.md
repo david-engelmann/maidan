@@ -203,9 +203,9 @@ If two of those apply, use two transports. That is the design (README: "one surf
 - [Integration.md](Integration.md) — start here to actually connect
 - [Providers.md](Providers.md) — hosts, not wires
 - [Capability Map.md](Capability%20Map.md) — the same ACL on every transport
-- [Pre-Public Hardening.md](Pre-Public%20Hardening.md) — section J
-- [Expansion Bets.md](Expansion%20Bets.md) — MCP pack, SDK, Slack
-- [Path to Impressive.md](Path%20to%20Impressive.md)
+- [Pre-Public Hardening.md](archive/Pre-Public%20Hardening.md) — section J
+- [Expansion Bets.md](archive/Expansion%20Bets.md) — MCP pack, SDK, Slack
+- [Path to Impressive.md](archive/Path%20to%20Impressive.md)
 - MCP spec `2026-07-28`: https://blog.modelcontextprotocol.io/posts/2026-07-28/
 - A2A spec: https://a2a-protocol.org/v1.0.0/specification
 - Agent Client Protocol (Zed): https://agentclientprotocol.com/

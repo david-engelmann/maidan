@@ -2,6 +2,6 @@
 
 **Theme:** Documented `EventKind` forward-compat policy; MCP resource-notification parity checklist in CI; WS filter JSON Schema published.
 
-See [[Clusters/Product Ladder 68+]] Phase XII and [[Agent Integration]].
+See [[Clusters/Product Ladder 68+]] Phase XII and [[Integration]].
 
 **Target tag:** `v71.0.0`.

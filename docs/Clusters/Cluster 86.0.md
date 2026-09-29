@@ -20,7 +20,7 @@ Deferred from [[Clusters/Product Ladder 77+]] and [[Remaining Work]] — see Pha
 |-------|-------------|
 | **Core** | Schema split by `embedding_model`; queries filter by model at index time. |
 | **Tests** | e2e or store parity per cluster theme |
-| **Docs** | Update [[Agent Integration]] / [[Production]] / [[Capabilities]] as needed |
+| **Docs** | Update [[Integration]] / [[Production]] / [[Capabilities]] as needed |
 
 ---
 
