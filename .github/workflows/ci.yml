@@ -182,6 +182,28 @@ jobs:
       - name: a2a tck
         run: scripts/a2a-tck.sh
 
+  loom:
+    name: loom
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Model-checks every interleaving of the sharded bus and the presence hub
+    # (the `loom` feature swaps in loom's locks). Not a required check
+    # (docs/Decisions.md).
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: loom
+      - name: bus models
+        run: cargo test -p maidan-bus --features loom --release --lib loom
+      - name: presence models
+        run: cargo test -p maidan-server --features loom --release --lib loom
+
   mcp-inspector:
     name: mcp inspector (report-only)
     needs: changes

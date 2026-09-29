@@ -1283,8 +1283,8 @@ and consider making the job required.
 
 **Decision.** `maidan-bus` and `maidan-server` have a `loom` feature that,
 in the crate's own test build, swaps its locks for loom's and compiles only
-the loom models; every other build keeps std's locks. They run in
-release mode, locally for now; a non-required `loom` CI job is planned. The models cover the
+the loom models; every other build keeps std's locks. The
+non-required `loom` CI job runs them in release mode. The models cover the
 sharded bus (subscribe/publish/prune) and the presence hub (reconnects,
 racing status changes, a sweep racing a heartbeat).
 
