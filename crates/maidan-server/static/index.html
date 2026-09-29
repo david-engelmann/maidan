@@ -3448,7 +3448,11 @@
         } else {
           frame.after_id = wsAfterId;
         }
-        if (sessionMemberId) frame.member_id = sessionMemberId;
+        // Presence and typing go to the member the socket authenticates as:
+        // the bearer's member when a token is set, else the session's. That is
+        // also who the header calls "you".
+        const presenceId = authorId();
+        if (presenceId) frame.member_id = presenceId;
 
         setWsStatus("connecting…");
         wsSocket = new WebSocket(wsUrl());

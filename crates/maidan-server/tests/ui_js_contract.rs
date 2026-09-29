@@ -629,3 +629,17 @@ fn ui_js_loads_every_page_of_a_channel_and_only_the_newest_load_paints() {
         "the board follows the keyset cursor until a short page instead of stopping at one page"
     );
 }
+
+#[test]
+fn ui_js_socket_presence_uses_the_member_it_authenticates_as() {
+    let s = script(HTML);
+    assert!(
+        s.contains("const presenceId = authorId();")
+            && s.contains("if (presenceId) frame.member_id = presenceId;"),
+        "presence goes to the bearer's member when a token is set, matching who the socket authenticates as"
+    );
+    assert!(
+        !s.contains("if (sessionMemberId) frame.member_id = sessionMemberId;"),
+        "the session member is not sent alongside another member's token"
+    );
+}
