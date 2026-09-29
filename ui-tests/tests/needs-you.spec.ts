@@ -3,6 +3,18 @@ import { fixtures } from "./_fixtures";
 
 const fx = fixtures();
 
+// These tests approve and close seeded tasks on the shared server, so a retry
+// would find its row already gone and fail for the wrong reason. A failure
+// here fails once, with its real cause.
+test.describe.configure({ retries: 0 });
+
+async function reloadQueue(page: Page) {
+  const done = page.waitForResponse((r) => r.url().includes("/waiting"));
+  await page.evaluate(() => (window as unknown as { loadNeedsYou: () => Promise<void> }).loadNeedsYou());
+  await done;
+  await page.waitForTimeout(100);
+}
+
 async function signIn(page: Page, token: string) {
   await page.goto("/ui/");
   await page.fill("#workspace", fx.workspace_id);
@@ -56,6 +68,9 @@ test("approving from needs you meets the review, and close finishes the task", a
   const approve = row(page, fx.desk_approve_thread_id);
   await approve.getByRole("button", { name: "Approve" }).click();
   await expect(approve.locator(".done-note")).toHaveText("Approved ✓ 1/1");
+  // A live update reloads the queue; the approved row keeps its Close task.
+  await reloadQueue(page);
+  await expect(approve.getByRole("button", { name: "Close task" })).toBeVisible();
   await approve.getByRole("button", { name: "Close task" }).click();
   await expect(approve).toHaveCount(0);
   expect(await threadState(page, fx.desk_approve_thread_id)).toBe("closed");
@@ -71,6 +86,9 @@ test("request changes sends the task back with a note", async ({ page }) => {
   const back = row(page, fx.desk_send_back_thread_id);
   await back.getByRole("button", { name: "Request changes" }).click();
   await back.locator(".ny-note input").fill("Make the limit configurable per workspace.");
+  // A reload while the note is being written keeps what was typed.
+  await reloadQueue(page);
+  await expect(back.locator(".ny-note input")).toHaveValue("Make the limit configurable per workspace.");
   await back.getByRole("button", { name: "Send back" }).click();
   await expect(back).toHaveCount(0);
   expect(await threadState(page, fx.desk_send_back_thread_id)).toBe("open");

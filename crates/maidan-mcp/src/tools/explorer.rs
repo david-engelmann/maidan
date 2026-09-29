@@ -378,8 +378,8 @@ mod tests {
             .await
             .unwrap_err();
         // Pre-dispatch `ensure_message_access` maps a missing row through
-        // `AuthError::Store` → `McpError::Internal` (REST maps the same store
-        // error to 404). Either way the pointers are not returned.
+        // `AuthError::Store` → `McpError::NotFound`, as REST maps the same
+        // store error to 404. The pointers are not returned.
         assert!(gone.to_string().contains("not found"), "{gone}");
 
         let census = content(

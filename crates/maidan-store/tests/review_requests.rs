@@ -6,8 +6,8 @@
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ReviewDecision, ThreadId,
-    WorkspaceId,
+    MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ReviewDecision, Thread,
+    ThreadId, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -73,14 +73,11 @@ async fn handed_to_review(store: &dyn Store, ws: WorkspaceId, worker: MemberId) 
     thread.id
 }
 
-async fn requested(store: &dyn Store, ws: WorkspaceId, m: MemberId) -> Vec<ThreadId> {
+async fn requested(store: &dyn Store, ws: WorkspaceId, m: MemberId) -> Vec<Thread> {
     store
         .list_review_requests(ws, m)
         .await
         .expect("review requests")
-        .into_iter()
-        .map(|t| t.id)
-        .collect()
 }
 
 async fn run_suite(store: &dyn Store) {
@@ -105,7 +102,11 @@ async fn run_suite(store: &dyn Store) {
     store.add_reviewer(b, human).await.expect("name human on b");
 
     assert_eq!(
-        requested(store, ws, human).await,
+        requested(store, ws, human)
+            .await
+            .iter()
+            .map(|t| t.id)
+            .collect::<Vec<_>>(),
         vec![a, b],
         "oldest first"
     );
@@ -115,10 +116,21 @@ async fn run_suite(store: &dyn Store) {
         .claim_thread(a, worker)
         .await
         .expect("claim a while it waits");
+    let after_touch = requested(store, ws, human).await;
     assert_eq!(
-        requested(store, ws, human).await,
+        after_touch.iter().map(|t| t.id).collect::<Vec<_>>(),
         vec![a, b],
         "still oldest review first after a is touched"
+    );
+    // The same moment ages the request: a touch bumps the row, but the inbox
+    // reads when review began.
+    let touched = after_touch.iter().find(|t| t.id == a).expect("a");
+    let row = store.get_thread(a).await.expect("row");
+    assert!(
+        touched.updated_at < row.updated_at,
+        "the request ages from review entry ({}), not the touched row ({})",
+        touched.updated_at,
+        row.updated_at
     );
     assert!(
         requested(store, ws, bystander).await.is_empty(),
@@ -134,7 +146,11 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("approve a");
     assert_eq!(
-        requested(store, ws, human).await,
+        requested(store, ws, human)
+            .await
+            .iter()
+            .map(|t| t.id)
+            .collect::<Vec<_>>(),
         vec![b],
         "an approved review is no longer waiting"
     );
@@ -161,7 +177,7 @@ async fn run_suite(store: &dyn Store) {
         .submit_review(d, human, ReviewDecision::Approve, None)
         .await
         .expect("human approves d");
-    assert!(!requested(store, ws, human).await.contains(&d));
+    assert!(!requested(store, ws, human).await.iter().any(|t| t.id == d));
     store
         .submit_review(d, bystander, ReviewDecision::RequestChanges, Some("rework"))
         .await
@@ -172,7 +188,11 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("back to review");
     assert_eq!(
-        requested(store, ws, human).await,
+        requested(store, ws, human)
+            .await
+            .iter()
+            .map(|t| t.id)
+            .collect::<Vec<_>>(),
         vec![d],
         "a dismissed approval does not count: the human is asked again"
     );
@@ -187,7 +207,14 @@ async fn run_suite(store: &dyn Store) {
 
     let c = handed_to_review(store, ws, worker).await;
     store.add_reviewer(c, human).await.expect("name human on c");
-    assert_eq!(requested(store, ws, human).await, vec![c]);
+    assert_eq!(
+        requested(store, ws, human)
+            .await
+            .iter()
+            .map(|t| t.id)
+            .collect::<Vec<_>>(),
+        vec![c]
+    );
     store
         .transition_thread(c, human, ThreadAction::Close)
         .await

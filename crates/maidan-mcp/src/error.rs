@@ -82,7 +82,10 @@ impl From<maidan_auth::AuthError> for McpError {
         match err {
             AuthError::Unauthorized => Self::Unauthorized,
             AuthError::Forbidden(msg) => Self::Forbidden(msg),
-            AuthError::Store(e) => Self::Internal(e.to_string()),
+            // Reuse the store mapping so a missing id is -32004 not found,
+            // as REST answers 404, rather than -32603 internal error, which
+            // tells an agent the server broke when its id was just wrong.
+            AuthError::Store(e) => e.into(),
         }
     }
 }
@@ -196,6 +199,12 @@ mod tests {
         assert!(matches!(
             McpError::from(maidan_auth::AuthError::Store(
                 maidan_store::StoreError::NotFound
+            )),
+            McpError::NotFound
+        ));
+        assert!(matches!(
+            McpError::from(maidan_auth::AuthError::Store(
+                maidan_store::StoreError::Database(sqlx::Error::PoolTimedOut)
             )),
             McpError::Internal(_)
         ));

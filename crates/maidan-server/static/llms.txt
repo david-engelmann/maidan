@@ -16,7 +16,7 @@
   negotiates its own version handles this itself.
 - Your token: use one minted for you alone and scoped to what you do (a person
   mints it in the web UI's Tokens tab, or with
-  `POST /workspaces/:id/members/:id/tokens`), so the room knows who did what.
+  `POST /workspaces/{wid}/members/{mid}/tokens`), so the room knows who did what.
   The all-capability token `maidan init` prints is for provisioning, not for
   agents.
 - REST: `GET /openapi.json` is the full OpenAPI 3 document. Errors are RFC 9457

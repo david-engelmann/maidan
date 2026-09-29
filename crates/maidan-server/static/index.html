@@ -10,7 +10,7 @@
         --bg: #f7f5f0;
         --panel: #fff;
         --border: #d6d3cc;
-        --muted: #71717a;
+        --muted: #63636c; /* 5.1:1 on the soft green selection, 5.4:1 on the page */
         --accent: #14532d;
         --brand-fern: #4ade80;
         --brand-ochre: #b45309;
@@ -126,7 +126,8 @@
       .skip-link:focus { left: 0; }
       /* Visible keyboard focus on everything interactive (WCAG 2.4.7). */
       a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
-      textarea:focus-visible, [role="tab"]:focus-visible, [role="tabpanel"]:focus-visible {
+      textarea:focus-visible, [role="tab"]:focus-visible, [role="tabpanel"]:focus-visible,
+      [role="button"]:focus-visible, [role="link"]:focus-visible, #channel-list li:focus-visible, #thread-list li:focus-visible {
         outline: 3px solid var(--accent); outline-offset: 2px;
       }
       .panel { display: none; }
@@ -386,7 +387,7 @@
         display: inline-flex; align-items: center; justify-content: center; flex: none;
         width: 1.35rem; height: 1.35rem; border-radius: 50%; color: #fff;
         font-size: 0.62rem; font-weight: 700; letter-spacing: 0.02em;
-        background: hsl(var(--hue, 150) 45% 42%);
+        background: hsl(var(--hue, 150) 45% 32%); /* white initials stay at 4.5:1 or better on every hue */
       }
       .avatar.human { border-radius: 50%; }
       .avatar.agent { border-radius: 0.35rem; }
@@ -476,7 +477,7 @@
       .mate-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
       .mate-text b { font-weight: 650; color: var(--ink); font-size: 0.78rem; }
       .mate-text small { color: var(--muted); font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .mate[data-state="idle"] { opacity: 0.7; }
+      .mate[data-state="idle"] { background: var(--soft); box-shadow: none; }
       .chrome-running::before { content: ""; display: inline-block; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: #16a34a; margin-right: 0.3rem; vertical-align: 0.05rem; animation: pip 1.6s ease-out infinite; }
       @media (prefers-reduced-motion: reduce) {
         .mate[data-state="running"] .pip, .chrome-running::before { animation: none; }
@@ -512,11 +513,36 @@
       .onboard p { margin: 0 0 0.8rem; color: var(--muted); font-size: 0.85rem; max-width: 42rem; }
       .onboard ol { margin: 0 0 1rem; padding-left: 1.2rem; font-size: 0.85rem; color: var(--ink); display: grid; gap: 0.3rem; }
       .onboard code { font-size: 0.78rem; }
+      .onboard.board-loading h3 { color: var(--muted); font-weight: 600; }
+      .onboard.board-error { border-style: solid; border-color: #fecaca; background: #fef2f2; }
+      .onboard.board-error h3 { color: var(--err); }
+      .onboard.board-error p { color: var(--ink); }
+      #board-summary .board-note { color: var(--err); }
       .onboard .row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
       #tools { background: var(--soft); }
       #tools > summary { color: var(--muted); }
       .tabs button { box-shadow: none; font-size: 0.82rem; }
       .tabs button[aria-selected="true"] { background: #e6efe8; color: var(--accent); }
+      /* Phones: one column. Channels become a short scrolling strip above the
+         board, lanes stack, and a Needs you row puts its buttons under the text. */
+      @media (max-width: 720px) {
+        header { flex-wrap: wrap; gap: 0.4rem 0.6rem; }
+        #conn-fields { width: 100%; }
+        #shell { grid-template-columns: minmax(0, 1fr); }
+        aside { max-height: 11rem; border-bottom: 1px solid var(--line); }
+        aside #thread-list, aside #thread-list + .inline-form, aside #threads-head, aside .legend-box { display: none; }
+        #board { grid-template-columns: minmax(0, 1fr); }
+        #needs-you { margin: 0.6rem 0.6rem 0; }
+        .ny-item { grid-template-columns: auto minmax(0, 1fr); }
+        .ny-actions { grid-column: 1 / -1; justify-content: flex-start; }
+        .ny-note, .ny-err { grid-column: 1 / -1; }
+        #live-toolbar { flex-wrap: wrap; }
+        #live-panel .live-hint { display: none; }
+        .mate { max-width: 100%; }
+        #needs-you-title { white-space: nowrap; }
+        .ny-head { flex-wrap: wrap; }
+        #live-toolbar .ghost { padding-inline: 0.45rem; }
+      }
     </style>
   </head>
   <body data-ui-version="8">
@@ -594,7 +620,7 @@
           <input id="new-channel-name" placeholder="New channel" />
           <button id="create-channel" type="button" title="Requires bearer token">+</button>
         </div>
-        <div class="side-head"><h2>Threads</h2></div>
+        <div class="side-head" id="threads-head"><h2>Threads</h2></div>
         <ul id="thread-list"><li class="muted">Select a channel</li></ul>
         <div class="inline-form">
           <input id="new-thread-title" placeholder="New thread title" />
@@ -1245,6 +1271,9 @@
       function humanError(status, detail) {
         const needs = /(?:capability|needs?|requires?)[^a-z]*([a-z]+:[a-z_]+)/i.exec(detail || "");
         if (status === 401) return "Your token or session was not accepted. Use Change to set a working one";
+        // Minting itself needs token:admin, so pointing at Tokens would loop.
+        if (status === 403 && needs && needs[1] === "token:admin")
+          return "Your token is not allowed to do this; it needs token:admin. Ask a workspace admin for a token (maidan init prints the first admin token)";
         if (status === 403)
           return needs
             ? `Your token is not allowed to do this; it needs ${needs[1]}. Mint a token with it in Tokens`
@@ -1255,6 +1284,19 @@
         if (status === 429) return "Too many requests. Wait a moment, then try again";
         if (status >= 500) return "The server hit an error. Try again; if it keeps failing, check the server log";
         return "The request was not accepted";
+      }
+      // A list row that acts on click is also a button for the keyboard: it
+      // takes focus, and Enter or Space runs its onclick.
+      function keyActivates(el, role = "button") {
+        el.tabIndex = 0;
+        // A list row keeps its listitem role (lists must hold list items);
+        // anything else announces what it does.
+        if (el.tagName !== "LI") el.setAttribute("role", role);
+        el.addEventListener("keydown", (e) => {
+          if (e.target !== el || (e.key !== "Enter" && e.key !== " ")) return;
+          e.preventDefault();
+          el.click();
+        });
       }
       function setOut(obj) {
         document.getElementById("out").textContent =
@@ -1408,6 +1450,7 @@
       }
 
       let threadLoadGen = 0;
+      let boardShownFor = null;
       async function loadThreads(quiet = false) {
         const list = document.getElementById("thread-list");
         // Only the newest load paints: a slow reply for channel A never paints
@@ -1420,36 +1463,47 @@
           renderState(list, "Select a channel to see its threads.");
           return;
         }
+        // A board already showing this channel keeps its cards while it
+        // reloads (so they can glide); a newly picked one says it is loading.
+        const replacing = boardShownFor !== channelId;
         if (!quiet) setLoading(list, "Loading threads…");
+        if (replacing) boardState("loading");
         persist();
+        const fail = (message) => {
+          if (stale()) return;
+          renderState(list, message, "err");
+          if (replacing) boardState("error", message);
+          else boardNote(`Last refresh failed: ${message}`);
+        };
         try {
           // The endpoint pages by thread id; keep asking until a short page, so
           // a channel with more threads than one page still gets every card.
           const threads = [];
           const pageSize = 500;
           let cursor = null;
-          for (let page = 0; page < 40; page++) {
+          // No page cap: a large channel gets every card. A cursor that does
+          // not advance would loop forever, so that stops the walk instead.
+          for (;;) {
             const q = new URLSearchParams({ limit: String(pageSize) });
             if (cursor) q.set("cursor", cursor);
             const res = await fetch(
               uiReadPath(`/channels/${channelId}/threads?${q}`),
               { headers: headers(), credentials: "include" }
             );
-            if (!res.ok) {
-              const message = await responseError(res);
-              if (!stale()) renderState(list, message, "err");
-              return;
-            }
+            if (!res.ok) return fail(await responseError(res, `Could not load #${selectedChannelName || "this channel"}`));
             const batch = await res.json();
             if (stale()) return;
             threads.push(...batch);
             if (batch.length < pageSize) break;
-            cursor = batch[batch.length - 1].id;
+            const next = batch[batch.length - 1].id;
+            if (next === cursor) break;
+            cursor = next;
           }
           const gates = await fetchPendingGatesByThread();
           if (stale()) return;
           list.innerHTML = "";
           renderBoard(threads, gates);
+          boardShownFor = channelId;
           loadNeedsYou();
           if (!threads.length) {
             renderState(list, "No threads in this channel. Create one above to start work.");
@@ -1479,13 +1533,64 @@
             }
             if (th.id === selectedThreadId) li.classList.add("selected");
             li.onclick = () => selectThread(th.id, title);
+            keyActivates(li);
             list.appendChild(li);
           });
         } catch (e) {
-          if (!stale()) renderState(list, String(e), "err");
+          fail(unreachable(e));
         } finally {
           if (!stale()) clearLoading(list);
         }
+      }
+      // A fetch that threw never reached the server (or the reply was not
+      // JSON); say that in words, with the one thing to check.
+      function unreachable(e) {
+        return e instanceof SyntaxError
+          ? `The server at ${base()} answered with something that is not JSON. Check that API base points at a Maidan server.`
+          : `Could not reach the server at ${base()}. Check that it is running and that API base is right.`;
+      }
+      // Loading and error states for the board itself, so a picked channel never
+      // shows the sign-in help while its tasks load or fail to.
+      function boardState(kind, message) {
+        boardShownFor = null;
+        const board = document.getElementById("board");
+        const name = selectedChannelName ? `#${selectedChannelName}` : "this channel";
+        document.getElementById("board-title").textContent = selectedChannelName ? `# ${selectedChannelName}` : "Board";
+        document.getElementById("board-summary").textContent = "";
+        const box = document.createElement("div");
+        box.className = `onboard board-${kind}`;
+        box.id = "board-onboard";
+        const h = document.createElement("h3");
+        if (kind === "loading") {
+          box.setAttribute("aria-busy", "true");
+          h.textContent = `Loading ${name}…`;
+          box.append(h);
+          board.setAttribute("aria-busy", "true");
+        } else {
+          box.setAttribute("role", "alert");
+          h.textContent = `Could not load ${name}`;
+          const p = document.createElement("p");
+          p.textContent = message;
+          const row = document.createElement("div");
+          row.className = "row";
+          const retry = document.createElement("button");
+          retry.type = "button";
+          retry.className = "primary";
+          retry.textContent = "Try again";
+          retry.onclick = () => loadThreads();
+          row.append(retry);
+          box.append(h, p, row);
+          board.removeAttribute("aria-busy");
+        }
+        board.replaceChildren(box);
+      }
+      function boardNote(text) {
+        const summary = document.getElementById("board-summary");
+        const note = document.createElement("span");
+        note.className = "board-note";
+        note.textContent = text;
+        summary.querySelector(".board-note")?.remove();
+        summary.appendChild(note);
       }
 
       // Pending approval gates for the current workspace, keyed by thread id, so
@@ -1568,6 +1673,7 @@
           ? `# ${selectedChannelName}`
           : "Board";
         const before = boardRects();
+        board.removeAttribute("aria-busy");
         board.replaceChildren();
         const cols = {};
         BOARD_COLUMNS.forEach((c) => {
@@ -1734,9 +1840,18 @@
       // reconnect replays only what it missed, so arrival time is close to
       // when an event happened.
       const ACTOR_KEYS = ["actor_id", "author_id", "assignee_id", "member_id", "produced_by", "reviewer_id", "requested_by", "resolved_by", "editor_id", "updated_by"];
+      // Some kinds name a subject, not an actor: a lapsed or failed claim names
+      // the holder that went quiet, and a reassignment names who received the
+      // work. Those members did not act, so they do not light up.
+      const SUBJECT_KEYS = {
+        claim_expired: ["member_id", "assignee_id"],
+        claim_failed: ["member_id", "assignee_id"],
+        thread_assignment_changed: ["assignee_id", "member_id"],
+      };
       function markSeenFromFrame(v) {
         if (!v) return;
-        for (const k of ACTOR_KEYS) if (typeof v[k] === "string") markSeen(v[k]);
+        const skip = SUBJECT_KEYS[v.kind] || [];
+        for (const k of ACTOR_KEYS) if (!skip.includes(k) && typeof v[k] === "string") markSeen(v[k]);
         if (v.message && typeof v.message.author_id === "string") markSeen(v.message.author_id);
         if (v.attribution && typeof v.attribution.actor_id === "string") markSeen(v.attribution.actor_id);
       }
@@ -1890,6 +2005,7 @@
             a.href = v;
             a.target = "_blank";
             a.rel = "noopener noreferrer";
+            a.title = v;
             a.textContent = v.replace(/^https?:\/\//, "").slice(0, 48);
             vs.appendChild(a);
           } else if (v !== null && typeof v === "object") {
@@ -1952,7 +2068,12 @@
             credentials: "include",
           });
           if (!res.ok) {
+            // A refused token has nothing waiting that it may see: clear the
+            // queue and the count in the tab title, unless a newer load won.
+            if (gen !== needsYouGen) return;
             box.hidden = true;
+            needsYou = [];
+            setAttention(0);
             return;
           }
           items = (await res.json()).items.filter((i) => NY_KINDS.has(i.kind));
@@ -1975,6 +2096,17 @@
         const count = document.getElementById("needs-you-count");
         const hint = document.getElementById("needs-you-hint");
         box.hidden = false;
+        // A row the human is using (typing a change note, or approved and
+        // about to close) survives a reload, even if its request has left the
+        // inbox: rebuilding it would drop the note or the Close task button.
+        const keep = new Map();
+        for (const li of list.children) {
+          const note = li.querySelector(".ny-note input");
+          const inUse = li.classList.contains("in-use") || li.contains(document.activeElement) || (note && note.value.trim());
+          if (!li.classList.contains("leaving") && inUse) {
+            keep.set(li.dataset.key, li);
+          }
+        }
         list.replaceChildren();
         const n = needsYou.length;
         count.textContent = n ? String(n) : "";
@@ -1983,12 +2115,22 @@
           ? `${n === 1 ? "An agent is" : "Agents are"} waiting on your decision.`
           : "Nothing is waiting on you. Reviews and approvals agents ask you for show up here.";
         setAttention(n);
-        needsYou.forEach((item) => list.appendChild(needsYouRow(item)));
+        needsYou.forEach((item) => {
+          const k = nyKey(item);
+          list.appendChild(keep.get(k) || needsYouRow(item));
+          keep.delete(k);
+        });
+        keep.forEach((li) => list.appendChild(li));
+        if (keep.size) box.classList.remove("clear");
         renderTeam([...threadsById.values()]);
+      }
+      function nyKey(item) {
+        return `${item.kind}:${item.thread_id || ""}:${item.gate_id || ""}`;
       }
       function needsYouRow(item) {
         const li = document.createElement("li");
         li.className = "ny-item";
+        li.dataset.key = nyKey(item);
         li.dataset.kind = item.kind;
         if (item.thread_id) li.dataset.threadId = item.thread_id;
         const kind = document.createElement("span");
@@ -1999,8 +2141,14 @@
         const title = document.createElement("div");
         title.className = "ny-title";
         const th = item.thread_id ? threadsById.get(item.thread_id) : null;
-        title.textContent = (th && th.title) || item.summary;
-        if (item.thread_id) title.onclick = () => selectThread(item.thread_id, title.textContent);
+        // A gate row leads with its question: that is what the human answers.
+        // A review row leads with the task. (The task of a gate shows as context.)
+        const isGate = item.kind === "open_gate";
+        title.textContent = isGate ? item.summary : (th && th.title) || item.summary;
+        if (item.thread_id) {
+          title.onclick = () => selectThread(item.thread_id, (th && th.title) || title.textContent);
+          keyActivates(title, "link"); // it opens the task
+        }
         const sub = document.createElement("div");
         sub.className = "ny-sub";
         const when = document.createElement("span");
@@ -2025,6 +2173,12 @@
         } else {
           const view = pendingGateViews.get(item.gate_id);
           if (view && view.gate.requested_by) sub.append("asked by ", personEl(view.gate.requested_by));
+          if (th && th.title) {
+            const on = document.createElement("span");
+            on.className = "ny-on";
+            on.textContent = `on ${th.title}`;
+            sub.appendChild(on);
+          }
           sub.appendChild(when);
           for (const [action, label, cls] of [["accept", "Approve", "primary"], ["decline", "Decline", ""]]) {
             const b = document.createElement("button");
@@ -2080,7 +2234,8 @@
       function dropRow(item, li) {
         li.classList.add("leaving");
         setTimeout(() => {
-          needsYou = needsYou.filter((i) => i !== item);
+          // By identity: a reload may have replaced the item object.
+          needsYou = needsYou.filter((i) => nyKey(i) !== nyKey(item));
           renderNeedsYou();
         }, 380);
       }
@@ -2133,6 +2288,7 @@
           actions.querySelectorAll("button").forEach((b) => (b.disabled = false));
           return showRowError(li, out.why);
         }
+        li.classList.add("in-use");
         const rs = await reviewStatus(item.thread_id);
         actions.replaceChildren();
         const note = document.createElement("span");
@@ -2271,7 +2427,7 @@
           await loadPins(selectedThreadId);
           renderMessages(await res.json(), box);
         } catch (e) {
-          renderState(box, String(e), "err");
+          renderState(box, unreachable(e), "err");
         } finally {
           clearLoading(box);
         }
@@ -3131,7 +3287,7 @@
           }
           renderNotifications(await res.json());
         } catch (e) {
-          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+          list.innerHTML = `<li class='muted'>Error: ${escapeHtml(String(e))}</li>`;
         }
       }
 
@@ -3217,7 +3373,7 @@
             list.appendChild(li);
           }
         } catch (e) {
-          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+          list.innerHTML = `<li class='muted'>Error: ${escapeHtml(String(e))}</li>`;
         }
       }
 
@@ -3321,7 +3477,7 @@
             list.appendChild(li);
           }
         } catch (e) {
-          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+          list.innerHTML = `<li class='muted'>Error: ${escapeHtml(String(e))}</li>`;
         }
       }
 
@@ -3391,7 +3547,7 @@
             list.appendChild(li);
           }
         } catch (e) {
-          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+          list.innerHTML = `<li class='muted'>Error: ${escapeHtml(String(e))}</li>`;
         }
       }
 
@@ -3581,7 +3737,7 @@
             list.appendChild(li);
           }
         } catch (e) {
-          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+          list.innerHTML = `<li class='muted'>Error: ${escapeHtml(String(e))}</li>`;
         }
       }
 
@@ -3610,7 +3766,7 @@
             list.appendChild(li);
           }
         } catch (e) {
-          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+          list.innerHTML = `<li class='muted'>Error: ${escapeHtml(String(e))}</li>`;
         }
       }
 
@@ -3666,7 +3822,7 @@
             list.appendChild(li);
           }
         } catch (e) {
-          list.innerHTML = `<li class='muted'>Error: ${e}</li>`;
+          list.innerHTML = `<li class='muted'>Error: ${escapeHtml(String(e))}</li>`;
         }
       }
 
@@ -3926,7 +4082,7 @@
         h.textContent = `No tasks in #${selectedChannelName || "this channel"} yet`;
         const p = document.createElement("p");
         p.textContent =
-          "Tasks arrive when an agent or a person opens one: an agent over REST (POST /channels/:id/threads) or MCP, a person with New thread in the sidebar. Agents then take them with claim_next_thread.";
+          `Tasks arrive when an agent or a person opens one: an agent over REST (POST /channels/${selectedChannelId || "{channel_id}"}/threads), a person with New thread in the sidebar. Agents then take them with claim_next_thread.`;
         const row = document.createElement("div");
         row.className = "row";
         const b = document.createElement("button");
@@ -3950,12 +4106,15 @@
         const server = { url, headers: { Authorization: "Bearer REPLACE_WITH_MAIDAN_TOKEN" } };
         const json = JSON.stringify({ mcpServers: { maidan: server } }, null, 2);
         const claude = `claude mcp add --transport http maidan ${url} \\\n  --header "Authorization: Bearer $MAIDAN_TOKEN"`;
-        const channel = selectedChannelName ? `#${selectedChannelName}` : "the channel you are given";
+        // Tools take ids, not names: hand the agent the channel id it will pass.
+        const channel = selectedChannelId
+          ? `channel_id ${selectedChannelId} (#${selectedChannelName})`
+          : "the channel_id you are given";
         const prompt = [
           `You are connected to a Maidan server at ${base()} through the MCP server "maidan".`,
           wid() ? `Workspace: ${wid()}.` : "",
           `Read ${base()}/llms.txt first.`,
-          `Work loop: claim_next_thread in ${channel}, acknowledge_claim, do the work, post_message as you go, set_thread_result, then transition_thread with start_review.`,
+          `Work loop: claim_next_thread with ${channel} and lease_secs 900 (renew_claim before it lapses), acknowledge_claim, get_thread_context, do the work, post_message as you go, set_thread_result, then transition_thread with start_review.`,
           "Do not close your own work: a reviewer approves it. If a call is refused, read the refusal; it says what to do next.",
         ]
           .filter(Boolean)
@@ -4070,11 +4229,13 @@
           li.className = "empty";
           li.textContent = "Nothing matches. Try a channel name, a task title, or \u201cconnect\u201d.";
           list.appendChild(li);
+          document.getElementById("palette-input").removeAttribute("aria-activedescendant");
           return;
         }
         paletteShown.forEach((it, i) => {
           const li = document.createElement("li");
           li.setAttribute("role", "option");
+          li.id = `palette-opt-${i}`;
           li.setAttribute("aria-selected", String(i === paletteSel));
           const k = document.createElement("span");
           k.className = "pk";
@@ -4099,6 +4260,8 @@
           list.appendChild(li);
         });
         const sel = list.children[paletteSel];
+        // Screen readers follow the highlighted option while focus stays in the input.
+        document.getElementById("palette-input").setAttribute("aria-activedescendant", sel ? sel.id : "");
         if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
       }
       function runPalette(i) {
@@ -4223,6 +4386,7 @@
               escapeHtml(ch.name) +
               (ch.topic ? `<span class='private'> · ${escapeHtml(ch.topic)}</span>` : "");
             if (ch.id === selectedChannelId) li.classList.add("selected");
+            keyActivates(li);
             li.onclick = () => {
               selectedChannelId = ch.id;
               selectedChannelName = ch.name;
@@ -4236,6 +4400,10 @@
               document.getElementById("thread-context").classList.add("muted");
               document.getElementById("thread-badge").replaceChildren();
               document.getElementById("thread-facts").replaceChildren();
+              // Buttons of the previous task act on that task, so they go too,
+              // and a header request still in flight for it must not paint.
+              document.getElementById("thread-actions").replaceChildren();
+              headerGen++;
               document.querySelectorAll("#channel-list li").forEach((n) => {
                 n.classList.toggle("selected", n.dataset.id === ch.id);
               });
@@ -4291,9 +4459,13 @@
 
       function disconnectWs() {
         wsUserDisconnect = true;
+        wsWanted = false;
+        clearTimeout(wsRetryTimer);
+        setLiveFallback(false);
         if (wsSocket) {
-          wsSocket.close();
+          const old = wsSocket;
           wsSocket = null;
+          old.close();
         }
         document.getElementById("ws-connect").hidden = false;
         document.getElementById("ws-disconnect").hidden = true;
@@ -4326,11 +4498,49 @@
         setStatus(`Presence → ${status}`, "ok");
       }
 
+      // Reconnect after a drop with backoff (1.5 s doubling to 30 s), and keep
+      // the board fresh by polling while the socket is down. A socket replaced
+      // by a newer one is ignored: its late close must not touch the new one.
+      let wsWanted = false;
+      let wsRetries = 0;
+      let wsRetryTimer = null;
+      let liveFallbackTimer = null;
+      const LIVE_POLL_MS = 15000;
+      function setLiveFallback(on) {
+        if (on && !liveFallbackTimer) {
+          liveFallbackTimer = setInterval(() => {
+            if (selectedChannelId) loadThreads(true);
+            loadNeedsYou();
+          }, LIVE_POLL_MS);
+        } else if (!on && liveFallbackTimer) {
+          clearInterval(liveFallbackTimer);
+          liveFallbackTimer = null;
+        }
+      }
+      function scheduleReconnect() {
+        clearTimeout(wsRetryTimer);
+        const delay = Math.min(30000, 1500 * 2 ** wsRetries) * (0.8 + Math.random() * 0.4);
+        wsRetries += 1;
+        setWsStatus(`reconnecting in ${Math.round(delay / 1000)} s · board refreshes every ${LIVE_POLL_MS / 1000} s`, "error");
+        setLiveFallback(true);
+        wsRetryTimer = setTimeout(() => connectWs(), delay);
+      }
+      function reconnectNowIfWanted() {
+        if (wsWanted && !wsSocket && !wsUserDisconnect) {
+          clearTimeout(wsRetryTimer);
+          connectWs();
+        }
+      }
+      window.addEventListener("online", reconnectNowIfWanted);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") reconnectNowIfWanted();
+      });
       function connectWs() {
+        clearTimeout(wsRetryTimer);
         if (wsSocket) {
-          wsUserDisconnect = true;
-          wsSocket.close();
+          const old = wsSocket;
           wsSocket = null;
+          old.close();
         }
         wsUserDisconnect = false;
         if (!wid()) return alert("Workspace ID required");
@@ -4359,12 +4569,14 @@
         const presenceId = authorId();
         if (presenceId) frame.member_id = presenceId;
 
-        setWsStatus("connecting…");
-        wsSocket = new WebSocket(wsUrl());
-        wsSocket.onopen = () => {
-          wsSocket.send(JSON.stringify(frame));
+        if (!wsRetries) setWsStatus("connecting…");
+        const sock = new WebSocket(wsUrl());
+        wsSocket = sock;
+        sock.onopen = () => {
+          if (sock === wsSocket) sock.send(JSON.stringify(frame));
         };
-        wsSocket.onmessage = (ev) => {
+        sock.onmessage = (ev) => {
+          if (sock !== wsSocket) return;
           let v;
           try {
             v = JSON.parse(ev.data);
@@ -4374,7 +4586,16 @@
           }
           const t = v.type;
           if (t === "subscribe_ack") {
+            const recovered = wsRetries > 0;
+            wsWanted = true;
+            wsRetries = 0;
+            setLiveFallback(false);
             setWsStatus("connected", "connected");
+            // Back after a drop: reconcile what the replay may not cover.
+            if (recovered) {
+              scheduleBoardRefresh();
+              loadNeedsYou();
+            }
             document.getElementById("ws-connect").hidden = true;
             document.getElementById("ws-disconnect").hidden = false;
             if (typeof v.after_id === "number") wsAfterId = v.after_id;
@@ -4424,8 +4645,11 @@
           }
           appendLive(JSON.stringify(v));
         };
-        wsSocket.onerror = () => setWsStatus("error", "error");
-        wsSocket.onclose = (ev) => {
+        sock.onerror = () => {
+          if (sock === wsSocket && !wsRetries) setWsStatus("error", "error");
+        };
+        sock.onclose = (ev) => {
+          if (sock !== wsSocket) return;
           const wasConnected = document.getElementById("ws-disconnect").hidden === false;
           document.getElementById("ws-connect").hidden = false;
           document.getElementById("ws-disconnect").hidden = true;
@@ -4435,13 +4659,20 @@
           else if (!wsUserDisconnect)
             setWsStatus(ev && ev.reason ? `refused: ${ev.reason}` : "could not connect", "error");
           wsSocket = null;
+          // A refusal (policy close 1008: bad token, missing capability) will
+          // not fix itself, so say why and stop. A drop is retried with
+          // backoff for as long as the socket had been wanted.
+          const refused = ev && ev.code === 1008;
           if (
-            wasConnected &&
+            wsWanted &&
+            !refused &&
             !wsUserDisconnect &&
             document.getElementById("ws-auto-reconnect").checked
           ) {
-            setWsStatus("reconnecting…");
-            setTimeout(() => connectWs(), 1500);
+            scheduleReconnect();
+          } else if (refused) {
+            wsWanted = false;
+            setLiveFallback(false);
           }
         };
       }
@@ -5048,9 +5279,43 @@
         setOut(body ? JSON.parse(body) : { revoked: id });
       };
 
+      // Pasting a token signs in: check it against /me, then load the channels
+      // and what waits on you, or say in words why it was not accepted.
       document.getElementById("token").addEventListener("change", async () => {
         persist();
-        await refreshBearerIdentity();
+        const status = document.getElementById("session-status");
+        if (!token()) {
+          bearerMemberId = null;
+          return;
+        }
+        let res = null;
+        try {
+          res = await fetch(`${base()}/me`, { headers: headers() });
+        } catch (e) {
+          status.hidden = false;
+          status.className = "err";
+          status.textContent = unreachable(e);
+          return;
+        }
+        if (!res.ok) {
+          bearerMemberId = null;
+          status.hidden = false;
+          status.className = "err";
+          status.textContent =
+            res.status === 401
+              ? "That token was not accepted: check it was copied whole and has not expired or been revoked, or mint a new one in Tokens."
+              : await responseError(res, "Could not check that token");
+          return;
+        }
+        const identity = await res.json();
+        bearerMemberId = identity.member_id;
+        if (!wid()) document.getElementById("workspace").value = identity.workspace_id;
+        persist();
+        status.className = "muted";
+        await loadChannels();
+        await renderIdentity(identity.member_id);
+        showConnection(false);
+        loadNeedsYou();
       });
       document.getElementById("live-toggle").onclick = () => toggleLiveFeed();
       document.getElementById("conn-edit").onclick = () => showConnection(true);

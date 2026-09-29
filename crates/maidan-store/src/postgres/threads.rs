@@ -464,9 +464,15 @@ pub async fn list_review_requests(
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
+                t.created_at, COALESCE(
+                    (SELECT MAX(tt.occurred_at) FROM maidan_thread_transitions tt
+                     WHERE tt.thread_id = t.id AND tt.to_state = 'in_review'),
+                    t.updated_at) AS updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
+         -- review_since: when the thread last entered review, not updated_at,
+         -- which a claim renewal or a rename bumps. row_to_thread reads it as
+         -- updated_at, so the inbox ages the request from when review began.
          JOIN maidan_thread_reviewers rv ON rv.thread_id = t.id AND rv.member_id = $1
          WHERE c.workspace_id = $2 AND t.state = 'in_review' AND t.tombstoned_at IS NULL
            AND NOT EXISTS (

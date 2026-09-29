@@ -7,6 +7,52 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### `/ui` audit: accessibility, hostile data, a resilient Live link and a phone layout
+
+- **Fixed:** muted text and avatar initials meet WCAG AA contrast; idle
+  teammates are no longer faded below it. axe reports no violations on the
+  first visit, the board, a thread, the palette or the Connect sheet, at
+  desktop and phone width.
+- **Fixed:** channel and task rows and the Needs-you title take keyboard
+  focus and run on Enter or Space, with a visible focus ring. The palette
+  announces its active option.
+- **Fixed:** below 720px wide the page is one column: a short channel strip,
+  the board in one column and Needs-you actions under their text. Before, the
+  three-pane layout overflowed a phone.
+- **Fixed:** Live reconnects with backoff (1.5 s doubling to 30 s, with
+  jitter) instead of retrying once, and a replaced socket can no longer close
+  over its successor. While disconnected the board and Needs-you refresh every
+  15 seconds and the status says so. A refused token (close 1008) stops
+  retrying; going back online or returning to the tab reconnects at once.
+- **Fixed:** a newly picked channel shows a loading card, and a failed load
+  says what went wrong in words with Try again, in place of a stale board.
+- **Fixed:** a Needs-you gate row leads with the question being approved,
+  not only the task title.
+- **Fixed:** pasting a token checks it at once and says whether it was
+  accepted. A refusal for `token:admin` no longer points you at Tokens, which
+  needs `token:admin` itself.
+- **Fixed:** exception text shown in lists is escaped.
+- **Fixed:** switching channel clears the previous task's buttons and drops
+  its header requests still in flight, so Approve or Close task can no longer
+  act on a task that is off screen.
+- **Fixed:** a Needs-you row survives a queue reload while it is in use. A
+  change note being typed stays, and an approved row keeps its Close task.
+  A refused inbox load clears the queue and the count in the tab title.
+- **Fixed:** a lapsed or failed claim, or a reassignment, no longer marks
+  the member it names as live.
+- **Fixed:** the board loads every page of a large channel (the 20,000-task
+  cap is gone) and stops if a cursor does not advance.
+- **Fixed:** a review request's age is when review began, the same moment it
+  is queued by, so a claim renewal or a rename no longer makes an old review
+  look fresh or push it down the inbox.
+- **Fixed:** an MCP call with an id that does not exist answers `-32004`
+  not found, as REST answers 404, instead of `-32603` internal error.
+- **Changed:** the Connect prompt names the channel by id with `lease_secs`,
+  since the tools take ids, and `/llms.txt` writes paths as `{wid}`.
+- **Tests:** axe, keyboard-only, reduced motion, hostile-data rendering,
+  Live drop and reconnect, phone width and board states in Playwright; every
+  tool `/llms.txt` names is checked against the MCP catalog.
+
 ### `/ui` has a command palette, a Connect an agent sheet and real empty states
 
 - **Added:** a command palette opens with `⌘K`, `Ctrl+K` or `/`. It jumps to
@@ -16,8 +62,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** "Connect an agent" in the header gives this server's MCP endpoint
   in the shapes clients take, each with a Copy button:
   - a `claude mcp add --transport http` line
-  - an `mcp.json` block for Cursor, Claude Desktop or any MCP client
-  - an Add to Cursor install link
+  - an `mcp.json` block for any MCP client
+  - a one-click install link
   - a short prompt that tells an agent the work loop and to read `/llms.txt`
 
   The token stays a placeholder, and the viewer's own token is never written
