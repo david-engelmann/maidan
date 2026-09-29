@@ -16,6 +16,8 @@ async function signIn(page: Page) {
 // jumps there.
 test("the palette jumps to a channel and to a task by keyboard", async ({ page }) => {
   await signIn(page);
+  // The shortcut is labelled the way this keyboard names it (Linux here).
+  await expect(page.locator("#palette-open .kbd")).toHaveText("Ctrl K");
   await page.locator("body").click();
   await page.keyboard.press("Control+k");
   const palette = page.locator("#palette");

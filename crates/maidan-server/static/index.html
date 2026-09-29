@@ -533,7 +533,7 @@
         <label>Workspace <input id="workspace" /></label>
         <label>Token <input id="token" type="password" /></label>
       </div>
-      <button id="palette-open" type="button" class="ghost" title="Jump to a task or channel, or run an action">Search or jump… <span class="kbd">⌘K</span></button>
+      <button id="palette-open" type="button" class="ghost" title="Jump to a task or channel, or run an action">Search or jump… <span class="kbd mod-k">⌘K</span></button>
       <button id="connect-open" type="button" class="ghost" data-open-connect>Connect an agent</button>
       <button id="login" type="button">OIDC</button>
       <button id="mint" type="button" hidden>Mint admin</button>
@@ -550,7 +550,7 @@
     <dialog id="palette" class="sheet" aria-label="Command palette">
       <input id="palette-input" type="text" placeholder="Jump to a task or channel, or run an action…" autocomplete="off" role="combobox" aria-controls="palette-list" aria-expanded="true" />
       <ul id="palette-list" role="listbox"></ul>
-      <div class="palette-foot"><span><span class="kbd">↑</span> <span class="kbd">↓</span> move</span><span><span class="kbd">↵</span> run</span><span><span class="kbd">Esc</span> close</span><span><span class="kbd">⌘K</span> or <span class="kbd">/</span> open</span></div>
+      <div class="palette-foot"><span><span class="kbd">↑</span> <span class="kbd">↓</span> move</span><span><span class="kbd">↵</span> run</span><span><span class="kbd">Esc</span> close</span><span><span class="kbd mod-k">⌘K</span> or <span class="kbd">/</span> open</span></div>
     </dialog>
 
     <dialog id="connect-dialog" class="sheet" aria-labelledby="connect-title">
@@ -656,7 +656,7 @@
               <li><b>You:</b> sign in above with OIDC or a token, then pick a channel.</li>
               <li><b>Your agents:</b> connect over MCP and take work with <code>claim_next_thread</code>.</li>
             </ol>
-            <div class="row"><button type="button" class="primary" data-open-connect>Connect an agent</button> <span>or press <span class="kbd">⌘K</span> to jump anywhere</span></div>
+            <div class="row"><button type="button" class="primary" data-open-connect>Connect an agent</button> <span>or press <span class="kbd mod-k">⌘K</span> to jump anywhere</span></div>
           </div></div>
         </section>
         <section id="collab-panel">
@@ -4114,6 +4114,9 @@
         d.showModal();
         input.focus();
       }
+      // The shortcut reads the way this keyboard labels it.
+      const onMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+      document.querySelectorAll(".kbd.mod-k").forEach((k) => (k.textContent = onMac ? "⌘K" : "Ctrl K"));
       document.getElementById("palette-open").onclick = openPalette;
       document.getElementById("palette-input").oninput = () => {
         paletteSel = 0;
