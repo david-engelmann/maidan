@@ -2292,18 +2292,21 @@ pub trait IdempotencyStore: Send + Sync {
     /// Reserve `new.key` for this caller, or report what already holds it: a
     /// live reservation, or a finished request's stored response. A
     /// reservation that lapsed at `locked_until` without completing is taken
-    /// over. Clears a bounded batch of expired keys on the way in.
+    /// over by a retry of the same request (same fingerprint). Clears the
+    /// requested key if it expired, then a bounded batch of other expired
+    /// keys, on the way in.
     async fn reserve_idempotency_key(
         &self,
         new: &crate::idempotency::NewIdempotencyKey,
     ) -> Result<crate::idempotency::IdempotencyReservation, StoreError>;
 
-    /// Store the response of the request holding the key.
+    /// Store the response of the request holding the key under `lease`.
     async fn complete_idempotency_key(
         &self,
         workspace_id: WorkspaceId,
         actor_id: MemberId,
         key: &str,
+        lease: &str,
         response: &crate::idempotency::StoredResponse,
     ) -> Result<(), StoreError>;
 
@@ -2314,6 +2317,7 @@ pub trait IdempotencyStore: Send + Sync {
         workspace_id: WorkspaceId,
         actor_id: MemberId,
         key: &str,
+        lease: &str,
     ) -> Result<(), StoreError>;
 }
 

@@ -2531,9 +2531,10 @@ impl IdempotencyStore for SqliteStore {
         workspace_id: WorkspaceId,
         actor_id: MemberId,
         key: &str,
+        lease: &str,
         response: &crate::idempotency::StoredResponse,
     ) -> Result<(), StoreError> {
-        idempotency::complete(&self.pool, workspace_id, actor_id, key, response).await
+        idempotency::complete(&self.pool, workspace_id, actor_id, key, lease, response).await
     }
 
     async fn release_idempotency_key(
@@ -2541,8 +2542,9 @@ impl IdempotencyStore for SqliteStore {
         workspace_id: WorkspaceId,
         actor_id: MemberId,
         key: &str,
+        lease: &str,
     ) -> Result<(), StoreError> {
-        idempotency::release(&self.pool, workspace_id, actor_id, key).await
+        idempotency::release(&self.pool, workspace_id, actor_id, key, lease).await
     }
 }
 

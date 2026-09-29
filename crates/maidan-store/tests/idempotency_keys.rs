@@ -46,12 +46,14 @@ async fn run_suite(store: &dyn Store) {
         expires_at: now + Duration::hours(24),
     };
 
+    let lease = |r: IdempotencyReservation| match r {
+        IdempotencyReservation::Reserved { lease } => lease,
+        other => panic!("expected Reserved, got {other:?}"),
+    };
+
     // First reservation wins; a second one sees it in flight.
     let k1 = new(alice.id, "k1", "fp-a", Duration::minutes(5));
-    assert_eq!(
-        store.reserve_idempotency_key(&k1).await.expect("reserve"),
-        IdempotencyReservation::Reserved
-    );
+    let alice_k1 = lease(store.reserve_idempotency_key(&k1).await.expect("reserve"));
     assert_eq!(
         store.reserve_idempotency_key(&k1).await.expect("again"),
         IdempotencyReservation::InFlight {
@@ -60,22 +62,33 @@ async fn run_suite(store: &dyn Store) {
     );
 
     // The same key under another actor is independent.
-    assert_eq!(
+    let bob_k1 = lease(
         store
             .reserve_idempotency_key(&new(bob.id, "k1", "fp-b", Duration::minutes(5)))
             .await
             .expect("bob"),
-        IdempotencyReservation::Reserved
     );
 
-    // Completing stores the response; a retry gets it back.
+    // Completing under the wrong lease does nothing; under the right one it
+    // stores the response and a retry gets it back.
     let response = StoredResponse {
         status: 201,
         content_type: Some("application/json".into()),
         body: br#"{"id":"x"}"#.to_vec(),
     };
     store
-        .complete_idempotency_key(ws.id, alice.id, "k1", &response)
+        .complete_idempotency_key(ws.id, alice.id, "k1", &bob_k1, &response)
+        .await
+        .expect("complete, wrong lease");
+    assert!(matches!(
+        store
+            .reserve_idempotency_key(&k1)
+            .await
+            .expect("still held"),
+        IdempotencyReservation::InFlight { .. }
+    ));
+    store
+        .complete_idempotency_key(ws.id, alice.id, "k1", &alice_k1, &response)
         .await
         .expect("complete");
     assert_eq!(
@@ -88,58 +101,69 @@ async fn run_suite(store: &dyn Store) {
 
     // Releasing lets a retry run again.
     store
-        .release_idempotency_key(ws.id, bob.id, "k1")
+        .release_idempotency_key(ws.id, bob.id, "k1", &bob_k1)
         .await
         .expect("release");
-    assert_eq!(
+    lease(
         store
             .reserve_idempotency_key(&new(bob.id, "k1", "fp-b2", Duration::minutes(5)))
             .await
             .expect("after release"),
-        IdempotencyReservation::Reserved
     );
 
-    // A lapsed lock that never completed is taken over by the next request.
-    let lapsed = new(alice.id, "k2", "fp-old", -Duration::seconds(1));
-    assert_eq!(
+    // A lapsed lock that never completed is taken over by a retry of the
+    // same request, not by a different one; the old holder is fenced out.
+    let old_lease = lease(
         store
-            .reserve_idempotency_key(&lapsed)
+            .reserve_idempotency_key(&new(alice.id, "k2", "fp-old", -Duration::seconds(1)))
             .await
             .expect("lapsed"),
-        IdempotencyReservation::Reserved
     );
-    let retry = new(alice.id, "k2", "fp-new", Duration::minutes(5));
     assert_eq!(
+        store
+            .reserve_idempotency_key(&new(alice.id, "k2", "fp-other", Duration::minutes(5)))
+            .await
+            .expect("different request"),
+        IdempotencyReservation::InFlight {
+            fingerprint: "fp-old".into()
+        }
+    );
+    let retry = new(alice.id, "k2", "fp-old", Duration::minutes(5));
+    let new_lease = lease(
         store
             .reserve_idempotency_key(&retry)
             .await
             .expect("takeover"),
-        IdempotencyReservation::Reserved
     );
+    assert_ne!(old_lease, new_lease);
+    store
+        .release_idempotency_key(ws.id, alice.id, "k2", &old_lease)
+        .await
+        .expect("stale release");
+    store
+        .complete_idempotency_key(ws.id, alice.id, "k2", &old_lease, &response)
+        .await
+        .expect("stale complete");
     assert_eq!(
         store.reserve_idempotency_key(&retry).await.expect("held"),
         IdempotencyReservation::InFlight {
-            fingerprint: "fp-new".into()
+            fingerprint: "fp-old".into()
         }
     );
 
-    // An expired completed key is pruned and the key is free again.
+    // An expired completed key is gone: the next request under it runs.
     let mut old = new(alice.id, "k3", "fp-3", -Duration::hours(2));
     old.expires_at = now - Duration::hours(1);
-    assert_eq!(
-        store.reserve_idempotency_key(&old).await.expect("old"),
-        IdempotencyReservation::Reserved
-    );
+    let l = lease(store.reserve_idempotency_key(&old).await.expect("old"));
     store
-        .complete_idempotency_key(ws.id, alice.id, "k3", &response)
+        .complete_idempotency_key(ws.id, alice.id, "k3", &l, &response)
         .await
         .expect("complete old");
-    assert_eq!(
+    lease(
         store
             .reserve_idempotency_key(&new(alice.id, "k3", "fp-3b", Duration::minutes(5)))
             .await
             .expect("expired"),
-        IdempotencyReservation::Reserved
     );
 }
 

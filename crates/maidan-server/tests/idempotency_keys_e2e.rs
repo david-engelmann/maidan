@@ -178,12 +178,24 @@ async fn idempotency_keys_replay_refuse_and_take_over() {
     }
     assert_eq!(channel_count().await, 4);
 
-    // A 4xx is an answer, so it is kept and replayed too.
+    // A 4xx that says "no" is an answer, so it is kept and replayed; one that
+    // says "not now" (here a 409 on the taken name) is released, so the
+    // retry runs again.
+    let nameless = r#"{"topic":"no name"}"#;
+    let refused = post(&alice_tok, Some("k-bad"), nameless).await.unwrap();
+    let status = refused.status();
+    assert!(
+        status == StatusCode::BAD_REQUEST || status == StatusCode::UNPROCESSABLE_ENTITY,
+        "{status}"
+    );
+    let refused_again = post(&alice_tok, Some("k-bad"), nameless).await.unwrap();
+    assert_eq!(refused_again.status(), status);
+    assert_eq!(refused_again.headers()["idempotent-replayed"], "true");
     let dup = post(&alice_tok, Some("k-dup"), general).await.unwrap();
     assert_eq!(dup.status(), StatusCode::CONFLICT);
     let dup_again = post(&alice_tok, Some("k-dup"), general).await.unwrap();
     assert_eq!(dup_again.status(), StatusCode::CONFLICT);
-    assert_eq!(dup_again.headers()["idempotent-replayed"], "true");
+    assert!(dup_again.headers().get("idempotent-replayed").is_none());
 
     // A retry while the first request still holds the key gets 409; a
     // different request under a held key gets 422.
@@ -226,6 +238,24 @@ async fn idempotency_keys_replay_refuse_and_take_over() {
     assert_eq!(taken.status(), StatusCode::CREATED);
     assert!(taken.headers().get("idempotent-replayed").is_none());
     assert_eq!(channel_count().await, 5);
+
+    // SCIM answers in its own envelope, so the header is not interpreted
+    // there: a malformed key does not turn into a problem+json 400.
+    let scim = client
+        .post(format!("{base}/scim/v2/Users"))
+        .header("Authorization", &alice_tok)
+        .header("Idempotency-Key", "has space")
+        .header("Content-Type", "application/scim+json")
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(
+        scim.headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok()),
+        Some("application/problem+json")
+    );
 
     // Reads ignore the header.
     let read = client

@@ -46,11 +46,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   with the same key and the same method, path, query and body gets that
   response back with `Idempotent-Replayed: true` and does not run again. The
   same key on a different request is 422 `problems/idempotency-key-reused`; a
-  retry while the first request runs is 409. A 5xx, a stream or a body over
-  1 MiB is not kept, so a retry runs again. The first request holds the key
-  for 5 minutes, so one that crashed is taken over by the next retry. Keys are
-  per caller and last 24 hours; each reservation prunes up to 100 expired
-  keys. Migration 0118 (`maidan_idempotency_keys`), both backends. Tests:
+  retry while the first request runs is 409. A 5xx, a "not now" 4xx (408,
+  409, 425, 429), a stream or a body over 1 MiB is not kept, so a retry runs
+  again. The first request holds the key for 5 minutes, so one that crashed
+  is taken over by the next retry of the same request; each reservation
+  carries a lease, so a holder that lost its key cannot complete or release
+  the new holder's. Keys are per caller and last 24 hours; an expired key is
+  cleared when it is next used, and each reservation prunes up to 100 others.
+  SCIM and A2A routes, which answer in their own error envelopes, do not
+  interpret the header. The OpenAPI document declares the header and its
+  400/409/422 on every credentialed write. Migration 0118 (`maidan_idempotency_keys`), both backends. Tests:
   `idempotency_keys_e2e`, `idempotency_keys` (store, both backends).
 
 ### Tenant isolation is a conformance test

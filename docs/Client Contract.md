@@ -175,8 +175,9 @@ request with a key runs; a retry with the same key and the same method,
 path, query and body gets the stored response back with
 `Idempotent-Replayed: true` and does not run again. The same key on a
 different request is 422 `problems/idempotency-key-reused`; a retry while
-the first request is still running is 409 (retry later). A 5xx is not
-kept, so a retry after one runs again. Keys last 24 hours. The server
+the first request is still running is 409 (retry later). A 5xx or a
+"not now" 4xx (408, 409, 425, 429) is not kept, so a retry after one
+runs again. SCIM and A2A routes ignore the header. Keys last 24 hours. The server
 half ships first; SDKs will send a key per logical write on retry.
 
 ---

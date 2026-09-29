@@ -81,6 +81,9 @@ problem_response!(
     /// every operation, since any handler can fail or panic.
     InternalServerError,
     "The server failed while handling the request; the `X-Request-Id` response header names it in the server log."
+    /// 422: added by [`IdempotencyResponses`](super::IdempotencyResponses).
+    IdempotencyKeyReused,
+    "The `Idempotency-Key` was already used for a different request (type `problems/idempotency-key-reused`)."
 );
 
 /// 429: added by [`MiddlewareResponses`](super::MiddlewareResponses).

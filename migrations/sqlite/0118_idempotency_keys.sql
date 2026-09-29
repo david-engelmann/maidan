@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS maidan_idempotency_keys (
     actor_id TEXT NOT NULL,
     idempotency_key TEXT NOT NULL,
     fingerprint TEXT NOT NULL,
+    -- Set on each reservation or takeover; complete/release must match it.
+    lease TEXT NOT NULL,
     status INTEGER,
     content_type TEXT,
     body BLOB,

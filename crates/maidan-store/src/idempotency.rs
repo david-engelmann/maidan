@@ -34,8 +34,10 @@ pub struct StoredResponse {
 /// What a reservation found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdempotencyReservation {
-    /// The key is this request's: run it, then complete or release.
-    Reserved,
+    /// The key is this request's: run it, then complete or release it
+    /// with `lease`. A holder whose lock lapsed and was taken over no longer
+    /// matches, so it cannot write into or drop the new holder's key.
+    Reserved { lease: String },
     /// Another request holds the key and has not finished.
     InFlight { fingerprint: String },
     /// A request finished under this key; this is its response.
