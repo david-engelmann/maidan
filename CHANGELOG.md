@@ -209,6 +209,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The official A2A TCK now runs over gRPC as well as JSON-RPC and HTTP+JSON;
   182 tests pass (was 135).
 
+### Fuzzing the parsers of untrusted input
+
+- **Added:** `fuzz/`, five cargo-fuzz targets run nightly for five minutes
+  each. The egress SSRF guard must accept its own serialized form of any URL it
+  accepts (a normalization differential is how a guard is bypassed); room URIs
+  and content keys round-trip; waiter results and event type ids parse without
+  panicking and recognise only what they print. About 34 million local runs
+  found nothing.
+
 ### `/ui` shows the channel as a live board, with names instead of ids
 
 - **Changed:** a channel opens as a board with four lanes (open, in progress,

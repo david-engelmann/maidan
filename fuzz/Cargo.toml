@@ -1,0 +1,54 @@
+[package]
+name = "maidan-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+maidan-auth = { path = "../crates/maidan-auth" }
+maidan-types = { path = "../crates/maidan-types" }
+serde_json = "1"
+
+# Its own workspace: the fuzz crate builds with nightly and sanitizers, and is
+# not one of the repo's member crates.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "egress_target"
+path = "fuzz_targets/egress_target.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "room_uri"
+path = "fuzz_targets/room_uri.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "waiter_result"
+path = "fuzz_targets/waiter_result.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "event_type_id"
+path = "fuzz_targets/event_type_id.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "content_key"
+path = "fuzz_targets/content_key.rs"
+test = false
+doc = false
+bench = false
