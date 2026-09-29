@@ -68,7 +68,7 @@ authentication on**. Clone that release's tag so the compose file and script
 match the binary:
 
 ```sh
-git clone --depth 1 --branch v410.0.0 https://github.com/david-engelmann/maidan && cd maidan
+git clone --depth 1 --branch v412.0.0 https://github.com/david-engelmann/maidan && cd maidan
 
 docker compose -f compose.quickstart.yaml up -d --build --wait              # start Maidan
 docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo   # prints a token + workspace id
