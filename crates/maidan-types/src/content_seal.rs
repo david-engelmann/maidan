@@ -651,6 +651,7 @@ mod tests {
             prev_hash: crate::genesis_hash(),
             content_hash,
             content_key,
+            trace: None,
         }
     }
 

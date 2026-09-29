@@ -325,6 +325,8 @@ pub struct EgressOutbox {
     pub body: String,
     pub attempts: i64,
     pub kind: EgressKind,
+    /// The server span the source event was written under.
+    pub trace: Option<crate::TraceContext>,
 }
 
 impl EgressOutbox {
@@ -416,6 +418,7 @@ mod tests {
             body: "hi".into(),
             attempts: 1,
             kind: EgressKind::Projector,
+            trace: None,
         };
         assert_eq!(row.target(), None);
     }

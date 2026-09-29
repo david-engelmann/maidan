@@ -1625,3 +1625,25 @@ content-addressed context snapshot artifact over REST + MCP (329–330).
 demand. `pack`/`prefix` inclusion is the most likely candidate (pure convenience, low risk);
 a `structure_only` export filter is the least (scope-creep toward a template product). None
 is a correctness or capability gap today.
+
+### Trace context is transport metadata, not event content (TRACE_PR)
+
+**Decision.** A W3C `traceparent` is accepted on every HTTP request (REST,
+the WebSocket upgrade, MCP, A2A JSON-RPC) and on the A2A gRPC server. The
+work runs as a child of that span, or as a new root when the header is
+missing or does not parse. The response names the server span in
+`traceresponse`. That same span — not a further child — is what outbound
+calls send, so the callee's parent is the Maidan span. The span is stored
+on `maidan_events` and copied onto webhook, egress and automation rows at
+enqueue, because a bus consumer and the outbox relay run on other tasks
+and a task-local does not survive them. It is not part of the content hash.
+
+**Alternatives.** Keep the trace only in a task-local. That dies at the
+first `tokio::spawn` and at the outbox relay, which is the gap this
+closes. Put the trace inside the hashed event payload. That would make
+the same facts hash differently depending on who wrote them, and it would
+make the trace part of the domain.
+
+**To revisit.** If a caller needs the trace of a span that is not the one
+that wrote the event (a later read, a manual replay), the columns are the
+write's span only.

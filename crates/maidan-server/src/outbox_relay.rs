@@ -153,7 +153,10 @@ impl OutboxRelay {
         for row in pending {
             let outbox_id = row.id;
             let log_id = row.log_id;
-            match self.relay_one(log_id, row.payload, row.content_key).await {
+            match self
+                .relay_one(log_id, row.payload, row.content_key, row.trace)
+                .await
+            {
                 Ok(()) => {
                     published.push(outbox_id);
                     counter!("maidan_outbox_relay_total", "result" => "ok").increment(1);
@@ -206,9 +209,11 @@ impl OutboxRelay {
         log_id: i64,
         payload: serde_json::Value,
         content_key: Option<maidan_types::ContentKey>,
+        trace: Option<maidan_types::TraceContext>,
     ) -> Result<(), maidan_store::StoreError> {
-        let envelope = BusEnvelope::from_sealed_payload(log_id, payload, content_key.as_ref())
+        let mut envelope = BusEnvelope::from_sealed_payload(log_id, payload, content_key.as_ref())
             .map_err(|err| maidan_store::StoreError::InvalidInput(err.to_string()))?;
+        envelope.trace = trace;
         self.bus
             .publish(envelope)
             .await

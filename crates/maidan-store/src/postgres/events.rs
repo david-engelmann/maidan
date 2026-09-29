@@ -6,7 +6,7 @@ use sqlx::{PgPool, Row};
 
 /// Every column a [`StoredEvent`] is built from, with its content key joined
 /// in. Pair with [`EVENTS_FROM`]; filter and order on `e.` columns.
-pub(crate) const EVENT_COLUMNS: &str = "e.id, e.kind, e.workspace_id, e.channel_id, e.thread_id, e.payload, e.occurred_at, e.prev_hash, e.content_hash, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped";
+pub(crate) const EVENT_COLUMNS: &str = "e.id, e.kind, e.workspace_id, e.channel_id, e.thread_id, e.payload, e.occurred_at, e.prev_hash, e.content_hash, e.content_key_id, e.traceparent, e.tracestate, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped";
 pub(crate) const EVENTS_FROM: &str =
     "maidan_events e LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id";
 
@@ -120,10 +120,11 @@ pub async fn append_with_keys_in_tx(
     let prev = next_prev_hash(previous.as_ref());
     // `inserted_at` is the DB insert wall-clock, distinct from the
     // caller-supplied `occurred_at`.
+    let (traceparent, tracestate) = crate::trace::current_columns();
     let row = sqlx::query(
-        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at, prev_hash, content_hash, content_key_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         RETURNING id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash",
+        "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at, inserted_at, prev_hash, content_hash, content_key_id, traceparent, tracestate)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING id, kind, workspace_id, channel_id, thread_id, payload, occurred_at, prev_hash, content_hash, traceparent, tracestate",
     )
     .bind(event.kind().as_str())
     .bind(ws)
@@ -135,6 +136,8 @@ pub async fn append_with_keys_in_tx(
     .bind(&prev)
     .bind(&content)
     .bind(sealing.content_key_id)
+    .bind(traceparent)
+    .bind(tracestate)
     .fetch_one(&mut **tx)
     .await?;
     let mut stored = row_to_stored(&row, None)?;
@@ -357,6 +360,10 @@ fn row_to_stored(
         prev_hash: row.get("prev_hash"),
         content_hash: row.get("content_hash"),
         content_key,
+        trace: maidan_types::TraceContext::from_columns(
+            row.try_get("traceparent").unwrap_or(None),
+            row.try_get("tracestate").unwrap_or(None),
+        ),
     })
 }
 
@@ -585,4 +592,18 @@ pub async fn workspace_ids_with_events(pool: &PgPool) -> Result<Vec<WorkspaceId>
         .filter_map(|r| r.get::<Option<uuid::Uuid>, _>("workspace_id"))
         .map(WorkspaceId)
         .collect())
+}
+
+pub(crate) async fn trace_columns(
+    pool: &PgPool,
+    log_id: i64,
+) -> Result<(Option<String>, Option<String>), StoreError> {
+    let row = sqlx::query("SELECT traceparent, tracestate FROM maidan_events WHERE id = $1")
+        .bind(log_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(match row {
+        Some(row) => (row.get("traceparent"), row.get("tracestate")),
+        None => (None, None),
+    })
 }

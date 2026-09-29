@@ -23,7 +23,7 @@ use maidan_store::Store;
 use maidan_types::{Event, EventFilter, EventKind, SEARCH_PROJECTOR_KINDS};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Instrument};
 
 use crate::tap_projector::{backfill_search, SearchTap};
 
@@ -301,7 +301,16 @@ async fn consume(
                             continue;
                         }
                         watermark = watermark.max(envelope.log_id);
-                        handler.handle(&envelope.event).await;
+                        let span = tracing::info_span!("search_index", log_id = envelope.log_id);
+                        if let Some(parent) = envelope.trace.as_ref() {
+                            maidan_observability::adopt_remote_parent(&span, parent);
+                        }
+                        let trace = envelope.trace.clone();
+                        maidan_store::trace::maybe_scope(trace, async {
+                            handler.handle(&envelope.event).await;
+                        })
+                        .instrument(span)
+                        .await;
                         last_event_unix_ms.store(
                             chrono::Utc::now().timestamp_millis(),
                             Ordering::Relaxed,
@@ -431,6 +440,7 @@ mod tests {
             prev_hash: String::new(),
             content_hash: String::new(),
             content_key: Some(key.clone()),
+            trace: None,
         }
     }
 

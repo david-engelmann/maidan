@@ -214,6 +214,7 @@ async fn federation_ingest_dedupes_and_peer_lists_events() {
         prev_hash: link.prev_hash,
         content_hash: link.content_hash,
         content_key: None,
+        trace: None,
     };
     let batch = FederatedEventBatch {
         events: vec![FederationEnvelope {
@@ -334,6 +335,7 @@ async fn federation_ingest_rejects_non_federatable_artifact_event() {
         prev_hash: maidan_types::genesis_hash(),
         content_hash: maidan_types::content_hash(&serde_json::to_value(&event).unwrap()).unwrap(),
         content_key: None,
+        trace: None,
     };
     let batch = FederatedEventBatch {
         events: vec![FederationEnvelope {
@@ -414,6 +416,7 @@ async fn federation_ingest_accepts_peer_bearer_when_auth_disabled_globally() {
         prev_hash: link.prev_hash,
         content_hash: link.content_hash,
         content_key: None,
+        trace: None,
     };
     let batch = FederatedEventBatch {
         events: vec![FederationEnvelope {
@@ -584,6 +587,7 @@ fn member_joined_envelope(
         prev_hash: link.prev_hash.clone(),
         content_hash: link.content_hash.clone(),
         content_key: None,
+        trace: None,
     };
     (
         FederationEnvelope {
@@ -791,6 +795,7 @@ async fn a_refused_event_does_not_wedge_the_origin_chain() {
             prev_hash: prev.clone(),
             content_hash: content_hash.clone(),
             content_key: None,
+            trace: None,
         };
         prev = maidan_types::chain_hash(&stored.prev_hash, &content_hash, id);
         envelopes.push(FederationEnvelope {

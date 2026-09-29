@@ -142,6 +142,7 @@ async fn notify_floor_survives_periodic_listener_kills_under_load() {
             log_id: stored.id,
             event,
             attribution: None,
+            trace: None,
         })
         .await
         .unwrap();

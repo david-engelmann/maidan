@@ -267,6 +267,7 @@ mod tests {
             prev_hash: link.prev_hash,
             content_hash: link.content_hash,
             content_key: None,
+            trace: None,
         }
     }
 
@@ -325,6 +326,7 @@ mod tests {
                 prev_hash: link.prev_hash,
                 content_hash: link.content_hash,
                 content_key: None,
+                trace: None,
             }
         };
 

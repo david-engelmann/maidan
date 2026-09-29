@@ -292,14 +292,13 @@ impl SlackWebClient {
         method: &str,
         payload: serde_json::Value,
     ) -> Result<serde_json::Value, SlackError> {
-        let resp = self
-            .http
-            .post(format!("{}/api/{method}", self.base_url))
-            .bearer_auth(&self.bot_token)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| SlackError::Http(e.to_string()))?;
+        let resp =
+            crate::trace_context::stamp(self.http.post(format!("{}/api/{method}", self.base_url)))
+                .bearer_auth(&self.bot_token)
+                .json(&payload)
+                .send()
+                .await
+                .map_err(|e| SlackError::Http(e.to_string()))?;
         let v: serde_json::Value = resp
             .json()
             .await

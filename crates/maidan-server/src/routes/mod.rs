@@ -304,6 +304,7 @@ async fn publish_from(
         log_id: stored.id,
         event,
         attribution: stored.attribution(),
+        trace: stored.trace.clone(),
     };
     if let Err(err) = state.bus.publish(envelope).await {
         tracing::warn!(error = %err, "bus publish failed");

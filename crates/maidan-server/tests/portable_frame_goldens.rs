@@ -216,6 +216,7 @@ fn snapshot_and_catch_up_match_normalized_golden() {
         prev_hash: next.prev_hash,
         content_hash: next.content_hash,
         content_key: None,
+        trace: None,
     };
     let catch_up = CatchUpPage::new(
         export.workspace.id,

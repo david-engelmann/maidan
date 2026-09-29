@@ -682,7 +682,9 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             continue;
         };
         let surface = target.surface().as_str();
-        match deliver(state, &entry, &target).await {
+        match maidan_store::trace::maybe_scope(entry.trace.clone(), deliver(state, &entry, &target))
+            .await
+        {
             Ok(reference) => {
                 if let Err(err) = state.store.mark_egress_delivered(entry.id).await {
                     tracing::warn!(error = %err, id = %entry.id, "egress worker: mark-delivered failed");

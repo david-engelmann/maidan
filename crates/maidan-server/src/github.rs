@@ -395,9 +395,7 @@ impl GithubSender for GithubApiClient {
             "{}/repos/{repo}/issues/{issue_number}/comments",
             self.base_url
         );
-        let resp = self
-            .http
-            .post(&url)
+        let resp = crate::trace_context::stamp(self.http.post(&url))
             .bearer_auth(&self.token)
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "maidan-projector") // GitHub requires a User-Agent
@@ -435,9 +433,7 @@ impl GithubSender for GithubApiClient {
             "{}/repos/{repo}/issues/comments/{comment_id}",
             self.base_url
         );
-        let resp = self
-            .http
-            .patch(&url)
+        let resp = crate::trace_context::stamp(self.http.patch(&url))
             .bearer_auth(&self.token)
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "maidan-projector")
@@ -468,9 +464,7 @@ impl GithubSender for GithubApiClient {
                 "{}/repos/{repo}/issues/{issue_number}/comments?per_page=100&page={page}",
                 self.base_url
             );
-            let resp = self
-                .http
-                .get(&url)
+            let resp = crate::trace_context::stamp(self.http.get(&url))
                 .bearer_auth(&self.token)
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", "maidan-projector")
@@ -516,9 +510,7 @@ impl GithubSender for GithubApiClient {
         let url = format!("{}/repos/{repo}/pulls/{pull_number}/reviews", self.base_url);
         let comments_json: Vec<serde_json::Value> =
             comments.iter().map(review_comment_payload).collect();
-        let resp = self
-            .http
-            .post(&url)
+        let resp = crate::trace_context::stamp(self.http.post(&url))
             .bearer_auth(&self.token)
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "maidan-projector")

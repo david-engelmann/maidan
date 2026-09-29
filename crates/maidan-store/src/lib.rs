@@ -121,6 +121,7 @@ pub mod sqlite;
 pub mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+pub mod trace;
 pub mod workspace_export;
 
 pub use a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingGateQuery};

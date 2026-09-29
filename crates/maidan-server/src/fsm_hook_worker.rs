@@ -90,6 +90,7 @@ async fn consume(
                 match item {
                     Some(BusItem::Event(envelope)) => {
                         watermark = watermark.max(envelope.log_id);
+                        let trace = envelope.trace.clone();
                         if let Event::ThreadStateChanged {
                             workspace_id,
                             channel_id,
@@ -101,15 +102,18 @@ async fn consume(
                             ..
                         } = envelope.event
                         {
-                            dispatch_thread_state_changed(
-                                state,
-                                workspace_id,
-                                channel_id,
-                                thread_id,
-                                actor_id,
-                                from_state,
-                                to_state,
-                                thread,
+                            maidan_store::trace::maybe_scope(
+                                trace,
+                                dispatch_thread_state_changed(
+                                    state,
+                                    workspace_id,
+                                    channel_id,
+                                    thread_id,
+                                    actor_id,
+                                    from_state,
+                                    to_state,
+                                    thread,
+                                ),
                             )
                             .await;
                         }
@@ -124,6 +128,7 @@ async fn consume(
                                     let Ok(env) = crate::event_stream::envelope_from_stored(&row) else {
                                         continue;
                                     };
+                                    let trace = env.trace.clone();
                                     if let Event::ThreadStateChanged {
                                         workspace_id,
                                         channel_id,
@@ -135,15 +140,18 @@ async fn consume(
                                         ..
                                     } = env.event
                                     {
-                                        dispatch_thread_state_changed(
-                                            &state,
-                                            workspace_id,
-                                            channel_id,
-                                            thread_id,
-                                            actor_id,
-                                            from_state,
-                                            to_state,
-                                            thread,
+                                        maidan_store::trace::maybe_scope(
+                                            trace,
+                                            dispatch_thread_state_changed(
+                                                &state,
+                                                workspace_id,
+                                                channel_id,
+                                                thread_id,
+                                                actor_id,
+                                                from_state,
+                                                to_state,
+                                                thread,
+                                            ),
                                         )
                                         .await;
                                     }

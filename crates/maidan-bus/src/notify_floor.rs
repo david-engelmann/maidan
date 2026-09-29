@@ -324,6 +324,7 @@ mod sim {
                 },
             },
             attribution: None,
+            trace: None,
         }
     }
 

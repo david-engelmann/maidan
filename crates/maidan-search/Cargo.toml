@@ -13,6 +13,7 @@ description = "Full-text + vector search over Maidan messages and artifacts."
 maidan-types = { path = "../maidan-types" }
 maidan-bus = { path = "../maidan-bus" }
 maidan-store = { path = "../maidan-store" }
+maidan-observability = { path = "../maidan-observability", default-features = false }
 sha2.workspace = true
 async-trait.workspace = true
 chrono.workspace = true

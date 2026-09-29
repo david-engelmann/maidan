@@ -271,13 +271,16 @@ async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), Stri
         let room_lsn =
             crate::room_lsn::current_for_room(state.store.as_ref(), sub.subscription.workspace_id)
                 .await;
-        match deliver_http(
-            &sub.subscription.url,
-            delivery.id,
-            kind,
-            &secret,
-            &body,
-            room_lsn,
+        match maidan_store::trace::maybe_scope(
+            delivery.trace.clone(),
+            deliver_http(
+                &sub.subscription.url,
+                delivery.id,
+                kind,
+                &secret,
+                &body,
+                room_lsn,
+            ),
         )
         .await
         {
