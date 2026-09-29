@@ -73,10 +73,7 @@ event log, which fixed a new holder inheriting the old lease deadline
 (#1074); and a seeded simulation of the NOTIFY floor in place of madsim,
 which fixed the floor moving past undelivered events (#1075).
 
-**Next (2026-09-28):** the launch backlog is shipped except Wave 4 #45's madsim model. The forward plan is the ranked **Next wave** at the top of [Open Work.md](Open%20Work.md): a tenant-isolation conformance suite, idempotency keys, eager reclaim, load shedding, decision history, trace context, F-48 Tier 1, workspace-wide `claim_next`, and CI jobs for the models. Load shedding, catch-panic and header redaction (#4) shipped in #1092.
-
-**In progress (not on `main`):** Wave 4 #45's loom, madsim and TLA+
-models are in review (#1073–#1075). Row #45 stays open until they land.
+**Next (2026-09-28):** the launch backlog is shipped, Wave 4 #45 included. The forward plan is the ranked **Next wave** at the top of [Open Work.md](Open%20Work.md): a tenant-isolation conformance suite, idempotency keys, eager reclaim, load shedding, decision history, trace context, F-48 Tier 1, workspace-wide `claim_next`, and CI jobs for the loom and TLA+ models. Load shedding, catch-panic and header redaction (#4) shipped in #1092.
 
 Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**–**`v1.4.0`** are complete.
 
