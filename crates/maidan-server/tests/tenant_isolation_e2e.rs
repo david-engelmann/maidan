@@ -1012,10 +1012,9 @@ async fn no_mcp_tool_serves_or_changes_another_workspace() {
         stream_routes(),
         vec![
             "/agui/stream",
-            "/mcp/notifications",
             "/mcp/stream",
             "/mcp/streamable",
-            "/ws/subscribe",
+            "/ws/subscribe"
         ],
         "a live stream was added or renamed: tenant_isolation_e2e must probe it"
     );
@@ -1042,19 +1041,41 @@ async fn no_mcp_tool_serves_or_changes_another_workspace() {
 /// not OpenAPI operations, so the spec cannot drive this). A route registered
 /// with `.route(...)` whose path contains `stream` or `subscribe` is one, and
 /// the test asserts the exact set, so a new stream fails it until it is probed.
+/// The live streams the suite probes, read from the router in `app.rs`.
+/// The streams are not OpenAPI operations, so the spec cannot drive this, and
+/// a keyword scan of the paths cannot either: `/mcp/notifications` is a
+/// stream whose path says neither. So the probed set is asserted exactly, and
+/// the total `.route(` count is pinned: adding or removing a route anywhere
+/// fails the test, which is the prompt to check whether the new route is a
+/// stream that needs a probe here.
 fn stream_routes() -> Vec<String> {
     let source = include_str!("../src/app.rs");
+    let route_count = source.matches(".route(").count();
+    assert_eq!(
+        route_count, 299,
+        "{route_count} routes in app.rs; if one you added is a live stream, probe it in stream_probes and update both numbers"
+    );
     let mut routes = std::collections::BTreeSet::new();
-    for line in source.lines() {
-        let Some(start) = line.find(".route(\"") else {
+    let mut rest = source;
+    while let Some(start) = rest.find(".route(") {
+        rest = &rest[start + ".route(".len()..];
+        let trimmed = rest.trim_start();
+        if !trimmed.starts_with('"') {
+            continue;
+        }
+        let after = &trimmed[1..];
+        let Some(end) = after.find('"') else {
             continue;
         };
-        let rest = &line[start + ".route(\"".len()..];
-        let Some(end) = rest.find('"') else {
-            continue;
-        };
-        let path = &rest[..end];
-        if path.contains("stream") || path.contains("subscribe") {
+        let path = &after[..end];
+        if matches!(
+            path,
+            "/ws/subscribe"
+                | "/mcp/stream"
+                | "/mcp/streamable"
+                | "/agui/stream"
+                | "/mcp/notifications"
+        ) {
             routes.insert(path.to_string());
         }
     }
