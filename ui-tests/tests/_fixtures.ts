@@ -30,6 +30,10 @@ export interface Fixtures {
   desk_send_back_thread_id: string;
   /** Stays in review: a token without thread:transition cannot approve it. */
   desk_waiting_thread_id: string;
+  /** The `floor` channel: the deployer holds one task; one is open to claim. */
+  floor_channel_id: string;
+  floor_held_thread_id: string;
+  floor_glide_thread_id: string;
 }
 
 export function fixtures(): Fixtures {

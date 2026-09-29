@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### `/ui` shows who is on the board, and cards move between lanes
+
+- **Added:** a team strip under the board header. Each member appears by name
+  with the task they hold and its state, for example `claimed · Fix the flaky
+  login test`, or idle. A green dot means live: the member is holding running
+  work, or was seen on the socket in the last two minutes (an event they
+  caused, or presence). The dot pulses while work is running.
+- **Added:** a card that changes lane glides from its old spot to its new one,
+  and a new card fades in. Nothing moves or pulses under
+  `prefers-reduced-motion`.
+- **Tests:** `ui-tests/tests/team.spec.ts` runs against a new `floor` channel
+  in the harness. It covers names and holdings, presence making a member live,
+  the glide on a real claim, and no motion under reduced motion.
+  `ui_js_contract.rs` pins the wiring.
+
 ### `/ui` puts what needs you first: approve, send back and close in one row
 
 - **Added:** a "Needs you" queue above the board lists the decisions agents are

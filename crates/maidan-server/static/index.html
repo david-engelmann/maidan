@@ -462,6 +462,25 @@
       #thread-actions { display: inline-flex; gap: 0.4rem; margin-left: auto; }
       #thread-actions:empty { display: none; }
       #thread-actions button { padding: 0.25rem 0.7rem; font-size: 0.8rem; }
+      /* Team: who is on the board right now and what each one holds. A dot
+         is live when the member holds running work or was seen on the socket
+         in the last two minutes; it pulses only while work is running. */
+      #team { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: -0.25rem 0 0.75rem; }
+      #team:empty { display: none; }
+      .mate { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.2rem 0.6rem 0.2rem 0.25rem; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; font-size: 0.78rem; max-width: 17rem; box-shadow: var(--shadow); }
+      .mate .avatar { position: relative; }
+      .mate .pip { position: absolute; right: -0.12rem; bottom: -0.12rem; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #d4d4d8; border: 2px solid var(--panel); }
+      .mate[data-live="true"] .pip { background: #22c55e; }
+      .mate[data-state="running"] .pip { animation: pip 1.6s ease-out infinite; }
+      @keyframes pip { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55); } 100% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); } }
+      .mate-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+      .mate-text b { font-weight: 650; color: var(--ink); font-size: 0.78rem; }
+      .mate-text small { color: var(--muted); font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .mate[data-state="idle"] { opacity: 0.7; }
+      .chrome-running::before { content: ""; display: inline-block; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: #16a34a; margin-right: 0.3rem; vertical-align: 0.05rem; animation: pip 1.6s ease-out infinite; }
+      @media (prefers-reduced-motion: reduce) {
+        .mate[data-state="running"] .pip, .chrome-running::before { animation: none; }
+      }
       #tools { background: var(--soft); }
       #tools > summary { color: var(--muted); }
       .tabs button { box-shadow: none; font-size: 0.82rem; }
@@ -558,6 +577,7 @@
             <h2 id="board-title">Board</h2>
             <div id="board-summary" aria-live="polite"></div>
           </div>
+          <div id="team" aria-label="Who is on this board"></div>
           <div id="board"><div class="board-empty">Select a channel to see its tasks.</div></div>
         </section>
         <section id="collab-panel">
@@ -1468,6 +1488,7 @@
         document.getElementById("board-title").textContent = selectedChannelName
           ? `# ${selectedChannelName}`
           : "Board";
+        const before = boardRects();
         board.replaceChildren();
         const cols = {};
         BOARD_COLUMNS.forEach((c) => {
@@ -1535,6 +1556,7 @@
           col.el.appendChild(card);
           col.n += 1;
         });
+        const firstPaint = boardSeen.size === 0;
         boardSeen = nextSeen;
         BOARD_COLUMNS.forEach((c) => {
           const col = cols[c.key];
@@ -1560,7 +1582,112 @@
           span.append(b, ` ${label}`);
           summary.appendChild(span);
         });
+        if (!firstPaint) glideCards(before);
+        renderTeam(threads);
         if (selectedThreadId && threadsById.has(selectedThreadId)) renderThreadHeader();
+      }
+
+      // Cards move between lanes instead of blinking: record where each card
+      // was, re-render, then play each one from its old spot to its new one
+      // (FLIP). A card that is new to the board fades in. Nothing moves under
+      // prefers-reduced-motion, and a channel switch is a fresh paint.
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+      let boardChannel = null;
+      function boardRects() {
+        const rects = new Map();
+        if (boardChannel !== selectedChannelId) {
+          boardChannel = selectedChannelId;
+          return rects;
+        }
+        document.querySelectorAll("#board .card").forEach((c) => rects.set(c.dataset.id, c.getBoundingClientRect()));
+        return rects;
+      }
+      function glideCards(before) {
+        if (reduceMotion.matches || !before.size) return;
+        document.querySelectorAll("#board .card").forEach((card) => {
+          const was = before.get(card.dataset.id);
+          if (!was) {
+            card.animate(
+              [{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "none" }],
+              { duration: 320, easing: "ease-out" }
+            );
+            return;
+          }
+          const now = card.getBoundingClientRect();
+          const dx = was.left - now.left;
+          const dy = was.top - now.top;
+          if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+          card.animate(
+            [
+              { transform: `translate(${dx}px, ${dy}px)`, zIndex: 2 },
+              { transform: "none", zIndex: 2 },
+            ],
+            { duration: 520, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
+          );
+        });
+      }
+
+      // ---- Team -------------------------------------------------------------
+      // Every member on the board, agents first: what each one holds right
+      // now, and whether they are live. Live means holding running work, or
+      // seen on the socket (an event they caused, or presence) in the last two
+      // minutes. Nothing here is inferred beyond that.
+      const lastSeen = new Map();
+      const LIVE_MS = 120000;
+      function markSeen(id) {
+        if (id && memberDirectory.has(id)) lastSeen.set(id, Date.now());
+      }
+      function markSeenFromFrame(v) {
+        const p = (v && v.payload) || {};
+        for (const k of ["author_id", "actor_id", "assignee_id", "member_id", "produced_by", "reviewer_id", "requested_by"]) {
+          if (typeof p[k] === "string") markSeen(p[k]);
+        }
+      }
+      function renderTeam(threads) {
+        const box = document.getElementById("team");
+        box.replaceChildren();
+        if (!memberDirectory.size || !threads.length) return;
+        const holding = new Map();
+        threads.forEach((th) => {
+          if (th.assignee_id && th.state !== "closed" && th.state !== "archived") {
+            const chrome = sessionChrome(th, lastGates[th.id]);
+            const cur = holding.get(th.assignee_id);
+            if (!cur || chrome.label === "running") holding.set(th.assignee_id, { th, chrome });
+          }
+        });
+        const waiting = needsYou.length;
+        const people = [...memberDirectory.entries()]
+          .filter(([, m]) => m.kind === "agent" || m.kind === "human")
+          .sort((a, b) => (a[1].kind === b[1].kind ? 0 : a[1].kind === "agent" ? -1 : 1));
+        const now = Date.now();
+        people.forEach(([id, m]) => {
+          const held = holding.get(id);
+          const state = held ? (held.chrome.label === "running" ? "running" : "holding") : "idle";
+          const live = state === "running" || now - (lastSeen.get(id) || 0) < LIVE_MS;
+          if (m.kind === "human" && !live && id !== authorId()) return;
+          if (state === "idle" && !live && people.length > 8) return;
+          const chip = document.createElement("span");
+          chip.className = "mate";
+          chip.dataset.memberId = id;
+          chip.dataset.state = state;
+          chip.dataset.live = String(live || id === authorId());
+          chip.title = id;
+          const av = avatarEl(id);
+          const pip = document.createElement("span");
+          pip.className = "pip";
+          av.appendChild(pip);
+          const text = document.createElement("span");
+          text.className = "mate-text";
+          const name = document.createElement("b");
+          name.textContent = m.name;
+          const what = document.createElement("small");
+          if (held) what.textContent = `${held.chrome.label} · ${held.th.title || "untitled"}`;
+          else if (id === authorId() && waiting) what.textContent = `${waiting} waiting on you`;
+          else what.textContent = live ? "active" : "idle";
+          text.append(name, what);
+          chip.append(av, text);
+          box.appendChild(chip);
+        });
       }
 
       // Board refreshes are driven by thread/claim/review events on the socket,
@@ -1760,6 +1887,7 @@
           : "Nothing is waiting on you. Reviews and approvals agents ask you for show up here.";
         setAttention(n);
         needsYou.forEach((item) => list.appendChild(needsYouRow(item)));
+        renderTeam([...threadsById.values()]);
       }
       function needsYouRow(item) {
         const li = document.createElement("li");
@@ -3928,11 +4056,13 @@
             return;
           }
           if (t === "presence_snapshot") {
+            ((v && v.members) || []).forEach((m) => m.status === "online" && markSeen(m.member_id));
             renderPresence(v);
             appendLive(JSON.stringify(v));
             return;
           }
           if (t === "presence" || t === "typing") {
+            if (v.status !== "offline") markSeen(v.member_id);
             appendLive(JSON.stringify(v));
             return;
           }
@@ -3944,6 +4074,7 @@
             wsAfterId = Math.max(wsAfterId, v.log_id);
             const kind = v.kind || "?";
             appendLive(`[${v.log_id}] ${kind}`);
+            markSeenFromFrame(v);
             if (kind === "approval_requested") {
               if (document.getElementById("panel-approvals").classList.contains("active")) {
                 loadApprovals(false);
