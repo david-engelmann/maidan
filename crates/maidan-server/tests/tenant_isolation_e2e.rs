@@ -1005,6 +1005,20 @@ async fn no_mcp_tool_serves_or_changes_another_workspace() {
             invalid.push(format!("{name}: {}", res["error"]["message"]));
         }
     }
+    // The streams are not OpenAPI operations, so the router source is the
+    // list. A new `.route` whose path contains `stream` or `subscribe` fails
+    // here until `stream_probes` covers it.
+    assert_eq!(
+        stream_routes(),
+        vec![
+            "/agui/stream",
+            "/mcp/notifications",
+            "/mcp/stream",
+            "/mcp/streamable",
+            "/ws/subscribe",
+        ],
+        "a live stream was added or renamed: tenant_isolation_e2e must probe it"
+    );
     println!(
         "probed {probed} of {} tools; victim workspace {}",
         tools.len(),
@@ -1022,6 +1036,55 @@ async fn no_mcp_tool_serves_or_changes_another_workspace() {
     );
     assert!(probed >= 50, "only {probed} tools probed");
     assert_victim_intact(&h, &victim).await;
+}
+
+/// The live-stream routes, read from the router in `app.rs` (the streams are
+/// not OpenAPI operations, so the spec cannot drive this). A route registered
+/// with `.route(...)` whose path contains `stream` or `subscribe` is one, and
+/// the test asserts the exact set, so a new stream fails it until it is probed.
+fn stream_routes() -> Vec<String> {
+    let source = include_str!("../src/app.rs");
+    let mut routes = std::collections::BTreeSet::new();
+    for line in source.lines() {
+        let Some(start) = line.find(".route(\"") else {
+            continue;
+        };
+        let rest = &line[start + ".route(\"".len()..];
+        let Some(end) = rest.find('"') else {
+            continue;
+        };
+        let path = &rest[..end];
+        if path.contains("stream") || path.contains("subscribe") {
+            routes.insert(path.to_string());
+        }
+    }
+    routes.into_iter().collect()
+}
+
+/// One probe per way a caller can name the victim on each stream route.
+fn stream_probes(ws: &str, channel: &str, thread: &str) -> Vec<String> {
+    stream_routes()
+        .into_iter()
+        .flat_map(|path| match path.as_str() {
+            // Probed over the WebSocket, and the protocol transports
+            // (streamable HTTP, resource notifications), which carry no
+            // workspace filter to name a victim by.
+            "/ws/subscribe" | "/mcp/streamable" | "/mcp/notifications" => vec![],
+            "/agui/stream" => ["workspace_id", "thread_id", "channel_id"]
+                .into_iter()
+                .map(|param| {
+                    let value = match param {
+                        "workspace_id" => ws,
+                        "thread_id" => thread,
+                        "channel_id" => channel,
+                        _ => unreachable!(),
+                    };
+                    format!("{path}?{param}={value}")
+                })
+                .collect(),
+            _ => vec![format!("{path}?workspace_id={ws}")],
+        })
+        .collect()
 }
 
 /// Everything an open SSE response sends within `window`.
@@ -1084,12 +1147,7 @@ async fn no_live_stream_carries_another_workspaces_events() {
         ))
         .await
         .unwrap();
-    let queries = [
-        format!("/mcp/stream?workspace_id={ws}"),
-        format!("/agui/stream?workspace_id={ws}"),
-        format!("/agui/stream?thread_id={thread}"),
-        format!("/agui/stream?channel_id={channel}"),
-    ];
+    let queries = stream_probes(ws, channel, thread);
     // Each SSE response is drained from the moment it opens, concurrently,
     // over a window that covers the victim's writes; the request timeout is
     // longer than the window so it cannot cut a drain short. The victim's own

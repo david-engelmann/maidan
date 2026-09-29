@@ -52,7 +52,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   instance-wide embedding reindex (`/operator/reindex-embeddings` without a
   `workspace_id`). That now needs `operator:global`.
 - **Changed:** the suite now covers MCP tools (138 of 192 name a victim id)
-  and live streams (`/ws/subscribe` with seven filters, `/mcp/stream`,
+  and the live streams (`/ws/subscribe` with seven filters, `/mcp/stream`,
   `/agui/stream`, checked against the victim's own subscription as a
   control). Request bodies and query strings are built from the OpenAPI
   schemas, so no probe is refused before its access check, and the victim
