@@ -6589,7 +6589,7 @@ Post-gate hardening (Phase XXIV) — two named, owner-less backlog gaps closed. 
 
 ### Added
 
-- MCP streamable session close e2e; documented session lifecycle in [[Agent Integration]].
+- MCP streamable session close e2e; documented session lifecycle in [[Integration]].
 
 ## [72.0.0] — 2026-06-01
 
@@ -6685,7 +6685,7 @@ Post-gate hardening (Phase XXIV) — two named, owner-less backlog gaps closed. 
 
 ### Added
 
-- [[Agent Integration]] guide for external agents.
+- [[Integration]] guide for external agents.
 - Contract golden files: `contracts/event-kinds.json`, `contracts/mcp-tool-names.json`.
 - `scripts/check-agent-contract.sh` in CI.
 
@@ -6693,7 +6693,7 @@ Post-gate hardening (Phase XXIV) — two named, owner-less backlog gaps closed. 
 
 Tag **[`maidan-2.0`](https://github.com/david-engelmann/maidan/releases/tag/maidan-2.0)**
 marks Product Ladder **35–58** completion at the same commit as **`v58.0.0`**.
-Checklist: [`docs/Product Completion Checklist.md`](docs/Product%20Completion%20Checklist.md).
+Checklist: [`docs/Product Completion Checklist.md`](docs/archive/Product%20Completion%20Checklist.md).
 
 Semver **`v2.0.0`** remains **Cluster 2.0** (OIDC identities and human sessions).
 

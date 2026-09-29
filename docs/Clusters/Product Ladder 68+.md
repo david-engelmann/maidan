@@ -2,7 +2,7 @@
 
 **North star:** Close every gap left from [[Clusters/Product Ladder 59+]] so external agents can integrate against a **complete, tested, documented** contract — without human-Slack chrome (UI v3, huddles, org hierarchy).
 
-**Predecessor:** [[Clusters/Product Ladder 59+]] closed at **`v67.0.0`** ([[Agent Integration]]).
+**Predecessor:** [[Clusters/Product Ladder 59+]] closed at **`v67.0.0`** ([[Integration]]).
 
 **Versioning:** One cluster → one tag (`v68.0.0` …). Product gate after Cluster **76**: tag **`maidan-agent-1.0`** at the same commit as **`v76.0.0`** (semver **`v1.0.0`** is Cluster 1.0 production gates — do not reuse).
 
@@ -12,7 +12,7 @@
 
 | Cluster | Kickoff promise | Shipped at tag | Deferred to |
 |---------|-----------------|----------------|-------------|
-| **59** | Charter + **vault truth** (Architecture, Remaining Work, README) | Contract golden files + [[Agent Integration]] | **70** |
+| **59** | Charter + **vault truth** (Architecture, Remaining Work, README) | Contract golden files + [[Integration]] | **70** |
 | **60** | Full MCP 2024-11-05 streamable subset | TTL + `DELETE /mcp/streamable` | **73** |
 | **61** | A2A external runtime (push + discovery) | Agent card + in-memory push config RPC | **72** |
 | **62** | Subscribe v2 + operator outbox ops | `schema_version` + list quarantined | **71** (event/MCP parity) |
@@ -54,7 +54,7 @@ HTTP targets for slash commands and FSM hooks (Clusters **51**, **52**) now have
 |---------|--------|-----|-----------------|
 | **71** | Event & subscribe contract v2 | `v71.0.0` ✓ | WS filter schema + EventKind forward-compat + MCP notification checklist CI |
 | **72** | A2A task streaming | `v72.0.0` ✓ | Persisted push config + `SubscribeToTask` SSE |
-| **73** | MCP streamable complete | `v73.0.0` ✓ | Session delete e2e + [[Agent Integration]] lifecycle |
+| **73** | MCP streamable complete | `v73.0.0` ✓ | Session delete e2e + [[Integration]] lifecycle |
 
 **Ordering:** **71** before **72** (shared event semantics). **73** parallelizable after **70**.
 
@@ -133,6 +133,6 @@ Post-gate work continues in [[Clusters/Product Ladder 77+]] (Clusters **77–101
 
 ## References
 
-- [[Agent Integration]], [[Clusters/Product Ladder 59+]], [[Retros/Cluster 52.0]] (FSM hook deferrals)
+- [[Integration]], [[Clusters/Product Ladder 59+]], [[Retros/Cluster 52.0]] (FSM hook deferrals)
 - [[Clusters/Cluster 22.0]], [[Clusters/Cluster 56.0]] (outbox replay baseline)
 - [[Clusters/Product Ladder 77+]], [[Remaining Work]], [[Open Work]], [[Roadmap]]

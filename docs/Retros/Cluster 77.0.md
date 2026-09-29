@@ -8,7 +8,7 @@
 - OpenAPI stubs for automation, apps, DMs, workspace context, multipart, outbox.
 - `http_openapi_capability_map_contract` — bearer OpenAPI ops ↔ map (`surface: http`).
 - `http_capability_matrix_e2e` — table-driven deny matrix (with documented skips for S3 multipart and admin seeding).
-- [[Capability Map]] and [[Agent Integration]] HTTP CI sections.
+- [[Capability Map]] and [[Integration]] HTTP CI sections.
 
 ## What was deferred
 

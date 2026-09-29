@@ -18,9 +18,9 @@ Cluster **73** shipped streamable open/follow-up/DELETE, but follow-up `POST /mc
 
 | Layer | Deliverable |
 |-------|-------------|
-| **Core** | Follow-up JSON-RPC on an open `Mcp-Session-Id` session delivers responses on the SSE stream (2024-11-05 subset); [[Agent Integration]] documents client flow. |
+| **Core** | Follow-up JSON-RPC on an open `Mcp-Session-Id` session delivers responses on the SSE stream (2024-11-05 subset); [[Integration]] documents client flow. |
 | **Tests** | e2e or store parity per cluster theme |
-| **Docs** | Update [[Agent Integration]] / [[Production]] / [[Capabilities]] as needed |
+| **Docs** | Update [[Integration]] / [[Production]] / [[Capabilities]] as needed |
 
 ---
 

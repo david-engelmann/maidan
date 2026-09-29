@@ -10,8 +10,8 @@ server plus `contracts/http-capability-map.json` win. Patch this
 file. Do not invent routes.
 
 The SDK speaks **REST + WebSocket**. MCP and A2A are other doors
-(see [Clients.md](Clients.md) §1). They are listed here so names
-stay aligned and so [Client Testing.md](Client%20Testing.md) can
+(see [Clients.md](archive/Clients.md) §1). They are listed here so names
+stay aligned and so [Client Testing.md](archive/Client%20Testing.md) can
 re-run the same operations over those transports.
 
 Auth on every REST call: `Authorization: Bearer {token}`.

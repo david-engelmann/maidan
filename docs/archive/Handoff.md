@@ -3,9 +3,9 @@
 **You are a coding agent (or human) picking up Maidan work after the
 2026-08-25 strategy pass.** This pack is the **strategy and detailed scoping**
 behind the post-272 forward work. The **single canonical backlog is
-[Open Work.md](Open%20Work.md)** (with [Roadmap.md](Roadmap.md)); the items
+[Open Work.md](../Open%20Work.md)** (with [Roadmap.md](../Roadmap.md)); the items
 below are tracked there. Use this page for the *why* and the detail, then
-execute through the normal cluster workflow in [CLAUDE.md](../CLAUDE.md)
+execute through the normal cluster workflow in [CLAUDE.md](../../CLAUDE.md)
 (branch → PR → 8 required CI checks → squash/admin-merge → mandatory retro →
 `vX.0.0` tag). The IDs here (A–J, S/M/C/E/R, L1–L6) are scoping labels, not a
 substitute for opening a cluster.
@@ -14,8 +14,8 @@ substitute for opening a cluster.
 **267–272 all shipped** (tags `v267.0.0`–`v272.0.0` on `main`) — the
 optional-deferrals sweep + the LSN read-replica program close. This pack was
 drafted 2026-08-25 while 270–272 were still in flight, so some in-body lines
-still say "in flight"; the current state is [Open Work.md](Open%20Work.md) /
-[CHANGELOG.md](../CHANGELOG.md). J3 (the MCP `2026-07-28` upgrade, `maidan-mcp`)
+still say "in flight"; the current state is [Open Work.md](../Open%20Work.md) /
+[CHANGELOG.md](../../CHANGELOG.md). J3 (the MCP `2026-07-28` upgrade, `maidan-mcp`)
 is the headline open item.
 
 **Star-hold (2026-08-24) still in force until [Launch.md](Launch.md) tag day.**
@@ -28,7 +28,7 @@ not products; both sit after the MCP pack.
 
 1. **Do not re-do 267–272.** All shipped (tags `v267.0.0`–`v272.0.0`): A2A
    egress content→parts, MCP email tools, workspace import (both modes), search
-   token-aware read routing + its metric. Check [CHANGELOG.md](../CHANGELOG.md)
+   token-aware read routing + its metric. Check [CHANGELOG.md](../../CHANGELOG.md)
    before starting anything that sounds adjacent.
 2. **Do not add a third database engine or a fourth agent protocol.**
    Two SQL dialects (Postgres + SQLite). Industry wires: MCP + A2A + REST/WS.
@@ -53,7 +53,7 @@ not products; both sit after the MCP pack.
 ## What this pack is (source of truth)
 
 Strategy pack (committed in Cluster 273). The actionable backlog lives in
-[Open Work.md](Open%20Work.md); this table maps each pack doc to the slice it
+[Open Work.md](../Open%20Work.md); this table maps each pack doc to the slice it
 scopes.
 
 | File | Job | When to open it |
@@ -64,8 +64,8 @@ scopes.
 | [Expansion Bets.md](Expansion%20Bets.md) | Features after 270–272: Slack, Git, MCP pack, SDK, mail | Executing Bet 1–4, 6 |
 | [Launch.md](Launch.md) | Production-ready extras, public-preview cut, when you may announce | When the question is announce |
 | [Promotion.md](Promotion.md) | Get the word out: site, GitHub, Show HN, Reddit, LinkedIn, Medium | Tag week |
-| [Providers.md](Providers.md) | Operator host matrix (where it runs) | Recipes, env vars |
-| [Protocols.md](Protocols.md) | Operator wire matrix (how it talks) | MCP vs A2A vs REST |
+| [Providers.md](../Providers.md) | Operator host matrix (where it runs) | Recipes, env vars |
+| [Protocols.md](../Protocols.md) | Operator wire matrix (how it talks) | MCP vs A2A vs REST |
 | `docs/README.md`, `docs/Integration.md` | Index + integrator freeze sentence | Linking only |
 
 **Already written (docs-only, treat as done):** Hardening **I1** (Providers.md),
@@ -302,9 +302,9 @@ Do not open Slack or the SDK until J3 is green. **J3 is the first expansion.**
 - [Pre-Public Hardening.md](Pre-Public%20Hardening.md)
 - [Expansion Bets.md](Expansion%20Bets.md)
 - [Path to Impressive.md](Path%20to%20Impressive.md)
-- [Providers.md](Providers.md)
-- [Protocols.md](Protocols.md)
+- [Providers.md](../Providers.md)
+- [Protocols.md](../Protocols.md)
 - [Launch.md](Launch.md)
-- [Integration.md](Integration.md)
+- [Integration.md](../Integration.md)
 - `CLAUDE.md` — how to operate in this repo
 - `AGENTS.md` — how to connect *to* a running server (not this pack)

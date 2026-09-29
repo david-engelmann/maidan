@@ -20,7 +20,7 @@ Deferred from [[Clusters/Product Ladder 77+]] and [[Remaining Work]] — see Pha
 |-------|-------------|
 | **Core** | Release build without bootstrap routes via Cargo feature; [[Threat-Model]] updated. |
 | **Tests** | e2e or store parity per cluster theme |
-| **Docs** | Update [[Agent Integration]] / [[Production]] / [[Capabilities]] as needed |
+| **Docs** | Update [[Integration]] / [[Production]] / [[Capabilities]] as needed |
 
 ---
 

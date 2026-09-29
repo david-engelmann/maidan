@@ -1,5 +1,5 @@
 > **Reconciled (Cluster 291, 2026-08-27):** David gave the go — the actionable items from
-> this pack are folded into [Open Work](Open%20Work.md), the single canonical backlog
+> this pack are folded into [Open Work](../Open%20Work.md), the single canonical backlog
 > ("Adoption & ecosystem" section). The "new-files-only / do not fold / do not splice into
 > Open Work" rules below are **superseded**; this doc now serves as the detailed spec/index
 > behind those backlog items. **UPDATE (2026-08-28):** the SDKs are **implemented and
@@ -14,11 +14,11 @@ packages, and whoever later wires those packages (or MCP / A2A)
 into an app that already exists.
 
 **Companions:**
-- [Client Contract.md](Client%20Contract.md) — frozen method list and HTTP map
+- [Client Contract.md](../Client%20Contract.md) — frozen method list and HTTP map
 - [Client Testing.md](Client%20Testing.md) — shared scenarios + CI; this is also extra coverage of the server
 - [Adoption.md](Adoption.md) Ad.K — funnel view (playground, Go, cloud)
-- [Protocols.md](Protocols.md) — which wire to pick; do not contradict it
-- [Framework Integrations.md](Framework%20Integrations.md) — LangChain / AutoGen / REST recipes already on `main`
+- [Protocols.md](../Protocols.md) — which wire to pick; do not contradict it
+- [Framework Integrations.md](../Framework%20Integrations.md) — LangChain / AutoGen / REST recipes already on `main`
 
 **New-files-only.** Do not splice this into Open Work, Handoff,
 README, or book/SUMMARY until David says to. Do not start the
@@ -163,7 +163,7 @@ at that tag for compose, do not mirror a second OpenAPI.
 ## 3. What to build (shared)
 
 Implement the frozen surface in
-[Client Contract.md](Client%20Contract.md) in all three languages.
+[Client Contract.md](../Client%20Contract.md) in all three languages.
 REST plus WebSocket. Token is passed in; the client never mints
 `token:admin`.
 
@@ -195,7 +195,7 @@ First usable release is **0.1.0**. Leave 0.0.1 as the name hold.
 
 Do not start without a go. When started, this order:
 
-0. **Ad.K0** — freeze [Client Contract.md](Client%20Contract.md)
+0. **Ad.K0** — freeze [Client Contract.md](../Client%20Contract.md)
    against `GET /openapi.json` on a v280 (or current `main`)
    server. If OpenAPI and the contract disagree, OpenAPI plus
    `contracts/http-capability-map.json` win; patch the contract.
@@ -281,11 +281,11 @@ package or yank the release.
 
 ## See also
 
-- [Client Contract.md](Client%20Contract.md) — method to HTTP map, MCP twins
+- [Client Contract.md](../Client%20Contract.md) — method to HTTP map, MCP twins
 - [Client Testing.md](Client%20Testing.md) — scenarios, CI, server coverage
-- [Integration.md](Integration.md) — protocol bible (do not copy)
-- [Protocols.md](Protocols.md) — layers, not winners
-- [Framework Integrations.md](Framework%20Integrations.md) — LangChain / AutoGen / REST
+- [Integration.md](../Integration.md) — protocol bible (do not copy)
+- [Protocols.md](../Protocols.md) — layers, not winners
+- [Framework Integrations.md](../Framework%20Integrations.md) — LangChain / AutoGen / REST
 - [Adoption.md](Adoption.md) — funnel, playground, Go, cloud
 - [Expansion Bets.md](Expansion%20Bets.md) Bet 3 — historical SDK bet; this pack is the work order
 - `contracts/http-capability-map.json` — CI-enforced HTTP map

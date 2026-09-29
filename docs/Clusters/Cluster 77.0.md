@@ -29,7 +29,7 @@ Cluster **69** closed the MCP side; **77** closes the HTTP side to the same bar.
 | **Contract** | Expand `contracts/http-capability-routes.json` (or add `http-capability-map.json` keyed by `operationId`) with **every** protected HTTP operation + required capability |
 | **CI** | `http_openapi_capability_contract` (name TBD): OpenAPI operations ⊆ contract; contract capabilities ⊆ known set; optional: contract paths resolve in router |
 | **E2E** | Extend `capability_matrix_e2e` to iterate contract rows (deny without cap, allow with cap) like `mcp_capability_matrix_e2e` |
-| **Docs** | [[Capability Map]] + [[Agent Integration]] — HTTP section lists generation/CI; note exclusions (bootstrap, health, metrics, OIDC browser, unauthenticated well-known) |
+| **Docs** | [[Capability Map]] + [[Integration]] — HTTP section lists generation/CI; note exclusions (bootstrap, health, metrics, OIDC browser, unauthenticated well-known) |
 
 ### Capability assignment rules (normative for this cluster)
 
@@ -113,4 +113,4 @@ These must appear in the machine-readable map with a `surface` field, but are no
 - [[Clusters/Product Ladder 77+]], [[Retros/Cluster 69.0]]
 - `contracts/http-capability-routes.json`, `crates/maidan-server/tests/http_capability_map_contract.rs`
 - `crates/maidan-server/tests/capability_matrix_e2e.rs`, `scripts/check-agent-contract.sh`
-- [[Capability Map]], [[Agent Integration]]
+- [[Capability Map]], [[Integration]]

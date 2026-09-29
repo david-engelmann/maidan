@@ -6,7 +6,7 @@
 
 [[Architecture]] still opens with “state at `v0.4.0`”. [[Remaining Work]] and [[Open Work]] list items shipped in Clusters **35–67** (Helm stack, DMs, pins, outbox replay, streamable mux, etc.). Integrators and agents inherit a false mental model.
 
-Cluster **59** shipped [[Agent Integration]] and contract CI but deferred the vault sweep.
+Cluster **59** shipped [[Integration]] and contract CI but deferred the vault sweep.
 
 ## Scope
 
@@ -40,4 +40,4 @@ Cluster **59** shipped [[Agent Integration]] and contract CI but deferred the va
 
 ## References
 
-- [[Clusters/Product Ladder 68+]], [[Clusters/Product Ladder 59+]], [[Agent Integration]]
+- [[Clusters/Product Ladder 68+]], [[Clusters/Product Ladder 59+]], [[Integration]]

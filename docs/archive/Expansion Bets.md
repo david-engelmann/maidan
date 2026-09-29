@@ -905,7 +905,7 @@ Do **not** add workspace import, A2A content-to-parts, or search replica routing
 - MCP spec 2026-07-28: https://blog.modelcontextprotocol.io/posts/2026-07-28/
 - A2A Linux Foundation one-year (150+ orgs, v1.0): https://www.linuxfoundation.org/press/a2a-protocol-surpasses-150-organizations-lands-in-major-cloud-platforms-and-sees-enterprise-production-use-in-first-year
 - IBM ACP merged into A2A (2025-08-29): https://lfaidata.foundation/communityblog/2025/08/29/acp-joins-forces-with-a2a-under-the-linux-foundations-lf-ai-data/
-- [Protocols.md](Protocols.md) — inventory + 2026 layer map
+- [Protocols.md](../Protocols.md) — inventory + 2026 layer map
 - GitHub Copilot coding agent: https://docs.github.com/copilot/concepts/agents/cloud-agent/about-cloud-agent
 - Copilot code review MCP GA (2026-07-29): https://github.blog/changelog/2026-07-29-copilot-code-review-agent-skills-and-mcp-now-generally-available/
 - Official GitHub MCP server: https://github.com/github/github-mcp-server
@@ -922,6 +922,6 @@ Do **not** add workspace import, A2A content-to-parts, or search replica routing
 
 - 2026-08-25 (Git + launch): Bet 6 Git projector (GitHub App → thread → comment/Check Run; GitLab/Gitea later; do not reimplement GitHub MCP). [Launch.md](Launch.md) for production-ready extras L1–L6, public-preview cut, Show HN. GitHub-issue ingress removed from Bet 1 leftovers.
 - 2026-08-25 (handoff audit): added [Handoff.md](Handoff.md) as the session start page (master IDs + try-out matrix). I1/J1 marked written. mdBook SUMMARY + `book/sync-docs.sh` include the pack.
-- 2026-08-25 (afternoon, later): protocol research pass. Added Hardening J / [Protocols.md](Protocols.md) as the "whatever they already speak" track (MCP+A2A+REST, not a fourth protocol). IBM ACP called dead; Zed ACP stays adapter-only; AG-UI/gRPC/GraphQL/ANP on the do-not-chase table. Sequence 0 includes J1.
+- 2026-08-25 (afternoon, later): protocol research pass. Added Hardening J / [Protocols.md](../Protocols.md) as the "whatever they already speak" track (MCP+A2A+REST, not a fourth protocol). IBM ACP called dead; Zed ACP stays adapter-only; AG-UI/gRPC/GraphQL/ANP on the do-not-chase table. Sequence 0 includes J1.
 - 2026-08-25 (afternoon): re-audit against the local tree. Added "Codebase constraints"; boxed 269–272 as the other agent's ladder; named `claim_next_thread` / EventKind wire names; Bet 2 M.0 protocol honesty; Bet 3 REST+WS freeze; Bet 4 `mail_outbox` (not `maidan_outbox`); monster-file counts + residue 771; sequence 0 = Hardening P0 in parallel.
 - 2026-08-25: first cut after v267-v268 shipped and 269 import store in flight. Rescored prior recs; researched Slack/ACP/Claude Tag; wrote four expansion bets plus anti-catalog. Corrected Slack egress to native chat.startStream (7 Oct 2025); added live GitHub star snapshot; Marketplace HTTP Events requirement; MCP one-click artifacts.

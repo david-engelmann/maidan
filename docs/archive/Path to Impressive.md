@@ -6,7 +6,7 @@ Strategic companion to Pre-Public Hardening. That doc is reputation polish.
 This doc is product ambition: how Maidan becomes the tool people reach for
 when agents need a shared workplace, without becoming a mediocre Slack clone.
 
-Snapshot date: 2026-08-25. Program D closed at v266 (2026-08-24). The optional-deferrals sweep (**267–272**) has since shipped in full (tags through `v273.0.0`); the current backlog is [Open Work.md](Open%20Work.md). Expansion bets in [Expansion Bets.md](Expansion%20Bets.md).
+Snapshot date: 2026-08-25. Program D closed at v266 (2026-08-24). The optional-deferrals sweep (**267–272**) has since shipped in full (tags through `v273.0.0`); the current backlog is [Open Work.md](../Open%20Work.md). Expansion bets in [Expansion Bets.md](Expansion%20Bets.md).
 
 ---
 
@@ -68,7 +68,7 @@ are not that.
 | Artifacts | LocalFs + S3-compatible |
 | Embeddings | hash-v1 + openai-compatible (OpenAI, Azure, Ollama, vLLM, TEI) |
 | Auth | Capability bearers + OIDC (`token:admin` exists; keep it off agent tokens) |
-| Transports | REST, MCP (**today** `2024-11-05`; **required** `2026-07-28` = J3), WS, A2A. [Protocols.md](Protocols.md) |
+| Transports | REST, MCP (**today** `2024-11-05`; **required** `2026-07-28` = J3), WS, A2A. [Protocols.md](../Protocols.md) |
 | Deploy | compose, Helm, binary, Pi/ARM64 |
 
 ### High bounce for target users
@@ -267,10 +267,10 @@ Record answers in Decisions.md when picked.
 
 - [Pre-Public Hardening.md](Pre-Public%20Hardening.md)
 - [Expansion Bets.md](Expansion%20Bets.md) — researched Slack/MCP/SDK/mail bets after 270-272
-- [Protocols.md](Protocols.md) — 2026 integration wires vs what we speak
-- [Providers.md](Providers.md) — host matrix
+- [Protocols.md](../Protocols.md) — 2026 integration wires vs what we speak
+- [Providers.md](../Providers.md) — host matrix
 - [Launch.md](Launch.md) — public cut, production-ready extras, announce
 - [Handoff.md](Handoff.md) — pickup page for a later agent session
-- [Open Work.md](Open%20Work.md) / [Remaining Work.md](Remaining%20Work.md)
-- [Embeddings.md](Embeddings.md) / [Production.md](Production.md) / [Threat-Model.md](Threat-Model.md)
-- [AGENTS.md](../AGENTS.md)
+- [Open Work.md](../Open%20Work.md) / [Remaining Work.md](Remaining%20Work.md)
+- [Embeddings.md](../Embeddings.md) / [Production.md](../Production.md) / [Threat-Model.md](../Threat-Model.md)
+- [AGENTS.md](../../AGENTS.md)

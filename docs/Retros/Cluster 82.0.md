@@ -7,7 +7,7 @@
 - `Store::list_messages_after` (sqlite + postgres) with `posted_at ASC, id ASC` ordering.
 - HTTP thread/workspace context: `message_cursor`, `thread_cursor`, `next_message_cursor`, `next_thread_cursor`.
 - MCP `get_thread_context` / `get_workspace_context` pagination args; results use standard MCP `content[]` envelope.
-- `context_pagination_e2e`; ordering table in [[Agent Integration]].
+- `context_pagination_e2e`; ordering table in [[Integration]].
 
 ## What was deferred
 

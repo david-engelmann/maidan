@@ -14,7 +14,7 @@ speak, where, in what order, with what copy*. Do not invent features here.
 > set** (293); the README hero is the default-secure quickstart + `maidan init`, **not
 > `cargo run`+`AUTH_DISABLED`** (313–314). So those *are* announceable as shipped (honestly:
 > projectors/mail are config-gated). Still **not** shipped: hosted `/play`, hosted cloud.
-> Canonical status is always [Open Work](Open%20Work.md).
+> Canonical status is always [Open Work](../Open%20Work.md).
 
 **Pickup:** [Handoff.md](Handoff.md) for product work. Open this page
 when the question is distribution.
@@ -262,7 +262,7 @@ Engineers land here from HN. If the README still leads with
 
 On tag day, in this order:
 
-1. Push the annotated tag ([Operations.md](Operations.md)). Wait for
+1. Push the annotated tag ([Operations.md](../Operations.md)). Wait for
    `release.yml` (binaries, images, cosign, SBOM).
 2. Edit the GitHub Release: human title **"Maidan public preview"**,
    8–15 lines, link the 10-minute path and the announce page. Not a
@@ -671,11 +671,11 @@ the Slack/Git projector — product, not more posts.
 | Question | Doc |
 |----------|-----|
 | Are we allowed to speak yet? | [Launch.md](Launch.md) (L1–L6, J3, star-hold) |
-| How do I tag? | [Operations.md](Operations.md) |
-| What can I honestly claim? | Launch L4 + [Protocols.md](Protocols.md) + [Capabilities.md](Capabilities.md) |
+| How do I tag? | [Operations.md](../Operations.md) |
+| What can I honestly claim? | Launch L4 + [Protocols.md](../Protocols.md) + [Capabilities.md](../Capabilities.md) |
 | What do we build after they show up? | [Expansion Bets.md](Expansion%20Bets.md) |
 | Polish still owed? | [Pre-Public Hardening.md](Pre-Public%20Hardening.md) |
-| Integrator entry | [Integration.md](Integration.md) |
+| Integrator entry | [Integration.md](../Integration.md) |
 
 ---
 
@@ -683,7 +683,7 @@ the Slack/Git projector — product, not more posts.
 
 - [Launch.md](Launch.md)
 - [Handoff.md](Handoff.md)
-- [Operations.md](Operations.md)
+- [Operations.md](../Operations.md)
 - Product: https://maidan.world
 - Docs: https://maidan.world/docs/
 - Repo: https://github.com/david-engelmann/maidan

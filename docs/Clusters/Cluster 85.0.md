@@ -20,7 +20,7 @@ Deferred from [[Clusters/Product Ladder 77+]] and [[Remaining Work]] — see Pha
 |-------|-------------|
 | **Core** | Feature-gated HNSW on SQLite via optional `sqlite-vec`; CI proves linkage or documents opt-out. |
 | **Tests** | e2e or store parity per cluster theme |
-| **Docs** | Update [[Agent Integration]] / [[Production]] / [[Capabilities]] as needed |
+| **Docs** | Update [[Integration]] / [[Production]] / [[Capabilities]] as needed |
 
 ---
 
@@ -58,7 +58,7 @@ Deferred from [[Clusters/Product Ladder 77+]] and [[Remaining Work]] — see Pha
 | 85.0.1 | Remove `sqlite-vec` from `default` features; add `default = []` and document `cargo build -p maidan-search --features sqlite-vec`. |
 | 85.0.2 | CI job `sqlite-vec` (or matrix leg): build + test with `--features sqlite-vec`; workspace default job builds without it. |
 | 85.0.3 | `semantic_search` on SQLite without feature: keep brute-force fallback; with feature: SQL HNSW path unchanged. |
-| 85.0.4 | [[Production]] + [[Agent Integration]]: when to enable the feature; opt-out for minimal binaries. |
+| 85.0.4 | [[Production]] + [[Integration]]: when to enable the feature; opt-out for minimal binaries. |
 
 **Exit check:** CI proves linkage with feature on; default workspace build does not require `libsqlite3-sys` / `sqlite_vec0`.
 
