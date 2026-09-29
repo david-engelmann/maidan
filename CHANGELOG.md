@@ -42,6 +42,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the member it names as live.
 - **Fixed:** the board loads every page of a large channel (the 20,000-task
   cap is gone) and stops if a cursor does not advance.
+- **Fixed:** a review request's age is when review began, the same moment it
+  is queued by, so a claim renewal or a rename no longer makes an old review
+  look fresh or push it down the inbox.
 - **Fixed:** an MCP call with an id that does not exist answers `-32004`
   not found, as REST answers 404, instead of `-32603` internal error.
 - **Changed:** the Connect prompt names the channel by id with `lease_secs`,
@@ -59,8 +62,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** "Connect an agent" in the header gives this server's MCP endpoint
   in the shapes clients take, each with a Copy button:
   - a `claude mcp add --transport http` line
-  - an `mcp.json` block for Cursor, Claude Desktop or any MCP client
-  - an Add to Cursor install link
+  - an `mcp.json` block for any MCP client
+  - a one-click install link
   - a short prompt that tells an agent the work loop and to read `/llms.txt`
 
   The token stays a placeholder, and the viewer's own token is never written
