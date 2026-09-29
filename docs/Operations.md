@@ -439,6 +439,21 @@ retry is reported as `FLAKY`, not hidden. Common failures:
   so a pull failure fails them instead of passing with `s3.rs` untested. Keep
   the image pinned to the digest `compose.yaml` uses.
 
+### `loom` models fail
+
+The loom models check every interleaving of the sharded bus and the presence
+hub with [loom](https://docs.rs/loom). No CI job runs them yet; run them
+locally after touching either:
+
+```bash
+cargo test -p maidan-bus --features loom --release --lib loom
+cargo test -p maidan-server --features loom --release --lib loom
+```
+
+In the test build the `loom` feature swaps the locks for loom's, so it only
+builds the models (the normal tests are compiled out). To see the failing interleaving, rerun
+the failing model with `LOOM_LOG=trace LOOM_LOCATION=1`.
+
 ### `coverage (llvm-cov)` fails
 
 The job runs the whole suite under `cargo llvm-cov nextest` and then

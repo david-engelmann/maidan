@@ -17,10 +17,11 @@
 //! could match them live).
 
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 use maidan_types::{BusEnvelope, EventFilter, WorkspaceId};
 use tokio::sync::broadcast;
+
+use crate::sync::{channel_step, Mutex, MutexGuard};
 
 /// A broadcast fan-out sharded by workspace. Cheap to clone the handles it hands
 /// out; hold one behind an `Arc` and share it across bus clones.
@@ -44,9 +45,7 @@ impl ShardedBroadcast {
         }
     }
 
-    fn lock(
-        &self,
-    ) -> std::sync::MutexGuard<'_, HashMap<WorkspaceId, broadcast::Sender<BusEnvelope>>> {
+    fn lock(&self) -> MutexGuard<'_, HashMap<WorkspaceId, broadcast::Sender<BusEnvelope>>> {
         self.shards.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -62,10 +61,13 @@ impl ShardedBroadcast {
         match ws_shard {
             // Both shards receive → one clone (a `send` moves the value).
             Some(tx) => {
+                channel_step();
                 let _ = self.global.send(envelope.clone());
+                channel_step();
                 let _ = tx.send(envelope);
             }
             None => {
+                channel_step();
                 let _ = self.global.send(envelope);
             }
         }
@@ -87,7 +89,10 @@ impl ShardedBroadcast {
                     .or_insert_with(|| broadcast::channel(self.capacity).0)
                     .subscribe()
             }
-            None => self.global.subscribe(),
+            None => {
+                channel_step();
+                self.global.subscribe()
+            }
         }
     }
 
@@ -97,7 +102,7 @@ impl ShardedBroadcast {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "loom")))]
 mod tests {
     use super::*;
     use chrono::Utc;
@@ -173,5 +178,173 @@ mod tests {
         let b = WorkspaceId(uuid::Uuid::new_v4());
         let _rx_b = bus.subscribe(&workspace_filter(b));
         assert_eq!(bus.shard_count(), 1, "dead shard pruned, only B remains");
+    }
+}
+
+/// Loom models of the fan-out: every interleaving of its lock against
+/// concurrent subscribes, publishes and receiver drops. The broadcast
+/// channels are tokio's, which tokio model-checks itself; what is modelled
+/// here is the shard map. Run with
+/// `cargo test -p maidan-bus --features loom --release --lib loom`.
+#[cfg(all(test, feature = "loom"))]
+mod loom_tests {
+    use super::*;
+    use chrono::Utc;
+    use loom::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use loom::sync::Arc;
+    use loom::thread;
+    use maidan_types::{Event, Workspace};
+
+    fn ws_event(ws: WorkspaceId, log_id: i64) -> BusEnvelope {
+        BusEnvelope {
+            log_id,
+            event: Event::WorkspaceCreated {
+                occurred_at: Utc::now(),
+                workspace: Workspace {
+                    id: ws,
+                    name: "w".into(),
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    tombstoned_at: None,
+                },
+            },
+            attribution: None,
+        }
+    }
+
+    fn scoped(ws: WorkspaceId) -> EventFilter {
+        EventFilter {
+            workspace_id: Some(ws),
+            ..EventFilter::default()
+        }
+    }
+
+    fn ids(rx: &mut broadcast::Receiver<BusEnvelope>) -> Vec<i64> {
+        std::iter::from_fn(|| rx.try_recv().ok().map(|e| e.log_id)).collect()
+    }
+
+    /// A publish that starts after `subscribe` returned reaches that
+    /// subscriber, while another workspace's subscriber is being created and
+    /// pruned beside it, and never reaches the other workspace.
+    #[test]
+    fn loom_a_subscriber_gets_what_is_published_after_it_subscribed() {
+        loom::model(|| {
+            let bus = Arc::new(ShardedBroadcast::new(8));
+            let a = WorkspaceId(uuid::Uuid::from_u128(1));
+            let b = WorkspaceId(uuid::Uuid::from_u128(2));
+            let subscribed = Arc::new(AtomicBool::new(false));
+
+            let subscriber = {
+                let (bus, subscribed) = (bus.clone(), subscribed.clone());
+                thread::spawn(move || {
+                    let rx = bus.subscribe(&scoped(a));
+                    subscribed.store(true, Ordering::SeqCst);
+                    rx
+                })
+            };
+            let neighbour = {
+                let bus = bus.clone();
+                thread::spawn(move || bus.subscribe(&scoped(b)))
+            };
+            let publisher = {
+                let (bus, subscribed) = (bus.clone(), subscribed.clone());
+                thread::spawn(move || {
+                    let after = subscribed.load(Ordering::SeqCst);
+                    bus.publish(ws_event(a, 1));
+                    after
+                })
+            };
+
+            let mut rx_a = subscriber.join().unwrap();
+            let mut rx_b = neighbour.join().unwrap();
+            let published_after_subscribe = publisher.join().unwrap();
+            let got = ids(&mut rx_a);
+            if published_after_subscribe {
+                assert_eq!(got, vec![1]);
+            }
+            assert!(got.len() <= 1);
+            assert!(ids(&mut rx_b).is_empty(), "B heard A's event");
+        });
+    }
+
+    /// Two receivers subscribe to a workspace whose shard has lost its last
+    /// receiver: no prune removes a shard a receiver is on, so a publish made after both
+    /// subscribes reaches both, and dead shards do not pile up.
+    #[test]
+    fn loom_pruning_a_dead_shard_never_strands_a_new_subscriber() {
+        loom::model(|| {
+            let bus = Arc::new(ShardedBroadcast::new(8));
+            let a = WorkspaceId(uuid::Uuid::from_u128(1));
+            // A shard whose only receiver has gone: the next subscribe prunes it.
+            drop(bus.subscribe(&scoped(a)));
+            let subscribed = Arc::new(AtomicUsize::new(0));
+
+            let joiners: Vec<_> = (0..2)
+                .map(|_| {
+                    let (bus, subscribed) = (bus.clone(), subscribed.clone());
+                    thread::spawn(move || {
+                        let rx = bus.subscribe(&scoped(a));
+                        subscribed.fetch_add(1, Ordering::SeqCst);
+                        rx
+                    })
+                })
+                .collect();
+            let publisher = {
+                let (bus, subscribed) = (bus.clone(), subscribed.clone());
+                thread::spawn(move || {
+                    let after = subscribed.load(Ordering::SeqCst) == 2;
+                    bus.publish(ws_event(a, 7));
+                    after
+                })
+            };
+
+            let mut receivers: Vec<_> = joiners.into_iter().map(|j| j.join().unwrap()).collect();
+            if publisher.join().unwrap() {
+                for rx in &mut receivers {
+                    assert_eq!(ids(rx), vec![7], "a subscriber was stranded");
+                }
+            }
+            assert_eq!(bus.shard_count(), 1);
+        });
+    }
+
+    /// A cross-workspace subscriber sees every publish made after it
+    /// subscribed, in publish order, whichever workspace it was for.
+    #[test]
+    fn loom_a_global_subscriber_sees_every_workspace_in_order() {
+        loom::model(|| {
+            let bus = Arc::new(ShardedBroadcast::new(8));
+            let a = WorkspaceId(uuid::Uuid::from_u128(1));
+            let b = WorkspaceId(uuid::Uuid::from_u128(2));
+            let _scoped_a = bus.subscribe(&scoped(a));
+            let subscribed = Arc::new(AtomicBool::new(false));
+
+            let subscriber = {
+                let (bus, subscribed) = (bus.clone(), subscribed.clone());
+                thread::spawn(move || {
+                    let rx = bus.subscribe(&EventFilter::default());
+                    subscribed.store(true, Ordering::SeqCst);
+                    rx
+                })
+            };
+            let publisher = {
+                let (bus, subscribed) = (bus.clone(), subscribed.clone());
+                thread::spawn(move || {
+                    let after = subscribed.load(Ordering::SeqCst);
+                    bus.publish(ws_event(a, 1));
+                    bus.publish(ws_event(b, 2));
+                    after
+                })
+            };
+
+            let mut rx = subscriber.join().unwrap();
+            let published_after_subscribe = publisher.join().unwrap();
+            let got = ids(&mut rx);
+            if published_after_subscribe {
+                assert_eq!(got, vec![1, 2]);
+            } else {
+                assert!(got == vec![1, 2] || got == vec![2] || got.is_empty());
+            }
+        });
     }
 }

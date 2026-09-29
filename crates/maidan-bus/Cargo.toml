@@ -9,7 +9,13 @@ authors.workspace = true
 publish.workspace = true
 description = "Event bus for Maidan: in-memory + Postgres LISTEN/NOTIFY backends."
 
+[features]
+# Swap the fan-out's lock for loom's so the `loom` model tests can explore its
+# interleavings. Test-only: never enable it in a build that runs.
+loom = ["dep:loom"]
+
 [dependencies]
+loom = { version = "0.7", optional = true }
 maidan-store = { path = "../maidan-store" }
 maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true

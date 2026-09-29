@@ -49,6 +49,13 @@ fn rust_files(path: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// A `cfg` that compiles only under test (`test`, or `all(test, …)`): the
+/// scan stops at the first one, as test modules sit at the end of a file.
+fn is_test_gate(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("#[cfg(test)]") || line.starts_with("#[cfg(all(test,")
+}
+
 #[test]
 fn entity_ids_are_v7() {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
@@ -62,9 +69,9 @@ fn entity_ids_are_v7() {
         rust_files(&src, &mut files);
         for file in files {
             let source = std::fs::read_to_string(&file).unwrap();
-            let code = source.split("#[cfg(test)]").next().unwrap_or_default();
-            let count = code
+            let count = source
                 .lines()
+                .take_while(|l| !is_test_gate(l))
                 .filter(|l| !l.trim_start().starts_with("//") && l.contains("new_v4()"))
                 .count();
             if count > 0 {

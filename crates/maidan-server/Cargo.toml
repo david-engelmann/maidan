@@ -17,6 +17,7 @@ name = "maidan-server"
 path = "src/main.rs"
 
 [dependencies]
+loom = { version = "0.7", optional = true }
 maidan-fsm = { path = "../maidan-fsm" }
 maidan-types = { path = "../maidan-types", features = ["openapi"] }
 maidan-store = { path = "../maidan-store" }
@@ -88,6 +89,9 @@ bootstrap = []
 # scrape stay). Forwards to the maidan-observability `otel` feature.
 otel = ["maidan-observability/otel"]
 sqlite-vec = ["maidan-search/sqlite-vec"]
+# Swap the presence hub's lock for loom's so the `loom` model tests can
+# explore its interleavings. Test-only: never enable it in a build that runs.
+loom = ["dep:loom"]
 
 [dev-dependencies]
 maidan-store = { path = "../maidan-store", features = ["test-support"] }

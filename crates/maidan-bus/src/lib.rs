@@ -19,6 +19,7 @@ pub mod presence_notify;
 pub mod resource_notify;
 pub mod sharded;
 pub mod stream;
+mod sync;
 /// Test doubles for integration tests in downstream crates.
 pub mod test_support;
 pub mod traits;

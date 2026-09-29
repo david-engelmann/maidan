@@ -1248,6 +1248,50 @@ e2e tests. Report-only would hide a regression behind a green tick.
 **To revisit:** when the TCK cuts a stable release: pin it, raise the floor,
 and consider making the job required.
 
+### Loom models sit behind a `loom` cargo feature
+
+**Decision.** `maidan-bus` and `maidan-server` have a `loom` feature that,
+in the crate's own test build, swaps its locks for loom's and compiles only
+the loom models; every other build keeps std's locks. They run in
+release mode, locally for now; a non-required `loom` CI job is planned. The models cover the
+sharded bus (subscribe/publish/prune) and the presence hub (reconnects,
+racing status changes, a sweep racing a heartbeat).
+
+**Alternative.** `RUSTFLAGS="--cfg loom"`, the convention in loom's docs.
+
+**Why this:** tokio reads `cfg(loom)` too and then expects loom as its own
+dev-dependency, so the whole build breaks; `RUSTFLAGS` would also rebuild
+every dependency. Claims, the outbox and WIP checks are SQL transactions,
+which loom cannot model; `claim_state_machine` covers them. Code where each
+operation runs under one mutex (MCP resource subscriptions) or holds no
+shared state (the event-stream watermark, counters) has no interleaving to
+check.
+
+**To revisit:** when another in-process structure shares state across
+tasks without one lock around each operation.
+
+### Presence changes are announced under the hub lock
+
+**Decision.** The presence hub decides a change, sends the local frame and
+queues the cross-replica event while it holds its lock. One publisher task
+sends the queue in order, giving each publish 5 s; the queue is bounded
+(16,384) and drops changes, with one warning, while full. A heartbeat takes one slot: the publisher reads
+the local members when it reaches it. A replica ignores its own events from
+the notifier, and reports a member connected to it from local state. It
+keeps each other replica's word on a member separately; the member is online
+if any replica says online, and one replica's `offline` removes only its own
+entry.
+
+**Alternative.** Announce after the lock is released, with one spawned task
+per publish (the old design).
+
+**Why this:** the loom models showed a reconnect's `online` overtaken by the
+old connection's `offline`, so subscribers saw a connected member offline;
+racing status changes and a sweep racing a heartbeat ended wrong the same
+way. Sending to a broadcast channel under the lock does not block.
+
+**To revisit:** if the lock shows up in presence latency.
+
 ## Workflow
 
 ### Admin-merge instead of local-first push

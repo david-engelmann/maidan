@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Loom models
+
+- **Added:** loom models of the sharded bus and the presence hub, behind a
+  `loom` feature. They run locally (see Operations); a CI job for them is
+  not wired up yet.
+- **Fixed:** presence changes could be announced out of order, so a
+  reconnecting member could show as offline, or a status change end on the
+  wrong status. Changes are now announced under the hub lock and published
+  to other replicas in order. A second connection of an away member
+  announces it online; another replica's word on a member connected locally
+  no longer overrides local state. One replica's `offline` no longer hides a
+  member still connected to another replica.
+
 ### The A2A gRPC binding serves the official proto
 
 - **Changed:** the gRPC binding (`MAIDAN_A2A_GRPC_ADDR`) served a
