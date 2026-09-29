@@ -22,12 +22,10 @@ pub fn max_body_bytes_from_env() -> usize {
 use crate::bootstrap;
 use crate::{
     a2a_agent, agui_stream, app_oauth, apps, auth, automation_deliveries, consistency,
-    delivery_ops, dm,
-    error::ApiError,
-    federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications, mcp_stream,
-    mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id, room_lsn,
-    routes,
-    routing::{delete, get, patch, post, put},
+    delivery_ops, dm, federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications,
+    mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id,
+    room_lsn, routes,
+    routing::{delete, get, patch, post, put, ProblemFallbacks},
     scim, session, share_consumer, slack, slash_commands,
     state::AppState,
     webhooks, ws,
@@ -1109,8 +1107,7 @@ pub fn router(state: AppState) -> Router {
         // An unknown path and a known one asked with the wrong method answer
         // with a problem like every other client error, not axum's empty body.
         // The 405 keeps axum's `Allow` header.
-        .fallback(|| async { ApiError::NotFound })
-        .method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
+        .problem_fallbacks()
         .layer(middleware::from_fn(metrics::middleware))
         // Room-LSN sits *inside* the rate limiter: a later `.layer` is the
         // outer one, so this order makes the limiter outermost. It used to wrap

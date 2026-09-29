@@ -107,6 +107,24 @@ method!(
     delete
 );
 
+/// The router's fallbacks: an unknown path is a 404 problem and a known path
+/// asked with the wrong method a 405 problem (axum keeps its `Allow` header),
+/// not axum's empty body. They take no input, so nothing can be rejected.
+pub trait ProblemFallbacks {
+    /// Install both fallbacks.
+    #[must_use]
+    fn problem_fallbacks(self) -> Self;
+}
+
+impl<S: Clone + Send + Sync + 'static> ProblemFallbacks for axum::Router<S> {
+    #[allow(clippy::disallowed_methods)]
+    fn problem_fallbacks(self) -> Self {
+        use crate::error::ApiError;
+        self.fallback(|| async { ApiError::NotFound })
+            .method_not_allowed_fallback(|| async { ApiError::MethodNotAllowed })
+    }
+}
+
 /// axum's own extractors, whose rejections are `text/plain`, are not
 /// [`Checked`]. Each line fails to compile (ambiguous `some_item`) if its type
 /// ever implements it, so a blanket impl cannot let them back in.
