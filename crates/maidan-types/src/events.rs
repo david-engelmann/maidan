@@ -486,13 +486,13 @@ pub enum Event {
         reason: BlockedReason,
         resolved_by: MemberId,
     },
-    /// A claim's lease lapsed and the thread was reclaimed by the next agent.
-    /// Emitted lazily by `claim_next` when it takes over an expired lease —
+    /// A claim's lease lapsed and the thread went back to the queue. Emitted by
+    /// the claim reaper within a tick of the deadline, or by `claim_next` when
+    /// it takes over a lease that lapsed between ticks, once either way —
     /// `member_id` is the *previous* holder whose claim expired, so a
     /// supervisor can react to a dead/stalled agent without polling. A
     /// locally-derived signal (this deployment's clock): not federatable. A
-    /// lease that expires but is never reclaimed emits nothing (the occupancy
-    /// view still shows it).
+    /// lease on a thread in review is not reaped and emits nothing.
     ClaimExpired {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,

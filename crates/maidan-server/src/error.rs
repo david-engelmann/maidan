@@ -240,6 +240,12 @@ impl IntoResponse for ApiError {
     }
 }
 
+impl From<maidan_mcp::claim_lease::InvalidLease> for ApiError {
+    fn from(err: maidan_mcp::claim_lease::InvalidLease) -> Self {
+        Self::BadRequest(err.to_string())
+    }
+}
+
 impl From<maidan_router::RouterError> for ApiError {
     fn from(err: maidan_router::RouterError) -> Self {
         match err {

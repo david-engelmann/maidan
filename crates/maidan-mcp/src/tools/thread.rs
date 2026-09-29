@@ -667,8 +667,8 @@ pub(super) async fn list_assigned_threads(
 #[serde(deny_unknown_fields)]
 struct ClaimNextThreadArgs {
     channel_id: uuid::Uuid,
-    /// Optional lease deadline in seconds; the claim is reclaimable after it
-    /// lapses. Omit for a durable claim.
+    /// Lease in seconds (1 s to 7 days); the claim is reclaimable after it
+    /// lapses. Omitted, the server's default lease applies.
     #[serde(default)]
     lease_secs: Option<i64>,
 }
@@ -682,6 +682,7 @@ pub(super) async fn claim_next_thread(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ClaimNextThreadArgs = serde_json::from_value(args.clone())?;
+    let lease_secs = server.claim_lease_policy().lease_for(a.lease_secs)?;
     let member_id = auth.member_id;
     // WIP limit: a capped member is dispatched nothing (null), the same shape
     // as an empty queue.
@@ -695,7 +696,7 @@ pub(super) async fn claim_next_thread(
     // non-event path dropped ClaimExpired entirely on the agent surface.
     let (claimed, events) = server
         .store
-        .claim_next_thread_with_event(ChannelId(a.channel_id), member_id, a.lease_secs)
+        .claim_next_thread_with_event(ChannelId(a.channel_id), member_id, Some(lease_secs))
         .await?;
     for stored in &events {
         server.publish_stored(stored).await;
@@ -729,13 +730,14 @@ pub(super) async fn renew_claim(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: RenewClaimArgs = serde_json::from_value(args.clone())?;
+    let lease_secs = crate::claim_lease::check_lease_secs(a.lease_secs)?;
     let thread = server
         .store
         .renew_claim(
             ThreadId(a.thread_id),
             auth.member_id,
             ClaimLeaseId(a.claim_lease_id),
-            a.lease_secs,
+            lease_secs,
         )
         .await?;
     Ok(content_json(&thread))
@@ -1432,7 +1434,7 @@ struct WaitForClaimExpiredArgs {
 /// (its `member_id` is the dead holder) or `null` on timeout. **Live**
 /// primitive (only sees expiries reclaimed *after* it subscribes); the `GET
 /// /mcp/stream` SSE transport, `kinds=claim_expired`, is the resumable
-/// alternative. A lease that expires but is never reclaimed emits nothing.
+/// alternative. A lease on a thread in review is not reaped and emits nothing.
 pub(super) async fn wait_for_claim_expired(
     server: &crate::server::McpServer,
     auth: &AuthContext,

@@ -2,8 +2,8 @@
 (***************************************************************************)
 (* The claim state machine of a thread queue: claim_next (with or without  *)
 (* a lease), claim by id, assign, unassign, the fenced follow-ups (renew,  *)
-(* acknowledge, release), a member freeze, and time passing a lease        *)
-(* deadline. Each action is one SQL transaction in the store, so it is one *)
+(* acknowledge, release), a member freeze, time passing a lease deadline,  *)
+(* and the reaper freeing a lapsed lease. Each action is one SQL transaction in the store, so it is one *)
 (* atomic step here. claim_next may pick any claimable thread: the real    *)
 (* query picks one of them, and every property is a safety property.      *)
 (*                                                                         *)
@@ -157,10 +157,24 @@ Lapse(t) ==
     /\ deadline' = [deadline EXCEPT ![t] = "past"]
     /\ UNCHANGED <<holder, token, leased, working, known, issued, lost, bad>>
 
+\* The claim reaper: a lapsed lease is returned to the queue with nobody
+\* calling claim_next, and ClaimExpired is reported for the holder.
+Reap(t) ==
+    /\ holder[t] # None
+    /\ deadline[t] = "past"
+    /\ holder' = [holder EXCEPT ![t] = None]
+    /\ token' = [token EXCEPT ![t] = 0]
+    /\ working' = [working EXCEPT ![t] = FALSE]
+    /\ deadline' = [deadline EXCEPT ![t] = "none"]
+    /\ leased' = [leased EXCEPT ![t] = FALSE]
+    /\ lost' = lost \cup {<<t, holder[t], token[t]>>}
+    /\ bad' = (bad \/ ~leased[t])
+    /\ UNCHANGED <<known, issued>>
+
 Next ==
     \/ \E m \in Members, lease \in BOOLEAN : ClaimNext(m, lease)
     \/ \E m \in Members, t \in Threads : ClaimById(m, t) \/ Assign(m, t)
-    \/ \E t \in Threads : Unassign(t) \/ Lapse(t)
+    \/ \E t \in Threads : Unassign(t) \/ Lapse(t) \/ Reap(t)
     \/ \E m \in Members : Freeze(m)
     \/ \E m \in Members, t \in Threads, k \in Tokens :
           Renew(m, t, k) \/ Acknowledge(m, t, k) \/ Release(m, t, k)

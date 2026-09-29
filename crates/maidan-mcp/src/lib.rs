@@ -14,6 +14,7 @@
 //! endpoint (`POST /mcp`). Stdio transport: [`stdio::run_stdio`] via
 //! `maidan-cli mcp-stdio`.
 
+pub mod claim_lease;
 pub mod context;
 pub mod error;
 pub mod prompts;

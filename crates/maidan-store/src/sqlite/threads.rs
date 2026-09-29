@@ -788,6 +788,56 @@ pub async fn claim_next_with_event(
     Ok((Some(thread), events))
 }
 
+/// Reap up to `limit` lapsed leases on open, live threads and append a
+/// `ClaimExpired` for each dead holder, all in one transaction. SQLite
+/// serializes writers, so the select-then-update cannot race `claim_next` or
+/// another reaper.
+pub async fn reap_expired_claims(
+    pool: &SqlitePool,
+    now: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let lapsed = sqlx::query(
+        "SELECT id, assignee_id FROM maidan_threads
+         WHERE assignee_id IS NOT NULL
+           AND assignment_expires_at IS NOT NULL AND assignment_expires_at < ?
+           AND tombstoned_at IS NULL AND state = 'open'
+         ORDER BY assignment_expires_at ASC, id ASC
+         LIMIT ?",
+    )
+    .bind(now.to_rfc3339())
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut events = Vec::with_capacity(lapsed.len());
+    for candidate in &lapsed {
+        let id: Uuid = candidate.get("id");
+        let holder = MemberId(candidate.get::<Uuid, _>("assignee_id"));
+        // Guarded on the same holder and a still-lapsed lease, so a claim
+        // taken or renewed since the read above is left alone.
+        let Some(row) = sqlx::query(
+            "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
+             WHERE id = ? AND assignee_id = ? AND assignment_expires_at < ?
+               AND tombstoned_at IS NULL AND state = 'open'
+             RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+        )
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .bind(holder.0)
+        .bind(now.to_rfc3339())
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            continue;
+        };
+        let thread = row_to_thread(&row)?;
+        events.push(append_claim_expired_event(&mut tx, &thread, holder).await?);
+    }
+    tx.commit().await?;
+    Ok(events)
+}
+
 /// Extend a claim's lease (heartbeat), only for the current assignee.
 /// `NotFound` if the thread is gone or the caller isn't the holder — so a
 /// member can't renew a lease it doesn't own.

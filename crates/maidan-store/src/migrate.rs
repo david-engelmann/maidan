@@ -171,6 +171,9 @@ const POSTGRES_UP_V117: &str =
     include_str!("../../../migrations/postgres/0117_artifact_reap_leases.sql");
 const POSTGRES_UP_V118: &str =
     include_str!("../../../migrations/postgres/0118_idempotency_keys.sql");
+const POSTGRES_UP_V119: &str =
+    include_str!("../../../migrations/postgres/0119_claim_lease_deadline_index.sql");
+
 const POSTGRES_UP_V122: &str = include_str!("../../../migrations/postgres/0122_trace_context.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
@@ -311,6 +314,9 @@ const SQLITE_UP_V116: &str =
 const SQLITE_UP_V117: &str =
     include_str!("../../../migrations/sqlite/0117_artifact_reap_leases.sql");
 const SQLITE_UP_V118: &str = include_str!("../../../migrations/sqlite/0118_idempotency_keys.sql");
+const SQLITE_UP_V119: &str =
+    include_str!("../../../migrations/sqlite/0119_claim_lease_deadline_index.sql");
+
 const SQLITE_UP_V122: &str = include_str!("../../../migrations/sqlite/0122_trace_context.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
@@ -487,6 +493,8 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 116, POSTGRES_UP_V116).await?;
     apply_postgres(pool, 117, POSTGRES_UP_V117).await?;
     apply_postgres(pool, 118, POSTGRES_UP_V118).await?;
+    apply_postgres(pool, 119, POSTGRES_UP_V119).await?;
+
     // 118–121 are other lanes (idempotency, eager reclaim, claim
     // acknowledgement, decision history). This one is 122 so those can land
     // in between without renumbering.
@@ -624,6 +632,8 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 116, SQLITE_UP_V116).await?;
     apply_sqlite(pool, 117, SQLITE_UP_V117).await?;
     apply_sqlite(pool, 118, SQLITE_UP_V118).await?;
+    apply_sqlite(pool, 119, SQLITE_UP_V119).await?;
+
     // See the Postgres twin: 118–121 belong to other lanes.
     apply_sqlite(pool, 122, SQLITE_UP_V122).await?;
     Ok(())

@@ -1499,7 +1499,7 @@ A member's current live-claim count against the workspace WIP limit ({live_claim
 
 ### `claim_next_thread`
 
-Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.
+Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.
 
 **Capability:** `thread:transition`
 
@@ -1511,7 +1511,9 @@ Atomically claim the oldest claimable thread in a channel for a member (claimabl
       "type": "string"
     },
     "lease_secs": {
-      "description": "optional lease deadline in seconds; the claim is reclaimable after it lapses (omit for a durable claim)",
+      "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)",
+      "maximum": 604800,
+      "minimum": 1,
       "type": "integer"
     }
   },
@@ -1537,7 +1539,9 @@ Extend a claimed thread's lease (heartbeat). Only the current assignee holding t
       "type": "string"
     },
     "lease_secs": {
-      "description": "new lease deadline in seconds from now",
+      "description": "new lease deadline in seconds from now (1 s to 7 days)",
+      "maximum": 604800,
+      "minimum": 1,
       "type": "integer"
     },
     "thread_id": {
@@ -3170,7 +3174,7 @@ Block until a task becomes ready (its last blocking dependency reaches a termina
 
 ### `wait_for_claim_expired`
 
-Block until a claim's lease lapses and its thread is reclaimed by the next agent (emitting claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal — returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease that expires but is never reclaimed emits nothing (poll get_channel_occupancy for that).
+Block until a claim's lease lapses and its thread is reclaimed (by the claim reaper within seconds, or by the next claim_next_thread; either emits claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal — returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease on a thread in review is not reaped and emits nothing.
 
 **Capability:** `workspace:read`
 

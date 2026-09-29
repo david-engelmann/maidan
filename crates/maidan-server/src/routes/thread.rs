@@ -1072,6 +1072,7 @@ pub async fn claim_next_thread(
     ApiJson(body): ApiJson<ClaimNextThread>,
 ) -> ApiResult<Json<Option<ClaimedThread>>> {
     cap(&auth, THREAD_TRANSITION)?;
+    let lease_secs = state.mcp.claim_lease_policy().lease_for(body.lease_secs)?;
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
@@ -1085,7 +1086,7 @@ pub async fn claim_next_thread(
     }
     let (claimed, events) = state
         .store
-        .claim_next_thread_with_event(channel.id, member_id, body.lease_secs)
+        .claim_next_thread_with_event(channel.id, member_id, Some(lease_secs))
         .await?;
     // A reclaim may emit two events: ClaimExpired (dead holder) then the claim's
     // ThreadAssignmentChanged. Publish in order.
@@ -1111,6 +1112,7 @@ pub async fn renew_claim(
     ApiJson(body): ApiJson<RenewClaim>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
+    let lease_secs = maidan_mcp::claim_lease::check_lease_secs(body.lease_secs)?;
     let thread_id = ThreadId(id);
     // `ensure_thread_access` already resolves + workspace-checks the thread;
     // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
@@ -1122,7 +1124,7 @@ pub async fn renew_claim(
             thread_id,
             auth.member_id,
             ClaimLeaseId(body.claim_lease_id),
-            body.lease_secs,
+            lease_secs,
         )
         .await?;
     Ok(Json(thread))

@@ -93,9 +93,12 @@ pub struct ClaimThread {}
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ClaimNextThread {
-    /// Optional lease deadline in seconds; the claim is reclaimable after it
-    /// lapses. Omit for a durable claim.
+    /// Lease in seconds (1 s to 7 days). The holder renews before it lapses;
+    /// a lapsed claim is reaped and the thread returns to the queue with a
+    /// `ClaimExpired`. Omitted, the server's default lease applies
+    /// (`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s).
     #[serde(default)]
+    #[schema(minimum = 1, maximum = 604800)]
     pub lease_secs: Option<i64>,
 }
 
@@ -107,6 +110,8 @@ pub struct ClaimNextThread {
 #[serde(deny_unknown_fields)]
 pub struct RenewClaim {
     pub claim_lease_id: uuid::Uuid,
+    /// The new lease, in seconds from now (1 s to 7 days).
+    #[schema(minimum = 1, maximum = 604800)]
     pub lease_secs: i64,
 }
 
