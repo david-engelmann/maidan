@@ -1,5 +1,11 @@
 //! Table-driven HTTP capability denial from
 //! `contracts/http-capability-map.json`.
+//!
+//! Each mapped route is called with a token lacking the mapped capability and
+//! must answer 403 naming that capability ("missing capability: X"). The
+//! name check is what ties the map to the code: a bare 403 was once enough,
+//! so when instance-wide reindex moved to `operator:global` the map kept
+//! saying `token:admin` and still passed (the deny token lacked both).
 
 use std::{
     net::SocketAddr,
@@ -39,6 +45,9 @@ struct FixtureIds {
     thread: String,
     message: String,
     sha: String,
+    /// An instance-wide reindex job, so `GET .../{job_id}` reaches the gate
+    /// a real job has rather than the unknown-id branch.
+    reindex_job: String,
 }
 
 impl Harness {
@@ -267,9 +276,10 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template.to_string();
     }
     if template.starts_with("/operator/") {
-        // Any UUID works for {job_id}/{id} — cap() 403s before the id is looked up.
+        // {job_id} is a seeded instance-wide job; any UUID works for {id}
+        // (cap() 403s before the id is looked up).
         return template
-            .replace("{job_id}", &f.workspace)
+            .replace("{job_id}", &f.reindex_job)
             .replace("{id}", &f.workspace);
     }
     if template.starts_with("/task-schedules/") {
@@ -771,6 +781,22 @@ async fn seed_fixture(
         .unwrap();
     let message = msg["id"].as_str().unwrap().to_string();
 
+    let reindex_job = uuid::Uuid::now_v7();
+    h.store
+        .upsert_reindex_job(maidan_types::ReindexJob {
+            job_id: reindex_job,
+            status: maidan_types::ReindexJobStatus::Completed,
+            workspace_id: None,
+            embedding_model: "hash-v1".into(),
+            processed: Some(0),
+            failed: Some(0),
+            error: None,
+            started_at: chrono::Utc::now(),
+            finished_at: Some(chrono::Utc::now()),
+        })
+        .await
+        .unwrap();
+
     let fixture = FixtureIds {
         workspace: workspace.clone(),
         member: member_id,
@@ -778,8 +804,14 @@ async fn seed_fixture(
         thread,
         message,
         sha: "a".repeat(64),
+        reindex_job: reindex_job.to_string(),
     };
     (fixture, ws.id, member.id)
+}
+
+/// How a capability refusal names what was missing.
+fn named(capability: &str) -> String {
+    format!("missing capability: {capability}")
 }
 
 fn should_skip(entry: &MapEntry) -> bool {
@@ -803,6 +835,7 @@ async fn every_http_map_route_denies_without_required_capability() {
     let (fixture, workspace_id, member_id) = seed_fixture(&h).await;
 
     let mut exercised = 0usize;
+    let mut failures = Vec::new();
     for entry in map {
         if should_skip(&entry) {
             continue;
@@ -830,16 +863,29 @@ async fn every_http_map_route_denies_without_required_capability() {
             &fixture,
         );
         let resp = req.send().await.unwrap();
-        assert_eq!(
-            resp.status(),
-            StatusCode::FORBIDDEN,
-            "{} {} ({})",
-            entry.method,
-            entry.path,
-            entry.capability
-        );
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if status != StatusCode::FORBIDDEN {
+            failures.push(format!(
+                "{} {} ({}): {status}, not 403",
+                entry.method, entry.path, entry.capability
+            ));
+        } else if !body.contains(&named(&entry.capability)) {
+            // A 403 alone proves only that the token lacked *something*. The
+            // refusal must name the capability the map claims, or the map is
+            // stale (the route needs another one, perhaps a stronger one).
+            failures.push(format!(
+                "{} {} maps to {} but is refused for: {body}",
+                entry.method, entry.path, entry.capability
+            ));
+        }
         exercised += 1;
     }
+    assert!(
+        failures.is_empty(),
+        "http-capability-map does not match what the routes enforce:\n{}",
+        failures.join("\n")
+    );
     assert!(
         exercised >= 60,
         "expected broad http map coverage, got {exercised} routes"

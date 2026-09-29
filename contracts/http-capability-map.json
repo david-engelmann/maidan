@@ -1232,13 +1232,13 @@
   {
     "method": "POST",
     "path": "/operator/reindex-embeddings",
-    "capability": "token:admin",
+    "capability": "operator:global",
     "surface": "http"
   },
   {
     "method": "GET",
     "path": "/operator/reindex-embeddings/{job_id}",
-    "capability": "token:admin",
+    "capability": "operator:global",
     "surface": "http"
   },
   {

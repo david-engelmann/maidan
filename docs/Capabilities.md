@@ -2292,7 +2292,7 @@ _Post-gate hardening (Phase XXIV): a new `/ui` view reusing the tested `dm::*` h
 | Capability | Where |
 |------------|-------|
 | Load cross-workspace global audit in `/ui` (bearer, `audit:read-global`) | `static/index.html`, top-level `/operator/audit` |
-| Trigger + poll embedding reindex in `/ui` (workspace = session; global = `token:admin`) | `static/index.html`, `/ui/api/operator/reindex-embeddings[/:job_id]` |
+| Trigger + poll embedding reindex in `/ui` (workspace = session; global = `operator:global`) | `static/index.html`, `/ui/api/operator/reindex-embeddings[/:job_id]` |
 
 _Post-gate hardening (Phase XXIV): completes the "Operator" tab (137 + 138). Each control is gated by the cap it actually needs and degrades honestly without a token. No new gate tag._
 
