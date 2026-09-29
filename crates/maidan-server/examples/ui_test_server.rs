@@ -224,6 +224,40 @@ async fn main() {
         desk_threads.push(t);
     }
 
+    // A floor for the team strip and card motion: the deployer holds one
+    // task, and two sit open for specs to claim and watch move into Working
+    // (one with motion, one with reduced motion). Its own channel, so moving a card here leaves the others alone.
+    let floor = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "floor".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("floor channel");
+    let mut floor_threads = Vec::new();
+    for title in [
+        "Held: the deployer is on this",
+        "Glide me: claim this one",
+        "Jump me: claim this one with reduced motion",
+    ] {
+        floor_threads.push(
+            store
+                .create_thread(NewThread {
+                    channel_id: floor.id,
+                    parent_thread_id: None,
+                    title: Some(title.into()),
+                })
+                .await
+                .expect("floor thread"),
+        );
+    }
+    store
+        .claim_thread(floor_threads[0].id, requester.id)
+        .await
+        .expect("floor claim");
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -342,6 +376,10 @@ async fn main() {
         "desk_approve_thread_id": desk_threads[0].id.0.to_string(),
         "desk_send_back_thread_id": desk_threads[1].id.0.to_string(),
         "desk_waiting_thread_id": desk_threads[2].id.0.to_string(),
+        "floor_channel_id": floor.id.0.to_string(),
+        "floor_held_thread_id": floor_threads[0].id.0.to_string(),
+        "floor_glide_thread_id": floor_threads[1].id.0.to_string(),
+        "floor_jump_thread_id": floor_threads[2].id.0.to_string(),
     });
     std::fs::write(
         &fixtures_path,

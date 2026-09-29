@@ -160,6 +160,10 @@ const ALLOWED: &[&str] = &[
     "TextEncoder",
     "TextDecoder",
     "Uint8Array",
+    // CSS functions inside Web Animations keyframe strings
+    "scale",
+    "translate",
+    "bezier",
 ];
 
 #[test]
@@ -728,4 +732,38 @@ fn ui_js_review_and_close_report_network_failures_instead_of_rejecting() {
             "{func} turns a thrown fetch into {{ ok: false, why }} so its row re-enables and says why"
         );
     }
+}
+
+#[test]
+fn ui_js_shows_the_team_and_moves_cards_between_lanes() {
+    let html = HTML;
+    let s = script(HTML);
+    assert!(
+        html.contains("<div id=\"team\"") && s.contains("renderTeam(threads);"),
+        "the board renders a team strip with every refresh"
+    );
+    assert!(
+        s.contains("const LIVE_MS = 120000;")
+            && s.contains("markSeenFromFrame(v);\n            refreshTeamSoon();"),
+        "live means seen on the socket in the last two minutes, fed by event frames"
+    );
+    assert!(
+        s.contains("for (const k of ACTOR_KEYS) if (typeof v[k] === \"string\") markSeen(v[k]);")
+            && !s.contains("(v && v.payload) || {}"),
+        "event frames are flat: actor fields are read from the top level"
+    );
+    assert!(
+        s.contains("m.status === \"online\" && markSeen(m.member_id)"),
+        "the presence snapshot marks online members live"
+    );
+    assert!(
+        s.contains("const before = boardRects();")
+            && s.contains("if (!firstPaint) glideCards(before);"),
+        "cards are measured before a re-render and played from there after (FLIP)"
+    );
+    assert!(
+        s.contains("if (reduceMotion.matches || !before.size) return;")
+            && html.contains("@media (prefers-reduced-motion: reduce)"),
+        "nothing moves or pulses under prefers-reduced-motion"
+    );
 }
