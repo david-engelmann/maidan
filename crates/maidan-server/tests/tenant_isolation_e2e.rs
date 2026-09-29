@@ -1090,17 +1090,32 @@ async fn no_live_stream_carries_another_workspaces_events() {
         format!("/agui/stream?thread_id={thread}"),
         format!("/agui/stream?channel_id={channel}"),
     ];
+    // Each SSE response is drained from the moment it opens, concurrently,
+    // over a window that covers the victim's writes; the request timeout is
+    // longer than the window so it cannot cut a drain short. The victim's own
+    // SSE streams are the control for this transport.
+    const SSE_WINDOW: Duration = Duration::from_secs(3);
     let mut streams = Vec::new();
-    for q in &queries {
-        let res = h
-            .client
-            .get(h.url(q))
-            .header("Authorization", format!("Bearer {a}"))
-            .timeout(Duration::from_secs(4))
-            .send()
-            .await
-            .unwrap();
-        streams.push((q.clone(), res));
+    for (who, token) in [("attacker", &a), ("victim", &victim.bearer)] {
+        for q in &queries {
+            let res = h
+                .client
+                .get(h.url(q))
+                .header("Authorization", format!("Bearer {token}"))
+                .timeout(Duration::from_secs(30))
+                .send()
+                .await
+                .unwrap();
+            let ok = res.status().is_success();
+            let drain = tokio::spawn(async move {
+                if ok {
+                    drain_sse(res, SSE_WINDOW).await
+                } else {
+                    String::new()
+                }
+            });
+            streams.push((who, q.clone(), drain));
+        }
     }
     tokio::time::sleep(Duration::from_millis(300)).await;
 
@@ -1158,17 +1173,26 @@ async fn no_live_stream_carries_another_workspaces_events() {
             }
         }
     }
-    for (q, res) in streams {
-        if res.status().is_success() {
-            let seen = drain_sse(res, Duration::from_millis(800)).await;
-            if leaked(&seen) {
-                leaks.push(format!(
-                    "{q}: {}",
-                    seen.chars().take(300).collect::<String>()
-                ));
-            }
+    let mut sse_control_saw = Vec::new();
+    for (who, q, drain) in streams {
+        let seen = drain.await.unwrap();
+        if !leaked(&seen) {
+            continue;
+        }
+        if who == "victim" {
+            sse_control_saw.push(q);
+        } else {
+            leaks.push(format!(
+                "{q}: {}",
+                seen.chars().take(300).collect::<String>()
+            ));
         }
     }
+    assert_eq!(
+        sse_control_saw.len(),
+        queries.len(),
+        "each victim SSE control must see its events, or that stream's window proves nothing; saw: {sse_control_saw:?}"
+    );
     assert!(
         leaks.is_empty(),
         "another workspace's events reached workspace A:\n{}",

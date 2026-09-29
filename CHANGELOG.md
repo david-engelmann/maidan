@@ -61,7 +61,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `tenant_isolation_e2e` calls every operation in the served
   OpenAPI document that names a workspace, channel, thread, message or member
-  (257 today) with another workspace's token holding every workspace-scoped
+  with another workspace's token holding every workspace-scoped
   capability, and fails on any 2xx, redirect or rate-limited answer, or on the
   other workspace's content in a body. It then checks the other workspace's
   entities are unchanged. A new route is covered by being in the spec.
