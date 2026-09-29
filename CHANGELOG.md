@@ -38,6 +38,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** `/ws/subscribe` at its connection ceiling answers a `503`
   problem with `Retry-After` instead of plain text. The OpenAPI document
   lists `500` on every operation and `503` on every sheddable one.
+### Idempotency keys on writes (server half)
+
+- **Added:** writes (POST/PUT/PATCH/DELETE) from an authenticated caller take
+  an optional `Idempotency-Key` header (1–255 visible ASCII characters, else
+  400). The first request with a key runs and its response is stored; a retry
+  with the same key and the same method, path, query and body gets that
+  response back with `Idempotent-Replayed: true` and does not run again. The
+  same key on a different request is 422 `problems/idempotency-key-reused`; a
+  retry while the first request runs is 409. A 5xx, a stream or a body over
+  1 MiB is not kept, so a retry runs again. The first request holds the key
+  for 5 minutes, so one that crashed is taken over by the next retry. Keys are
+  per caller and last 24 hours; each reservation prunes up to 100 expired
+  keys. Migration 0118 (`maidan_idempotency_keys`), both backends. Tests:
+  `idempotency_keys_e2e`, `idempotency_keys` (store, both backends).
 
 ### Tenant isolation is a conformance test
 

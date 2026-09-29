@@ -784,6 +784,12 @@ pub fn router(state: AppState) -> Router {
             state.clone(),
             quota::middleware,
         ))
+        // Inside auth (it needs the caller) and outside quota (a replay is
+        // not a new write).
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::idempotency::middleware,
+        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::middleware,

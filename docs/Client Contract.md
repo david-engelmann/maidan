@@ -169,6 +169,16 @@ Python/TS/Rust should still distinguish it). A 409 with
 the remaining log. 403 is missing capability or channel access,
 not "retry."
 
+Writes (POST/PUT/PATCH/DELETE) take an optional `Idempotency-Key`
+header: 1–255 visible ASCII characters, scoped to the caller. The first
+request with a key runs; a retry with the same key and the same method,
+path, query and body gets the stored response back with
+`Idempotent-Replayed: true` and does not run again. The same key on a
+different request is 422 `problems/idempotency-key-reused`; a retry while
+the first request is still running is 409 (retry later). A 5xx is not
+kept, so a retry after one runs again. Keys last 24 hours. The server
+half ships first; SDKs will send a key per logical write on retry.
+
 ---
 
 ## 3. Hero-loop capabilities

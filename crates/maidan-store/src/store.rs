@@ -2286,6 +2286,37 @@ pub trait AppStore: Send + Sync {
     ) -> Result<AppInstallation, StoreError>;
 }
 
+/// Idempotency keys for retried writes. See [`crate::idempotency`].
+#[async_trait]
+pub trait IdempotencyStore: Send + Sync {
+    /// Reserve `new.key` for this caller, or report what already holds it: a
+    /// live reservation, or a finished request's stored response. A
+    /// reservation that lapsed at `locked_until` without completing is taken
+    /// over. Clears a bounded batch of expired keys on the way in.
+    async fn reserve_idempotency_key(
+        &self,
+        new: &crate::idempotency::NewIdempotencyKey,
+    ) -> Result<crate::idempotency::IdempotencyReservation, StoreError>;
+
+    /// Store the response of the request holding the key.
+    async fn complete_idempotency_key(
+        &self,
+        workspace_id: WorkspaceId,
+        actor_id: MemberId,
+        key: &str,
+        response: &crate::idempotency::StoredResponse,
+    ) -> Result<(), StoreError>;
+
+    /// Give up a reservation without a response to keep (the request failed
+    /// in a way a retry should repeat), so a retry runs again.
+    async fn release_idempotency_key(
+        &self,
+        workspace_id: WorkspaceId,
+        actor_id: MemberId,
+        key: &str,
+    ) -> Result<(), StoreError>;
+}
+
 #[async_trait]
 pub trait OAuthCodeStore: Send + Sync {
     /// Persist a one-time OAuth authorization code. The plaintext code is never
@@ -3009,6 +3040,7 @@ pub trait Store:
     + IntegrityStore
     + AppStore
     + OAuthCodeStore
+    + IdempotencyStore
     + ReindexStore
     + TokenStore
     + ShareTicketStore
@@ -3067,6 +3099,8 @@ impl<
             + IntegrityStore
             + AppStore
             + OAuthCodeStore
+            + IdempotencyStore
+            + IdempotencyStore
             + ReindexStore
             + TokenStore
             + ShareTicketStore

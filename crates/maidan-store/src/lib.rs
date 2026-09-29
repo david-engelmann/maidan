@@ -108,6 +108,7 @@ pub mod dm;
 pub mod embeddings_purge;
 pub mod error;
 pub mod group_dm;
+pub mod idempotency;
 pub mod lag_resume;
 pub mod log_snapshot;
 pub mod migrate;
@@ -126,6 +127,7 @@ pub use a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingG
 pub use automation_deliveries::AutomationDeliveryFilter;
 pub use dialect::Dialect;
 pub use error::StoreError;
+pub use idempotency::{IdempotencyReservation, NewIdempotencyKey, StoredResponse};
 pub use lag_resume::{resume_from_log, LAG_RESUME_BATCH};
 pub use log_snapshot::{build_log_snapshot, catch_up_since, CATCH_UP_LIMIT};
 pub use migrate::{run_postgres_migrations, run_sqlite_migrations};
@@ -171,8 +173,8 @@ pub use workspace_export::build_workspace_export;
 pub use store::{
     A2aStore, AppStore, ArtifactMetaStore, AssignmentStore, AutomationStore, ChannelStore,
     DelegationGrantStore, DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore,
-    GlossaryStore, IntegrityStore, MailStore, MemberStore, MentionInboxStore, MessageStore,
-    MetaStore, NotificationStore, OAuthCodeStore, PeerStore, PresenceDigestStore,
+    GlossaryStore, IdempotencyStore, IntegrityStore, MailStore, MemberStore, MentionInboxStore,
+    MessageStore, MetaStore, NotificationStore, OAuthCodeStore, PeerStore, PresenceDigestStore,
     ProjectorLinkStore, ReferenceStore, ReindexStore, SessionStore, ShareTicketStore, SkillStore,
     SlashCommandStore, SocialStore, TaskScheduleStore, ThreadDepStore, ThreadLineageStore,
     ThreadResultStore, ThreadStore, TokenStore, UsageLedgerStore, WebhookStore, WorkspaceStore,

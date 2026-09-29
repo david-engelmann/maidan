@@ -43,6 +43,7 @@ pub mod fsm_hooks;
 pub mod github;
 pub mod group_dm;
 pub mod health;
+pub mod idempotency;
 pub mod import;
 pub mod land_gate_advisor;
 pub mod load_shed;

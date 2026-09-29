@@ -31,6 +31,8 @@ pub enum ApiError {
     /// The server is at a capacity ceiling (in-flight requests, subscriber
     /// connections); retry later. 503.
     Overloaded(String),
+    /// An `Idempotency-Key` reused for a different request. 422.
+    IdempotencyKeyReused,
     /// Subscribe / backfill cursor is behind the retained log. 409 +
     /// `must_refetch: true` — fail loud, never clamp. Carries a `snapshot` so
     /// the client can refetch the pruned prefix.
@@ -61,6 +63,7 @@ impl ApiError {
             Self::BadGateway(_) => StatusCode::BAD_GATEWAY,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Overloaded(_) => StatusCode::SERVICE_UNAVAILABLE,
+            Self::IdempotencyKeyReused => StatusCode::UNPROCESSABLE_ENTITY,
             Self::CursorTooOld { .. } | Self::EventLogBroken { .. } => StatusCode::CONFLICT,
         }
     }
@@ -79,6 +82,7 @@ impl ApiError {
             Self::BadGateway(_) => "Bad Gateway",
             Self::Internal(_) => "Internal Server Error",
             Self::Overloaded(_) => "Service Unavailable",
+            Self::IdempotencyKeyReused => "Idempotency Key Reused",
             Self::CursorTooOld { .. } => "Cursor Too Old",
             Self::EventLogBroken { .. } => "Event Log Broken",
         }
@@ -92,6 +96,9 @@ impl ApiError {
             }
             Self::Unauthorized => "missing or invalid bearer token".to_string(),
             Self::SignatureInvalid => "the request signature does not verify".to_string(),
+            Self::IdempotencyKeyReused => {
+                "this Idempotency-Key was used for a different request; use a new key".to_string()
+            }
             Self::Conflict(msg)
             | Self::BadRequest(msg)
             | Self::Forbidden(msg)
@@ -137,6 +144,7 @@ impl ApiError {
             Self::BadGateway(_) => "https://maidan.dev/problems/bad-gateway",
             Self::Internal(_) => "https://maidan.dev/problems/internal",
             Self::Overloaded(_) => "https://maidan.dev/problems/overloaded",
+            Self::IdempotencyKeyReused => "https://maidan.dev/problems/idempotency-key-reused",
             Self::CursorTooOld { .. } => "https://maidan.dev/problems/cursor-too-old",
             Self::EventLogBroken { .. } => "https://maidan.dev/problems/event-log-broken",
         }
