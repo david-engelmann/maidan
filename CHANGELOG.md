@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### The capability map is checked against what routes enforce
+
+- **Fixed:** `contracts/http-capability-map.json` names `operator:global` for
+  `POST /operator/reindex-embeddings` and `GET .../{job_id}` (instance-wide
+  jobs), matching the handler; `docs/Capabilities.md` likewise.
+- **Changed:** `http_capability_matrix_e2e` requires each route's 403 to name
+  the mapped capability (`missing capability: X`), not just be a 403. Before,
+  a token lacking the mapped capability usually lacked the real one too, so a
+  stale entry passed. The GET probe now targets a seeded instance-wide job
+  instead of an unknown id. All 272 exercised routes name their capability.
+
 ### A requested review reaches the reviewer, and a refused close says what to do next
 
 - **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP
