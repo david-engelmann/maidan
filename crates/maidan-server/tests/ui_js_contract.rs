@@ -743,15 +743,22 @@ fn ui_js_shows_the_team_and_moves_cards_between_lanes() {
         "the board renders a team strip with every refresh"
     );
     assert!(
-        s.contains("const LIVE_MS = 120000;") && s.contains("markSeenFromFrame(v);"),
+        s.contains("const LIVE_MS = 120000;")
+            && s.contains("markSeenFromFrame(v);\n            refreshTeamSoon();"),
         "live means seen on the socket in the last two minutes, fed by event frames"
+    );
+    assert!(
+        s.contains("for (const k of ACTOR_KEYS) if (typeof v[k] === \"string\") markSeen(v[k]);")
+            && !s.contains("(v && v.payload) || {}"),
+        "event frames are flat: actor fields are read from the top level"
     );
     assert!(
         s.contains("m.status === \"online\" && markSeen(m.member_id)"),
         "the presence snapshot marks online members live"
     );
     assert!(
-        s.contains("const before = boardRects();") && s.contains("if (!firstPaint) glideCards(before);"),
+        s.contains("const before = boardRects();")
+            && s.contains("if (!firstPaint) glideCards(before);"),
         "cards are measured before a re-render and played from there after (FLIP)"
     );
     assert!(

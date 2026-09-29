@@ -1634,18 +1634,31 @@
       // minutes. Nothing here is inferred beyond that.
       const lastSeen = new Map();
       const LIVE_MS = 120000;
-      function markSeen(id, at) {
-        if (!id || !memberDirectory.has(id)) return;
-        const t = Math.min(Date.now(), at || Date.now());
-        if (t > (lastSeen.get(id) || 0)) lastSeen.set(id, t);
+      function markSeen(id) {
+        if (id && memberDirectory.has(id)) lastSeen.set(id, Date.now());
       }
-      // A replayed event counts from when it happened, not when it arrived.
+      // Redraw the strip after socket activity (coalesced), and every 30 s so
+      // a dot goes grey once its two minutes are up.
+      let teamTimer = null;
+      function refreshTeamSoon() {
+        if (teamTimer) return;
+        teamTimer = setTimeout(() => {
+          teamTimer = null;
+          renderTeam([...threadsById.values()]);
+        }, 150);
+      }
+      setInterval(refreshTeamSoon, 30000);
+      // Event frames are flat: the event fields sit at the top level beside
+      // log_id and kind, the message of a message event is nested, and who
+      // acted is in attribution. A first subscribe starts at the head and a
+      // reconnect replays only what it missed, so arrival time is close to
+      // when an event happened.
+      const ACTOR_KEYS = ["actor_id", "author_id", "assignee_id", "member_id", "produced_by", "reviewer_id", "requested_by", "resolved_by", "editor_id", "updated_by"];
       function markSeenFromFrame(v) {
-        const p = (v && v.payload) || {};
-        const at = v && v.occurred_at ? Date.parse(v.occurred_at) : Date.now();
-        for (const k of ["author_id", "actor_id", "assignee_id", "member_id", "produced_by", "reviewer_id", "requested_by"]) {
-          if (typeof p[k] === "string") markSeen(p[k], at);
-        }
+        if (!v) return;
+        for (const k of ACTOR_KEYS) if (typeof v[k] === "string") markSeen(v[k]);
+        if (v.message && typeof v.message.author_id === "string") markSeen(v.message.author_id);
+        if (v.attribution && typeof v.attribution.actor_id === "string") markSeen(v.attribution.actor_id);
       }
       function renderTeam(threads) {
         const box = document.getElementById("team");
@@ -4061,12 +4074,14 @@
           }
           if (t === "presence_snapshot") {
             ((v && v.members) || []).forEach((m) => m.status === "online" && markSeen(m.member_id));
+            refreshTeamSoon();
             renderPresence(v);
             appendLive(JSON.stringify(v));
             return;
           }
           if (t === "presence" || t === "typing") {
             if (v.status !== "offline") markSeen(v.member_id);
+            refreshTeamSoon();
             appendLive(JSON.stringify(v));
             return;
           }
@@ -4079,6 +4094,7 @@
             const kind = v.kind || "?";
             appendLive(`[${v.log_id}] ${kind}`);
             markSeenFromFrame(v);
+            refreshTeamSoon();
             if (kind === "approval_requested") {
               if (document.getElementById("panel-approvals").classList.contains("active")) {
                 loadApprovals(false);

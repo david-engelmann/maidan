@@ -34,6 +34,7 @@ export interface Fixtures {
   floor_channel_id: string;
   floor_held_thread_id: string;
   floor_glide_thread_id: string;
+  floor_jump_thread_id: string;
 }
 
 export function fixtures(): Fixtures {
