@@ -1299,7 +1299,7 @@ id, assign, unassign, freeze, renew, acknowledge, release and lease lapse,
 with fencing tokens) and `EventLog` (the hash chain and crypto-shredding on
 an origin and a peer, over a network that drops, duplicates and reorders).
 `scripts/tla.sh` (run locally for now; a non-required `tla` CI job is planned) runs TLC 1.7.4, pinned by
-SHA-256, checks each spec's config, then a config with one mechanism off
+SHA-256, and checks each spec's config, then a config with one mechanism off
 (the old deadline handling; the peer's chain check), where TLC must report
 the named invariant violated.
 
