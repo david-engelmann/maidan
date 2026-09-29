@@ -1046,6 +1046,58 @@ async fn push_configs_seal_secrets_and_deliver_the_task() {
     assert_eq!(error_code(&resp), -32001, "proto field names parse too");
 }
 
+/// Every task update goes to each of a task's push configs, so the list is
+/// capped: past ten, a new config is refused, while re-sending an existing id
+/// still replaces it.
+#[tokio::test]
+async fn a_task_holds_at_most_ten_push_configs() {
+    let h = spawn().await;
+    let sent = h
+        .rpc("SendMessage", json!({ "message": message("cap me") }))
+        .await;
+    let task_id = sent["result"]["task"]["id"].as_str().unwrap().to_string();
+    let create =
+        |id: String| json!({ "taskId": task_id, "id": id, "url": "https://hooks.example/a2a" });
+    for n in 0..10 {
+        let resp = h
+            .rpc("CreateTaskPushNotificationConfig", create(format!("c{n}")))
+            .await;
+        assert!(resp.get("error").is_none(), "config {n}: {resp}");
+    }
+    let refused = h
+        .rpc("CreateTaskPushNotificationConfig", create("c10".into()))
+        .await;
+    assert_eq!(error_code(&refused), -32602, "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("at most 10")),
+        "{refused}"
+    );
+    let replaced = h
+        .rpc("CreateTaskPushNotificationConfig", create("c3".into()))
+        .await;
+    assert!(
+        replaced.get("error").is_none(),
+        "an existing id replaces: {replaced}"
+    );
+    let (status, _) = h
+        .rest(
+            reqwest::Method::DELETE,
+            &format!("/tasks/{task_id}/pushNotificationConfigs/c0"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let room = h
+        .rpc("CreateTaskPushNotificationConfig", create("c10".into()))
+        .await;
+    assert!(
+        room.get("error").is_none(),
+        "deleting one makes room: {room}"
+    );
+}
+
 #[tokio::test]
 async fn a_pending_gate_is_an_input_required_task() {
     let h = spawn().await;
