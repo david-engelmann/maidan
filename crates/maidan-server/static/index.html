@@ -247,15 +247,200 @@
       #audit-list .row, #peer-list .row { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
       .admin-danger { border-color: #fca5a5; background: #fef2f2; }
       .admin-danger button { border-color: #b91c1c; color: #b91c1c; }
+      /* ---- Board + polish (v8 refresh). Brand palette above is locked; this
+         layer only adds structure, spacing and state colour on top of it. ---- */
+      :root {
+        --ink: #232327;
+        --soft: #fbfaf7;
+        --line: #e7e4dc;
+        --radius: 0.6rem;
+        --shadow: 0 1px 2px rgba(35, 35, 39, 0.06), 0 1px 1px rgba(35, 35, 39, 0.04);
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, ui-sans-serif, system-ui, sans-serif;
+        font-size: 14px;
+        line-height: 1.45;
+        -webkit-font-smoothing: antialiased;
+      }
+      button, input, select, textarea { font: inherit; color: inherit; }
+      button {
+        padding: 0.35rem 0.75rem;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 0.45rem;
+        cursor: pointer;
+        box-shadow: var(--shadow);
+        transition: background 0.12s ease, border-color 0.12s ease;
+      }
+      button:hover { background: var(--soft); border-color: #bdb9b0; }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+      button.primary:hover { background: #166534; }
+      button.ghost { background: transparent; box-shadow: none; border-color: transparent; color: var(--muted); }
+      button.ghost:hover { background: #f1efe9; color: var(--ink); }
+      input, select, textarea {
+        border: 1px solid var(--border);
+        border-radius: 0.45rem;
+        padding: 0.35rem 0.55rem;
+        background: #fff;
+      }
+      input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(20, 83, 45, 0.12); }
+      header { padding: 0.55rem 1rem; gap: 0.75rem; }
+      header h1 { font-size: 1.15rem; letter-spacing: -0.01em; }
+      header h1 .brand-sub { color: var(--muted); font-weight: 500; font-size: 0.85rem; letter-spacing: 0; }
+      #conn-fields { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; }
+      #conn-fields[hidden] { display: none; }
+      header label { color: var(--muted); font-size: 0.75rem; }
+      header input { min-width: 11rem; font-size: 0.85rem; }
+      #identity-pill {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        padding: 0.25rem 0.35rem 0.25rem 0.3rem; border: 1px solid var(--line);
+        border-radius: 999px; background: var(--soft); font-size: 0.85rem;
+      }
+      #identity-pill[hidden] { display: none; }
+      #identity-pill .ws-name { color: var(--muted); }
+      #session-status { font-size: 0.8rem; }
+      #session-status[hidden] { display: none; }
+      #shell { grid-template-columns: 15.5rem 1fr; min-height: calc(100vh - 3.5rem); }
+      aside { padding: 0.9rem 0.75rem; background: var(--soft); }
+      aside h2 { font-size: 0.7rem; letter-spacing: 0.08em; margin: 0.25rem 0.25rem 0.4rem; }
+      aside .inline-form input { font-size: 0.8rem; padding: 0.25rem 0.45rem; }
+      aside .inline-form button { padding: 0.2rem 0.55rem; font-size: 0.8rem; }
+      aside .inline-form { margin: 0.35rem 0 1.1rem; opacity: 0.85; }
+      .side-head { display: flex; align-items: center; justify-content: space-between; }
+      .side-head h2 { margin-bottom: 0.3rem; }
+      #refresh-channels { padding: 0.1rem 0.4rem; font-size: 0.72rem; }
+      #channel-list li { padding: 0.35rem 0.55rem; font-size: 0.9rem; color: #3f3f46; }
+      #channel-list li:hover { background: #f1efe9; }
+      #channel-list li.selected { background: #e6efe8; color: var(--accent); font-weight: 600; }
+      #thread-list { border-top: none; margin-top: 0.4rem; padding-top: 0; }
+      #thread-list li { display: grid; grid-template-columns: auto 1fr; column-gap: 0.4rem; align-items: baseline; padding: 0.4rem 0.5rem; font-size: 0.82rem; line-height: 1.3; }
+      #thread-list li.muted, #thread-list li.err { display: block; }
+      #thread-list li:hover { background: #f1efe9; }
+      #thread-list li.selected { background: #e6efe8; font-weight: 600; }
+      #thread-list .who { grid-column: 2; color: var(--muted); font-size: 0.72rem; font-weight: 400; margin-top: 0.1rem; }
+      .chrome-badge { font-size: 0.62rem; padding: 0.08rem 0.4rem; letter-spacing: 0.04em; white-space: nowrap; margin-right: 0; }
+      .chrome-open { background: #f4f4f5; color: #3f3f46; border-color: #d4d4d8; }
+      .chrome-claimed { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+      .chrome-in-review { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+      .legend-box { margin-top: 0.9rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+      .legend-box summary { font-size: 0.72rem; color: var(--muted); cursor: pointer; }
+      .chrome-legend { font-size: 0.68rem; margin-top: 0.4rem; border-top: none; }
+      main { background: var(--bg); }
+      /* Live: a slim status bar until connected; the raw feed is opt-in. */
+      #live-panel { flex: none; min-height: 0; padding: 0.45rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel); }
+      #live-toolbar { margin: 0; gap: 0.6rem; font-size: 0.85rem; }
+      #live-toolbar label { margin: 0; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--muted); }
+      #live-toolbar label select { width: auto; margin: 0; padding: 0.15rem 0.35rem; font-size: 0.8rem; }
+      #live-toolbar label input[type="checkbox"] { width: auto; margin: 0; }
+      #live-toolbar button { padding: 0.2rem 0.6rem; font-size: 0.8rem; }
+      #ws-status::before { content: ""; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #d4d4d8; margin-right: 0.35rem; vertical-align: 0.05rem; }
+      #ws-status.connected::before { background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18); }
+      #ws-status.error::before { background: var(--err); }
+      #live-panel .live-hint { color: var(--muted); font-size: 0.8rem; }
+      #live-panel.connected .live-hint { display: none; }
+      #live-panel:not(.connected) .when-connected { display: none; }
+      #live-panel.connected .when-disconnected { display: none; }
+      #live-feed { margin-top: 0.45rem; max-height: 11rem; min-height: 5rem; font-size: 0.75rem; }
+      #live-feed[hidden] { display: none; }
+      /* Board */
+      #board-panel { padding: 1rem 1rem 0.5rem; }
+      #board-head { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+      #board-title { font-size: 1.15rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+      #board-summary { color: var(--muted); font-size: 0.85rem; display: flex; gap: 0.9rem; flex-wrap: wrap; }
+      #board-summary b { color: var(--ink); font-weight: 650; }
+      #board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; align-items: start; }
+      @media (max-width: 1000px) { #board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      .board-col { background: #efece5; border-radius: var(--radius); padding: 0.5rem; min-height: 5rem; }
+      .board-col h3 { display: flex; align-items: center; gap: 0.4rem; margin: 0.1rem 0.25rem 0.5rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #52525b; }
+      .board-col h3 .count { margin-left: auto; background: #fff; border-radius: 999px; padding: 0 0.45rem; font-size: 0.72rem; color: var(--muted); }
+      .board-col .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; }
+      .col-open .dot { background: #a1a1aa; }
+      .col-working .dot { background: #22c55e; }
+      .col-review .dot { background: #f59e0b; }
+      .col-done .dot { background: #6366f1; }
+      .board-empty { color: #a1a1aa; font-size: 0.78rem; text-align: center; padding: 0.75rem 0; }
+      .card {
+        background: var(--panel); border: 1px solid var(--line); border-radius: 0.5rem;
+        padding: 0.55rem 0.65rem; margin-bottom: 0.45rem; cursor: pointer; box-shadow: var(--shadow);
+        transition: border-color 0.12s ease, transform 0.12s ease;
+      }
+      .card:hover { border-color: #bdb9b0; }
+      .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(20, 83, 45, 0.15); }
+      /* A card whose state or holder just changed glows once, so a live update
+         is visible at a glance. Motion-sensitive users get a static outline. */
+      .card.fresh { animation: card-in 1.6s ease-out; }
+      @keyframes card-in {
+        0% { background: #f0fdf4; border-color: #22c55e; box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.35); transform: translateY(-2px); }
+        100% { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); transform: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .card.fresh { animation: none; border-color: #22c55e; }
+      }
+      .card-title { font-weight: 600; font-size: 0.86rem; line-height: 1.3; margin: 0.3rem 0 0.45rem; }
+      .card-foot { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: var(--muted); }
+      .card-foot .when { margin-left: auto; white-space: nowrap; }
+      .card-foot .unclaimed { font-style: italic; }
+      /* People */
+      .avatar {
+        display: inline-flex; align-items: center; justify-content: center; flex: none;
+        width: 1.35rem; height: 1.35rem; border-radius: 50%; color: #fff;
+        font-size: 0.62rem; font-weight: 700; letter-spacing: 0.02em;
+        background: hsl(var(--hue, 150) 45% 42%);
+      }
+      .avatar.human { border-radius: 50%; }
+      .avatar.agent { border-radius: 0.35rem; }
+      .avatar.lg { width: 1.9rem; height: 1.9rem; font-size: 0.75rem; }
+      .person { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--ink); font-weight: 550; }
+      .kind-tag { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border: 1px solid var(--line); border-radius: 0.3rem; padding: 0 0.25rem; font-weight: 600; }
+      /* Thread */
+      #collab-panel { max-height: none; flex: 1; margin: 0.5rem 1rem 1rem; border: 1px solid var(--line); border-radius: var(--radius); padding: 0.9rem 1rem; box-shadow: var(--shadow); }
+      #thread-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
+      #thread-header .th-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
+      #thread-context { font-size: 1rem; font-weight: 650; color: var(--ink); }
+      #thread-context.muted { font-weight: 400; color: var(--muted); font-size: 0.9rem; }
+      #thread-facts { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; font-size: 0.8rem; color: var(--muted); margin-top: 0.4rem; }
+      #thread-facts:empty { display: none; }
+      #thread-facts .fact { display: inline-flex; align-items: center; gap: 0.35rem; }
+      #thread-facts code { background: #f4f4f5; border-radius: 0.3rem; padding: 0.05rem 0.35rem; color: var(--ink); font-size: 0.78rem; }
+      #thread-facts .ok { color: #15803d; font-weight: 600; }
+      #thread-facts .wait { color: #b45309; font-weight: 600; }
+      #message-list { background: transparent; padding: 0; max-height: 24rem; font-size: 0.88rem; margin: 0.75rem 0; }
+      #message-list .msg { display: grid; grid-template-columns: auto 1fr; column-gap: 0.6rem; padding: 0.55rem 0.1rem; margin: 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+      #message-list .msg:last-child { border-bottom: none; }
+      #message-list .msg > .avatar { grid-row: span 3; margin-top: 0.1rem; }
+      #message-list .msg > :not(.avatar) { grid-column: 2; }
+      #message-list .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; font-size: 0.75rem; }
+      #message-list .meta .person { font-size: 0.85rem; }
+      #message-list .meta .time { color: var(--muted); }
+      #message-list .body { margin-top: 0.1rem; white-space: pre-wrap; word-break: break-word; }
+      .pin-toggle { box-shadow: none; opacity: 0; }
+      #message-list .msg:hover .pin-toggle, .pin-toggle.pinned { opacity: 1; }
+      .reactions:empty { display: none; }
+      .reaction-add { box-shadow: none; display: none; }
+      #message-list .msg:hover .reaction-add, #message-list .msg:focus-within .reaction-add { display: inline-block; }
+      #collab-panel > label { color: var(--muted); font-size: 0.8rem; }
+      textarea.compose { width: 100%; max-width: none; min-height: 3.2rem; }
+      #collab-panel details summary { color: var(--muted); font-size: 0.85rem; cursor: pointer; }
+      #tools { background: var(--soft); }
+      #tools > summary { color: var(--muted); }
+      .tabs button { box-shadow: none; font-size: 0.82rem; }
+      .tabs button[aria-selected="true"] { background: #e6efe8; color: var(--accent); }
     </style>
   </head>
   <body data-ui-version="8">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <header>
       <h1><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" fill="currentColor"/><path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" fill="currentColor"/><path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" fill="currentColor"/><path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" fill="currentColor"/><path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" fill="currentColor"/><path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" fill="currentColor"/><path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" fill="currentColor"/><path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" fill="currentColor"/></svg><span>Maidan</span></h1>
-      <label>API base <input id="base" /></label>
-      <label>Workspace <input id="workspace" /></label>
-      <label>Token <input id="token" type="password" /></label>
+      <span id="identity-pill" hidden>
+        <span id="identity-who"></span>
+        <span id="identity-ws" class="ws-name"></span>
+        <button id="conn-edit" type="button" class="ghost" title="Change API base, workspace or token">Change</button>
+      </span>
+      <div id="conn-fields">
+        <label>API base <input id="base" /></label>
+        <label>Workspace <input id="workspace" /></label>
+        <label>Token <input id="token" type="password" /></label>
+      </div>
       <button id="login" type="button">OIDC</button>
       <button id="mint" type="button" hidden>Mint admin</button>
       <button id="logout" type="button" hidden>Out</button>
@@ -269,33 +454,41 @@
 
     <div id="shell">
       <aside>
-        <h2>Channels</h2>
+        <div class="side-head">
+          <h2>Channels</h2>
+          <button id="refresh-channels" type="button" class="ghost" title="Reload channels">Refresh</button>
+        </div>
+        <ul id="channel-list"></ul>
         <div class="inline-form">
           <input id="new-channel-name" placeholder="New channel" />
           <button id="create-channel" type="button" title="Requires bearer token">+</button>
         </div>
-        <button id="refresh-channels" type="button" style="margin-bottom: 0.5rem; width: 100%">Refresh</button>
-        <ul id="channel-list"></ul>
-        <h2>Threads</h2>
+        <div class="side-head"><h2>Threads</h2></div>
+        <ul id="thread-list"><li class="muted">Select a channel</li></ul>
         <div class="inline-form">
           <input id="new-thread-title" placeholder="New thread title" />
           <button id="create-thread" type="button" title="Requires bearer token">+</button>
         </div>
-        <ul id="thread-list"><li class="muted">Select a channel</li></ul>
+        <details class="legend-box">
+        <summary>What the badges mean</summary>
         <ul class="chrome-legend" aria-label="Session-chrome legend">
+          <li><span class="chrome-badge chrome-open">open</span> unclaimed, free to take</li>
+          <li><span class="chrome-badge chrome-claimed">claimed</span> one holder, not started yet</li>
           <li><span class="chrome-badge chrome-running">running</span> claimed &amp; working</li>
-          <li><span class="chrome-badge chrome-idle">idle</span> unclaimed, or claimed but idle</li>
+          <li><span class="chrome-badge chrome-in-review">in review</span> result posted, awaiting review</li>
           <li><span class="chrome-badge chrome-needs-input">needs-input</span> a gate wants structured input</li>
           <li><span class="chrome-badge chrome-needs-approval">needs-approval</span> a gate wants a yes/no</li>
           <li><span class="chrome-badge chrome-done">done</span> thread closed</li>
         </ul>
+        </details>
       </aside>
       <main id="main-content">
-        <section id="live-panel">
+        <section id="live-panel" aria-label="Live updates">
           <div id="live-toolbar">
             <strong>Live</strong>
             <span id="ws-status">disconnected</span>
-            <label>Preset
+            <span class="live-hint">Connect to update the board as agents claim, report and hand off.</span>
+            <label class="when-disconnected">Preset
               <select id="ws-preset">
                 <option value="workspace">Workspace (all)</option>
                 <option value="channel">Selected channel</option>
@@ -303,23 +496,35 @@
                 <option value="messages">Messages + mentions</option>
               </select>
             </label>
-            <label><input id="ws-auto-reconnect" type="checkbox" checked /> Auto-reconnect</label>
-            <button id="ws-connect" type="button">Connect WS</button>
+            <label class="when-disconnected"><input id="ws-auto-reconnect" type="checkbox" checked /> Auto-reconnect</label>
+            <button id="ws-connect" type="button" class="primary">Connect WS</button>
             <button id="ws-disconnect" type="button" hidden>Disconnect</button>
-            <button id="ws-clear" type="button">Clear</button>
+            <button id="live-toggle" type="button" class="ghost when-connected" aria-controls="live-feed" aria-expanded="false">Raw events (<span id="live-count">0</span>)</button>
+            <button id="ws-clear" type="button" class="ghost when-connected">Clear</button>
           </div>
-          <pre id="live-feed"></pre>
+          <pre id="live-feed" hidden></pre>
+        </section>
+        <section id="board-panel" aria-labelledby="board-title">
+          <div id="board-head">
+            <h2 id="board-title">Board</h2>
+            <div id="board-summary" aria-live="polite"></div>
+          </div>
+          <div id="board"><div class="board-empty">Select a channel to see its tasks.</div></div>
         </section>
         <section id="collab-panel">
-          <strong>Thread</strong>
-          <span id="thread-context" class="muted">none selected</span>
-          <span id="live-indicator" class="muted" hidden title="This thread updates live from the WebSocket (connect it in the Events tab)">● live</span>
-          <div id="message-list"></div>
+          <div id="thread-header">
+            <span class="th-label">Thread</span>
+            <span id="thread-badge"></span>
+            <span id="thread-context" class="muted">none selected</span>
+            <span id="live-indicator" class="muted" hidden title="This thread updates live from the WebSocket (connect it in the Events tab)">● live</span>
+          </div>
+          <div id="thread-facts"></div>
+          <div id="message-list"><div class="muted">Pick a task on the board to open its thread.</div></div>
           <label>Message
             <textarea id="compose-body" class="compose" placeholder="Post a message (@handle for mentions)"></textarea>
           </label>
           <div class="row">
-            <button id="post-message" type="button">Post</button>
+            <button id="post-message" type="button" class="primary">Post</button>
             <button id="reload-messages" type="button">Reload messages</button>
           </div>
           <details style="margin-top: 0.75rem">
@@ -328,7 +533,7 @@
             <label>New body <textarea id="edit-message-body" class="compose"></textarea></label>
             <button id="edit-message" type="button">Save edit</button>
           </details>
-          <details style="margin-top: 0.5rem" open>
+          <details style="margin-top: 0.5rem">
             <summary>Edit history</summary>
             <button id="load-edit-history" type="button">Load history</button>
             <div id="edit-history-list" class="muted">Select a message</div>
@@ -815,6 +1020,14 @@
       let selectedGdm = null;
       let selectedDm = null;
       let approvalsLoading = false;
+      const channelKey = "maidan_channel";
+      // Workspace member directory: id -> { name, handle, kind }. Everything a
+      // person reads shows a display name; the raw id stays in a tooltip.
+      const memberDirectory = new Map();
+      let threadsById = new Map();
+      let lastGates = {};
+      let boardSeen = new Map();
+      let selectedChannelName = "";
 
       function base() {
         return baseInput.value.replace(/\/$/, "");
@@ -880,15 +1093,113 @@
         document.getElementById("out").textContent =
           typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
       }
+      let liveCount = 0;
       function appendLive(line) {
         const el = document.getElementById("live-feed");
         el.textContent += line + "\n";
         el.scrollTop = el.scrollHeight;
+        liveCount += 1;
+        document.getElementById("live-count").textContent = String(liveCount);
       }
+      // The Live bar stays one slim row until the socket is up; the raw event
+      // feed is opt-in (the board is the readable view of the same events).
       function setWsStatus(text, cls) {
         const el = document.getElementById("ws-status");
         el.textContent = text;
         el.className = cls || "";
+        document.getElementById("live-panel").classList.toggle("connected", cls === "connected");
+      }
+      function toggleLiveFeed(show) {
+        const feed = document.getElementById("live-feed");
+        const btn = document.getElementById("live-toggle");
+        const open = typeof show === "boolean" ? show : feed.hidden;
+        feed.hidden = !open;
+        btn.setAttribute("aria-expanded", String(open));
+      }
+
+      // ---- People -------------------------------------------------------
+      function memberName(id) {
+        if (!id) return "";
+        const m = memberDirectory.get(id);
+        return m ? m.name : `member ${String(id).slice(0, 8)}`;
+      }
+      function memberKind(id) {
+        const m = memberDirectory.get(id);
+        return m ? m.kind : "";
+      }
+      function initials(name) {
+        const parts = String(name).replace(/[^\p{L}\p{N} ]+/gu, " ").trim().split(/\s+/);
+        const letters = parts.length > 1 ? parts[0][0] + parts[1][0] : String(parts[0] || "?").slice(0, 2);
+        return letters.toUpperCase();
+      }
+      function hueFor(id) {
+        let h = 0;
+        for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+        return h % 360;
+      }
+      function avatarEl(id, large) {
+        const el = document.createElement("span");
+        const kind = memberKind(id) || "agent";
+        el.className = `avatar ${kind}${large ? " lg" : ""}`;
+        el.textContent = initials(memberName(id));
+        el.style.setProperty("--hue", String(hueFor(id)));
+        el.setAttribute("aria-hidden", "true");
+        return el;
+      }
+      // Avatar + display name (+ agent/human tag); the member id is the tooltip.
+      function personEl(id, opts = {}) {
+        const wrap = document.createElement("span");
+        wrap.className = "person";
+        wrap.title = id || "";
+        if (opts.avatar !== false) wrap.appendChild(avatarEl(id));
+        const name = document.createElement("span");
+        name.className = "name";
+        name.textContent = memberName(id);
+        wrap.appendChild(name);
+        const kind = memberKind(id);
+        if (opts.tag && kind) {
+          const tag = document.createElement("span");
+          tag.className = "kind-tag";
+          tag.textContent = kind;
+          wrap.appendChild(tag);
+        }
+        return wrap;
+      }
+      function ago(ts) {
+        if (!ts) return "";
+        const secs = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
+        if (secs < 45) return "just now";
+        if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
+        if (secs < 86400) return `${Math.round(secs / 3600)}h ago`;
+        return `${Math.round(secs / 86400)}d ago`;
+      }
+      function leaseLeft(ts) {
+        if (!ts) return "";
+        const secs = Math.round((new Date(ts).getTime() - Date.now()) / 1000);
+        if (secs <= 0) return "lease lapsed";
+        return secs < 120 ? `lease ${secs}s` : `lease ${Math.round(secs / 60)}m`;
+      }
+      async function loadMembers() {
+        if (!wid()) return;
+        const url =
+          token() && !sessionMemberId
+            ? `${base()}/workspaces/${wid()}/members`
+            : uiReadPath(`/workspaces/${wid()}/members`);
+        try {
+          const res = await fetch(url, { headers: headers(), credentials: "include" });
+          if (!res.ok) return;
+          const rows = await res.json();
+          memberDirectory.clear();
+          rows.forEach((m) => {
+            memberDirectory.set(m.id, {
+              name: m.display_name || m.handle,
+              handle: m.handle,
+              kind: m.kind,
+            });
+          });
+        } catch (_e) {
+          /* best-effort: names fall back to a short id */
+        }
       }
       function authorId() {
         return token() ? bearerMemberId : sessionMemberId;
@@ -929,13 +1240,13 @@
         return false;
       }
 
-      async function loadThreads() {
+      async function loadThreads(quiet = false) {
         const list = document.getElementById("thread-list");
         if (!selectedChannelId) {
           renderState(list, "Select a channel to see its threads.");
           return;
         }
-        setLoading(list, "Loading threads…");
+        if (!quiet) setLoading(list, "Loading threads…");
         persist();
         try {
           const res = await fetch(
@@ -948,11 +1259,12 @@
           }
           const threads = await res.json();
           list.innerHTML = "";
+          const gates = await fetchPendingGatesByThread();
+          renderBoard(threads, gates);
           if (!threads.length) {
             renderState(list, "No threads in this channel. Create one above to start work.");
             return;
           }
-          const gates = await fetchPendingGatesByThread();
           threads.forEach((th) => {
             const li = document.createElement("li");
             li.dataset.id = th.id;
@@ -968,6 +1280,13 @@
             name.textContent = title;
             li.appendChild(badge);
             li.appendChild(name);
+            if (th.assignee_id) {
+              const who = document.createElement("span");
+              who.className = "who";
+              who.textContent = `${memberName(th.assignee_id)}`;
+              who.title = th.assignee_id;
+              li.appendChild(who);
+            }
             if (th.id === selectedThreadId) li.classList.add("selected");
             li.onclick = () => selectThread(th.id, title);
             list.appendChild(li);
@@ -1003,22 +1322,225 @@
         return map;
       }
 
-      // Session chrome for a task thread — first match wins:
-      //  done          — thread terminal (closed/archived)
+      // Session chrome for a task thread — first match wins. It reads the
+      // thread's real FSM state and claim, so nothing is "idle" by default:
+      //  done           — thread terminal (closed/archived)
       //  needs-input    — a pending gate with a schema (structured elicitation)
       //  needs-approval — a pending gate without a schema (yes/no approval)
+      //  in review      — FSM state in_review (a result is waiting on review)
       //  running        — claimed AND the working clock has started
-      //  idle           — otherwise (unclaimed, or claimed but not yet working)
+      //  claimed        — claimed, working clock not started yet
+      //  open           — unclaimed: free for the next agent to take
+      // `column` places the thread on the board.
       function sessionChrome(th, gate) {
         if (th.state === "closed" || th.state === "archived")
-          return { label: "done", cls: "chrome-done", hint: "thread is closed" };
+          return { label: "done", cls: "chrome-done", hint: "thread is closed", column: "done" };
         if (gate)
           return gate.hasSchema
-            ? { label: "needs-input", cls: "chrome-needs-input", hint: "waiting on structured input" }
-            : { label: "needs-approval", cls: "chrome-needs-approval", hint: "waiting on human approval" };
+            ? { label: "needs-input", cls: "chrome-needs-input", hint: "waiting on structured input", column: "review" }
+            : { label: "needs-approval", cls: "chrome-needs-approval", hint: "waiting on human approval", column: "review" };
+        if (th.state === "in_review")
+          return { label: "in review", cls: "chrome-in-review", hint: "result posted, waiting on review", column: "review" };
         if (th.assignee_id && th.work_started_at)
-          return { label: "running", cls: "chrome-running", hint: "claimed and working" };
-        return { label: "idle", cls: "chrome-idle", hint: "not being worked" };
+          return { label: "running", cls: "chrome-running", hint: "claimed and working", column: "working" };
+        if (th.assignee_id)
+          return { label: "claimed", cls: "chrome-claimed", hint: "claimed, not started yet", column: "working" };
+        return { label: "open", cls: "chrome-open", hint: "unclaimed, free to take", column: "open" };
+      }
+
+      function chromeBadge(chrome) {
+        const badge = document.createElement("span");
+        badge.className = `chrome-badge ${chrome.cls}`;
+        badge.textContent = chrome.label;
+        badge.title = chrome.hint;
+        badge.setAttribute("aria-label", `session state: ${chrome.label}`);
+        return badge;
+      }
+
+      const BOARD_COLUMNS = [
+        { key: "open", title: "Open" },
+        { key: "working", title: "In progress" },
+        { key: "review", title: "Needs review" },
+        { key: "done", title: "Done" },
+      ];
+
+      // The channel as a board: one card per task, in the column its real
+      // state puts it, with the one member holding it. Cards that changed since
+      // the last render flash once, so a live update is visible.
+      function renderBoard(threads, gates) {
+        threadsById = new Map(threads.map((th) => [th.id, th]));
+        lastGates = gates;
+        const board = document.getElementById("board");
+        const summary = document.getElementById("board-summary");
+        document.getElementById("board-title").textContent = selectedChannelName
+          ? `# ${selectedChannelName}`
+          : "Board";
+        board.replaceChildren();
+        const cols = {};
+        BOARD_COLUMNS.forEach((c) => {
+          const col = document.createElement("section");
+          col.className = `board-col col-${c.key}`;
+          col.dataset.column = c.key;
+          const h = document.createElement("h3");
+          const dot = document.createElement("span");
+          dot.className = "dot";
+          const label = document.createElement("span");
+          label.textContent = c.title;
+          const count = document.createElement("span");
+          count.className = "count";
+          h.append(dot, label, count);
+          col.appendChild(h);
+          board.appendChild(col);
+          cols[c.key] = { el: col, count, n: 0 };
+        });
+        const nextSeen = new Map();
+        const agents = new Set();
+        threads.forEach((th) => {
+          const chrome = sessionChrome(th, gates[th.id]);
+          const title = th.title || th.id.slice(0, 8);
+          const card = document.createElement("article");
+          card.className = "card";
+          card.dataset.id = th.id;
+          card.dataset.chrome = chrome.label;
+          card.tabIndex = 0;
+          card.setAttribute("role", "button");
+          card.setAttribute("aria-label", `${title}: ${chrome.label}`);
+          if (th.id === selectedThreadId) card.classList.add("selected");
+          const sig = `${chrome.label}|${th.assignee_id || ""}`;
+          if (boardSeen.size && boardSeen.get(th.id) !== sig) card.classList.add("fresh");
+          nextSeen.set(th.id, sig);
+          const t = document.createElement("div");
+          t.className = "card-title";
+          t.textContent = title;
+          const foot = document.createElement("div");
+          foot.className = "card-foot";
+          if (th.assignee_id) {
+            foot.appendChild(personEl(th.assignee_id));
+            if (chrome.column === "working") agents.add(th.assignee_id);
+          } else {
+            const u = document.createElement("span");
+            u.className = "unclaimed";
+            u.textContent = chrome.column === "done" ? "" : "unclaimed";
+            foot.appendChild(u);
+          }
+          const when = document.createElement("span");
+          when.className = "when";
+          when.textContent =
+            chrome.column === "working" && th.assignment_expires_at
+              ? leaseLeft(th.assignment_expires_at)
+              : ago(th.updated_at);
+          foot.appendChild(when);
+          card.append(chromeBadge(chrome), t, foot);
+          card.onclick = () => selectThread(th.id, title);
+          card.onkeydown = (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              selectThread(th.id, title);
+            }
+          };
+          const col = cols[chrome.column];
+          col.el.appendChild(card);
+          col.n += 1;
+        });
+        boardSeen = nextSeen;
+        BOARD_COLUMNS.forEach((c) => {
+          const col = cols[c.key];
+          col.count.textContent = String(col.n);
+          if (!col.n) {
+            const empty = document.createElement("div");
+            empty.className = "board-empty";
+            empty.textContent = "—";
+            col.el.appendChild(empty);
+          }
+        });
+        summary.replaceChildren();
+        const facts = [
+          [threads.length, threads.length === 1 ? "task" : "tasks"],
+          [agents.size, agents.size === 1 ? "agent working" : "agents working"],
+          [cols.review.n, "waiting on review"],
+          [cols.done.n, "done"],
+        ];
+        facts.forEach(([n, label]) => {
+          const span = document.createElement("span");
+          const b = document.createElement("b");
+          b.textContent = String(n);
+          span.append(b, ` ${label}`);
+          summary.appendChild(span);
+        });
+        if (selectedThreadId && threadsById.has(selectedThreadId)) renderThreadHeader();
+      }
+
+      // Board refreshes are driven by thread/claim/review events on the socket,
+      // coalesced so a burst of events is one reload.
+      const THREAD_BOARD_KINDS = new Set([
+        "thread_created",
+        "thread_state_changed",
+        "thread_assignment_changed",
+        "thread_result_set",
+        "thread_landed",
+        "thread_ready",
+        "approval_requested",
+        "blocked_resolved",
+        "claim_expired",
+      ]);
+      let boardRefreshTimer = null;
+      function scheduleBoardRefresh() {
+        if (boardRefreshTimer || !selectedChannelId) return;
+        boardRefreshTimer = setTimeout(() => {
+          boardRefreshTimer = null;
+          loadThreads(true);
+        }, 250);
+      }
+
+      // The open thread's header: state, holder, result and review progress.
+      async function renderThreadHeader() {
+        const th = threadsById.get(selectedThreadId);
+        const badgeBox = document.getElementById("thread-badge");
+        const facts = document.getElementById("thread-facts");
+        badgeBox.replaceChildren();
+        facts.replaceChildren();
+        if (!th) return;
+        const tid = th.id;
+        badgeBox.appendChild(chromeBadge(sessionChrome(th, lastGates[tid])));
+        const fact = (label, node) => {
+          const f = document.createElement("span");
+          f.className = "fact";
+          f.append(label, node);
+          facts.appendChild(f);
+          return f;
+        };
+        if (th.assignee_id) fact("held by ", personEl(th.assignee_id, { tag: true }));
+        if (th.owner_id) fact("owner ", personEl(th.owner_id));
+        try {
+          const res = await fetch(uiReadPath(`/threads/${tid}/result`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (res.ok && tid === selectedThreadId) {
+            const r = await res.json();
+            const code = document.createElement("code");
+            code.textContent = JSON.stringify(r.result);
+            const f = fact("result ", code);
+            f.append(" by ", personEl(r.produced_by, { avatar: false }));
+          }
+        } catch (_e) {
+          /* no result yet */
+        }
+        if (!token()) return;
+        try {
+          const res = await fetch(`${base()}/threads/${tid}/review-status`, { headers: headers() });
+          if (res.ok && tid === selectedThreadId) {
+            const rs = await res.json();
+            if (rs.required_count > 0) {
+              const s = document.createElement("span");
+              s.className = rs.approvals_met ? "ok" : "wait";
+              s.textContent = `${rs.approvals}/${rs.required_count} approvals${rs.approvals_met ? " ✓" : ""}`;
+              fact("review ", s);
+            }
+          }
+        } catch (_e) {
+          /* review status is optional chrome */
+        }
       }
 
       function selectThread(id, label) {
@@ -1031,9 +1553,11 @@
           live.hidden = true;
           live.classList.remove("on");
         }
-        document.querySelectorAll("#thread-list li").forEach((n) => {
+        document.getElementById("thread-context").classList.remove("muted");
+        document.querySelectorAll("#thread-list li, #board .card").forEach((n) => {
           n.classList.toggle("selected", n.dataset.id === id);
         });
+        renderThreadHeader();
         loadMessages();
       }
 
@@ -1114,12 +1638,19 @@
         messages.forEach((m) => {
           const div = document.createElement("div");
           div.className = "msg";
+          div.dataset.id = m.id;
+          div.appendChild(avatarEl(m.author_id, true));
           const meta = document.createElement("div");
           meta.className = "meta";
-          let metaText = `${m.id} · ${m.author_id}`;
-          if (m.posted_at) metaText += ` · ${m.posted_at.slice(0, 19).replace("T", " ")}`;
-          if (m.edited_at) metaText += " · edited";
-          meta.textContent = metaText;
+          meta.appendChild(personEl(m.author_id, { avatar: false, tag: true }));
+          const time = document.createElement("span");
+          time.className = "time";
+          time.title = `${m.id}${m.posted_at ? ` · ${m.posted_at}` : ""}`;
+          time.textContent = m.posted_at
+            ? new Date(m.posted_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            : "";
+          meta.appendChild(time);
+          if (m.edited_at) meta.appendChild(document.createTextNode("edited"));
           const pinned = pinnedIds.has(m.id);
           const pinBtn = document.createElement("button");
           pinBtn.type = "button";
@@ -1130,9 +1661,9 @@
             ev.stopPropagation();
             togglePin(selectedThreadId, m.id, pinned);
           };
-          meta.appendChild(document.createTextNode(" · "));
           meta.appendChild(pinBtn);
           const body = document.createElement("div");
+          body.className = "body";
           body.textContent = m.body;
           div.appendChild(meta);
           div.appendChild(body);
@@ -1371,7 +1902,7 @@
           msgs.forEach((m) => {
             const div = document.createElement("div");
             div.className = "msg";
-            div.textContent = `${m.author_id}: ${m.body}`;
+            div.textContent = `${memberName(m.author_id)}: ${m.body}`;
             box.appendChild(div);
           });
         } catch (e) {
@@ -1488,7 +2019,7 @@
           msgs.forEach((m) => {
             const div = document.createElement("div");
             div.className = "msg";
-            div.textContent = `${m.author_id}: ${m.body}`;
+            div.textContent = `${memberName(m.author_id)}: ${m.body}`;
             box.appendChild(div);
           });
         } catch (e) {
@@ -2385,7 +2916,7 @@
           }
           for (const m of msgs) {
             const li = document.createElement("li");
-            li.textContent = `${m.author_id}: ${m.body}`;
+            li.textContent = `${memberName(m.author_id)}: ${m.body}`;
             list.appendChild(li);
           }
         } catch (e) {
@@ -2745,6 +3276,7 @@
             return;
           }
           const channels = await res.json();
+          await loadMembers();
           list.innerHTML = "";
           if (!channels.length) {
             renderState(list, "No channels yet. Create one above to open the workspace.");
@@ -2760,11 +3292,17 @@
             if (ch.id === selectedChannelId) li.classList.add("selected");
             li.onclick = () => {
               selectedChannelId = ch.id;
+              selectedChannelName = ch.name;
+              localStorage.setItem(channelKey, ch.id);
               selectedThreadId = null;
+              boardSeen = new Map();
               document.getElementById("channel-id").value = ch.id;
               const sc = document.getElementById("search-channel");
               if (!sc.value.trim()) sc.value = ch.id;
               document.getElementById("thread-context").textContent = "none selected";
+              document.getElementById("thread-context").classList.add("muted");
+              document.getElementById("thread-badge").replaceChildren();
+              document.getElementById("thread-facts").replaceChildren();
               document.querySelectorAll("#channel-list li").forEach((n) => {
                 n.classList.toggle("selected", n.dataset.id === ch.id);
               });
@@ -2772,6 +3310,10 @@
             };
             list.appendChild(li);
           });
+          // Reopen the channel this browser last looked at.
+          const remembered = localStorage.getItem(channelKey);
+          const again = remembered && list.querySelector(`li[data-id="${remembered}"]`);
+          if (again && !selectedChannelId) again.click();
         } catch (e) {
           renderState(list, String(e), "err");
         } finally {
@@ -2837,7 +3379,8 @@
         members.forEach((m) => {
           const li = document.createElement("li");
           const mine = m.member_id === me ? " (you)" : "";
-          li.textContent = `${m.member_id} · ${m.status}${mine}`;
+          li.textContent = `${memberName(m.member_id)} · ${m.status}${mine}`;
+          li.title = m.member_id;
           list.appendChild(li);
         });
       }
@@ -2929,6 +3472,7 @@
               loadThreads();
             }
             if (liveFrameTargetsOpenThread(v)) scheduleLiveRefresh();
+            if (THREAD_BOARD_KINDS.has(kind)) scheduleBoardRefresh();
             return;
           }
           if (v.kind) {
@@ -2938,11 +3482,15 @@
           appendLive(JSON.stringify(v));
         };
         wsSocket.onerror = () => setWsStatus("error", "error");
-        wsSocket.onclose = () => {
+        wsSocket.onclose = (ev) => {
           const wasConnected = document.getElementById("ws-disconnect").hidden === false;
           document.getElementById("ws-connect").hidden = false;
           document.getElementById("ws-disconnect").hidden = true;
           if (wasConnected) setWsStatus("closed");
+          // Refused before the ack (bad token, missing event:subscribe): say
+          // why instead of sitting on "connecting…".
+          else if (!wsUserDisconnect)
+            setWsStatus(ev && ev.reason ? `refused: ${ev.reason}` : "could not connect", "error");
           wsSocket = null;
           if (
             wasConnected &&
@@ -3561,7 +4109,49 @@
         persist();
         await refreshBearerIdentity();
       });
-      refreshSession().then(refreshBearerIdentity).then(() => loadChannels());
+      document.getElementById("live-toggle").onclick = () => toggleLiveFeed();
+      document.getElementById("conn-edit").onclick = () => showConnection(true);
+
+      // Connection chrome. A browser that already holds a working credential
+      // (stored token or a signed-in session) collapses the three inputs into
+      // one "who am I, where am I" pill; "Change" brings them back.
+      function showConnection(editing) {
+        document.getElementById("conn-fields").hidden = !editing;
+        document.getElementById("identity-pill").hidden = editing;
+        if (!sessionMemberId) document.getElementById("login").hidden = !editing;
+      }
+      async function renderIdentity(memberId) {
+        const who = document.getElementById("identity-who");
+        who.replaceChildren(personEl(memberId, { tag: true }));
+        const wsLabel = document.getElementById("identity-ws");
+        wsLabel.textContent = `workspace ${wid().slice(0, 8)}…`;
+        if (token()) {
+          try {
+            const res = await fetch(`${base()}/workspaces/${wid()}`, { headers: headers() });
+            if (res.ok) wsLabel.textContent = (await res.json()).name || wsLabel.textContent;
+          } catch (_e) {
+            /* the short id stays */
+          }
+        }
+        const status = document.getElementById("session-status");
+        if (token() && !sessionMemberId) status.hidden = true;
+      }
+
+      async function start() {
+        const hadStored = !!(localStorage.getItem(tokenKey) && localStorage.getItem(wsKey));
+        await refreshSession();
+        const identity = await refreshBearerIdentity();
+        await loadChannels();
+        const me = authorId();
+        if (me && (hadStored || sessionMemberId)) {
+          await renderIdentity(me);
+          if (identity || sessionMemberId) {
+            showConnection(false);
+            connectWs();
+          }
+        }
+      }
+      start();
     </script>
   </body>
 </html>

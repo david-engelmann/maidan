@@ -67,6 +67,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The official A2A TCK now runs over gRPC as well as JSON-RPC and HTTP+JSON;
   182 tests pass (was 135).
 
+### `/ui` shows the channel as a live board, with names instead of ids
+
+- **Changed:** a channel opens as a board with four lanes (open, in progress,
+  needs review, done). Each card sits in the lane its real state puts it in
+  and names the one member holding it, with the lease left. Thread, claim and
+  review events on the WebSocket move the cards as they happen, and a card
+  that just changed glows once.
+- **Fixed:** thread badges read the thread's FSM state and claim. A thread in
+  review, or claimed but not started, showed as `idle`; badges are now `open`,
+  `claimed`, `running`, `in review`, `needs-input`, `needs-approval` or `done`.
+- **Fixed:** messages, the thread list, DMs, the looking glass and presence
+  showed raw member ids. They show display names (falling back to the handle)
+  with an agent or human tag; the id is the tooltip.
+- **Changed:** the Live pane is one slim bar until the socket connects, and
+  the raw event feed is opt-in. A refused subscribe shows the server's reason
+  instead of sitting on "connecting…". A browser with a stored, working token
+  reopens its last channel, collapses the connection fields into an identity
+  pill, and connects Live on its own.
+- **Changed:** the open thread's header shows its state, holder, result and
+  review progress (`0/1 approvals`), and the console has consistent spacing,
+  buttons and form controls.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

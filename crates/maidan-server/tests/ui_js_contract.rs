@@ -260,9 +260,10 @@ fn ui_js_wires_session_capability_card() {
     );
 }
 
-/// Session-chrome badges on the thread list. Guard the mapping's wiring
-/// statically — the pure classifier must be defined, invoked by loadThreads,
-/// and cover all five chrome states.
+/// Session-chrome badges on the thread list and board. Guard the mapping's
+/// wiring statically — the pure classifier must be defined, invoked by
+/// loadThreads, read the real FSM state (`in_review`) and claim, and cover every
+/// chrome state. There is no catch-all "idle": an unclaimed thread is "open".
 #[test]
 fn ui_js_wires_session_chrome_badges() {
     let s = script(HTML);
@@ -278,9 +279,19 @@ fn ui_js_wires_session_chrome_badges() {
         s.contains("function fetchPendingGatesByThread("),
         "the gate lookup must be defined"
     );
+    assert!(
+        s.contains("th.state === \"in_review\""),
+        "the classifier must read the thread's FSM state, not only its claim"
+    );
+    assert!(
+        !s.contains("chrome-idle"),
+        "\"idle\" hid real state (in review, claimed); it must not come back"
+    );
     for state in [
+        "chrome-open",
+        "chrome-claimed",
         "chrome-running",
-        "chrome-idle",
+        "chrome-in-review",
         "chrome-needs-input",
         "chrome-needs-approval",
         "chrome-done",
@@ -499,5 +510,61 @@ fn ui_uses_locked_brand_mark_and_palette() {
             && HTML.contains("M38.95,32.85L48.07,37.53L59.65,35.70")
             && HTML.contains("M37.52,27.69L47.28,24.55L51.08,17.60"),
         "the /ui header must retain the locked Sweep Reach mark"
+    );
+}
+
+/// People are shown by name. Every place that renders a member resolves it
+/// through the workspace member directory; the raw id survives only as a
+/// tooltip.
+#[test]
+fn ui_js_renders_members_by_display_name() {
+    let s = script(HTML);
+    for f in [
+        "async function loadMembers(",
+        "function memberName(",
+        "function personEl(",
+    ] {
+        assert!(s.contains(f), "the UI must define {f}");
+    }
+    assert!(
+        s.contains("m.display_name || m.handle"),
+        "names come from display_name, falling back to the handle"
+    );
+    for raw in [
+        "`${m.id} · ${m.author_id}`",
+        "`${m.author_id}: ${m.body}`",
+        "`${m.member_id} · ${m.status}",
+    ] {
+        assert!(
+            !s.contains(raw),
+            "a raw member id is rendered as text again: {raw}"
+        );
+    }
+}
+
+/// The channel renders as a live board, and the Live bar stays collapsed until
+/// the socket is up.
+#[test]
+fn ui_js_wires_live_board_and_collapsed_live_bar() {
+    let s = script(HTML);
+    assert!(
+        s.contains("function renderBoard("),
+        "renderBoard must be defined"
+    );
+    assert!(
+        s.contains("renderBoard(threads, gates)"),
+        "loadThreads must render the board"
+    );
+    assert!(
+        s.contains("THREAD_BOARD_KINDS.has(kind)) scheduleBoardRefresh()"),
+        "thread/claim events on the socket must refresh the board"
+    );
+    assert!(
+        HTML.contains("<pre id=\"live-feed\" hidden>"),
+        "the raw live feed starts hidden"
+    );
+    assert!(
+        s.contains("classList.toggle(\"connected\", cls === \"connected\")"),
+        "the Live bar expands only once connected"
     );
 }
