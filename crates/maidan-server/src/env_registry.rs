@@ -14,6 +14,7 @@ pub const ALLOW_UNKNOWN_ENV: &str = "MAIDAN_ALLOW_UNKNOWN_ENV";
 /// Variables the server process reads.
 pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_A2A_GRPC_ADDR",
+    "MAIDAN_A2A_GRPC_PLAINTEXT",
     "MAIDAN_A2A_GRPC_PUBLIC_ADDR",
     "MAIDAN_A2A_PUBLIC_ORIGIN",
     "MAIDAN_ALLOW_INSECURE_DEV_KEK",
