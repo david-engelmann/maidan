@@ -6,7 +6,7 @@
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::Utc;
 use maidan_auth::{
-    capability::{TOKEN_ADMIN, WORKSPACE_WRITE},
+    capability::{OPERATOR_GLOBAL, TOKEN_ADMIN, WORKSPACE_WRITE},
     AuthContext,
 };
 use maidan_types::{NewAuditEvent, ReindexJob, ReindexJobStatus, WorkspaceId};
@@ -45,7 +45,9 @@ pub async fn start_reindex_embeddings(
             ensure_workspace(&auth, wid)?;
             state.store.get_workspace(wid).await?;
         }
-        None => cap(&auth, TOKEN_ADMIN)?,
+        // Every workspace's embeddings: an instance operator's call, not
+        // one workspace admin's (`token:admin` is scoped to its workspace).
+        None => cap(&auth, OPERATOR_GLOBAL)?,
     }
 
     let job_id = Uuid::now_v7();
@@ -127,7 +129,9 @@ pub async fn get_reindex_embeddings_job(
             cap(&auth, WORKSPACE_WRITE)?;
             ensure_workspace(&auth, wid)?;
         }
-        None => cap(&auth, TOKEN_ADMIN)?,
+        // Every workspace's embeddings: an instance operator's call, not
+        // one workspace admin's (`token:admin` is scoped to its workspace).
+        None => cap(&auth, OPERATOR_GLOBAL)?,
     }
     Ok(Json(job))
 }
