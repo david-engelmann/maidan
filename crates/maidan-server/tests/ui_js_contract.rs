@@ -596,3 +596,17 @@ fn ui_js_thread_header_ignores_stale_overlapping_renders() {
         "the thread-id guard alone lets two renders of the same thread both append"
     );
 }
+
+#[test]
+fn ui_js_drops_thread_responses_for_a_channel_no_longer_selected() {
+    let s = script(HTML);
+    assert!(
+        s.contains("const stale = () => selectedChannelId !== channelId;")
+            && s.contains("if (stale()) return;\n          list.innerHTML = \"\";\n          renderBoard(threads, gates);"),
+        "loadThreads renders only for the channel it was asked for"
+    );
+    assert!(
+        s.contains("li[data-id=\"${CSS.escape(remembered)}\"]"),
+        "the remembered channel id is escaped before it goes into a selector"
+    );
+}

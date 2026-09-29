@@ -1242,7 +1242,11 @@
 
       async function loadThreads(quiet = false) {
         const list = document.getElementById("thread-list");
-        if (!selectedChannelId) {
+        // A response for a channel that is no longer selected is dropped, so
+        // a slow reply for A never paints over B.
+        const channelId = selectedChannelId;
+        const stale = () => selectedChannelId !== channelId;
+        if (!channelId) {
           renderState(list, "Select a channel to see its threads.");
           return;
         }
@@ -1250,16 +1254,18 @@
         persist();
         try {
           const res = await fetch(
-            uiReadPath(`/channels/${selectedChannelId}/threads`),
+            uiReadPath(`/channels/${channelId}/threads`),
             { headers: headers(), credentials: "include" }
           );
           if (!res.ok) {
-            renderState(list, await responseError(res), "err");
+            const message = await responseError(res);
+            if (!stale()) renderState(list, message, "err");
             return;
           }
           const threads = await res.json();
-          list.innerHTML = "";
           const gates = await fetchPendingGatesByThread();
+          if (stale()) return;
+          list.innerHTML = "";
           renderBoard(threads, gates);
           if (!threads.length) {
             renderState(list, "No threads in this channel. Create one above to start work.");
@@ -1292,9 +1298,9 @@
             list.appendChild(li);
           });
         } catch (e) {
-          renderState(list, String(e), "err");
+          if (!stale()) renderState(list, String(e), "err");
         } finally {
-          clearLoading(list);
+          if (!stale()) clearLoading(list);
         }
       }
 
@@ -3318,7 +3324,7 @@
           });
           // Reopen the channel this browser last looked at.
           const remembered = localStorage.getItem(channelKey);
-          const again = remembered && list.querySelector(`li[data-id="${remembered}"]`);
+          const again = remembered && list.querySelector(`li[data-id="${CSS.escape(remembered)}"]`);
           if (again && !selectedChannelId) again.click();
         } catch (e) {
           renderState(list, String(e), "err");
