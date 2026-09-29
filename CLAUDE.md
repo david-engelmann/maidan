@@ -19,6 +19,7 @@ full forms are what CI runs.
 | **Format** | `cargo fmt --all` | `cargo fmt --all --check` |
 | **Run** | `MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server` | — |
 | **Smoke** | — | `make smoke` (Docker; brings the stack up and waits on its health checks) |
+| **Fuzz** | `cd fuzz && cargo +nightly fuzz run <target> -- -max_total_time=60` | nightly: five minutes per target (`cargo +nightly fuzz list`) |
 | **Docs site** | — | `mdbook-mermaid install book && bash book/sync-docs.sh && mdbook build book && ./scripts/check-docs-presentation.sh` |
 
 The server refuses to start without a content key: set `MAIDAN_CONTENT_KEK`, or

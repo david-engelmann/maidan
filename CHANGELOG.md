@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fuzzing the parsers of untrusted input
+
+- **Added:** `fuzz/`, five cargo-fuzz targets run nightly for five minutes
+  each. The egress SSRF guard must accept its own serialized form of any URL it
+  accepts (a normalization differential is how a guard is bypassed); room URIs
+  and content keys round-trip; waiter results and event type ids parse without
+  panicking and recognise only what they print. About 34 million local runs
+  found nothing.
+
 ### A requested review reaches the reviewer, and a refused close says what to do next
 
 - **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP
