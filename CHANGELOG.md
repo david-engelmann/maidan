@@ -7,7 +7,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Trace context across REST, WebSocket, MCP and A2A
+### Trace context across REST, WebSocket, MCP and A2A (#1099)
 
 - **Added:** an incoming W3C `traceparent` (and `tracestate`) is continued.
   The request runs as a child span, the response carries `traceresponse`

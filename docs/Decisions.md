@@ -1626,7 +1626,7 @@ demand. `pack`/`prefix` inclusion is the most likely candidate (pure convenience
 a `structure_only` export filter is the least (scope-creep toward a template product). None
 is a correctness or capability gap today.
 
-### Trace context is transport metadata, not event content (TRACE_PR)
+### Trace context is transport metadata, not event content (#1099)
 
 **Decision.** A W3C `traceparent` is accepted on every HTTP request (REST,
 the WebSocket upgrade, MCP, A2A JSON-RPC) and on the A2A gRPC server. The
