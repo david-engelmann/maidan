@@ -5,14 +5,16 @@
 - `GET /workspaces/:wid/members` — list members (requires `workspace:read`).
 - Browser session path: `GET /ui/api/workspaces/:wid/members` (OIDC session or bearer).
 
-Use the roster to populate operator UI pickers and to validate `member_id` on WS subscribe frames.
+Use the roster to populate operator UI pickers.
 
 ## WebSocket presence fan-out
 
 After subscribing on `GET /ws/subscribe`, include both:
 
 - `filter.workspace_id` — required for replay and workspace-scoped events.
-- `member_id` — your workspace member UUID (enables presence/typing).
+- `member_id` — the member your token or session belongs to (enables presence
+  and typing). Any other member closes the socket with 1008: presence speaks
+  for a member, so a subscription can announce only its own.
 
 Optional control frames from the client:
 

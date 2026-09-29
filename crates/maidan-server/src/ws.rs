@@ -548,7 +548,20 @@ async fn read_subscribe(
         .await
         .map_err(|e| SubscribeReject::from_store(e, filter.workspace_id))?;
 
-    let member_id = sub.member_id.map(MemberId);
+    // Presence and typing speak for a member, so the frame may name only the
+    // member the credential is. Taken from the frame unchecked, a token for one
+    // member could show another as online or typing, and stamp any member's
+    // last-seen time, in any workspace, which quiets presence-aware email.
+    let member_id = match sub.member_id.map(MemberId) {
+        Some(claimed) if !state.auth_disabled && claimed != ctx.member_id => {
+            return Err((
+                1008u16,
+                "member_id must be the member the token or session belongs to".into(),
+            )
+                .into());
+        }
+        claimed => claimed,
+    };
     if member_id.is_some() && filter.workspace_id.is_none() {
         return Err((
             1008u16,
