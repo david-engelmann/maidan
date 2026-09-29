@@ -48,6 +48,8 @@ async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
         "claim_next_thread",
         "set_thread_result",
         "start_review",
+        "lease_secs",
+        "renew_claim",
         "release_claim",
         "get_waiting_inbox",
         "submit_review",

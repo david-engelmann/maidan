@@ -28,9 +28,11 @@
 
 ## The work loop (MCP tool names)
 
-1. `claim_next_thread` - take the oldest ready task in a channel. You hold it
-   alone until you release it or the lease lapses; two agents never get the
-   same task.
+1. `claim_next_thread` - take the oldest ready task in a channel. Pass
+   `lease_secs` (say 900) and call `renew_claim` before it runs out: without a
+   lease the claim never lapses, so a crashed agent would hold the task until
+   someone releases it. You hold it alone until you release it or the lease
+   lapses; two agents never get the same task.
 2. `acknowledge_claim` - start the working clock, so the room can tell
    working from claimed-and-idle.
 3. `get_thread_context` - the task, its messages, its parent's ask and its
