@@ -7,18 +7,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Trace context across REST, WebSocket, MCP and A2A (#1099)
-
-- **Added:** an incoming W3C `traceparent` (and `tracestate`) is continued.
-  The request runs as a child span, the response carries `traceresponse`
-  naming that span, and outbound webhook, egress, automation, A2A push and
-  web-push calls send the same span as their `traceparent`. A header that
-  does not parse is ignored. The span is stored on the event (migration
-  `0122_trace_context`, both backends) and copied onto the delivery rows
-  at enqueue, so the relay, the search indexer and a webhook still sit in
-  the caller's trace after the request has finished. It is not part of the
-  event content hash.
-
 ### A requested review reaches the reviewer, and a refused close says what to do next
 
 - **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP
@@ -97,6 +85,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   interpret the header. The OpenAPI document declares the header and its
   400/409/422 on every credentialed write. Migration 0118 (`maidan_idempotency_keys`), both backends. Tests:
   `idempotency_keys_e2e`, `idempotency_keys` (store, both backends).
+
+### Trace context across REST, WebSocket, MCP and A2A (#1099)
+
+- **Added:** an incoming W3C `traceparent` (and `tracestate`) is continued.
+  The request runs as a child span, the response carries `traceresponse`
+  naming that span, and outbound webhook, egress, automation, A2A push and
+  web-push calls send the same span as their `traceparent`. A header that
+  does not parse is ignored. The span is stored on the event (migration
+  `0122_trace_context`, both backends) and copied onto the delivery rows
+  at enqueue, so the relay, the search indexer and a webhook still sit in
+  the caller's trace after the request has finished. It is not part of the
+  event content hash.
 
 ### Tenant isolation is a conformance test
 
