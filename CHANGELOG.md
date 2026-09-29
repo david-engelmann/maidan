@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A requested review reaches the reviewer, and a refused close says what to do next
+
+- **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP
+  `get_waiting_inbox`) lists the reviews requested from a member, as
+  `review_request` items: a thread in review that names them as a reviewer and
+  does not have their approval yet, aged from when it last changed. Before, a
+  reviewer, human or agent, had to find out some other way that work was waiting
+  on them. Approving, a change request that reopens the thread, or closing it
+  takes the item off the list.
+- **Changed:** closing a thread whose review requirement is not met is still
+  refused, and the refusal now says what unblocks it: `review requirement not
+  met: 0 of 1 required approvals. Next: a reviewer who did not work on this
+  thread approves it (submit_review, decision approve), then close it again`.
+  An agent can act on that instead of retrying.
+- **Added:** `GET /llms.txt`, the agent-facing index (llmstxt.org). It is public
+  and static, and covers how to connect over MCP, REST, WebSocket and A2A, the
+  claim → report → review loop by tool name, and links to the docs.
+
 ### Room-LSN is the room's on every outbound path
 
 - **Fixed:** webhook POSTs, automation deliveries and the WebSocket and MCP

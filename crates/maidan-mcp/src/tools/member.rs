@@ -266,7 +266,8 @@ struct WaitingArgs {
 }
 
 /// The waiting-on-you inbox: a member's assigned non-terminal threads + the
-/// workspace's pending approval gates + their unread mentions, oldest-waiting
+/// reviews requested from them + the workspace's pending approval gates +
+/// their unread mentions, oldest-waiting
 /// first, each aged against `sla_secs`. `workspace:read`.
 pub(super) async fn get_waiting_inbox(
     store: &Arc<dyn Store>,
@@ -279,6 +280,9 @@ pub(super) async fn get_waiting_inbox(
     let assigned = store
         .list_assigned_threads(member.workspace_id, member_id)
         .await?;
+    let reviews = store
+        .list_review_requests(member.workspace_id, member_id)
+        .await?;
     let gates = store
         .list_pending_approval_gates(member.workspace_id, 200)
         .await?;
@@ -288,8 +292,14 @@ pub(super) async fn get_waiting_inbox(
         .into_iter()
         .filter(|m| m.created_at > last_read)
         .collect();
-    let inbox =
-        maidan_types::assemble_waiting_inbox(&assigned, &gates, &unread, chrono::Utc::now(), sla);
+    let inbox = maidan_types::assemble_waiting_inbox(
+        &assigned,
+        &reviews,
+        &gates,
+        &unread,
+        chrono::Utc::now(),
+        sla,
+    );
     Ok(content_json(&inbox))
 }
 

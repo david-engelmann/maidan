@@ -829,6 +829,18 @@ pub fn router(state: AppState) -> Router {
         axum::response::Html(include_str!("../static/index.html"))
     }
 
+    // The agent-facing index (llmstxt.org): how to connect and the work loop,
+    // with paths relative to this server. Public like `/ui`, and static.
+    async fn llms_txt() -> impl axum::response::IntoResponse {
+        (
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "text/markdown; charset=utf-8",
+            )],
+            include_str!("../static/llms.txt"),
+        )
+    }
+
     let session_auth = middleware::from_fn_with_state(state.clone(), session::require_middleware);
 
     let auth_routes = Router::new()
@@ -1092,6 +1104,7 @@ pub fn router(state: AppState) -> Router {
         .route("/metrics", get(metrics::scrape))
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
+        .route("/llms.txt", get(llms_txt))
         .merge({
             #[cfg(feature = "bootstrap")]
             {

@@ -1581,6 +1581,13 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         member_id: MemberId,
     ) -> Result<Vec<Thread>, StoreError>;
+    /// Threads under review that name `member_id` as a reviewer and lack that
+    /// member's approval, oldest first: the reviews waiting on them.
+    async fn list_review_requests(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<Thread>, StoreError>;
 
     /// Atomically claim the oldest claimable live thread in `channel_id` for
     /// `member_id` — the "pull the next task" primitive. Claimable = unassigned

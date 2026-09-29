@@ -1933,6 +1933,9 @@ pub enum WaitingKind {
     OpenGate,
     /// An unread @mention of the member.
     Mention,
+    /// A thread under review that names the member as a reviewer and does not
+    /// have their approval yet.
+    ReviewRequest,
 }
 
 /// One thing waiting on a member — with its age and whether it has breached the
@@ -2005,6 +2008,7 @@ fn waiting_item(
 /// first, each aged against `sla_secs`.
 pub fn assemble_waiting_inbox(
     assigned: &[Thread],
+    review_requests: &[Thread],
     pending_gates: &[ApprovalGate],
     unread_mentions: &[Mention],
     now: DateTime<Utc>,
@@ -2024,6 +2028,23 @@ pub fn assemble_waiting_inbox(
                 .clone()
                 .unwrap_or_else(|| "(untitled thread)".to_string()),
             t.created_at,
+            now,
+            sla_secs,
+        ));
+    }
+    for t in review_requests {
+        if t.state.is_terminal() || t.tombstoned_at.is_some() {
+            continue;
+        }
+        items.push(waiting_item(
+            WaitingKind::ReviewRequest,
+            Some(t.id),
+            None,
+            None,
+            t.title
+                .clone()
+                .unwrap_or_else(|| "(untitled thread)".to_string()),
+            t.updated_at,
             now,
             sla_secs,
         ));

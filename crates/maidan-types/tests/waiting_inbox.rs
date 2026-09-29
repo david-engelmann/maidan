@@ -65,7 +65,7 @@ fn assembles_excludes_terminal_sorts_and_flags_overdue() {
     let gates = vec![gate(200)];
     let mentions = vec![mention(50)];
 
-    let inbox = assemble_waiting_inbox(&assigned, &gates, &mentions, now, sla);
+    let inbox = assemble_waiting_inbox(&assigned, &[], &gates, &mentions, now, sla);
 
     // 2 live threads + 1 gate + 1 mention = 4 items (the 3 excluded threads drop).
     assert_eq!(inbox.total, 4);
@@ -86,9 +86,36 @@ fn assembles_excludes_terminal_sorts_and_flags_overdue() {
 
 #[test]
 fn empty_sources_yield_an_empty_inbox() {
-    let inbox = assemble_waiting_inbox(&[], &[], &[], Utc::now(), 3600);
+    let inbox = assemble_waiting_inbox(&[], &[], &[], &[], Utc::now(), 3600);
     assert_eq!(inbox.total, 0);
     assert_eq!(inbox.overdue, 0);
     assert!(inbox.items.is_empty());
     assert_eq!(inbox.sla_secs, 3600);
+}
+
+#[test]
+fn a_requested_review_waits_since_the_thread_last_changed() {
+    let now = Utc::now();
+    let mut review = thread(ThreadState::InReview, false, 9000);
+    review.title = Some("Fix the flaky login test".into());
+    review.updated_at = now - Duration::seconds(600);
+    let closed = thread(ThreadState::Closed, false, 9000);
+
+    let inbox = assemble_waiting_inbox(&[], &[review.clone(), closed], &[], &[], now, 3600);
+
+    assert_eq!(inbox.total, 1, "a closed thread's review waits on nobody");
+    let item = &inbox.items[0];
+    assert_eq!(item.kind, WaitingKind::ReviewRequest);
+    assert_eq!(item.thread_id, Some(review.id));
+    assert_eq!(item.summary, "Fix the flaky login test");
+    assert!(
+        (590..=610).contains(&item.age_secs),
+        "aged from when it went to review, not from creation: {}",
+        item.age_secs
+    );
+    assert!(!item.overdue);
+    assert_eq!(
+        serde_json::to_value(item.kind).unwrap(),
+        serde_json::json!("review_request")
+    );
 }

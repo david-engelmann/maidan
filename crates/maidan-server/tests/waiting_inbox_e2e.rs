@@ -1,5 +1,6 @@
 //! The waiting-on-you inbox over REST: the route composes a member's assigned
-//! non-terminal threads + the workspace's pending approval gates (mentions are
+//! non-terminal threads + the reviews requested from them + the workspace's
+//! pending approval gates (mentions are
 //! covered by the pure `assemble_waiting_inbox` unit test). Auth-enabled +
 //! self-only, with a minted token that IS the acting member.
 
@@ -11,6 +12,7 @@ use std::{
 
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{hash_secret, TokenSecret};
+use maidan_fsm::ThreadAction;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -19,7 +21,7 @@ use maidan_types::{
 use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
-async fn waiting_inbox_composes_assigned_threads_and_open_gates() {
+async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates() {
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -102,6 +104,44 @@ async fn waiting_inbox_composes_assigned_threads_and_open_gates() {
         .await
         .unwrap();
 
+    // A task an agent handed to review, naming the member as its reviewer.
+    let agent = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "coder".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let review_ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "review".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let reviewed = store
+        .create_thread(NewThread {
+            channel_id: review_ch.id,
+            parent_thread_id: None,
+            title: Some("fix the flaky test".into()),
+        })
+        .await
+        .unwrap();
+    store
+        .claim_next_thread(review_ch.id, agent.id, Some(60))
+        .await
+        .unwrap()
+        .expect("claimable");
+    store
+        .transition_thread(reviewed.id, agent.id, ThreadAction::StartReview)
+        .await
+        .unwrap();
+    store.add_reviewer(reviewed.id, member.id).await.unwrap();
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -126,7 +166,10 @@ async fn waiting_inbox_composes_assigned_threads_and_open_gates() {
         .json()
         .await
         .unwrap();
-    assert_eq!(inbox["total"], 2, "one assigned thread + one open gate");
+    assert_eq!(
+        inbox["total"], 3,
+        "one assigned thread + one requested review + one open gate"
+    );
     let kinds: Vec<&str> = inbox["items"]
         .as_array()
         .unwrap()
@@ -135,6 +178,14 @@ async fn waiting_inbox_composes_assigned_threads_and_open_gates() {
         .collect();
     assert!(kinds.contains(&"assigned_thread"));
     assert!(kinds.contains(&"open_gate"));
+    let review = inbox["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["kind"] == "review_request")
+        .expect("the requested review is waiting on the member");
+    assert_eq!(review["thread_id"], serde_json::json!(reviewed.id.0));
+    assert_eq!(review["summary"], "fix the flaky test");
     assert_eq!(inbox["sla_secs"], 86400);
     // Freshly-created items are not yet overdue (the overdue math is unit-tested
     // against aged items in `assemble_waiting_inbox`).
