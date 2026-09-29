@@ -280,8 +280,12 @@ deployment:
 | `MAIDAN_A2A_PUBLIC_ORIGIN` | e.g. `https://maidan.example`. Makes the card's HTTP interface URLs absolute. Unset ⇒ host-relative. |
 | `MAIDAN_A2A_GRPC_PUBLIC_ADDR` | The reachable gRPC `host:port` to advertise (distinct from the bind address, so it's correct behind a proxy/LB). Set this to add a `GRPC` interface to the card. |
 
-Expose the gRPC port in your deployment (Kubernetes Service / compose port) when enabling
-it; the HTTP bindings share the main HTTP port.
+The gRPC listener speaks plaintext HTTP/2 and does not terminate TLS, and calls
+carry the bearer token in their metadata. Do not expose it to an untrusted
+network: put it behind a TLS-terminating ingress or proxy, and keep the hop from
+the proxy to Maidan on a trusted private network. Expose the gRPC port in your
+deployment (Kubernetes Service / compose port) only that way; the HTTP bindings
+share the main HTTP port.
 
 A2A push configs seal their `token` and credentials with `FEDERATION_ENCRYPTION_KEY`;
 without it, creating a push config that carries either fails. Push targets pass the

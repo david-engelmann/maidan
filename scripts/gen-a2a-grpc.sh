@@ -7,18 +7,23 @@
 # network access for protoc and the google/api protos; the build itself never
 # runs protoc.
 #
+# Inputs are pinned: protoc by version and SHA-256, the google/api option
+# protos by googleapis commit. Linux x86_64 only (the protoc download).
+#
 # Usage:  scripts/gen-a2a-grpc.sh
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 root="$PWD"
 protoc_version="29.3"
-googleapis_commit="master"
+protoc_sha256="3e866620c5be27664f3d2fa2d656b5f3e09b5152b42f1bedbf427b333e90021a"
+googleapis_commit="9c085b2eb8a4c9996418d4268ade3fb9c708021d"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 curl -sSfLo "$work/protoc.zip" \
   "https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_version}/protoc-${protoc_version}-linux-x86_64.zip"
+echo "${protoc_sha256}  $work/protoc.zip" | sha256sum -c --quiet -
 unzip -qo "$work/protoc.zip" -d "$work/protoc"
 mkdir -p "$work/gapi/google/api"
 for f in annotations http client field_behavior launch_stage; do
