@@ -596,8 +596,8 @@ until re-upserted under the new model name.
 background job (202 + `job_id`). Poll `GET /operator/reindex-embeddings/:job_id` for
 `running` / `completed` / `failed` and `processed` / `failed` counts. Optional JSON
 body `{ "workspace_id": "<uuid>" }` scopes to one workspace (`workspace:write`);
-omit `workspace_id` for all workspaces (`token:admin`). CLI `maidan reindex-embeddings`
-remains for shell/CI. Jobs are in-process (not durable across restarts).
+omit `workspace_id` for all workspaces (`operator:global`; before, a workspace's `token:admin` could start and read an instance-wide job). CLI `maidan reindex-embeddings`
+remains for shell/CI. A job runs in-process on the replica that started it; its record is durable (see below), so a replica that dies mid-run leaves it `Running`.
 
 | `GET /workspaces/:wid/search` | See table above. OpenAPI `SearchHit` documents `embedding_model`. |
 | `GET /metrics`    | Prometheus text (HTTP counters, subscribe replay, indexer age, bus listener). |

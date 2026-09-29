@@ -73,7 +73,9 @@ event log, which fixed a new holder inheriting the old lease deadline
 (#1074); and a seeded simulation of the NOTIFY floor in place of madsim,
 which fixed the floor moving past undelivered events (#1075).
 
-**Next (2026-09-28):** the launch backlog is shipped, Wave 4 #45 included. The forward plan is the ranked **Next wave** at the top of [Open Work.md](Open%20Work.md): a tenant-isolation conformance suite, idempotency keys, eager reclaim, load shedding, decision history, trace context, F-48 Tier 1, workspace-wide `claim_next`, and CI jobs for the loom and TLA+ models. Load shedding, catch-panic and header redaction (#4) shipped in #1092.
+**Next wave #1 (tenant isolation) is done:** `tenant_isolation_e2e` probes 270 HTTP operations, 138 of 192 MCP tools (the other 54 take no argument that names a workspace's entity) and the live streams (`/ws/subscribe`, `/mcp/stream`, `/agui/stream`; the test reads the stream routes out of the router and fails if one is added) with another workspace's token; it found and fixed seven MCP tools that ignored the token's workspace and an instance-wide reindex behind a workspace's `token:admin`.
+
+**Next (2026-09-28):** the launch backlog is shipped, Wave 4 #45 included. The forward plan is the ranked **Next wave** at the top of [Open Work.md](Open%20Work.md): idempotency keys, eager reclaim, load shedding, decision history, trace context, F-48 Tier 1, workspace-wide `claim_next`, and CI jobs for the loom and TLA+ models. Load shedding, catch-panic and header redaction (#4) shipped in #1092.
 
 Clusters A–H and **1.0** are complete (`v1.0.0`). Optional minors **`v1.1.0`**–**`v1.4.0`** are complete.
 

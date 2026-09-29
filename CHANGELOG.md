@@ -41,9 +41,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Tenant isolation is a conformance test
 
+- **Fixed (security):** seven MCP tools took a `workspace_id` and never
+  compared it with the token's. Any workspace's token could list another
+  workspace's channels (`list_channels`), read its workspace context
+  (`get_workspace_context`), search it, and open a DM inside it
+  (`open_dm_conversation`). Every tool call naming a `workspace_id` now
+  checks it against the caller's. `get_member_wip` and
+  `list_assigned_threads` also refuse another workspace's member.
+- **Fixed (security):** a workspace's `token:admin` could start and read an
+  instance-wide embedding reindex (`/operator/reindex-embeddings` without a
+  `workspace_id`). That now needs `operator:global`.
+- **Changed:** the suite now covers MCP tools (138 of 192 name a victim id)
+  and the live streams (`/ws/subscribe` with seven filters, `/mcp/stream`,
+  `/agui/stream`, checked against the victim's own subscription as a
+  control). Request bodies and query strings are built from the OpenAPI
+  schemas, so no probe is refused before its access check, and the victim
+  holds a real id for every kind a path names except three, each allowlisted
+  with its reason. 270 HTTP operations are probed.
+
 - **Added:** `tenant_isolation_e2e` calls every operation in the served
   OpenAPI document that names a workspace, channel, thread, message or member
-  (257 today) with another workspace's token holding every workspace-scoped
+  with another workspace's token holding every workspace-scoped
   capability, and fails on any 2xx, redirect or rate-limited answer, or on the
   other workspace's content in a body. It then checks the other workspace's
   entities are unchanged. A new route is covered by being in the spec.

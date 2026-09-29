@@ -582,6 +582,24 @@ const CHANNEL_HANDLER_SCOPED_TOOLS: &[&str] = &[
 /// (`list_channels` / `get_workspace_context` / `search_messages`) filter their
 /// result sets separately. A tool whose id arg is absent/malformed is left to
 /// its handler's own decode error.
+/// A tool naming a workspace names the caller's own. Seven tools took a
+/// `workspace_id` and never compared it with the token's (`list_channels`,
+/// `get_workspace_context`, `open_dm_conversation` and others), so any
+/// workspace's token read another's channel list or opened a DM inside it.
+/// Found by `tenant_isolation_e2e`.
+fn enforce_workspace_scope(auth: &AuthContext, args: &Value) -> Result<(), McpError> {
+    let named = args
+        .get("workspace_id")
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse::<uuid::Uuid>().ok());
+    match named {
+        Some(id) => auth
+            .ensure_workspace(maidan_types::WorkspaceId(id))
+            .map_err(McpError::from),
+        None => Ok(()),
+    }
+}
+
 async fn enforce_channel_access(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -730,6 +748,7 @@ pub async fn dispatch(
     name: &str,
     args: &Value,
 ) -> Result<Value, McpError> {
+    enforce_workspace_scope(auth, args)?;
     enforce_member_self_scope(auth, name, args)?;
     enforce_channel_access(server, auth, name, args).await?;
     let store = &server.store;
@@ -766,7 +785,7 @@ pub async fn dispatch(
         "get_wip_limit" => thread::get_wip_limit(store, auth, args).await,
         "set_spawn_budget" => spawn::set_spawn_budget(store, auth, args).await,
         "get_spawn_budget" => spawn::get_spawn_budget(store, auth, args).await,
-        "get_member_wip" => thread::get_member_wip(store, args).await,
+        "get_member_wip" => thread::get_member_wip(store, auth, args).await,
         "get_member_occupancy" => member::get_member_occupancy(server, auth, args).await,
         "mark_unclaimable" => thread::mark_unclaimable(store, auth, args).await,
         "mark_claimable" => thread::mark_claimable(store, args).await,
