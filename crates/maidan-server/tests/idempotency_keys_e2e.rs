@@ -214,6 +214,11 @@ async fn idempotency_keys_replay_refuse_and_take_over() {
         .unwrap();
     let busy = post(&alice_tok, Some("k-held"), held).await.unwrap();
     assert_eq!(busy.status(), StatusCode::CONFLICT);
+    let problem: Value = busy.json().await.unwrap();
+    assert!(problem["type"]
+        .as_str()
+        .unwrap()
+        .ends_with("problems/idempotency-key-in-flight"));
     let busy_other = post(&alice_tok, Some("k-held"), r#"{"name":"x"}"#)
         .await
         .unwrap();

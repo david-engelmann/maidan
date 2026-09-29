@@ -145,10 +145,7 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
         Err(err) => return ApiError::from(err).into_response(),
         Ok(IdempotencyReservation::InFlight { fingerprint }) => {
             return if fingerprint == print {
-                ApiError::Conflict(
-                    "a request with this Idempotency-Key is still in progress; retry later".into(),
-                )
-                .into_response()
+                ApiError::IdempotencyKeyInFlight.into_response()
             } else {
                 ApiError::IdempotencyKeyReused.into_response()
             };
