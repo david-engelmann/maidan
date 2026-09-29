@@ -7,7 +7,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### One store delegation list
+### One store delegation list (#1100)
 
 - **Changed:** the Postgres and SQLite `Store` impls are expanded from one
   `store_delegations!` list (`crates/maidan-store/src/delegate.rs`). A method

@@ -1690,7 +1690,7 @@ demand. `pack`/`prefix` inclusion is the most likely candidate (pure convenience
 a `structure_only` export filter is the least (scope-creep toward a template product). None
 is a correctness or capability gap today.
 
-### F-48 Tier 1 is one delegation list, not a shared SQL dialect (STORE_PR)
+### F-48 Tier 1 is one delegation list, not a shared SQL dialect (#1100)
 
 **Decision.** The Postgres and SQLite trait impls are generated from one
 `store_delegations!` list. Adding a method adds it to both backends; leaving
