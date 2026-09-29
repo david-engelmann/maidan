@@ -63,12 +63,11 @@ this README maps to a test, a gate or an honest "not yet" in
 ## Quickstart
 
 Needs Docker Compose, `curl` and `jq`. It runs the release that
-`compose.quickstart.yaml` pins, on SQLite, bound to loopback, **with
-authentication on**. Clone that release's tag so the compose file and script
-match the binary:
+`compose.quickstart.yaml` on `main` pins (`v412.0.0`), on SQLite, bound to
+loopback, **with authentication on**:
 
 ```sh
-git clone --depth 1 --branch v410.0.0 https://github.com/david-engelmann/maidan && cd maidan
+git clone --depth 1 https://github.com/david-engelmann/maidan && cd maidan
 
 docker compose -f compose.quickstart.yaml up -d --build --wait              # start Maidan
 docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo   # prints a token + workspace id

@@ -10,15 +10,15 @@
 # ubuntu:24.04 to match that glibc generation.
 FROM ubuntu:24.04
 
-ARG MAIDAN_VERSION=v410.0.0
+ARG MAIDAN_VERSION=v412.0.0
 # Per-arch release tarball SHA-256 for MAIDAN_VERSION (verified at build time). Bump
 # ALL THREE together when MAIDAN_VERSION changes — and the default in
-# `compose.quickstart.yaml`, which overrides this one, and the README quickstart's
-# `git clone --branch` tag (`scripts/check-release-records.sh` checks all of them):
+# `compose.quickstart.yaml`, which overrides this one, and the tag in
+# helm/maidan/values-prod.yaml (`scripts/check-release-records.sh` checks them):
 #   gh release download <tag> -R david-engelmann/maidan -p 'maidan-*-linux-gnu.tar.gz'
 #   shasum -a 256 maidan-*-linux-gnu.tar.gz
-ARG MAIDAN_SHA256_AMD64=152e11753a858b040c209153b1fda24ce28de401cdffa9aabcb77334a3813b77
-ARG MAIDAN_SHA256_ARM64=b2d91f763d5584ebe282097b1b9c92a2fa55350201a5aeb8e7e42c71cf8de3b7
+ARG MAIDAN_SHA256_AMD64=d823ab070d195f280636bedef6afafe9e856699f0904796ed4bfeff16e1a3694
+ARG MAIDAN_SHA256_ARM64=ff385b24941515a49a6f3334c51182221a0019e538c866e579c1174335700d7c
 # Set by buildkit; fall back to the build host's arch for a plain `docker build`.
 ARG TARGETARCH
 

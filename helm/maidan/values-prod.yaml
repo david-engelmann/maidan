@@ -12,7 +12,7 @@ replicaCount: 2
 # running version without a deploy.
 image:
   repository: ghcr.io/david-engelmann/maidan-server
-  tag: v410.0.0
+  tag: v412.0.0
   pullPolicy: IfNotPresent
 
 ingress:
