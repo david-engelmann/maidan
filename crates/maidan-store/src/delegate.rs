@@ -1,0 +1,3917 @@
+//! One delegation list for both store backends.
+//!
+//! `{postgres,sqlite}/mod.rs` used to repeat every trait method, so a method
+//! could be wired on one backend and left off the other. Both impls expand
+//! from this list. The body is one call. Postgres reads go through
+//! `read_pool` (the replica, when the request allows it); every other call
+//! goes through `pool`. SQLite's `read_pool` is its only pool. `write_lsn`
+//! calls `current_wal_lsn`, which is the one method that really differs:
+//! Postgres returns a WAL position and SQLite returns none.
+
+/// Emit one trait impl for a store type. The same invocation builds both
+/// backends, so a method cannot be added to only one of them.
+macro_rules! store_delegations {
+    ($store:ty, MetaStore) => {
+        #[::async_trait::async_trait]
+        impl MetaStore for $store {
+            async fn health_check(&self) -> Result<(), StoreError> {
+                sqlx::query("SELECT 1").execute(self.pool()).await?;
+                Ok(())
+            }
+
+            async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError> {
+                self.current_wal_lsn().await
+            }
+        }
+    };
+    ($store:ty, WorkspaceStore) => {
+        #[::async_trait::async_trait]
+        impl WorkspaceStore for $store {
+            async fn import_workspace(&self, i: &WorkspaceImport) -> Result<(), StoreError> {
+                import::import_workspace(self.pool(), i).await
+            }
+
+            async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError> {
+                workspaces::create(self.pool(), new).await
+            }
+
+            async fn create_workspace_with_event(
+                &self,
+                new: NewWorkspace,
+            ) -> Result<(Workspace, StoredEvent), StoreError> {
+                workspaces::create_with_event(self.pool(), new).await
+            }
+
+            async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError> {
+                workspaces::get(self.read_pool(), id).await
+            }
+
+            async fn count_workspaces(&self) -> Result<i64, StoreError> {
+                workspaces::count(self.pool()).await
+            }
+
+            async fn workspace_usage(&self, id: WorkspaceId) -> Result<WorkspaceUsage, StoreError> {
+                workspaces::usage(self.read_pool(), id).await
+            }
+
+            async fn place_legal_hold(
+                &self,
+                workspace_id: WorkspaceId,
+                reason: &str,
+                placed_by: Option<MemberId>,
+            ) -> Result<LegalHold, StoreError> {
+                // Primary: a compliance write the retention sweeper must observe.
+                legal_hold::place(self.pool(), workspace_id, reason, placed_by).await
+            }
+
+            async fn lift_legal_hold(
+                &self,
+                workspace_id: WorkspaceId,
+                hold_id: maidan_types::LegalHoldId,
+            ) -> Result<bool, StoreError> {
+                legal_hold::lift(self.pool(), workspace_id, hold_id).await
+            }
+
+            async fn import_workspace_audited(
+                &self,
+                import: &WorkspaceImport,
+                replace_existing: bool,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                data_audited::import_workspace(self.pool(), import, replace_existing, audit).await
+            }
+
+            async fn place_legal_hold_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                reason: &str,
+                placed_by: Option<MemberId>,
+                audit: crate::AuditFor<LegalHold>,
+            ) -> Result<LegalHold, StoreError> {
+                data_audited::place_legal_hold(self.pool(), workspace_id, reason, placed_by, audit)
+                    .await
+            }
+
+            async fn lift_legal_hold_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                hold_id: maidan_types::LegalHoldId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                data_audited::lift_legal_hold(self.pool(), workspace_id, hold_id, audit).await
+            }
+
+            async fn read_preserved_messages_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                audit: NewAuditEvent,
+            ) -> Result<Vec<maidan_types::PreservedMessage>, StoreError> {
+                data_audited::read_preserved_messages(self.pool(), workspace_id, audit).await
+            }
+
+            async fn list_workspace_legal_holds(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<LegalHold>, StoreError> {
+                // Primary: purge/erase gating must not read a lagged replica.
+                legal_hold::list_for_workspace(self.pool(), workspace_id).await
+            }
+
+            async fn list_legal_holds(&self) -> Result<Vec<LegalHold>, StoreError> {
+                legal_hold::list(self.read_pool()).await
+            }
+
+            async fn set_wip_limit(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: Option<i64>,
+            ) -> Result<(), StoreError> {
+                wip::set_limit(self.pool(), workspace_id, limit).await
+            }
+
+            async fn get_wip_limit(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<i64>, StoreError> {
+                // Primary, not the read replica: WIP enforcement must not act on a lagged
+                // limit (a soft over/under-claim is worse than one extra primary read).
+                wip::get_limit(self.pool(), workspace_id).await
+            }
+
+            async fn get_delegation_policy(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<DelegationPolicy, StoreError> {
+                delegation_grants::get_policy(self.pool(), workspace_id).await
+            }
+
+            async fn set_delegation_policy(
+                &self,
+                workspace_id: WorkspaceId,
+                max_grant_days: Option<i64>,
+            ) -> Result<DelegationPolicy, StoreError> {
+                delegation_grants::set_policy(self.pool(), workspace_id, max_grant_days).await
+            }
+
+            async fn set_delegation_policy_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                max_grant_days: Option<i64>,
+                audit: crate::AuditFor<DelegationPolicy>,
+            ) -> Result<DelegationPolicy, StoreError> {
+                delegation_grants::set_policy_audited(
+                    self.pool(),
+                    workspace_id,
+                    max_grant_days,
+                    audit,
+                )
+                .await
+            }
+
+            async fn set_workspace_handle(
+                &self,
+                workspace_id: WorkspaceId,
+                handle: &str,
+            ) -> Result<WorkspaceHandle, StoreError> {
+                workspace_handles::set(self.pool(), workspace_id, handle).await
+            }
+
+            async fn get_workspace_handle(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<WorkspaceHandle>, StoreError> {
+                workspace_handles::get(self.read_pool(), workspace_id).await
+            }
+        }
+    };
+    ($store:ty, MemberStore) => {
+        #[::async_trait::async_trait]
+        impl MemberStore for $store {
+            async fn create_member(&self, new: NewMember) -> Result<Member, StoreError> {
+                members::create(self.pool(), new).await
+            }
+
+            async fn create_member_with_event(
+                &self,
+                new: NewMember,
+            ) -> Result<(Member, StoredEvent), StoreError> {
+                members::create_with_event(self.pool(), new).await
+            }
+
+            async fn get_member(&self, id: MemberId) -> Result<Member, StoreError> {
+                members::get(self.read_pool(), id).await
+            }
+
+            async fn list_members(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<Member>, StoreError> {
+                members::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn get_member_by_handle(
+                &self,
+                workspace_id: WorkspaceId,
+                handle: &str,
+            ) -> Result<Member, StoreError> {
+                members::get_by_handle(self.read_pool(), workspace_id, handle).await
+            }
+
+            async fn create_scim_user(
+                &self,
+                member_id: MemberId,
+                workspace_id: WorkspaceId,
+                external_id: Option<&str>,
+                active: bool,
+            ) -> Result<ScimUser, StoreError> {
+                scim_users::create(self.pool(), member_id, workspace_id, external_id, active).await
+            }
+
+            async fn get_scim_user(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Option<ScimUser>, StoreError> {
+                scim_users::get(self.read_pool(), member_id).await
+            }
+
+            async fn list_scim_users(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<ScimUser>, StoreError> {
+                scim_users::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn update_scim_user(
+                &self,
+                member_id: MemberId,
+                external_id: Option<&str>,
+                active: bool,
+            ) -> Result<Option<ScimUser>, StoreError> {
+                scim_users::update(self.pool(), member_id, external_id, active).await
+            }
+
+            async fn delete_scim_user(&self, member_id: MemberId) -> Result<bool, StoreError> {
+                scim_users::delete(self.pool(), member_id).await
+            }
+        }
+    };
+    ($store:ty, SkillStore) => {
+        #[::async_trait::async_trait]
+        impl SkillStore for $store {
+            async fn add_member_skill(
+                &self,
+                member_id: MemberId,
+                skill: &str,
+            ) -> Result<(), StoreError> {
+                member_skills::add(self.pool(), member_id, skill).await
+            }
+
+            async fn remove_member_skill(
+                &self,
+                member_id: MemberId,
+                skill: &str,
+            ) -> Result<bool, StoreError> {
+                member_skills::remove(self.pool(), member_id, skill).await
+            }
+
+            async fn list_member_skills(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Vec<MemberSkill>, StoreError> {
+                member_skills::list(self.read_pool(), member_id).await
+            }
+
+            async fn has_worked_thread(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+            ) -> Result<bool, StoreError> {
+                thread_workers::has_worked(self.read_pool(), thread_id, member_id).await
+            }
+
+            async fn list_thread_workers(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<MemberId>, StoreError> {
+                thread_workers::list_workers(self.read_pool(), thread_id).await
+            }
+
+            async fn add_thread_required_skill(
+                &self,
+                thread_id: ThreadId,
+                skill: &str,
+            ) -> Result<(), StoreError> {
+                thread_skills::add(self.pool(), thread_id, skill).await
+            }
+
+            async fn remove_thread_required_skill(
+                &self,
+                thread_id: ThreadId,
+                skill: &str,
+            ) -> Result<bool, StoreError> {
+                thread_skills::remove(self.pool(), thread_id, skill).await
+            }
+
+            async fn list_thread_required_skills(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<ThreadRequiredSkill>, StoreError> {
+                thread_skills::list(self.read_pool(), thread_id).await
+            }
+        }
+    };
+    ($store:ty, ThreadResultStore) => {
+        #[::async_trait::async_trait]
+        impl ThreadResultStore for $store {
+            async fn set_thread_result(
+                &self,
+                thread_id: ThreadId,
+                produced_by: MemberId,
+                result: &serde_json::Value,
+            ) -> Result<ThreadResult, StoreError> {
+                thread_results::set(self.pool(), thread_id, produced_by, result).await
+            }
+
+            async fn get_thread_result(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadResult>, StoreError> {
+                thread_results::get(self.read_pool(), thread_id).await
+            }
+
+            async fn list_thread_results(
+                &self,
+                workspace_id: WorkspaceId,
+                result_kind: Option<&str>,
+                limit: i64,
+            ) -> Result<Vec<ThreadResult>, StoreError> {
+                thread_results::list(self.read_pool(), workspace_id, result_kind, limit).await
+            }
+
+            async fn list_channel_closed_results(
+                &self,
+                channel_id: ChannelId,
+                exclude_thread_id: Option<ThreadId>,
+                limit: i64,
+            ) -> Result<Vec<ChannelClosedResult>, StoreError> {
+                thread_results::list_closed_in_channel(
+                    self.read_pool(),
+                    channel_id,
+                    exclude_thread_id,
+                    limit,
+                )
+                .await
+            }
+        }
+    };
+    ($store:ty, ThreadSteerStore) => {
+        #[::async_trait::async_trait]
+        impl ThreadSteerStore for $store {
+            async fn set_thread_steer(
+                &self,
+                thread_id: ThreadId,
+                steered_by: MemberId,
+                steer: &str,
+            ) -> Result<ThreadSteer, StoreError> {
+                thread_steer::set(self.pool(), thread_id, steered_by, steer).await
+            }
+
+            async fn get_thread_steer(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadSteer>, StoreError> {
+                thread_steer::get(self.read_pool(), thread_id).await
+            }
+        }
+    };
+    ($store:ty, ThreadLineageStore) => {
+        #[::async_trait::async_trait]
+        impl ThreadLineageStore for $store {
+            async fn set_thread_lineage(
+                &self,
+                thread_id: ThreadId,
+                parent_run_id: &str,
+            ) -> Result<ThreadLineage, StoreError> {
+                thread_lineage::set(self.pool(), thread_id, parent_run_id).await
+            }
+
+            async fn get_thread_lineage(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadLineage>, StoreError> {
+                thread_lineage::get(self.read_pool(), thread_id).await
+            }
+
+            async fn clear_thread_lineage(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+                thread_lineage::clear(self.pool(), thread_id).await
+            }
+
+            async fn list_threads_for_run(
+                &self,
+                workspace_id: WorkspaceId,
+                parent_run_id: &str,
+            ) -> Result<Vec<Thread>, StoreError> {
+                thread_lineage::list_threads(self.read_pool(), workspace_id, parent_run_id).await
+            }
+
+            async fn run_occupancy(
+                &self,
+                workspace_id: WorkspaceId,
+                parent_run_id: &str,
+            ) -> Result<RunOccupancy, StoreError> {
+                thread_lineage::occupancy(self.read_pool(), workspace_id, parent_run_id).await
+            }
+        }
+    };
+    ($store:ty, BudgetStore) => {
+        #[::async_trait::async_trait]
+        impl BudgetStore for $store {
+            async fn set_thread_budget(
+                &self,
+                thread_id: ThreadId,
+                limits: BudgetLimits,
+            ) -> Result<ThreadBudget, StoreError> {
+                budget::set_budget(self.pool(), thread_id, limits).await
+            }
+
+            async fn patch_thread_budget(
+                &self,
+                thread_id: ThreadId,
+                patch: BudgetPatch,
+            ) -> Result<ThreadBudget, StoreError> {
+                budget::patch_budget(self.pool(), thread_id, patch).await
+            }
+
+            async fn get_thread_budget(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadBudget>, StoreError> {
+                budget::get_budget(self.read_pool(), thread_id).await
+            }
+
+            async fn add_thread_usage(
+                &self,
+                thread_id: ThreadId,
+                delta: UsageDelta,
+            ) -> Result<ThreadBudget, StoreError> {
+                budget::add_usage(self.pool(), thread_id, delta).await
+            }
+
+            async fn report_thread_usage(
+                &self,
+                thread_id: ThreadId,
+                delta: UsageDelta,
+            ) -> Result<(UsageReport, Option<StoredEvent>), StoreError> {
+                budget::report_usage(self.pool(), thread_id, delta).await
+            }
+
+            async fn record_dlq_entry(&self, new: &NewDlqEntry) -> Result<DlqEntry, StoreError> {
+                dlq::record(self.pool(), new).await
+            }
+
+            async fn list_channel_dlq(
+                &self,
+                channel_id: ChannelId,
+                limit: i64,
+            ) -> Result<Vec<DlqEntry>, StoreError> {
+                dlq::list_for_channel(self.read_pool(), channel_id, limit).await
+            }
+        }
+    };
+    ($store:ty, UsageLedgerStore) => {
+        #[::async_trait::async_trait]
+        impl UsageLedgerStore for $store {
+            async fn report_accounted_usage(
+                &self,
+                new: &NewUsageLedgerEntry,
+            ) -> Result<(UsageLedgerEntry, Vec<StoredEvent>), StoreError> {
+                budget::report_accounted_usage(self.pool(), new).await
+            }
+
+            async fn get_usage_ledger_entry(
+                &self,
+                usage_report_id: uuid::Uuid,
+            ) -> Result<Option<UsageLedgerEntry>, StoreError> {
+                usage_ledger::get(self.read_pool(), usage_report_id).await
+            }
+
+            async fn list_thread_usage_ledger(
+                &self,
+                thread_id: ThreadId,
+                limit: i64,
+            ) -> Result<Vec<UsageLedgerEntry>, StoreError> {
+                usage_ledger::list_for_thread(self.read_pool(), thread_id, limit).await
+            }
+        }
+    };
+    ($store:ty, ApprovalGateStore) => {
+        #[::async_trait::async_trait]
+        impl ApprovalGateStore for $store {
+            async fn create_approval_gate(
+                &self,
+                gate: &NewApprovalGate,
+            ) -> Result<ApprovalGate, StoreError> {
+                approval_gates::create(self.pool(), gate).await
+            }
+
+            async fn create_approval_gate_with_event(
+                &self,
+                gate: &NewApprovalGate,
+            ) -> Result<(ApprovalGate, StoredEvent), StoreError> {
+                approval_gates::create_with_event(self.pool(), gate).await
+            }
+
+            async fn get_approval_gate(
+                &self,
+                id: ApprovalGateId,
+            ) -> Result<Option<ApprovalGate>, StoreError> {
+                approval_gates::get(self.pool(), id).await
+            }
+
+            async fn list_pending_approval_gates(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<ApprovalGate>, StoreError> {
+                approval_gates::list_pending(self.pool(), workspace_id, limit).await
+            }
+
+            async fn page_pending_approval_gates(
+                &self,
+                workspace_id: WorkspaceId,
+                query: PendingGateQuery,
+            ) -> Result<Vec<ApprovalGate>, StoreError> {
+                approval_gates::page_pending(self.pool(), workspace_id, query).await
+            }
+
+            async fn count_pending_approval_gates_by_thread(
+                &self,
+                workspace_id: WorkspaceId,
+                query: PendingGateQuery,
+            ) -> Result<Vec<(Option<ThreadId>, i64)>, StoreError> {
+                approval_gates::count_pending_by_thread(self.pool(), workspace_id, query).await
+            }
+
+            async fn resolve_approval_gate(
+                &self,
+                id: ApprovalGateId,
+                resolved_by: MemberId,
+                state: ApprovalGateState,
+                content: Option<&serde_json::Value>,
+            ) -> Result<Option<ApprovalGate>, StoreError> {
+                approval_gates::resolve(self.pool(), id, resolved_by, state, content).await
+            }
+        }
+    };
+    ($store:ty, GlossaryStore) => {
+        #[::async_trait::async_trait]
+        impl GlossaryStore for $store {
+            async fn set_glossary_term(
+                &self,
+                new: NewGlossaryTerm,
+            ) -> Result<GlossaryTerm, StoreError> {
+                glossary::set(self.pool(), &new).await
+            }
+
+            async fn get_glossary_term(
+                &self,
+                workspace_id: WorkspaceId,
+                term: &str,
+            ) -> Result<Option<GlossaryTerm>, StoreError> {
+                glossary::get(self.read_pool(), workspace_id, term).await
+            }
+
+            async fn list_glossary_terms(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<GlossaryTerm>, StoreError> {
+                glossary::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn delete_glossary_term(
+                &self,
+                workspace_id: WorkspaceId,
+                term: &str,
+            ) -> Result<bool, StoreError> {
+                glossary::delete(self.pool(), workspace_id, term).await
+            }
+        }
+    };
+    ($store:ty, NotificationStore) => {
+        #[::async_trait::async_trait]
+        impl NotificationStore for $store {
+            async fn create_notification(
+                &self,
+                new: NewNotification,
+            ) -> Result<Notification, StoreError> {
+                notifications::create(self.pool(), new).await
+            }
+
+            async fn create_notification_if_absent(
+                &self,
+                new: NewNotification,
+            ) -> Result<Option<Notification>, StoreError> {
+                notifications::create_if_absent(self.pool(), new).await
+            }
+
+            async fn create_notifications_batch(
+                &self,
+                rows: &[NewNotification],
+            ) -> Result<Vec<Notification>, StoreError> {
+                notifications::create_batch(self.pool(), rows).await
+            }
+
+            async fn list_notifications(
+                &self,
+                member_id: MemberId,
+                unread_only: bool,
+                limit: i64,
+            ) -> Result<Vec<Notification>, StoreError> {
+                notifications::list_for_member(self.read_pool(), member_id, unread_only, limit)
+                    .await
+            }
+
+            async fn mark_notification_read(
+                &self,
+                member_id: MemberId,
+                id: NotificationId,
+            ) -> Result<bool, StoreError> {
+                notifications::mark_read(self.pool(), member_id, id).await
+            }
+
+            async fn snooze_notification(
+                &self,
+                member_id: MemberId,
+                id: NotificationId,
+                until: DateTime<Utc>,
+            ) -> Result<bool, StoreError> {
+                notifications::snooze(self.pool(), member_id, id, until).await
+            }
+
+            async fn mark_all_notifications_read(
+                &self,
+                member_id: MemberId,
+            ) -> Result<u64, StoreError> {
+                notifications::mark_all_read(self.pool(), member_id).await
+            }
+
+            async fn unread_notification_count(
+                &self,
+                member_id: MemberId,
+            ) -> Result<i64, StoreError> {
+                notifications::unread_count(self.pool(), member_id).await
+            }
+
+            async fn set_notification_pref(
+                &self,
+                member_id: MemberId,
+                kind: EventKind,
+                muted: bool,
+            ) -> Result<NotificationPref, StoreError> {
+                notification_prefs::set(self.pool(), member_id, kind, muted).await
+            }
+
+            async fn list_notification_prefs(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Vec<NotificationPref>, StoreError> {
+                notification_prefs::list(self.read_pool(), member_id).await
+            }
+
+            async fn is_notification_muted(
+                &self,
+                member_id: MemberId,
+                kind: EventKind,
+            ) -> Result<bool, StoreError> {
+                notification_prefs::is_muted(self.pool(), member_id, kind).await
+            }
+
+            async fn filter_muted_members(
+                &self,
+                kind: EventKind,
+                members: &[MemberId],
+            ) -> Result<Vec<MemberId>, StoreError> {
+                notification_prefs::filter_muted(self.pool(), kind, members).await
+            }
+
+            async fn add_push_subscription(
+                &self,
+                new: NewPushSubscription,
+            ) -> Result<PushSubscription, StoreError> {
+                push_subscriptions::add(self.pool(), new).await
+            }
+
+            async fn list_push_subscriptions(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Vec<PushSubscription>, StoreError> {
+                // Primary: the router reads these right after writing the in-app row.
+                push_subscriptions::list(self.pool(), member_id).await
+            }
+
+            async fn delete_push_subscription(
+                &self,
+                member_id: MemberId,
+                id: PushSubscriptionId,
+            ) -> Result<bool, StoreError> {
+                push_subscriptions::delete(self.pool(), member_id, id).await
+            }
+        }
+    };
+    ($store:ty, FollowStore) => {
+        #[::async_trait::async_trait]
+        impl FollowStore for $store {
+            async fn follow_channel(
+                &self,
+                member_id: MemberId,
+                channel_id: ChannelId,
+            ) -> Result<(), StoreError> {
+                follows::follow_channel(self.pool(), member_id, channel_id).await
+            }
+
+            async fn unfollow_channel(
+                &self,
+                member_id: MemberId,
+                channel_id: ChannelId,
+            ) -> Result<bool, StoreError> {
+                follows::unfollow_channel(self.pool(), member_id, channel_id).await
+            }
+
+            async fn list_channel_follows(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Vec<ChannelFollow>, StoreError> {
+                follows::list_channel_follows(self.read_pool(), member_id).await
+            }
+
+            async fn channel_followers(
+                &self,
+                channel_id: ChannelId,
+            ) -> Result<Vec<MemberId>, StoreError> {
+                follows::channel_followers(self.pool(), channel_id).await
+            }
+
+            async fn follow_thread(
+                &self,
+                member_id: MemberId,
+                thread_id: ThreadId,
+            ) -> Result<(), StoreError> {
+                follows::follow_thread(self.pool(), member_id, thread_id).await
+            }
+
+            async fn unfollow_thread(
+                &self,
+                member_id: MemberId,
+                thread_id: ThreadId,
+            ) -> Result<bool, StoreError> {
+                follows::unfollow_thread(self.pool(), member_id, thread_id).await
+            }
+
+            async fn list_thread_follows(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Vec<ThreadFollow>, StoreError> {
+                follows::list_thread_follows(self.read_pool(), member_id).await
+            }
+
+            async fn thread_followers(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<MemberId>, StoreError> {
+                follows::thread_followers(self.pool(), thread_id).await
+            }
+
+            async fn follow_member(
+                &self,
+                follower_id: MemberId,
+                followed_id: MemberId,
+            ) -> Result<(), StoreError> {
+                follows::follow_member(self.pool(), follower_id, followed_id).await
+            }
+
+            async fn unfollow_member(
+                &self,
+                follower_id: MemberId,
+                followed_id: MemberId,
+            ) -> Result<bool, StoreError> {
+                follows::unfollow_member(self.pool(), follower_id, followed_id).await
+            }
+
+            async fn list_member_follows(
+                &self,
+                follower_id: MemberId,
+            ) -> Result<Vec<MemberFollow>, StoreError> {
+                follows::list_member_follows(self.read_pool(), follower_id).await
+            }
+
+            async fn member_followers(
+                &self,
+                followed_id: MemberId,
+            ) -> Result<Vec<MemberId>, StoreError> {
+                follows::member_followers(self.read_pool(), followed_id).await
+            }
+
+            async fn mute_thread(
+                &self,
+                member_id: MemberId,
+                thread_id: ThreadId,
+            ) -> Result<(), StoreError> {
+                follows::mute_thread(self.pool(), member_id, thread_id).await
+            }
+
+            async fn unmute_thread(
+                &self,
+                member_id: MemberId,
+                thread_id: ThreadId,
+            ) -> Result<bool, StoreError> {
+                follows::unmute_thread(self.pool(), member_id, thread_id).await
+            }
+
+            async fn is_thread_muted(
+                &self,
+                member_id: MemberId,
+                thread_id: ThreadId,
+            ) -> Result<bool, StoreError> {
+                follows::is_thread_muted(self.read_pool(), member_id, thread_id).await
+            }
+
+            async fn thread_muters(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<MemberId>, StoreError> {
+                follows::thread_muters(self.read_pool(), thread_id).await
+            }
+
+            async fn mute_channel(
+                &self,
+                member_id: MemberId,
+                channel_id: ChannelId,
+            ) -> Result<(), StoreError> {
+                follows::mute_channel(self.pool(), member_id, channel_id).await
+            }
+
+            async fn unmute_channel(
+                &self,
+                member_id: MemberId,
+                channel_id: ChannelId,
+            ) -> Result<bool, StoreError> {
+                follows::unmute_channel(self.pool(), member_id, channel_id).await
+            }
+
+            async fn is_channel_muted(
+                &self,
+                member_id: MemberId,
+                channel_id: ChannelId,
+            ) -> Result<bool, StoreError> {
+                follows::is_channel_muted(self.read_pool(), member_id, channel_id).await
+            }
+
+            async fn channel_muters(
+                &self,
+                channel_id: ChannelId,
+            ) -> Result<Vec<MemberId>, StoreError> {
+                follows::channel_muters(self.read_pool(), channel_id).await
+            }
+        }
+    };
+    ($store:ty, MailStore) => {
+        #[::async_trait::async_trait]
+        impl MailStore for $store {
+            async fn set_member_email(
+                &self,
+                member_id: MemberId,
+                email: &str,
+            ) -> Result<MemberEmail, StoreError> {
+                member_emails::set(self.pool(), member_id, email).await
+            }
+
+            async fn get_member_email(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Option<MemberEmail>, StoreError> {
+                member_emails::get(self.read_pool(), member_id).await
+            }
+
+            async fn delete_member_email(&self, member_id: MemberId) -> Result<bool, StoreError> {
+                member_emails::delete(self.pool(), member_id).await
+            }
+
+            async fn enqueue_mail(
+                &self,
+                new: NewMailOutbox,
+            ) -> Result<Option<MailOutboxId>, StoreError> {
+                mail_outbox::enqueue(self.pool(), new).await
+            }
+
+            async fn claim_next_due_mail(
+                &self,
+                now: DateTime<Utc>,
+                lease_secs: i64,
+            ) -> Result<Option<MailOutbox>, StoreError> {
+                mail_outbox::claim_next_due(self.pool(), now, lease_secs).await
+            }
+
+            async fn mark_mail_delivered(&self, id: MailOutboxId) -> Result<(), StoreError> {
+                mail_outbox::mark_delivered(self.pool(), id).await
+            }
+
+            async fn mark_mail_failed(
+                &self,
+                id: MailOutboxId,
+                error: &str,
+                retry_at: Option<DateTime<Utc>>,
+            ) -> Result<(), StoreError> {
+                mail_outbox::mark_failed(self.pool(), id, error, retry_at).await
+            }
+
+            async fn count_dead_mail(&self) -> Result<i64, StoreError> {
+                mail_outbox::count_dead(self.pool()).await
+            }
+
+            async fn list_dead_mail(
+                &self,
+                scope: Option<WorkspaceId>,
+                limit: i64,
+            ) -> Result<Vec<DeadMail>, StoreError> {
+                mail_outbox::list_dead(self.pool(), scope, limit).await
+            }
+
+            async fn requeue_dead_mail(
+                &self,
+                scope: Option<WorkspaceId>,
+                id: MailOutboxId,
+            ) -> Result<bool, StoreError> {
+                mail_outbox::requeue_dead(self.pool(), scope, id).await
+            }
+        }
+    };
+    ($store:ty, EgressStore) => {
+        #[::async_trait::async_trait]
+        impl EgressStore for $store {
+            async fn enqueue_egress(
+                &self,
+                new: NewEgressOutbox,
+            ) -> Result<Option<EgressOutboxId>, StoreError> {
+                egress_outbox::enqueue(self.pool(), new).await
+            }
+
+            async fn claim_next_due_egress(
+                &self,
+                now: DateTime<Utc>,
+                lease_secs: i64,
+            ) -> Result<Option<EgressOutbox>, StoreError> {
+                egress_outbox::claim_next_due(self.pool(), now, lease_secs).await
+            }
+
+            async fn mark_egress_delivered(&self, id: EgressOutboxId) -> Result<(), StoreError> {
+                egress_outbox::mark_delivered(self.pool(), id).await
+            }
+
+            async fn mark_egress_failed(
+                &self,
+                id: EgressOutboxId,
+                error: &str,
+                retry_at: Option<DateTime<Utc>>,
+            ) -> Result<(), StoreError> {
+                egress_outbox::mark_failed(self.pool(), id, error, retry_at).await
+            }
+
+            async fn count_dead_egress(&self) -> Result<i64, StoreError> {
+                egress_outbox::count_dead(self.pool()).await
+            }
+
+            async fn list_dead_egress(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<DeadEgress>, StoreError> {
+                egress_outbox::list_dead(self.pool(), workspace_id, limit).await
+            }
+
+            async fn requeue_dead_egress(
+                &self,
+                workspace_id: WorkspaceId,
+                id: EgressOutboxId,
+            ) -> Result<bool, StoreError> {
+                egress_outbox::requeue_dead(self.pool(), workspace_id, id).await
+            }
+
+            async fn allow_egress_target(
+                &self,
+                new: NewEgressTarget,
+            ) -> Result<AllowedEgressTarget, StoreError> {
+                egress_targets::allow(self.pool(), new).await
+            }
+
+            async fn list_egress_targets(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<AllowedEgressTarget>, StoreError> {
+                egress_targets::list(self.pool(), workspace_id).await
+            }
+
+            async fn revoke_egress_target(
+                &self,
+                workspace_id: WorkspaceId,
+                id: EgressTargetId,
+            ) -> Result<bool, StoreError> {
+                egress_targets::revoke(self.pool(), workspace_id, id).await
+            }
+
+            async fn is_egress_target_allowed(
+                &self,
+                workspace_id: WorkspaceId,
+                surface: EgressSurface,
+                selector: &str,
+            ) -> Result<bool, StoreError> {
+                egress_targets::is_allowed(self.pool(), workspace_id, surface, selector).await
+            }
+
+            async fn arm_result_delivery(
+                &self,
+                thread_id: ThreadId,
+                target: &EgressTarget,
+                revision: DateTime<Utc>,
+            ) -> Result<Option<ResultDelivery>, StoreError> {
+                result_deliveries::arm(self.pool(), thread_id, target, revision).await
+            }
+
+            async fn arm_unroutable_result_delivery(
+                &self,
+                thread_id: ThreadId,
+                surface: &str,
+                selector: &str,
+                revision: DateTime<Utc>,
+            ) -> Result<Option<ResultDelivery>, StoreError> {
+                result_deliveries::arm_at(self.pool(), thread_id, surface, selector, revision).await
+            }
+
+            async fn mark_result_delivered(
+                &self,
+                id: ResultDeliveryId,
+                external_ref: Option<&str>,
+                revision: DateTime<Utc>,
+            ) -> Result<(), StoreError> {
+                result_deliveries::mark_delivered(self.pool(), id, external_ref, revision).await
+            }
+
+            async fn mark_result_delivery_failed(
+                &self,
+                id: ResultDeliveryId,
+                error: &str,
+            ) -> Result<(), StoreError> {
+                result_deliveries::mark_failed(self.pool(), id, error).await
+            }
+
+            async fn mark_result_delivery_skipped(
+                &self,
+                id: ResultDeliveryId,
+                reason: &str,
+            ) -> Result<(), StoreError> {
+                result_deliveries::mark_skipped(self.pool(), id, reason).await
+            }
+
+            async fn get_result_delivery(
+                &self,
+                thread_id: ThreadId,
+                target: &EgressTarget,
+            ) -> Result<Option<ResultDelivery>, StoreError> {
+                result_deliveries::get(self.pool(), thread_id, target).await
+            }
+
+            async fn list_result_deliveries(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<ResultDelivery>, StoreError> {
+                result_deliveries::list_for_thread(self.pool(), thread_id).await
+            }
+
+            async fn get_result_delivery_by_id(
+                &self,
+                thread_id: ThreadId,
+                id: ResultDeliveryId,
+            ) -> Result<Option<ResultDelivery>, StoreError> {
+                result_deliveries::get_by_id(self.pool(), thread_id, id).await
+            }
+
+            async fn prepare_result_delivery_replay(
+                &self,
+                thread_id: ThreadId,
+                id: ResultDeliveryId,
+            ) -> Result<Option<ResultDelivery>, StoreError> {
+                result_deliveries::prepare_replay(self.pool(), thread_id, id).await
+            }
+        }
+    };
+    ($store:ty, ProjectorLinkStore) => {
+        #[::async_trait::async_trait]
+        impl ProjectorLinkStore for $store {
+            async fn link_slack_channel(
+                &self,
+                new: NewSlackChannelLink,
+            ) -> Result<SlackChannelLink, StoreError> {
+                slack_links::link(self.pool(), new).await
+            }
+
+            async fn get_slack_channel_link(
+                &self,
+                slack_channel_id: &str,
+            ) -> Result<Option<SlackChannelLink>, StoreError> {
+                slack_links::get(self.pool(), slack_channel_id).await
+            }
+
+            async fn get_slack_channel_link_by_thread(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<SlackChannelLink>, StoreError> {
+                slack_links::get_by_thread(self.pool(), thread_id).await
+            }
+
+            async fn list_slack_channel_links(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<SlackChannelLink>, StoreError> {
+                slack_links::list(self.pool(), workspace_id).await
+            }
+
+            async fn unlink_slack_channel(
+                &self,
+                slack_channel_id: &str,
+            ) -> Result<bool, StoreError> {
+                slack_links::unlink(self.pool(), slack_channel_id).await
+            }
+
+            async fn disable_slack_channel_link(
+                &self,
+                slack_channel_id: &str,
+            ) -> Result<bool, StoreError> {
+                slack_links::disable(self.pool(), slack_channel_id).await
+            }
+
+            async fn link_github_issue(
+                &self,
+                new: NewGithubIssueLink,
+            ) -> Result<GithubIssueLink, StoreError> {
+                github_links::link(self.pool(), new).await
+            }
+
+            async fn get_github_issue_link(
+                &self,
+                repo: &str,
+                issue_number: i64,
+            ) -> Result<Option<GithubIssueLink>, StoreError> {
+                github_links::get(self.pool(), repo, issue_number).await
+            }
+
+            async fn get_github_issue_link_by_thread(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<GithubIssueLink>, StoreError> {
+                github_links::get_by_thread(self.pool(), thread_id).await
+            }
+
+            async fn list_github_issue_links(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<GithubIssueLink>, StoreError> {
+                github_links::list(self.pool(), workspace_id).await
+            }
+
+            async fn unlink_github_issue(
+                &self,
+                repo: &str,
+                issue_number: i64,
+            ) -> Result<bool, StoreError> {
+                github_links::unlink(self.pool(), repo, issue_number).await
+            }
+
+            async fn disable_github_issue_link(
+                &self,
+                repo: &str,
+                issue_number: i64,
+            ) -> Result<bool, StoreError> {
+                github_links::disable(self.pool(), repo, issue_number).await
+            }
+        }
+    };
+    ($store:ty, PresenceDigestStore) => {
+        #[::async_trait::async_trait]
+        impl PresenceDigestStore for $store {
+            async fn touch_member_last_seen(&self, member_id: MemberId) -> Result<(), StoreError> {
+                member_last_seen::touch(self.pool(), member_id).await
+            }
+
+            async fn get_member_last_seen(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Option<chrono::DateTime<chrono::Utc>>, StoreError> {
+                member_last_seen::get(self.read_pool(), member_id).await
+            }
+
+            async fn set_delivery_mode(
+                &self,
+                member_id: MemberId,
+                mode: EmailDeliveryMode,
+            ) -> Result<(), StoreError> {
+                email_digest::set_delivery_mode(self.pool(), member_id, mode).await
+            }
+
+            async fn get_delivery_mode(
+                &self,
+                member_id: MemberId,
+            ) -> Result<EmailDeliveryMode, StoreError> {
+                email_digest::get_delivery_mode(self.pool(), member_id).await
+            }
+
+            async fn set_last_digest_at(
+                &self,
+                member_id: MemberId,
+                now: chrono::DateTime<chrono::Utc>,
+            ) -> Result<(), StoreError> {
+                email_digest::set_last_digest_at(self.pool(), member_id, now).await
+            }
+
+            async fn members_due_for_digest(
+                &self,
+                limit: i64,
+            ) -> Result<Vec<DigestDue>, StoreError> {
+                email_digest::members_due_for_digest(self.pool(), limit).await
+            }
+
+            async fn buried_decisions_for_member(
+                &self,
+                member_id: MemberId,
+                since: DateTime<Utc>,
+                limit: i64,
+            ) -> Result<Vec<BuriedDecision>, StoreError> {
+                email_digest::buried_decisions_for_member(self.read_pool(), member_id, since, limit)
+                    .await
+            }
+
+            async fn manager_digest_for_member(
+                &self,
+                member_id: MemberId,
+                since: DateTime<Utc>,
+            ) -> Result<ManagerDigest, StoreError> {
+                email_digest::manager_digest_for_member(self.read_pool(), member_id, since).await
+            }
+        }
+    };
+    ($store:ty, SessionStore) => {
+        #[::async_trait::async_trait]
+        impl SessionStore for $store {
+            async fn upsert_oidc_identity(
+                &self,
+                new: NewOidcIdentity,
+            ) -> Result<OidcIdentity, StoreError> {
+                oidc::upsert_identity(self.pool(), new).await
+            }
+
+            async fn get_oidc_identity(
+                &self,
+                workspace_id: WorkspaceId,
+                issuer: &str,
+                subject: &str,
+            ) -> Result<OidcIdentity, StoreError> {
+                oidc::get_identity(self.pool(), workspace_id, issuer, subject).await
+            }
+
+            async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError> {
+                oidc::insert_pending(self.pool(), new).await
+            }
+
+            async fn take_oidc_pending(&self, state: &str) -> Result<OidcPendingAuth, StoreError> {
+                oidc::take_pending(self.pool(), state).await
+            }
+
+            async fn create_session(
+                &self,
+                new: NewMaidanSession,
+            ) -> Result<MaidanSession, StoreError> {
+                sessions::create(self.pool(), new).await
+            }
+
+            async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError> {
+                sessions::get(self.pool(), id).await
+            }
+
+            async fn delete_session(&self, id: SessionId) -> Result<(), StoreError> {
+                sessions::delete(self.pool(), id).await
+            }
+        }
+    };
+    ($store:ty, ChannelStore) => {
+        #[::async_trait::async_trait]
+        impl ChannelStore for $store {
+            async fn create_channel(&self, new: NewChannel) -> Result<Channel, StoreError> {
+                channels::create(self.pool(), new).await
+            }
+
+            async fn create_channel_with_event(
+                &self,
+                new: NewChannel,
+            ) -> Result<(Channel, StoredEvent), StoreError> {
+                channels::create_with_event(self.pool(), new).await
+            }
+
+            async fn get_channel(&self, id: ChannelId) -> Result<Channel, StoreError> {
+                channels::get(self.read_pool(), id).await
+            }
+
+            async fn list_channels(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<Channel>, StoreError> {
+                channels::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn add_channel_member(
+                &self,
+                channel_id: ChannelId,
+                member_id: MemberId,
+                role: ChannelMemberRole,
+            ) -> Result<ChannelMember, StoreError> {
+                channel_members::add(self.pool(), channel_id, member_id, role).await
+            }
+
+            async fn remove_channel_member(
+                &self,
+                channel_id: ChannelId,
+                member_id: MemberId,
+            ) -> Result<(), StoreError> {
+                channel_members::remove(self.pool(), channel_id, member_id).await
+            }
+
+            async fn list_channel_members(
+                &self,
+                channel_id: ChannelId,
+            ) -> Result<Vec<ChannelMember>, StoreError> {
+                channel_members::list(self.read_pool(), channel_id).await
+            }
+
+            async fn channel_is_member(
+                &self,
+                channel_id: ChannelId,
+                member_id: MemberId,
+            ) -> Result<bool, StoreError> {
+                channel_members::is_member(self.pool(), channel_id, member_id).await
+            }
+        }
+    };
+    ($store:ty, DmStore) => {
+        #[::async_trait::async_trait]
+        impl DmStore for $store {
+            async fn open_dm_conversation(
+                &self,
+                workspace_id: WorkspaceId,
+                member_a: MemberId,
+                member_b: MemberId,
+            ) -> Result<DmConversation, StoreError> {
+                dm::open(self.pool(), workspace_id, member_a, member_b).await
+            }
+
+            async fn get_dm_conversation(
+                &self,
+                id: DmConversationId,
+            ) -> Result<DmConversation, StoreError> {
+                dm::get(self.read_pool(), id).await
+            }
+
+            async fn list_dm_conversations_for_member(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<DmConversation>, StoreError> {
+                dm::list_for_member(self.read_pool(), workspace_id, member_id).await
+            }
+
+            async fn dm_conversation_for_thread(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<DmConversation>, StoreError> {
+                dm::get_for_thread(self.pool(), thread_id).await
+            }
+
+            async fn open_group_dm_conversation(
+                &self,
+                workspace_id: WorkspaceId,
+                member_ids: &[MemberId],
+                title: Option<String>,
+            ) -> Result<GroupDmConversation, StoreError> {
+                group_dm::open(self.pool(), workspace_id, member_ids, title).await
+            }
+
+            async fn get_group_dm_conversation(
+                &self,
+                id: GroupDmConversationId,
+            ) -> Result<GroupDmConversation, StoreError> {
+                group_dm::get(self.read_pool(), id).await
+            }
+
+            async fn list_group_dm_conversations_for_member(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<GroupDmConversation>, StoreError> {
+                group_dm::list_for_member(self.read_pool(), workspace_id, member_id).await
+            }
+
+            async fn group_dm_conversation_for_thread(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<GroupDmConversation>, StoreError> {
+                group_dm::get_for_thread(self.pool(), thread_id).await
+            }
+
+            async fn group_dm_has_member(
+                &self,
+                id: GroupDmConversationId,
+                member_id: MemberId,
+            ) -> Result<bool, StoreError> {
+                group_dm::is_member(self.pool(), id, member_id).await
+            }
+        }
+    };
+    ($store:ty, ThreadStore) => {
+        #[::async_trait::async_trait]
+        impl ThreadStore for $store {
+            async fn create_thread(&self, new: NewThread) -> Result<Thread, StoreError> {
+                threads::create(self.pool(), new).await
+            }
+
+            async fn create_thread_with_event(
+                &self,
+                new: NewThread,
+            ) -> Result<(Thread, StoredEvent), StoreError> {
+                threads::create_with_event(self.pool(), new).await
+            }
+
+            async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError> {
+                threads::get(self.read_pool(), id).await
+            }
+
+            async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
+                threads::list(self.read_pool(), channel_id).await
+            }
+
+            async fn list_threads_for_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::list_for_workspace(self.read_pool(), workspace_id).await
+            }
+
+            async fn page_threads_for_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+                after: Option<ThreadId>,
+                limit: i64,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::page_for_workspace(self.pool(), workspace_id, after, limit).await
+            }
+
+            async fn page_threads_for_channel(
+                &self,
+                channel_id: ChannelId,
+                after: Option<ThreadId>,
+                limit: i64,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::page_for_channel(self.read_pool(), channel_id, after, limit).await
+            }
+
+            async fn child_thread_summaries(
+                &self,
+                parent_id: ThreadId,
+            ) -> Result<Vec<ChildThreadSummary>, StoreError> {
+                threads::child_summaries(self.read_pool(), parent_id).await
+            }
+
+            async fn list_recently_active_threads(
+                &self,
+                channel_id: ChannelId,
+                limit: i64,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::list_recently_active(self.read_pool(), channel_id, limit).await
+            }
+
+            async fn transition_thread(
+                &self,
+                thread_id: ThreadId,
+                actor_id: MemberId,
+                action: maidan_fsm::ThreadAction,
+            ) -> Result<ThreadTransitionResult, StoreError> {
+                thread_transitions::transition(self.pool(), thread_id, actor_id, action).await
+            }
+
+            async fn transition_thread_with_event(
+                &self,
+                thread_id: ThreadId,
+                actor_id: MemberId,
+                action: maidan_fsm::ThreadAction,
+            ) -> Result<(ThreadTransitionResult, StoredEvent), StoreError> {
+                thread_transitions::transition_with_event(self.pool(), thread_id, actor_id, action)
+                    .await
+            }
+
+            async fn list_thread_transitions(
+                &self,
+                thread_id: ThreadId,
+                limit: i64,
+            ) -> Result<Vec<ThreadTransition>, StoreError> {
+                thread_transitions::list(self.read_pool(), thread_id, limit).await
+            }
+
+            async fn channel_queue_depth(
+                &self,
+                channel_id: ChannelId,
+            ) -> Result<QueueDepth, StoreError> {
+                threads::channel_queue_depth(self.read_pool(), channel_id).await
+            }
+
+            async fn channel_occupancy(
+                &self,
+                channel_id: ChannelId,
+            ) -> Result<ChannelOccupancy, StoreError> {
+                threads::channel_occupancy(self.read_pool(), channel_id).await
+            }
+        }
+    };
+    ($store:ty, TaskScheduleStore) => {
+        #[::async_trait::async_trait]
+        impl TaskScheduleStore for $store {
+            async fn create_task_schedule(
+                &self,
+                new: NewTaskSchedule,
+            ) -> Result<TaskSchedule, StoreError> {
+                task_schedules::create(self.pool(), new).await
+            }
+
+            async fn get_task_schedule(
+                &self,
+                id: TaskScheduleId,
+            ) -> Result<TaskSchedule, StoreError> {
+                task_schedules::get(self.read_pool(), id).await
+            }
+
+            async fn list_task_schedules(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<TaskSchedule>, StoreError> {
+                task_schedules::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn delete_task_schedule(&self, id: TaskScheduleId) -> Result<bool, StoreError> {
+                task_schedules::delete(self.pool(), id).await
+            }
+
+            async fn due_task_schedules(
+                &self,
+                now: DateTime<Utc>,
+                limit: i64,
+            ) -> Result<Vec<TaskSchedule>, StoreError> {
+                task_schedules::due(self.pool(), now, limit).await
+            }
+
+            async fn claim_next_due_schedule(
+                &self,
+                now: DateTime<Utc>,
+            ) -> Result<Option<TaskSchedule>, StoreError> {
+                task_schedules::claim_next_due(self.pool(), now).await
+            }
+
+            async fn set_task_schedule_active(
+                &self,
+                id: TaskScheduleId,
+                active: bool,
+            ) -> Result<TaskSchedule, StoreError> {
+                task_schedules::set_active(self.pool(), id, active).await
+            }
+        }
+    };
+    ($store:ty, RecipeStore) => {
+        #[::async_trait::async_trait]
+        impl RecipeStore for $store {
+            async fn create_recipe(&self, new: NewRecipe) -> Result<Recipe, StoreError> {
+                recipes::create(self.pool(), new).await
+            }
+
+            async fn get_recipe(&self, id: RecipeId) -> Result<Recipe, StoreError> {
+                recipes::get(self.read_pool(), id).await
+            }
+
+            async fn list_recipes(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<Recipe>, StoreError> {
+                recipes::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn delete_recipe(&self, id: RecipeId) -> Result<bool, StoreError> {
+                recipes::delete(self.pool(), id).await
+            }
+
+            async fn instantiate_recipe(
+                &self,
+                recipe_id: RecipeId,
+                params: serde_json::Value,
+                actor: MemberId,
+            ) -> Result<(RecipeRun, Vec<StoredEvent>), StoreError> {
+                recipes::instantiate(self.pool(), recipe_id, params, actor).await
+            }
+
+            async fn get_recipe_run(&self, id: RecipeRunId) -> Result<RecipeRun, StoreError> {
+                recipes::get_run(self.read_pool(), id).await
+            }
+
+            async fn latest_recipe_run(
+                &self,
+                recipe_id: RecipeId,
+            ) -> Result<Option<RecipeRun>, StoreError> {
+                recipes::latest_run(self.read_pool(), recipe_id).await
+            }
+        }
+    };
+    ($store:ty, SecretStore) => {
+        #[::async_trait::async_trait]
+        impl SecretStore for $store {
+            async fn create_secret(&self, new: NewSecret) -> Result<Secret, StoreError> {
+                secrets::create(self.pool(), new).await
+            }
+
+            async fn get_secret_ciphertext(
+                &self,
+                workspace_id: WorkspaceId,
+                name: &str,
+            ) -> Result<Option<String>, StoreError> {
+                secrets::get_ciphertext(self.pool(), workspace_id, name).await
+            }
+
+            async fn list_secrets(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<Secret>, StoreError> {
+                secrets::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn delete_secret(
+                &self,
+                workspace_id: WorkspaceId,
+                name: &str,
+            ) -> Result<bool, StoreError> {
+                secrets::delete(self.pool(), workspace_id, name).await
+            }
+        }
+    };
+    ($store:ty, SpawnBudgetStore) => {
+        #[::async_trait::async_trait]
+        impl SpawnBudgetStore for $store {
+            async fn set_spawn_budget(
+                &self,
+                workspace_id: WorkspaceId,
+                max_children: Option<i64>,
+                max_depth: Option<i64>,
+                max_tools: Option<i64>,
+            ) -> Result<Option<SpawnBudget>, StoreError> {
+                spawn::set_budget(
+                    self.pool(),
+                    workspace_id,
+                    max_children,
+                    max_depth,
+                    max_tools,
+                )
+                .await
+            }
+
+            async fn get_spawn_budget(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<SpawnBudget>, StoreError> {
+                spawn::get_budget(self.read_pool(), workspace_id).await
+            }
+
+            async fn count_active_children(
+                &self,
+                parent_thread_id: ThreadId,
+            ) -> Result<i64, StoreError> {
+                spawn::count_active_children(self.read_pool(), parent_thread_id).await
+            }
+
+            async fn thread_depth(&self, thread_id: ThreadId) -> Result<i64, StoreError> {
+                spawn::thread_depth(self.read_pool(), thread_id).await
+            }
+
+            async fn count_thread_tool_uses(&self, thread_id: ThreadId) -> Result<i64, StoreError> {
+                spawn::count_tool_uses(self.read_pool(), thread_id).await
+            }
+        }
+    };
+    ($store:ty, ReviewStore) => {
+        #[::async_trait::async_trait]
+        impl ReviewStore for $store {
+            async fn set_review_requirement(
+                &self,
+                thread_id: ThreadId,
+                required_count: i64,
+            ) -> Result<ThreadReviewRequirement, StoreError> {
+                reviews::set_requirement(self.pool(), thread_id, required_count).await
+            }
+
+            async fn get_review_requirement(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadReviewRequirement>, StoreError> {
+                reviews::get_requirement(self.read_pool(), thread_id).await
+            }
+
+            async fn clear_review_requirement(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<bool, StoreError> {
+                reviews::clear_requirement(self.pool(), thread_id).await
+            }
+
+            async fn add_reviewer(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+            ) -> Result<bool, StoreError> {
+                reviews::add_reviewer(self.pool(), thread_id, member_id).await
+            }
+
+            async fn remove_reviewer(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+            ) -> Result<bool, StoreError> {
+                reviews::remove_reviewer(self.pool(), thread_id, member_id).await
+            }
+
+            async fn list_reviewers(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<MemberId>, StoreError> {
+                reviews::list_reviewers(self.read_pool(), thread_id).await
+            }
+
+            async fn submit_review(
+                &self,
+                thread_id: ThreadId,
+                reviewer_id: MemberId,
+                decision: ReviewDecision,
+                note: Option<&str>,
+            ) -> Result<(ThreadReview, Option<StoredEvent>), StoreError> {
+                reviews::submit_review(self.pool(), thread_id, reviewer_id, decision, note).await
+            }
+
+            async fn list_reviews(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<ThreadReview>, StoreError> {
+                reviews::list_reviews(self.read_pool(), thread_id).await
+            }
+
+            async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError> {
+                reviews::review_status(self.read_pool(), thread_id).await
+            }
+
+            async fn apply_critical_review_decision(
+                &self,
+                thread_id: ThreadId,
+                reviewer_id: MemberId,
+                result: &serde_json::Value,
+            ) -> Result<Option<(ThreadReview, Option<StoredEvent>)>, StoreError> {
+                reviews::apply_critical_review_decision(self.pool(), thread_id, reviewer_id, result)
+                    .await
+            }
+
+            async fn list_review_history(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<ReviewVerdict>, StoreError> {
+                reviews::list_review_history(self.read_pool(), thread_id).await
+            }
+        }
+    };
+    ($store:ty, LandGateStore) => {
+        #[::async_trait::async_trait]
+        impl LandGateStore for $store {
+            async fn require_land_gate(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<LandGateStanding, StoreError> {
+                land_gate::require(self.pool(), thread_id).await
+            }
+
+            async fn set_land_gate_pointer(
+                &self,
+                thread_id: ThreadId,
+                recorded_by: MemberId,
+                status: LandGateStatus,
+                artifact_sha: Option<&str>,
+                land: Option<LandColor>,
+            ) -> Result<LandGateStanding, StoreError> {
+                land_gate::set_pointer(
+                    self.pool(),
+                    thread_id,
+                    recorded_by,
+                    status,
+                    artifact_sha,
+                    land,
+                )
+                .await
+            }
+
+            async fn get_land_gate_standing(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<LandGateStanding, StoreError> {
+                land_gate::standing(self.read_pool(), thread_id).await
+            }
+
+            async fn clear_land_gate(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+                land_gate::clear(self.pool(), thread_id).await
+            }
+
+            async fn list_land_gate_history(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<LandGateVerdict>, StoreError> {
+                land_gate::history(self.read_pool(), thread_id).await
+            }
+        }
+    };
+    ($store:ty, MemoryBlockStore) => {
+        #[::async_trait::async_trait]
+        impl MemoryBlockStore for $store {
+            async fn create_memory_block(
+                &self,
+                new: NewMemoryBlock,
+            ) -> Result<MemoryBlock, StoreError> {
+                memory_blocks::create(self.pool(), new).await
+            }
+
+            async fn get_memory_block(
+                &self,
+                id: MemoryBlockId,
+            ) -> Result<Option<MemoryBlock>, StoreError> {
+                memory_blocks::get(self.read_pool(), id).await
+            }
+
+            async fn get_memory_block_by_label(
+                &self,
+                workspace_id: WorkspaceId,
+                label: &str,
+            ) -> Result<Option<MemoryBlock>, StoreError> {
+                memory_blocks::get_by_label(self.read_pool(), workspace_id, label).await
+            }
+
+            async fn list_memory_blocks(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<MemoryBlock>, StoreError> {
+                memory_blocks::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn set_memory_block_value(
+                &self,
+                id: MemoryBlockId,
+                value: &str,
+            ) -> Result<MemoryBlock, StoreError> {
+                memory_blocks::set_value(self.pool(), id, value).await
+            }
+
+            async fn delete_memory_block(&self, id: MemoryBlockId) -> Result<bool, StoreError> {
+                memory_blocks::delete(self.pool(), id).await
+            }
+
+            async fn attach_memory_block(
+                &self,
+                thread_id: ThreadId,
+                block_id: MemoryBlockId,
+            ) -> Result<bool, StoreError> {
+                memory_blocks::attach(self.pool(), thread_id, block_id).await
+            }
+
+            async fn detach_memory_block(
+                &self,
+                thread_id: ThreadId,
+                block_id: MemoryBlockId,
+            ) -> Result<bool, StoreError> {
+                memory_blocks::detach(self.pool(), thread_id, block_id).await
+            }
+
+            async fn list_thread_memory_blocks(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<MemoryBlock>, StoreError> {
+                memory_blocks::list_for_thread(self.read_pool(), thread_id).await
+            }
+        }
+    };
+    ($store:ty, MemberFreezeStore) => {
+        #[::async_trait::async_trait]
+        impl MemberFreezeStore for $store {
+            async fn freeze_member(
+                &self,
+                member_id: MemberId,
+                frozen_by: MemberId,
+                reason: Option<&str>,
+            ) -> Result<(MemberFreeze, u64), StoreError> {
+                member_freezes::freeze(self.pool(), member_id, frozen_by, reason).await
+            }
+
+            async fn unfreeze_member(&self, member_id: MemberId) -> Result<bool, StoreError> {
+                member_freezes::unfreeze(self.pool(), member_id).await
+            }
+
+            async fn is_member_frozen(&self, member_id: MemberId) -> Result<bool, StoreError> {
+                member_freezes::is_frozen(self.read_pool(), member_id).await
+            }
+
+            async fn get_member_freeze(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Option<MemberFreeze>, StoreError> {
+                member_freezes::get(self.read_pool(), member_id).await
+            }
+
+            async fn list_frozen_members(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<MemberFreeze>, StoreError> {
+                member_freezes::list(self.read_pool(), workspace_id).await
+            }
+        }
+    };
+    ($store:ty, AssignmentStore) => {
+        #[::async_trait::async_trait]
+        impl AssignmentStore for $store {
+            async fn assign_thread(
+                &self,
+                thread_id: ThreadId,
+                assignee_id: MemberId,
+            ) -> Result<Thread, StoreError> {
+                threads::assign(self.pool(), thread_id, assignee_id).await
+            }
+
+            async fn set_thread_owner(
+                &self,
+                thread_id: ThreadId,
+                owner_id: Option<MemberId>,
+            ) -> Result<Thread, StoreError> {
+                threads::set_owner(self.pool(), thread_id, owner_id).await
+            }
+
+            async fn set_thread_title(
+                &self,
+                thread_id: ThreadId,
+                title: Option<String>,
+            ) -> Result<Thread, StoreError> {
+                threads::set_title(self.pool(), thread_id, title).await
+            }
+
+            async fn assign_thread_with_event(
+                &self,
+                thread_id: ThreadId,
+                assignee_id: MemberId,
+                actor_id: MemberId,
+                note: Option<String>,
+            ) -> Result<(Thread, StoredEvent), StoreError> {
+                threads::assign_with_event(self.pool(), thread_id, assignee_id, actor_id, note)
+                    .await
+            }
+
+            async fn claim_thread(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+            ) -> Result<ThreadClaimResult, StoreError> {
+                threads::claim(self.pool(), thread_id, member_id).await
+            }
+
+            async fn claim_thread_with_event(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+            ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
+                threads::claim_with_event(self.pool(), thread_id, member_id).await
+            }
+
+            async fn unassign_thread(&self, thread_id: ThreadId) -> Result<Thread, StoreError> {
+                threads::unassign(self.pool(), thread_id).await
+            }
+
+            async fn unassign_thread_with_event(
+                &self,
+                thread_id: ThreadId,
+                actor_id: MemberId,
+            ) -> Result<(Thread, StoredEvent), StoreError> {
+                threads::unassign_with_event(self.pool(), thread_id, actor_id).await
+            }
+
+            async fn list_assigned_threads(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::list_assigned(self.read_pool(), workspace_id, member_id).await
+            }
+
+            async fn claim_next_thread(
+                &self,
+                channel_id: ChannelId,
+                member_id: MemberId,
+                lease_secs: Option<i64>,
+            ) -> Result<Option<Thread>, StoreError> {
+                threads::claim_next(self.pool(), channel_id, member_id, lease_secs).await
+            }
+
+            async fn claim_next_thread_with_event(
+                &self,
+                channel_id: ChannelId,
+                member_id: MemberId,
+                lease_secs: Option<i64>,
+            ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
+                threads::claim_next_with_event(self.pool(), channel_id, member_id, lease_secs).await
+            }
+
+            async fn renew_claim(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+                lease_id: ClaimLeaseId,
+                lease_secs: i64,
+            ) -> Result<Thread, StoreError> {
+                threads::renew_claim(self.pool(), thread_id, member_id, lease_id, lease_secs).await
+            }
+
+            async fn acknowledge_claim(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+                lease_id: ClaimLeaseId,
+            ) -> Result<Thread, StoreError> {
+                threads::acknowledge_claim(self.pool(), thread_id, member_id, lease_id).await
+            }
+
+            async fn release_claim(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+                lease_id: ClaimLeaseId,
+            ) -> Result<Thread, StoreError> {
+                threads::release_claim(self.pool(), thread_id, member_id, lease_id).await
+            }
+
+            async fn release_claim_with_event(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+                lease_id: ClaimLeaseId,
+            ) -> Result<(Thread, StoredEvent), StoreError> {
+                threads::release_claim_with_event(self.pool(), thread_id, member_id, lease_id).await
+            }
+
+            async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError> {
+                // Primary read: enforcement must not act on a lagged claim count.
+                wip::count_live_claims(self.pool(), member_id).await
+            }
+
+            async fn mark_thread_unclaimable(
+                &self,
+                thread_id: ThreadId,
+                reason: &str,
+                marked_by: MemberId,
+            ) -> Result<ThreadUnclaimable, StoreError> {
+                unclaimable::mark(self.pool(), thread_id, reason, marked_by).await
+            }
+
+            async fn mark_thread_claimable(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+                unclaimable::clear(self.pool(), thread_id).await
+            }
+
+            async fn get_thread_unclaimable(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadUnclaimable>, StoreError> {
+                // Primary read: an explicit-claim gate acts on this; a lagged read could
+                // dispatch a just-parked thread.
+                unclaimable::get(self.pool(), thread_id).await
+            }
+
+            async fn list_unclaimable_threads(
+                &self,
+                channel_id: ChannelId,
+            ) -> Result<Vec<ThreadUnclaimable>, StoreError> {
+                unclaimable::list_for_channel(self.read_pool(), channel_id).await
+            }
+
+            async fn set_thread_block(
+                &self,
+                thread_id: ThreadId,
+                reason: BlockedReason,
+                set_by: MemberId,
+            ) -> Result<ThreadBlock, StoreError> {
+                blocks::set(self.pool(), thread_id, reason, set_by).await
+            }
+
+            async fn clear_thread_block(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadBlock>, StoreError> {
+                blocks::clear(self.pool(), thread_id).await
+            }
+
+            async fn clear_thread_block_with_event(
+                &self,
+                thread_id: ThreadId,
+                resolved_by: MemberId,
+            ) -> Result<(Option<ThreadBlock>, Option<StoredEvent>), StoreError> {
+                blocks::clear_with_event(self.pool(), thread_id, resolved_by).await
+            }
+
+            async fn get_thread_block(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadBlock>, StoreError> {
+                // Primary read: an explicit-claim gate acts on this; a lagged read could
+                // dispatch a just-blocked thread.
+                blocks::get(self.pool(), thread_id).await
+            }
+
+            async fn list_blocked_threads(
+                &self,
+                channel_id: ChannelId,
+            ) -> Result<Vec<ThreadBlock>, StoreError> {
+                blocks::list_for_channel(self.read_pool(), channel_id).await
+            }
+
+            async fn set_thread_wait(
+                &self,
+                thread_id: ThreadId,
+                wait_until: DateTime<Utc>,
+                on_timeout: EscalationPolicy,
+                reason: Option<&str>,
+                created_by: MemberId,
+            ) -> Result<ThreadWait, StoreError> {
+                waits::set(
+                    self.pool(),
+                    thread_id,
+                    wait_until,
+                    on_timeout,
+                    reason,
+                    created_by,
+                )
+                .await
+            }
+
+            async fn cancel_thread_wait(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
+                waits::cancel(self.pool(), thread_id).await
+            }
+
+            async fn get_thread_wait(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadWait>, StoreError> {
+                // Primary: a due-check / sweeper coordination read must not lag.
+                waits::get(self.pool(), thread_id).await
+            }
+
+            async fn claim_next_due_wait(
+                &self,
+                now: DateTime<Utc>,
+            ) -> Result<Option<ThreadWait>, StoreError> {
+                waits::claim_next_due(self.pool(), now).await
+            }
+
+            async fn set_thread_priority(
+                &self,
+                thread_id: ThreadId,
+                priority: i64,
+                set_by: MemberId,
+            ) -> Result<ThreadPriority, StoreError> {
+                // Primary: a dispatch-ordering write the next claim must observe.
+                priorities::set(self.pool(), thread_id, priority, set_by).await
+            }
+
+            async fn get_thread_priority(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadPriority>, StoreError> {
+                priorities::get(self.read_pool(), thread_id).await
+            }
+
+            async fn list_review_requests(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::list_review_requests(self.read_pool(), workspace_id, member_id).await
+            }
+
+            async fn reap_expired_claims(
+                &self,
+                now: chrono::DateTime<chrono::Utc>,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                threads::reap_expired_claims(self.pool(), now, limit).await
+            }
+        }
+    };
+    ($store:ty, ThreadDepStore) => {
+        #[::async_trait::async_trait]
+        impl ThreadDepStore for $store {
+            async fn add_thread_dependency(
+                &self,
+                thread_id: ThreadId,
+                depends_on: ThreadId,
+            ) -> Result<(), StoreError> {
+                thread_deps::add(self.pool(), thread_id, depends_on).await
+            }
+
+            async fn remove_thread_dependency(
+                &self,
+                thread_id: ThreadId,
+                depends_on: ThreadId,
+            ) -> Result<bool, StoreError> {
+                thread_deps::remove(self.pool(), thread_id, depends_on).await
+            }
+
+            async fn list_thread_dependencies(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<ThreadDependency>, StoreError> {
+                thread_deps::list_dependencies(self.read_pool(), thread_id).await
+            }
+
+            async fn list_thread_dependents(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<ThreadDependency>, StoreError> {
+                thread_deps::list_dependents(self.read_pool(), thread_id).await
+            }
+
+            async fn thread_dependencies_satisfied(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<bool, StoreError> {
+                thread_deps::dependencies_satisfied(self.pool(), thread_id).await
+            }
+
+            async fn newly_ready_dependents(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<Thread>, StoreError> {
+                thread_deps::newly_ready_dependents(self.pool(), thread_id).await
+            }
+        }
+    };
+    ($store:ty, MessageStore) => {
+        #[::async_trait::async_trait]
+        impl MessageStore for $store {
+            async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
+                messages::create(self.pool(), new).await
+            }
+
+            async fn post_message_with_event(
+                &self,
+                new: NewMessage,
+                dm_conversation_id: Option<DmConversationId>,
+            ) -> Result<(Message, StoredEvent), StoreError> {
+                messages::create_with_event(self.pool(), &self.keys, new, dm_conversation_id).await
+            }
+
+            async fn edit_message_with_posted_event(
+                &self,
+                id: MessageId,
+                editor_id: MemberId,
+                edit: EditMessage,
+                dm_conversation_id: Option<DmConversationId>,
+            ) -> Result<(Message, StoredEvent), StoreError> {
+                messages::edit_with_posted_event(
+                    self.pool(),
+                    &self.keys,
+                    id,
+                    editor_id,
+                    edit,
+                    dm_conversation_id,
+                )
+                .await
+            }
+
+            async fn edit_message(
+                &self,
+                id: MessageId,
+                editor_id: MemberId,
+                edit: EditMessage,
+            ) -> Result<Message, StoreError> {
+                messages::edit(self.pool(), id, editor_id, edit).await
+            }
+
+            async fn edit_message_with_event(
+                &self,
+                id: MessageId,
+                editor_id: MemberId,
+                edit: EditMessage,
+                dm_conversation_id: Option<DmConversationId>,
+            ) -> Result<(Message, StoredEvent), StoreError> {
+                messages::edit_with_event(
+                    self.pool(),
+                    &self.keys,
+                    id,
+                    editor_id,
+                    edit,
+                    dm_conversation_id,
+                )
+                .await
+            }
+
+            async fn list_message_edits(
+                &self,
+                message_id: MessageId,
+                limit: i64,
+            ) -> Result<Vec<MessageEdit>, StoreError> {
+                message_edits::list(self.read_pool(), message_id, limit).await
+            }
+
+            async fn list_message_edits_for_messages(
+                &self,
+                message_ids: &[MessageId],
+                limit_per: i64,
+            ) -> Result<Vec<MessageEdit>, StoreError> {
+                message_edits::list_for_messages(self.read_pool(), message_ids, limit_per).await
+            }
+
+            async fn get_message(&self, id: MessageId) -> Result<Message, StoreError> {
+                messages::get(self.read_pool(), id).await
+            }
+
+            async fn list_messages(
+                &self,
+                thread_id: ThreadId,
+                limit: i64,
+            ) -> Result<Vec<Message>, StoreError> {
+                messages::list(self.read_pool(), thread_id, limit).await
+            }
+
+            async fn list_messages_after(
+                &self,
+                thread_id: ThreadId,
+                after: Option<MessageId>,
+                limit: i64,
+            ) -> Result<Vec<Message>, StoreError> {
+                messages::list_after(self.read_pool(), thread_id, after, limit).await
+            }
+
+            async fn tombstone_message(&self, id: MessageId) -> Result<(), StoreError> {
+                messages::tombstone(self.pool(), id).await
+            }
+
+            async fn tombstone_message_with_event(
+                &self,
+                id: MessageId,
+                dm_conversation_id: Option<DmConversationId>,
+            ) -> Result<StoredEvent, StoreError> {
+                messages::tombstone_with_event(self.pool(), id, dm_conversation_id).await
+            }
+
+            async fn purge_message(&self, id: MessageId) -> Result<(), StoreError> {
+                messages::purge(self.pool(), id).await
+            }
+
+            async fn purge_workspace_messages(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<WorkspacePurgeResult, StoreError> {
+                purge_workspace::purge(self.pool(), workspace_id).await
+            }
+
+            async fn erase_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<WorkspaceEraseResult, StoreError> {
+                erase_workspace::erase(self.pool(), workspace_id).await
+            }
+
+            async fn purge_message_audited(
+                &self,
+                id: MessageId,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                data_audited::purge_message(self.pool(), id, audit).await
+            }
+
+            async fn purge_workspace_messages_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                audit: crate::AuditFor<WorkspacePurgeResult>,
+            ) -> Result<WorkspacePurgeResult, StoreError> {
+                data_audited::purge_workspace(self.pool(), workspace_id, audit).await
+            }
+
+            async fn erase_workspace_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                audit: crate::AuditFor<WorkspaceEraseResult>,
+            ) -> Result<WorkspaceEraseResult, StoreError> {
+                data_audited::erase_workspace(self.pool(), workspace_id, audit).await
+            }
+        }
+    };
+    ($store:ty, MentionInboxStore) => {
+        #[::async_trait::async_trait]
+        impl MentionInboxStore for $store {
+            async fn record_mention(
+                &self,
+                message_id: MessageId,
+                member_id: MemberId,
+            ) -> Result<(), StoreError> {
+                mentions::record(self.pool(), message_id, member_id).await
+            }
+
+            async fn record_mention_with_event(
+                &self,
+                message_id: MessageId,
+                member_id: MemberId,
+            ) -> Result<StoredEvent, StoreError> {
+                mentions::record_with_event(self.pool(), message_id, member_id).await
+            }
+
+            async fn list_mentions_for_member(
+                &self,
+                member_id: MemberId,
+                limit: i64,
+            ) -> Result<Vec<Mention>, StoreError> {
+                mentions::list_for_member(self.read_pool(), member_id, limit).await
+            }
+
+            async fn get_inbox_last_read_at(
+                &self,
+                member_id: MemberId,
+            ) -> Result<DateTime<Utc>, StoreError> {
+                inbox::get_last_read_at(self.pool(), member_id).await
+            }
+
+            async fn advance_inbox_last_read_at(
+                &self,
+                member_id: MemberId,
+                read_through: DateTime<Utc>,
+            ) -> Result<DateTime<Utc>, StoreError> {
+                inbox::advance_last_read_at(self.pool(), member_id, read_through).await
+            }
+
+            async fn list_member_inbox(
+                &self,
+                member_id: MemberId,
+                limit: i64,
+            ) -> Result<MemberInbox, StoreError> {
+                inbox::list_for_member(self.read_pool(), member_id, limit).await
+            }
+        }
+    };
+    ($store:ty, SocialStore) => {
+        #[::async_trait::async_trait]
+        impl SocialStore for $store {
+            async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError> {
+                votes::cast(self.pool(), new).await
+            }
+
+            async fn cast_vote_with_event(&self, new: NewVote) -> Result<StoredEvent, StoreError> {
+                votes::cast_with_event(self.pool(), new).await
+            }
+
+            async fn list_votes_for_message(
+                &self,
+                message_id: MessageId,
+            ) -> Result<Vec<Vote>, StoreError> {
+                votes::list(self.read_pool(), message_id).await
+            }
+
+            async fn add_reaction(&self, new: NewReaction) -> Result<(), StoreError> {
+                reactions::add(self.pool(), new).await
+            }
+
+            async fn add_reaction_with_event(
+                &self,
+                new: NewReaction,
+            ) -> Result<StoredEvent, StoreError> {
+                reactions::add_with_event(self.pool(), new).await
+            }
+
+            async fn remove_reaction(
+                &self,
+                message_id: MessageId,
+                member_id: MemberId,
+                emoji: &str,
+            ) -> Result<bool, StoreError> {
+                reactions::remove(self.pool(), message_id, member_id, emoji).await
+            }
+
+            async fn remove_reaction_with_event(
+                &self,
+                message_id: MessageId,
+                member_id: MemberId,
+                emoji: &str,
+            ) -> Result<(bool, Option<StoredEvent>), StoreError> {
+                reactions::remove_with_event(self.pool(), message_id, member_id, emoji).await
+            }
+
+            async fn list_reactions_for_message(
+                &self,
+                message_id: MessageId,
+            ) -> Result<Vec<Reaction>, StoreError> {
+                reactions::list(self.read_pool(), message_id).await
+            }
+
+            async fn pin_message(&self, new: NewPin) -> Result<(), StoreError> {
+                pins::pin(self.pool(), new).await
+            }
+
+            async fn pin_message_with_event(&self, new: NewPin) -> Result<StoredEvent, StoreError> {
+                pins::pin_with_event(self.pool(), new).await
+            }
+
+            async fn unpin_message(
+                &self,
+                thread_id: ThreadId,
+                message_id: MessageId,
+            ) -> Result<bool, StoreError> {
+                pins::unpin(self.pool(), thread_id, message_id).await
+            }
+
+            async fn unpin_message_with_event(
+                &self,
+                thread_id: ThreadId,
+                message_id: MessageId,
+                member_id: MemberId,
+            ) -> Result<(bool, Option<StoredEvent>), StoreError> {
+                pins::unpin_with_event(self.pool(), thread_id, message_id, member_id).await
+            }
+
+            async fn list_pins_for_thread(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<Pin>, StoreError> {
+                pins::list_for_thread(self.pool(), thread_id).await
+            }
+        }
+    };
+    ($store:ty, ReferenceStore) => {
+        #[::async_trait::async_trait]
+        impl ReferenceStore for $store {
+            async fn add_reference(&self, new: NewReference) -> Result<Reference, StoreError> {
+                refs::create(self.pool(), new).await
+            }
+
+            async fn add_reference_with_event(
+                &self,
+                new: NewReference,
+            ) -> Result<(Reference, StoredEvent), StoreError> {
+                refs::create_with_event(self.pool(), new).await
+            }
+
+            async fn list_references_from(
+                &self,
+                src_kind: RefSide,
+                src_id: uuid::Uuid,
+            ) -> Result<Vec<Reference>, StoreError> {
+                refs::list_from(self.pool(), src_kind, src_id).await
+            }
+
+            async fn list_references_to(
+                &self,
+                dst_kind: RefSide,
+                dst_id: uuid::Uuid,
+            ) -> Result<Vec<Reference>, StoreError> {
+                refs::list_to(self.pool(), dst_kind, dst_id).await
+            }
+
+            async fn list_references_from_many(
+                &self,
+                src_kind: RefSide,
+                src_ids: &[uuid::Uuid],
+            ) -> Result<Vec<Reference>, StoreError> {
+                refs::list_from_many(self.pool(), src_kind, src_ids).await
+            }
+        }
+    };
+    ($store:ty, ArtifactMetaStore) => {
+        #[::async_trait::async_trait]
+        impl ArtifactMetaStore for $store {
+            async fn upsert_artifact(&self, new: NewArtifact) -> Result<Artifact, StoreError> {
+                artifacts::upsert(self.pool(), new).await
+            }
+
+            async fn upsert_artifact_with_event(
+                &self,
+                new: NewArtifact,
+                ref_workspace: Option<WorkspaceId>,
+            ) -> Result<(Artifact, StoredEvent), StoreError> {
+                artifacts::upsert_with_event(self.pool(), new, ref_workspace).await
+            }
+
+            async fn get_artifact_by_sha(&self, sha256: &str) -> Result<Artifact, StoreError> {
+                artifacts::get_by_sha(self.pool(), sha256).await
+            }
+
+            async fn get_artifact_for_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+                sha256: &str,
+            ) -> Result<Artifact, StoreError> {
+                artifacts::get_for_workspace(self.pool(), workspace_id, sha256).await
+            }
+
+            async fn record_artifact_ref(
+                &self,
+                workspace_id: WorkspaceId,
+                sha256: &str,
+            ) -> Result<(), StoreError> {
+                artifacts::record_ref(self.pool(), workspace_id, sha256).await
+            }
+
+            async fn artifact_ref_exists(
+                &self,
+                workspace_id: WorkspaceId,
+                sha256: &str,
+            ) -> Result<bool, StoreError> {
+                artifacts::ref_exists(self.pool(), workspace_id, sha256).await
+            }
+
+            async fn erase_artifact_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                sha256: &str,
+                audit: crate::AuditFor<ArtifactErasure>,
+            ) -> Result<ArtifactErasure, StoreError> {
+                artifacts::erase_for_workspace(self.pool(), workspace_id, sha256, audit).await
+            }
+
+            async fn reap_artifact_blob(
+                &self,
+                sha256: &str,
+                delete: crate::BlobDelete<'_>,
+            ) -> Result<crate::BlobReap, StoreError> {
+                artifacts::reap_blob(self.pool(), sha256, delete).await
+            }
+        }
+    };
+    ($store:ty, EventStore) => {
+        #[::async_trait::async_trait]
+        impl EventStore for $store {
+            async fn append_audit(&self, new: NewAuditEvent) -> Result<AuditEvent, StoreError> {
+                audit::append(self.pool(), new)
+                    .await
+                    .inspect_err(|_| crate::attribution::count_audit_write_failure())
+            }
+
+            async fn list_audit(&self, limit: i64) -> Result<Vec<AuditEvent>, StoreError> {
+                audit::list(self.pool(), limit).await
+            }
+
+            async fn list_audit_for_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<AuditEvent>, StoreError> {
+                audit::list_for_workspace(self.pool(), workspace_id, limit).await
+            }
+
+            async fn append_event(&self, event: &Event) -> Result<StoredEvent, StoreError> {
+                events::append(self.pool(), &self.keys, event, None).await
+            }
+
+            async fn append_federated_event(
+                &self,
+                event: &Event,
+                origin: PeerId,
+            ) -> Result<StoredEvent, StoreError> {
+                events::append(self.pool(), &self.keys, event, Some(origin)).await
+            }
+
+            async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError> {
+                content_keys::rewrap(self.pool(), &self.keys, limit).await
+            }
+
+            async fn content_keys_needing_rewrap(&self) -> Result<u64, StoreError> {
+                content_keys::count_needing_rewrap(self.pool(), &self.keys).await
+            }
+
+            async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError> {
+                events::get_by_id(self.pool(), &self.keys, log_id).await
+            }
+
+            async fn list_thread_events_through(
+                &self,
+                thread_id: ThreadId,
+                through_id: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                events::list_through(self.read_pool(), &self.keys, thread_id, through_id).await
+            }
+
+            async fn list_events_after(
+                &self,
+                workspace_id: WorkspaceId,
+                after_id: i64,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                events::list_after(self.pool(), Some(&self.keys), workspace_id, after_id, limit)
+                    .await
+            }
+
+            async fn list_events_after_stable(
+                &self,
+                workspace_id: WorkspaceId,
+                after_id: i64,
+                stable_before: chrono::DateTime<chrono::Utc>,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                events::list_after_stable(
+                    self.pool(),
+                    &self.keys,
+                    workspace_id,
+                    after_id,
+                    stable_before,
+                    limit,
+                )
+                .await
+            }
+
+            async fn min_event_id(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<i64>, StoreError> {
+                events::min_event_id(self.pool(), workspace_id).await
+            }
+
+            async fn max_event_id(&self) -> Result<i64, StoreError> {
+                events::max_event_id(self.pool()).await
+            }
+
+            async fn workspace_ids_with_events(&self) -> Result<Vec<WorkspaceId>, StoreError> {
+                events::workspace_ids_with_events(self.read_pool()).await
+            }
+
+            async fn tap_cursor(&self, surface: &str) -> Result<i64, StoreError> {
+                tap_cursor::get(self.read_pool(), surface).await
+            }
+
+            async fn set_tap_cursor(
+                &self,
+                surface: &str,
+                last_event_id: i64,
+            ) -> Result<(), StoreError> {
+                tap_cursor::set(self.pool(), surface, last_event_id).await
+            }
+
+            async fn clear_tap_cursor(&self, surface: &str) -> Result<(), StoreError> {
+                tap_cursor::clear(self.pool(), surface).await
+            }
+
+            async fn list_events_after_global(
+                &self,
+                after_id: i64,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                events::list_after_global(self.pool(), &self.keys, after_id, limit).await
+            }
+
+            async fn verify_event_chain(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<maidan_types::ChainVerifyReport, StoreError> {
+                events::verify_chain(self.pool(), workspace_id).await
+            }
+
+            async fn workspace_event_floor(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<maidan_types::EventLink>, StoreError> {
+                events::floor_link(self.pool(), workspace_id).await
+            }
+
+            async fn workspace_event_head(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<maidan_types::EventLink>, StoreError> {
+                events::head_link(self.pool(), workspace_id).await
+            }
+
+            async fn workspace_event_at_or_before(
+                &self,
+                workspace_id: WorkspaceId,
+                lsn: i64,
+            ) -> Result<Option<maidan_types::EventLink>, StoreError> {
+                events::link_at_or_before(self.pool(), workspace_id, lsn).await
+            }
+        }
+    };
+    ($store:ty, IntegrityStore) => {
+        #[::async_trait::async_trait]
+        impl IntegrityStore for $store {
+            async fn list_tombstones(
+                &self,
+                workspace_id: WorkspaceId,
+                channel_id: Option<ChannelId>,
+                thread_id: Option<ThreadId>,
+                include_purged: bool,
+                limit: i64,
+            ) -> Result<Vec<TombstoneRecord>, StoreError> {
+                explorer::list_tombstones(
+                    self.read_pool(),
+                    workspace_id,
+                    channel_id,
+                    thread_id,
+                    include_purged,
+                    limit,
+                )
+                .await
+            }
+
+            async fn list_message_backlinks(
+                &self,
+                message_id: MessageId,
+            ) -> Result<MessageBacklinks, StoreError> {
+                explorer::list_message_backlinks(self.read_pool(), message_id).await
+            }
+
+            async fn event_kind_census(
+                &self,
+                workspace_id: WorkspaceId,
+                channel_id: Option<ChannelId>,
+                thread_id: Option<ThreadId>,
+                deny_channels: &[ChannelId],
+            ) -> Result<KindCensus, StoreError> {
+                explorer::event_kind_census(
+                    self.read_pool(),
+                    workspace_id,
+                    channel_id,
+                    thread_id,
+                    deny_channels,
+                )
+                .await
+            }
+        }
+    };
+    ($store:ty, AppStore) => {
+        #[::async_trait::async_trait]
+        impl AppStore for $store {
+            async fn create_app(&self, new: NewApp) -> Result<App, StoreError> {
+                apps::create_app(self.pool(), new).await
+            }
+
+            async fn get_app(&self, id: AppId) -> Result<App, StoreError> {
+                apps::get_app(self.pool(), id).await
+            }
+
+            async fn list_apps(&self, workspace_id: WorkspaceId) -> Result<Vec<App>, StoreError> {
+                apps::list_apps(self.pool(), workspace_id).await
+            }
+
+            async fn create_app_installation(
+                &self,
+                new: NewAppInstallation,
+            ) -> Result<AppInstallation, StoreError> {
+                apps::create_installation(self.pool(), new).await
+            }
+
+            async fn get_app_installation(
+                &self,
+                id: AppInstallationId,
+            ) -> Result<AppInstallation, StoreError> {
+                apps::get_installation(self.pool(), id).await
+            }
+
+            async fn list_app_installations(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<AppInstallation>, StoreError> {
+                apps::list_installations(self.pool(), workspace_id).await
+            }
+
+            async fn revoke_app_installation(
+                &self,
+                id: AppInstallationId,
+            ) -> Result<AppInstallation, StoreError> {
+                apps::revoke_installation(self.pool(), id).await
+            }
+        }
+    };
+    ($store:ty, IdempotencyStore) => {
+        #[::async_trait::async_trait]
+        impl IdempotencyStore for $store {
+            async fn reserve_idempotency_key(
+                &self,
+                new: &crate::idempotency::NewIdempotencyKey,
+            ) -> Result<crate::idempotency::IdempotencyReservation, StoreError> {
+                idempotency::reserve(self.pool(), new).await
+            }
+
+            async fn complete_idempotency_key(
+                &self,
+                workspace_id: WorkspaceId,
+                actor_id: MemberId,
+                key: &str,
+                lease: &str,
+                response: &crate::idempotency::StoredResponse,
+            ) -> Result<(), StoreError> {
+                idempotency::complete(self.pool(), workspace_id, actor_id, key, lease, response)
+                    .await
+            }
+
+            async fn release_idempotency_key(
+                &self,
+                workspace_id: WorkspaceId,
+                actor_id: MemberId,
+                key: &str,
+                lease: &str,
+            ) -> Result<(), StoreError> {
+                idempotency::release(self.pool(), workspace_id, actor_id, key, lease).await
+            }
+        }
+    };
+    ($store:ty, OAuthCodeStore) => {
+        #[::async_trait::async_trait]
+        impl OAuthCodeStore for $store {
+            async fn insert_oauth_code(&self, new: NewOAuthCode) -> Result<(), StoreError> {
+                oauth_codes::insert(self.pool(), new).await
+            }
+
+            async fn consume_oauth_code(
+                &self,
+                code_hash: &str,
+            ) -> Result<Option<OAuthCode>, StoreError> {
+                oauth_codes::consume(self.pool(), code_hash).await
+            }
+        }
+    };
+    ($store:ty, ReindexStore) => {
+        #[::async_trait::async_trait]
+        impl ReindexStore for $store {
+            async fn upsert_reindex_job(&self, job: ReindexJob) -> Result<(), StoreError> {
+                reindex_jobs::upsert(self.pool(), job).await
+            }
+
+            async fn get_reindex_job(
+                &self,
+                job_id: uuid::Uuid,
+            ) -> Result<Option<ReindexJob>, StoreError> {
+                reindex_jobs::get(self.pool(), job_id).await
+            }
+        }
+    };
+    ($store:ty, TokenStore) => {
+        #[::async_trait::async_trait]
+        impl TokenStore for $store {
+            async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError> {
+                tokens::create(self.pool(), new).await
+            }
+
+            async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
+                tokens::get_by_id(self.pool(), id).await
+            }
+
+            async fn get_active_api_token_by_hash(
+                &self,
+                token_hash: &str,
+            ) -> Result<ApiToken, StoreError> {
+                tokens::get_active_by_hash(self.pool(), token_hash).await
+            }
+
+            async fn create_attenuated_api_token(
+                &self,
+                new: NewApiToken,
+                parent_token_id: ApiTokenId,
+            ) -> Result<ApiToken, StoreError> {
+                tokens::create_attenuated(self.pool(), new, parent_token_id).await
+            }
+
+            async fn create_delegated_api_token(
+                &self,
+                new: NewApiToken,
+                grant_id: DelegationGrantId,
+                delegate_id: MemberId,
+                parent_token_id: Option<ApiTokenId>,
+            ) -> Result<ApiToken, StoreError> {
+                tokens::create_delegated(self.pool(), new, grant_id, delegate_id, parent_token_id)
+                    .await
+            }
+
+            async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
+                tokens::revoke(self.pool(), id).await
+            }
+
+            async fn create_api_token_audited(
+                &self,
+                new: NewApiToken,
+                audit: crate::AuditFor<ApiToken>,
+            ) -> Result<ApiToken, StoreError> {
+                tokens::create_audited(self.pool(), new, audit).await
+            }
+
+            async fn create_attenuated_api_token_audited(
+                &self,
+                new: NewApiToken,
+                parent_token_id: ApiTokenId,
+                audit: crate::AuditFor<ApiToken>,
+            ) -> Result<ApiToken, StoreError> {
+                tokens::create_attenuated_audited(self.pool(), new, parent_token_id, audit).await
+            }
+
+            async fn create_delegated_api_token_audited(
+                &self,
+                new: NewApiToken,
+                grant_id: DelegationGrantId,
+                delegate_id: MemberId,
+                parent_token_id: Option<ApiTokenId>,
+                audit: crate::AuditFor<ApiToken>,
+            ) -> Result<ApiToken, StoreError> {
+                tokens::create_delegated_audited(
+                    self.pool(),
+                    new,
+                    grant_id,
+                    delegate_id,
+                    parent_token_id,
+                    audit,
+                )
+                .await
+            }
+
+            async fn revoke_api_token_audited(
+                &self,
+                id: ApiTokenId,
+                audit: crate::AuditFor<ApiToken>,
+            ) -> Result<ApiToken, StoreError> {
+                tokens::revoke_audited(self.pool(), id, audit).await
+            }
+
+            async fn list_api_tokens_for_member(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<ApiToken>, StoreError> {
+                tokens::list_for_member(self.pool(), workspace_id, member_id).await
+            }
+
+            async fn get_workspace_mention_webhook_id(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<WebhookSubscriptionId>, StoreError> {
+                workspaces::get_mention_webhook_id(self.pool(), workspace_id).await
+            }
+
+            async fn set_workspace_mention_webhook_id(
+                &self,
+                workspace_id: WorkspaceId,
+                webhook_id: Option<WebhookSubscriptionId>,
+            ) -> Result<(), StoreError> {
+                workspaces::set_mention_webhook_id(self.pool(), workspace_id, webhook_id).await
+            }
+
+            async fn replace_token_quotas(
+                &self,
+                token_id: ApiTokenId,
+                quotas: &[TokenQuota],
+            ) -> Result<(), StoreError> {
+                token_quotas::replace(self.pool(), token_id, quotas).await
+            }
+
+            async fn list_token_quotas(
+                &self,
+                token_id: ApiTokenId,
+            ) -> Result<Vec<TokenQuota>, StoreError> {
+                token_quotas::list(self.pool(), token_id).await
+            }
+
+            async fn workspace_has_active_capability(
+                &self,
+                workspace_id: WorkspaceId,
+                capability: &str,
+            ) -> Result<bool, StoreError> {
+                tokens::workspace_has_active_capability(self.pool(), workspace_id, capability).await
+            }
+        }
+    };
+    ($store:ty, ShareTicketStore) => {
+        #[::async_trait::async_trait]
+        impl ShareTicketStore for $store {
+            async fn create_share_ticket(
+                &self,
+                new: NewShareTicket,
+            ) -> Result<ShareTicket, StoreError> {
+                share_tickets::create(self.pool(), new).await
+            }
+
+            async fn get_share_ticket(&self, id: ShareTicketId) -> Result<ShareTicket, StoreError> {
+                share_tickets::get(self.read_pool(), id).await
+            }
+
+            async fn list_share_tickets(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<ShareTicket>, StoreError> {
+                share_tickets::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn resolve_share_ticket(
+                &self,
+                token_hash: &str,
+                now: DateTime<Utc>,
+            ) -> Result<ShareTicket, StoreError> {
+                share_tickets::resolve(self.read_pool(), token_hash, now).await
+            }
+
+            async fn revoke_share_ticket(
+                &self,
+                workspace_id: WorkspaceId,
+                id: ShareTicketId,
+            ) -> Result<bool, StoreError> {
+                share_tickets::revoke(self.pool(), workspace_id, id).await
+            }
+
+            async fn list_share_ticket_artifacts(
+                &self,
+                id: ShareTicketId,
+            ) -> Result<Vec<String>, StoreError> {
+                share_tickets::list_artifacts(self.read_pool(), id).await
+            }
+
+            async fn share_ticket_allows_artifact(
+                &self,
+                id: ShareTicketId,
+                sha256: &str,
+                now: DateTime<Utc>,
+            ) -> Result<bool, StoreError> {
+                share_tickets::allows_artifact(self.read_pool(), id, sha256, now).await
+            }
+
+            async fn create_share_ticket_audited(
+                &self,
+                new: NewShareTicket,
+                audit: crate::AuditFor<ShareTicket>,
+            ) -> Result<ShareTicket, StoreError> {
+                share_tickets::create_audited(self.pool(), new, audit).await
+            }
+
+            async fn revoke_share_ticket_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                id: ShareTicketId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                share_tickets::revoke_audited(self.pool(), workspace_id, id, audit).await
+            }
+        }
+    };
+    ($store:ty, DelegationGrantStore) => {
+        #[::async_trait::async_trait]
+        impl DelegationGrantStore for $store {
+            async fn create_delegation_grant(
+                &self,
+                new: NewDelegationGrant,
+            ) -> Result<DelegationGrant, StoreError> {
+                delegation_grants::create(self.pool(), new).await
+            }
+
+            async fn get_delegation_grant(
+                &self,
+                id: DelegationGrantId,
+            ) -> Result<DelegationGrant, StoreError> {
+                // Grant validity is authentication state: a lagging replica must not
+                // reject a newly issued delegated token or accept stale authority.
+                delegation_grants::get(self.pool(), id).await
+            }
+
+            async fn list_delegation_grants(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<DelegationGrant>, StoreError> {
+                delegation_grants::list(self.read_pool(), workspace_id).await
+            }
+
+            async fn revoke_delegation_grant(
+                &self,
+                workspace_id: WorkspaceId,
+                id: DelegationGrantId,
+            ) -> Result<bool, StoreError> {
+                delegation_grants::revoke(self.pool(), workspace_id, id).await
+            }
+
+            async fn create_delegation_grant_audited(
+                &self,
+                new: NewDelegationGrant,
+                audit: crate::AuditFor<DelegationGrant>,
+            ) -> Result<DelegationGrant, StoreError> {
+                delegation_grants::create_audited(self.pool(), new, audit).await
+            }
+
+            async fn revoke_delegation_grant_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                id: DelegationGrantId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                delegation_grants::revoke_audited(self.pool(), workspace_id, id, audit).await
+            }
+        }
+    };
+    ($store:ty, PeerStore) => {
+        #[::async_trait::async_trait]
+        impl PeerStore for $store {
+            async fn create_peer(&self, new: NewPeer) -> Result<Peer, StoreError> {
+                peers::create(self.pool(), new).await
+            }
+
+            async fn get_peer(&self, id: PeerId) -> Result<Peer, StoreError> {
+                peers::get(self.pool(), id).await
+            }
+
+            async fn get_peer_by_token_hash(&self, token_hash: &str) -> Result<Peer, StoreError> {
+                peers::get_by_token_hash(self.pool(), token_hash).await
+            }
+
+            async fn list_peers(&self, workspace_id: WorkspaceId) -> Result<Vec<Peer>, StoreError> {
+                peers::list(self.pool(), workspace_id).await
+            }
+
+            async fn list_enabled_peers(&self) -> Result<Vec<Peer>, StoreError> {
+                peers::list_enabled(self.pool()).await
+            }
+
+            async fn update_peer_cursor(
+                &self,
+                id: PeerId,
+                last_synced_event_id: i64,
+            ) -> Result<Peer, StoreError> {
+                peers::update_cursor(self.pool(), id, last_synced_event_id).await
+            }
+
+            async fn delete_peer(&self, id: PeerId) -> Result<(), StoreError> {
+                peers::delete(self.pool(), id).await
+            }
+
+            async fn federated_ingest_exists(
+                &self,
+                peer_id: PeerId,
+                remote_event_id: i64,
+            ) -> Result<bool, StoreError> {
+                peers::ingest_exists(self.pool(), peer_id, remote_event_id).await
+            }
+
+            async fn try_record_federated_ingest(
+                &self,
+                peer_id: PeerId,
+                remote_event_id: i64,
+                local_event_id: i64,
+                origin: &maidan_types::EventLink,
+            ) -> Result<bool, StoreError> {
+                peers::try_record_ingest(
+                    self.pool(),
+                    peer_id,
+                    remote_event_id,
+                    local_event_id,
+                    origin,
+                )
+                .await
+            }
+
+            async fn last_federated_origin_link(
+                &self,
+                peer_id: PeerId,
+            ) -> Result<Option<maidan_types::EventLink>, StoreError> {
+                peers::last_origin_link(self.pool(), peer_id).await
+            }
+
+            async fn record_federated_verified_link(
+                &self,
+                peer_id: PeerId,
+                link: &maidan_types::EventLink,
+            ) -> Result<(), StoreError> {
+                peers::record_verified_link(self.pool(), peer_id, link).await
+            }
+
+            async fn last_federated_verified_link(
+                &self,
+                peer_id: PeerId,
+            ) -> Result<Option<maidan_types::EventLink>, StoreError> {
+                peers::last_verified_link(self.pool(), peer_id).await
+            }
+
+            async fn is_federated_local_event(
+                &self,
+                local_event_id: i64,
+            ) -> Result<bool, StoreError> {
+                peers::is_federated_local_event(self.pool(), local_event_id).await
+            }
+        }
+    };
+    ($store:ty, DeliveryCursorStore) => {
+        #[::async_trait::async_trait]
+        impl DeliveryCursorStore for $store {
+            async fn get_delivery_cursor(
+                &self,
+                consumer_id: &str,
+                workspace_id: WorkspaceId,
+            ) -> Result<i64, StoreError> {
+                delivery_cursor::get_cursor(self.pool(), consumer_id, workspace_id).await
+            }
+
+            async fn advance_delivery_cursor(
+                &self,
+                consumer_id: &str,
+                workspace_id: WorkspaceId,
+                log_id: i64,
+            ) -> Result<i64, StoreError> {
+                delivery_cursor::advance_cursor(self.pool(), consumer_id, workspace_id, log_id)
+                    .await
+            }
+
+            async fn min_delivery_cursor(
+                &self,
+                advanced_since: chrono::DateTime<chrono::Utc>,
+            ) -> Result<Option<i64>, StoreError> {
+                retention::min_delivery_cursor(self.pool(), advanced_since).await
+            }
+
+            async fn prune_events(
+                &self,
+                cutoff: chrono::DateTime<chrono::Utc>,
+                max_id: i64,
+                limit: i64,
+            ) -> Result<u64, StoreError> {
+                retention::prune_events(self.pool(), cutoff, max_id, limit).await
+            }
+
+            async fn prune_audit(
+                &self,
+                cutoff: chrono::DateTime<chrono::Utc>,
+                limit: i64,
+            ) -> Result<u64, StoreError> {
+                retention::prune_audit(self.pool(), cutoff, limit).await
+            }
+
+            async fn prune_deliveries(
+                &self,
+                cutoff: chrono::DateTime<chrono::Utc>,
+                limit: i64,
+            ) -> Result<u64, StoreError> {
+                retention::prune_deliveries(self.pool(), cutoff, limit).await
+            }
+        }
+    };
+    ($store:ty, WebhookStore) => {
+        #[::async_trait::async_trait]
+        impl WebhookStore for $store {
+            async fn create_webhook_subscription(
+                &self,
+                new: NewWebhookSubscription,
+            ) -> Result<WebhookSubscription, StoreError> {
+                webhooks::create(self.pool(), new).await
+            }
+
+            async fn list_webhook_subscriptions(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<WebhookSubscription>, StoreError> {
+                webhooks::list(self.pool(), workspace_id).await
+            }
+
+            async fn revoke_webhook_subscription(
+                &self,
+                id: WebhookSubscriptionId,
+            ) -> Result<WebhookSubscription, StoreError> {
+                webhooks::revoke(self.pool(), id).await
+            }
+
+            async fn list_enabled_webhook_subscriptions(
+                &self,
+            ) -> Result<Vec<WebhookSubscriptionWithSecret>, StoreError> {
+                let rows = webhooks::list_enabled(self.pool()).await?;
+                Ok(rows
+                    .into_iter()
+                    .map(|row| WebhookSubscriptionWithSecret {
+                        subscription: row.subscription,
+                        secret_ciphertext: row.secret_ciphertext,
+                    })
+                    .collect())
+            }
+
+            async fn list_enabled_webhook_subscriptions_for_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<WebhookSubscriptionWithSecret>, StoreError> {
+                let rows = webhooks::list_enabled_for_workspace(self.pool(), workspace_id).await?;
+                Ok(rows
+                    .into_iter()
+                    .map(|row| WebhookSubscriptionWithSecret {
+                        subscription: row.subscription,
+                        secret_ciphertext: row.secret_ciphertext,
+                    })
+                    .collect())
+            }
+
+            async fn get_webhook_subscription(
+                &self,
+                id: WebhookSubscriptionId,
+            ) -> Result<WebhookSubscriptionWithSecret, StoreError> {
+                let row = webhooks::get(self.pool(), id).await?;
+                Ok(WebhookSubscriptionWithSecret {
+                    subscription: row.subscription,
+                    secret_ciphertext: row.secret_ciphertext,
+                })
+            }
+
+            async fn enqueue_webhook_delivery(
+                &self,
+                subscription_id: WebhookSubscriptionId,
+                log_id: i64,
+                payload: &str,
+            ) -> Result<i64, StoreError> {
+                webhooks::enqueue_delivery(self.pool(), subscription_id, log_id, payload).await
+            }
+
+            async fn list_pending_webhook_deliveries(
+                &self,
+                limit: i64,
+            ) -> Result<Vec<WebhookSubscriptionDelivery>, StoreError> {
+                webhooks::list_pending_deliveries(self.pool(), limit).await
+            }
+
+            async fn mark_webhook_delivery_delivered(
+                &self,
+                delivery_id: i64,
+            ) -> Result<(), StoreError> {
+                webhooks::mark_delivered(self.pool(), delivery_id).await
+            }
+
+            async fn record_webhook_delivery_attempt(
+                &self,
+                delivery_id: i64,
+                error: &str,
+                next_attempt_at: DateTime<Utc>,
+            ) -> Result<i32, StoreError> {
+                webhooks::record_delivery_attempt(self.pool(), delivery_id, error, next_attempt_at)
+                    .await
+            }
+
+            async fn quarantine_webhook_delivery(
+                &self,
+                delivery_id: i64,
+            ) -> Result<(), StoreError> {
+                webhooks::quarantine_delivery(self.pool(), delivery_id).await
+            }
+
+            async fn list_webhook_deliveries(
+                &self,
+                workspace_id: WorkspaceId,
+                filter: crate::AutomationDeliveryFilter,
+                limit: i64,
+            ) -> Result<Vec<WebhookDelivery>, StoreError> {
+                webhooks::list_deliveries_for_workspace(self.pool(), workspace_id, filter, limit)
+                    .await
+            }
+
+            async fn get_webhook_delivery(
+                &self,
+                delivery_id: i64,
+                workspace_id: WorkspaceId,
+            ) -> Result<WebhookDelivery, StoreError> {
+                webhooks::get_delivery(self.pool(), delivery_id, workspace_id).await
+            }
+
+            async fn replay_webhook_delivery(
+                &self,
+                delivery_id: i64,
+                workspace_id: WorkspaceId,
+            ) -> Result<WebhookDelivery, StoreError> {
+                webhooks::replay_delivery(self.pool(), delivery_id, workspace_id).await
+            }
+        }
+    };
+    ($store:ty, AutomationStore) => {
+        #[::async_trait::async_trait]
+        impl AutomationStore for $store {
+            async fn enqueue_automation_delivery(
+                &self,
+                new: NewAutomationDelivery,
+            ) -> Result<i64, StoreError> {
+                automation_deliveries::enqueue(self.pool(), new).await
+            }
+
+            async fn list_pending_automation_deliveries(
+                &self,
+                limit: i64,
+            ) -> Result<Vec<AutomationDeliveryPending>, StoreError> {
+                automation_deliveries::list_pending(self.pool(), limit).await
+            }
+
+            async fn list_automation_deliveries(
+                &self,
+                workspace_id: WorkspaceId,
+                filter: crate::AutomationDeliveryFilter,
+                limit: i64,
+            ) -> Result<Vec<AutomationDelivery>, StoreError> {
+                automation_deliveries::list_for_workspace(self.pool(), workspace_id, filter, limit)
+                    .await
+            }
+
+            async fn get_automation_delivery(
+                &self,
+                delivery_id: i64,
+                workspace_id: WorkspaceId,
+            ) -> Result<AutomationDelivery, StoreError> {
+                automation_deliveries::get(self.pool(), delivery_id, workspace_id).await
+            }
+
+            async fn mark_automation_delivery_delivered(
+                &self,
+                delivery_id: i64,
+            ) -> Result<(), StoreError> {
+                automation_deliveries::mark_delivered(self.pool(), delivery_id).await
+            }
+
+            async fn record_automation_delivery_attempt(
+                &self,
+                delivery_id: i64,
+                error: &str,
+                next_attempt_at: DateTime<Utc>,
+            ) -> Result<i32, StoreError> {
+                automation_deliveries::record_attempt(
+                    self.pool(),
+                    delivery_id,
+                    error,
+                    next_attempt_at,
+                )
+                .await
+            }
+
+            async fn quarantine_automation_delivery(
+                &self,
+                delivery_id: i64,
+            ) -> Result<(), StoreError> {
+                automation_deliveries::quarantine(self.pool(), delivery_id).await
+            }
+
+            async fn replay_automation_delivery(
+                &self,
+                delivery_id: i64,
+                workspace_id: WorkspaceId,
+            ) -> Result<AutomationDelivery, StoreError> {
+                automation_deliveries::replay(self.pool(), delivery_id, workspace_id).await
+            }
+        }
+    };
+    ($store:ty, SlashCommandStore) => {
+        #[::async_trait::async_trait]
+        impl SlashCommandStore for $store {
+            async fn create_slash_command(
+                &self,
+                new: NewSlashCommand,
+            ) -> Result<SlashCommand, StoreError> {
+                slash_commands::create(self.pool(), new).await
+            }
+
+            async fn list_slash_commands(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<SlashCommand>, StoreError> {
+                slash_commands::list(self.pool(), workspace_id).await
+            }
+
+            async fn revoke_slash_command(
+                &self,
+                id: SlashCommandId,
+            ) -> Result<SlashCommand, StoreError> {
+                slash_commands::revoke(self.pool(), id).await
+            }
+
+            async fn get_slash_command(
+                &self,
+                id: SlashCommandId,
+            ) -> Result<SlashCommandWithSecret, StoreError> {
+                slash_commands::get(self.pool(), id).await
+            }
+
+            async fn get_slash_command_by_name(
+                &self,
+                workspace_id: WorkspaceId,
+                name: &str,
+            ) -> Result<SlashCommandWithSecret, StoreError> {
+                slash_commands::get_by_name(self.pool(), workspace_id, name).await
+            }
+        }
+    };
+    ($store:ty, FsmHookStore) => {
+        #[::async_trait::async_trait]
+        impl FsmHookStore for $store {
+            async fn create_fsm_hook(&self, new: NewFsmHook) -> Result<FsmHook, StoreError> {
+                fsm_hooks::create(self.pool(), new).await
+            }
+
+            async fn list_fsm_hooks(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<FsmHook>, StoreError> {
+                fsm_hooks::list(self.pool(), workspace_id).await
+            }
+
+            async fn revoke_fsm_hook(&self, id: FsmHookId) -> Result<FsmHook, StoreError> {
+                fsm_hooks::revoke(self.pool(), id).await
+            }
+
+            async fn get_fsm_hook(&self, id: FsmHookId) -> Result<FsmHookWithSecret, StoreError> {
+                fsm_hooks::get(self.pool(), id).await
+            }
+
+            async fn list_matching_fsm_hooks(
+                &self,
+                workspace_id: WorkspaceId,
+                from_state: ThreadState,
+                to_state: ThreadState,
+            ) -> Result<Vec<FsmHookWithSecret>, StoreError> {
+                fsm_hooks::list_matching(self.pool(), workspace_id, from_state, to_state).await
+            }
+        }
+    };
+    ($store:ty, A2aStore) => {
+        #[::async_trait::async_trait]
+        impl A2aStore for $store {
+            async fn upsert_a2a_push_config(
+                &self,
+                workspace_id: WorkspaceId,
+                push_url: &str,
+            ) -> Result<(), StoreError> {
+                a2a::upsert_push_config(self.pool(), workspace_id, push_url).await
+            }
+
+            async fn get_a2a_push_config(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<String>, StoreError> {
+                a2a::get_push_config(self.pool(), workspace_id).await
+            }
+
+            async fn upsert_a2a_task(&self, task: A2aTaskWrite<'_>) -> Result<(), StoreError> {
+                a2a::upsert_task(self.pool(), task).await
+            }
+
+            async fn get_a2a_task(&self, task_id: &str) -> Result<Option<A2aTaskRow>, StoreError> {
+                a2a::get_task(self.pool(), task_id).await
+            }
+
+            async fn list_a2a_tasks(
+                &self,
+                workspace_id: WorkspaceId,
+                query: A2aTaskQuery<'_>,
+            ) -> Result<Vec<A2aTaskRow>, StoreError> {
+                a2a::list_tasks(self.pool(), workspace_id, query).await
+            }
+
+            async fn count_a2a_tasks_by_context(
+                &self,
+                workspace_id: WorkspaceId,
+                query: A2aTaskQuery<'_>,
+            ) -> Result<Vec<(Option<String>, i64)>, StoreError> {
+                a2a::count_tasks_by_context(self.pool(), workspace_id, query).await
+            }
+
+            async fn get_a2a_context_thread(
+                &self,
+                workspace_id: WorkspaceId,
+                context_id: &str,
+            ) -> Result<Option<ThreadId>, StoreError> {
+                a2a::get_context_thread(self.pool(), workspace_id, context_id).await
+            }
+
+            async fn bind_a2a_context(
+                &self,
+                workspace_id: WorkspaceId,
+                context_id: &str,
+                thread_id: ThreadId,
+            ) -> Result<ThreadId, StoreError> {
+                a2a::bind_context(self.pool(), workspace_id, context_id, thread_id).await
+            }
+
+            async fn upsert_a2a_task_push_config(
+                &self,
+                config: &A2aPushConfigRow,
+            ) -> Result<(), StoreError> {
+                a2a::upsert_task_push_config(self.pool(), config).await
+            }
+
+            async fn get_a2a_task_push_config(
+                &self,
+                task_id: &str,
+                config_id: &str,
+            ) -> Result<Option<A2aPushConfigRow>, StoreError> {
+                a2a::get_task_push_config(self.pool(), task_id, config_id).await
+            }
+
+            async fn list_a2a_task_push_configs(
+                &self,
+                task_id: &str,
+            ) -> Result<Vec<A2aPushConfigRow>, StoreError> {
+                a2a::list_task_push_configs(self.pool(), task_id).await
+            }
+
+            async fn page_a2a_task_push_configs(
+                &self,
+                task_id: &str,
+                after: Option<&str>,
+                limit: i64,
+            ) -> Result<Vec<A2aPushConfigRow>, StoreError> {
+                a2a::page_task_push_configs(self.pool(), task_id, after, limit).await
+            }
+
+            async fn delete_a2a_task_push_config(
+                &self,
+                task_id: &str,
+                config_id: &str,
+            ) -> Result<bool, StoreError> {
+                a2a::delete_task_push_config(self.pool(), task_id, config_id).await
+            }
+        }
+    };
+    ($store:ty, GovernanceAuditStore) => {
+        #[::async_trait::async_trait]
+        impl GovernanceAuditStore for $store {
+            async fn create_secret_audited(
+                &self,
+                new: NewSecret,
+                audit: crate::AuditFor<Secret>,
+            ) -> Result<Secret, StoreError> {
+                governance_audited::create_secret(self.pool(), new, audit).await
+            }
+
+            async fn delete_secret_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                name: &str,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                governance_audited::delete_secret(self.pool(), workspace_id, name, audit).await
+            }
+
+            async fn scim_provision_audited(
+                &self,
+                new: NewMember,
+                external_id: Option<&str>,
+                active: bool,
+                audit: crate::AuditFor<(Member, ScimUser)>,
+            ) -> Result<(Member, ScimUser), StoreError> {
+                scim_audited::provision(self.pool(), new, external_id, active, audit).await
+            }
+
+            async fn scim_set_active_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                external_id: Option<&str>,
+                active: bool,
+                audit: NewAuditEvent,
+            ) -> Result<Option<ScimUser>, StoreError> {
+                scim_audited::set_active(
+                    self.pool(),
+                    workspace_id,
+                    member_id,
+                    external_id,
+                    active,
+                    audit,
+                )
+                .await
+            }
+
+            async fn scim_deprovision_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                scim_audited::deprovision(self.pool(), workspace_id, member_id, audit).await
+            }
+
+            async fn freeze_member_audited(
+                &self,
+                member_id: MemberId,
+                frozen_by: MemberId,
+                reason: Option<&str>,
+                audit: crate::AuditFor<(MemberFreeze, u64)>,
+            ) -> Result<(MemberFreeze, u64), StoreError> {
+                governance_audited::freeze_member(self.pool(), member_id, frozen_by, reason, audit)
+                    .await
+            }
+
+            async fn unfreeze_member_audited(
+                &self,
+                member_id: MemberId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                governance_audited::unfreeze_member(self.pool(), member_id, audit).await
+            }
+
+            async fn add_channel_member_audited(
+                &self,
+                channel_id: ChannelId,
+                member_id: MemberId,
+                role: ChannelMemberRole,
+                audit: crate::AuditFor<ChannelMember>,
+            ) -> Result<ChannelMember, StoreError> {
+                governance_audited::add_channel_member(
+                    self.pool(),
+                    channel_id,
+                    member_id,
+                    role,
+                    audit,
+                )
+                .await
+            }
+
+            async fn remove_channel_member_audited(
+                &self,
+                channel_id: ChannelId,
+                member_id: MemberId,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                governance_audited::remove_channel_member(self.pool(), channel_id, member_id, audit)
+                    .await
+            }
+
+            async fn set_review_requirement_audited(
+                &self,
+                thread_id: ThreadId,
+                required_count: i64,
+                allow_lower: bool,
+                audit: crate::AuditFor<(i64, ThreadReviewRequirement)>,
+            ) -> Result<(i64, ThreadReviewRequirement), StoreError> {
+                governance_audited::set_review_requirement(
+                    self.pool(),
+                    thread_id,
+                    required_count,
+                    allow_lower,
+                    audit,
+                )
+                .await
+            }
+
+            async fn clear_review_requirement_audited(
+                &self,
+                thread_id: ThreadId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                governance_audited::clear_review_requirement(self.pool(), thread_id, audit).await
+            }
+
+            async fn remove_reviewer_audited(
+                &self,
+                thread_id: ThreadId,
+                member_id: MemberId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                governance_audited::remove_reviewer(self.pool(), thread_id, member_id, audit).await
+            }
+
+            async fn clear_land_gate_audited(
+                &self,
+                thread_id: ThreadId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                governance_audited::clear_land_gate(self.pool(), thread_id, audit).await
+            }
+
+            async fn grant_governance_skill_audited(
+                &self,
+                member_id: MemberId,
+                skill: &str,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                governance_audited::grant_governance_skill(self.pool(), member_id, skill, audit)
+                    .await
+            }
+
+            async fn allow_egress_target_audited(
+                &self,
+                new: NewEgressTarget,
+                audit: crate::AuditFor<AllowedEgressTarget>,
+            ) -> Result<AllowedEgressTarget, StoreError> {
+                governance_audited::allow_egress_target(self.pool(), new, audit).await
+            }
+
+            async fn revoke_egress_target_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                id: EgressTargetId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                governance_audited::revoke_egress_target(self.pool(), workspace_id, id, audit).await
+            }
+
+            async fn revoke_app_installation_audited(
+                &self,
+                id: AppInstallationId,
+                audit: crate::AuditFor<AppInstallation>,
+            ) -> Result<AppInstallation, StoreError> {
+                governance_audited::revoke_app_installation(self.pool(), id, audit).await
+            }
+        }
+    };
+}

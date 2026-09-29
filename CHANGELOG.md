@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### One store delegation list
+
+- **Changed:** the Postgres and SQLite `Store` impls are expanded from one
+  `store_delegations!` list (`crates/maidan-store/src/delegate.rs`). A method
+  added on one backend and not the other no longer compiles. Behavior is
+  unchanged. `write_lsn` stays written out by hand: only Postgres has a WAL
+  position. The dialect merge (F-48 tiers 2 and 3) is not this change.
+
 ### `/ui` audit: accessibility, hostile data, a resilient Live link and a phone layout
 
 - **Fixed:** muted text and avatar initials meet WCAG AA contrast; idle
