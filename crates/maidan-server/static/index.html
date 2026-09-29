@@ -1240,12 +1240,15 @@
         return false;
       }
 
+      let threadLoadGen = 0;
       async function loadThreads(quiet = false) {
         const list = document.getElementById("thread-list");
-        // A response for a channel that is no longer selected is dropped, so
-        // a slow reply for A never paints over B.
+        // Only the newest load paints: a slow reply for channel A never paints
+        // over B, and an older reply for the same channel never replaces a
+        // newer one.
         const channelId = selectedChannelId;
-        const stale = () => selectedChannelId !== channelId;
+        const gen = ++threadLoadGen;
+        const stale = () => selectedChannelId !== channelId || gen !== threadLoadGen;
         if (!channelId) {
           renderState(list, "Select a channel to see its threads.");
           return;
@@ -1253,16 +1256,29 @@
         if (!quiet) setLoading(list, "Loading threads…");
         persist();
         try {
-          const res = await fetch(
-            uiReadPath(`/channels/${channelId}/threads`),
-            { headers: headers(), credentials: "include" }
-          );
-          if (!res.ok) {
-            const message = await responseError(res);
-            if (!stale()) renderState(list, message, "err");
-            return;
+          // The endpoint pages by thread id; keep asking until a short page, so
+          // a channel with more threads than one page still gets every card.
+          const threads = [];
+          const pageSize = 500;
+          let cursor = null;
+          for (let page = 0; page < 40; page++) {
+            const q = new URLSearchParams({ limit: String(pageSize) });
+            if (cursor) q.set("cursor", cursor);
+            const res = await fetch(
+              uiReadPath(`/channels/${channelId}/threads?${q}`),
+              { headers: headers(), credentials: "include" }
+            );
+            if (!res.ok) {
+              const message = await responseError(res);
+              if (!stale()) renderState(list, message, "err");
+              return;
+            }
+            const batch = await res.json();
+            if (stale()) return;
+            threads.push(...batch);
+            if (batch.length < pageSize) break;
+            cursor = batch[batch.length - 1].id;
           }
-          const threads = await res.json();
           const gates = await fetchPendingGatesByThread();
           if (stale()) return;
           list.innerHTML = "";

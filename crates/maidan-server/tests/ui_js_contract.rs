@@ -601,12 +601,31 @@ fn ui_js_thread_header_ignores_stale_overlapping_renders() {
 fn ui_js_drops_thread_responses_for_a_channel_no_longer_selected() {
     let s = script(HTML);
     assert!(
-        s.contains("const stale = () => selectedChannelId !== channelId;")
+        s.contains(
+            "const stale = () => selectedChannelId !== channelId || gen !== threadLoadGen;"
+        )
             && s.contains("if (stale()) return;\n          list.innerHTML = \"\";\n          renderBoard(threads, gates);"),
         "loadThreads renders only for the channel it was asked for"
     );
     assert!(
         s.contains("li[data-id=\"${CSS.escape(remembered)}\"]"),
         "the remembered channel id is escaped before it goes into a selector"
+    );
+}
+
+#[test]
+fn ui_js_loads_every_page_of_a_channel_and_only_the_newest_load_paints() {
+    let s = script(HTML);
+    let start = s.find("async function loadThreads").expect("loadThreads");
+    let body = &s[start..start + 3000];
+    assert!(
+        body.contains("const gen = ++threadLoadGen;"),
+        "each load takes a generation, so an older load for the same channel is dropped"
+    );
+    assert!(
+        body.contains("q.set(\"cursor\", cursor)")
+            && body.contains("if (batch.length < pageSize) break;")
+            && body.contains("cursor = batch[batch.length - 1].id;"),
+        "the board follows the keyset cursor until a short page instead of stopping at one page"
     );
 }
