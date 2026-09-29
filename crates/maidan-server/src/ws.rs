@@ -465,7 +465,7 @@ async fn send_subscribe_ack(
     let payload = subscribe_ack_payload(
         &token,
         after_id,
-        crate::room_lsn::current(state.store.as_ref()).await,
+        crate::room_lsn::current_for_scope(state.store.as_ref(), filter.workspace_id).await,
     )
     .ok_or_else(|| "subscribe_ack serialization failed".to_string())?;
     text_tx

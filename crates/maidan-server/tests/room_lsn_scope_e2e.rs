@@ -198,3 +198,76 @@ async fn an_unauthenticated_response_carries_no_room_head() {
         "a rejected request has no room and must not be told any head"
     );
 }
+
+/// The same number rides outbound webhook and automation POSTs and the
+/// `subscribe_ack` frame. Those callers used the instance head, so a webhook's
+/// third-party receiver learned how many events every tenant had written. They
+/// now report the subscription's own room; a subscriber with no one room (a
+/// bypass watching every workspace) gets none.
+#[tokio::test]
+async fn outbound_stamps_and_acks_report_the_room_not_the_instance() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
+
+    let seed = |name: &'static str, threads: usize| {
+        let store = store.clone();
+        async move {
+            let ws = store
+                .create_workspace(NewWorkspace { name: name.into() })
+                .await
+                .unwrap();
+            let channel = store
+                .create_channel(NewChannel {
+                    workspace_id: ws.id,
+                    name: "c".into(),
+                    topic: None,
+                    private: false,
+                })
+                .await
+                .unwrap();
+            for _ in 0..threads {
+                store
+                    .create_thread_with_event(NewThread {
+                        channel_id: channel.id,
+                        parent_thread_id: None,
+                        title: None,
+                    })
+                    .await
+                    .unwrap();
+            }
+            ws.id
+        }
+    };
+    let quiet = seed("quiet", 1).await;
+    seed("busy", 5).await;
+
+    let instance = store.max_event_id().await.unwrap();
+    let room = maidan_server::room_lsn::current_for_scope(store.as_ref(), Some(quiet))
+        .await
+        .expect("a room has a head");
+    let quiet_head = store
+        .workspace_event_head(quiet)
+        .await
+        .unwrap()
+        .expect("quiet has events")
+        .id;
+    assert_eq!(room, quiet_head);
+    assert!(
+        room < instance,
+        "the busy tenant's writes leaked into the quiet room's head"
+    );
+    assert_eq!(
+        maidan_server::room_lsn::current_for_scope(store.as_ref(), None).await,
+        None,
+        "no one room, no head"
+    );
+}

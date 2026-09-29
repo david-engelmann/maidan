@@ -1189,8 +1189,9 @@ access.
 
 Deliveries are HMAC-signed (`X-Maidan-Signature`). The JSON body also carries
 `$type` (`maidan.event.{kind}/1`) on the envelope and the nested `event`.
-Each POST stamps `Maidan-Room-LSN` with the current event-log high-water
-(decimal; not a WAL token). Slack/GitHub API egress is not stamped.
+Each POST stamps `Maidan-Room-LSN` with the subscribing workspace's event-log
+high-water (decimal; not a WAL token), never the instance's, so a receiver
+learns nothing about other tenants' volume. Slack/GitHub API egress is not stamped.
 Worker polls the outbox; see [Production.md](Production.md) for env tuning.
 
 ### Mention webhook (dedicated route)
