@@ -166,6 +166,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `String` does not compile, and clippy refuses axum's own routing functions.
   This replaces a source scan of handler signatures.
 
+### Delivery retention covers every delivery table
+
+- **Fixed:** `MAIDAN_RETENTION_DELIVERIES_DAYS` pruned only webhook and
+  automation deliveries. Published transactional-outbox rows, delivered egress,
+  delivered mail and dead-lettered agent runs grew forever; the outbox alone
+  gains a row per event. They are pruned now. Pending rows are still never
+  pruned, and egress and mail dead letters stay until an operator requeues
+  them, since an alert fires while they exist. A legal hold exempts a
+  workspace's egress, mail and agent runs, as it does its events.
+- **Docs:** Production.md has a Retention section for all five knobs.
+
 ### TLA+ specs
 
 - **Added:** TLA+ specs of the claim state machine and of the hash-chained

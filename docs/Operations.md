@@ -77,7 +77,7 @@ MCP twins: `freeze_member` / `unfreeze_member` / `list_frozen_members` (also
 | Opt-in workers: `MAIDAN_SCHEDULER_TICK_SECS`, `MAIDAN_WAIT_SWEEP_TICK_SECS`, `MAIDAN_DIGEST_TICK_SECS` | Unset ⇒ the worker never starts. Unset one to stop that background activity (scheduled tasks / wait escalations / digests). |
 | Mail worker: `MAIDAN_MAIL_WORKER_TICK_SECS` | Runs whenever SMTP is configured; the tick defaults to 5 s. |
 | Retention: `MAIDAN_RETENTION_SWEEP_SECS` | The sweeper starts when any `MAIDAN_RETENTION_*_DAYS` is set; the sweep interval defaults to 86400 s. |
-| `MAIDAN_RETENTION_*_DAYS` (events/audit/deliveries) | With the retention sweeper on, per-table age cutoffs; the event log is floored at the min at-least-once cursor so a lagging consumer never loses an undelivered event. |
+| `MAIDAN_RETENTION_*_DAYS` (events/audit/deliveries) | With the retention sweeper on, per-table age cutoffs; the event log is floored at the min at-least-once cursor so a lagging consumer never loses an undelivered event. Deliveries covers every finished delivery row but never a pending one or an egress/mail dead letter. See [Production — Retention](Production.md#retention). |
 
 Federation peer secrets and the secret store share the `FEDERATION_ENCRYPTION_KEY`
 keyring; rotate with `FEDERATION_DECRYPT_KEYS`. See

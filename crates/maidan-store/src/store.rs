@@ -2649,9 +2649,12 @@ pub trait DeliveryCursorStore: Send + Sync {
         limit: i64,
     ) -> Result<u64, StoreError>;
 
-    /// Delete up to `limit` oldest **terminal** (delivered or quarantined)
-    /// webhook + automation delivery rows created before `cutoff`. In-flight
-    /// (pending/retrying) rows are never pruned regardless of age.
+    /// Delete up to `limit` of the oldest **finished** rows older than `cutoff`
+    /// from each delivery table: delivered or quarantined webhook and
+    /// automation deliveries, published outbox rows, delivered egress and
+    /// mail, and dead-lettered agent runs. Pending rows are never pruned, nor
+    /// are egress and mail dead letters (they wait for an operator), nor a
+    /// held workspace's egress, mail or agent runs.
     async fn prune_deliveries(
         &self,
         cutoff: chrono::DateTime<chrono::Utc>,

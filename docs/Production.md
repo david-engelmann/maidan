@@ -948,6 +948,27 @@ versions of messages withdrawn while held. That lift's audit row records how
 many of each (`metadata.disposed`). Without a hold, a withdrawal takes the
 message's earlier versions with it.
 
+## Retention
+
+Nothing is pruned unless you set a retention. Each knob is an age in days; the
+sweeper starts when any is set, runs every `MAIDAN_RETENTION_SWEEP_SECS`
+(default 86400) and deletes in batches of `MAIDAN_RETENTION_BATCH` (default
+5000), so a first sweep over a long-unpruned table does not lock it. Each sweep
+counts what it deleted in `maidan_retention_pruned_total{table}`.
+
+| Variable | What it prunes | What it never prunes |
+|---|---|---|
+| `MAIDAN_RETENTION_EVENTS_DAYS` | Event-log rows older than the cutoff | Anything above the lowest at-least-once delivery cursor still advancing, so a lagging consumer loses nothing undelivered; a held workspace's events |
+| `MAIDAN_RETENTION_AUDIT_DAYS` | Audit rows older than the cutoff | Anything, while any legal hold stands (audit rows are not workspace-tagged) |
+| `MAIDAN_RETENTION_DELIVERIES_DAYS` | Finished delivery rows: delivered or quarantined webhook and automation deliveries, published transactional-outbox rows, delivered projector and result egress, delivered notification mail, and dead-lettered agent runs | Pending or retrying rows, whatever their age; egress and mail **dead letters**, which leave when an operator requeues them (`MaidanEgressDeadLettered` and `MaidanMailDeadLettered` fire while any exist); a held workspace's egress, mail and agent runs |
+
+A delivered egress row goes with its dedup key, so the same source event
+could be queued again only if the router replayed an event older than the
+cutoff. It does not: it starts from the log head and replays only across a
+subscriber lag. The external comment or message a result delivery
+edits in place is tracked on `maidan_result_deliveries`, which retention does
+not touch.
+
 ## Event-log hash chain
 
 Every stored event is accompanied by `{id, lsn, prev_hash, content_hash}`
