@@ -98,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
     // A misspelt variable would otherwise configure nothing and say nothing.
     let unknown_env = maidan_server::env_registry::unknown_vars(
         std::env::vars_os().map(|(name, _)| name.to_string_lossy().into_owned()),
+        std::env::var_os("KUBERNETES_SERVICE_HOST").is_some(),
     );
     let allow_unknown_env =
         std::env::var(maidan_server::env_registry::ALLOW_UNKNOWN_ENV).as_deref() == Ok("1");

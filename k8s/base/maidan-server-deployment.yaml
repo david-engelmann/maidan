@@ -23,6 +23,10 @@ spec:
         app.kubernetes.io/name: maidan
         app.kubernetes.io/component: server
     spec:
+      # Kubernetes would otherwise inject MAIDAN_<SERVICE>_PORT and friends for
+      # every Service named maidan-*, which the server would read as unknown
+      # configuration.
+      enableServiceLinks: false
       # The server drains for MAIDAN_SHUTDOWN_DRAIN_SECS (configmap) after
       # SIGTERM; this covers that plus in-flight requests.
       terminationGracePeriodSeconds: 45

@@ -191,8 +191,11 @@ pub struct UnknownVar {
     pub suggestion: Option<&'static str>,
 }
 
-/// The `MAIDAN_*` names among `names` that are on neither list.
-pub fn unknown_vars<I>(names: I) -> Vec<UnknownVar>
+/// The `MAIDAN_*` names among `names` that are on neither list. `in_kubernetes`
+/// tolerates the service links Kubernetes injects for every Service in the
+/// namespace: a Service named `maidan-…` becomes `MAIDAN_…_SERVICE_HOST`,
+/// `MAIDAN_…_PORT_8080_TCP` and the rest in every pod.
+pub fn unknown_vars<I>(names: I, in_kubernetes: bool) -> Vec<UnknownVar>
 where
     I: IntoIterator<Item = String>,
 {
@@ -200,6 +203,7 @@ where
         .into_iter()
         .filter(|name| name.starts_with("MAIDAN_"))
         .filter(|name| !is_known(name))
+        .filter(|name| !(in_kubernetes && is_service_link(name)))
         .map(|name| {
             let suggestion = suggest(&name);
             UnknownVar { name, suggestion }
@@ -208,6 +212,32 @@ where
     unknown.sort_by(|a, b| a.name.cmp(&b.name));
     unknown.dedup_by(|a, b| a.name == b.name);
     unknown
+}
+
+/// The names Kubernetes generates for a Service `S` with a port named `N`:
+/// `S_SERVICE_HOST`, `S_SERVICE_PORT`, `S_SERVICE_PORT_N`, `S_PORT`,
+/// `S_PORT_<port>_<proto>` and that followed by `_ADDR`, `_PORT` or `_PROTO`.
+fn is_service_link(name: &str) -> bool {
+    if name.ends_with("_SERVICE_HOST") || name.ends_with("_SERVICE_PORT") {
+        return true;
+    }
+    if name.contains("_SERVICE_PORT_") {
+        return true;
+    }
+    let parts: Vec<&str> = name.split('_').collect();
+    let port_at = |i: usize| {
+        parts.get(i) == Some(&"PORT")
+            && parts.get(i + 1).is_some_and(|p| p.parse::<u16>().is_ok())
+            && parts
+                .get(i + 2)
+                .is_some_and(|p| matches!(*p, "TCP" | "UDP" | "SCTP"))
+    };
+    match parts.len() {
+        n if n >= 2 && parts[n - 1] == "PORT" => true,
+        n if n >= 4 && port_at(n - 3) => true,
+        n if n >= 5 && matches!(parts[n - 1], "ADDR" | "PORT" | "PROTO") && port_at(n - 4) => true,
+        _ => false,
+    }
 }
 
 fn is_known(name: &str) -> bool {
@@ -266,7 +296,7 @@ mod tests {
 
     #[test]
     fn a_misspelt_server_variable_is_unknown_and_names_what_was_meant() {
-        let unknown = unknown_vars(names(&["MAIDAN_RATE_LIMT_MAX", "MAIDAN_BIND"]));
+        let unknown = unknown_vars(names(&["MAIDAN_RATE_LIMT_MAX", "MAIDAN_BIND"]), false);
         assert_eq!(
             unknown,
             vec![UnknownVar {
@@ -282,20 +312,37 @@ mod tests {
 
     #[test]
     fn known_tolerated_and_foreign_variables_pass() {
-        let unknown = unknown_vars(names(&[
-            "MAIDAN_CONTENT_KEK",
-            "MAIDAN_TOKEN",
-            "DATABASE_URL",
-            "PATH",
-        ]));
+        let unknown = unknown_vars(
+            names(&["MAIDAN_CONTENT_KEK", "MAIDAN_TOKEN", "DATABASE_URL", "PATH"]),
+            false,
+        );
         assert!(unknown.is_empty(), "{unknown:?}");
     }
 
     #[test]
     fn a_name_far_from_every_server_variable_gets_no_suggestion() {
-        let unknown = unknown_vars(names(&["MAIDAN_FROBNICATE_EVERYTHING"]));
+        let unknown = unknown_vars(names(&["MAIDAN_FROBNICATE_EVERYTHING"]), false);
         assert_eq!(unknown.len(), 1);
         assert_eq!(unknown[0].suggestion, None);
+    }
+
+    #[test]
+    fn kubernetes_service_links_pass_in_a_pod_and_only_there() {
+        // What a Service `maidan-maidan` with a port named `http` injects.
+        let links = names(&[
+            "MAIDAN_MAIDAN_SERVICE_HOST",
+            "MAIDAN_MAIDAN_SERVICE_PORT",
+            "MAIDAN_MAIDAN_SERVICE_PORT_HTTP",
+            "MAIDAN_MAIDAN_PORT",
+            "MAIDAN_MAIDAN_PORT_8080_TCP",
+            "MAIDAN_MAIDAN_PORT_8080_TCP_ADDR",
+            "MAIDAN_MAIDAN_PORT_8080_TCP_PORT",
+            "MAIDAN_MAIDAN_PORT_8080_TCP_PROTO",
+        ]);
+        assert!(unknown_vars(links.clone(), true).is_empty());
+        assert_eq!(unknown_vars(links, false).len(), 8);
+        let typo = unknown_vars(names(&["MAIDAN_RATE_LIMT_MAX"]), true);
+        assert_eq!(typo.len(), 1, "a typo is still a typo in a pod");
     }
 
     #[test]

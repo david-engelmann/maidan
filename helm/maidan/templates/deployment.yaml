@@ -19,6 +19,10 @@ spec:
       labels:
         {{- include "maidan.selectorLabels" . | nindent 8 }}
     spec:
+      # Kubernetes would otherwise inject MAIDAN_<SERVICE>_PORT and friends for
+      # every Service named maidan-*, which the server would read as unknown
+      # configuration.
+      enableServiceLinks: false
       # Covers the server's drain (MAIDAN_SHUTDOWN_DRAIN_SECS) plus in-flight
       # requests; past it the kubelet sends SIGKILL.
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}

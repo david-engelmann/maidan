@@ -15,7 +15,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   misspelt variable configured nothing and the default stayed in place without
   a word. Names used by the CLI, SDKs, scripts and compose files (`MAIDAN_URL`,
   `MAIDAN_TOKEN`, `MAIDAN_HOST_PORT`, …) are tolerated.
-  `MAIDAN_ALLOW_UNKNOWN_ENV=1` starts anyway and logs the unknown names.
+  `MAIDAN_ALLOW_UNKNOWN_ENV=1` starts anyway and logs the unknown names. In a
+  Kubernetes pod the service-link variables Kubernetes injects for a Service
+  named `maidan-…` are tolerated, and the Helm chart and `k8s/` now set
+  `enableServiceLinks: false`.
   `env_registry_contract` fails when the code, a deploy file, a script or a live
   doc names a variable that is not registered, or when a registered one is dead.
 
