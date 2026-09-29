@@ -70,7 +70,7 @@ readme_clones="$(rg '^\s*git clone .*github\.com/david-engelmann/maidan' README.
 # Allow only the default-branch form, so no clone option (--branch, -b,
 # --revision, …) can select a tag.
 while IFS= read -r clone; do
-  [[ "$clone" =~ ^[[:space:]]*git\ clone(\ --depth[\ =]1)?\ https://github\.com/david-engelmann/maidan(\.git)?(\ \&\&\ .*)?[[:space:]]*$ ]] || \
+  [[ "$clone" =~ ^[[:space:]]*git\ clone(\ --depth[\ =]1)?\ https://github\.com/david-engelmann/maidan(\.git)?(\ \&\&\ cd\ maidan)?[[:space:]]*$ ]] || \
     die "the README quickstart must clone main with no branch, tag or revision option: $clone"
 done <<<"$readme_clones"
 git rev-parse -q --verify "refs/tags/v$quickstart_arg" >/dev/null || \
