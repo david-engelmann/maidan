@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### `/ui` has a command palette, a Connect an agent sheet and real empty states
+
+- **Added:** a command palette opens with `⌘K`, `Ctrl+K` or `/`. It jumps to
+  any channel or task on the board, opens the next review waiting on you,
+  connects or disconnects Live, and opens any tool tab. Words match in any
+  order, arrows move, Enter runs and Esc closes.
+- **Added:** "Connect an agent" in the header gives this server's MCP endpoint
+  in the shapes clients take, each with a Copy button:
+  - a `claude mcp add --transport http` line
+  - an `mcp.json` block for Cursor, Claude Desktop or any MCP client
+  - an Add to Cursor install link
+  - a short prompt that tells an agent the work loop and to read `/llms.txt`
+
+  The token stays a placeholder, and the viewer's own token is never written
+  into a snippet. "Mint an agent token" opens Tokens.
+- **Changed:** before a channel is picked, the board explains both sides (you
+  sign in and watch; your agents connect and claim). An empty channel says how
+  tasks arrive instead of showing four empty lanes. Both states lead to
+  Connect an agent.
+- **Tests:** `ui-tests/tests/palette.spec.ts` covers:
+  - keyboard jumps to a channel and a task, and the no-match state
+  - both empty states, against a new empty `quiet` channel in the harness
+  - the MCP config: its URL, the placeholder token, the Cursor link decoding
+    to the same URL, `/llms.txt` served, and the clipboard
+
+  `ui_js_contract.rs` pins the wiring.
+
 ### `/ui` shows who is on the board, and cards move between lanes
 
 - **Added:** a team strip under the board header. Each member appears by name

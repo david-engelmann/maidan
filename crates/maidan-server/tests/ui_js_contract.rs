@@ -767,3 +767,45 @@ fn ui_js_shows_the_team_and_moves_cards_between_lanes() {
         "nothing moves or pulses under prefers-reduced-motion"
     );
 }
+
+#[test]
+fn ui_js_has_a_command_palette_and_connect_an_agent() {
+    let html = HTML;
+    let s = script(HTML);
+    assert!(
+        html.contains("<dialog id=\"palette\"") && s.contains("e.key.toLowerCase() === \"k\""),
+        "Cmd/Ctrl+K opens a command palette"
+    );
+    assert!(
+        s.contains("kind: \"Channel\"")
+            && s.contains("kind: \"Task\"")
+            && s.contains("kind: \"Tool\""),
+        "the palette reaches channels, tasks and every tool tab"
+    );
+    assert!(
+        html.contains("<dialog id=\"connect-dialog\"")
+            && s.contains("`${base()}/mcp/streamable`")
+            && s.contains("Bearer REPLACE_WITH_MAIDAN_TOKEN")
+            && s.contains("claude mcp add --transport http maidan")
+            && s.contains("cursor://anysphere.cursor-deeplink/mcp/install?name=maidan&config="),
+        "Connect an agent builds MCP config for this server with a placeholder token"
+    );
+    assert!(
+        !s.contains("Bearer ${token()}\" } }"),
+        "the viewer token is never written into an agent snippet"
+    );
+    assert!(
+        html.contains("id=\"board-onboard\"") && s.contains("function emptyChannelHelp("),
+        "the empty board and an empty channel explain how work arrives"
+    );
+}
+
+#[test]
+fn ui_js_palette_opens_the_next_review_by_its_summary() {
+    let s = script(HTML);
+    assert!(
+        s.contains("(th && th.title) || next.summary || \"untitled\"")
+            && s.contains("selectThread(next.thread_id, title);"),
+        "the next-review action opens the thread and names it by the inbox summary"
+    );
+}

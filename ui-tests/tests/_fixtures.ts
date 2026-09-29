@@ -35,6 +35,8 @@ export interface Fixtures {
   floor_held_thread_id: string;
   floor_glide_thread_id: string;
   floor_jump_thread_id: string;
+  /** The `quiet` channel: no tasks, for the onboarding state. */
+  quiet_channel_id: string;
 }
 
 export function fixtures(): Fixtures {

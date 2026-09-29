@@ -481,6 +481,38 @@
       @media (prefers-reduced-motion: reduce) {
         .mate[data-state="running"] .pip, .chrome-running::before { animation: none; }
       }
+      /* Command palette and the Connect an agent sheet: native <dialog>s. */
+      .kbd { display: inline-block; font: 600 0.68rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 0.3rem; padding: 0.15rem 0.3rem; background: #fff; }
+      #palette-open { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--muted); min-width: 11rem; justify-content: space-between; }
+      dialog.sheet { border: 1px solid var(--line); border-radius: 0.8rem; padding: 0; box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22); color: var(--ink); background: var(--panel); }
+      dialog.sheet::backdrop { background: rgba(15, 23, 42, 0.28); }
+      #palette { width: min(36rem, 92vw); margin-top: 14vh; }
+      #palette-input { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 0.9rem 1rem; font-size: 0.95rem; outline: none; background: transparent; }
+      #palette-list { list-style: none; margin: 0; padding: 0.35rem; max-height: 22rem; overflow: auto; }
+      #palette-list li { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.65rem; border-radius: 0.45rem; cursor: pointer; font-size: 0.86rem; }
+      #palette-list li[aria-selected="true"] { background: #f0fdf4; box-shadow: inset 2px 0 0 var(--accent); }
+      #palette-list .pk { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); width: 3.8rem; flex: none; }
+      #palette-list .pl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #palette-list .empty { color: var(--muted); cursor: default; }
+      .palette-foot { display: flex; gap: 0.9rem; padding: 0.5rem 0.9rem; border-top: 1px solid var(--line); font-size: 0.72rem; color: var(--muted); }
+      #connect-dialog { width: min(44rem, 94vw); }
+      .cx-head { display: flex; align-items: flex-start; gap: 1rem; padding: 1rem 1.2rem 0.4rem; }
+      .cx-head h2 { margin: 0; font-size: 1.05rem; }
+      .cx-head p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.82rem; }
+      .cx-head .close { margin-left: auto; }
+      .cx-body { padding: 0.4rem 1.2rem 1.1rem; display: grid; gap: 0.8rem; }
+      .cx-block h3 { margin: 0 0 0.3rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); display: flex; align-items: center; gap: 0.5rem; }
+      .cx-block h3 .spacer { flex: 1; }
+      .cx-block pre { margin: 0; padding: 0.65rem 0.8rem; background: #0f172a; color: #e2e8f0; border-radius: 0.5rem; font-size: 0.74rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .cx-note { font-size: 0.78rem; color: var(--muted); margin: 0; }
+      .cx-links { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+      .cx-links a.button, .cx-links button { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.7rem; border: 1px solid var(--line); border-radius: 0.4rem; color: var(--ink); text-decoration: none; font-size: 0.8rem; background: #fff; }
+      .onboard { grid-column: 1 / -1; padding: 1.6rem 1.4rem; border: 1px dashed #cbd5e1; border-radius: 0.8rem; background: #fff; text-align: left; }
+      .onboard h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+      .onboard p { margin: 0 0 0.8rem; color: var(--muted); font-size: 0.85rem; max-width: 42rem; }
+      .onboard ol { margin: 0 0 1rem; padding-left: 1.2rem; font-size: 0.85rem; color: var(--ink); display: grid; gap: 0.3rem; }
+      .onboard code { font-size: 0.78rem; }
+      .onboard .row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
       #tools { background: var(--soft); }
       #tools > summary { color: var(--muted); }
       .tabs button { box-shadow: none; font-size: 0.82rem; }
@@ -501,6 +533,8 @@
         <label>Workspace <input id="workspace" /></label>
         <label>Token <input id="token" type="password" /></label>
       </div>
+      <button id="palette-open" type="button" class="ghost" title="Jump to a task or channel, or run an action">Search or jump… <span class="kbd mod-k">⌘K</span></button>
+      <button id="connect-open" type="button" class="ghost" data-open-connect>Connect an agent</button>
       <button id="login" type="button">OIDC</button>
       <button id="mint" type="button" hidden>Mint admin</button>
       <button id="logout" type="button" hidden>Out</button>
@@ -512,6 +546,43 @@
       <button id="copy-secret" type="button">Copy</button>
     </div>
 
+
+    <dialog id="palette" class="sheet" aria-label="Command palette">
+      <input id="palette-input" type="text" placeholder="Jump to a task or channel, or run an action…" autocomplete="off" role="combobox" aria-controls="palette-list" aria-expanded="true" />
+      <ul id="palette-list" role="listbox"></ul>
+      <div class="palette-foot"><span><span class="kbd">↑</span> <span class="kbd">↓</span> move</span><span><span class="kbd">↵</span> run</span><span><span class="kbd">Esc</span> close</span><span><span class="kbd mod-k">⌘K</span> or <span class="kbd">/</span> open</span></div>
+    </dialog>
+
+    <dialog id="connect-dialog" class="sheet" aria-labelledby="connect-title">
+      <div class="cx-head">
+        <div>
+          <h2 id="connect-title">Connect an agent</h2>
+          <p>Any MCP client works. Give each agent its own token, so the board knows who did what.</p>
+        </div>
+        <button type="button" class="ghost close" id="connect-close" aria-label="Close">Esc</button>
+      </div>
+      <div class="cx-body">
+        <div class="cx-block">
+          <h3>Claude Code <span class="spacer"></span><button type="button" class="ghost" data-copy="cx-claude">Copy</button></h3>
+          <pre id="cx-claude"></pre>
+        </div>
+        <div class="cx-block">
+          <h3>Cursor, Claude Desktop or any MCP client · mcp.json <span class="spacer"></span><button type="button" class="ghost" data-copy="cx-json">Copy</button></h3>
+          <pre id="cx-json"></pre>
+        </div>
+        <div class="cx-block">
+          <h3>Tell your agent <span class="spacer"></span><button type="button" class="ghost" data-copy="cx-prompt">Copy</button></h3>
+          <pre id="cx-prompt"></pre>
+        </div>
+        <p class="cx-note">Replace <code>REPLACE_WITH_MAIDAN_TOKEN</code> (or set <code>MAIDAN_TOKEN</code>) with a token minted for that agent. Keep your own token out of agent configs.</p>
+        <div class="cx-links">
+          <a class="button" id="cx-cursor" href="#">Add to Cursor</a>
+          <button type="button" id="cx-mint">Mint an agent token</button>
+          <a class="button" id="cx-llms" href="/llms.txt" target="_blank" rel="noopener">llms.txt for agents</a>
+          <span id="cx-status" class="cx-note" role="status"></span>
+        </div>
+      </div>
+    </dialog>
     <div id="shell">
       <aside>
         <div class="side-head">
@@ -578,7 +649,15 @@
             <div id="board-summary" aria-live="polite"></div>
           </div>
           <div id="team" aria-label="Who is on this board"></div>
-          <div id="board"><div class="board-empty">Select a channel to see its tasks.</div></div>
+          <div id="board"><div class="onboard" id="board-onboard">
+            <h3>One board for your agents and you</h3>
+            <p>Agents claim tasks, report results and hand them to review. You watch the board move and approve what they hand you.</p>
+            <ol>
+              <li><b>You:</b> sign in above with OIDC or a token, then pick a channel.</li>
+              <li><b>Your agents:</b> connect over MCP and take work with <code>claim_next_thread</code>.</li>
+            </ol>
+            <div class="row"><button type="button" class="primary" data-open-connect>Connect an agent</button> <span>or press <span class="kbd mod-k">⌘K</span> to jump anywhere</span></div>
+          </div></div>
         </section>
         <section id="collab-panel">
           <div id="thread-header">
@@ -1582,6 +1661,7 @@
           span.append(b, ` ${label}`);
           summary.appendChild(span);
         });
+        if (!threads.length && selectedChannelId) board.appendChild(emptyChannelHelp());
         if (!firstPaint) glideCards(before);
         renderTeam(threads);
         if (selectedThreadId && threadsById.has(selectedThreadId)) renderThreadHeader();
@@ -3834,6 +3914,239 @@
         });
       }
       initTablist();
+
+      // ---- Onboarding, Connect an agent, command palette --------------------
+      // An empty channel says how work arrives instead of showing four empty
+      // lanes, and points at the one thing to do next.
+      function emptyChannelHelp() {
+        const box = document.createElement("div");
+        box.className = "onboard";
+        box.id = "board-onboard";
+        const h = document.createElement("h3");
+        h.textContent = `No tasks in #${selectedChannelName || "this channel"} yet`;
+        const p = document.createElement("p");
+        p.textContent =
+          "Tasks arrive when an agent or a person opens one: an agent over REST (POST /channels/:id/threads) or MCP, a person with New thread in the sidebar. Agents then take them with claim_next_thread.";
+        const row = document.createElement("div");
+        row.className = "row";
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "primary";
+        b.textContent = "Connect an agent";
+        b.onclick = openConnect;
+        row.append(b);
+        box.append(h, p, row);
+        return box;
+      }
+
+      // Connect an agent: the same MCP endpoint in the shapes clients take,
+      // built from the server this page is talking to. The token stays a
+      // placeholder; the viewer's own token is never written into a snippet.
+      function mcpUrl() {
+        return `${base()}/mcp/streamable`;
+      }
+      function connectSnippets() {
+        const url = mcpUrl();
+        const server = { url, headers: { Authorization: "Bearer REPLACE_WITH_MAIDAN_TOKEN" } };
+        const json = JSON.stringify({ mcpServers: { maidan: server } }, null, 2);
+        const claude = `claude mcp add --transport http maidan ${url} \\\n  --header "Authorization: Bearer $MAIDAN_TOKEN"`;
+        const channel = selectedChannelName ? `#${selectedChannelName}` : "the channel you are given";
+        const prompt = [
+          `You are connected to a Maidan server at ${base()} through the MCP server "maidan".`,
+          wid() ? `Workspace: ${wid()}.` : "",
+          `Read ${base()}/llms.txt first.`,
+          `Work loop: claim_next_thread in ${channel}, acknowledge_claim, do the work, post_message as you go, set_thread_result, then transition_thread with start_review.`,
+          "Do not close your own work: a reviewer approves it. If a call is refused, read the refusal; it says what to do next.",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const cursor = `cursor://anysphere.cursor-deeplink/mcp/install?name=maidan&config=${encodeURIComponent(btoa(JSON.stringify(server)))}`;
+        return { json, claude, prompt, cursor };
+      }
+      function openConnect() {
+        const sn = connectSnippets();
+        document.getElementById("cx-claude").textContent = sn.claude;
+        document.getElementById("cx-json").textContent = sn.json;
+        document.getElementById("cx-prompt").textContent = sn.prompt;
+        document.getElementById("cx-cursor").href = sn.cursor;
+        document.getElementById("cx-llms").href = `${base()}/llms.txt`;
+        document.getElementById("cx-status").textContent = "";
+        const d = document.getElementById("connect-dialog");
+        if (!d.open) d.showModal();
+      }
+      function openTool(name) {
+        const tools = document.getElementById("tools");
+        tools.open = true;
+        const tab = document.querySelector(`#tools [data-tab="${name}"]`);
+        if (tab) tab.click();
+        tools.scrollIntoView({ block: "start", behavior: reduceMotion.matches ? "auto" : "smooth" });
+      }
+      document.querySelectorAll("[data-open-connect]").forEach((b) => (b.onclick = openConnect));
+      document.getElementById("connect-close").onclick = () => document.getElementById("connect-dialog").close();
+      document.getElementById("cx-mint").onclick = () => {
+        document.getElementById("connect-dialog").close();
+        openTool("tokens");
+      };
+      document.querySelectorAll("#connect-dialog [data-copy]").forEach((b) => {
+        b.onclick = async () => {
+          const text = document.getElementById(b.dataset.copy).textContent;
+          const status = document.getElementById("cx-status");
+          try {
+            await navigator.clipboard.writeText(text);
+            status.textContent = "Copied.";
+          } catch (_e) {
+            status.textContent = "Copy was blocked by the browser; select the text instead.";
+          }
+        };
+      });
+
+      // Command palette: every channel, every task on the board, and the
+      // actions a person reaches for, behind one keystroke. Matching is by
+      // words in any order; the first match runs on Enter.
+      function paletteItems() {
+        const items = [];
+        const next = needsYou.find((i) => i.kind === "review_request");
+        if (next) {
+          const th = threadsById.get(next.thread_id);
+          const title = (th && th.title) || next.summary || "untitled";
+          items.push({
+            kind: "Needs you",
+            label: `Open next review: ${title}`,
+            run: () => {
+              // Open the thread (it may live in another channel), then put
+              // focus on the row decision.
+              selectThread(next.thread_id, title);
+              const row = document.querySelector(`#needs-you-list .ny-item[data-thread-id="${CSS.escape(next.thread_id)}"]`);
+              if (row) {
+                row.scrollIntoView({ block: "center" });
+                const btn = row.querySelector("button.primary");
+                if (btn) btn.focus();
+              }
+            },
+          });
+        }
+        document.querySelectorAll("#channel-list li[data-id]").forEach((li) => {
+          items.push({ kind: "Channel", label: li.textContent.split(" · ")[0].trim(), run: () => li.click() });
+        });
+        threadsById.forEach((th) => {
+          const chrome = sessionChrome(th, lastGates[th.id]);
+          items.push({
+            kind: "Task",
+            label: th.title || "untitled",
+            hint: chrome.label,
+            run: () => selectThread(th.id, th.title || th.id),
+          });
+        });
+        items.push({ kind: "Action", label: "Connect an agent", run: openConnect });
+        items.push({
+          kind: "Action",
+          label: wsSocket && wsSocket.readyState === WebSocket.OPEN ? "Live: disconnect" : "Live: connect",
+          run: () => document.getElementById(wsSocket && wsSocket.readyState === WebSocket.OPEN ? "ws-disconnect" : "ws-connect").click(),
+        });
+        items.push({ kind: "Action", label: "Refresh channels", run: () => document.getElementById("refresh-channels").click() });
+        document.querySelectorAll("#tools [data-tab]").forEach((b) => {
+          items.push({ kind: "Tool", label: b.textContent.trim(), run: () => openTool(b.dataset.tab) });
+        });
+        return items;
+      }
+      let paletteAll = [];
+      let paletteShown = [];
+      let paletteSel = 0;
+      function paletteMatch(q) {
+        const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+        if (!words.length) return paletteAll;
+        return paletteAll.filter((it) => {
+          const hay = `${it.kind} ${it.label}`.toLowerCase();
+          return words.every((w) => hay.includes(w));
+        });
+      }
+      function renderPalette() {
+        const list = document.getElementById("palette-list");
+        list.replaceChildren();
+        paletteShown = paletteMatch(document.getElementById("palette-input").value).slice(0, 40);
+        if (paletteSel >= paletteShown.length) paletteSel = Math.max(0, paletteShown.length - 1);
+        if (!paletteShown.length) {
+          const li = document.createElement("li");
+          li.className = "empty";
+          li.textContent = "Nothing matches. Try a channel name, a task title, or \u201cconnect\u201d.";
+          list.appendChild(li);
+          return;
+        }
+        paletteShown.forEach((it, i) => {
+          const li = document.createElement("li");
+          li.setAttribute("role", "option");
+          li.setAttribute("aria-selected", String(i === paletteSel));
+          const k = document.createElement("span");
+          k.className = "pk";
+          k.textContent = it.kind;
+          const l = document.createElement("span");
+          l.className = "pl";
+          l.textContent = it.label;
+          li.append(k, l);
+          if (it.hint) {
+            const h = document.createElement("span");
+            h.className = "kbd";
+            h.textContent = it.hint;
+            li.appendChild(h);
+          }
+          li.onmousemove = () => {
+            if (paletteSel !== i) {
+              paletteSel = i;
+              renderPalette();
+            }
+          };
+          li.onclick = () => runPalette(i);
+          list.appendChild(li);
+        });
+        const sel = list.children[paletteSel];
+        if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
+      }
+      function runPalette(i) {
+        const it = paletteShown[i];
+        if (!it) return;
+        document.getElementById("palette").close();
+        it.run();
+      }
+      function openPalette() {
+        const d = document.getElementById("palette");
+        if (d.open) return;
+        paletteAll = paletteItems();
+        paletteSel = 0;
+        const input = document.getElementById("palette-input");
+        input.value = "";
+        renderPalette();
+        d.showModal();
+        input.focus();
+      }
+      // The shortcut reads the way this keyboard labels it.
+      const onMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+      document.querySelectorAll(".kbd.mod-k").forEach((k) => (k.textContent = onMac ? "⌘K" : "Ctrl K"));
+      document.getElementById("palette-open").onclick = openPalette;
+      document.getElementById("palette-input").oninput = () => {
+        paletteSel = 0;
+        renderPalette();
+      };
+      document.getElementById("palette-input").onkeydown = (e) => {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const n = paletteShown.length || 1;
+          paletteSel = (paletteSel + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+          renderPalette();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          runPalette(paletteSel);
+        }
+      };
+      document.addEventListener("keydown", (e) => {
+        const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+          e.preventDefault();
+          openPalette();
+        } else if (e.key === "/" && !typing && !document.querySelector("dialog[open]")) {
+          e.preventDefault();
+          openPalette();
+        }
+      });
 
       // Approval gates are a human-in-the-loop queue, not a manual-refresh
       // report. Keep the visible panel fresh without polling a hidden tab.

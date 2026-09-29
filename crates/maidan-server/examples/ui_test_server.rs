@@ -258,6 +258,18 @@ async fn main() {
         .await
         .expect("floor claim");
 
+    // An empty channel, for the onboarding state a channel shows before its
+    // first task.
+    let quiet = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "quiet".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("quiet channel");
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -380,6 +392,7 @@ async fn main() {
         "floor_held_thread_id": floor_threads[0].id.0.to_string(),
         "floor_glide_thread_id": floor_threads[1].id.0.to_string(),
         "floor_jump_thread_id": floor_threads[2].id.0.to_string(),
+        "quiet_channel_id": quiet.id.0.to_string(),
     });
     std::fs::write(
         &fixtures_path,
