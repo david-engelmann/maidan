@@ -1885,7 +1885,7 @@ Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-cra
 
 | Change | Where |
 |--------|-------|
-| `claim_next_thread` lease-aware (`lease_secs`; expired lease = reclaimable, no reaper) + `renew_claim` heartbeat (holder-only); `assignment_expires_at` column; REST `POST /threads/:id/claim/renew` + MCP `renew_claim` | `*/threads.rs` + `routes/thread.rs` + `tools/thread.rs` |
+| `claim_next_thread` lease-aware (`lease_secs`; expired lease = reclaimable; the claim reaper and default lease came later, #1095) + `renew_claim` heartbeat (holder-only); `assignment_expires_at` column; REST `POST /threads/:id/claim/renew` + MCP `renew_claim` | `*/threads.rs` + `routes/thread.rs` + `tools/thread.rs` |
 
 ## [v191.0.0](https://github.com/david-engelmann/maidan/releases/tag/v191.0.0) — Agentic: MCP tools for the assignment read-side
 

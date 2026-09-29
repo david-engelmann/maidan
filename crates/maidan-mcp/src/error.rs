@@ -87,6 +87,12 @@ impl From<maidan_auth::AuthError> for McpError {
     }
 }
 
+impl From<crate::claim_lease::InvalidLease> for McpError {
+    fn from(err: crate::claim_lease::InvalidLease) -> Self {
+        Self::InvalidParams(err.to_string())
+    }
+}
+
 impl From<maidan_store::StoreError> for McpError {
     fn from(err: maidan_store::StoreError) -> Self {
         match err {

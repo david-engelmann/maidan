@@ -818,14 +818,16 @@ The thread you get back carries two fields worth keeping:
 - `claim_lease_id` — a fencing token. `acknowledge_claim`, `renew_claim` and
   `release_claim` each require it, and a holder whose claim was already reclaimed
   is rejected instead of being allowed to write over its successor's work.
-- `assignment_expires_at` — when your lease runs out. Omitted entirely if you
-  claimed without one.
+- `assignment_expires_at` — when your lease runs out.
 
-**`lease_secs` is optional, and leaving it out is a choice rather than a default.**
-A thread is claimable only while it is unassigned or its lease has lapsed, so a
-claim with no lease never comes back: if your process dies, the task stays assigned
-to an agent that is no longer running and nobody else can pick it up. Ask for a
-lease you can actually renew.
+**Every `claim_next_thread` claim is leased.** Leave `lease_secs` out and you get
+the server's default (`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s unless the operator
+changed it); name one and it must be between 1 second and 7 days, or the call is
+refused (400 / InvalidParams) before anything is claimed. `renew_claim` is held to
+the same bounds. Renew well before the deadline, a third of the lease is a good
+interval: once it lapses the reaper takes the thread back within seconds. A thread
+you were handed with `assign_thread` or took by id with `claim_thread` carries no
+lease; it stays yours until someone unassigns it or you release it.
 
 To watch a collaborator rather than one queue, follow them with
 `POST /members/:id/member-follows` and `{ "followed_member_id": "…" }` (MCP
@@ -1026,27 +1028,22 @@ still `open` is back in the queue, and the next claim (perhaps your own) does th
 task again. `start_review` is not a land: separation of duties does not restrict
 it, and closing stays with somebody else (below).
 
-**This matters more than it looks, because expiry is lazy.** Nothing reaps a dead
-holder. A lapsed lease is noticed only when the next `claim_next_thread` on that
-channel goes looking for work and takes the thread over — and the `ClaimExpired`
-event, the "an agent died" signal that `wait_for_claim_expired` blocks on, is
-emitted *by that reclaim*, not by the expiry itself.
+**A lapsed lease comes back on its own.** The claim reaper runs on every replica
+(`MAIDAN_CLAIM_REAP_TICK_SECS`, every 5 s by default). Each tick it frees every
+claim whose lease has lapsed, on an open thread, clears the holder and its fencing
+token, and emits `ClaimExpired` for the holder: the "an agent died" signal that
+`wait_for_claim_expired` blocks on and that the notification router sends as stuck
+work to the owner and followers. It fires on an idle channel too, with nobody
+calling `claim_next_thread`. If a claimer gets there between ticks, that reclaim
+emits the `ClaimExpired` instead; each lapsed lease is reported once. A thread you
+moved to `in_review` is not reaped. Its lease still lapses, and it stays yours
+until you release it.
 
-So an agent that vanishes without releasing leaves one of two messes, neither of
-which announces itself:
-
-- **It held a lease.** Once the lease lapses the task counts as `queued` again and
-  the next claimer picks it up, so the work is not lost — but until somebody
-  claims, nothing fires. On a channel with no other claimer, a supervisor watching
-  `ClaimExpired` learns nothing at all, however long it waits.
-- **It held no lease** (no `lease_secs`). The task stays `claimed` or `working` in
-  `get_channel_occupancy` forever and no `claim_next_thread` will ever return it,
-  because it is neither unassigned nor lapsed. Freeing it takes an operator: an
-  explicit `unassign_thread`, or `assign_thread` handing it to somebody else.
-
-Releasing is how a departing agent avoids both. To spot the second case after the
-fact, watch `get_channel_occupancy` for a thread that sits in `claimed` or
-`working` while nothing else about it changes.
+Releasing is still the right exit: it frees the thread at once rather than a lease
+later, and it says the holder left on purpose. A claim with no lease (from
+`assign_thread` or `claim_thread`) is never reaped. It stays `claimed` or `working`
+in `get_channel_occupancy` until an operator runs `unassign_thread` or hands it on
+with `assign_thread`.
 
 ### Landing the thread (not the waiter's job)
 

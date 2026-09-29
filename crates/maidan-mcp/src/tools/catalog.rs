@@ -639,12 +639,12 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "claim_next_thread",
-            "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.",
+            "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid"},
-                    "lease_secs": {"type": "integer", "description": "optional lease deadline in seconds; the claim is reclaimable after it lapses (omit for a durable claim)"}
+                    "lease_secs": {"type": "integer", "minimum": 1, "maximum": 604800, "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)"}
                 },
                 "required": ["channel_id"]
             }
@@ -657,7 +657,7 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "claim_lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from the claim response's thread.claim_lease_id"},
-                    "lease_secs": {"type": "integer", "description": "new lease deadline in seconds from now"}
+                    "lease_secs": {"type": "integer", "minimum": 1, "maximum": 604800, "description": "new lease deadline in seconds from now (1 s to 7 days)"}
                 },
                 "required": ["thread_id", "claim_lease_id", "lease_secs"]
             }
@@ -1436,7 +1436,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_claim_expired",
-            "description": "Block until a claim's lease lapses and its thread is reclaimed by the next agent (emitting claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal — returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease that expires but is never reclaimed emits nothing (poll get_channel_occupancy for that).",
+            "description": "Block until a claim's lease lapses and its thread is reclaimed (by the claim reaper within seconds, or by the next claim_next_thread; either emits claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal — returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease on a thread in review is not reaped and emits nothing.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

@@ -119,6 +119,9 @@ pub struct McpServer {
     /// Empty = integrity against the embedded key only (blank-instance default).
     export_verify_keys: std::sync::OnceLock<Vec<[u8; 32]>>,
     presence_reader: Arc<std::sync::RwLock<Option<Arc<dyn PresenceReader>>>>,
+    /// The lease a `claim_next_thread` claim gets when the caller names none
+    /// (`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`). REST reads it from here too.
+    claim_leases: crate::claim_lease::ClaimLeasePolicy,
 }
 
 impl McpServer {
@@ -146,7 +149,21 @@ impl McpServer {
             export_signing: std::sync::OnceLock::new(),
             export_verify_keys: std::sync::OnceLock::new(),
             presence_reader: Arc::new(std::sync::RwLock::new(None)),
+            claim_leases: crate::claim_lease::ClaimLeasePolicy::from_env(),
         }
+    }
+
+    /// Replace the claim-lease policy (tests and embedders; the server reads
+    /// it from the environment).
+    #[must_use]
+    pub fn with_claim_lease_policy(mut self, policy: crate::claim_lease::ClaimLeasePolicy) -> Self {
+        self.claim_leases = policy;
+        self
+    }
+
+    /// The claim-lease policy both REST and MCP resolve leases with.
+    pub fn claim_lease_policy(&self) -> crate::claim_lease::ClaimLeasePolicy {
+        self.claim_leases
     }
 
     pub fn attach_presence_reader(&self, reader: Arc<dyn PresenceReader>) {
@@ -443,13 +460,14 @@ impl McpServer {
             "instructions": "Maidan is a shared room for AI agents. Call `whoami` first to get your \
                 member_id, workspace_id, and capabilities. The task loop: `claim_next_thread` (take \
                 the next ready task in a channel — null means there is nothing to take, so sleep and \
-                ask again; pass `lease_secs` so an abandoned task can be reclaimed) → \
+                ask again; the claim is leased, so `renew_claim` before `assignment_expires_at` or \
+                the task is reaped back to the queue) → \
                 `acknowledge_claim` (start the working clock, so occupancy shows you working rather \
                 than claimed-and-idle) → `get_thread_context` (read the task, grounded in the \
                 workspace glossary) → do the work, calling `report_usage` as you go (it accumulates \
                 against the thread's budget and stops the run if it goes over) → `set_thread_result` \
-                (record the outcome) → `release_claim` (hand the task back — nothing reaps a dead \
-                holder eagerly, so release on every exit you control). `acknowledge_claim`, \
+                (record the outcome) → `release_claim` (hand the task back at once rather than a \
+                lease later; release on every exit you control). `acknowledge_claim`, \
                 `renew_claim` and `release_claim` each present the thread's `claim_lease_id` as a \
                 fencing token. Need a human? `request_approval` opens \
                 a durable gate and returns immediately; poll `get_approval_gate` for the answer. \
@@ -5705,19 +5723,14 @@ mod tests {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
 
-        // m1 claims with an already-past lease (a dead agent).
-        let auth1 = AuthContext::from_session(m1.id, ws.id, vec![THREAD_TRANSITION.to_string()]);
-        let claimed1 = text(
-            server
-                .call_tool(
-                    &auth1,
-                    "claim_next_thread",
-                    &json!({ "channel_id": ch.id.0, "lease_secs": -1 }),
-                )
-                .await
-                .unwrap(),
-        );
-        assert!(!claimed1.is_null(), "m1 claimed the thread");
+        // m1 holds the thread on a lease that has already lapsed (a dead
+        // agent). The tools refuse a lease under a second, so the store
+        // writes it directly.
+        let claimed1 = store
+            .claim_next_thread(ch.id, m1.id, Some(-1))
+            .await
+            .unwrap();
+        assert!(claimed1.is_some(), "m1 claimed the thread");
 
         // Subscribe BEFORE the reclaim so both events are captured.
         let filter = EventFilter {
@@ -5768,6 +5781,145 @@ mod tests {
             ),
             "the MCP reclaim must emit ThreadAssignmentChanged for the reclaimer"
         );
+    }
+
+    #[tokio::test]
+    async fn claim_next_without_a_lease_gets_the_server_default_and_bounds_hold() {
+        use maidan_auth::capability::THREAD_TRANSITION;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace {
+                name: "lease".into(),
+            })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let ch = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        for title in ["one", "two"] {
+            store
+                .create_thread(NewThread {
+                    channel_id: ch.id,
+                    parent_thread_id: None,
+                    title: Some(title.into()),
+                })
+                .await
+                .unwrap();
+        }
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_claim_lease_policy(crate::claim_lease::ClaimLeasePolicy::new(900).unwrap());
+        let auth = AuthContext::from_session(agent.id, ws.id, vec![THREAD_TRANSITION.to_string()]);
+        let text = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // A lease out of bounds is refused before anything is claimed.
+        for bad in [0, -1, crate::claim_lease::MAX_CLAIM_LEASE_SECS + 1] {
+            let err = server
+                .call_tool(
+                    &auth,
+                    "claim_next_thread",
+                    &json!({ "channel_id": ch.id.0, "lease_secs": bad }),
+                )
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, McpError::InvalidParams(ref m) if m.contains("lease_secs")),
+                "lease {bad}: {err:?}"
+            );
+        }
+        assert!(
+            store
+                .list_threads(ch.id)
+                .await
+                .unwrap()
+                .iter()
+                .all(|t| t.assignee_id.is_none()),
+            "a refused claim takes nothing"
+        );
+
+        // No lease named: the claim is leased for the server default.
+        let before = chrono::Utc::now();
+        let claimed = text(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_next_thread",
+                    &json!({ "channel_id": ch.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        let expires: chrono::DateTime<chrono::Utc> =
+            serde_json::from_value(claimed["assignment_expires_at"].clone()).unwrap();
+        let lease = (expires - before).num_seconds();
+        assert!((899..=901).contains(&lease), "default lease was {lease} s");
+        assert!(
+            claimed["claim_lease_id"].is_string(),
+            "a leased claim is fenced"
+        );
+
+        // A named lease inside the bounds is kept.
+        let before = chrono::Utc::now();
+        let claimed = text(
+            server
+                .call_tool(
+                    &auth,
+                    "claim_next_thread",
+                    &json!({ "channel_id": ch.id.0, "lease_secs": 30 }),
+                )
+                .await
+                .unwrap(),
+        );
+        let expires: chrono::DateTime<chrono::Utc> =
+            serde_json::from_value(claimed["assignment_expires_at"].clone()).unwrap();
+        assert!((29..=31).contains(&(expires - before).num_seconds()));
+
+        // Renewals are held to the same bounds.
+        let err = server
+            .call_tool(
+                &auth,
+                "renew_claim",
+                &json!({
+                    "thread_id": claimed["id"],
+                    "claim_lease_id": claimed["claim_lease_id"],
+                    "lease_secs": 0,
+                }),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, McpError::InvalidParams(_)), "{err:?}");
     }
 
     #[tokio::test]

@@ -746,6 +746,54 @@ pub async fn claim_next_with_event(
     }
 }
 
+/// Reap up to `limit` lapsed leases on open, live threads and append a
+/// `ClaimExpired` for each dead holder, all in one transaction. `SKIP LOCKED`
+/// lets concurrent reapers (one per replica) and `claim_next` run beside it
+/// without waiting on or double-reporting the same thread.
+pub async fn reap_expired_claims(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let rows = sqlx::query(
+        "WITH lapsed AS (
+             SELECT id, assignee_id AS prev_assignee, assignment_expires_at AS deadline
+             FROM maidan_threads
+             WHERE assignee_id IS NOT NULL
+               AND assignment_expires_at IS NOT NULL AND assignment_expires_at < $1
+               AND tombstoned_at IS NULL AND state = 'open'
+             ORDER BY assignment_expires_at ASC, id ASC
+             LIMIT $2
+             FOR UPDATE SKIP LOCKED
+         )
+         UPDATE maidan_threads t SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = NOW()
+         FROM lapsed WHERE t.id = lapsed.id
+         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, lapsed.prev_assignee, lapsed.deadline",
+    )
+    .bind(now)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut reaped = rows
+        .iter()
+        .map(|row| {
+            Ok((
+                row.get::<DateTime<Utc>, _>("deadline"),
+                row_to_thread(row)?,
+                MemberId(row.get::<Uuid, _>("prev_assignee")),
+            ))
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    reaped.sort_by_key(|(deadline, thread, _)| (*deadline, thread.id.0));
+    let mut events = Vec::with_capacity(reaped.len());
+    for (_, thread, holder) in &reaped {
+        events.push(append_claim_expired_event(&mut tx, thread, *holder).await?);
+    }
+    tx.commit().await?;
+    Ok(events)
+}
+
 /// Extend a claim's lease (heartbeat), only for the current assignee.
 /// `NotFound` if the thread is gone or the caller isn't the holder.
 pub async fn renew_claim(

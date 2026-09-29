@@ -2065,6 +2065,13 @@ impl AssignmentStore for PostgresStore {
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
         threads::claim_next_with_event(&self.pool, channel_id, member_id, lease_secs).await
     }
+    async fn reap_expired_claims(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError> {
+        threads::reap_expired_claims(&self.pool, now, limit).await
+    }
     async fn renew_claim(
         &self,
         thread_id: ThreadId,

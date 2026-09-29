@@ -63,6 +63,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   instance's total event volume. They now carry the subscribing workspace's
   head; a subscriber watching no single workspace gets `null`.
 
+### A dead agent's claim comes back on time
+
+- **Added:** a claim reaper on every replica (`MAIDAN_CLAIM_REAP_TICK_SECS`,
+  default 5 s, `0` off). Each tick it frees every claim on an open thread
+  whose lease lapsed, clears the holder and its fencing token, and emits
+  `ClaimExpired` for the holder, so the work returns to the queue and the
+  owner and followers hear about it on an idle channel too. Counter
+  `maidan_claims_reaped_total`. `claim_next_thread` still takes a lease that
+  lapsed between ticks; each lease is reported once.
+- **Changed:** every `claim_next_thread` claim is leased. With no
+  `lease_secs` it gets the server default (`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`,
+  600 s). A requested lease or renewal outside 1 s to 7 days is refused
+  (`400` over REST, `InvalidParams` over MCP) before anything is claimed.
+- **Changed:** the claim spec (`specs/tla/Claim.tla`) models the reaper.
+
 ### NOTIFY floor simulation
 
 - **Added:** a seeded deterministic simulation of the Postgres listener's

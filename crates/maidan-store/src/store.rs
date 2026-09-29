@@ -1615,6 +1615,22 @@ pub trait AssignmentStore: Send + Sync {
         lease_secs: Option<i64>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
+    /// Return up to `limit` claims whose lease lapsed before `now` to the
+    /// queue, appending a `ClaimExpired` for each dead holder in the same
+    /// transaction — the eager twin of the reclaim inside
+    /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event).
+    /// Only open, live threads are reaped, the ones `claim_next` could take.
+    /// The holder, lease, fencing token and working clock are cleared, so the
+    /// dead holder's token is fenced from then on. Concurrent reapers take
+    /// distinct threads (`FOR UPDATE SKIP LOCKED` on Postgres; SQLite
+    /// serializes writers). Returns the appended events, oldest deadline
+    /// first.
+    async fn reap_expired_claims(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
     /// Extend a claimed thread's lease (heartbeat), only for the current
     /// assignee holding the matching fencing token. `NotFound` if the thread is
     /// gone, the caller isn't the holder, or `lease_id` doesn't match the

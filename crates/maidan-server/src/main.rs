@@ -701,6 +701,16 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Claim reaper: on by default (`MAIDAN_CLAIM_REAP_TICK_SECS`, 5 s; `0`
+    // off). Returns lapsed leases to the queue and publishes `ClaimExpired`
+    // on time instead of at the next `claim_next`.
+    if let Some(reaper_cfg) = maidan_server::claim_reaper::config_from_env() {
+        let reaper_state = state.clone();
+        tokio::spawn(async move {
+            maidan_server::claim_reaper::run(reaper_state, reaper_cfg).await;
+        });
+    }
+
     // Background wait-timer sweeper: opt-in via `MAIDAN_WAIT_SWEEP_TICK_SECS`.
     // Fires each thread wait past its deadline — emitting `WaitTimedOut` and
     // (per policy) parking the thread.

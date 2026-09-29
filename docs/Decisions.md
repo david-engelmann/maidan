@@ -1331,8 +1331,8 @@ way. Sending to a broadcast channel under the lock does not block.
 ### TLA+ specs, checked by TLC in CI, each with a config it must fail
 
 **Decision.** `specs/tla` holds two specs: `Claim` (claim_next, claim by
-id, assign, unassign, freeze, renew, acknowledge, release and lease lapse,
-with fencing tokens) and `EventLog` (the hash chain and crypto-shredding on
+id, assign, unassign, freeze, renew, acknowledge, release, lease lapse and
+the reaper, with fencing tokens) and `EventLog` (the hash chain and crypto-shredding on
 an origin and a peer, over a network that drops, duplicates and reorders).
 The non-required `tla` job runs `scripts/tla.sh`: TLC 1.7.4, pinned by
 SHA-256, checks each spec's config, then a config with one mechanism off
@@ -1411,6 +1411,38 @@ delivered, and no later NOTIFY or reconnect drained them. Staying low can
 deliver an event twice, which the at-least-once contract allows.
 
 **To revisit:** never; this is the floor's contract.
+
+### A lapsed lease is reaped on a timer, and every claim_next claim is leased
+
+**Decision.** A claim reaper runs on every replica
+(`MAIDAN_CLAIM_REAP_TICK_SECS`, 5 s, on by default). Each tick,
+`Store::reap_expired_claims` frees open threads whose lease lapsed, oldest
+deadline first, in batches of 100 up to 1000 a tick, and appends
+`ClaimExpired` for the holder in the same transaction. Postgres picks the
+batch with `FOR UPDATE SKIP LOCKED`, so replicas split the work and never
+report a lease twice; SQLite guards the update on the same holder and a
+still-lapsed deadline. `claim_next_thread` still takes a lease that lapsed
+between ticks. A thread in review is not reaped. `claim_next_thread` claims
+always carry a lease: with no `lease_secs`, the server default
+(`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s); a named lease, and every
+renewal, must be 1 s to 7 days. REST and MCP resolve it through one
+`ClaimLeasePolicy`. `assign_thread` and `claim_thread` stay unleased.
+
+**Alternative.** Keep lazy reclaim and fire `ClaimExpired` from the next
+`claim_next` (a dead holder on an idle channel is never reported); a
+Postgres-only `LISTEN`/timer per lease (no SQLite story, one timer per
+claim); keep `lease_secs` optional (a forgotten lease is a claim that never
+comes back, the common way work got stuck).
+
+**Why this:** the room should tell a supervisor an agent died when its lease
+runs out, not when someone else happens to look for work. A sweep of a
+partial index on `assignment_expires_at` is cheap at a 5 s tick, and the
+spec's `Reap` action shows it reports only lapsed leases and fences the
+dead holder's token.
+
+**To revisit:** if assign or claim by id should take a lease, add a
+`lease_secs` to them rather than a default; an explicit handoff is an
+operator's decision to hold the thread.
 
 ## Workflow
 
