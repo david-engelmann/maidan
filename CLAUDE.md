@@ -44,6 +44,7 @@ suite takes several minutes: run it in the background, don't sleep and poll.
 ```sh
 bash scripts/check-agent-contract.sh     # golden JSON under contracts/
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the README agree on the release
+bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/)
 ```
 
 The docs build (the `mdbook` job) needs mdbook 0.4.40, mdbook-linkcheck 0.7.7
@@ -67,7 +68,7 @@ change.
   `promtool (alert rules)` and `otlp smoke`. A code PR runs all eight; a
   docs-only PR skips the heavy jobs, which then report as passed. Other jobs
   (coverage, `mdbook`, the A2A TCK, the MCP Inspector, SDK interop, the PITR
-  drill, `ui tests (playwright)`, `loom`, `tla`) are not required.
+  drill, `ui tests (playwright)`, `loom`, `tla`, the OSV scan) are not required.
 
 ## Current state (2026-09-29)
 

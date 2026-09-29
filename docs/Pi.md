@@ -11,7 +11,7 @@ newest tag, shown below as `<tag>`); integrate agents against this instance with
 |-------|-----------|
 | `maidan-aarch64-unknown-linux-gnu.tar.gz` | Native `maidan-server` + `maidan` binaries (always published when `build` succeeds) |
 | `ghcr.io/david-engelmann/maidan-server:latest` | Multi-arch image (`linux/arm64`); pin to a specific `:<tag>` for reproducible deploys |
-| [GitHub Release](https://github.com/david-engelmann/maidan/releases) | Tarballs + SBOM |
+| [GitHub Release](https://github.com/david-engelmann/maidan/releases) | Tarballs, and per-image SBOMs from the first tag after v412.0.0 |
 
 ---
 

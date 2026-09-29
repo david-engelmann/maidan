@@ -1,0 +1,17 @@
+# Accepted advisories for the `osv scan` CI job (scripts/osv-scan.sh), which
+# checks the lockfiles cargo-deny does not read: fuzz/, ui-tests/ and the SDKs
+# under sdk/. The root Cargo.lock is cargo-deny's, and its accepted advisories
+# live in deny.toml.
+#
+# Every entry names the lockfile it is for and why the advisory does not apply
+# there. An id listed here is accepted in every lockfile the job scans, so a
+# new lockfile that carries the same advisory needs its own reason added here.
+
+[[IgnoredVulns]]
+# fuzz/Cargo.lock. `rsa` is locked only because `sqlx-mysql` is; no fuzz
+# target enables MySQL, so `cargo tree --manifest-path fuzz/Cargo.toml -i rsa
+# --target all -e all --all-features` prints nothing, and the fuzz crate is
+# never shipped. No fixed `rsa` release exists (the root lockfile accepts the
+# same advisory in deny.toml for the OIDC RS256 path).
+id = "RUSTSEC-2023-0071"
+reason = "fuzz/Cargo.lock: rsa is locked through sqlx-mysql but compiled into no fuzz target; no fixed release"

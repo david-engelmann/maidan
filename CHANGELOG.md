@@ -399,6 +399,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   review progress (`0/1 approvals`), and the console has consistent spacing,
   buttons and form controls.
 
+### Image SBOMs are attested to their digests; OSV scans the lockfiles cargo-deny skips
+
+- **Fixed:** no release has ever published an SBOM. The step ran
+  `cargo cyclonedx` at the virtual workspace root, which writes one file per
+  member crate and none at the root, then looked only at the root and, being
+  `continue-on-error`, passed. All 247 releases have no SBOM asset, while
+  SECURITY.md and the claims sheet said every release had one.
+- **Added:** a `generate image SBOMs` release job makes one CycloneDX SBOM per
+  image: cargo-cyclonedx for the server (built `--no-default-features`, as its
+  Dockerfile builds it) and the CLI, and trivy for Postgres. `sign-images`
+  attests each to the image digest it signs (`cosign attest --type
+  cyclonedx`, keyless, same identity), and the release publishes and
+  blob-signs them as `<image>.cdx.json`. A missing SBOM now stops the release.
+  `cosign verify-attestation --type cyclonedx` is in the README, SECURITY.md
+  and Operations. None of this has run yet: the first tag after v412.0.0 is
+  its first run.
+- **Added:** a non-required `osv scan` CI job (`scripts/osv-scan.sh`,
+  osv-scanner 2.6.0 pinned by SHA-256) over `fuzz/Cargo.lock`,
+  `ui-tests/package-lock.json`, `sdk/go/go.mod` and a fresh resolution of the
+  Rust SDK. It fails if the TypeScript or Python SDK gains a dependency without
+  a lockfile. Accepted advisories and their reasons are in
+  `.config/osv-scanner.toml`.
+- **Fixed:** `ui-tests` pinned Playwright 1.48.2, which installs browsers
+  without checking the TLS certificate (GHSA-7mvr-c777-76hp); it is now 1.63.0,
+  and all 32 specs pass.
+
 ### A subscription announces only its own member
 
 - **Fixed (security):** the WebSocket subscribe frame's `member_id` was taken

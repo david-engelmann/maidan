@@ -435,13 +435,93 @@ jobs:
           cache-from: type=gha,scope=maidan-postgres
           cache-to: type=gha,mode=max,scope=maidan-postgres
 
+  sbom:
+    name: generate image SBOMs
+    needs: [docker-postgres]
+    if: needs.docker-postgres.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    # One CycloneDX SBOM per published image. `sign-images` attests each to its
+    # image digest, and `release` publishes and blob-signs them. A missing SBOM
+    # fails the release: the step this replaces was `continue-on-error`, looked
+    # for a root file the virtual workspace never writes, and so published no
+    # SBOM on any release while the docs said it did.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: install cyclonedx
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx@0.5.9
+      - name: SBOMs of the server and CLI binaries
+        # cargo-cyclonedx writes one SBOM beside each member's Cargo.toml. The
+        # server image builds `--no-default-features` (crates/maidan-server/
+        # Dockerfile) and the CLI image carries the default-feature binary from
+        # `build`, so each comes from the run that matches it. The linux x86_64
+        # target is a superset of the arm64 one (raw-cpuid and
+        # curve25519-dalek-derive are x86-only), and cargo-cyclonedx unifies
+        # features across the workspace, so the lists over-approximate the
+        # binaries rather than omit anything from them.
+        run: |
+          mkdir -p sbom
+          cargo cyclonedx --format json --target x86_64-unknown-linux-gnu --override-filename sbom -q
+          mv crates/maidan-cli/sbom.json sbom/maidan-cli.cdx.json
+          cargo cyclonedx --format json --target x86_64-unknown-linux-gnu --no-default-features --override-filename sbom -q
+          mv crates/maidan-server/sbom.json sbom/maidan-server.cdx.json
+      - name: set up buildx
+        uses: docker/setup-buildx-action@v3
+      - name: login to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: resolve postgres digest
+        id: postgres
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          IMAGE="ghcr.io/${{ github.repository_owner }}/maidan-postgres"
+          DIGEST="$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{.Manifest.Digest}}')"
+          echo "ref=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+      - name: SBOM of the postgres image
+        # No Rust in this image, so cargo-cyclonedx has nothing to describe;
+        # trivy lists its OS packages and binaries (linux/amd64, the runner's
+        # platform) from the pushed image itself.
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.postgres.outputs.ref }}
+          format: cyclonedx
+          output: sbom/maidan-postgres.cdx.json
+      - name: check every SBOM is CycloneDX
+        run: |
+          for name in maidan-server maidan-cli maidan-postgres; do
+            jq -e '.bomFormat == "CycloneDX" and (.components | length) > 0' "sbom/${name}.cdx.json" >/dev/null
+          done
+          ls -la sbom
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sboms
+          path: sbom/
+          retention-days: 1
+
   sign-images:
     name: cosign sign container images
-    needs: [docker-server-manifest, docker-cli-manifest, docker-postgres, trivy-scan]
-    if: needs.docker-server-manifest.result == 'success' && needs.docker-cli-manifest.result == 'success' && needs.docker-postgres.result == 'success' && needs.trivy-scan.result == 'success'
+    needs: [docker-server-manifest, docker-cli-manifest, docker-postgres, trivy-scan, sbom]
+    if: needs.docker-server-manifest.result == 'success' && needs.docker-cli-manifest.result == 'success' && needs.docker-postgres.result == 'success' && needs.trivy-scan.result == 'success' && needs.sbom.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write # keyless cosign signing via GitHub OIDC
@@ -456,6 +536,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: install cosign
         uses: sigstore/cosign-installer@v3
+      - name: download SBOMs
+        uses: actions/download-artifact@v4
+        with:
+          name: sboms
+          path: sbom
       - name: resolve tag
         id: tag
         run: |
@@ -464,14 +549,17 @@ jobs:
             TAG="${{ inputs.tag }}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-      - name: sign images by digest (keyless / Sigstore)
+      - name: sign images and attest their SBOMs by digest (keyless / Sigstore)
         # Keyless signing via the job's GitHub OIDC identity (no private key).
         # Resolve each tag to its immutable index digest and sign THAT, so the
-        # signature can't be dodged by a later tag re-point. Verify:
+        # signature can't be dodged by a later tag re-point. The SBOM is
+        # attested to the same digest under the same identity; `--replace`
+        # keeps a re-run from stacking a second SBOM on the digest. Verify:
         #   cosign verify ghcr.io/david-engelmann/maidan-server:<tag> \
         #     --certificate-identity-regexp \
         #     '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
         #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+        #   cosign verify-attestation --type cyclonedx <same image and flags>
         env:
           COSIGN_YES: "true"
         run: |
@@ -482,6 +570,9 @@ jobs:
             DIGEST="$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{.Manifest.Digest}}')"
             echo "signing ${IMAGE}@${DIGEST}"
             cosign sign --yes "${IMAGE}@${DIGEST}"
+            echo "attesting sbom/${name}.cdx.json to ${IMAGE}@${DIGEST}"
+            cosign attest --yes --replace --type cyclonedx \
+              --predicate "sbom/${name}.cdx.json" "${IMAGE}@${DIGEST}"
           done
 
   published-image-smoke:
@@ -532,26 +623,14 @@ jobs:
         with:
           name: release-assets
           path: dist
+      - name: download SBOMs
+        # The same files `sign-images` attested to the image digests.
+        uses: actions/download-artifact@v4
+        with:
+          name: sboms
+          path: dist
       - name: list artifacts
         run: ls -la dist
-      - name: install rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: install cyclonedx
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-cyclonedx
-      - name: generate SBOM
-        continue-on-error: true
-        run: |
-          cargo cyclonedx --format json --override-filename sbom -q
-          shopt -s nullglob
-          for f in sbom.cdx sbom.cdx.json sbom.json; do
-            if [[ -f "$f" ]]; then
-              mv "$f" dist/sbom.json
-              exit 0
-            fi
-          done
-          echo "SBOM not produced; publishing tarballs only"
       - name: install cosign
         uses: sigstore/cosign-installer@v3
       - name: sign release artifacts (keyless / Sigstore)
@@ -564,7 +643,7 @@ jobs:
         run: |
           cd dist
           shopt -s nullglob
-          for f in *.tar.gz sbom.json; do
+          for f in *.tar.gz *.cdx.json; do
             [ -f "$f" ] || continue
             cosign sign-blob --yes "$f" --bundle "$f.cosign.bundle"
           done
