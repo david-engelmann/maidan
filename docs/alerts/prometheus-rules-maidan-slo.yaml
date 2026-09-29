@@ -97,6 +97,36 @@ spec:
               their domain rows committed without them. Search the logs for
               event.append_failed.
 
+        # A panic is a bug: the request got a 500 problem instead of a dropped
+        # connection, but whatever it was doing did not happen.
+        - alert: MaidanHandlerPanics
+          expr: increase(maidan_http_panics_total[5m]) > 0
+          labels:
+            severity: warning
+            slo: http_availability
+          annotations:
+            summary: HTTP handlers are panicking
+            description: |
+              {{ $value | humanize }} request(s) panicked in the last 5m and were
+              answered with a 500. Search the logs for http.handler_panicked; the
+              line carries the request id the client got back.
+
+        # Sustained shedding means the in-flight ceiling is below real demand
+        # or the replica is too slow: add replicas or raise
+        # MAIDAN_MAX_CONCURRENT_REQUESTS if the database has headroom.
+        - alert: MaidanLoadShedding
+          expr: sum(rate(maidan_http_shed_total[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+            slo: http_availability
+          annotations:
+            summary: Requests are being shed
+            description: |
+              Requests have been refused with 503 at the in-flight ceiling for
+              10m. Compare maidan_http_in_flight_requests with
+              MAIDAN_MAX_CONCURRENT_REQUESTS.
+
         # A replica this far behind has stopped serving untokened reads (the
         # store routes them to the primary), so the primary is carrying them.
         - alert: MaidanReplicaLagHigh

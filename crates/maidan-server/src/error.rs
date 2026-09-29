@@ -28,6 +28,9 @@ pub enum ApiError {
     TooManyRequests(String),
     BadGateway(String),
     Internal(String),
+    /// The server is at a capacity ceiling (in-flight requests, subscriber
+    /// connections); retry later. 503.
+    Overloaded(String),
     /// Subscribe / backfill cursor is behind the retained log. 409 +
     /// `must_refetch: true` — fail loud, never clamp. Carries a `snapshot` so
     /// the client can refetch the pruned prefix.
@@ -57,6 +60,7 @@ impl ApiError {
             Self::TooManyRequests(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::BadGateway(_) => StatusCode::BAD_GATEWAY,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Overloaded(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::CursorTooOld { .. } | Self::EventLogBroken { .. } => StatusCode::CONFLICT,
         }
     }
@@ -74,6 +78,7 @@ impl ApiError {
             Self::TooManyRequests(_) => "Too Many Requests",
             Self::BadGateway(_) => "Bad Gateway",
             Self::Internal(_) => "Internal Server Error",
+            Self::Overloaded(_) => "Service Unavailable",
             Self::CursorTooOld { .. } => "Cursor Too Old",
             Self::EventLogBroken { .. } => "Event Log Broken",
         }
@@ -94,7 +99,8 @@ impl ApiError {
             | Self::UnsupportedMediaType(msg)
             | Self::TooManyRequests(msg)
             | Self::BadGateway(msg)
-            | Self::Internal(msg) => msg.clone(),
+            | Self::Internal(msg)
+            | Self::Overloaded(msg) => msg.clone(),
             Self::CursorTooOld {
                 after_id,
                 oldest_id,
@@ -130,6 +136,7 @@ impl ApiError {
             Self::TooManyRequests(_) => "https://maidan.dev/problems/rate-limited",
             Self::BadGateway(_) => "https://maidan.dev/problems/bad-gateway",
             Self::Internal(_) => "https://maidan.dev/problems/internal",
+            Self::Overloaded(_) => "https://maidan.dev/problems/overloaded",
             Self::CursorTooOld { .. } => "https://maidan.dev/problems/cursor-too-old",
             Self::EventLogBroken { .. } => "https://maidan.dev/problems/event-log-broken",
         }

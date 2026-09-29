@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Overload is refused fast, panics answer, credentials stay out of traces
+
+- **Added:** an in-flight request ceiling (`MAIDAN_MAX_CONCURRENT_REQUESTS`,
+  default 1024, `0` off). Past it a request gets a `503` problem
+  (`https://maidan.dev/problems/overloaded`) with `Retry-After: 1` before
+  the rate limiter or authentication run. `/health*` and `/metrics` are
+  exempt. Metrics `maidan_http_in_flight_requests` and
+  `maidan_http_shed_total`; alert `MaidanLoadShedding`.
+- **Fixed:** a handler that panicked dropped the connection. It now answers
+  a `500` problem with its `X-Request-Id`, logs `http.handler_panicked`, and
+  counts `maidan_http_panics_total` (alert `MaidanHandlerPanics`). The
+  panic message stays in the log.
+- **Changed:** every request is traced, not only bearer routes. The span
+  carries the method, path and headers; `Authorization`,
+  `Proxy-Authorization`, `Cookie`, `Mcp-Session-Id` and the Slack and GitHub
+  signatures print as `Sensitive`, as do `Set-Cookie` and `Mcp-Session-Id`
+  on responses. The query string is left out.
+- **Changed:** `/ws/subscribe` at its connection ceiling answers a `503`
+  problem with `Retry-After` instead of plain text. The OpenAPI document
+  lists `500` on every operation and `503` on every sheddable one.
+
 ### Tenant isolation is a conformance test
 
 - **Added:** `tenant_isolation_e2e` calls every operation in the served

@@ -107,6 +107,18 @@ pub fn init() {
             "HTTP request latency in seconds"
         );
         describe_counter!(
+            "maidan_http_shed_total",
+            "HTTP requests refused with 503 because the in-flight ceiling was reached"
+        );
+        describe_counter!(
+            "maidan_http_panics_total",
+            "HTTP requests whose handler panicked, answered with a 500 problem"
+        );
+        describe_gauge!(
+            "maidan_http_in_flight_requests",
+            "HTTP requests holding an in-flight permit (0 when shedding is off)"
+        );
+        describe_counter!(
             "maidan_audit_write_failures_total",
             "Audit rows that failed to write; the change they record went through without it"
         );
@@ -454,6 +466,7 @@ async fn refresh_runtime_gauges(state: &AppState) {
     }
 
     gauge!("maidan_ws_connections").set(state.ws_connections.load(Ordering::Relaxed) as f64);
+    gauge!("maidan_http_in_flight_requests").set(state.request_limit.in_flight() as f64);
     gauge!("maidan_mcp_streamable_sessions").set(state.mcp.reap_streamable_sessions().await as f64);
 
     if let Some(routing) = state.read_routing_metrics.as_ref() {

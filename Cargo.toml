@@ -42,7 +42,7 @@ sha2 = "0.10"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "uuid", "chrono", "json", "macros"] }
 axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "compression-gzip"] }
+tower-http = { version = "0.6", features = ["trace", "compression-gzip", "catch-panic", "sensitive-headers"] }
 
 [profile.dev]
 opt-level = 0

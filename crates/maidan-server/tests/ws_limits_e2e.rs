@@ -100,6 +100,12 @@ async fn subscriber_connections_are_capped_and_a_slot_frees_on_close() {
     match refused {
         Err(tokio_tungstenite::tungstenite::Error::Http(resp)) => {
             assert_eq!(resp.status(), 503);
+            assert_eq!(resp.headers()["retry-after"], "5");
+            assert_eq!(resp.headers()["content-type"], "application/problem+json");
+            let problem: serde_json::Value =
+                serde_json::from_slice(resp.body().as_deref().expect("a problem body"))
+                    .expect("problem json");
+            assert_eq!(problem["type"], "https://maidan.dev/problems/overloaded");
         }
         other => panic!("a connection past the ceiling must get 503, got {other:?}"),
     }

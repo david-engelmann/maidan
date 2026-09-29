@@ -1,5 +1,4 @@
 use axum::{extract::DefaultBodyLimit, middleware, Router};
-use tower_http::trace::TraceLayer;
 
 /// Default request body-size cap: 2 MiB. Matches axum's implicit extractor
 /// default, but now explicit + tunable via `MAIDAN_MAX_BODY_BYTES` — a
@@ -22,13 +21,13 @@ pub fn max_body_bytes_from_env() -> usize {
 use crate::bootstrap;
 use crate::{
     a2a_agent, agui_stream, app_oauth, apps, auth, automation_deliveries, consistency,
-    delivery_ops, dm, federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications,
-    mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id,
-    room_lsn, routes,
+    delivery_ops, dm, federation, fsm_hooks, github, group_dm, health, load_shed, mcp,
+    mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi, panic_guard, quota,
+    rate_limit, reindex_ops, request_id, room_lsn, routes,
     routing::{delete, get, patch, post, put, ProblemFallbacks},
     scim, session, share_consumer, slack, slash_commands,
     state::AppState,
-    webhooks, ws,
+    trace_redaction, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -792,8 +791,7 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             consistency::middleware,
-        ))
-        .layer(TraceLayer::new_for_http());
+        ));
 
     let a2a = Router::new()
         .route("/a2a/v1/events", post(federation::ingest_events))
@@ -1108,6 +1106,10 @@ pub fn router(state: AppState) -> Router {
         // with a problem like every other client error, not axum's empty body.
         // The 405 keeps axum's `Allow` header.
         .problem_fallbacks()
+        // Innermost of the shared layers, so a panic in a handler or in a
+        // route group's own middleware (auth, quota) becomes a 500 problem
+        // that the metrics, rate limiter and request id still see.
+        .layer(panic_guard::layer())
         .layer(middleware::from_fn(metrics::middleware))
         // Room-LSN sits *inside* the rate limiter: a later `.layer` is the
         // outer one, so this order makes the limiter outermost. It used to wrap
@@ -1123,6 +1125,18 @@ pub fn router(state: AppState) -> Router {
             state.clone(),
             rate_limit::middleware,
         ))
+        // Shedding sits outside the rate limiter and every credential check,
+        // so a refused request costs no Redis round-trip, token lookup or
+        // pooled connection.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            load_shed::middleware,
+        ))
+        // Response headers are marked sensitive before the trace layer logs
+        // them; request headers are marked before it makes its span.
+        .layer(trace_redaction::response_layer())
+        .layer(trace_redaction::trace_layer())
+        .layer(trace_redaction::request_layer())
         .layer(middleware::from_fn(request_id::middleware))
         // Cap request bodies before extractors buffer them.
         .layer(DefaultBodyLimit::max(max_body_bytes_from_env()))

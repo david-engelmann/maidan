@@ -67,6 +67,7 @@ MCP twins: `freeze_member` / `unfreeze_member` / `list_frozen_members` (also
 | `FEDERATION_DISABLED` | Turns off federation ingress + the pull worker. |
 | `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | Per-connection Postgres statement timeout (default 30 s) — caps a runaway query. |
 | `MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | Ends a connection idle inside an open transaction (default 60 s), so it cannot hold back vacuum. |
+| `MAIDAN_MAX_CONCURRENT_REQUESTS` | In-flight HTTP request ceiling (default 1024, `0` off); past it, an immediate `503` with `Retry-After`. Lower it to protect the database under a spike. Gauge `maidan_http_in_flight_requests`, counter `maidan_http_shed_total`. |
 | `MAIDAN_MAX_WS_CONNECTIONS` | Ceiling on live `/ws/subscribe` connections (default 10 000; past it, 503). Gauges: `maidan_ws_connections`, `maidan_mcp_streamable_sessions`. |
 | `MAIDAN_DB_LOCK_TIMEOUT_MS` | Fails a statement waiting on a lock after 10 s by default; migrations exempt themselves. |
 | Opt-in workers: `MAIDAN_SCHEDULER_TICK_SECS`, `MAIDAN_WAIT_SWEEP_TICK_SECS`, `MAIDAN_DIGEST_TICK_SECS`, `MAIDAN_MAIL_WORKER_TICK_SECS`, `MAIDAN_RETENTION_SWEEP_SECS` | Unset ⇒ the worker never starts. Unset one to stop that background activity (scheduled tasks / wait escalations / digests / mail / retention pruning). |

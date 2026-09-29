@@ -5,7 +5,8 @@
 //! statuses its handler can produce with `(status = 404, response = NotFound)`.
 //! The ones a middleware layer adds to every operation it wraps (401 from the
 //! authentication layers, 429 from the rate limiter and per-token quotas) are
-//! attached by [`MiddlewareResponses`](super::MiddlewareResponses), and the ones
+//! attached by [`MiddlewareResponses`](super::MiddlewareResponses), as are the
+//! 500 a panicking handler answers with and the 503 of load shedding, and the ones
 //! the request extractors answer with (400, 413, 415) by
 //! [`ExtractorResponses`](super::ExtractorResponses), so a new route cannot
 //! forget them.
@@ -75,6 +76,13 @@ problem_response!(
     "The body is not declared as JSON; send `Content-Type: application/json`."
 );
 
+problem_response!(
+    /// 500: added by [`MiddlewareResponses`](super::MiddlewareResponses) to
+    /// every operation, since any handler can fail or panic.
+    InternalServerError,
+    "The server failed while handling the request; the `X-Request-Id` response header names it in the server log."
+);
+
 /// 429: added by [`MiddlewareResponses`](super::MiddlewareResponses).
 pub struct TooManyRequests;
 
@@ -97,6 +105,34 @@ impl<'r> ToResponse<'r> for TooManyRequests {
                 .header("Retry-After", retry_after)
                 .build()
                 .into(),
+        )
+    }
+}
+
+/// 503: added by [`MiddlewareResponses`](super::MiddlewareResponses) to every
+/// operation load shedding covers.
+pub struct Overloaded;
+
+impl<'r> ToResponse<'r> for Overloaded {
+    fn response() -> (&'r str, RefOr<Response>) {
+        let retry_after = HeaderBuilder::new()
+            .schema(
+                ObjectBuilder::new()
+                    .schema_type(Type::Integer)
+                    .minimum(Some(1)),
+            )
+            .description(Some("Seconds to wait before retrying."))
+            .build();
+        (
+            "Overloaded",
+            problem(
+                "The server is at its in-flight request ceiling \
+                 (`MAIDAN_MAX_CONCURRENT_REQUESTS`) and refused the request without \
+                 running it; retry after `Retry-After`.",
+            )
+            .header("Retry-After", retry_after)
+            .build()
+            .into(),
         )
     }
 }

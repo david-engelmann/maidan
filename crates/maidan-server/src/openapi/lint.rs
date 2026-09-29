@@ -149,7 +149,7 @@ fn every_operation_documents_a_success_or_its_redirect() {
 }
 
 #[test]
-fn every_operation_behind_a_credential_or_the_rate_limiter_says_so() {
+fn every_operation_behind_a_credential_the_rate_limiter_or_load_shedding_says_so() {
     let doc = document();
     let mut problems = Vec::new();
     for (method, path, op) in operations(&doc) {
@@ -165,6 +165,12 @@ fn every_operation_behind_a_credential_or_the_rate_limiter_says_so() {
         }
         if !crate::rate_limit::exempt_path(&path) && !codes.contains("429") {
             problems.push(format!("{id}: rate limited but documents no 429"));
+        }
+        if !codes.contains("500") {
+            problems.push(format!("{id}: documents no 500"));
+        }
+        if !crate::load_shed::exempt_path(&path) && !codes.contains("503") {
+            problems.push(format!("{id}: can be shed but documents no 503"));
         }
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
