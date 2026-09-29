@@ -1847,6 +1847,12 @@ impl ReviewStore for PostgresStore {
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError> {
         reviews::list_reviews(self.read_pool(), thread_id).await
     }
+    async fn list_review_history(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ReviewVerdict>, StoreError> {
+        reviews::list_review_history(self.read_pool(), thread_id).await
+    }
     async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError> {
         reviews::review_status(self.read_pool(), thread_id).await
     }
@@ -1891,6 +1897,12 @@ impl LandGateStore for PostgresStore {
     }
     async fn clear_land_gate(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
         land_gate::clear(&self.pool, thread_id).await
+    }
+    async fn list_land_gate_history(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<LandGateVerdict>, StoreError> {
+        land_gate::history(self.read_pool(), thread_id).await
     }
 }
 

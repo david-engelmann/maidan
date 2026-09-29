@@ -665,6 +665,38 @@ someone reading the audit trail afterwards.
 not: any member with `workspace:write` could accept its own request. Declining
 or cancelling your own request is still allowed; it approves nothing.
 
+### Decisions keep their history; approval answers are final
+
+**Decision.** Every review verdict and every land-gate verdict is appended to
+a history table (`maidan_thread_review_verdicts`,
+`maidan_thread_land_gate_verdicts`) in the same transaction as the write.
+The current rows stay as they are: each reviewer has one current review and each
+thread has one gate pointer, and the close-gate reads those. The history is read with
+`GET /threads/{id}/reviews/history` and `GET /threads/{id}/land-gate/history`
+(MCP `list_review_history`, `list_land_gate_history`), oldest first.
+
+**Why.** The attribution row (411.9) records that a decision changed and who
+changed it, not what it was. A re-submitted review or a new gate pointer
+overwrote the earlier value, so an owner auditing why work landed could see
+only the last verdict. Dismissing approvals on a send-back and clearing the
+gate change the current rows only. The history keeps what was decided before.
+
+**Approval-gate answers need no history.** Resolving a gate is a
+compare-and-set from `pending`. The first answer is final, and a second answer
+changes nothing (pinned in `approval_gates.rs`). A gate's row already is its
+history: requested, then answered once.
+
+**Rejected.** *Versioning the current rows* (a `superseded_at` column on
+`maidan_thread_reviews`) would make every close-gate and status query filter on
+it, and a missed filter would count a stale approval. *Deriving history from the
+event log* does not work: reviews and gate pointers do not all emit events, and
+reconstructing from events would tie an audit read to event retention. A history
+table is append-only, and nothing that decides a land reads it.
+
+**Backfill.** Migration 0121 seeds the history with one verdict per existing
+current row, stamped with its last update time. Values overwritten before
+0121 were not recorded and cannot be recovered.
+
 ### A workspace handle is a display label, not an address (`v398.7.0`)
 
 **Decision.** Maidan will **not** resolve a handle to a workspace. There is no

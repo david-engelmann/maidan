@@ -944,6 +944,15 @@ neither owner nor assignee. Amber (flags-then-still-engages) is not a
 land. Fail is always red, even if `land=green` is requested. The room
 holds the pointer; an external verifier records pass/fail. Not a CI product.
 
+Both decisions keep their history. The current review and the current pointer
+are what the gate reads. `GET /threads/:id/reviews/history` (MCP
+`list_review_history`) and `GET /threads/:id/land-gate/history` (MCP
+`list_land_gate_history`) return every verdict ever recorded, oldest first, with
+the delegate that acted where one did (`workspace:read`). A re-submitted review,
+a dismissal on send-back, or clearing the gate leaves earlier verdicts there.
+An approval-gate answer is final: the first answer wins, and later answers
+change nothing.
+
 #### Experimental Jev advice (default off)
 
 `v408.0.0` added an **advisory-only** decision-model spike at

@@ -18,7 +18,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::ids::MemberId;
+use crate::ids::{MemberId, ThreadId};
 
 /// The member-skill tag a gate-skilled verifier declares. The close-gate only
 /// counts a pass from a member who has this skill — an implementer who is not
@@ -406,4 +406,26 @@ mod tests {
         assert_eq!(v["status"], "fail");
         assert_eq!(v["land"], "red");
     }
+}
+
+/// One verdict in a thread's land-gate history. The gate's standing holds the
+/// latest pointer, and recording a new one replaces it; every recorded
+/// pointer is also appended here and never changed, and clearing the gate
+/// leaves the history in place.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LandGateVerdict {
+    /// Position in the history; increases with every verdict.
+    pub id: i64,
+    pub thread_id: ThreadId,
+    pub status: LandGateStatus,
+    /// The land color the recorder wrote (not the computed standing).
+    pub land: LandColor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_sha: Option<String>,
+    pub recorded_by: MemberId,
+    /// The delegate that recorded this verdict for `recorded_by`, when one did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded_actor_id: Option<MemberId>,
+    pub recorded_at: DateTime<Utc>,
 }

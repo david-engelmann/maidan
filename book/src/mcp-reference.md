@@ -2975,6 +2975,27 @@ List a thread's review decisions (reviewer, decision, note).
 }
 ```
 
+### `list_review_history`
+
+List every verdict submitted on a thread, oldest first (reviewer, decision, note, delegate, recorded_at). list_reviews shows each reviewer's current decision; a re-submission replaces it there but its earlier verdicts stay here.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_land_gate`
 
 Record a land-gate pointer on a thread: status pass or fail, optional artifact_sha, optional land green/amber/red. The room holds the pointer; an external verifier records pass/fail. A qualifying green pass (land-gate-skilled member who is not the implementer) is required to close once the gate is armed. Amber is flags-then-still-engages and is not a land. Requires thread:transition. The caller must have declared the land_gate skill.
@@ -3018,6 +3039,27 @@ Record a land-gate pointer on a thread: status pass or fail, optional artifact_s
 ### `get_land_gate`
 
 Read a thread's land-gate standing: required, pointer, land (green/amber/red), landable. No pointer is vacuous green. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_land_gate_history`
+
+List every land-gate verdict recorded on a thread, oldest first (status, land, artifact_sha, recorder, delegate, recorded_at). get_land_gate shows the latest pointer; a later pointer or clearing the gate leaves earlier verdicts here. Requires workspace:read.
 
 **Capability:** `workspace:read`
 

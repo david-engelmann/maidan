@@ -55,6 +55,16 @@ pub(super) async fn get_land_gate(store: &Arc<dyn Store>, args: &Value) -> Resul
     Ok(content_json(&standing))
 }
 
+/// Every land-gate verdict recorded on the thread, oldest first.
+pub(super) async fn list_land_gate_history(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let history = store.list_land_gate_history(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&history))
+}
+
 /// Arm the LandGate close-gate without a pointer yet.
 pub(super) async fn require_land_gate(
     store: &Arc<dyn Store>,

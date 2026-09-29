@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Decisions keep their history
+
+- **Added:** every review verdict and land-gate verdict is appended to a
+  history, read with `GET /threads/{id}/reviews/history` and
+  `GET /threads/{id}/land-gate/history` (MCP `list_review_history` and
+  `list_land_gate_history`, `workspace:read`), oldest first. A re-submitted
+  review, a dismissal or a cleared gate no longer loses the earlier verdict.
+  Migration 0121 (both databases) adds the tables and seeds them from the
+  current rows. Approval-gate answers were already final: the first answer
+  wins.
+
 ### `/ui` shows who is on the board, and cards move between lanes
 
 - **Added:** a team strip under the board header. Each member appears by name

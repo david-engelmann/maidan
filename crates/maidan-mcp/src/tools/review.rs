@@ -178,6 +178,16 @@ pub(super) async fn list_reviews(store: &Arc<dyn Store>, args: &Value) -> Result
     Ok(content_json(&reviews))
 }
 
+/// Every verdict submitted on the thread, oldest first.
+pub(super) async fn list_review_history(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let history = store.list_review_history(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&history))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

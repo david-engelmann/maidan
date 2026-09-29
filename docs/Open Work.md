@@ -25,7 +25,7 @@ Ranked by what an agent or a person relying on the room loses without it.
 | 2 | **Idempotency keys on writes** — ✅ server half (`Idempotency-Key` middleware, `maidan_idempotency_keys` V118, 422 on reuse, 409 `idempotency-key-in-flight`, 24h retention); SDK 0.2 next | Agents retry. A retried post, claim or upload after a timeout duplicates today; there is no `Idempotency-Key` anywhere. Server-side keys (stored response per key and caller, bounded retention) first, then the SDK 0.2 auto-retry and auto-page that `NEW-sdk-ergonomics` wants | L | none; SDK half after the server half |
 | 3 | **Eager reclaim and `ClaimUnacknowledged`** | A dead holder's claim is freed only when someone next calls `claim_next`, and a claim that is never acknowledged is visible only by polling occupancy (Cluster 351 deviations a and b). A timer-driven reaper emits `ClaimExpired` on time, a `ClaimUnacknowledged` event pushes the stuck case, and a server default lease stops a caller from forgetting `lease_secs` | M | none |
 | 4 | ~~**Load shedding, catch-panic and header redaction**~~ **✅ shipped (#1092)** — an in-flight ceiling outside auth (`MAIDAN_MAX_CONCURRENT_REQUESTS`, default 1024) answers `503` + `Retry-After` at once; a handler panic answers a `500` problem with its `X-Request-Id`; request spans print `Authorization`, cookies, `Mcp-Session-Id` and webhook signatures as `Sensitive` and leave out the query. `overload_e2e`, `trace_redaction_e2e`; alerts `MaidanHandlerPanics`, `MaidanLoadShedding` | Program R's `tower-load-shed` row: no `LoadShed` or `ConcurrencyLimit` below auth, a handler panic drops the connection instead of answering a problem, and nothing marks `Authorization` or cookies sensitive in traces. Cheap insurance for every client | S–M | none |
-| 5 | **Decisions keep their history** | The attribution row records that a review verdict or an approval-gate answer changed, not what it was; the earlier value is overwritten (411.10). An owner auditing why work landed needs the sequence of verdicts | M | none |
+| 5 | **Decisions keep their history** — 🚧 in review (#1098): review and land-gate verdict history over REST and MCP; approval-gate answers were already final | The attribution row records that a review verdict or an approval-gate answer changed, not what it was; the earlier value is overwritten (411.10). An owner auditing why work landed needs the sequence of verdicts | M | none |
 | 6 | **Trace context across REST, WS, MCP and A2A** | Program O's `trace-context-propagation`: OTLP export exists but no `traceparent` is accepted or carried, so an agent's request cannot be followed from its own trace into Maidan and out through a webhook or projector | M | none |
 | 7 | **F-48 Tier 1: one `store_impl!` for both backends** | 6,079 lines of byte-identical `Store` delegation in `{postgres,sqlite}/mod.rs` become about 429; a method wired on one backend and forgotten on the other stops compiling. The measured plan above calls this the first and largest win | M | none |
 | 8 | **Workspace-wide `claim_next`** | `claim_next` is channel-scoped, so an agent serving a workspace polls every channel. One workspace pull with the same fairness, skill and DAG rules | M | 3 (shares the reaper and default lease) |
@@ -1956,7 +1956,10 @@ Still open, tracked here rather than left to a re-audit:
   what it changed to. For most of these routes the value is the current state
   and that is enough. It is not enough for decisions — a review verdict, an
   approval-gate answer — whose earlier values are overwritten; those want
-  domain records carrying the decision, and belong with 411.10.
+  domain records carrying the decision, and belong with 411.10. **Closed by
+  Next wave item 5 (#PRNUM):** review and land-gate verdicts are appended to a
+  history. Approval-gate answers were never overwritten: the first answer is
+  final.
 
 - **Found 2026-09-23 by the backlog reconciliation, fixed: purging a workspace
   destroyed another workspace's artifacts.** Artifacts are content-addressed and

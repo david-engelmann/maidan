@@ -84,6 +84,26 @@ pub struct ThreadReview {
     pub dismissed_at: Option<DateTime<Utc>>,
 }
 
+/// One verdict in a thread's review history. [`ThreadReview`] holds each
+/// reviewer's current decision, and re-submitting replaces it; every
+/// submission is also appended here and never changed, so an owner can see
+/// the sequence of verdicts that led to a land.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReviewVerdict {
+    /// Position in the history; increases with every verdict.
+    pub id: i64,
+    pub thread_id: ThreadId,
+    pub reviewer_id: MemberId,
+    pub decision: ReviewDecision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// The delegate that submitted this verdict for `reviewer_id`, when one did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_id: Option<MemberId>,
+    pub recorded_at: DateTime<Utc>,
+}
+
 /// The computed review standing of a thread — what the close-gate reads for the
 /// **approval** side (the `refutes`-edge block is checked separately at the gate).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
