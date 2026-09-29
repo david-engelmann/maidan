@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### `/ui` puts what needs you first: approve, send back and close in one row
+
+- **Added:** a "Needs you" queue above the board lists the decisions agents are
+  waiting on: reviews requested from you and open approval gates. Each row
+  names who handed the work off and what they reported, and carries its own
+  buttons: Approve, Request changes (with a note the agent reads), Close task
+  once the requirement is met, and Approve or Decline for a gate. When the
+  queue is empty it says so. The waiting count shows in the tab title,
+  `(2) Maidan`, and as a dot on the favicon.
+- **Added:** the open thread's header offers Approve when a review is
+  requested from you, and Close task once its approvals are met.
+- **Changed:** results read as fields (`runs 500` `failures 0`) instead of raw
+  JSON. A zero failure or error count is marked good, links are clickable,
+  and the full JSON is still in the tooltip.
+- **Changed:** errors say what went wrong and what to do before the server's
+  detail. For example, a 403 names the missing capability: "Your token is not
+  allowed to do this; it needs thread:transition. Mint a token with it in
+  Tokens".
+
 ### A requested review reaches the reviewer, and a refused close says what to do next
 
 - **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP

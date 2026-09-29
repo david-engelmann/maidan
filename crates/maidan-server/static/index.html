@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Maidan</title>
+    <link id="favicon" rel="icon" href="data:," />
     <style>
       :root {
         --bg: #f7f5f0;
@@ -421,6 +422,46 @@
       #collab-panel > label { color: var(--muted); font-size: 0.8rem; }
       textarea.compose { width: 100%; max-width: none; min-height: 3.2rem; }
       #collab-panel details summary { color: var(--muted); font-size: 0.85rem; cursor: pointer; }
+      /* Needs you: the decisions agents are waiting on, first thing on the
+         page, with the buttons in the row (approve here, not in a tab). */
+      #needs-you { margin: 0.9rem 1rem 0; background: var(--panel); border: 1px solid #f3d9a4; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+      #needs-you[hidden] { display: none; }
+      #needs-you.clear { border-color: var(--line); }
+      .ny-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.9rem; background: #fffaf0; border-bottom: 1px solid #f6e3bd; }
+      #needs-you.clear .ny-head { background: var(--soft); border-bottom: none; }
+      .ny-head h2 { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: #9a3412; }
+      #needs-you.clear .ny-head h2 { color: var(--muted); }
+      .ny-count { background: #ea580c; color: #fff; border-radius: 999px; font-size: 0.72rem; font-weight: 700; padding: 0 0.45rem; line-height: 1.35rem; min-width: 1.35rem; text-align: center; }
+      .ny-count:empty { display: none; }
+      .ny-hint { color: var(--muted); font-size: 0.8rem; }
+      #needs-you-list { list-style: none; margin: 0; padding: 0; }
+      #needs-you-list:empty { display: none; }
+      .ny-item { display: grid; grid-template-columns: auto 1fr auto; gap: 0.35rem 0.75rem; align-items: center; padding: 0.6rem 0.9rem; border-top: 1px solid var(--line); }
+      .ny-item:first-child { border-top: none; }
+      .ny-kind { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.45rem; border-radius: 0.6rem; border: 1px solid #fdba74; background: #ffedd5; color: #9a3412; white-space: nowrap; }
+      .ny-kind.gate { border-color: #fde047; background: #fef9c3; color: #854d0e; }
+      .ny-main { min-width: 0; }
+      .ny-title { font-weight: 650; font-size: 0.9rem; color: var(--ink); cursor: pointer; }
+      .ny-title:hover { text-decoration: underline; }
+      .ny-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; margin-top: 0.15rem; font-size: 0.78rem; color: var(--muted); }
+      .ny-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+      .ny-actions button { padding: 0.28rem 0.7rem; font-size: 0.8rem; }
+      .ny-actions .done-note { color: #15803d; font-weight: 650; font-size: 0.8rem; }
+      .ny-note { grid-column: 2 / 4; display: flex; gap: 0.4rem; }
+      .ny-note input { flex: 1; font-size: 0.82rem; }
+      .ny-item.leaving { opacity: 0; transform: translateX(12px); transition: opacity 0.35s ease, transform 0.35s ease; }
+      @media (prefers-reduced-motion: reduce) { .ny-item.leaving { transition: none; } }
+      .ny-err { grid-column: 2 / 4; color: var(--err); font-size: 0.78rem; }
+      /* Results read as facts, not JSON: one chip per field. */
+      .result { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }
+      .result .kv { display: inline-flex; gap: 0.3rem; align-items: baseline; background: #f4f4f5; border: 1px solid var(--line); border-radius: 0.35rem; padding: 0 0.4rem; font-size: 0.76rem; color: var(--ink); line-height: 1.45; }
+      .result .kv .k { color: var(--muted); }
+      .result .kv .v { font-weight: 650; font-variant-numeric: tabular-nums; }
+      .result .kv .v.good { color: #15803d; }
+      .result a { color: var(--accent); }
+      #thread-actions { display: inline-flex; gap: 0.4rem; margin-left: auto; }
+      #thread-actions:empty { display: none; }
+      #thread-actions button { padding: 0.25rem 0.7rem; font-size: 0.8rem; }
       #tools { background: var(--soft); }
       #tools > summary { color: var(--muted); }
       .tabs button { box-shadow: none; font-size: 0.82rem; }
@@ -504,6 +545,14 @@
           </div>
           <pre id="live-feed" hidden></pre>
         </section>
+        <section id="needs-you" aria-labelledby="needs-you-title" hidden>
+          <div class="ny-head">
+            <h2 id="needs-you-title">Needs you</h2>
+            <span id="needs-you-count" class="ny-count" aria-label="items waiting on you"></span>
+            <span id="needs-you-hint" class="ny-hint"></span>
+          </div>
+          <ul id="needs-you-list" aria-live="polite"></ul>
+        </section>
         <section id="board-panel" aria-labelledby="board-title">
           <div id="board-head">
             <h2 id="board-title">Board</h2>
@@ -517,6 +566,7 @@
             <span id="thread-badge"></span>
             <span id="thread-context" class="muted">none selected</span>
             <span id="live-indicator" class="muted" hidden title="This thread updates live from the WebSocket (connect it in the Events tab)">● live</span>
+            <span id="thread-actions"></span>
           </div>
           <div id="thread-facts"></div>
           <div id="message-list"><div class="muted">Pick a task on the board to open its thread.</div></div>
@@ -1087,7 +1137,25 @@
         }
         detail = String(detail).replace(/\s+/g, " ").trim().slice(0, 500);
         const lead = prefix ? `${prefix}: ` : "";
-        return `${lead}HTTP ${res.status}${detail ? ` — ${detail}` : ""}`;
+        const said = humanError(res.status, detail);
+        return `${lead}${said}${detail ? ` — ${detail}` : ""} (HTTP ${res.status})`;
+      }
+      // Say what went wrong and what to do about it, before the detail from the server
+      // detail. A 409 is a rule refusing the action; its detail already says
+      // what unblocks it, so it leads.
+      function humanError(status, detail) {
+        const needs = /(?:capability|needs?|requires?)[^a-z]*([a-z]+:[a-z_]+)/i.exec(detail || "");
+        if (status === 401) return "Your token or session was not accepted. Use Change to set a working one";
+        if (status === 403)
+          return needs
+            ? `Your token is not allowed to do this; it needs ${needs[1]}. Mint a token with it in Tokens`
+            : "Your token is not allowed to do this. Mint one with the right capability in Tokens";
+        if (status === 404) return "Not found. It may have been deleted, or it belongs to another workspace";
+        if (status === 409) return "Refused";
+        if (status === 413) return "That is too large for the server to accept";
+        if (status === 429) return "Too many requests. Wait a moment, then try again";
+        if (status >= 500) return "The server hit an error. Try again; if it keeps failing, check the server log";
+        return "The request was not accepted";
       }
       function setOut(obj) {
         document.getElementById("out").textContent =
@@ -1283,6 +1351,7 @@
           if (stale()) return;
           list.innerHTML = "";
           renderBoard(threads, gates);
+          loadNeedsYou();
           if (!threads.length) {
             renderState(list, "No threads in this channel. Create one above to start work.");
             return;
@@ -1334,8 +1403,10 @@
           });
           if (!res.ok) return map;
           const views = await res.json();
+          pendingGateViews = new Map();
           for (const v of views) {
             const g = v.gate;
+            if (g) pendingGateViews.set(g.id, v);
             if (g && g.thread_id) map[g.thread_id] = { hasSchema: g.schema != null };
           }
         } catch (_e) {
@@ -1525,6 +1596,7 @@
         const facts = document.getElementById("thread-facts");
         badgeBox.replaceChildren();
         facts.replaceChildren();
+        document.getElementById("thread-actions").replaceChildren();
         if (!th) return;
         const tid = th.id;
         badgeBox.appendChild(chromeBadge(sessionChrome(th, lastGates[tid])));
@@ -1545,9 +1617,7 @@
           if (res.ok && gen === headerGen) {
             const r = await res.json();
             if (gen !== headerGen) return;
-            const code = document.createElement("code");
-            code.textContent = JSON.stringify(r.result);
-            const f = fact("result ", code);
+            const f = fact("result ", renderResult(r.result));
             f.append(" by ", personEl(r.produced_by, { avatar: false }));
           }
         } catch (_e) {
@@ -1565,9 +1635,349 @@
               s.textContent = `${rs.approvals}/${rs.required_count} approvals${rs.approvals_met ? " ✓" : ""}`;
               fact("review ", s);
             }
+            renderThreadActions(th, rs);
           }
         } catch (_e) {
           /* review status is optional chrome */
+        }
+      }
+
+
+      // ---- Results --------------------------------------------------------
+      // A result reads as facts: one chip per field, links clickable, and a
+      // zero failure/error count marked good. Deeper shapes fall back to
+      // compact JSON so nothing is hidden.
+      function renderResult(value) {
+        const box = document.createElement("span");
+        box.className = "result";
+        const chip = (k, v) => {
+          const kv = document.createElement("span");
+          kv.className = "kv";
+          if (k !== null) {
+            const ks = document.createElement("span");
+            ks.className = "k";
+            ks.textContent = k.replace(/_/g, " ");
+            kv.appendChild(ks);
+          }
+          const vs = document.createElement("span");
+          vs.className = "v";
+          if (typeof v === "string" && /^https?:\/\//.test(v)) {
+            const a = document.createElement("a");
+            a.href = v;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.textContent = v.replace(/^https?:\/\//, "").slice(0, 48);
+            vs.appendChild(a);
+          } else if (v !== null && typeof v === "object") {
+            vs.textContent = JSON.stringify(v).slice(0, 80);
+          } else {
+            vs.textContent = String(v);
+          }
+          if (v === 0 && k !== null && /fail|error|flak/i.test(k)) vs.classList.add("good");
+          if (v === true && k !== null && /pass|ok|green|success/i.test(k)) vs.classList.add("good");
+          kv.appendChild(vs);
+          box.appendChild(kv);
+        };
+        if (value === null || value === undefined) {
+          chip(null, "none");
+        } else if (Array.isArray(value)) {
+          chip(null, `${value.length} item${value.length === 1 ? "" : "s"}`);
+        } else if (typeof value === "object") {
+          const entries = Object.entries(value);
+          entries.slice(0, 6).forEach(([k, v]) => chip(k, v));
+          if (entries.length > 6) chip(null, `+${entries.length - 6} more`);
+          if (!entries.length) chip(null, "{}");
+        } else {
+          chip(null, value);
+        }
+        box.title = JSON.stringify(value);
+        return box;
+      }
+
+      // ---- Needs you -------------------------------------------------------
+      // The decisions agents are waiting on, from the waiting inbox of this member:
+      // reviews requested from them and open approval gates. Each row carries
+      // its own buttons. The count also lands in the tab title and favicon, so
+      // a waiting agent is visible from another tab.
+      let needsYou = [];
+      let pendingGateViews = new Map();
+      let needsYouGen = 0;
+      const NY_KINDS = new Set(["review_request", "open_gate"]);
+      function faviconHref(alert) {
+        const dot = alert ? '<circle cx="52" cy="12" r="11" fill="#ea580c" stroke="#fff" stroke-width="3"/>' : "";
+        const mark = document.querySelector(".brand-mark").innerHTML.replace(/currentColor/g, "#14532d");
+        return "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${mark}${dot}</svg>`);
+      }
+      function setAttention(n) {
+        document.title = n > 0 ? `(${n}) Maidan` : "Maidan";
+        document.getElementById("favicon").href = faviconHref(n > 0);
+      }
+      async function loadNeedsYou() {
+        const gen = ++needsYouGen;
+        const box = document.getElementById("needs-you");
+        const me = authorId();
+        if (!me || !wid()) {
+          box.hidden = true;
+          setAttention(0);
+          return;
+        }
+        let items = [];
+        try {
+          const res = await fetch(uiReadPath(`/members/${me}/waiting`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) {
+            box.hidden = true;
+            return;
+          }
+          items = (await res.json()).items.filter((i) => NY_KINDS.has(i.kind));
+        } catch (_e) {
+          return;
+        }
+        if (gen !== needsYouGen) return;
+        needsYou = items;
+        renderNeedsYou();
+      }
+      function renderNeedsYou() {
+        const box = document.getElementById("needs-you");
+        const list = document.getElementById("needs-you-list");
+        const count = document.getElementById("needs-you-count");
+        const hint = document.getElementById("needs-you-hint");
+        box.hidden = false;
+        list.replaceChildren();
+        const n = needsYou.length;
+        count.textContent = n ? String(n) : "";
+        box.classList.toggle("clear", n === 0);
+        hint.textContent = n
+          ? `${n === 1 ? "An agent is" : "Agents are"} waiting on your decision.`
+          : "Nothing is waiting on you. Reviews and approvals agents ask you for show up here.";
+        setAttention(n);
+        needsYou.forEach((item) => list.appendChild(needsYouRow(item)));
+      }
+      function needsYouRow(item) {
+        const li = document.createElement("li");
+        li.className = "ny-item";
+        li.dataset.kind = item.kind;
+        if (item.thread_id) li.dataset.threadId = item.thread_id;
+        const kind = document.createElement("span");
+        kind.className = `ny-kind${item.kind === "open_gate" ? " gate" : ""}`;
+        kind.textContent = item.kind === "open_gate" ? "Approval" : "Review";
+        const main = document.createElement("div");
+        main.className = "ny-main";
+        const title = document.createElement("div");
+        title.className = "ny-title";
+        const th = item.thread_id ? threadsById.get(item.thread_id) : null;
+        title.textContent = (th && th.title) || item.summary;
+        if (item.thread_id) title.onclick = () => selectThread(item.thread_id, title.textContent);
+        const sub = document.createElement("div");
+        sub.className = "ny-sub";
+        const when = document.createElement("span");
+        when.textContent = `waiting ${ago(item.since).replace(" ago", "")}`.replace("waiting just now", "just now");
+        main.append(title, sub);
+        const actions = document.createElement("div");
+        actions.className = "ny-actions";
+        li.append(kind, main, actions);
+        if (item.kind === "review_request") {
+          sub.appendChild(when);
+          fillReviewContext(item.thread_id, sub, when);
+          const approve = document.createElement("button");
+          approve.type = "button";
+          approve.className = "primary";
+          approve.textContent = "Approve";
+          approve.onclick = () => approveFromInbox(item, li);
+          const changes = document.createElement("button");
+          changes.type = "button";
+          changes.textContent = "Request changes";
+          changes.onclick = () => askForChanges(item, li);
+          actions.append(approve, changes);
+        } else {
+          const view = pendingGateViews.get(item.gate_id);
+          if (view && view.gate.requested_by) sub.append("asked by ", personEl(view.gate.requested_by));
+          sub.appendChild(when);
+          for (const [action, label, cls] of [["accept", "Approve", "primary"], ["decline", "Decline", ""]]) {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.textContent = label;
+            if (cls) b.className = cls;
+            b.onclick = async () => {
+              const v = pendingGateViews.get(item.gate_id);
+              if (!v) return showRowError(li, "This gate is no longer pending.");
+              await answerGate(item.gate_id, action, v.request_state);
+              dropRow(item, li);
+            };
+            actions.appendChild(b);
+          }
+        }
+        return li;
+      }
+      // Who handed the work off and what they reported, from the result.
+      async function fillReviewContext(tid, sub, before) {
+        try {
+          const res = await fetch(uiReadPath(`/threads/${tid}/result`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) return;
+          const r = await res.json();
+          const who = personEl(r.produced_by);
+          sub.insertBefore(who, before);
+          sub.insertBefore(renderResult(r.result), before);
+        } catch (_e) {
+          /* the title alone still identifies the review */
+        }
+      }
+      function showRowError(li, msg) {
+        let el = li.querySelector(".ny-err");
+        if (!el) {
+          el = document.createElement("div");
+          el.className = "ny-err";
+          li.appendChild(el);
+        }
+        el.textContent = msg;
+      }
+      function dropRow(item, li) {
+        li.classList.add("leaving");
+        setTimeout(() => {
+          needsYou = needsYou.filter((i) => i !== item);
+          renderNeedsYou();
+        }, 380);
+      }
+      // Reviews and closes are thread transitions, so they need a bearer token
+      // with thread:transition (a browser session cannot transition threads).
+      async function submitReview(tid, decision, note) {
+        if (!token()) {
+          return { ok: false, why: "Approving needs a token with thread:transition. Set one with Change, or mint one in Tokens." };
+        }
+        const res = await fetch(`${base()}/threads/${tid}/reviews`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify(note ? { decision, note } : { decision }),
+        });
+        if (!res.ok) return { ok: false, why: await responseError(res, "Review not recorded") };
+        return { ok: true };
+      }
+      async function reviewStatus(tid) {
+        try {
+          const res = await fetch(`${base()}/threads/${tid}/review-status`, { headers: headers() });
+          return res.ok ? await res.json() : null;
+        } catch (_e) {
+          return null;
+        }
+      }
+      async function closeThread(tid) {
+        const res = await fetch(`${base()}/threads/${tid}`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ action: "close" }),
+        });
+        if (!res.ok) return { ok: false, why: await responseError(res, "Not closed") };
+        return { ok: true };
+      }
+      async function approveFromInbox(item, li) {
+        const actions = li.querySelector(".ny-actions");
+        actions.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        const out = await submitReview(item.thread_id, "approve");
+        if (!out.ok) {
+          actions.querySelectorAll("button").forEach((b) => (b.disabled = false));
+          return showRowError(li, out.why);
+        }
+        const rs = await reviewStatus(item.thread_id);
+        actions.replaceChildren();
+        const note = document.createElement("span");
+        note.className = "done-note";
+        note.textContent = rs && rs.required_count
+          ? `Approved ✓ ${rs.approvals}/${rs.required_count}`
+          : "Approved ✓";
+        actions.appendChild(note);
+        if (rs && rs.approvals_met) {
+          const close = document.createElement("button");
+          close.type = "button";
+          close.className = "primary";
+          close.textContent = "Close task";
+          close.onclick = async () => {
+            close.disabled = true;
+            const done = await closeThread(item.thread_id);
+            if (!done.ok) {
+              close.disabled = false;
+              return showRowError(li, done.why);
+            }
+            dropRow(item, li);
+            scheduleBoardRefresh();
+          };
+          actions.appendChild(close);
+        } else {
+          setTimeout(() => dropRow(item, li), 1200);
+        }
+        if (item.thread_id === selectedThreadId) renderThreadHeader();
+      }
+      function askForChanges(item, li) {
+        if (li.querySelector(".ny-note")) return;
+        const row = document.createElement("div");
+        row.className = "ny-note";
+        const input = document.createElement("input");
+        input.placeholder = "What should change? The agent reads this.";
+        input.setAttribute("aria-label", "Change request note");
+        const send = document.createElement("button");
+        send.type = "button";
+        send.textContent = "Send back";
+        const go = async () => {
+          send.disabled = true;
+          const out = await submitReview(item.thread_id, "request_changes", input.value.trim());
+          if (!out.ok) {
+            send.disabled = false;
+            return showRowError(li, out.why);
+          }
+          dropRow(item, li);
+          scheduleBoardRefresh();
+        };
+        send.onclick = go;
+        input.onkeydown = (e) => {
+          if (e.key === "Enter") go();
+          if (e.key === "Escape") row.remove();
+        };
+        row.append(input, send);
+        li.appendChild(row);
+        input.focus();
+      }
+      // Decision buttons for the open thread: approve when a review is
+      // requested from me, close once the review requirement is met.
+      function renderThreadActions(th, rs) {
+        const box = document.getElementById("thread-actions");
+        box.replaceChildren();
+        if (th.state !== "in_review" || !token()) return;
+        const mine = needsYou.find((i) => i.kind === "review_request" && i.thread_id === th.id);
+        if (mine) {
+          const approve = document.createElement("button");
+          approve.type = "button";
+          approve.className = "primary";
+          approve.textContent = "Approve";
+          approve.onclick = async () => {
+            approve.disabled = true;
+            const out = await submitReview(th.id, "approve");
+            if (!out.ok) {
+              approve.disabled = false;
+              return setStatus(out.why, "err");
+            }
+            await loadNeedsYou();
+            renderThreadHeader();
+          };
+          box.appendChild(approve);
+        } else if (rs && rs.required_count > 0 && rs.approvals_met) {
+          const close = document.createElement("button");
+          close.type = "button";
+          close.className = "primary";
+          close.textContent = "Close task";
+          close.onclick = async () => {
+            close.disabled = true;
+            const out = await closeThread(th.id);
+            if (!out.ok) {
+              close.disabled = false;
+              return setStatus(out.why, "err");
+            }
+            scheduleBoardRefresh();
+          };
+          box.appendChild(close);
         }
       }
 
@@ -4170,6 +4580,7 @@
       }
 
       async function start() {
+        setAttention(0);
         const hadStored = !!(localStorage.getItem(tokenKey) && localStorage.getItem(wsKey));
         await refreshSession();
         const identity = await refreshBearerIdentity();
@@ -4180,6 +4591,7 @@
           if (identity || sessionMemberId) {
             showConnection(false);
             connectWs();
+            loadNeedsYou();
           }
         }
       }
