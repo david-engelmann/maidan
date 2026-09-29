@@ -95,7 +95,9 @@ pub fn parse_egress_target(raw: &str) -> Result<Url, EgressTargetError> {
     }
 }
 
-fn private_egress_explicitly_allowed() -> bool {
+/// Whether the development-only private-egress escape hatch is on (never in
+/// production).
+pub fn private_egress_explicitly_allowed() -> bool {
     std::env::var("MAIDAN_ENV").as_deref() != Ok("production")
         && std::env::var("MAIDAN_ALLOW_PRIVATE_EGRESS").as_deref() == Ok("1")
 }

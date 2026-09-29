@@ -324,6 +324,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   another's notification mail. The frame may now name only the member the
   token or session belongs to; any other closes the socket with 1008.
 
+### A2A carries its credentials over TLS
+
+- **Changed:** an A2A push notification `url` must be `https` (plain `http` is
+  accepted only for a development receiver, with `MAIDAN_ALLOW_PRIVATE_EGRESS`).
+  A push carries the task and the caller's notification credentials; web push
+  already required https.
+- **Changed:** the gRPC listener, which is plaintext, refuses to bind off
+  loopback unless `MAIDAN_A2A_GRPC_PLAINTEXT=1` acknowledges that TLS is
+  terminated in front of it. An unparseable `MAIDAN_A2A_GRPC_ADDR` now refuses
+  boot instead of logging and starting without gRPC.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
