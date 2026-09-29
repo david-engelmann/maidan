@@ -84,6 +84,17 @@ async fn run_suite(store: &dyn Store) {
         matches!(blocked, Err(StoreError::Conflict(ref m)) if m.contains("review requirement")),
         "0 of 1 approvals must block close, got {blocked:?}"
     );
+    // The refusal says what unblocks it, so an agent can act on it instead of
+    // retrying the close.
+    let Err(StoreError::Conflict(why)) = blocked else {
+        unreachable!("checked above")
+    };
+    assert!(
+        why.contains("0 of 1 required approvals")
+            && why.contains("Next:")
+            && why.contains("submit_review"),
+        "the refusal names the count and the next step: {why}"
+    );
     // An approval from the reviewer (!= owner/assignee) satisfies it.
     store
         .submit_review(t.id, reviewer.id, ReviewDecision::Approve, None)

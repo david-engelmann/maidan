@@ -635,7 +635,8 @@ pub async fn get_member_delivery_mode(
 }
 
 /// The waiting-on-you inbox: everything that needs this member's attention —
-/// their assigned non-terminal threads, the workspace's pending approval gates,
+/// their assigned non-terminal threads, the reviews requested from them, the
+/// workspace's pending approval gates,
 /// and their unread mentions — oldest-waiting first, each aged against
 /// `?sla_secs` (default 24h). `workspace:read` + self-only for a session (a
 /// bearer orchestrator may query any member).
@@ -654,6 +655,20 @@ pub async fn get_member_waiting(
         .store
         .list_assigned_threads(member.workspace_id, MemberId(id))
         .await?;
+    // Being named a reviewer does not grant access to a private channel: list
+    // only the requests the caller can open (and so can act on).
+    let mut reviews = Vec::new();
+    for thread in state
+        .store
+        .list_review_requests(member.workspace_id, MemberId(id))
+        .await?
+    {
+        if auth.bypass
+            || maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await?
+        {
+            reviews.push(thread);
+        }
+    }
     let gates = state
         .store
         .list_pending_approval_gates(member.workspace_id, 200)
@@ -671,6 +686,7 @@ pub async fn get_member_waiting(
         .collect::<Vec<_>>();
     Ok(Json(assemble_waiting_inbox(
         &assigned,
+        &reviews,
         &gates,
         &unread,
         chrono::Utc::now(),

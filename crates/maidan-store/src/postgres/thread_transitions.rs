@@ -57,7 +57,10 @@ async fn review_gate_in_tx(
     let approvals: i64 = row.get("approvals");
     if required > 0 && approvals < required {
         return Err(StoreError::Conflict(format!(
-            "review requirement not met: {approvals} of {required} required approvals"
+            "review requirement not met: {approvals} of {required} required approvals. \
+             Next: a reviewer who did not work on this thread approves it \
+             (submit_review, decision approve), then close it again; \
+             closing before that is refused the same way"
         )));
     }
     let refuted = sqlx::query(

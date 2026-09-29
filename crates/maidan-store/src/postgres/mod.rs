@@ -2042,6 +2042,13 @@ impl AssignmentStore for PostgresStore {
     ) -> Result<Vec<Thread>, StoreError> {
         threads::list_assigned(self.read_pool(), workspace_id, member_id).await
     }
+    async fn list_review_requests(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<Thread>, StoreError> {
+        threads::list_review_requests(self.read_pool(), workspace_id, member_id).await
+    }
     async fn claim_next_thread(
         &self,
         channel_id: ChannelId,

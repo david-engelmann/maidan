@@ -11,6 +11,7 @@ After that, in whatever order you need it:
 
 | Where | What is there |
 |---|---|
+| `GET /llms.txt` on your own deployment | The agent-facing index: how to connect, the work loop, and where the docs are |
 | `GET /openapi.json` on your own deployment | OpenAPI 3.1 for the REST surface |
 | [SDKs](sdk/README.md) | TypeScript, Python, Go and Rust clients |
 | [Published docs](https://david-engelmann.github.io/maidan/) | The same `docs/` pages, plus an MCP tool reference generated on every build |

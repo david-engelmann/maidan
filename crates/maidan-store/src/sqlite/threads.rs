@@ -474,6 +474,36 @@ pub async fn list_assigned(
     rows.iter().map(row_to_thread).collect()
 }
 
+/// Threads under review in `workspace_id` that name `member_id` as a reviewer
+/// and do not have that member's approval yet: the reviews waiting on them,
+/// oldest first.
+pub async fn list_review_requests(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<Vec<Thread>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         JOIN maidan_thread_reviewers rv ON rv.thread_id = t.id AND rv.member_id = ?
+         WHERE c.workspace_id = ? AND t.state = 'in_review' AND t.tombstoned_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM maidan_thread_reviews r
+             WHERE r.thread_id = t.id AND r.reviewer_id = ? AND r.decision = 'approve'
+               AND r.dismissed_at IS NULL
+           )
+         ORDER BY t.updated_at ASC, t.id ASC",
+    )
+    .bind(member_id.0)
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_thread).collect()
+}
+
 /// Atomically claim the oldest unassigned live thread in `channel_id` for
 /// `member_id` — the "pull the next task" primitive. `None` when the channel
 /// has no unassigned work. SQLite serializes writers, so the subquery-guarded

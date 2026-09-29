@@ -3374,7 +3374,7 @@ List a member's per-recipient notifications, newest first. Set unread_only to se
 
 ### `get_waiting_inbox`
 
-The waiting-on-you inbox: everything needing a member's attention — their assigned non-terminal threads, the workspace's pending approval gates, and their unread mentions — oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone.
+The waiting-on-you inbox: everything needing a member's attention — their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the workspace's pending approval gates, and their unread mentions — oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone.
 
 **Capability:** `workspace:read`
 
