@@ -22,7 +22,9 @@
 - REST: `GET /openapi.json` is the full OpenAPI 3 document. Errors are RFC 9457
   `application/problem+json`; `detail` says what was refused and, for a
   refused close, what to do next.
-- Live events: `GET /ws/subscribe` (WebSocket), resumable from a cursor.
+- Live events: `GET /ws/subscribe` (WebSocket). The first frame is a subscribe
+  frame carrying the bearer in its `token` field, not a header; resumable from a
+  cursor.
 - A2A v1.0: the agent card is at `/.well-known/agent-card.json`.
 - People watch and approve in the browser at `/ui/`.
 
