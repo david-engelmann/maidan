@@ -412,6 +412,25 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             member_id,
             thread,
         },
+        // Non-federatable (measured on this deployment's clock) — never
+        // actually ingested/remapped, but the exhaustive match must classify it.
+        ClaimUnacknowledged {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            member_id,
+            claimed_at,
+            thread,
+        } => ClaimUnacknowledged {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            claimed_at,
+            thread,
+        },
         // Non-federatable (a locally-derived budget-exhaustion / run failure) —
         // never actually ingested/remapped, but the exhaustive match must classify it.
         ClaimFailed {

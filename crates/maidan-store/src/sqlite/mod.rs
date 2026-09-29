@@ -1819,6 +1819,15 @@ impl AssignmentStore for SqliteStore {
     ) -> Result<Vec<StoredEvent>, StoreError> {
         threads::reap_expired_claims(&self.pool, now, limit).await
     }
+
+    async fn report_unacknowledged_claims(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        claimed_before: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError> {
+        threads::report_unacknowledged_claims(&self.pool, now, claimed_before, limit).await
+    }
     async fn renew_claim(
         &self,
         thread_id: ThreadId,

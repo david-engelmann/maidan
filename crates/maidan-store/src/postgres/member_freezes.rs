@@ -75,7 +75,7 @@ pub(crate) async fn freeze_on(
     // claims so the work returns to the queue for another agent.
     let released = sqlx::query(
         "UPDATE maidan_threads
-         SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL,
+         SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL,
              work_started_at = NULL, updated_at = NOW()
          WHERE assignee_id = $1 AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')",
     )

@@ -1508,6 +1508,32 @@ dead holder's token.
 `lease_secs` to them rather than a default; an explicit handoff is an
 operator's decision to hold the thread.
 
+### An unacknowledged claim is reported, not reclaimed
+
+**Decision.** The claim reaper's tick also calls
+`Store::report_unacknowledged_claims`: a leased claim on an open thread,
+still live, taken more than `MAIDAN_CLAIM_ACK_TIMEOUT_SECS` (120 s) ago
+and not acknowledged gets one `ClaimUnacknowledged` naming the holder and
+when it claimed. `claimed_at` is written with every new fencing token and
+cleared with it; `unacknowledged_lease_id` records the token last reported,
+so each claim is reported once and a new claim has its own window. The
+claim is not changed. Claims with no lease are not reported. The event is
+not federatable and counts as stuck work in notifications and the manager
+digest.
+
+**Alternative.** Release a claim that is not acknowledged in time (it would
+take work from a slow agent that is fine, and it duplicates the lease);
+report on every tick (a flood for one stuck claim); leave it to polling the
+occupancy view (the Cluster 351 state, which nobody watches).
+
+**Why this:** "claimed but never started" is the one stuck case the lease
+cannot see until it lapses, which may be many minutes. A push lets a
+supervisor act early, and the lease stays the single mechanism that takes
+work back. The claim spec is unchanged: the report writes no claim state.
+
+**To revisit:** if operators want a per-channel or per-agent window rather
+than one server setting.
+
 ## Workflow
 
 ### Admin-merge instead of local-first push

@@ -69,7 +69,7 @@ pub(crate) async fn freeze_on(
     let freeze = row_to_freeze(&row);
     let released = sqlx::query(
         "UPDATE maidan_threads
-         SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL,
+         SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL,
              work_started_at = NULL, updated_at = ?
          WHERE assignee_id = ? AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')",
     )

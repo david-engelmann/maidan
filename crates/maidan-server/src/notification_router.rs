@@ -286,6 +286,44 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 .await?;
             }
         }
+        Event::ClaimUnacknowledged {
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            thread,
+            ..
+        } => {
+            // A claim nobody acknowledged is stuck work too: its holder took it
+            // and never started. The owner and the holder's followers hear, as
+            // for an expired claim; the holder is the actor.
+            let mut recipients = HashSet::new();
+            if let Some(owner_id) = thread.owner_id {
+                recipients.insert(owner_id);
+            }
+            add_accessible_member_followers(
+                state,
+                *workspace_id,
+                Some(*thread_id),
+                vec![*member_id],
+                &mut recipients,
+            )
+            .await?;
+            for recipient_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    recipient_id,
+                    EventKind::ClaimUnacknowledged,
+                    log_id,
+                    Some(*channel_id),
+                    Some(*thread_id),
+                    None,
+                    Some(*member_id),
+                )
+                .await?;
+            }
+        }
         Event::ClaimFailed {
             workspace_id,
             channel_id,

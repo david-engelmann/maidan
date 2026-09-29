@@ -110,12 +110,13 @@ pub async fn assign(
     // `append_assignment_event` where the other paths record.
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(assignee_id.0)
     .bind(lease.0)
+    .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
     .fetch_optional(&mut *tx)
@@ -243,12 +244,13 @@ pub async fn assign_with_event(
     .map(MemberId);
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(assignee_id.0)
     .bind(lease.0)
+    .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
     .fetch_optional(&mut *tx)
@@ -263,7 +265,7 @@ pub async fn assign_with_event(
 /// Clear the assignee. `NotFound` if absent.
 pub async fn unassign(pool: &SqlitePool, thread_id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
          WHERE id = ?
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -291,7 +293,7 @@ pub async fn unassign_with_event(
         .get::<Option<Uuid>, _>("assignee_id")
         .map(MemberId);
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
          WHERE id = ?
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -373,12 +375,13 @@ pub async fn claim(
     // never held the thread.
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(member_id.0)
     .bind(lease.0)
+    .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
     .fetch_optional(&mut *tx)
@@ -415,12 +418,13 @@ pub async fn claim_with_event(
     let mut tx = pool.begin().await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(member_id.0)
     .bind(lease.0)
+    .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
     .fetch_optional(&mut *tx)
@@ -533,7 +537,7 @@ pub async fn claim_next(
     // transaction exists so the worker record commits with the claim.
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, claim_lease_id = ?, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = (
              SELECT t.id FROM maidan_threads t
              LEFT JOIN maidan_thread_priorities p ON p.thread_id = t.id
@@ -573,6 +577,7 @@ pub async fn claim_next(
     .bind(member_id.0)
     .bind(&expires)
     .bind(lease.0)
+    .bind(now.to_rfc3339())
     .bind(now.to_rfc3339())
     .bind(channel_id.0)
     .bind(now.to_rfc3339())
@@ -773,13 +778,14 @@ pub async fn claim_next_with_event(
         .get::<Option<Uuid>, _>("assignee_id")
         .map(MemberId);
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, claim_lease_id = ?, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ?
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(member_id.0)
     .bind(&expires)
     .bind(lease.0)
+    .bind(now.to_rfc3339())
     .bind(now.to_rfc3339())
     .bind(cand_id)
     .fetch_one(&mut *tx)
@@ -823,7 +829,7 @@ pub async fn reap_expired_claims(
         // Guarded on the same holder and a still-lapsed lease, so a claim
         // taken or renewed since the read above is left alone.
         let Some(row) = sqlx::query(
-            "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
+            "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
              WHERE id = ? AND assignee_id = ? AND assignment_expires_at < ?
                AND tombstoned_at IS NULL AND state = 'open'
              RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
@@ -842,6 +848,80 @@ pub async fn reap_expired_claims(
     }
     tx.commit().await?;
     Ok(events)
+}
+
+/// Report leased claims taken before `claimed_before` that their holder never
+/// acknowledged, once per claim. See [`Store::report_unacknowledged_claims`].
+/// Each update is guarded on the same token and a still-unacknowledged claim,
+/// so a claim acknowledged, released or reported since the read is skipped.
+pub async fn report_unacknowledged_claims(
+    pool: &SqlitePool,
+    now: DateTime<Utc>,
+    claimed_before: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    const STALE: &str = "claim_lease_id IS NOT NULL AND work_started_at IS NULL
+           AND assignee_id IS NOT NULL
+           AND claimed_at IS NOT NULL AND claimed_at < ?
+           AND assignment_expires_at IS NOT NULL AND assignment_expires_at >= ?
+           AND unacknowledged_lease_id IS NOT claim_lease_id
+           AND tombstoned_at IS NULL AND state = 'open'";
+    let mut tx = pool.begin().await?;
+    let candidates = sqlx::query(&format!(
+        "SELECT id, claim_lease_id FROM maidan_threads WHERE {STALE}
+         ORDER BY claimed_at ASC, id ASC
+         LIMIT ?"
+    ))
+    .bind(claimed_before.to_rfc3339())
+    .bind(now.to_rfc3339())
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut events = Vec::with_capacity(candidates.len());
+    for candidate in &candidates {
+        let id: Uuid = candidate.get("id");
+        let lease: Uuid = candidate.get("claim_lease_id");
+        let Some(row) = sqlx::query(&format!(
+            "UPDATE maidan_threads SET unacknowledged_lease_id = claim_lease_id
+             WHERE id = ? AND claim_lease_id = ? AND {STALE}
+             RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, claimed_at"
+        ))
+        .bind(id)
+        .bind(lease)
+        .bind(claimed_before.to_rfc3339())
+        .bind(now.to_rfc3339())
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            continue;
+        };
+        let thread = row_to_thread(&row)?;
+        let claimed_at: DateTime<Utc> = row.get("claimed_at");
+        events.push(append_claim_unacknowledged_event(&mut tx, &thread, claimed_at).await?);
+    }
+    tx.commit().await?;
+    Ok(events)
+}
+
+async fn append_claim_unacknowledged_event(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread: &Thread,
+    claimed_at: DateTime<Utc>,
+) -> Result<StoredEvent, StoreError> {
+    let member_id = thread
+        .assignee_id
+        .ok_or_else(|| StoreError::InvalidInput("an unacknowledged claim has no holder".into()))?;
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread.id).await?;
+    let event = Event::ClaimUnacknowledged {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id: thread.id,
+        member_id,
+        claimed_at,
+        thread: thread.clone(),
+    };
+    events::append_in_tx(tx, &event).await
 }
 
 /// Extend a claim's lease (heartbeat), only for the current assignee.
@@ -909,7 +989,7 @@ pub async fn release_claim(
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
          WHERE id = ? AND assignee_id = ? AND claim_lease_id = ? AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
@@ -933,7 +1013,7 @@ pub async fn release_claim_with_event(
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
          WHERE id = ? AND assignee_id = ? AND claim_lease_id = ? AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )

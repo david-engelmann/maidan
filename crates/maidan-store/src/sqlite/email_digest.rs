@@ -160,12 +160,12 @@ pub async fn manager_digest_for_member(
         "SELECT channel_id,
                 SUM(CASE WHEN kind = 'thread_result_set' THEN 1 ELSE 0 END) AS results,
                 SUM(CASE WHEN kind = 'approval_requested' THEN 1 ELSE 0 END) AS gates,
-                SUM(CASE WHEN kind IN ('claim_expired', 'claim_failed', 'wait_timed_out') THEN 1 ELSE 0 END) AS stuck
+                SUM(CASE WHEN kind IN ('claim_expired', 'claim_unacknowledged', 'claim_failed', 'wait_timed_out') THEN 1 ELSE 0 END) AS stuck
          FROM maidan_notifications
          WHERE member_id = ?1
            AND read_at IS NULL
            AND datetime(created_at) > datetime(?2)
-           AND kind IN ('thread_result_set', 'approval_requested', 'claim_expired', 'claim_failed', 'wait_timed_out')
+           AND kind IN ('thread_result_set', 'approval_requested', 'claim_expired', 'claim_unacknowledged', 'claim_failed', 'wait_timed_out')
          GROUP BY channel_id
          ORDER BY channel_id IS NOT NULL, channel_id",
     )

@@ -146,7 +146,7 @@ pub async fn report_usage(
         (Some(reason), Some(member)) => {
             let row = sqlx::query(
                 "UPDATE maidan_threads
-                 SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = now()
+                 SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = now()
                  WHERE id = $1
                  RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
             )
@@ -274,7 +274,7 @@ pub async fn report_accounted_usage(
     let (stopped, reason, failed) = if let Some(reason) = budget.exceeded(wall) {
         let row = sqlx::query(
             "UPDATE maidan_threads
-             SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = now()
+             SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = now()
              WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3
              RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
         )

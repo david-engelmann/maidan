@@ -5,6 +5,7 @@
   "channel_created",
   "claim_expired",
   "claim_failed",
+  "claim_unacknowledged",
   "member_frozen",
   "member_joined",
   "member_unfrozen",

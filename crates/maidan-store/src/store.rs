@@ -1665,6 +1665,22 @@ pub trait AssignmentStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    /// Report up to `limit` leased claims taken before `claimed_before` whose
+    /// holder has not acknowledged them, appending a `ClaimUnacknowledged`
+    /// for each in the same transaction. Only open, live threads whose lease
+    /// is still running at `now` count (a lapsed one is the reaper's), and
+    /// each claim is reported once: the claim's fencing token is recorded,
+    /// and a new claim mints a new one. The claim itself is not changed.
+    /// Concurrent callers report distinct claims (`FOR UPDATE SKIP LOCKED` on
+    /// Postgres; a guarded update on SQLite). Returns the appended events,
+    /// oldest claim first.
+    async fn report_unacknowledged_claims(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        claimed_before: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
     /// Extend a claimed thread's lease (heartbeat), only for the current
     /// assignee holding the matching fencing token. `NotFound` if the thread is
     /// gone, the caller isn't the holder, or `lease_id` doesn't match the

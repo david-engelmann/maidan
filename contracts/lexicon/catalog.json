@@ -9,6 +9,7 @@
     "maidan.event.channel_created/1",
     "maidan.event.claim_expired/1",
     "maidan.event.claim_failed/1",
+    "maidan.event.claim_unacknowledged/1",
     "maidan.event.member_frozen/1",
     "maidan.event.member_joined/1",
     "maidan.event.member_unfrozen/1",

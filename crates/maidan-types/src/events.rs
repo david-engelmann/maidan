@@ -168,6 +168,7 @@ pub enum EventKind {
     ApprovalRequested,
     BlockedResolved,
     ClaimExpired,
+    ClaimUnacknowledged,
     ClaimFailed,
     UsageReported,
     ThreadLanded,
@@ -205,6 +206,7 @@ impl EventKind {
             Self::ApprovalRequested => "approval_requested",
             Self::BlockedResolved => "blocked_resolved",
             Self::ClaimExpired => "claim_expired",
+            Self::ClaimUnacknowledged => "claim_unacknowledged",
             Self::ClaimFailed => "claim_failed",
             Self::UsageReported => "usage_reported",
             Self::ThreadLanded => "thread_landed",
@@ -242,6 +244,7 @@ impl EventKind {
             "approval_requested" => Some(Self::ApprovalRequested),
             "blocked_resolved" => Some(Self::BlockedResolved),
             "claim_expired" => Some(Self::ClaimExpired),
+            "claim_unacknowledged" => Some(Self::ClaimUnacknowledged),
             "claim_failed" => Some(Self::ClaimFailed),
             "usage_reported" => Some(Self::UsageReported),
             "thread_landed" => Some(Self::ThreadLanded),
@@ -304,6 +307,7 @@ impl EventKind {
         Self::ApprovalRequested,
         Self::BlockedResolved,
         Self::ClaimExpired,
+        Self::ClaimUnacknowledged,
         Self::ClaimFailed,
         Self::UsageReported,
         Self::ThreadLanded,
@@ -371,6 +375,9 @@ impl EventKind {
             // A lease expiry is detected locally (this deployment's clock + reclaim);
             // a peer must not inject a claim of one.
             Self::ClaimExpired => false,
+            // An unacknowledged claim is measured on this deployment's clock;
+            // a peer must not inject one.
+            Self::ClaimUnacknowledged => false,
             // A budget-exhaustion / run failure is a locally-derived signal
             // (this deployment's budget accounting); a peer must not inject one.
             Self::ClaimFailed => false,
@@ -511,6 +518,24 @@ pub enum Event {
         thread_id: ThreadId,
         /// The previous holder whose lease expired.
         member_id: MemberId,
+        thread: Thread,
+    },
+    /// A leased claim went unacknowledged: its holder took the thread but has
+    /// not called `acknowledge_claim` within the server's acknowledgement
+    /// window (`MAIDAN_CLAIM_ACK_TIMEOUT_SECS`). The agent may have crashed
+    /// right after claiming, or never started. Emitted once per claim by the
+    /// claim reaper while the lease is still live; the claim itself is left
+    /// alone (the lease decides when it comes back). A locally-derived signal
+    /// (this deployment's clock): not federatable.
+    ClaimUnacknowledged {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        /// The holder that has not acknowledged.
+        member_id: MemberId,
+        /// When the claim was taken.
+        claimed_at: DateTime<Utc>,
         thread: Thread,
     },
     /// A claimed run was stopped because it exceeded its budget envelope — a
@@ -785,6 +810,7 @@ impl Event {
             Self::ApprovalRequested { .. } => EventKind::ApprovalRequested,
             Self::BlockedResolved { .. } => EventKind::BlockedResolved,
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
+            Self::ClaimUnacknowledged { .. } => EventKind::ClaimUnacknowledged,
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
             Self::UsageReported { .. } => EventKind::UsageReported,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
@@ -822,6 +848,7 @@ impl Event {
             | Self::ApprovalRequested { occurred_at, .. }
             | Self::BlockedResolved { occurred_at, .. }
             | Self::ClaimExpired { occurred_at, .. }
+            | Self::ClaimUnacknowledged { occurred_at, .. }
             | Self::ClaimFailed { occurred_at, .. }
             | Self::UsageReported { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
@@ -859,6 +886,7 @@ impl Event {
             | Self::ApprovalRequested { workspace_id, .. }
             | Self::BlockedResolved { workspace_id, .. }
             | Self::ClaimExpired { workspace_id, .. }
+            | Self::ClaimUnacknowledged { workspace_id, .. }
             | Self::ClaimFailed { workspace_id, .. }
             | Self::UsageReported { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
@@ -892,6 +920,7 @@ impl Event {
             | Self::ThreadResultSet { channel_id, .. }
             | Self::BlockedResolved { channel_id, .. }
             | Self::ClaimExpired { channel_id, .. }
+            | Self::ClaimUnacknowledged { channel_id, .. }
             | Self::ClaimFailed { channel_id, .. }
             | Self::UsageReported { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
@@ -920,6 +949,7 @@ impl Event {
             Self::ApprovalRequested { thread_id, .. } => *thread_id,
             Self::BlockedResolved { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
+            Self::ClaimUnacknowledged { thread_id, .. } => Some(*thread_id),
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
             Self::UsageReported { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
@@ -963,6 +993,7 @@ impl Event {
             Self::ApprovalRequested { requested_by, .. } => Some(*requested_by),
             Self::BlockedResolved { resolved_by, .. } => Some(*resolved_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
+            Self::ClaimUnacknowledged { member_id, .. } => Some(*member_id),
             Self::ClaimFailed { member_id, .. } => Some(*member_id),
             Self::MemberFrozen { member_id, .. } | Self::MemberUnfrozen { member_id, .. } => {
                 Some(*member_id)
@@ -1306,6 +1337,7 @@ mod kind_tests {
                 | EventKind::ApprovalRequested
                 | EventKind::BlockedResolved
                 | EventKind::ClaimExpired
+                | EventKind::ClaimUnacknowledged
                 | EventKind::ClaimFailed
                 | EventKind::UsageReported
                 | EventKind::ThreadLanded
@@ -1386,6 +1418,7 @@ mod kind_tests {
             EventKind::ApprovalRequested,
             EventKind::BlockedResolved,
             EventKind::ClaimExpired,
+            EventKind::ClaimUnacknowledged,
             EventKind::ClaimFailed,
             EventKind::ThreadLanded,
             EventKind::WaitTimedOut,
