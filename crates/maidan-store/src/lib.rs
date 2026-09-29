@@ -105,7 +105,7 @@ mod content_keys;
 mod delegation_grants;
 #[macro_use]
 mod delegate;
-mod dialect;
+pub mod dialect;
 pub mod dm;
 pub mod embeddings_purge;
 pub mod error;
