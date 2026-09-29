@@ -37,6 +37,14 @@ members on other replicas, refreshed by a heartbeat.
   members expire from others' rosters within the TTL.
 - Tunables: `MAIDAN_PRESENCE_HEARTBEAT_SECS` (default 10), `MAIDAN_PRESENCE_TTL_SECS`
   (default 30) — see [[Production]].
+- Each change is decided, sent to local sockets and queued for other replicas
+  under one lock, and one task publishes the queue in order, so a reconnect's
+  `online` is never overtaken by the old connection's `offline`. A member
+  connected to a replica is reported there from local state; when its last
+  local connection closes, subscribers get its status on other replicas, or
+  `offline`. Remote state is kept per replica: one replica's `offline` or
+  expiry removes only that replica's entry, and a member is `online` while
+  any replica says so.
 - Delivery is at-most-once (as with the event bus); a dropped delta is
   reconciled by the next heartbeat. In single-process / SQLite deployments
   presence stays local (no behavioral change).
