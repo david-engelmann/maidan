@@ -17,6 +17,10 @@ async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
         .connect("sqlite::memory:")
         .await
         .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(SqliteSearch::new(pool));
@@ -38,6 +42,8 @@ async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
     assert!(body.starts_with("# Maidan\n"), "llms.txt opens with the H1");
     for needle in [
         "/mcp/streamable",
+        "MCP-Protocol-Version: 2026-07-28",
+        "is for provisioning",
         "/openapi.json",
         "claim_next_thread",
         "set_thread_result",

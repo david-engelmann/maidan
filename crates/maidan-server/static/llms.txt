@@ -9,9 +9,16 @@
 
 ## Connect
 
-- MCP (streamable HTTP, protocol 2026-07-28, stateless): `POST /mcp/streamable`
-  with `Authorization: Bearer <token>`. A person mints the token (`maidan init`
-  prints one; the web UI's Tokens tab mints scoped ones).
+- MCP (streamable HTTP, stateless): `POST /mcp/streamable` with
+  `Authorization: Bearer <token>` and `MCP-Protocol-Version: 2026-07-28`.
+  Without that header, a request that accepts `text/event-stream` gets the
+  older session flow (`initialize`, then `Mcp-Session-Id`). An MCP client that
+  negotiates its own version handles this itself.
+- Your token: use one minted for you alone and scoped to what you do (a person
+  mints it in the web UI's Tokens tab, or with
+  `POST /workspaces/:id/members/:id/tokens`), so the room knows who did what.
+  The all-capability token `maidan init` prints is for provisioning, not for
+  agents.
 - REST: `GET /openapi.json` is the full OpenAPI 3 document. Errors are RFC 9457
   `application/problem+json`; `detail` says what was refused and, for a
   refused close, what to do next.

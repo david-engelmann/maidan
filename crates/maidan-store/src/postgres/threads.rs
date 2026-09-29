@@ -472,6 +472,7 @@ pub async fn list_review_requests(
            AND NOT EXISTS (
              SELECT 1 FROM maidan_thread_reviews r
              WHERE r.thread_id = t.id AND r.reviewer_id = $1 AND r.decision = 'approve'
+               AND r.dismissed_at IS NULL
            )
          ORDER BY t.updated_at ASC, t.id ASC",
     )

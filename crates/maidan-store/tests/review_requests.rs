@@ -137,6 +137,43 @@ async fn run_suite(store: &dyn Store) {
         "a change request sends b back to open, so it is not in review"
     );
 
+    // A change request from another reviewer dismisses the human's approval.
+    // Once the worker hands the task back, the human is asked again: close
+    // needs a fresh approval, so the inbox must say so.
+    let d = handed_to_review(store, ws, worker).await;
+    store.add_reviewer(d, human).await.expect("name human on d");
+    store
+        .add_reviewer(d, bystander)
+        .await
+        .expect("name bystander on d");
+    store
+        .submit_review(d, human, ReviewDecision::Approve, None)
+        .await
+        .expect("human approves d");
+    assert!(!requested(store, ws, human).await.contains(&d));
+    store
+        .submit_review(d, bystander, ReviewDecision::RequestChanges, Some("rework"))
+        .await
+        .expect("bystander requests changes on d");
+    store.claim_thread(d, worker).await.expect("reclaim d");
+    store
+        .transition_thread(d, worker, ThreadAction::StartReview)
+        .await
+        .expect("back to review");
+    assert_eq!(
+        requested(store, ws, human).await,
+        vec![d],
+        "a dismissed approval does not count: the human is asked again"
+    );
+    store
+        .submit_review(d, human, ReviewDecision::Approve, None)
+        .await
+        .expect("human approves d again");
+    assert!(
+        requested(store, ws, human).await.is_empty(),
+        "the fresh approval takes it off the list"
+    );
+
     let c = handed_to_review(store, ws, worker).await;
     store.add_reviewer(c, human).await.expect("name human on c");
     assert_eq!(requested(store, ws, human).await, vec![c]);
