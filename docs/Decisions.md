@@ -1394,7 +1394,8 @@ fails rather than guess a mark.
 A single row that cannot be decoded (a bad kind, a content key that will
 not unwrap) is skipped and counted as a failed hydrate, not a store error:
 the back-fill reads each row's result beside its id, so one such row cannot
-hold the mark below it forever.
+hold the mark below it forever. That row is the one exception to "delivered":
+the mark can move past its id without publishing it.
 
 **Alternative.** Move the mark to the pointer's id regardless (the old
 behaviour).
