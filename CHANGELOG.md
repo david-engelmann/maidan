@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A stalled object store fails the request
+
+- **Fixed:** the S3 artifact client had a connect timeout from the SDK's
+  defaults and no read timeout, so an object store that accepted a connection
+  and went quiet held the artifact request, and whatever waited on it, forever.
+  It now waits at most 30 s for the store to start answering (5 s to connect);
+  a large body still streams for as long as it takes.
+
 ### A requested review reaches the reviewer, and a refused close says what to do next
 
 - **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP
