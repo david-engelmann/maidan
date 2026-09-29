@@ -67,7 +67,7 @@ through (#1076); blob reaps run under a lease, not a held transaction (#1077).
 **Since `v412.0.0`, merged to `main`, untagged:** the gRPC binding serves the
 official `a2a.proto`, every operation, and the TCK runs over it (#1080).
 
-**Next (2026-09-28):** the launch backlog is shipped except Wave 4 #45's madsim model. The forward plan is the ranked **Next wave** at the top of [Open Work.md](Open%20Work.md): durable delegated refusals, a tenant-isolation conformance suite, idempotency keys, eager reclaim, load shedding, decision history, trace context, F-48 Tier 1, workspace-wide `claim_next`, and CI jobs for the models.
+**Next (2026-09-28):** the launch backlog is shipped except Wave 4 #45's madsim model. The forward plan is the ranked **Next wave** at the top of [Open Work.md](Open%20Work.md): a tenant-isolation conformance suite, idempotency keys, eager reclaim, load shedding, decision history, trace context, F-48 Tier 1, workspace-wide `claim_next`, and CI jobs for the models.
 
 **In progress (not on `main`):** Wave 4 #45's loom, madsim and TLA+
 models are in review (#1073–#1075). Row #45 stays open until they land.
