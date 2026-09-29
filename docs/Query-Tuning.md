@@ -7,7 +7,7 @@ use FTS5; most production installs use Postgres + `pgvector`.
 
 ```sql
 EXPLAIN (ANALYZE, BUFFERS)
-SELECT id, workspace_id, kind, payload, created_at
+SELECT id, workspace_id, kind, payload, occurred_at
 FROM maidan_events
 WHERE workspace_id = $1 AND id > $2
 ORDER BY id ASC

@@ -1154,6 +1154,11 @@ default runner that GitHub still provides; it works without flags.
 either drop the target or move to a build matrix that uses
 `rustc --target` cross-compile from arm64 with sysroot setup.
 
+**Superseded.** `macos-13` runners could sit queued for hours and hold the
+whole tag release open, so the Intel target moved out of `release.yml` into
+the manual `release-darwin-x86.yml` (`workflow_dispatch` with a tag). A tag
+release builds `aarch64-apple-darwin` on `macos-latest` only.
+
 ### The OpenAPI lint is a unit test; Redocly is a local script
 
 **Decision.** The `openapi::lint` unit tests in `maidan-server` assert what
@@ -1411,11 +1416,17 @@ deliver an event twice, which the at-least-once contract allows.
 
 ### Admin-merge instead of local-first push
 
-**Decision.** PRs are squash-merged via `gh pr merge --admin
---delete-branch`. Branch protection on `main` enforces the 5 CI
-checks for everyone, including the maintainer; `--admin` bypasses
-the required-review (since the maintainer can't review their own
-PR) but does *not* bypass required-status-checks.
+**Decision.** PRs are squash-merged via `gh pr merge --squash --admin
+--delete-branch`. Branch protection on `main` requires the 8 CI checks,
+but with `enforce_admins` off `--admin` bypasses them as well as the
+required review. So green-before-merge is a rule the maintainer keeps,
+not one GitHub enforces: an admin-merge over a red required check needs
+a stated reason. About 30 PRs were merged over a red `docker compose
+smoke` (#973→#1005) before the egress-guard regression behind it was
+found, which is the cost of forgetting that.
+
+(Until 2026-09 this entry said `--admin` did *not* bypass the checks.
+It did, the whole time.)
 
 **Original direction (deferred).** Local-first push: nothing gets
 pushed until `make ci` passes locally; remote `main` stays
@@ -1437,6 +1448,12 @@ flag.
 settings level. The PR title becomes the squash commit title; the PR
 body (including the **mandatory** PR-level retro section) becomes
 the commit body.
+
+**Not what the setting does.** The repository's squash message is set to
+`COMMIT_MESSAGES`, so the squash commit's body is the PR's commit
+messages, not its body, and the PR-level retro lives only on the PR.
+Flipping the setting to `PR_BODY` restores this decision; that is the
+maintainer's call, recorded in [Open Work](Open%20Work.md).
 
 **Why this:** every commit on `main` carries its own retro inline.
 `git log` is searchable. Cluster-level retros aggregate the per-PR
@@ -1475,7 +1492,9 @@ signed. The user has not configured GPG/SSH signing as of `v0.1.0`.
 Don't gate every release tag on it. Future tags can be re-issued
 signed if needed.
 
-**To revisit:** when a key exists.
+**To revisit:** when a key exists. (No key exists yet; tags through
+`v412.0.0` are annotated and unsigned, and "pre-1.0" in the title means
+before a signing key, not before `v1.0.0`.)
 
 ### Semver-stable API from v1.0.0
 
@@ -1488,6 +1507,13 @@ predictability matters once federation and UI exist.
 
 **To revisit:** only via a deliberate `v2.0.0` program.
 
+**Superseded** by the F-54 decision (2026-09-23, [Open Work](Open%20Work.md)):
+no `/v1` and no compatibility promise before the product's own 1.0 gate.
+Breaking changes have shipped since without a major version on purpose,
+for example the removal of `member:impersonate` and RFC 9457 problem
+bodies on every error (#1062). The `vN.0.0` tags number clusters; they are
+not semver.
+
 ## Documentation
 
 ### Retro is mandatory; release tag never cut without it
@@ -1497,6 +1523,14 @@ gets cut only after the retro PR merges. The retro updates
 `docs/Capabilities.md`, `CHANGELOG.md`, `README.md`,
 `docs/Architecture.md`, `docs/Roadmap.md`, and
 `docs/Retros/README.md` (the index).
+
+**As practiced now.** The retro is still mandatory, but a retro does not
+imply a tag: tagging triggers the release pipeline and is the
+maintainer's call, so many clusters are merged and untagged (see
+`CLAUDE.md` for the ranges). `docs/Architecture.md` is version-neutral
+and changes only when the shape does. A retro updates
+`docs/Retros/Cluster X.md` and its index, `docs/Capabilities.md`,
+`CHANGELOG.md`, and the Open Work and Roadmap pointers.
 
 **Why this:** declaring a cluster "done" requires writing the
 retro, which forces explicit closure on what's deferred and what's
@@ -1521,6 +1555,13 @@ add a build pipeline that consumes the vault.
 
 **To revisit:** in Cluster H when the docs site lands.
 
+**Superseded.** The docs are published as an mdBook site
+(`book/`, `book/sync-docs.sh`), whose link check fails the build on a dead
+internal link. Reference and integrator pages use ordinary Markdown links
+(`scripts/check-docs-presentation.sh` refuses wikilinks on the published
+reference pages); wikilinks survive in the historical cluster, retro and
+handoff records, which the sync rewrites or leaves out.
+
 ### OIDC human login deferred to `v2.0.0` (spike in `v1.4.2`)
 
 **Decision.** `v1.4.0` ships bootstrap hardening (`MAIDAN_BOOTSTRAP`) and an
@@ -1538,6 +1579,10 @@ and threat-model updates without half-implemented login.
 **To revisit:** if a deployment needs browser login before `v2.0.0`, use an
 external reverse proxy (OAuth2 Proxy) in front of `/ui/` only — documented in
 [[OIDC]] as a stopgap, not a supported Maidan API.
+
+**Superseded.** OIDC login shipped at `v2.0.0`: authorization code with
+S256 PKCE, ES256 JWKS validation, sessions and provider logout, tested
+against a real loopback provider. See [OIDC](OIDC.md).
 
 ## Product scope
 

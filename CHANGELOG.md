@@ -611,11 +611,11 @@ implementation PRs (#943/#944/#949/#947/#948).
 - MCP now exposes 183 tools. OpenAPI, capability maps, generated lexicon, and
   both SQLite/Postgres behavior are covered by contracts.
 
-### Cluster 403 — pending v403.0.0
+### Cluster 403 — never tagged; ships in 404.0.0
 
 Post-gate hardening (Phase XXIV). **Budget changes cannot remove caps by
-omission.** Implementation PR #916; close record backfilled under #940. These
-changes remain unreleased until the maintainer cuts the tag.
+omission.** Implementation PR #916; close record backfilled under #940.
+`v403.0.0` was never cut; these changes first shipped in the `v404.0.0` release.
 
 - REST `PUT /threads/:id/budget` and MCP `set_thread_budget` are total
   replacements: all four dimensions are required, `null` means uncapped, and
