@@ -6,9 +6,37 @@ see [[Remaining Work]].
 
 Updated at each cluster retro. **Baseline:** Cluster 410, released as **`v410.0.0`** (Product Ladder 102+ complete at `v120` / `maidan-scale-1.0`; post-gate hardening 121+; MCP `2026-07-28` 300–303, mail 304–306, Slack/GitHub projectors 307–312, SDKs 294–299, launch-prep 313–314, post-flagship audit 332–349). Reconciled against code at v126 (Cluster 127), v143 (Cluster 144), v273 (Cluster 273), v314 (2026-08-28 sweep), again at **v349** (2026-09-02 splice — the "Forward program" section below folds the workplace-product roadmap + the engineering-canon research round), after **Cluster 403** (2026-09-17), after **Cluster 404** (2026-09-22), for **Cluster 405** (2026-09-22 — Wave 2 row #26 close), for **Cluster 406** (2026-09-22 — Wave 4 row #37 close), for **Cluster 407** (2026-09-22 — Wave 4 row #39 close), after **Cluster 408** (2026-09-23 — full-audit remediation), for **Cluster 409** (2026-09-23 — Wave 4 row #40 close), and for **Cluster 410** (2026-09-23 — Wave 4 row #41 close). **Reconciled against code again on 2026-09-23 after Cluster 411 (target tag `v411.0.0`, not yet cut), handler to store; the result is the *Launch backlog* immediately below, which is now the forward plan.** **Synced with `main` on 2026-09-28** through #1072: shipped rows carry their PR numbers; the loom, madsim and TLA+ models of Wave 4 #45 (#1073–#1075, open) are in progress, not done.
 
+## Next wave — the roadmap after the launch backlog (2026-09-28)
+
+**This is the forward plan now.** The launch backlog below is shipped except
+Wave 4 #45's madsim model (#1075). This wave was drawn from every open list in
+the repo (this file's forward program, Programs R/V/O/G, the Cluster 351 and
+411 follow-ups, "Still David's call", F-48, the standing risks), and each item
+was checked against `main` before it was listed. UI and README work are owned
+by another lane and are left out. There is no `docs/Splice Prompt.md`; this
+follows the 2026-09-02 splice rule: an item that grows a named home says so
+and does not mint a second one.
+
+Ranked by what an agent or a person relying on the room loses without it.
+
+| # | Item | Why it matters | Size | Depends on |
+|---|------|----------------|------|------------|
+| 1 | **Delegated refusals are a durable record** | David decided on 2026-09-23 to keep the real record of delegated activity (see "Still David's call"), but `maidan-auth/src/authorization.rs` still samples every denial 1 in 64, delegated or not. An agent refused while acting on a member's behalf leaves no trace an owner can audit. Write one durable row per delegated refusal (actor, subject, grant, action, resource); anonymous refusals stay sampled, since only those can flood | M | none (`AuthContext.delegation_grant_id` exists since 411) |
+| 2 | **Tenant-isolation conformance suite** | The last standing risk: isolation is app-layer and has no named conformance artifact. Three cross-tenant holes were found by accident this month (#1029, #1055, the MCP channel-member tools). One test that seeds two workspaces and drives every REST route, MCP tool and stream with the other tenant's credentials turns "we check" into a gate a new route cannot skip | L | none |
+| 3 | **Idempotency keys on writes** | Agents retry. A retried post, claim or upload after a timeout duplicates today; there is no `Idempotency-Key` anywhere. Server-side keys (stored response per key and caller, bounded retention) first, then the SDK 0.2 auto-retry and auto-page that `NEW-sdk-ergonomics` wants | L | none; SDK half after the server half |
+| 4 | **Eager reclaim and `ClaimUnacknowledged`** | A dead holder's claim is freed only when someone next calls `claim_next`, and a claim that is never acknowledged is visible only by polling occupancy (Cluster 351 deviations a and b). A timer-driven reaper emits `ClaimExpired` on time, a `ClaimUnacknowledged` event pushes the stuck case, and a server default lease stops a caller from forgetting `lease_secs` | M | none |
+| 5 | **Load shedding, catch-panic and header redaction** | Program R's `tower-load-shed` row: no `LoadShed` or `ConcurrencyLimit` below auth, a handler panic drops the connection instead of answering a problem, and nothing marks `Authorization` or cookies sensitive in traces. Cheap insurance for every client | S–M | none |
+| 6 | **Decisions keep their history** | The attribution row records that a review verdict or an approval-gate answer changed, not what it was; the earlier value is overwritten (411.10). An owner auditing why work landed needs the sequence of verdicts | M | pairs with 1 |
+| 7 | **Trace context across REST, WS, MCP and A2A** | Program O's `trace-context-propagation`: OTLP export exists but no `traceparent` is accepted or carried, so an agent's request cannot be followed from its own trace into Maidan and out through a webhook or projector | M | none |
+| 8 | **F-48 Tier 1: one `store_impl!` for both backends** | 6,079 lines of byte-identical `Store` delegation in `{postgres,sqlite}/mod.rs` become about 429; a method wired on one backend and forgotten on the other stops compiling. The measured plan above calls this the first and largest win | M | none |
+| 9 | **Workspace-wide `claim_next`** | `claim_next` is channel-scoped, so an agent serving a workspace polls every channel. One workspace pull with the same fairness, skill and DAG rules | M | 4 (shares the reaper and default lease) |
+| 10 | **CI jobs for the loom, TLA+ and madsim models** | The models found two real bugs (#1073, #1074) but run only locally, so they rot. A non-required job each. The workflow change needs a maintainer push (agents' tokens lack the `workflow` scope) | S | #1075 for madsim |
+
+Items 1 and 2 are independent and start first, as separate PRs.
+
 ## Launch backlog — reconciled against code (2026-09-23)
 
-**This is the forward plan.** Everything below was checked against `main` by
+**This was the forward plan until 2026-09-28; the Next wave above replaces it.** Everything below was checked against `main` by
 following each handler into the store, middleware or worker behind it. Nothing
 here is listed because an older section of this file says it is open. Where an
 older section disagrees, this one is right, and the older entry is struck
