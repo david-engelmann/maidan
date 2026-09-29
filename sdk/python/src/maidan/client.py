@@ -17,9 +17,12 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Callable, Optional
+import random
+import time
+import uuid
+from typing import Any, Callable, Iterator, Optional
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "Client",
@@ -52,6 +55,42 @@ def parse_room_lsn(value: Optional[str]) -> Optional[int]:
 def event_type(kind: str) -> str:
     """Observable ``$type`` for an event kind (``message_posted`` → ``maidan.event.message_posted/1``)."""
     return f"maidan.event.{kind}/1"
+
+
+_WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+_RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+_IN_FLIGHT_TYPE = "https://maidan.dev/problems/idempotency-key-in-flight"
+
+
+def new_idempotency_key() -> str:
+    """A fresh ``Idempotency-Key``: one per logical write, reused by its retries."""
+    return str(uuid.uuid4())
+
+
+def retry_delay(attempt: int, retry_after: Optional[str] = None, rand: Callable[[], float] = random.random) -> float:
+    """Seconds before retry ``attempt`` (0-based): the server's ``Retry-After``
+    when it sent one (capped at 60), else 0.5s * 2^attempt capped at 8s, jittered."""
+    if retry_after is not None:
+        try:
+            ra = float(retry_after)
+            if ra >= 0:
+                return min(ra, 60.0)
+        except ValueError:
+            pass
+    base = min(8.0, 0.5 * (2 ** attempt))
+    return base / 2 + rand() * (base / 2)
+
+
+def _retryable(status: int, raw: bytes) -> bool:
+    if status in _RETRY_STATUSES:
+        return True
+    if status != 409:
+        return False
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get("type") == _IN_FLIGHT_TYPE
 
 
 class MaidanError(Exception):
@@ -202,6 +241,23 @@ class _Threads:
     def get(self, thread_id: str) -> Any:
         return self._c._req("GET", f"/threads/{thread_id}")
 
+    def list(self, channel_id: str, query: Optional[dict] = None) -> Any:
+        """GET /channels/{cid}/threads — one page (``limit``, ``cursor`` = last thread id)."""
+        return self._c._req("GET", f"/channels/{channel_id}/threads{_qs(query)}")
+
+    def list_all(self, channel_id: str, page_size: int = 100) -> Iterator[dict]:
+        """Every live thread in the channel, fetching ``page_size`` per request."""
+        cursor: Optional[str] = None
+        while True:
+            query: dict = {"limit": page_size}
+            if cursor:
+                query["cursor"] = cursor
+            page = self.list(channel_id, query) or []
+            yield from page
+            if len(page) < page_size:
+                return
+            cursor = page[-1]["id"]
+
     def context(self, thread_id: str, query: Optional[dict] = None) -> Any:
         return self._c._req("GET", f"/threads/{thread_id}/context{_qs(query)}")
 
@@ -249,10 +305,23 @@ class Client:
     ``client.mcp_url`` is ``{base_url}/mcp/streamable`` (a string — no MCP dependency).
     """
 
-    def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None, *, timeout: float = 30.0):
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        token: Optional[str] = None,
+        *,
+        timeout: float = 30.0,
+        max_retries: int = 2,
+    ):
         self.base_url = (base_url or os.environ.get("MAIDAN_URL") or "http://127.0.0.1:8080").rstrip("/")
         self.token = token or os.environ.get("MAIDAN_TOKEN") or ""
         self.timeout = timeout
+        # Retries after a failure in transit, 408, 429 (honouring Retry-After),
+        # 500/502/503/504, or a 409 idempotency-key-in-flight. 0 turns them off.
+        # Writes carry one Idempotency-Key across their attempts.
+        self.max_retries = max_retries
+        self._urlopen = urllib.request.urlopen
+        self._sleep = time.sleep
         # MCP is a URL, not a dependency (docs/Client Contract.md §0).
         self.mcp_url = f"{self.base_url}/mcp/streamable"
         # Last seen Maidan-Room-LSN (event-log high-water). Not a WAL token.
@@ -306,52 +375,76 @@ class Client:
             self.last_room_lsn = parsed
 
     # --- HTTP core ---
+    def _send(self, method: str, path: str, headers: dict, data: Optional[bytes]) -> tuple:
+        """Send with retries; return ``(status, headers, body)`` of the last answer.
+
+        A write carries one ``Idempotency-Key`` across all its attempts, so a
+        retry after a lost response gets the first answer back instead of
+        writing twice."""
+        headers = {"authorization": f"Bearer {self.token}", **headers}
+        if method in _WRITE_METHODS:
+            headers["idempotency-key"] = new_idempotency_key()
+        attempt = 0
+        while True:
+            req = urllib.request.Request(f"{self.base_url}{path}", data=data, method=method, headers=headers)
+            try:
+                with self._urlopen(req, timeout=self.timeout) as resp:
+                    status, resp_headers, raw = resp.status, resp.headers, resp.read()
+            except urllib.error.HTTPError as e:
+                status, resp_headers = e.code, e.headers
+                try:
+                    raw = e.read()
+                except Exception:
+                    raw = b""
+            except (urllib.error.URLError, OSError):
+                if attempt >= self.max_retries:
+                    raise
+                self._sleep(retry_delay(attempt))
+                attempt += 1
+                continue
+            self._capture_room_lsn(resp_headers)
+            if attempt < self.max_retries and _retryable(status, raw):
+                ra = resp_headers.get("retry-after") if resp_headers is not None else None
+                self._sleep(retry_delay(attempt, ra))
+                attempt += 1
+                continue
+            return status, resp_headers, raw
+
     def _req(self, method: str, path: str, body: Any = None) -> Any:
-        headers = {"authorization": f"Bearer {self.token}"}
+        headers = {}
         data = None
         if body is not None:
             headers["content-type"] = "application/json"
             data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(f"{self.base_url}{path}", data=data, method=method, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                self._capture_room_lsn(resp.headers)
-                raw = resp.read()
-                if resp.status == 204 or not raw:
-                    return None
-                return json.loads(raw.decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            self._raise(e)
+        status, resp_headers, raw = self._send(method, path, headers, data)
+        if status >= 400:
+            self._raise(status, resp_headers, raw)
+        if status == 204 or not raw:
+            return None
+        return json.loads(raw.decode("utf-8"))
 
     def _req_raw(self, method: str, path: str, body: Optional[bytes] = None) -> Any:
-        headers = {"authorization": f"Bearer {self.token}"}
-        req = urllib.request.Request(f"{self.base_url}{path}", data=body, method=method, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                self._capture_room_lsn(resp.headers)
-                raw = resp.read()
-                if method == "GET":
-                    return raw
-                if resp.status == 204 or not raw:
-                    return None
-                return json.loads(raw.decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            self._raise(e)
+        status, resp_headers, raw = self._send(method, path, {}, body)
+        if status >= 400:
+            self._raise(status, resp_headers, raw)
+        if method == "GET":
+            return raw
+        if status == 204 or not raw:
+            return None
+        return json.loads(raw.decode("utf-8"))
 
-    def _raise(self, e: urllib.error.HTTPError) -> None:
-        self._capture_room_lsn(e.headers)
-        text = ""
+    def _raise(self, status: int, headers: Any, raw: bytes) -> None:
         try:
-            text = e.read().decode("utf-8")
+            text = raw.decode("utf-8")
         except Exception:
-            pass
+            text = ""
         try:
             parsed = json.loads(text) if text else None
         except ValueError:
             parsed = text
-        err = MaidanError(e.code, parsed)
-        if e.code == 429:
-            ra = e.headers.get("retry-after")
+        err = MaidanError(status, parsed)
+        if status == 429 and headers is not None:
+            ra = headers.get("retry-after")
             if ra:
                 try:
                     err.retry_after = float(ra)
@@ -363,6 +456,21 @@ class Client:
     def list_events(self, workspace_id: str, query: Optional[dict] = None) -> Any:
         """GET /workspaces/{id}/events — projector-shaped HTTP backfill."""
         return self._req("GET", f"/workspaces/{workspace_id}/events{_qs(query)}")
+
+    def list_events_all(self, workspace_id: str, query: Optional[dict] = None) -> Iterator[dict]:
+        """Every event after ``query['after_id']``, ``query['limit']`` (default 100) per page."""
+        query = dict(query or {})
+        limit = int(query.get("limit") or 100)
+        after = int(query.get("after_id") or 0)
+        while True:
+            page = self.list_events(workspace_id, {**query, "after_id": after, "limit": limit}) or []
+            for row in page:
+                rid = row.get("id", row.get("log_id")) if isinstance(row, dict) else None
+                if isinstance(rid, int):
+                    after = max(after, rid)
+                yield row
+            if len(page) < limit:
+                return
 
     def subscribe(
         self,

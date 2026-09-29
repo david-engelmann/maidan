@@ -47,6 +47,7 @@ fn main() -> Result<(), maidan::MaidanError> {
 - Errors are `MaidanError` (`.status`, `.body`, `.retry_after` on 429, `.is_conflict()` /
   `.is_cursor_too_old()` / `.is_forbidden()` / `.is_rate_limited()`; `.is_transport()` for
   non-HTTP errors).
+- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `.with_max_retries(n)` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads().list_all(cid, n)` and `list_events_all(wid, q)` are iterators over every page.
 - Responses come back as `serde_json::Value` so unknown fields are preserved and ignored
   (forward-compat). Typed models are a future refinement.
 - Surface (frozen v1): `workspaces().{create,get,import}`, `channels().{list,create}`,

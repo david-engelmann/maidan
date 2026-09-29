@@ -140,3 +140,12 @@ test("provisioning seeds a member and mints a scoped token", async () => {
   assert.ok(listed.some((t) => t.id === minted.id));
   assert.ok(listed.every((t) => t.secret === undefined), "listing never returns a secret");
 });
+
+test("threads.listAll walks every page of a channel", async () => {
+  const { channel, thread } = await seed();
+  const made = [thread.id];
+  for (let i = 0; i < 4; i++) made.push((await client.threads.create(channel.id, `t${i}`)).id);
+  const seen = [];
+  for await (const t of client.threads.listAll(channel.id, { pageSize: 2 })) seen.push(t.id);
+  assert.deepEqual(seen.sort(), made.sort());
+});

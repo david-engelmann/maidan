@@ -41,6 +41,7 @@ ready = client.wait_for_ready(wid)  # event dict or None on timeout
   `{base_url}/mcp/streamable`.
 - Errors raise `MaidanError` (`.status`, `.body`, `.retry_after` on 429, `.is_conflict` /
   `.is_cursor_too_old` / `.is_forbidden` / `.is_rate_limited`).
+- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `max_retries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads.list_all(cid)` and `list_events_all(wid)` are generators over every page.
 - Surface (frozen v1): `workspaces.{create,get,import_}`, `channels.{list,create}`,
   `threads.{create,get,context,transition,set_result,get_result}`, `claim_next_thread`,
   `renew_claim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,

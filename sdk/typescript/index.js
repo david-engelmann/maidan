@@ -52,11 +52,38 @@ export function eventType(kind) {
   return `maidan.event.${kind}/1`;
 }
 
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const RETRY_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const IN_FLIGHT_TYPE = "https://maidan.dev/problems/idempotency-key-in-flight";
+
+/** A fresh `Idempotency-Key`: one per logical write, reused by its retries. */
+export function newIdempotencyKey() {
+  const c = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  let hex = "";
+  for (let i = 0; i < 32; i++) hex += Math.floor(Math.random() * 16).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * The delay before retry `attempt` (0-based): the server's `Retry-After` when
+ * it sent one, else exponential backoff from 0.5s capped at 8s, with jitter.
+ */
+export function retryDelayMs(attempt, retryAfterHeader, random = Math.random) {
+  const ra = retryAfterHeader == null ? NaN : Number(retryAfterHeader);
+  if (Number.isFinite(ra) && ra >= 0) return Math.min(ra, 60) * 1000;
+  const base = Math.min(8000, 500 * 2 ** attempt);
+  return base / 2 + random() * (base / 2);
+}
+
 export class Client {
   /**
    * @param {string} [baseUrl] defaults to MAIDAN_URL
    * @param {string} [token] defaults to MAIDAN_TOKEN
-   * @param {{ fetch?: typeof fetch, WebSocket?: any }} [options]
+   * @param {{ fetch?: typeof fetch, WebSocket?: any, maxRetries?: number,
+   *   sleep?: (ms: number) => Promise<void> }} [options] `maxRetries`
+   *   (default 2; 0 turns retries off) bounds the retries of a request that
+   *   failed in transit or answered 408/429/5xx, or 409 in-flight for its key.
    */
   constructor(baseUrl, token, options = {}) {
     this.baseUrl = (baseUrl || envDefault("MAIDAN_URL") || "http://127.0.0.1:8080").replace(
@@ -66,6 +93,8 @@ export class Client {
     this.token = token || envDefault("MAIDAN_TOKEN") || "";
     this._fetch = options.fetch || (typeof fetch !== "undefined" ? fetch : undefined);
     this._WebSocket = options.WebSocket || (typeof WebSocket !== "undefined" ? WebSocket : undefined);
+    this.maxRetries = options.maxRetries === undefined ? 2 : options.maxRetries;
+    this._sleep = options.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
 
     // MCP is a URL, not a dependency (docs/Client Contract.md §4).
     this.mcpUrl = `${this.baseUrl}/mcp/streamable`;
@@ -78,6 +107,8 @@ export class Client {
       import: (bundle, mode) =>
         this._req("POST", `/workspaces/import${mode ? `?mode=${mode}` : ""}`, bundle),
       events: (id, query) => this._req("GET", `/workspaces/${id}/events${qs(query)}`),
+      /** Every event after `query.after_id`, page by page (`limit` per page). */
+      eventsAll: (id, query = {}) => this._eventsAll(id, query),
     };
     // Provisioning. `members.create` is the unauthenticated seed route, present
     // only on a server built with the `bootstrap` feature; production turns it
@@ -109,6 +140,9 @@ export class Client {
         this._req("POST", `/workspaces/${wid}/channels`, { name, private: priv }),
     };
     this.threads = {
+      list: (cid, query) => this._req("GET", `/channels/${cid}/threads${qs(query)}`),
+      /** Every live thread in the channel, fetching `pageSize` per request. */
+      listAll: (cid, opts = {}) => this._threadsAll(cid, opts.pageSize || 100),
       create: (cid, title) => this._req("POST", `/channels/${cid}/threads`, { title }),
       get: (id) => this._req("GET", `/threads/${id}`),
       context: (id, query) => this._req("GET", `/threads/${id}/context${qs(query)}`),
@@ -139,24 +173,72 @@ export class Client {
     });
   }
 
+  async *_threadsAll(cid, pageSize) {
+    let cursor;
+    for (;;) {
+      const query = { limit: pageSize };
+      if (cursor) query.cursor = cursor;
+      const page = (await this.threads.list(cid, query)) || [];
+      yield* page;
+      if (page.length < pageSize) return;
+      cursor = page[page.length - 1].id;
+    }
+  }
+
+  async *_eventsAll(wid, query) {
+    const limit = query.limit > 0 ? query.limit : 100;
+    let after = query.after_id || 0;
+    for (;;) {
+      const page = (await this.workspaces.events(wid, { ...query, after_id: after, limit })) || [];
+      for (const row of page) {
+        const id = row && (row.id ?? row.log_id);
+        if (typeof id === "number") after = Math.max(after, id);
+        yield row;
+      }
+      if (page.length < limit) return;
+    }
+  }
+
+  /**
+   * Send with retries. A write carries one `Idempotency-Key` across all its
+   * attempts, so a retry after a lost response gets the first answer back
+   * instead of writing twice.
+   */
+  async _send(method, path, headers, body) {
+    const h = { authorization: `Bearer ${this.token}`, ...headers };
+    if (WRITE_METHODS.has(method)) h["idempotency-key"] = newIdempotencyKey();
+    for (let attempt = 0; ; attempt++) {
+      let resp;
+      try {
+        resp = await this._fetch(`${this.baseUrl}${path}`, { method, headers: h, body });
+      } catch (err) {
+        if (attempt >= this.maxRetries) throw err;
+        await this._sleep(retryDelayMs(attempt));
+        continue;
+      }
+      this._captureRoomLsn(resp);
+      if (attempt < this.maxRetries && (await retryable(resp))) {
+        await resp.arrayBuffer().catch(() => undefined);
+        await this._sleep(retryDelayMs(attempt, resp.headers.get("retry-after")));
+        continue;
+      }
+      return resp;
+    }
+  }
+
   async _req(method, path, body) {
-    const headers = { authorization: `Bearer ${this.token}` };
-    const init = { method, headers };
+    const headers = {};
+    let payload;
     if (body !== undefined) {
       headers["content-type"] = "application/json";
-      init.body = JSON.stringify(body);
+      payload = JSON.stringify(body);
     }
-    const resp = await this._fetch(`${this.baseUrl}${path}`, init);
-    this._captureRoomLsn(resp);
+    const resp = await this._send(method, path, headers, payload);
     return this._handle(resp);
   }
 
   async _reqRaw(method, path, body) {
-    const headers = { authorization: `Bearer ${this.token}` };
-    const init = { method, headers };
-    if (body !== undefined) init.body = body;
-    const resp = await this._fetch(`${this.baseUrl}${path}`, init);
-    this._captureRoomLsn(resp);
+    const resp = await this._send(method, path, {}, body);
     if (method === "GET") {
       if (!resp.ok) await this._raise(resp);
       return new Uint8Array(await resp.arrayBuffer());
@@ -307,6 +389,17 @@ export class Client {
     const f = { workspace_id: workspaceId };
     if (channelId) f.channel_id = channelId;
     return this._waitForKind(f, "thread_ready", timeoutMs);
+  }
+}
+
+async function retryable(resp) {
+  if (RETRY_STATUSES.has(resp.status)) return true;
+  if (resp.status !== 409) return false;
+  try {
+    const body = await resp.clone().json();
+    return body && body.type === IN_FLIGHT_TYPE;
+  } catch {
+    return false;
   }
 }
 

@@ -12,7 +12,25 @@ export interface ClientOptions {
   fetch?: typeof fetch;
   /** WebSocket constructor (global in browser / Node 22+; else pass the `ws` package). */
   WebSocket?: any;
+  /**
+   * Retries after a failure in transit, 408, 429 (honouring `Retry-After`),
+   * 500/502/503/504, or a 409 `idempotency-key-in-flight`. Default 2; 0 turns
+   * retries off. Writes carry one `Idempotency-Key` across their attempts.
+   */
+  maxRetries?: number;
+  /** Test seam: how the client waits between attempts. */
+  sleep?: (ms: number) => Promise<void>;
 }
+
+/** A fresh `Idempotency-Key` (a UUID). */
+export declare function newIdempotencyKey(): string;
+
+/** Delay before retry `attempt` (0-based): `Retry-After` if sent, else 0.5s·2^n capped at 8s, jittered. */
+export declare function retryDelayMs(
+  attempt: number,
+  retryAfterHeader?: string | null,
+  random?: () => number,
+): number;
 
 /** Parse `Maidan-Room-LSN`. Rejects WAL text so this is never a Consistency-Token. */
 export declare function parseRoomLsn(value: string | null | undefined): number | undefined;
@@ -67,6 +85,7 @@ export declare class Client {
   mcpUrl: string;
   /** Last seen `Maidan-Room-LSN` (event-log high-water). Not a WAL token. */
   lastRoomLsn?: number;
+  maxRetries: number;
 
   constructor(baseUrl?: string, token?: string, options?: ClientOptions);
 
@@ -77,6 +96,8 @@ export declare class Client {
     import(bundle: unknown, mode?: "restore"): Promise<any>;
     /** GET /workspaces/{id}/events — projector-shaped HTTP backfill. */
     events(id: WorkspaceId, query?: Record<string, string | number>): Promise<any>;
+    /** Every event after `query.after_id`, fetching `query.limit` (default 100) per page. */
+    eventsAll(id: WorkspaceId, query?: Record<string, string | number>): AsyncGenerator<any>;
   };
   members: {
     create(wid: WorkspaceId, handle: string, kind?: string, displayName?: string): Promise<any>;
@@ -98,6 +119,10 @@ export declare class Client {
     create(wid: WorkspaceId, name: string, priv?: boolean): Promise<any>;
   };
   threads: {
+    /** GET /channels/{cid}/threads — one page (`limit`, `cursor` = last thread id). */
+    list(cid: ChannelId, query?: { limit?: number; cursor?: ThreadId }): Promise<any[]>;
+    /** Every live thread in the channel, `pageSize` (default 100) per request. */
+    listAll(cid: ChannelId, opts?: { pageSize?: number }): AsyncGenerator<any>;
     create(cid: ChannelId, title: string): Promise<any>;
     get(id: ThreadId): Promise<any>;
     context(id: ThreadId, query?: Record<string, string | number>): Promise<any>;

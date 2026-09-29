@@ -292,3 +292,28 @@ func TestProvisioningSeedsAMemberAndMintsAScopedToken(t *testing.T) {
 		}
 	}
 }
+
+func TestThreadsListAllWalksEveryPage(t *testing.T) {
+	c := testClient(t)
+	_, _, channel, thread := seed(t, c)
+	cid := channel["id"].(string)
+	made := map[string]bool{thread["id"].(string): true}
+	for i := 0; i < 4; i++ {
+		th, err := c.Threads.Create(cid, fmt.Sprintf("t%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		made[th["id"].(string)] = true
+	}
+	seen := 0
+	err := c.Threads.ListAll(cid, 2, func(m M) error {
+		if !made[m["id"].(string)] {
+			return fmt.Errorf("unexpected thread %v", m["id"])
+		}
+		seen++
+		return nil
+	})
+	if err != nil || seen != len(made) {
+		t.Fatalf("seen %d of %d: %v", seen, len(made), err)
+	}
+}

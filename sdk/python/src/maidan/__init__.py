@@ -10,7 +10,9 @@ from .client import (
     Subscription,
     __version__,
     event_type,
+    new_idempotency_key,
     parse_room_lsn,
+    retry_delay,
 )
 
 __all__ = [
@@ -19,5 +21,7 @@ __all__ = [
     "Subscription",
     "__version__",
     "event_type",
+    "new_idempotency_key",
     "parse_room_lsn",
+    "retry_delay",
 ]

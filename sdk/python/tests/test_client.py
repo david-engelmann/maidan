@@ -131,3 +131,10 @@ def test_provisioning_seeds_a_member_and_mints_a_scoped_token():
     listed = c.tokens.list(WORKSPACE, member["id"])
     assert any(t["id"] == minted["id"] for t in listed)
     assert all("secret" not in t for t in listed)
+
+
+def test_threads_list_all_walks_every_page():
+    c, _ws, _member, channel, thread = _seed()
+    made = [thread["id"]] + [c.threads.create(channel["id"], f"t{i}")["id"] for i in range(4)]
+    seen = [t["id"] for t in c.threads.list_all(channel["id"], page_size=2)]
+    assert sorted(seen) == sorted(made)

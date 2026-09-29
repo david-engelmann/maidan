@@ -74,6 +74,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   mark past those ids, so the missed events were never delivered. The mark
   now only moves past events that were delivered.
 
+### SDK 0.2: retries with idempotency keys, and auto-paging
+
+- **Added (all four SDKs, 0.2.0):** every write sends a fresh
+  `Idempotency-Key` and reuses it across retries of that call. Requests are
+  retried up to `max_retries` (default 2) after a failure in transit, 408,
+  429 (waiting `Retry-After`), 500/502/503/504, or a 409
+  `problems/idempotency-key-in-flight`; backoff is 0.5s·2^n capped at 8s
+  with jitter. A plain 409 and other 4xx are raised at once.
+- **Added:** `threads.list` (one page) and `threads.list_all` (every page by
+  cursor), and an auto-paging event backfill (`eventsAll` / `list_events_all`
+  / `ListEventsAll`) by `after_id`.
+- Tests: unit tests per SDK against a scripted server (retry, key reuse,
+  budget, 409 in flight vs plain, paging) and a black-box paging test in each
+  `scripts/sdk-test.sh` suite.
+
 ### Overload is refused fast, panics answer, credentials stay out of traces
 
 - **Added:** an in-flight request ceiling (`MAIDAN_MAX_CONCURRENT_REQUESTS`,
