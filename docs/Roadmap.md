@@ -68,7 +68,7 @@ through (#1076); blob reaps run under a lease, not a held transaction (#1077).
 official `a2a.proto`, every operation, and the TCK runs over it (#1080); axum
 0.8, with every route's extractors checked at compile time (#1081).
 
-**Next (2026-09-28):** the launch backlog is shipped except Wave 4 #45's madsim model. The forward plan is the ranked **Next wave** at the top of [Open Work.md](Open%20Work.md): a tenant-isolation conformance suite, idempotency keys, eager reclaim, load shedding, decision history, trace context, F-48 Tier 1, workspace-wide `claim_next`, and CI jobs for the models.
+**Next (2026-09-28):** the launch backlog is shipped except Wave 4 #45's madsim model. The forward plan is the ranked **Next wave** at the top of [Open Work.md](Open%20Work.md): a tenant-isolation conformance suite, idempotency keys, eager reclaim, load shedding, decision history, trace context, F-48 Tier 1, workspace-wide `claim_next`, and CI jobs for the models. Load shedding, catch-panic and header redaction (#4) shipped in #1092.
 
 **In progress (not on `main`):** Wave 4 #45's loom, madsim and TLA+
 models are in review (#1073–#1075). Row #45 stays open until they land.

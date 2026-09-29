@@ -132,6 +132,9 @@ pub struct AppState {
     /// The most concurrent subscriber connections accepted
     /// (`MAIDAN_MAX_WS_CONNECTIONS`, default 10 000); past it, upgrades get 503.
     pub max_ws_connections: usize,
+    /// The in-flight HTTP request ceiling (`MAIDAN_MAX_CONCURRENT_REQUESTS`,
+    /// default 1024, `0` off); past it, requests are shed with a 503.
+    pub request_limit: crate::load_shed::RequestLimit,
     /// Optional Redis backend for global and per-token rate limits.
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
     /// Apply a built-in global per-client rate limit when
@@ -264,6 +267,7 @@ impl AppState {
                 .and_then(|v| v.trim().parse().ok())
                 .filter(|n: &usize| *n > 0)
                 .unwrap_or(10_000),
+            request_limit: crate::load_shed::RequestLimit::from_env(),
             rate_limit_redis: None,
             rate_limit_default_on: false,
             indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),

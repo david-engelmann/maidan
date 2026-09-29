@@ -849,6 +849,33 @@ adopted, start with `maidan_messages` + `maidan_channels` behind a
 `SET LOCAL`-in-transaction wrapper and a `bypass` role for orchestrator/federation
 paths, and keep the app-layer checks as the primary control.
 
+### Load shedding is a global in-flight ceiling outside authentication
+
+**Decision.** One semaphore bounds the HTTP requests in flight
+(`MAIDAN_MAX_CONCURRENT_REQUESTS`, default 1024). A request that finds no
+free permit gets a `503` problem with `Retry-After: 1` at once; nothing
+queues. The layer sits outside the rate limiter and authentication, so a
+refused request costs no Redis round-trip, token lookup or pooled
+connection. `/health*` and `/metrics` are exempt, the same paths the rate
+limiter exempts. A permit is held until the response head is ready, so a
+long-poll wait holds one; streamed bodies and WebSockets do not, and have
+their own ceilings. A handler panic answers a `500` problem
+(`CatchPanicLayer`) inside the metrics and request-id layers, so it is
+counted and carries the id its log line has.
+
+**Alternative.** tower's `ConcurrencyLimit` + `LoadShed` (`Router::layer`
+gives each route its own semaphore, and exempting paths needs a wrapper);
+a queue with a timeout (`ConcurrencyLimit` alone), which turns overload
+into latency until clients time out and retry into the pile; a per-tenant
+ceiling, which is the per-workspace rate limit's job.
+
+**Why this:** failing fast keeps latency flat for the requests that are
+admitted, and a `503` before any work is safe to retry, even for a write.
+Probes stay answered so an overloaded replica is not also restarted.
+
+**To revisit:** if long-poll waits come to dominate the ceiling, move them
+to their own permit pool.
+
 ## Data
 
 ### Schema 0001's `tombstoned_at` columns (logical delete)

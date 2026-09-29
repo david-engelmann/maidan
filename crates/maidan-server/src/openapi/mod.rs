@@ -20,8 +20,8 @@ use crate::land_gate_advisor::{
     LandGateAdvice, LandGateAdviceRequest, LandGateAdviceThresholds, LandGateAdviceUsage,
 };
 use crate::openapi::responses::{
-    BadRequest, Conflict, Forbidden, NotFound, PayloadTooLarge, TooManyRequests, Unauthorized,
-    UnsupportedMediaType,
+    BadRequest, Conflict, Forbidden, InternalServerError, NotFound, Overloaded, PayloadTooLarge,
+    TooManyRequests, Unauthorized, UnsupportedMediaType,
 };
 use crate::openapi::schemas::{LivenessOk, SearchHit};
 use crate::share_consumer::*;
@@ -67,6 +67,10 @@ impl Modify for SecurityAddon {
 /// - **429** — `rate_limit::middleware` wraps every route but the ones
 ///   [`rate_limit::exempt_path`] names, and `quota::middleware` enforces
 ///   per-token capability quotas on the bearer routes.
+/// - **500** — every operation: `panic_guard` answers a panicking handler with
+///   a problem, and any handler can fail.
+/// - **503** — `load_shed::middleware` refuses a request past the in-flight
+///   ceiling on every route it does not exempt (the rate limiter's exemptions).
 ///
 /// The client errors [`crate::extract`] answers with are attached by
 /// [`ExtractorResponses`]; the rest a handler produces itself (400, 403, 404,
@@ -77,6 +81,7 @@ impl Modify for MiddlewareResponses {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
         for (path, item) in openapi.paths.paths.iter_mut() {
             let rate_limited = !crate::rate_limit::exempt_path(path);
+            let sheddable = !crate::load_shed::exempt_path(path);
             for op in operations_mut(item) {
                 let requires_credential = requires_credential(op);
                 let responses = &mut op.responses.responses;
@@ -89,6 +94,14 @@ impl Modify for MiddlewareResponses {
                     responses
                         .entry("429".to_owned())
                         .or_insert_with(|| Ref::from_response_name("TooManyRequests").into());
+                }
+                responses
+                    .entry("500".to_owned())
+                    .or_insert_with(|| Ref::from_response_name("InternalServerError").into());
+                if sheddable {
+                    responses
+                        .entry("503".to_owned())
+                        .or_insert_with(|| Ref::from_response_name("Overloaded").into());
                 }
             }
         }
@@ -517,6 +530,8 @@ fn requires_credential(op: &Operation) -> bool {
         PayloadTooLarge,
         UnsupportedMediaType,
         TooManyRequests,
+        InternalServerError,
+        Overloaded,
     ),
     schemas(
         LivenessOk,

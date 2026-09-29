@@ -750,6 +750,20 @@ arrives or the timeout lapses. Three rules for using them safely:
   claim lease, so a waiter that outlives its lease is reclaimed and its work
   returns to the queue (evict-on-wait). Keep a wait shorter than your lease, or
   `renew_claim` around a long one, if you must hold the claim across it.
+- **A wait holds an in-flight slot.** Every HTTP request counts against the
+  server's in-flight ceiling until its response starts, and a wait's response
+  starts when it returns.
+
+### Overload and server errors
+
+- **`503` with `Retry-After` means retry.** Past its in-flight ceiling the
+  server refuses a request without running it (problem type
+  `https://maidan.dev/problems/overloaded`), so a retry after the delay is safe
+  even for a write. `/ws/subscribe` answers the same way at its connection
+  ceiling. `/health*` and `/metrics` are never refused.
+- **`500` names itself.** Any failure, including a server bug, answers with a
+  problem body and an `X-Request-Id` header; quote the id when reporting it.
+  The body never carries the internal cause.
 
 ### Installed apps (OAuth-style)
 

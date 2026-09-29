@@ -173,11 +173,16 @@ pub async fn subscribe(
     let count = state.ws_connections.clone();
     if count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= state.max_ws_connections {
         count.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-        return (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "subscriber connection limit reached; retry later",
+        let mut response = crate::error::ApiError::Overloaded(
+            "the server is at its subscriber connection limit; retry after the Retry-After delay"
+                .to_string(),
         )
-            .into_response();
+        .into_response();
+        response.headers_mut().insert(
+            axum::http::header::RETRY_AFTER,
+            axum::http::HeaderValue::from_static("5"),
+        );
+        return response;
     }
     let slot = ConnectionSlot(count);
     ws.max_message_size(MAX_CLIENT_WS_MESSAGE_BYTES)
