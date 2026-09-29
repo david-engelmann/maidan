@@ -81,6 +81,7 @@ flowchart LR
 | `maidan-a2a`           | Agent-to-Agent transport (JSON-RPC/REST/gRPC types).  |
 | `maidan-observability` | Tracing + OpenTelemetry setup.                        |
 | `maidan-cli`           | Operator CLI (incl. `maidan init` first-admin bootstrap), also published as its own non-root multi-arch image. |
+| `maidan-wasi`          | Sandboxed WASI preview-1 host for slash handlers (wasmi, fuel + memory caps). |
 | `maidan-server`        | HTTP/WebSocket/gRPC binary + background workers.      |
 
 ## Data layering
@@ -212,7 +213,9 @@ flowchart LR
   The aggregate `maidan_authorization_decisions_total` uses only closed
   surface/action/outcome/resource-kind labels; principal and workspace IDs
   remain trace fields. Denial details are sampled 1-in-64 and a sustained-rate
-  alert is tested with promtool. No denial creates a durable audit row.
+  alert is tested with promtool. Only a **delegated** actor's denial creates a
+  durable audit row (`authorization.decision`); every other denial is counted and
+  logged, never stored, so a hostile request stream cannot amplify into audit writes.
 - **Cross-organization incident shares.** A share ticket is deliberately not an API token
   and does not create a member or session. Its dedicated route tree exposes a reduced
   read-only view of one channel plus an exact list of workspace-linked artifact SHAs.
@@ -260,6 +263,22 @@ flowchart LR
   uses a different header (`Maidan-Room-LSN`, the event-log id). Retention pruning,
   Prometheus metrics + alert rules, OTLP traces/metrics, a durable event log with replay,
   and a Helm chart round it out.
+- **Content erasure.** Message words are sealed per message (XChaCha20-Poly1305) before
+  the event is hashed; the per-message key is wrapped by the operator's
+  `MAIDAN_CONTENT_KEK`, and withdrawing the message destroys it. The hash chain covers
+  the ciphertext, so verification needs no key and still passes after a shred. The server
+  refuses to start without a KEK. A **legal hold** (per matter, `token:admin`) refuses
+  every destroying operation inside its transaction, exempts the log from retention, and
+  keeps a withdrawn message's words until the last hold lifts.
+- **Slash handlers in WASI.** A `wasi` slash handler is a workspace-linked module run by
+  `maidan-wasi` on wasmi: preview-1 imports only (any other import fails to link), fuel and
+  linear-memory caps, no outbound host calls.
+- **Overload.** A global in-flight ceiling (`MAIDAN_MAX_CONCURRENT_REQUESTS`) sits outside
+  the rate limiter and authentication, so an over-limit request is a `503` with
+  `Retry-After` that costs no database or Redis work. WebSockets have their own ceiling.
+- **Ids.** Entity ids are UUIDv7, minted app-side, so primary-key indexes stay
+  append-mostly. A random v4 appears only where an id must be unguessable (token
+  secrets, trace ids); `uuid_v7_contract` enforces the allowlist.
 - **Outbound HTTP.** Operator-supplied webhook, slash, federation, OIDC, and experimental
   provider origins share one parser and client factory: resolve only public addresses,
   pin the connection to the checked DNS result, and refuse redirects. Destination
@@ -272,7 +291,8 @@ See [Open Work](Open%20Work.md) (the single backlog) and
 Currently out of scope:
 
 - Slack-grade human UX: native clients, huddles, org hierarchy.
-- Hosted SaaS / rich SPA (the client SDKs + a hosted playground are gated backlog items).
+- Hosted SaaS, a hosted playground, and a rich SPA. The four client SDKs (TypeScript,
+  Python, Go, Rust) are published at 0.1.0; see [`sdk/README.md`](https://github.com/david-engelmann/maidan/blob/main/sdk/README.md).
 - Postgres sharding / storage-engine change (vertical + read-replica scaling assumed
   sufficient).
 - Multi-region active-active.

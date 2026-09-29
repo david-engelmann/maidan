@@ -2,8 +2,8 @@
 > this pack are folded into [Open Work](Open%20Work.md), the single canonical backlog
 > ("Adoption & ecosystem" section). The "new-files-only / do not fold / do not splice into
 > Open Work" rules below are **superseded**; this doc now serves as the detailed spec/index
-> behind those backlog items. The `sdk/` scaffolds remain gated 0.0.1 name-holds — "do not
-> implement the client code without a go" still stands.
+> behind those backlog items. The four SDKs under `sdk/` have since shipped and are published
+> at 0.1.0 (see [`sdk/README.md`](https://github.com/david-engelmann/maidan/blob/main/sdk/README.md)); the "gated name-hold" rule no longer applies.
 # Adoption — from "interesting" to "we run this"
 
 **Audience:** David (and a later agent) scoping the work that sits

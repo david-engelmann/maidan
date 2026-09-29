@@ -42,7 +42,7 @@ pub const SECRET_ADMIN: &str = "secret:admin";
 /// the system rows of the mail DLQ (a `maidan_mail_outbox` row written before
 /// the column existed has no workspace, and mail sent outside a workspace
 /// context never will) and `GET /operator/legal-holds`, which scoping would make
-/// redundant with the per-workspace `GET /workspaces/:id/legal-hold`.
+/// redundant with the per-workspace `GET /workspaces/:id/legal-holds`.
 ///
 /// In [`crate::capability_set::HUMAN_ADMIN`] and never in `AGENT_WORKER`: an
 /// agent has no business reading across tenants.

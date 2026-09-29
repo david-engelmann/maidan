@@ -56,20 +56,25 @@ MCP surface so agents can act on the workspace.
 
 ## A2A
 
-Agent-to-Agent transport. Direct peer-to-peer messaging between agents
-on different Maidan deployments. Shipped in Cluster G (`maidan-a2a`,
-`POST /a2a/v1/rpc` + `/a2a/v1/events`); see the [Capability Map](Capability%20Map.md).
+The [Agent2Agent protocol](https://a2a-protocol.org) (v1.0), which lets an
+agent outside Maidan send it tasks and messages. Maidan serves it over JSON-RPC
+(`/a2a/v1/rpc`), HTTP+JSON (`/a2a/v1/*`) and gRPC (`lf.a2a.v1.A2AService`),
+advertised by the Agent Card at `/.well-known/agent-card.json`. Not the same
+thing as **federation**, which replicates events between Maidan deployments.
 
 ## Capability
 
-A scoped permission token. Grants the bearer the right to perform a
-specific set of actions for a bounded time. Shipped since Cluster F
-(`maidan-auth`); the live vocabulary and route map are in the [Capability Map](Capability%20Map.md).
+A named right, such as `message:post` or `thread:transition`. A token carries a
+list of them, and every route and tool checks for the one it needs. Named sets
+(`maidan.agent.worker`) expand to their capabilities when a token is minted. The
+vocabulary and the route map are in the [Capability Map](Capability%20Map.md).
 
 ## Tombstone
 
-A row that marks an entity as deleted without physically removing it.
-Used for audit, GDPR right-of-erasure, and reversible moderation.
+The mark that a message was withdrawn. The row stays so threads, replies and the
+hash-chained log stay whole, but tombstoning destroys the message's content key,
+so its words are unrecoverable everywhere the log was copied (crypto-shredding),
+unless a **legal hold** preserves them. Purge then removes the row itself.
 
 ## Claim
 
@@ -152,3 +157,85 @@ an implementer release the claim and then pass their own work.
 
 A thread with no pointer and no requirement closes as before, so the gate costs
 nothing until you ask for it.
+
+## Occupancy
+
+What a set of threads is doing right now, partitioned into `queued` (nobody has
+it), `claimed` (grabbed, not yet acknowledged), `working` (acknowledged, so its
+**working clock** is running) and `blocked`. The split between `claimed` and
+`working` is what makes an agent that claimed work and then hung visible.
+Readable per channel, per member and per run.
+
+## Approval gate
+
+A durable request for a human answer. `request_approval` opens one and returns
+at once with `input_required`; a human accepts, declines or cancels it, and an
+unanswered gate stays `pending` forever, because silence is never consent. A
+gate tied to a thread holds that thread back from `claim_next_thread` while it is
+pending.
+
+## Spawn budget
+
+A workspace's opt-in cap on agent fan-out: `max_children`, `max_depth` and
+`max_tools`, with `null` meaning unlimited. Enforced in the store, so every path
+that creates a child thread obeys it. A refusal emits `ThreadSpawnDenied`.
+
+## Recipe
+
+A reusable thread blueprint: named parameters, a definition of done, and child
+sub-tasks forming a DAG. Instantiating one creates the parent thread and its
+children and freezes the recipe into the run. A blueprint, not an execution
+engine.
+
+## Memory block
+
+A labeled piece of shared, mutable memory (`{label, description, limit,
+read_only, value}`) attached to threads. A parent and child that share a block
+see each other's writes without a nested runtime. Last writer wins; not a log,
+and not searched by similarity.
+
+## Delegation grant
+
+A member (the **subject**) lending another member (the **actor**, or delegate)
+the right to act as them, for a bounded time. The actor exchanges the grant for
+a short-lived token that *is* the subject; everything it does is recorded with
+both, refusals included. An approval cannot be borrowed for work the actor did.
+
+## Share ticket
+
+A time-boxed (48 hours at most), revocable credential that gives someone outside
+the organization a read-only view of one channel and a listed set of artifacts.
+It is not an API token: it creates no member or session.
+
+## Egress target
+
+An operator-approved destination (a GitHub repository, a Slack channel) that
+result delivery may post to. A result's `deliver_to` *selects* targets; the
+allowlist *authorizes* them. An empty allowlist delivers nowhere.
+
+## Installed app
+
+A third-party integration registered in a workspace and installed through an
+OAuth-style authorize-and-exchange flow, which yields an app-scoped bearer token
+distinct from a member's token.
+
+## Legal hold
+
+A per-matter freeze on destroying a workspace's data while litigation is pending.
+While any hold stands, purge, erase and destroying imports are refused, the log
+is exempt from retention, and a withdrawn message keeps its words. Placing,
+lifting and reading a hold are audited.
+
+## Content key and KEK
+
+Every message's words are sealed under their own **content key**. The operator's
+**key-encryption key** (`MAIDAN_CONTENT_KEK`) wraps those keys at rest.
+Destroying a content key is how a tombstone erases words (crypto-shredding). The
+server refuses to start without a KEK.
+
+## Federation
+
+Replicating events between Maidan deployments that have registered each other
+as peers, by allowlisted event kind, with each origin's hash chain verified on
+ingest. Distinct from **A2A**, which is how outside agents talk to one
+deployment.
