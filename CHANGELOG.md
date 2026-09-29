@@ -197,6 +197,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   (`400` over REST, `InvalidParams` over MCP) before anything is claimed.
 - **Changed:** the claim spec (`specs/tla/Claim.tla`) models the reaper.
 
+### A channel's threads are drawn once, on the board
+
+- **Changed:** the `/ui` sidebar no longer lists the selected channel's
+  threads. It drew the same threads as the board, from the same fetch, so each
+  appeared twice in two visual languages. The board is the thread surface; a
+  new task is added from the board header, and the badge legend sits under the
+  board. The sidebar lists channels.
+
 ### NOTIFY floor simulation
 
 - **Added:** a seeded deterministic simulation of the Postgres listener's

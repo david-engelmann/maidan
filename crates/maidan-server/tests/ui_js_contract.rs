@@ -490,7 +490,7 @@ fn ui_js_wires_honest_async_states_and_live_approvals() {
     );
     for message in [
         "No channels yet. Create one above",
-        "No threads in this channel. Create one above",
+        "No tasks in this channel yet. Add one above",
         "No messages yet. Start the conversation below",
         "You're caught up — no pending approval gates",
     ] {
@@ -656,10 +656,8 @@ fn ui_js_renders_results_as_fields_and_errors_as_sentences() {
 fn ui_js_drops_thread_responses_for_a_channel_no_longer_selected() {
     let s = script(HTML);
     assert!(
-        s.contains(
-            "const stale = () => selectedChannelId !== channelId || gen !== threadLoadGen;"
-        )
-            && s.contains("if (stale()) return;\n          list.innerHTML = \"\";\n          renderBoard(threads, gates);"),
+        s.contains("const stale = () => selectedChannelId !== channelId || gen !== threadLoadGen;")
+            && s.contains("if (stale()) return;\n          renderBoard(threads, gates);"),
         "loadThreads renders only for the channel it was asked for"
     );
     assert!(
@@ -948,5 +946,26 @@ fn ui_js_reports_errors_without_blocking_dialogs() {
     assert!(
         HTML.contains(r#"<div id="toasts"></div>"#),
         "the toast region"
+    );
+}
+
+/// The board is the one place a channel's threads are drawn. The sidebar used
+/// to list the same threads from the same fetch, so each appeared twice in two
+/// visual languages.
+#[test]
+fn ui_js_draws_a_channels_threads_once_on_the_board() {
+    assert!(
+        !HTML.contains("id=\"thread-list\""),
+        "no second thread list"
+    );
+    let board_head = HTML
+        .split("<div id=\"board-head\">")
+        .nth(1)
+        .and_then(|rest| rest.split("</div>\n          <div id=\"team\"").next())
+        .expect("the board header");
+    assert!(
+        board_head.contains("id=\"new-thread-title\"")
+            && board_head.contains("id=\"create-thread\""),
+        "a new task is created from the board"
     );
 }

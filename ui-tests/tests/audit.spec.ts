@@ -223,7 +223,7 @@ test("the board shows loading, then a readable error with Try again", async ({ p
   const err = page.locator("#board .board-error");
   await expect(err).toContainText("Could not load #build");
   await expect(err).toContainText("Could not reach the server at");
-  await expect(page.locator("#thread-list")).not.toContainText("TypeError");
+  await expect(page.locator("#board")).not.toContainText("TypeError");
   mode = "ok";
   await err.getByRole("button", { name: "Try again" }).click();
   await expect(page.locator(`#board .card[data-id="${fx.board_review_thread_id}"]`)).toBeVisible();

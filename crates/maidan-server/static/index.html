@@ -100,7 +100,7 @@
       /* Visible keyboard focus on everything interactive (WCAG 2.4.7). */
       a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
       textarea:focus-visible, [role="tab"]:focus-visible, [role="tabpanel"]:focus-visible,
-      [role="button"]:focus-visible, [role="link"]:focus-visible, #channel-list li:focus-visible, #thread-list li:focus-visible {
+      [role="button"]:focus-visible, [role="link"]:focus-visible, #channel-list li:focus-visible {
         outline: 3px solid var(--accent); outline-offset: 2px;
       }
       .panel { display: none; }
@@ -135,10 +135,6 @@
         border-radius: 0.25rem;
       }
       #mint-banner code { word-break: break-all; }
-      #thread-list { list-style: none; margin: 0.75rem 0 0; padding: 0; border-top: 1px solid var(--border); padding-top: 0.5rem; }
-      #thread-list li { padding: 0.35rem 0.5rem; border-radius: 0.25rem; cursor: pointer; font-size: 0.85rem; }
-      #thread-list li:hover { background: #f4f4f5; }
-      #thread-list li.selected { background: #e0e7ff; font-weight: 600; }
       /* Session chrome — the label text carries the meaning; colour only reinforces (WCAG 1.4.1). */
       .chrome-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; padding: 0.05rem 0.3rem; border-radius: 0.6rem; margin-right: 0.4rem; border: 1px solid transparent; vertical-align: middle; }
       .chrome-running { background: #dcfce7; color: #166534; border-color: #86efac; }
@@ -287,12 +283,6 @@
       #channel-list li { padding: 0.35rem 0.55rem; font-size: 0.9rem; color: #3f3f46; }
       #channel-list li:hover { background: #f1efe9; }
       #channel-list li.selected { background: #e6efe8; color: var(--accent); font-weight: 600; }
-      #thread-list { border-top: none; margin-top: 0.4rem; padding-top: 0; }
-      #thread-list li { display: grid; grid-template-columns: auto 1fr; column-gap: 0.4rem; align-items: baseline; padding: 0.4rem 0.5rem; font-size: 0.82rem; line-height: 1.3; }
-      #thread-list li.muted, #thread-list li.err { display: block; }
-      #thread-list li:hover { background: #f1efe9; }
-      #thread-list li.selected { background: #e6efe8; font-weight: 600; }
-      #thread-list .who { grid-column: 2; color: var(--muted); font-size: 0.72rem; font-weight: 400; margin-top: 0.1rem; }
       .chrome-badge { font-size: 0.62rem; padding: 0.08rem 0.4rem; letter-spacing: 0.04em; white-space: nowrap; margin-right: 0; }
       .chrome-open { background: #f4f4f5; color: #3f3f46; border-color: #d4d4d8; }
       .chrome-claimed { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
@@ -510,7 +500,6 @@
         #conn-fields { width: 100%; }
         #shell { grid-template-columns: minmax(0, 1fr); }
         aside { max-height: 11rem; border-bottom: 1px solid var(--line); }
-        aside #thread-list, aside #thread-list + .inline-form, aside #threads-head, aside .legend-box { display: none; }
         #board { grid-template-columns: minmax(0, 1fr); }
         #needs-you { margin: 0.6rem 0.6rem 0; }
         .ny-item { grid-template-columns: auto minmax(0, 1fr); }
@@ -601,24 +590,6 @@
           <input id="new-channel-name" placeholder="New channel" />
           <button id="create-channel" type="button" title="Requires bearer token">+</button>
         </div>
-        <div class="side-head" id="threads-head"><h2>Threads</h2></div>
-        <ul id="thread-list"><li class="muted">Select a channel</li></ul>
-        <div class="inline-form">
-          <input id="new-thread-title" placeholder="New thread title" />
-          <button id="create-thread" type="button" title="Requires bearer token">+</button>
-        </div>
-        <details class="legend-box">
-        <summary>What the badges mean</summary>
-        <ul class="chrome-legend" aria-label="Session-chrome legend">
-          <li><span class="chrome-badge chrome-open">open</span> unclaimed, free to take</li>
-          <li><span class="chrome-badge chrome-claimed">claimed</span> one holder, not started yet</li>
-          <li><span class="chrome-badge chrome-running">running</span> claimed &amp; working</li>
-          <li><span class="chrome-badge chrome-in-review">in review</span> result posted, awaiting review</li>
-          <li><span class="chrome-badge chrome-needs-input">needs-input</span> a gate wants structured input</li>
-          <li><span class="chrome-badge chrome-needs-approval">needs-approval</span> a gate wants a yes/no</li>
-          <li><span class="chrome-badge chrome-done">done</span> thread closed</li>
-        </ul>
-        </details>
       </aside>
       <main id="main-content">
         <section id="live-panel" aria-label="Live updates">
@@ -654,6 +625,10 @@
           <div id="board-head">
             <h2 id="board-title">Board</h2>
             <div id="board-summary" aria-live="polite"></div>
+            <div class="inline-form" id="new-task">
+              <input id="new-thread-title" placeholder="New task title" aria-label="New task title" />
+              <button id="create-thread" type="button" title="Requires bearer token">Add task</button>
+            </div>
           </div>
           <div id="team" aria-label="Who is on this board"></div>
           <div id="board"><div class="onboard" id="board-onboard">
@@ -665,6 +640,18 @@
             </ol>
             <div class="row"><button type="button" class="primary" data-open-connect>Connect an agent</button> <span>or press <span class="kbd mod-k">⌘K</span> to jump anywhere</span></div>
           </div></div>
+          <details class="legend-box">
+        <summary>What the badges mean</summary>
+        <ul class="chrome-legend" aria-label="Session-chrome legend">
+          <li><span class="chrome-badge chrome-open">open</span> unclaimed, free to take</li>
+          <li><span class="chrome-badge chrome-claimed">claimed</span> one holder, not started yet</li>
+          <li><span class="chrome-badge chrome-running">running</span> claimed &amp; working</li>
+          <li><span class="chrome-badge chrome-in-review">in review</span> result posted, awaiting review</li>
+          <li><span class="chrome-badge chrome-needs-input">needs-input</span> a gate wants structured input</li>
+          <li><span class="chrome-badge chrome-needs-approval">needs-approval</span> a gate wants a yes/no</li>
+          <li><span class="chrome-badge chrome-done">done</span> thread closed</li>
+        </ul>
+          </details>
         </section>
         <section id="collab-panel">
           <div id="thread-header">
@@ -1457,26 +1444,20 @@
       let threadLoadGen = 0;
       let boardShownFor = null;
       async function loadThreads(quiet = false) {
-        const list = document.getElementById("thread-list");
         // Only the newest load paints: a slow reply for channel A never paints
         // over B, and an older reply for the same channel never replaces a
         // newer one.
         const channelId = selectedChannelId;
         const gen = ++threadLoadGen;
         const stale = () => selectedChannelId !== channelId || gen !== threadLoadGen;
-        if (!channelId) {
-          renderState(list, "Select a channel to see its threads.");
-          return;
-        }
+        if (!channelId) return;
         // A board already showing this channel keeps its cards while it
         // reloads (so they can glide); a newly picked one says it is loading.
         const replacing = boardShownFor !== channelId;
-        if (!quiet) setLoading(list, "Loading threads…");
         if (replacing) boardState("loading");
         persist();
         const fail = (message) => {
           if (stale()) return;
-          renderState(list, message, "err");
           if (replacing) boardState("error", message);
           else boardNote(`Last refresh failed: ${message}`);
         };
@@ -1506,45 +1487,15 @@
           }
           const gates = await fetchPendingGatesByThread();
           if (stale()) return;
-          list.innerHTML = "";
           renderBoard(threads, gates);
           boardShownFor = channelId;
           loadNeedsYou();
           if (!threads.length) {
-            renderState(list, "No threads in this channel. Create one above to start work.");
-            return;
+            document.getElementById("board-summary").textContent =
+              "No tasks in this channel yet. Add one above, or let an agent post one.";
           }
-          threads.forEach((th) => {
-            const li = document.createElement("li");
-            li.dataset.id = th.id;
-            const title = th.title || th.id.slice(0, 8);
-            const chrome = sessionChrome(th, gates[th.id]);
-            li.dataset.chrome = chrome.label;
-            const badge = document.createElement("span");
-            badge.className = `chrome-badge ${chrome.cls}`;
-            badge.textContent = chrome.label;
-            badge.title = chrome.hint;
-            badge.setAttribute("aria-label", `session state: ${chrome.label}`);
-            const name = document.createElement("span");
-            name.textContent = title;
-            li.appendChild(badge);
-            li.appendChild(name);
-            if (th.assignee_id) {
-              const who = document.createElement("span");
-              who.className = "who";
-              who.textContent = `${memberName(th.assignee_id)}`;
-              who.title = th.assignee_id;
-              li.appendChild(who);
-            }
-            if (th.id === selectedThreadId) li.classList.add("selected");
-            li.onclick = () => selectThread(th.id, title);
-            keyActivates(li);
-            list.appendChild(li);
-          });
         } catch (e) {
           fail(unreachable(e));
-        } finally {
-          if (!stale()) clearLoading(list);
         }
       }
       // A fetch that threw never reached the server (or the reply was not
@@ -2405,7 +2356,7 @@
           live.classList.remove("on");
         }
         document.getElementById("thread-context").classList.remove("muted");
-        document.querySelectorAll("#thread-list li, #board .card").forEach((n) => {
+        document.querySelectorAll("#board .card").forEach((n) => {
           n.classList.toggle("selected", n.dataset.id === id);
         });
         renderThreadHeader();
