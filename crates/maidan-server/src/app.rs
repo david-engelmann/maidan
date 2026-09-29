@@ -27,7 +27,7 @@ use crate::{
     routing::{delete, get, patch, post, put, ProblemFallbacks},
     scim, session, share_consumer, slack, slash_commands,
     state::AppState,
-    trace_redaction, webhooks, ws,
+    trace_context, trace_redaction, webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -1157,6 +1157,9 @@ pub fn router(state: AppState) -> Router {
         .layer(trace_redaction::trace_layer())
         .layer(trace_redaction::request_layer())
         .layer(middleware::from_fn(request_id::middleware))
+        // Outside the request-id span so the exported server span's parent
+        // is the caller's trace, not an internal child.
+        .layer(middleware::from_fn(trace_context::middleware))
         // Cap request bodies before extractors buffer them.
         .layer(DefaultBodyLimit::max(max_body_bytes_from_env()))
         .with_state(state)

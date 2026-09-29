@@ -288,6 +288,7 @@ pub fn service(state: AppState) -> A2aServiceServer<GrpcA2a> {
 /// `main.rs` only when `MAIDAN_A2A_GRPC_ADDR` is set.
 pub async fn serve(state: AppState, addr: SocketAddr) -> Result<(), tonic::transport::Error> {
     tonic::transport::Server::builder()
+        .layer(crate::trace_context::GrpcTraceLayer)
         .add_service(service(state))
         .serve(addr)
         .await

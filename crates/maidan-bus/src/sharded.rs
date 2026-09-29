@@ -122,6 +122,7 @@ mod tests {
                 },
             },
             attribution: None,
+            trace: None,
         }
     }
 
@@ -209,6 +210,7 @@ mod loom_tests {
                 },
             },
             attribution: None,
+            trace: None,
         }
     }
 

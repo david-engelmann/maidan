@@ -279,8 +279,7 @@ pub async fn deliver_http(
 ) -> Result<(), String> {
     let (client, url) = crate::egress_http::client_for(url).await?;
     let signature = sign_payload(secret, body);
-    let mut request = client
-        .post(url)
+    let mut request = crate::trace_context::stamp(client.post(url))
         .header("Content-Type", "application/json")
         .header("X-Maidan-Signature", signature)
         .header("X-Maidan-Event", kind.as_str())

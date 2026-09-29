@@ -229,7 +229,10 @@ pub(super) fn notify(state: &AppState, task: &Task) {
     let state = state.clone();
     let mut task = task.clone();
     task.history = None;
+    let trace = maidan_store::trace::current();
     tokio::spawn(async move {
+        let trace = trace;
+        maidan_store::trace::maybe_scope(trace.clone(), async move {
         let configs = match state.store.list_a2a_task_push_configs(&task.id).await {
             Ok(configs) => configs,
             Err(err) => {
@@ -254,10 +257,17 @@ pub(super) fn notify(state: &AppState, task: &Task) {
             };
             let payload = payload.clone();
             let task_id = task.id.clone();
+            let trace = trace.clone();
             tokio::spawn(async move {
-                deliver_a2a_push(&config.url, &payload, &task_id, &headers).await;
+                maidan_store::trace::maybe_scope(
+                    trace,
+                    deliver_a2a_push(&config.url, &payload, &task_id, &headers),
+                )
+                .await;
             });
         }
+        })
+        .await;
     });
 }
 
@@ -321,8 +331,7 @@ async fn deliver_a2a_push(
     };
     let mut backoff = Duration::from_millis(200);
     for attempt in 1..=MAX_ATTEMPTS {
-        let mut request = client
-            .post(target.clone())
+        let mut request = crate::trace_context::stamp(client.post(target.clone()))
             .json(payload)
             .timeout(Duration::from_secs(10));
         if let Some(authorization) = &headers.authorization {

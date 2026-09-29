@@ -983,23 +983,30 @@ pub async fn deliver_notification_web_push(
     })
     .to_string()
     .into_bytes();
-    for sub in subs {
-        match sender.send(&sub, &payload).await {
-            Ok(()) => crate::metrics::record_web_push_delivered("sent"),
-            Err(err) if err.is_gone() => {
-                crate::metrics::record_web_push_delivered("pruned");
-                if let Err(e) = state
-                    .store
-                    .delete_push_subscription(member_id, sub.id)
-                    .await
-                {
-                    warn!(error = %e, "web push: pruning gone subscription failed");
+    let trace = match state.store.get_stored_event(source_log_id).await {
+        Ok(event) => event.trace,
+        Err(_) => None,
+    };
+    maidan_store::trace::maybe_scope(trace, async {
+        for sub in subs {
+            match sender.send(&sub, &payload).await {
+                Ok(()) => crate::metrics::record_web_push_delivered("sent"),
+                Err(err) if err.is_gone() => {
+                    crate::metrics::record_web_push_delivered("pruned");
+                    if let Err(e) = state
+                        .store
+                        .delete_push_subscription(member_id, sub.id)
+                        .await
+                    {
+                        warn!(error = %e, "web push: pruning gone subscription failed");
+                    }
+                }
+                Err(err) => {
+                    warn!(error = %err, "web push: send failed");
+                    crate::metrics::record_web_push_delivered("failed");
                 }
             }
-            Err(err) => {
-                warn!(error = %err, "web push: send failed");
-                crate::metrics::record_web_push_delivered("failed");
-            }
         }
-    }
+    })
+    .await;
 }

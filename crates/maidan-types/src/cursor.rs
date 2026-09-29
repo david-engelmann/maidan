@@ -205,6 +205,7 @@ mod tests {
             prev_hash: crate::genesis_hash(),
             content_hash: crate::content_hash(&serde_json::json!({})).unwrap(),
             content_key: None,
+            trace: None,
         };
         assert!(shape.matches_stored(&stored));
         let other = StoredEvent {

@@ -79,6 +79,7 @@ async fn a2a_grpc_get_and_list_tasks() {
     let svc = maidan_server::a2a_grpc::service(state);
     tokio::spawn(async move {
         tonic::transport::Server::builder()
+            .layer(maidan_server::trace_context::GrpcTraceLayer)
             .add_service(svc)
             .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
             .await
@@ -260,6 +261,7 @@ async fn a2a_grpc_serves_the_whole_service() {
     let svc = maidan_server::a2a_grpc::service(state);
     tokio::spawn(async move {
         tonic::transport::Server::builder()
+            .layer(maidan_server::trace_context::GrpcTraceLayer)
             .add_service(svc)
             .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
             .await

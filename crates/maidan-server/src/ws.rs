@@ -185,11 +185,14 @@ pub async fn subscribe(
         return response;
     }
     let slot = ConnectionSlot(count);
+    // The upgrade runs on a task hyper spawns, which does not inherit this
+    // request's trace. Capture it and re-enter on the socket task.
+    let trace = maidan_store::trace::current();
     ws.max_message_size(MAX_CLIENT_WS_MESSAGE_BYTES)
         .max_frame_size(MAX_CLIENT_WS_MESSAGE_BYTES)
         .on_upgrade(move |socket| async move {
             let _slot = slot;
-            run(socket, state, headers).await
+            maidan_store::trace::maybe_scope(trace, run(socket, state, headers)).await
         })
         .into_response()
 }

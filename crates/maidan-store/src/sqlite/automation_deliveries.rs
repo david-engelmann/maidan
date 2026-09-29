@@ -13,10 +13,12 @@ const PENDING: &str = "delivered_at IS NULL AND quarantined_at IS NULL";
 
 pub async fn enqueue(pool: &SqlitePool, new: NewAutomationDelivery) -> Result<i64, StoreError> {
     let now = Utc::now().to_rfc3339();
+    let (traceparent, tracestate) = crate::trace::current_columns();
     let row = sqlx::query(
         "INSERT INTO maidan_automation_deliveries
-            (workspace_id, source_kind, source_id, target_url, header_name, header_value, payload, next_attempt_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (workspace_id, source_kind, source_id, target_url, header_name, header_value, payload, next_attempt_at,
+             traceparent, tracestate)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id",
     )
     .bind(new.workspace_id.0)
@@ -27,6 +29,8 @@ pub async fn enqueue(pool: &SqlitePool, new: NewAutomationDelivery) -> Result<i6
     .bind(&new.header_value)
     .bind(&new.payload)
     .bind(&now)
+    .bind(&traceparent)
+    .bind(&tracestate)
     .fetch_one(pool)
     .await?;
     Ok(row.get("id"))
@@ -39,7 +43,7 @@ pub async fn list_pending(
     let now = Utc::now().to_rfc3339();
     let rows = sqlx::query(
         "SELECT id, workspace_id, source_kind, source_id, target_url, header_name, header_value,
-                payload, attempts
+                payload, attempts, traceparent, tracestate
          FROM maidan_automation_deliveries
          WHERE delivered_at IS NULL
            AND quarantined_at IS NULL
@@ -199,6 +203,10 @@ fn row_to_pending(row: &sqlx::sqlite::SqliteRow) -> Result<AutomationDeliveryPen
         header_value: row.get("header_value"),
         payload: row.get("payload"),
         attempts: row.get("attempts"),
+        trace: maidan_types::TraceContext::from_columns(
+            row.try_get("traceparent").unwrap_or(None),
+            row.try_get("tracestate").unwrap_or(None),
+        ),
     })
 }
 

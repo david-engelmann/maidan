@@ -2614,6 +2614,8 @@ pub struct WebhookSubscriptionDelivery {
     pub log_id: i64,
     pub payload: String,
     pub attempts: i32,
+    /// The server span the source event was written under.
+    pub trace: Option<crate::TraceContext>,
 }
 
 #[derive(Debug, Clone)]
@@ -2801,6 +2803,8 @@ pub struct AutomationDeliveryPending {
     pub header_value: String,
     pub payload: String,
     pub attempts: i32,
+    /// The server span the triggering request was in, when one was carried.
+    pub trace: Option<crate::TraceContext>,
 }
 
 #[derive(Debug, Clone)]

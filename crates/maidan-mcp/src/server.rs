@@ -244,6 +244,7 @@ impl McpServer {
             log_id: stored.id,
             event,
             attribution: stored.attribution(),
+            trace: stored.trace.clone(),
         };
         let _ = bus.publish(envelope).await;
         Some(stored.id)

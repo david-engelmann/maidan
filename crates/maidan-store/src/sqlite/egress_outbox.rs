@@ -19,11 +19,12 @@ pub async fn enqueue(
 ) -> Result<Option<EgressOutboxId>, StoreError> {
     let id = EgressOutboxId::new();
     let now = Utc::now().to_rfc3339();
+    let (traceparent, tracestate) = super::events::trace_columns(pool, new.source_log_id).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_egress_outbox
            (id, workspace_id, thread_id, source_log_id, surface, selector, body, kind,
-            status, attempts, next_attempt_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+            status, attempts, next_attempt_at, created_at, updated_at, traceparent, tracestate)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?)
          ON CONFLICT (source_log_id, surface, selector) DO NOTHING
          RETURNING id",
     )
@@ -38,6 +39,8 @@ pub async fn enqueue(
     .bind(&now)
     .bind(&now)
     .bind(&now)
+    .bind(traceparent)
+    .bind(tracestate)
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|r| EgressOutboxId(r.get("id"))))
@@ -68,7 +71,7 @@ pub async fn claim_next_due(
         "UPDATE maidan_egress_outbox
          SET attempts = attempts + 1, next_attempt_at = ?, updated_at = ?
          WHERE id = ?
-         RETURNING id, workspace_id, thread_id, surface, selector, body, attempts, kind",
+         RETURNING id, workspace_id, thread_id, surface, selector, body, attempts, kind, traceparent, tracestate",
     )
     .bind(&lease)
     .bind(&now_s)
@@ -197,5 +200,9 @@ fn row_to_egress(row: &sqlx::sqlite::SqliteRow) -> EgressOutbox {
         body: row.get("body"),
         attempts: row.get("attempts"),
         kind: EgressKind::parse(&row.get::<String, _>("kind")),
+        trace: maidan_types::TraceContext::from_columns(
+            row.try_get("traceparent").unwrap_or(None),
+            row.try_get("tracestate").unwrap_or(None),
+        ),
     }
 }

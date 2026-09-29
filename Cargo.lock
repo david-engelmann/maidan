@@ -2806,6 +2806,7 @@ dependencies = [
 name = "maidan-observability"
 version = "0.0.0"
 dependencies = [
+ "maidan-types",
  "metrics",
  "metrics-exporter-opentelemetry",
  "metrics-util 0.20.4",
@@ -2840,6 +2841,7 @@ dependencies = [
  "criterion",
  "libsqlite3-sys",
  "maidan-bus",
+ "maidan-observability",
  "maidan-store",
  "maidan-types",
  "pgvector",

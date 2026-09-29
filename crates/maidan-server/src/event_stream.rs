@@ -560,6 +560,7 @@ mod tests {
             log_id: 9,
             event,
             attribution: None,
+            trace: None,
         };
         let full: serde_json::Value =
             serde_json::from_str(&frame_payload(&envelope, false).unwrap()).unwrap();

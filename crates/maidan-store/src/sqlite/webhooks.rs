@@ -143,14 +143,18 @@ pub async fn enqueue_delivery(
     log_id: i64,
     payload: &str,
 ) -> Result<i64, StoreError> {
+    let (traceparent, tracestate) = super::events::trace_columns(pool, log_id).await?;
     let row = sqlx::query(
-        "INSERT INTO maidan_webhook_deliveries (subscription_id, log_id, payload)
-         VALUES (?, ?, ?)
+        "INSERT INTO maidan_webhook_deliveries
+            (subscription_id, log_id, payload, traceparent, tracestate)
+         VALUES (?, ?, ?, ?, ?)
          RETURNING id",
     )
     .bind(subscription_id.0)
     .bind(log_id)
     .bind(payload)
+    .bind(traceparent)
+    .bind(tracestate)
     .fetch_one(pool)
     .await?;
     Ok(row.get("id"))
@@ -164,7 +168,7 @@ pub async fn list_pending_deliveries(
 ) -> Result<Vec<WebhookSubscriptionDelivery>, StoreError> {
     let now = Utc::now().to_rfc3339();
     let rows = sqlx::query(
-        "SELECT d.id, d.subscription_id, d.log_id, d.payload, d.attempts
+        "SELECT d.id, d.subscription_id, d.log_id, d.payload, d.attempts, d.traceparent, d.tracestate
          FROM maidan_webhook_deliveries d
          WHERE d.delivered_at IS NULL
            AND d.quarantined_at IS NULL
@@ -184,6 +188,10 @@ pub async fn list_pending_deliveries(
             log_id: row.get("log_id"),
             payload: row.get("payload"),
             attempts: row.get("attempts"),
+            trace: maidan_types::TraceContext::from_columns(
+                row.try_get("traceparent").unwrap_or(None),
+                row.try_get("tracestate").unwrap_or(None),
+            ),
         })
         .collect())
 }

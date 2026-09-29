@@ -83,6 +83,7 @@ pub mod subscribe_grants;
 pub mod subscribe_metrics;
 pub mod subscribe_resume;
 pub mod thread_context;
+pub mod trace_context;
 pub mod trace_redaction;
 pub mod wait_sweeper;
 pub mod wasi_handler;

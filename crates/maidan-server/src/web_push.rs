@@ -248,8 +248,7 @@ impl WebPushSender for VapidWebPushSender {
         let (client, endpoint) = crate::egress_http::client_for(&sub.endpoint)
             .await
             .map_err(WebPushError::Http)?;
-        let resp = client
-            .post(endpoint)
+        let resp = crate::trace_context::stamp(client.post(endpoint))
             .timeout(Duration::from_secs(10))
             .header("Authorization", auth)
             .header("Content-Encoding", "aes128gcm")

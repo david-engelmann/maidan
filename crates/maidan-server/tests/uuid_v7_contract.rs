@@ -12,6 +12,11 @@ use std::path::{Path, PathBuf};
 /// one of these files still needs a reason here.
 const ALLOWED: &[(&str, usize, &str)] = &[
     (
+        "maidan-types/src/trace.rs",
+        2,
+        "W3C trace and span ids: random, as Trace Context requires, not time-ordered",
+    ),
+    (
         "maidan-auth/src/token.rs",
         4,
         "token and share-ticket secrets: 256 random bits",

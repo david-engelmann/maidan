@@ -57,7 +57,12 @@ async fn poll_once(state: &AppState, max_attempts: u32) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     for delivery in pending {
         let start = std::time::Instant::now();
-        match deliver_pending(state, &delivery).await {
+        match maidan_store::trace::maybe_scope(
+            delivery.trace.clone(),
+            deliver_pending(state, &delivery),
+        )
+        .await
+        {
             Ok(()) => {
                 metrics::record_automation_delivery(true);
                 let _ = state

@@ -44,6 +44,10 @@ pub struct StoredEvent {
     /// whole-log reader gets it through [`crate::KeyedEvent`].
     #[serde(default)]
     pub content_key: Option<crate::ContentKey>,
+    /// The server span this event was written under. Not part of the content
+    /// hash. Absent when no request carried a trace into the write.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace: Option<crate::TraceContext>,
 }
 
 impl StoredEvent {
@@ -118,6 +122,12 @@ struct StoredEventOpenApi {
     /// `sealed` block without it means the words were shredded.
     #[schema(nullable = false)]
     content_key: Option<String>,
+    /// W3C `traceparent` of the server span that wrote the event. Not hashed.
+    #[schema(nullable = true)]
+    traceparent: Option<String>,
+    /// W3C `tracestate` that travelled with `traceparent`.
+    #[schema(nullable = true)]
+    tracestate: Option<String>,
 }
 
 #[cfg(feature = "openapi")]
@@ -939,6 +949,10 @@ pub struct BusEnvelope {
     /// sees the same principal a replay does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attribution: Option<crate::Attribution>,
+    /// The server span the event was written under. Subscribers that call
+    /// out continue this trace. Not a domain field and not part of the hash.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace: Option<crate::TraceContext>,
 }
 
 impl BusEnvelope {
@@ -948,6 +962,7 @@ impl BusEnvelope {
             log_id: 0,
             event,
             attribution: None,
+            trace: None,
         }
     }
 
@@ -955,7 +970,9 @@ impl BusEnvelope {
     /// included. Every path from the log to the bus goes through here.
     pub fn from_stored(stored: &StoredEvent) -> Result<Self, OpenEventError> {
         let payload = stored.opened_payload()?;
-        Ok(Self::from_payload(stored.id, payload)?)
+        let mut envelope = Self::from_payload(stored.id, payload)?;
+        envelope.trace = stored.trace.clone();
+        Ok(envelope)
     }
 
     /// [`Self::from_stored`] for a reader that holds the stored payload and its
@@ -979,6 +996,7 @@ impl BusEnvelope {
             log_id,
             event: serde_json::from_value(payload)?,
             attribution,
+            trace: None,
         })
     }
 }
@@ -1185,7 +1203,8 @@ mod filter_tests {
         assert!(EventFilter::all().matches_envelope(&BusEnvelope {
             log_id: 1,
             event,
-            attribution: None
+            attribution: None,
+            trace: None,
         }));
     }
 

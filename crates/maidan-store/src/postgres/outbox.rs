@@ -19,6 +19,8 @@ pub struct OutboxRow {
     /// The message's content key, `None` for an event without one or with a
     /// shredded one.
     pub content_key: Option<ContentKey>,
+    /// The server span the event was written under, when one was carried.
+    pub trace: Option<maidan_types::TraceContext>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -65,7 +67,7 @@ pub async fn claim_pending(
              WHERE o.id = c.id
              RETURNING o.id, o.log_id, o.attempts
          )
-         SELECT c.id, c.log_id, c.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped
+         SELECT c.id, c.log_id, c.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped, e.traceparent, e.tracestate
          FROM claimed c
          JOIN maidan_events e ON e.id = c.log_id
          LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id
@@ -88,6 +90,10 @@ pub async fn claim_pending(
                     row.get("key_kek_id"),
                     row.get("key_wrapped"),
                 )?,
+                trace: maidan_types::TraceContext::from_columns(
+                    row.try_get("traceparent").unwrap_or(None),
+                    row.try_get("tracestate").unwrap_or(None),
+                ),
             })
         })
         .collect()
@@ -99,7 +105,7 @@ pub async fn list_pending(
     limit: i64,
 ) -> Result<Vec<OutboxRow>, StoreError> {
     let rows = sqlx::query(&format!(
-        "SELECT o.id, o.log_id, o.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped
+        "SELECT o.id, o.log_id, o.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped, e.traceparent, e.tracestate
          FROM maidan_outbox o
          JOIN maidan_events e ON e.id = o.log_id
          LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id
@@ -123,6 +129,10 @@ pub async fn list_pending(
                     row.get("key_kek_id"),
                     row.get("key_wrapped"),
                 )?,
+                trace: maidan_types::TraceContext::from_columns(
+                    row.try_get("traceparent").unwrap_or(None),
+                    row.try_get("tracestate").unwrap_or(None),
+                ),
             })
         })
         .collect()

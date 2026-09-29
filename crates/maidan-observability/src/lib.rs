@@ -4,6 +4,7 @@
 //! until shutdown, then call [`Guard::shutdown`].
 
 mod metrics;
+mod trace;
 
 #[cfg(feature = "otel")]
 use std::time::Duration;
@@ -26,6 +27,7 @@ pub use metrics::{build_otlp_metrics_recorder, MeterGuard};
 pub use metrics::{
     otlp_metrics_endpoint_from_env, otlp_metrics_interval_from_env, MetricsPushConfig,
 };
+pub use trace::{adopt_remote_parent, recorded_span};
 
 /// Log output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

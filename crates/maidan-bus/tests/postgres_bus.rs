@@ -77,6 +77,7 @@ async fn round_trip_through_listen_notify_with_pointer_hydrate() {
         log_id: stored.id,
         event: event.clone(),
         attribution: None,
+        trace: None,
     })
     .await
     .unwrap();
@@ -214,6 +215,7 @@ async fn pointer_delivery_for_large_persisted_event() {
         log_id: stored.id,
         event,
         attribution: None,
+        trace: None,
     })
     .await
     .unwrap();

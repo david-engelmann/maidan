@@ -42,8 +42,7 @@ pub async fn deliver_pending(
     let signature = sign_payload(&secret, &delivery.payload);
     let room_lsn =
         crate::room_lsn::current_for_room(state.store.as_ref(), delivery.workspace_id).await;
-    let mut request = client
-        .post(target)
+    let mut request = crate::trace_context::stamp(client.post(target))
         .header("Content-Type", "application/json")
         .header(&delivery.header_name, &delivery.header_value)
         .header("X-Maidan-Signature", signature)

@@ -70,11 +70,16 @@ struct StoredEventFields<'a> {
     occurred_at: DateTime<Utc>,
     prev_hash: &'a str,
     content_hash: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    traceparent: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tracestate: Option<&'a str>,
 }
 
 /// Serialize a log row and stamp `$type` from `kind`. Does not rewrite the
 /// nested `payload` (that stays the stored `Event` JSON, tagged on `kind`).
 pub fn stored_event_wire(event: &StoredEvent) -> Result<Value, serde_json::Error> {
+    let traceparent = event.trace.as_ref().map(|trace| trace.traceparent());
     let mut value = serde_json::to_value(StoredEventFields {
         id: event.id,
         lsn: event.lsn,
@@ -86,6 +91,8 @@ pub fn stored_event_wire(event: &StoredEvent) -> Result<Value, serde_json::Error
         occurred_at: event.occurred_at,
         prev_hash: &event.prev_hash,
         content_hash: &event.content_hash,
+        traceparent: traceparent.as_deref(),
+        tracestate: event.trace.as_ref().and_then(|trace| trace.tracestate()),
     })?;
     inject_type(&mut value, &event.kind.type_id());
     Ok(value)
@@ -455,6 +462,7 @@ mod tests {
             content_hash: crate::content_hash(&json!({"kind": "message_posted", "body": "hi"}))
                 .expect("hash"),
             content_key: None,
+            trace: None,
         };
         let wire = stored_event_wire(&stored).expect("wire");
         assert_eq!(wire["$type"], "maidan.event.message_posted/1");

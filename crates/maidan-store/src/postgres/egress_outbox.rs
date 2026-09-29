@@ -19,11 +19,12 @@ pub async fn enqueue(
     new: NewEgressOutbox,
 ) -> Result<Option<EgressOutboxId>, StoreError> {
     let id = EgressOutboxId::new();
+    let (traceparent, tracestate) = super::events::trace_columns(pool, new.source_log_id).await?;
     let row = sqlx::query(
         "INSERT INTO maidan_egress_outbox
            (id, workspace_id, thread_id, source_log_id, surface, selector, body, kind,
-            status, attempts, next_attempt_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', 0, now(), now(), now())
+            status, attempts, next_attempt_at, created_at, updated_at, traceparent, tracestate)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', 0, now(), now(), now(), $9, $10)
          ON CONFLICT (source_log_id, surface, selector) DO NOTHING
          RETURNING id",
     )
@@ -35,6 +36,8 @@ pub async fn enqueue(
     .bind(new.target.selector())
     .bind(&new.body)
     .bind(new.kind.as_str())
+    .bind(traceparent)
+    .bind(tracestate)
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|r| EgressOutboxId(r.get("id"))))
@@ -63,7 +66,7 @@ pub async fn claim_next_due(
              updated_at = now()
          FROM due
          WHERE e.id = due.id
-         RETURNING e.id, e.workspace_id, e.thread_id, e.surface, e.selector, e.body, e.attempts, e.kind",
+         RETURNING e.id, e.workspace_id, e.thread_id, e.surface, e.selector, e.body, e.attempts, e.kind, e.traceparent, e.tracestate",
     )
     .bind(now)
     .bind(lease_secs as f64)
@@ -190,5 +193,9 @@ fn row_to_egress(row: &sqlx::postgres::PgRow) -> EgressOutbox {
         body: row.get("body"),
         attempts: row.get("attempts"),
         kind: EgressKind::parse(&row.get::<String, _>("kind")),
+        trace: maidan_types::TraceContext::from_columns(
+            row.try_get("traceparent").unwrap_or(None),
+            row.try_get("tracestate").unwrap_or(None),
+        ),
     }
 }
