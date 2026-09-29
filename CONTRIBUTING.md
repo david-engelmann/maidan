@@ -11,7 +11,7 @@ while it grows.
 ```sh
 git clone git@github.com:david-engelmann/maidan.git
 cd maidan
-make ci          # fmt, clippy, deny, test
+make ci          # fmt, both clippy passes, deny, test
 make smoke       # docker compose up + curl /health
 ```
 
@@ -20,9 +20,11 @@ The Rust toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml).
 ## Branch + commit conventions
 
 - Branch names: `<kind>/<scope>-<short-slug>` where
-  `kind ∈ {feat, chore, build, ci, docs, test, refactor}`.
+  `kind ∈ {feat, fix, perf, refactor, test, docs, ci, build, chore}`.
 - Commit + PR titles follow [Conventional Commits](https://www.conventionalcommits.org/).
-- Squash-merge only; PR title becomes the commit on `main`.
+- Squash-merge only. The PR title becomes the commit title on `main`; the squash
+  commit's body is the branch's commit messages, so the PR is where its
+  description and retro live.
 
 ## PR flow
 
@@ -31,19 +33,25 @@ green and review comments are addressed. There is no second human reviewer; the 
 is the CI suite plus an AI review from [CodeRabbit](https://coderabbit.ai), not a
 rubber stamp.
 
-1. Open a GitHub Issue from the relevant template.
+1. For outside contributions, open an issue first (bug, benchmark or protocol
+   compatibility templates) so the work can be claimed. The maintainer's own
+   work starts from a row in [`docs/Open Work.md`](docs/Open%20Work.md).
 2. Branch from `main` per the convention above.
-3. Develop locally; `make ci` green before pushing.
-4. Open a PR. Fill in the Retrospective section (mandatory).
-5. All **8 required CI checks** must pass (lint, secrets scan, unit tests, integration,
-   docker-compose smoke, scale-out smoke, promtool, otlp smoke). External PRs are
-   reviewed by the maintainer before merge.
+3. Develop locally; `make ci` green before pushing. For contract changes also run
+   `bash scripts/check-agent-contract.sh`.
+4. Open a PR from the [template](.github/pull_request_template.md). The
+   Retrospective section is mandatory.
+5. All **8 required CI checks** must pass (`lint (fmt + clippy + deny)`,
+   `secrets scan`, `unit tests`, `integration (testcontainers)`,
+   `docker compose smoke`, `scale-out smoke`, `promtool (alert rules)`,
+   `otlp smoke`). A docs-only PR skips the heavy jobs, which report as passed.
+   External PRs are reviewed by the maintainer before merge.
 6. CodeRabbit reviews every non-draft PR to `main` and reviews new pushes
    incrementally (settings in [`.coderabbit.yaml`](.coderabbit.yaml)). Address every
    comment before merge, including those it lists outside the diff in its review
    body: fix it, or reply with the reason it does not apply. CodeRabbit is
    advisory, not a required check; `@coderabbitai review` asks for a fresh review.
-7. Squash-merge — the PR title + body become the commit on `main`.
+7. Squash-merge.
 
 ## Claiming work
 
@@ -104,9 +112,9 @@ contributions follows from it:
 Tagging is the maintainer's call. The full procedure is in
 [`docs/Operations.md`](docs/Operations.md); in outline:
 
-1. The cluster's close record lands: its retro, the Capabilities and CHANGELOG
-   entries, and the Roadmap pointer. `scripts/check-release-records.sh` fails
-   if the README, CLAUDE.md, CHANGELOG and Capabilities disagree on the version.
+1. The release record lands: a Capabilities section and a CHANGELOG entry for
+   the version, and the README and CLAUDE.md pins moved to it.
+   `scripts/check-release-records.sh` fails if they disagree.
 2. The maintainer pushes an annotated tag `vX.0.0` from `main`.
 3. `release.yml` builds binaries and multi-arch images, runs the blocking trivy
    scan, signs images and artifacts keylessly with cosign, smoke-tests the
@@ -130,7 +138,8 @@ Every PR body includes:
 
 Every cluster closes with a dedicated retro PR that updates
 [`docs/Retros/`](docs/Retros/), [`docs/Capabilities.md`](docs/Capabilities.md),
-and [`CHANGELOG.md`](CHANGELOG.md), then cuts the release tag.
+[`CHANGELOG.md`](CHANGELOG.md) and [`docs/Open Work.md`](docs/Open%20Work.md).
+Cutting a release tag is a separate step, taken when the maintainer chooses.
 
 ## Coding standards
 

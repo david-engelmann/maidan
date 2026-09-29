@@ -7,6 +7,7 @@ fmt:
 
 lint:
 	cargo clippy --all-targets --workspace -- -D warnings
+	cargo clippy --workspace --lib --bins -- -D clippy::unwrap_used -D clippy::expect_used
 
 test:
 	cargo test --workspace

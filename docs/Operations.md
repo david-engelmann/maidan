@@ -8,13 +8,13 @@ the system is*; this file says *what you do to it*.
 ## Daily commands
 
 ```sh
-# Full local CI before opening any PR
-cargo fmt --check
-cargo clippy --all-targets --workspace -- -D warnings
-cargo test --workspace            # requires Docker for integration tests
+# Full local CI before opening any PR (fmt, both clippy passes, deny, tests;
+# the Postgres suites need Docker)
+make ci
 
 # Run the server against in-memory SQLite (no Docker)
-MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
+MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: \
+  MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server
 
 # Run the prod-style stack (postgres + minio + server)
 docker compose --profile full up
@@ -24,10 +24,14 @@ curl http://localhost:8080/health
 docker compose --profile federation up -d
 bash scripts/federation-smoke.sh
 
-# Build the published docs site (mdBook)
-cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md
-mdbook build book
+# Build the published docs site (mdBook 0.4.40, mdbook-linkcheck 0.7.7,
+# mdbook-mermaid 0.14.1). sync-docs.sh copies docs/ into book/src first.
+mdbook-mermaid install book
+bash book/sync-docs.sh
+mdbook build book && ./scripts/check-docs-presentation.sh
 mdbook serve book   # preview at http://127.0.0.1:3000
+# The tracked MCP reference is regenerated from the tool catalog:
+cargo run -p maidan-mcp --bin gen-mcp-reference
 ```
 
 ## Kill switches (operator levers)
@@ -64,13 +68,15 @@ MCP twins: `freeze_member` / `unfreeze_member` / `list_frozen_members` (also
 | `MAIDAN_RATE_LIMIT_MAX` | Per-client request ceiling (per bearer/IP over 60 s). Unset ⇒ a built-in 1200/60 s floor on the server binary; `0` disables. Lower it to throttle a spike. |
 | `MAIDAN_MAX_BODY_BYTES` | Max request body (default 2 MiB); oversized ⇒ `413`. |
 | `MAIDAN_SECRET_EGRESS_ALLOWLIST` | Comma-separated hosts the SecretBroker may substitute `secret://` refs for on webhook egress; a non-allowlisted host gets the literal ref. Empty ⇒ never substitute. |
-| `FEDERATION_DISABLED` | Turns off federation ingress + the pull worker. |
+| `FEDERATION_DISABLED` | Stops the outbound federation pull worker. Ingress (`POST /a2a/v1/events`) keeps serving; revoke the peer to stop it. |
 | `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | Per-connection Postgres statement timeout (default 30 s) — caps a runaway query. |
 | `MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | Ends a connection idle inside an open transaction (default 60 s), so it cannot hold back vacuum. |
 | `MAIDAN_MAX_CONCURRENT_REQUESTS` | In-flight HTTP request ceiling (default 1024, `0` off); past it, an immediate `503` with `Retry-After`. Lower it to protect the database under a spike. Gauge `maidan_http_in_flight_requests`, counter `maidan_http_shed_total`. |
 | `MAIDAN_MAX_WS_CONNECTIONS` | Ceiling on live `/ws/subscribe` connections (default 10 000; past it, 503). Gauges: `maidan_ws_connections`, `maidan_mcp_streamable_sessions`. |
 | `MAIDAN_DB_LOCK_TIMEOUT_MS` | Fails a statement waiting on a lock after 10 s by default; migrations exempt themselves. |
-| Opt-in workers: `MAIDAN_SCHEDULER_TICK_SECS`, `MAIDAN_WAIT_SWEEP_TICK_SECS`, `MAIDAN_DIGEST_TICK_SECS`, `MAIDAN_MAIL_WORKER_TICK_SECS`, `MAIDAN_RETENTION_SWEEP_SECS` | Unset ⇒ the worker never starts. Unset one to stop that background activity (scheduled tasks / wait escalations / digests / mail / retention pruning). |
+| Opt-in workers: `MAIDAN_SCHEDULER_TICK_SECS`, `MAIDAN_WAIT_SWEEP_TICK_SECS`, `MAIDAN_DIGEST_TICK_SECS` | Unset ⇒ the worker never starts. Unset one to stop that background activity (scheduled tasks / wait escalations / digests). |
+| Mail worker: `MAIDAN_MAIL_WORKER_TICK_SECS` | Runs whenever SMTP is configured; the tick defaults to 5 s. |
+| Retention: `MAIDAN_RETENTION_SWEEP_SECS` | The sweeper starts when any `MAIDAN_RETENTION_*_DAYS` is set; the sweep interval defaults to 86400 s. |
 | `MAIDAN_RETENTION_*_DAYS` (events/audit/deliveries) | With the retention sweeper on, per-table age cutoffs; the event log is floored at the min at-least-once cursor so a lagging consumer never loses an undelivered event. |
 
 Federation peer secrets and the secret store share the `FEDERATION_ENCRYPTION_KEY`
@@ -109,272 +115,143 @@ after to show the change.
 
 ### 1. Pick the next item
 
-The cluster's plan doc (`docs/Clusters/Cluster X.md`) lists PRs in
-order with the linked Issue numbers. Work them in order unless you
-have a reason to swap; PR `X.N+1` is usually written assuming
-`X.N` shipped.
+The ranked list at the top of [`docs/Open Work.md`](Open%20Work.md) is the
+plan. A planned arc of work gets a cluster plan in `docs/Clusters/Cluster N.md`
+(PR ladder, ordering, exit criteria, risks) before its first PR; a single fix
+or improvement is just a PR against its Open Work row.
 
-If you are starting a new cluster, write the plan doc first (see
-"Cluster kickoff" below).
-
-### 2. Branch + commit
+### 2. Branch and commit
 
 ```sh
-git checkout main
-git pull --ff-only
-git checkout -b <kind>/<scope>-<slug>
+git fetch origin
+git checkout -b <kind>/<scope>-<slug> origin/main
 ```
 
-- `kind ∈ {feat, chore, build, ci, docs, test, refactor}`
-- `scope` is usually a crate name (`maidan-store`) or a concept
-  (`workspace-scaffold`, `cluster-c-retro`).
-- `slug` is short and lowercase with dashes.
+`kind ∈ {feat, fix, perf, refactor, test, docs, ci, build, chore}`; see
+[`docs/Conventions.md`](Conventions.md). Commit with a
+[Conventional Commits](https://www.conventionalcommits.org/) title that reads
+as a release note.
 
-Examples: `feat/maidan-search`, `ci/release-darwin-x86`,
-`docs/cluster-c-retro`.
-
-Commit with [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat(maidan-search): pgvector embeddings + semantic search
-chore: governance + workspace scaffold
-docs(retro): Cluster C retrospective + v0.2.0 tag prep
-ci: build x86_64-apple-darwin on macos-13
-```
-
-The PR title is the commit title is the squash-merge commit title.
-Make it readable as a release-notes line.
+Before pushing, run `make ci` (fmt, both clippy passes, deny, tests), and
+`bash scripts/check-agent-contract.sh` if you touched a contract.
 
 ### 3. Open the PR
 
 ```sh
 git push -u origin <branch>
-gh pr create --base main --head <branch> --title "..." --body "..."
+gh pr create --base main --title "..." --body-file <body.md>
 ```
 
-The PR body **must** follow the template in
-[`docs/Conventions.md`](Conventions.md). The Retrospective section
-(per-PR) is mandatory — it survives squash-merge as part of the
-commit body.
+Start the body from the [PR template](../.github/pull_request_template.md).
+The Retrospective (PR-level) section is mandatory. The squash commit keeps the
+branch's commit messages, not the PR body, so a deferral or decision a later
+reader needs also goes into Open Work or Decisions in the same PR.
 
-The template:
-
-```markdown
-## What this PR does
-<2-4 bullets>
-
-## Linked cluster
-[Cluster X — Theme](docs/Clusters/Cluster%20X.md) · Phase X.N.
-
-## Acceptance test
-<the command(s) the reviewer runs to verify green>
-
-## Risk / rollback
-<what reverts cleanly; what doesn't>
-
-## Out of scope
-<things deferred to which PR>
-
-## Retrospective (PR-level)
-- **What was surprising:** <one or two; "nothing surprising" is acceptable>
-- **What got deferred:** <bullets; each links to the future PR or follow-up issue>
-- **What we learned:** <if any; otherwise omit>
-
-Closes #<issue>.
-```
+For stacked work, open the child PR against its parent's branch. After the
+parent squash-merges, rebase the child onto `main`, dropping the parent's
+commits (`git rebase --onto origin/main <old-parent-tip> <child>`). Don't
+merge a parent with `--delete-branch` while a child is stacked on it: GitHub
+closes the child for good.
 
 ### 4. Watch CI
 
 ```sh
-gh pr checks <num>                 # one-shot
-gh pr checks <num> --watch         # watch to completion
+gh pr checks <num>            # one-shot
+gh pr checks <num> --watch    # to completion
 ```
 
-Or arm a `Monitor` and keep working — the harness will notify when
-checks land.
-
-The 8 required jobs:
-- `lint (fmt + clippy + deny)` — ~30s
-- `secrets scan` — ~10s
-- `unit tests` — ~1m
-- `integration (testcontainers)` — ~1m20s
-- `docker compose smoke` — ~4m
-- `scale-out smoke` — ~9m (required as of the `maidan-scale-1.0` gate)
-- `promtool (alert rules)` — ~10s (required as)
-- `otlp smoke` — ~9m (required as)
-
-If anything goes red, fix on the branch and push again. The most
-common failures and fixes are in "Debugging CI" below.
+The eight required jobs are listed in [`CLAUDE.md`](../CLAUDE.md#orientation)
+and the full matrix in [`docs/Conventions.md`](Conventions.md#ci-matrix). A
+conflicting PR runs no CI at all: rebase it first. If a job goes red, fix it on
+the branch; the common failures are in "Debugging CI" below.
 
 ### 4a. Address the CodeRabbit review
 
-CodeRabbit reviews every non-draft PR to `main` and reviews new pushes
-incrementally (settings in `.coderabbit.yaml` at the repo root). Before
-merging, address every comment it leaves, including those it lists
-outside the diff in its review body: fix it, or reply with the
-reason it does not apply. It is advisory, not a required check, so a
-wrong comment is answered, not obeyed. `@coderabbitai review` asks for
-a fresh review.
-
-If no review arrives (rate limit or tool failure), ask with
-`@coderabbitai review`. CodeRabbit is advisory, so a missing review does
-not block a merge the 8 checks allow.
+CodeRabbit reviews every non-draft PR to `main` and each new push
+(`.coderabbit.yaml`). Before merging, address every comment, including those it
+lists outside the diff in its review body: fix it, or reply with the reason it
+does not apply. It is advisory, not a required check, so a wrong comment is
+answered, not obeyed. `@coderabbitai review` asks for a fresh review.
 
 ### 5. Merge
 
-Merge only when the 8 required checks are green and every CodeRabbit
+Merge only when the eight required checks are green and every CodeRabbit
 comment is addressed.
 
 ```sh
-gh pr merge <num> -R david-engelmann/maidan --squash --admin --delete-branch
+gh pr merge <num> -R david-engelmann/maidan --squash --admin
 ```
 
-The `--admin` flag is intentional. See
-[`docs/Decisions.md`](Decisions.md) for the rationale.
+`--admin` is intentional ([`docs/Decisions.md`](Decisions.md), "Admin-merge
+instead of local-first push"). Branch protection does not apply to admins, so
+`--admin` will merge over a red required check: that is only done with the
+maintainer's explicit go-ahead for that PR.
 
-After merge:
+## Closing a cluster
 
-```sh
-git checkout main
-git pull --ff-only
-git branch -d <branch>
-```
+When a cluster's PRs have merged, its close record is one PR (branch
+`docs/cluster-N-close`) that:
 
-## Cluster kickoff
+1. Writes `docs/Retros/Cluster N.md` in the shape of
+   [`docs/Retros/README.md`](Retros/README.md): what shipped (one line per PR),
+   what was deferred and to where, surprises, decisions, risks still open.
+2. Prepends a source record to [`docs/Capabilities.md`](Capabilities.md):
+   `## Cluster N (source record; no \`vN.0.0\` tag) — <theme>`, a table of what
+   shipped and where it lives.
+3. Adds the cluster's entries to [`CHANGELOG.md`](../CHANGELOG.md) under
+   `[Unreleased]` (Added / Changed / Fixed / Security).
+4. Updates [`docs/Open Work.md`](Open%20Work.md): shipped rows removed, deferrals
+   added where they belong in the ranked list.
+5. Adds the retro to `docs/Retros/README.md`, and updates
+   [`docs/Architecture.md`](Architecture.md) if the shape of the system changed.
 
-When starting cluster `X`:
+## Cutting a release
 
-1. Create labels (one-time per cluster):
+Tagging is the maintainer's call, not part of closing a cluster. To cut
+`vX.0.0`:
 
-   ```sh
-   gh label create cluster-x --color "0e8a16" --description "Cluster X work" --repo david-engelmann/maidan
-   ```
-
-2. Create the PR-tracker issues. Each PR in the cluster's plan has
-   one issue, plus an `[X.retro]` issue:
-
-   ```sh
-   gh issue create --repo david-engelmann/maidan \
-     --title "[X.1] Description" \
-     --label cluster-x,<area-label> \
-     --body "..."
-   ```
-
-3. Add issues to the Project board:
-
-   ```sh
-   for i in <issue-numbers>; do
-     gh project item-add 1 --owner david-engelmann \
-       --url "https://github.com/david-engelmann/maidan/issues/$i"
-   done
-   ```
-
-4. Write `docs/Clusters/Cluster X.md` with the PR ladder, ordering
-   rationale, exit criteria, and risks. Use Cluster A/B/C as
-   templates.
-
-5. Update `docs/Roadmap.md`'s "Current cluster" pointer.
-
-6. Open PR `X.1` and start the loop.
-
-## Cluster close
-
-When PRs `X.1` through `X.N` are merged:
-
-1. Open the `[X.retro]` PR on branch `docs/cluster-x-retro`.
-
-2. Create `docs/Retros/Cluster X.md` per the shape in
-   [`docs/Retros/README.md`](Retros/README.md). Every section is
-   mandatory:
-   - What shipped (one bullet per PR, with the merge commit SHA)
-   - What was deferred (table: To, What, Why)
-   - Surprises
-   - Decisions (link to `docs/Decisions.md` if any locked
-     differently)
-   - Capability table extension
-   - Risks identified + mitigated
-   - Risks identified + still open
-   - Forward look
-   - Acknowledgements
-
-3. Update:
-   - `docs/Capabilities.md` — prepend the `v0.X.0` row
-   - `CHANGELOG.md` — add `[0.X.0]` section with Added / Changed /
-     Removed / Fixed / Security
-   - `README.md` — refresh "What's in v0.X.0" + Status line
-   - `docs/Architecture.md` — refresh the "at v0.X.0" header and any
-     deferred-vs-shipped subsections
-   - `docs/Roadmap.md` — mark cluster complete (✓), shift "Current
-     cluster" pointer to next cluster
-   - `docs/Retros/README.md` — add to the index
-
-4. Merge the retro PR.
-
-5. **Tag the release locally first:**
+1. Land a release-record PR: a `## [vX.0.0]` section in `docs/Capabilities.md`
+   (linking the GitHub release) naming what it contains, a `## [X.0.0]` section in
+   `CHANGELOG.md` (the `[Unreleased]` entries move under it), the
+   `latest **\`vX.0.0\`**` line in `CLAUDE.md`, and the image pins in `README.md`.
+   `bash scripts/check-release-records.sh --tag vX.0.0` must pass.
+2. Tag `main` and push the tag:
 
    ```sh
-   git checkout main
-   git pull --ff-only
-   git tag -a v0.X.0 -m "Cluster X: <theme>.
-
-   <one-paragraph summary of what's in this release>
-
-   See CHANGELOG.md [0.X.0] and docs/Retros/Cluster X.md for the full retro."
-   git tag -l v0.X.0 -n20  # verify the message
+   git checkout main && git pull --ff-only
+   git tag -a vX.0.0 -m "vX.0.0: <theme>"
+   git push origin vX.0.0
    ```
 
-   Tag signing: no GPG signing key is configured, so tags are **annotated
-   but unsigned** (the standing convention — see [`docs/Decisions.md`](Decisions.md)).
-   To enable GPG-signed tags, set `git config user.signingkey <key>`, add the
-   public key to GitHub, and use `-s` instead of `-a`. (Release *artifacts* are
-   already signed keylessly via cosign — see step 7.)
-
-6. **Push the tag** — this fires
-   [`.github/workflows/release.yml`](../.github/workflows/release.yml):
-
-   ```sh
-   git push origin v0.X.0
-   ```
-
-   The workflow builds:
-   - `x86_64-unknown-linux-gnu` on `ubuntu-latest`
-   - `aarch64-unknown-linux-gnu` on `ubuntu-latest` via `cross`
-   - `aarch64-apple-darwin` on `macos-latest`
-   - `x86_64-apple-darwin` on `macos-13`
-
-   Plus multi-arch ghcr.io images:
-   - `ghcr.io/david-engelmann/maidan-server:v0.X.0`
-   - `ghcr.io/david-engelmann/maidan-postgres:v0.X.0`
-
-   Plus a GitHub Release with the binaries attached.
-
-7. Verify the Release at `https://github.com/david-engelmann/maidan/releases/tag/v0.X.0`.
-   If anything failed, see "Debugging the release workflow" below.
-   The workflow attaches `sbom.json` (cyclonedx) and **keyless cosign
-   (Sigstore) signatures** for every release artifact (Track V.3): each
-   `*.tar.gz` and `sbom.json` ships with a self-verifiable `.cosign.bundle`,
-   signed via the workflow's GitHub OIDC identity (no private key). Verify:
+   Tags are annotated and unsigned: no GPG key is configured. Release
+   artifacts are signed keylessly with cosign.
+3. The push runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
+   - `release record matches tag` re-runs the record check against the tag;
+   - binaries for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`
+     (via `cross`) and `aarch64-apple-darwin`; `x86_64-apple-darwin` is the
+     manual `release-darwin-x86.yml`;
+   - multi-arch images `ghcr.io/david-engelmann/maidan-server`,
+     `maidan-cli` and `maidan-postgres`;
+   - a blocking trivy scan of each image, then `cosign sign` of each image
+     digest;
+   - `published server + CLI boot smoke` against the published images;
+   - the GitHub Release, with `sbom.json` and a `.cosign.bundle` beside every
+     artifact.
+4. Verify the release, and see "Debugging the release workflow" below if a job
+   fails. Anyone can verify signatures:
 
    ```sh
    cosign verify-blob --bundle maidan-<target>.tar.gz.cosign.bundle \
-     --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+     --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com \
      maidan-<target>.tar.gz
-   ```
-
-   The **container images** are also keyless-signed (`v158.0.0`): the
-   `sign-images` job resolves each pushed tag to its immutable index digest and
-   `cosign sign`s it. Verify (and enforce in an admission controller —
-   Kyverno/Sigstore policy):
-
-   ```sh
-   cosign verify ghcr.io/david-engelmann/maidan-server:v0.X.0 \
-     --certificate-identity-regexp '^https://github.com/david-engelmann/maidan' \
+   cosign verify ghcr.io/david-engelmann/maidan-server:vX.0.0 \
+     --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com
-   # same for ghcr.io/david-engelmann/maidan-postgres:v0.X.0
    ```
 
-8. Open the next cluster kickoff.
+Clusters that were never tagged ship in the next release; their Capabilities
+sections say "source record; no tag".
 
 ## Debugging CI
 
@@ -512,7 +389,7 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
 1. Reproduce lag locally: `cargo test -p maidan-server subscribe_emits_replay_hint_when_bus_subscriber_lags -- --nocapture`.
 2. Scrape metrics: `curl -s localhost:8080/metrics | rg 'maidan_(bus_lag|subscribe_replay)'`.
 3. **No workspace filter** — subscribers without `filter.workspace_id` only get
-   `replay_hint`, not auto-replay; see [[Production#Delivery reliability metrics]].
+   `replay_hint`, not auto-replay; see [Production — Delivery reliability metrics](Production.md#delivery-reliability-metrics-v600).
 4. **Truncation loop** — sustained `replay_truncated` means the client must advance
    `after_id` until the frame stops.
 5. **Postgres LISTEN** — `maidan_bus_listener_ok` and `/health/ready` `bus` field;
@@ -526,7 +403,7 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
 2. Scrape metrics: `curl -s localhost:8080/metrics | rg 'maidan_bus_notify_hydrate'`.
 3. **Spike in `not_found`** — confirm HTTP mutations call `append_event` before `bus.publish`; check for federation or scripts calling `pg_notify` directly.
 4. **Spike in `invalid_payload`** — inspect NOTIFY payloads in logs (`drop notify payload`); legacy full-envelope path still requires valid JSON.
-5. **Subscriber gaps with flat hydrate counters** — use subscribe replay metrics ([[Production#Delivery reliability metrics]]); hydrate failures are listener-side only.
+5. **Subscriber gaps with flat hydrate counters** — use subscribe replay metrics ([Production — Delivery reliability metrics](Production.md#delivery-reliability-metrics-v600)); hydrate failures are listener-side only.
 
 ### Authorization-denial troubleshooting (`v410.0.0`)
 
@@ -540,18 +417,19 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
 3. Detail warnings are content-free and sampled 1-in-64. They carry identity
    and resource IDs for correlation, but never request/response bodies,
    prompts, messages, tool arguments, secrets, or provider payloads.
-4. Denials are not written to `maidan_audit`; this lane is aggregate
-   observability and preserves the bounded-write decision from Cluster 182.
+4. Anonymous and undelegated denials are not written to `maidan_audit`: this
+   lane is aggregate observability, the bounded-write decision from Cluster
+   182. A delegated token's decisions, allowed or refused, are recorded as
+   `authorization.decision` audit rows.
 
 ### `docker compose smoke` fails
 
-- "wait for /health timed out": the maidan-server container didn't
-  start in 120s. Check the `compose logs on failure` step output for
-  why — usually a migration failure or a connection refused on
-  Postgres because of healthcheck race.
-
-If a healthcheck race recurs, increase the healthcheck retries in
-`compose.yaml` or extend the `for i in 1..60` loop in `ci.yml`.
+- `compose up` failed: `docker compose --profile full up -d --wait` timed out
+  on a service health check. Read the `compose logs on failure` step, usually a
+  migration failure or Postgres not accepting connections yet. If a health
+  check race recurs, raise that service's `retries` in `compose.yaml`.
+- `health reports ok` failed: `/health` answered but its `status` was not
+  `ok`; the JSON names the failing check.
 
 ## Debugging the release workflow
 
@@ -605,51 +483,24 @@ If the release workflow runs but doesn't produce a GitHub Release:
 
 ## Branch protection state
 
-`main` is protected. As of v0.2.0:
+`main` is protected:
 
-- 8 required status checks: `lint (fmt + clippy + deny)`,
-  `secrets scan`, `unit tests`, `integration (testcontainers)`,
-  `docker compose smoke`, `scale-out smoke` (promoted to required
-  at the `maidan-scale-1.0` gate), and `promtool (alert
-  rules)` + `otlp smoke` (promoted).
-- 1 required PR review (the maintainer self-merges via `--admin`
-  bypass).
-- No force push.
-- No deletions.
-- Required conversation resolution.
-- Required linear history (squash-merge only).
-- `strict = true` (PR must be up-to-date with `main` before merge).
+- 8 required status checks: `lint (fmt + clippy + deny)`, `secrets scan`,
+  `unit tests`, `integration (testcontainers)`, `docker compose smoke`,
+  `scale-out smoke` (required since the `maidan-scale-1.0` gate),
+  `promtool (alert rules)` and `otlp smoke` (required since Cluster 124).
+- 1 required approving review, required conversation resolution, linear
+  history (squash only), no force pushes, no deletions.
+- `strict: false`: a PR need not be up to date with `main` to merge. Whether
+  to require it is F-43 in Open Work, the maintainer's call.
+- `enforce_admins: false`: an admin can push to `main` and merge over red
+  checks. The rule against both is policy, not a technical control.
 
 To inspect:
 
 ```sh
 gh api /repos/david-engelmann/maidan/branches/main/protection | jq
 ```
-
-To update (rare):
-
-```sh
-gh api -X PUT /repos/david-engelmann/maidan/branches/main/protection \
-  --input <branch-protection.json>
-```
-
-A template `branch-protection.json` is generated in this session's
-shell history; otherwise reconstruct from the JSON in this section.
-
-## Project board
-
-[Maidan Roadmap](https://github.com/users/david-engelmann/projects/1)
-is the GitHub Project v2 board. Every issue gets added at creation
-time via:
-
-```sh
-gh project item-add 1 --owner david-engelmann \
-  --url "https://github.com/david-engelmann/maidan/issues/<num>"
-```
-
-The board has the default `Backlog` / `Planned` / `In progress` /
-`In review` / `Done` columns. Moving between columns is currently
-manual; future automation is a Cluster X candidate.
 
 ## When the repo is in a half-state
 
