@@ -6045,6 +6045,54 @@ mod tests {
                 .unwrap(),
         );
         assert_eq!(reviews.as_array().unwrap().len(), 1);
+
+        // A changed verdict replaces the current review; the history keeps both.
+        server
+            .call_tool(
+                &rev,
+                "submit_review",
+                &json!({ "thread_id": tid, "decision": "request_changes" }),
+            )
+            .await
+            .unwrap();
+        let history = content(
+            server
+                .call_tool(&op, "list_review_history", &json!({ "thread_id": tid }))
+                .await
+                .unwrap(),
+        );
+        let history = history.as_array().unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0]["decision"], "approve");
+        assert_eq!(history[0]["note"], "lgtm");
+        assert_eq!(history[1]["decision"], "request_changes");
+
+        // Land-gate verdicts keep their history too.
+        store
+            .add_member_skill(reviewer.id, maidan_types::LAND_GATE_SKILL)
+            .await
+            .unwrap();
+        for args in [
+            json!({ "thread_id": tid, "status": "fail" }),
+            json!({ "thread_id": tid, "status": "pass", "artifact_sha": "cafe" }),
+        ] {
+            server
+                .call_tool(&rev, "set_land_gate", &args)
+                .await
+                .unwrap();
+        }
+        let gate = content(
+            server
+                .call_tool(&op, "list_land_gate_history", &json!({ "thread_id": tid }))
+                .await
+                .unwrap(),
+        );
+        let gate = gate.as_array().unwrap();
+        assert_eq!(gate.len(), 2);
+        assert_eq!(gate[0]["status"], "fail");
+        assert_eq!(gate[0]["land"], "red");
+        assert_eq!(gate[1]["status"], "pass");
+        assert_eq!(gate[1]["artifact_sha"], "cafe");
     }
 
     /// MCP `transition_thread` is the twin of REST `POST

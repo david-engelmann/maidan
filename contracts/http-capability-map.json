@@ -1657,6 +1657,12 @@
   },
   {
     "method": "GET",
+    "path": "/threads/{id}/reviews/history",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/threads/{id}/review-status",
     "capability": "workspace:read",
     "surface": "http"
@@ -1670,6 +1676,12 @@
   {
     "method": "GET",
     "path": "/threads/{id}/land-gate",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/land-gate/history",
     "capability": "workspace:read",
     "surface": "http"
   },

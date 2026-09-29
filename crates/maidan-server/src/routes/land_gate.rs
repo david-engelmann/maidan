@@ -82,6 +82,19 @@ pub async fn get_land_gate(
     Ok(Json(state.store.get_land_gate_standing(thread_id).await?))
 }
 
+/// Every land-gate verdict recorded on a thread, oldest first. A new pointer
+/// or clearing the gate leaves earlier verdicts in place.
+pub async fn list_land_gate_history(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<Vec<LandGateVerdict>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    Ok(Json(state.store.list_land_gate_history(thread_id).await?))
+}
+
 /// Remove the gate entirely — `channel:admin`, and audited. This is the waiver,
 /// not a write against the gate, so it answers to the administrative capability
 /// rather than the one the gate constrains.

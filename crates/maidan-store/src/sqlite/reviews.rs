@@ -5,8 +5,9 @@
 use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    review_decision_from_waiter, MemberId, ReviewDecision, ReviewStatus, StoredEvent, ThreadId,
-    ThreadReview, ThreadReviewRequirement, CRITICAL_REVIEW_NOTE, REVIEW_SKILL,
+    review_decision_from_waiter, MemberId, ReviewDecision, ReviewStatus, ReviewVerdict,
+    StoredEvent, ThreadId, ThreadReview, ThreadReviewRequirement, CRITICAL_REVIEW_NOTE,
+    REVIEW_SKILL,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -205,6 +206,20 @@ pub async fn submit_review(
     .fetch_one(&mut *tx)
     .await?;
     let review = row_to_review(&row)?;
+    // The history keeps every verdict; the row above keeps only the latest.
+    sqlx::query(
+        "INSERT INTO maidan_thread_review_verdicts
+             (thread_id, reviewer_id, decision, note, actor_id, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(thread_id.0)
+    .bind(reviewer_id.0)
+    .bind(decision.as_str())
+    .bind(note)
+    .bind(actor_id.map(|m| m.0))
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
     let mut event = None;
     if decision == ReviewDecision::RequestChanges
         && sends_back_in_tx(&mut tx, thread_id, reviewer_id, actor_id).await?
@@ -380,4 +395,34 @@ pub async fn apply_critical_review_decision(
         set_requirement(pool, thread_id, 1).await?;
     }
     Ok(Some(review))
+}
+
+/// Every review verdict on a thread, oldest first.
+pub async fn list_review_history(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+) -> Result<Vec<ReviewVerdict>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, thread_id, reviewer_id, decision, note, actor_id, recorded_at
+         FROM maidan_thread_review_verdicts WHERE thread_id = ? ORDER BY id",
+    )
+    .bind(thread_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter()
+        .map(|row| {
+            let decision: String = row.get("decision");
+            Ok(ReviewVerdict {
+                id: row.get("id"),
+                thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
+                reviewer_id: MemberId(row.get::<Uuid, _>("reviewer_id")),
+                decision: ReviewDecision::parse(&decision).ok_or_else(|| {
+                    StoreError::InvalidInput(format!("unknown review decision: {decision}"))
+                })?,
+                note: row.get("note"),
+                actor_id: row.get::<Option<Uuid>, _>("actor_id").map(MemberId),
+                recorded_at: row.get::<DateTime<Utc>, _>("recorded_at"),
+            })
+        })
+        .collect()
 }

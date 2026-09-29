@@ -239,6 +239,19 @@ pub async fn list_reviews(
     Ok(Json(state.store.list_reviews(thread_id).await?))
 }
 
+/// Every verdict submitted on a thread, oldest first. A re-submission
+/// replaces a reviewer's current review but not its earlier verdicts.
+pub async fn list_review_history(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ReviewVerdict>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    Ok(Json(state.store.list_review_history(thread_id).await?))
+}
+
 pub async fn get_review_status(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

@@ -659,6 +659,10 @@ pub fn router(state: AppState) -> Router {
             post(routes::submit_review).merge(get(routes::list_reviews)),
         )
         .route(
+            "/threads/{id}/reviews/history",
+            get(routes::list_review_history),
+        )
+        .route(
             "/threads/{id}/review-status",
             get(routes::get_review_status),
         )
@@ -667,6 +671,10 @@ pub fn router(state: AppState) -> Router {
             put(routes::set_land_gate)
                 .merge(get(routes::get_land_gate))
                 .merge(delete(routes::clear_land_gate)),
+        )
+        .route(
+            "/threads/{id}/land-gate/history",
+            get(routes::list_land_gate_history),
         )
         .route(
             "/threads/{id}/land-gate/requirement",

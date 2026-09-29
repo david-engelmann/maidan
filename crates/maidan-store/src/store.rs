@@ -1443,6 +1443,14 @@ pub trait ReviewStore: Send + Sync {
         note: Option<&str>,
     ) -> Result<(ThreadReview, Option<StoredEvent>), StoreError>;
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
+    /// Every review verdict on the thread, oldest first. `submit_review`
+    /// appends one per submission, in its transaction; the history is never
+    /// updated, so a re-submission or a dismissal leaves earlier verdicts as
+    /// they were.
+    async fn list_review_history(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ReviewVerdict>, StoreError>;
     async fn review_status(&self, thread_id: ThreadId) -> Result<ReviewStatus, StoreError>;
     /// If `result` is a reviewed `example.review.result/1` with any `critical`
     /// finding **and** `reviewer_id` has declared the `review` skill, upsert a
@@ -1482,6 +1490,13 @@ pub trait LandGateStore: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<LandGateStanding, StoreError>;
     async fn clear_land_gate(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
+    /// Every land-gate verdict recorded on the thread, oldest first.
+    /// `set_land_gate_pointer` appends one per recorded pointer, in its
+    /// transaction; a later pointer or clearing the gate leaves them in place.
+    async fn list_land_gate_history(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<LandGateVerdict>, StoreError>;
 }
 
 #[async_trait]

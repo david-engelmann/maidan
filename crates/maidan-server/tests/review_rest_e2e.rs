@@ -14,6 +14,7 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
+    LAND_GATE_SKILL,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -235,4 +236,198 @@ async fn required_reviewers_over_http() {
         .await
         .unwrap();
     assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+}
+
+/// A reviewer who flips their verdict and a gate that goes amber then green
+/// keep every earlier verdict, readable over REST. A token from another
+/// workspace cannot read either history.
+#[tokio::test]
+async fn decision_history_over_http() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+
+    let ws = store
+        .create_workspace(NewWorkspace { name: "s".into() })
+        .await
+        .unwrap();
+    let other_ws = store
+        .create_workspace(NewWorkspace { name: "o".into() })
+        .await
+        .unwrap();
+    let member = |ws: WorkspaceId, handle: &'static str| {
+        let store = store.clone();
+        async move {
+            store
+                .create_member(NewMember {
+                    workspace_id: ws,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let operator = member(ws.id, "op").await;
+    let reviewer = member(ws.id, "reviewer").await;
+    let checker = member(ws.id, "checker").await;
+    let outsider = member(other_ws.id, "outsider").await;
+    store
+        .add_member_skill(checker.id, LAND_GATE_SKILL)
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: None,
+        })
+        .await
+        .unwrap();
+    store
+        .set_thread_owner(thread.id, Some(operator.id))
+        .await
+        .unwrap();
+
+    let caps = vec![
+        capability::THREAD_TRANSITION.into(),
+        capability::WORKSPACE_READ.into(),
+    ];
+    let op_h = format!(
+        "Bearer {}",
+        mint(store.as_ref(), ws.id, operator.id, caps.clone()).await
+    );
+    let rev_h = format!(
+        "Bearer {}",
+        mint(store.as_ref(), ws.id, reviewer.id, caps.clone()).await
+    );
+    let gate_h = format!(
+        "Bearer {}",
+        mint(store.as_ref(), ws.id, checker.id, caps.clone()).await
+    );
+    let out_h = format!(
+        "Bearer {}",
+        mint(store.as_ref(), other_ws.id, outsider.id, caps).await
+    );
+    let tid = thread.id.0;
+
+    for (decision, note) in [("approve", "lgtm"), ("request_changes", "missed a case")] {
+        let r = client
+            .post(format!("{base}/threads/{tid}/reviews"))
+            .header("Authorization", &rev_h)
+            .json(&json!({ "decision": decision, "note": note }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+    }
+    let current: Value = client
+        .get(format!("{base}/threads/{tid}/reviews"))
+        .header("Authorization", &op_h)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(current.as_array().unwrap().len(), 1);
+    assert_eq!(current[0]["decision"], "request_changes");
+
+    let history = client
+        .get(format!("{base}/threads/{tid}/reviews/history"))
+        .header("Authorization", &op_h)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(history.status(), StatusCode::OK);
+    let history: Value = history.json().await.unwrap();
+    let history = history.as_array().unwrap();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0]["decision"], "approve");
+    assert_eq!(history[0]["note"], "lgtm");
+    assert_eq!(history[0]["reviewer_id"], json!(reviewer.id.0));
+    assert_eq!(history[1]["decision"], "request_changes");
+    assert!(history[0]["id"].as_i64().unwrap() < history[1]["id"].as_i64().unwrap());
+    assert!(history[0]["recorded_at"].is_string());
+
+    let req = client
+        .put(format!("{base}/threads/{tid}/land-gate/requirement"))
+        .header("Authorization", &op_h)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(req.status(), StatusCode::OK);
+    for body in [
+        json!({ "status": "pass", "land": "amber", "artifact_sha": "deadbeef" }),
+        json!({ "status": "pass" }),
+    ] {
+        let r = client
+            .put(format!("{base}/threads/{tid}/land-gate"))
+            .header("Authorization", &gate_h)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+    }
+    let admin_h = format!(
+        "Bearer {}",
+        mint(
+            store.as_ref(),
+            ws.id,
+            operator.id,
+            vec![capability::CHANNEL_ADMIN.into()],
+        )
+        .await
+    );
+    let cleared = client
+        .delete(format!("{base}/threads/{tid}/land-gate"))
+        .header("Authorization", &admin_h)
+        .send()
+        .await
+        .unwrap();
+    assert!(cleared.status().is_success(), "clear: {}", cleared.status());
+
+    let gate: Value = client
+        .get(format!("{base}/threads/{tid}/land-gate/history"))
+        .header("Authorization", &op_h)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let gate = gate.as_array().unwrap();
+    assert_eq!(gate.len(), 2, "clearing the gate keeps its history");
+    assert_eq!(gate[0]["land"], "amber");
+    assert_eq!(gate[0]["artifact_sha"], "deadbeef");
+    assert_eq!(gate[0]["recorded_by"], json!(checker.id.0));
+    assert_eq!(gate[1]["status"], "pass");
+    assert_eq!(gate[1]["land"], "green");
+
+    for path in ["reviews/history", "land-gate/history"] {
+        let denied = client
+            .get(format!("{base}/threads/{tid}/{path}"))
+            .header("Authorization", &out_h)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            matches!(
+                denied.status(),
+                StatusCode::FORBIDDEN | StatusCode::NOT_FOUND
+            ),
+            "{path} across workspaces: {}",
+            denied.status()
+        );
+    }
 }

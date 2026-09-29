@@ -2115,6 +2115,21 @@ pub fn submit_review() {}
     ))]
 pub fn list_reviews() {}
 
+/// List every verdict submitted on a thread
+///
+/// Oldest first. Each submission is kept: a re-submission replaces the
+/// reviewer's current review (`GET /threads/{id}/reviews`) but not its
+/// earlier verdicts.
+#[utoipa::path(get, path = "/threads/{id}/reviews/history", tag = "review",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Vec<ReviewVerdict>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn list_review_history() {}
+
 /// Get a thread's review status
 #[utoipa::path(get, path = "/threads/{id}/review-status", tag = "review",
     params(("id" = Uuid, Path, description = "Thread id")),
@@ -2151,6 +2166,20 @@ pub fn set_land_gate() {}
         (status = 404, response = NotFound),
     ))]
 pub fn get_land_gate() {}
+
+/// List every land-gate verdict recorded on a thread
+///
+/// Oldest first. Each recorded pointer is kept; a later pointer or clearing
+/// the gate leaves it in place.
+#[utoipa::path(get, path = "/threads/{id}/land-gate/history", tag = "land_gate",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Vec<LandGateVerdict>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn list_land_gate_history() {}
 
 /// Remove a thread's land gate
 #[utoipa::path(delete, path = "/threads/{id}/land-gate", tag = "land_gate",

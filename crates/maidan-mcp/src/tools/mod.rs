@@ -129,6 +129,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_fsm_hooks",
     "list_github_issue_links",
     "list_glossary_terms",
+    "list_land_gate_history",
     "list_member_follows",
     "list_member_skills",
     "list_memory_blocks",
@@ -144,6 +145,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_recipes",
     "list_references",
     "list_result_deliveries",
+    "list_review_history",
     "list_reviews",
     "list_run_threads",
     "list_secrets",
@@ -293,7 +295,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_memory_block"
         | "get_review_status"
         | "list_reviews"
+        | "list_review_history"
         | "get_land_gate"
+        | "list_land_gate_history"
         | "whoami"
         | "get_log_snapshot"
         | "verify_event_chain"
@@ -680,9 +684,11 @@ async fn enforce_channel_access(
         | "submit_review"
         | "get_review_status"
         | "list_reviews"
+        | "list_review_history"
         | "transition_thread"
         | "set_land_gate"
         | "get_land_gate"
+        | "list_land_gate_history"
         | "require_land_gate"
         | "clear_land_gate"
         | "follow_thread" => {
@@ -891,8 +897,10 @@ pub async fn dispatch(
         "submit_review" => review::submit_review(server, auth, args).await,
         "get_review_status" => review::get_review_status(store, args).await,
         "list_reviews" => review::list_reviews(store, args).await,
+        "list_review_history" => review::list_review_history(store, args).await,
         "set_land_gate" => land_gate::set_land_gate(store, auth, args).await,
         "get_land_gate" => land_gate::get_land_gate(store, args).await,
+        "list_land_gate_history" => land_gate::list_land_gate_history(store, args).await,
         "require_land_gate" => land_gate::require_land_gate(store, args).await,
         "clear_land_gate" => land_gate::clear_land_gate(store, auth, args).await,
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,

@@ -3,8 +3,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     is_qualifying_pass, land_gate_standing, resolve_land, standing_land, LandColor,
-    LandGatePointer, LandGateStanding, LandGateStatus, MemberId, RecordedLandGate, ThreadId,
-    LAND_GATE_SKILL,
+    LandGatePointer, LandGateStanding, LandGateStatus, LandGateVerdict, MemberId, RecordedLandGate,
+    ThreadId, LAND_GATE_SKILL,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -134,6 +134,8 @@ pub async fn set_pointer(
     let sha = artifact_sha_opt(artifact_sha)?;
     let land = resolve_land(status, land);
     let now = Utc::now().to_rfc3339();
+    let actor_id = crate::attribution::delegate_acting_for(recorded_by);
+    let mut tx = pool.begin().await?;
     sqlx::query(
         "INSERT INTO maidan_thread_land_gate
             (thread_id, status, land, artifact_sha, recorded_by, recorded_at, created_at, updated_at,
@@ -151,14 +153,30 @@ pub async fn set_pointer(
     .bind(thread_id.0)
     .bind(status.as_str())
     .bind(land.as_str())
-    .bind(sha)
+    .bind(sha.as_deref())
     .bind(recorded_by.0)
     .bind(&now)
     .bind(&now)
     .bind(&now)
-    .bind(crate::attribution::delegate_acting_for(recorded_by).map(|m| m.0))
-    .execute(pool)
+    .bind(actor_id.map(|m| m.0))
+    .execute(&mut *tx)
     .await?;
+    // The history keeps every verdict; the row above keeps only the latest.
+    sqlx::query(
+        "INSERT INTO maidan_thread_land_gate_verdicts
+            (thread_id, status, land, artifact_sha, recorded_by, recorded_actor_id, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(thread_id.0)
+    .bind(status.as_str())
+    .bind(land.as_str())
+    .bind(sha.as_deref())
+    .bind(recorded_by.0)
+    .bind(actor_id.map(|m| m.0))
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     standing_for(pool, thread_id).await
 }
 
@@ -279,4 +297,40 @@ pub async fn gate_in_tx(
         "land gate is {}: need a green pass from a land-gate-skilled member who is not the implementer",
         verdict.as_str()
     )))
+}
+
+/// Every land-gate verdict recorded on a thread, oldest first.
+pub async fn history(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+) -> Result<Vec<LandGateVerdict>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, thread_id, status, land, artifact_sha, recorded_by, recorded_actor_id, recorded_at
+         FROM maidan_thread_land_gate_verdicts WHERE thread_id = ? ORDER BY id",
+    )
+    .bind(thread_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter()
+        .map(|row| {
+            let status: String = row.get("status");
+            let land: String = row.get("land");
+            Ok(LandGateVerdict {
+                id: row.get("id"),
+                thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
+                status: LandGateStatus::parse(&status).ok_or_else(|| {
+                    StoreError::InvalidInput(format!("unknown land-gate status: {status}"))
+                })?,
+                land: LandColor::parse(&land).ok_or_else(|| {
+                    StoreError::InvalidInput(format!("unknown land color: {land}"))
+                })?,
+                artifact_sha: row.get("artifact_sha"),
+                recorded_by: MemberId(row.get::<Uuid, _>("recorded_by")),
+                recorded_actor_id: row
+                    .get::<Option<Uuid>, _>("recorded_actor_id")
+                    .map(MemberId),
+                recorded_at: row.get::<DateTime<Utc>, _>("recorded_at"),
+            })
+        })
+        .collect()
 }
