@@ -37,6 +37,9 @@ export interface Fixtures {
   floor_jump_thread_id: string;
   /** The `quiet` channel: no tasks, for the onboarding state. */
   quiet_channel_id: string;
+  /** The `lab` channel: markup and script URLs in every field, for the injection audit. */
+  lab_channel_id: string;
+  lab_thread_id: string;
 }
 
 export function fixtures(): Fixtures {

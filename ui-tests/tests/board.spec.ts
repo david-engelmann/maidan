@@ -75,6 +75,8 @@ test("a thread shows its state, holder, result and authors by name", async ({ pa
 // is opt-in even then.
 test("the Live bar stays collapsed until connected, and the raw feed is opt-in", async ({ page }) => {
   await openBoard(page);
+  // A pasted token signs in and folds the inputs into the identity pill.
+  await page.click("#conn-edit");
   await page.fill("#token", fx.live_token);
   const feed = page.locator("#live-feed");
   await expect(feed).toBeHidden();

@@ -85,7 +85,7 @@ test("connect an agent gives copyable MCP config for this server", async ({ page
   expect(json.mcpServers.maidan.url).toBe(url);
   expect(json.mcpServers.maidan.headers.Authorization).toBe("Bearer REPLACE_WITH_MAIDAN_TOKEN");
   await expect(page.locator("#cx-claude")).toContainText(`claude mcp add --transport http maidan ${url}`);
-  await expect(page.locator("#cx-prompt")).toContainText("claim_next_thread in #build");
+  await expect(page.locator("#cx-prompt")).toContainText(`claim_next_thread with channel_id ${fx.board_channel_id} (#build) and lease_secs 900`);
   await expect(page.locator("#cx-prompt")).toContainText(`${fx.base_url}/llms.txt`);
   await expect(dialog).not.toContainText(fx.token);
 

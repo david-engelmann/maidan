@@ -270,6 +270,81 @@ async fn main() {
         .await
         .expect("quiet channel");
 
+    // Hostile data, for the injection audit: a member, a channel topic, a
+    // task, a message, a result and a gate prompt that each carry markup and a
+    // script URL. Every renderer must show them as text. Its own channel, so
+    // no other spec sees it.
+    const XSS: &str = "<img src=x onerror=\"window.__xss=1\"><script>window.__xss=1</script>";
+    let mallory = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "mallory".into(),
+            display_name: Some(format!("Mallory {XSS}")),
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("mallory");
+    let lab = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "lab".into(),
+            topic: Some(format!("topic {XSS}")),
+            private: false,
+        })
+        .await
+        .expect("lab channel");
+    let lab_thread = store
+        .create_thread(NewThread {
+            channel_id: lab.id,
+            parent_thread_id: None,
+            title: Some(format!("Title {XSS}")),
+        })
+        .await
+        .expect("lab thread");
+    store
+        .claim_thread(lab_thread.id, mallory.id)
+        .await
+        .expect("mallory claims");
+    store
+        .post_message(NewMessage {
+            thread_id: lab_thread.id,
+            author_id: mallory.id,
+            body: format!("Body {XSS} [link](javascript:window.__xss=1)"),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("lab message");
+    store
+        .set_thread_result(
+            lab_thread.id,
+            mallory.id,
+            &serde_json::json!({
+                format!("key {XSS}"): format!("value {XSS}"),
+                "link": "javascript:window.__xss=1",
+                "upper": "JAVASCRIPT:window.__xss=1",
+                "spaced": " javascript:window.__xss=1",
+                "data": "data:text/html,<script>window.__xss=1</script>",
+                "nested": { "html": XSS },
+            }),
+        )
+        .await
+        .expect("lab result");
+    store
+        .transition_thread(lab_thread.id, mallory.id, ThreadAction::StartReview)
+        .await
+        .expect("lab review");
+    store
+        .create_approval_gate(&NewApprovalGate {
+            workspace_id: ws.id,
+            thread_id: Some(lab_thread.id),
+            requested_by: mallory.id,
+            prompt: format!("Prompt {XSS}"),
+            schema: None,
+        })
+        .await
+        .expect("lab gate");
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -393,6 +468,8 @@ async fn main() {
         "floor_glide_thread_id": floor_threads[1].id.0.to_string(),
         "floor_jump_thread_id": floor_threads[2].id.0.to_string(),
         "quiet_channel_id": quiet.id.0.to_string(),
+        "lab_channel_id": lab.id.0.to_string(),
+        "lab_thread_id": lab_thread.id.0.to_string(),
     });
     std::fs::write(
         &fixtures_path,

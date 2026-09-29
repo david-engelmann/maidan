@@ -809,3 +809,64 @@ fn ui_js_palette_opens_the_next_review_by_its_summary() {
         "the next-review action opens the thread and names it by the inbox summary"
     );
 }
+
+#[test]
+fn ui_js_socket_retries_with_backoff_ignores_replaced_sockets_and_stops_on_refusal() {
+    let s = script(HTML);
+    assert!(
+        s.contains("Math.min(30000, 1500 * 2 ** wsRetries)"),
+        "a dropped socket retries with backoff instead of trying once"
+    );
+    assert!(
+        s.matches("if (sock !== wsSocket) return;").count() >= 2,
+        "a socket replaced by a newer one cannot clear or reconnect over it"
+    );
+    assert!(
+        s.contains("const refused = ev && ev.code === 1008;"),
+        "a policy refusal is not retried"
+    );
+    assert!(
+        s.contains("setLiveFallback(true);") && s.contains("const LIVE_POLL_MS = 15000;"),
+        "the board polls while the socket is down"
+    );
+    assert!(
+        s.contains("window.addEventListener(\"online\", reconnectNowIfWanted);"),
+        "coming back online reconnects at once"
+    );
+}
+
+#[test]
+fn ui_js_gate_rows_lead_with_the_question() {
+    let s = script(HTML);
+    assert!(
+        s.contains("title.textContent = isGate ? item.summary : (th && th.title) || item.summary;"),
+        "a gate row shows the question being approved, not only its task title"
+    );
+}
+
+#[test]
+fn ui_js_board_has_its_own_loading_and_error_states() {
+    let s = script(HTML);
+    assert!(
+        s.contains("if (replacing) boardState(\"loading\");")
+            && s.contains("if (replacing) boardState(\"error\", message);"),
+        "a newly picked channel says it is loading, and says what failed"
+    );
+    assert!(
+        s.contains("retry.textContent = \"Try again\";"),
+        "the board error offers Try again"
+    );
+    assert!(
+        !s.contains("Error: ${e}</li>"),
+        "no raw exception text is written into HTML unescaped"
+    );
+}
+
+#[test]
+fn ui_js_missing_token_admin_does_not_send_you_back_to_tokens() {
+    let s = script(HTML);
+    assert!(
+        s.contains("if (status === 403 && needs && needs[1] === \"token:admin\")"),
+        "minting needs token:admin, so a token:admin refusal must not say mint one in Tokens"
+    );
+}

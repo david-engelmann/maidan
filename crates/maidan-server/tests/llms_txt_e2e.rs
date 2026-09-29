@@ -59,3 +59,43 @@ async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
 
     server.abort();
 }
+
+/// Words in backticks that llms.txt uses as argument names, transition
+/// actions, review decisions or inbox kinds rather than as tool names.
+const NOT_TOOLS: &[&str] = &[
+    "lease_secs",
+    "token_budget",
+    "start_review",
+    "approve",
+    "request_changes",
+    "review_request",
+    "open",
+    "initialize",
+];
+
+#[test]
+fn every_tool_llms_txt_names_is_in_the_mcp_catalog() {
+    // An agent reads llms.txt and calls what it names; a renamed or removed
+    // tool must fail here, not in the agent.
+    let body = include_str!("../static/llms.txt");
+    let tools: std::collections::HashSet<String> = maidan_mcp::tools::catalog()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap().to_string())
+        .collect();
+    let mut named = Vec::new();
+    for (i, chunk) in body.split('`').enumerate() {
+        let is_ident = !chunk.is_empty()
+            && chunk
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit());
+        if i % 2 == 1 && is_ident && chunk.contains('_') && !NOT_TOOLS.contains(&chunk) {
+            named.push(chunk.to_string());
+        }
+    }
+    assert!(named.len() >= 10, "found the work-loop tools: {named:?}");
+    let missing: Vec<_> = named.iter().filter(|n| !tools.contains(*n)).collect();
+    assert!(
+        missing.is_empty(),
+        "llms.txt names tools the MCP server lacks: {missing:?}"
+    );
+}
