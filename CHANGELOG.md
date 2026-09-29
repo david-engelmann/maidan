@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A misspelt MAIDAN_* variable refuses boot
+
+- **Changed:** the server refuses to start when the environment holds a
+  `MAIDAN_*` variable it does not know, and names the one it probably meant:
+  `MAIDAN_RATE_LIMT_MAX (did you mean MAIDAN_RATE_LIMIT_MAX?)`. Before, the
+  misspelt variable configured nothing and the default stayed in place without
+  a word. Names used by the CLI, SDKs, scripts and compose files (`MAIDAN_URL`,
+  `MAIDAN_TOKEN`, `MAIDAN_HOST_PORT`, …) are tolerated.
+  `MAIDAN_ALLOW_UNKNOWN_ENV=1` starts anyway and logs the unknown names.
+  `env_registry_contract` fails when the code, a deploy file, a script or a live
+  doc names a variable that is not registered, or when a registered one is dead.
+
 ### `/ui` audit: accessibility, hostile data, a resilient Live link and a phone layout
 
 - **Fixed:** muted text and avatar initials meet WCAG AA contrast; idle
