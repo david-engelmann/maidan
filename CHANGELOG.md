@@ -7,21 +7,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### A receiver that never answers no longer stalls every webhook
-
-- **Fixed:** outbound HTTP to operator-supplied URLs had no timeout. The
-  webhook poller sends one delivery at a time, so a receiver that accepted the
-  connection and never answered held every tenant's webhooks until a restart;
-  automation deliveries and federation polls could hang the same way. Every
-  egress client now gives up after 5 s to connect and 10 s in all, and the
-  attempt is retried with backoff. The Slack and GitHub API clients take the
-  same bounds.
-- **Changed:** an A2A task holds at most 10 push notification configs. Each
-  task update is sent to every one of them, so the list had turned one update
-  into as many requests as a caller registered.
-- **Removed:** `maidan_a2a::Outbound::new()` and its `Default`, which built an
-  unguarded client; `Outbound::new` now takes the egress-guarded client.
-
 ### A requested review reaches the reviewer, and a refused close says what to do next
 
 - **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP
@@ -149,6 +134,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   thread to `claim_next` with a `ClaimExpired`. Every write that changes the
   holder now sets the deadline. A thread held today with an inherited
   deadline keeps it until its next change of holder.
+
+### A receiver that never answers no longer stalls every webhook
+
+- **Fixed:** outbound HTTP to operator-supplied URLs had no timeout. The
+  webhook poller sends one delivery at a time, so a receiver that accepted the
+  connection and never answered held every tenant's webhooks until a restart;
+  automation deliveries and federation polls could hang the same way. Every
+  egress client now gives up after 5 s to connect and 10 s in all, and the
+  attempt is retried with backoff. The Slack and GitHub API clients take the
+  same bounds.
+- **Changed:** an A2A task holds at most 10 push notification configs. Each
+  task update is sent to every one of them, so the list had turned one update
+  into as many requests as a caller registered.
+- **Removed:** `maidan_a2a::Outbound::new()` and its `Default`, which built an
+  unguarded client; `Outbound::new` now takes the egress-guarded client.
 
 ### Loom models
 
