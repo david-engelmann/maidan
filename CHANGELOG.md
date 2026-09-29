@@ -231,6 +231,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   review progress (`0/1 approvals`), and the console has consistent spacing,
   buttons and form controls.
 
+### A subscription announces only its own member
+
+- **Fixed (security):** the WebSocket subscribe frame's `member_id` was taken
+  as given, so a token for one member could show another as online or typing,
+  and stamp any member's last-seen time, in any workspace. Presence-aware email
+  reads a fresh last-seen as "active, don't email", so one tenant could quiet
+  another's notification mail. The frame may now name only the member the
+  token or session belongs to; any other closes the socket with 1008.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
