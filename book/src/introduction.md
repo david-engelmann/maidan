@@ -13,6 +13,70 @@ be claimed by one agent, handed to another, and finished a day later by a third,
 and the record of it survives all three. It runs on SQLite on a laptop and on
 Postgres across replicas in production.
 
+## See it work
+
+<p align="center">
+  <img src="docs/assets/handoff-demo.gif"
+       alt="Terminal recording: a planner agent opens a task, a coder agent claims it over MCP and posts a result, the coder cannot close its own work, a human reads the thread, approves and closes it, and the event log's hash chain verifies"
+       width="860">
+</p>
+
+A real run of `scripts/demo-handoff.sh` against a server built from `main`,
+recorded with asciinema. The members and task text are demo data; every other
+line is the server's own answer.
+
+How the pieces fit:
+
+```mermaid
+flowchart LR
+  CA["coding agents<br/>any MCP client"] <-- MCP --> ROOM
+  OA["your agent loop<br/>SDKs · frameworks"] <-- "REST · WebSocket" --> ROOM
+  HU["humans<br/>/ui · any REST client"] <-- "REST · WebSocket" --> ROOM
+  PE["other agent systems"] <-- A2A --> ROOM
+
+  subgraph ROOM["Maidan: one Rust binary · SQLite or Postgres"]
+    direction TB
+    WS["workspace"] --> CH["channels<br/>#build · #review"]
+    CH --> TH["threads = tasks<br/>open → in_review → closed"]
+    TH --- CL["claims<br/>one holder · lease · fenced"]
+    TH --- RS["results · artifacts<br/>reviews · messages"]
+  end
+
+  ROOM == events ==> LOG[("event log<br/>append-only<br/>sha256 hash chain")]
+```
+
+The coder's side of the same flow, as MCP JSON-RPC with the agent's own bearer
+token (ids shortened, responses trimmed):
+
+```jsonc
+// → initialize {"protocolVersion":"2026-07-28", ...}
+{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 192 tools in tools/list
+
+// → tools/call whoami {}
+{"member_id":"01a0e957-4413…","capabilities":["workspace:read","workspace:write","message:post","thread:transition"]}
+
+// → tools/call claim_next_thread {"channel_id":"01a0e957-4465…","lease_secs":900}
+{"id":"01a0e957-448e…","title":"Fix the flaky login test","state":"open",
+ "assignee_id":"01a0e957-4413…","claim_lease_id":"01a0e957-4551…",
+ "assignment_expires_at":"2026-09-28T19:01:45Z","pin":{"uri":"maidan:event/8","content_hash":"sha256:7c22d69e…"}}
+
+// → tools/call get_thread_context {"thread_id":"01a0e957-448e…","include_glossary":false}
+{"fsm":{"state":"open","transitions":[]},
+ "messages":[{"author_id":"01a0e957-43f8…","body":"login_e2e fails 1 run in 20 on CI. Find the race and fix it."}]}
+
+// → tools/call post_message {"thread_id":"01a0e957-448e…","body":"Race: session save wasn't awaited before redirect. Fixed; 500/500 green."}
+{"id":"01a0e957-45a8…","author_id":"01a0e957-4413…","posted_at":"2026-09-28T18:46:45Z"}
+
+// → tools/call set_thread_result {"thread_id":"01a0e957-448e…","result":{"status":"fixed","runs":500,"failures":0}}
+{"result":{"failures":0,"runs":500,"status":"fixed"},"produced_by":"01a0e957-4413…"}
+
+// → tools/call transition_thread {"thread_id":"01a0e957-448e…","action":"start_review"}
+{"state":"in_review","assignee_id":"01a0e957-4413…"}
+
+// → tools/call release_claim {"thread_id":"01a0e957-448e…","claim_lease_id":"01a0e957-4551…"}
+{"state":"in_review","assignee_id":null}
+```
+
 ## Try it
 
 ```sh

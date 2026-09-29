@@ -99,3 +99,49 @@ fn the_readme_image_pin_is_the_current_release() {
         "README pins maidan-server:v{pinned}; newest release in CHANGELOG.md is {newest}"
     );
 }
+
+/// The README's agent-session transcript states the size of `tools/list`.
+#[test]
+fn the_readme_transcript_tool_count_matches_the_catalog() {
+    let catalog: Vec<String> =
+        serde_json::from_str(&read("contracts/mcp-tool-names.json")).expect("parse tool names");
+    let readme = read("README.md");
+    let claimed = readme
+        .split(" tools in tools/list")
+        .next()
+        .and_then(|before| before.rsplit("// ").next())
+        .and_then(|n| n.trim().parse::<usize>().ok())
+        .expect("README.md should say `// N tools in tools/list`");
+    assert_eq!(
+        claimed,
+        catalog.len(),
+        "README.md says {claimed} tools in tools/list; contracts/mcp-tool-names.json has {}",
+        catalog.len()
+    );
+}
+
+/// The docs site's introduction repeats the README's diagram and agent
+/// session, so a newcomer who arrives at the site sees them too. A copy that
+/// drifts from the README is worse than none.
+#[test]
+fn the_book_introduction_shows_the_readme_diagram_and_session_unchanged() {
+    let readme = read("README.md");
+    let intro = read("book/src/introduction.md");
+    for fence in ["```mermaid\n", "```jsonc\n"] {
+        let block = |text: &str| -> String {
+            let start = text
+                .find(fence)
+                .unwrap_or_else(|| panic!("no {fence:?} block"));
+            let end = text[start + fence.len()..]
+                .find("\n```")
+                .map(|i| start + fence.len() + i)
+                .expect("an unterminated block");
+            text[start..end].to_string()
+        };
+        assert_eq!(
+            block(&intro),
+            block(&readme),
+            "book/src/introduction.md's {fence:?} block differs from README.md's"
+        );
+    }
+}

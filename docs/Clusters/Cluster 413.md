@@ -31,9 +31,11 @@ David's decisions of 2026-09-23 on the round-3 audit (Open Work,
 
 Each authority-changing store method takes its `NewAuditEvent` as a
 **required argument** and writes it in the same transaction. This follows the
-`*_with_event` pattern of Clusters 205–214. The unaudited forms leave the
-`Store` trait, so no caller can make the change without its record. The
-guarantee is a type, not a convention. Tests make the audit insert fail with a
+`*_with_event` pattern of Clusters 205–214. The unaudited forms stay on the
+`Store` trait, for tests, fixtures and the offline `maidan init` bootstrap; what
+keeps request handlers off them is `authority_audit_contract`, which fails when
+code in `maidan-server/src` or `maidan-mcp/src` calls one. The guarantee is a
+checked convention, not a type. Tests make the audit insert fail with a
 trigger and assert the change did not happen.
 
 ## Non-goals
