@@ -1292,6 +1292,44 @@ way. Sending to a broadcast channel under the lock does not block.
 
 **To revisit:** if the lock shows up in presence latency.
 
+### TLA+ specs, checked by TLC, each with a config it must fail
+
+**Decision.** `specs/tla` holds two specs: `Claim` (claim_next, claim by
+id, assign, unassign, freeze, renew, acknowledge, release and lease lapse,
+with fencing tokens) and `EventLog` (the hash chain and crypto-shredding on
+an origin and a peer, over a network that drops, duplicates and reorders).
+`scripts/tla.sh` (run locally for now; a non-required `tla` CI job is planned) runs TLC 1.7.4, pinned by
+SHA-256, and checks each spec's config, then a config with one mechanism off
+(the old deadline handling; the peer's chain check), where TLC must report
+the named invariant violated.
+
+**Alternative.** Specs without CI, or only passing configs.
+
+**Why this:** a spec nobody runs drifts from the code. A passing check says
+nothing if the invariant is too weak to fail; the failing config shows it
+catches the bug it names. Both runs take seconds.
+
+**To revisit:** when the claim or sealing code changes shape: change the
+spec in the same PR.
+
+### Every write that changes a thread's holder sets its lease deadline
+
+**Decision.** `claim_next_thread` writes the lease deadline (or none);
+`claim_thread`, `assign_thread`, `unassign_thread`, `release_claim` and the
+budget release clear it.
+
+**Alternative.** Leave the deadline alone outside `claim_next_thread` and
+`renew_claim` (the old behaviour).
+
+**Why this:** the claim spec found that a holder that never took a lease
+could inherit an earlier holder's deadline (after a release, or an assign
+over a live lease). Once it passed, `claim_next_thread` took the thread and
+reported `ClaimExpired` for a holder with no lease. `claim_deadline` pins
+the fix on both backends.
+
+**To revisit:** if assign should hand over a lease; it would then take a
+lease length, not inherit a deadline.
+
 ## Workflow
 
 ### Admin-merge instead of local-first push

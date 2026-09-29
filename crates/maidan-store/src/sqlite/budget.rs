@@ -152,7 +152,7 @@ pub async fn report_usage(
             let now = Utc::now().to_rfc3339();
             let row = sqlx::query(
                 "UPDATE maidan_threads
-                 SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
+                 SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
                  WHERE id = ?
                  RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
             )
@@ -284,7 +284,7 @@ pub async fn report_accounted_usage(
         let now = Utc::now().to_rfc3339();
         let row = sqlx::query(
             "UPDATE maidan_threads
-             SET assignee_id = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
+             SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, work_started_at = NULL, updated_at = ?
              WHERE id = ? AND assignee_id = ? AND claim_lease_id = ?
              RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
         )
