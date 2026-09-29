@@ -63,6 +63,9 @@ services:
       # KEK. Set MAIDAN_CONTENT_KEK (openssl rand -hex 32) for anything real.
       MAIDAN_CONTENT_KEK: ${MAIDAN_CONTENT_KEK:-}
       MAIDAN_ALLOW_INSECURE_DEV_KEK: "1"
+      # Signs sessions and subscribe-resume tokens; the server will not boot
+      # with auth on and no secret. Development value only.
+      MAIDAN_SESSION_SECRET: ${MAIDAN_SESSION_SECRET:-dev-session-secret-change-me-0123456789}
       DATABASE_URL: postgres://maidan:maidan@postgres:5432/maidan
       ARTIFACT_BACKEND: localfs
       ARTIFACT_LOCALFS_ROOT: /data/artifacts

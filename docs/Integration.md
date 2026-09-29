@@ -42,6 +42,7 @@ release history):
 | `maidan-2.0` | Core agent collaboration surface |
 | `maidan-agent-1.0` | Transport depth (MCP streamable, A2A tasks, context export) |
 | `maidan-operator-1.0` | Operator UI, collaboration panels, operator gate e2e |
+| `maidan-scale-1.0` | Scale-out: multiple replicas, sharded fan-out, SLOs |
 
 For the **current release and binaries/images**, see the
 [latest GitHub Release](https://github.com/david-engelmann/maidan/releases/latest).
@@ -95,7 +96,8 @@ step 4 with that token.
 
 Alternatively, seed over the HTTP bootstrap routes once
 ([Production.md](Production.md#bootstrap)) — `MAIDAN_BOOTSTRAP=1` (server built with the
-`bootstrap` feature), or `AUTH_DISABLED=1` in dev only:
+`bootstrap` feature), or `AUTH_DISABLED=1` together with
+`MAIDAN_ALLOW_INSECURE_NO_AUTH=1` in dev only:
 
 ```http
 POST /workspaces
@@ -207,8 +209,10 @@ delegation grant for a short-lived token bound to that subject.
 GET /ws/subscribe
 ```
 
-Send a JSON subscribe frame with `Authorization: Bearer {token}` (see
-[contracts/ws-subscribe-filter.schema.json](../contracts/ws-subscribe-filter.schema.json)).
+Send a JSON subscribe frame carrying the bearer token in its `token` field, for
+example `{"token": "maid_…", "filter": {"workspace_id": "…"}, "after_id": 0}` (the
+filter is [contracts/ws-subscribe-filter.schema.json](../contracts/ws-subscribe-filter.schema.json)).
+A frame without a token, and without a browser session cookie, is closed with 1008.
 Server replies with `subscribe_ack`, `schema_version`, `resume_token`, `after_id`,
 and `room_lsn` (the event-log high-water at subscribe time — many WebSocket
 clients never see HTTP 101 response headers).
@@ -697,7 +701,7 @@ A context pack is a slice, not a dump: the knobs below are how an agent asks for
 | **Tool-call transcript** | `GET /threads/:id/tool-transcript` (`workspace:read`) | A token-lean projection pairing every `tool_use` block with its `tool_result` by id — the thread's tool history without the prose. |
 | **Accepted decisions** | `include_accepted_decisions=true` (default) on the live thread pack | Token-lean teasers for closed/archived in-channel results so the next `claim_next` claimer sees what the channel already decided. Waiter envelopes (`schema = maidan.waiter.result/1`) appear only when `status` is `reviewed`; `result_kind` is a **namespaced string** (e.g. `example.review.result/1`), not a closed enum. Full payloads stay on `GET /threads/:id/result`. Set `false` to drop. Withheld on DM channels, as-of packs, and workspace-nested packs. |
 
-MCP parity: `get_thread_context`/`get_workspace_context` accept `include_glossary`, `include_edits`, `as_of`, `include_parent_grounding`, and `include_accepted_decisions`; `snapshot_thread_context`, `seed_from_message`, and `get_tool_transcript` are tools too.
+MCP parity: `get_thread_context` accepts `include_glossary`, `include_edits`, `as_of`, `token_budget`, `include_parent_grounding` and `include_accepted_decisions`; `get_workspace_context` accepts `include_glossary` and `token_budget`; `snapshot_thread_context`, `seed_from_message`, and `get_tool_transcript` are tools too.
 
 ### A2A tasks
 
@@ -1005,7 +1009,7 @@ homes that **producer string** as `parent_run_id` on the thread — it does
 not mint a parallel id. Nested work that shares the value is attributed
 together (`GET /workspaces/:id/run-threads`, `GET …/run-occupancy`, MCP
 `list_run_threads` / `get_run_occupancy`). F7 mute is orthogonal. Delivery
-parse still ignores `run_id`; see [Result Delivery — Run lineage](Result%20Delivery.md#run-lineage-cluster-387).
+parse still ignores `run_id`; see [Result Delivery — Run lineage](Result%20Delivery.md#run-lineage).
 
 ### 6. Release
 
@@ -1052,8 +1056,8 @@ another member must), the required-reviewers close-gate, an unresolved
 `refutes` edge, and a critical review that armed `k=1`.
 There is no MCP bypass.
 
-A waiter that just `set_thread_result` moves the thread to `in_review`
-and should **not** then close its own owned thread. That is the land, and SoD exists so the implementer
+A waiter that has set its result and moved the thread to `in_review` with
+`start_review` should **not** then close its own owned thread. That is the land, and SoD exists so the implementer
 is not the closer. An owner, a reviewer, or a third-party human (or
 any member, if the thread has no owner) calls `transition_thread`.
 
@@ -1263,8 +1267,7 @@ OIDC deployments use the provider's discovery document and the authorization-cod
 flow with S256 PKCE; Maidan validates issuer, audience, nonce, and the ID-token
 signature from the provider's JWKS before issuing a session. `MAIDAN_OIDC_MOCK=1`
 is deterministic test/development infrastructure and is rejected in production.
-See [Production](Production.md#oidc) for configuration and [OIDC](OIDC.md) for the
-trust model.
+See [OIDC](OIDC.md) for configuration and the trust model.
 
 Panels include channels, live WS tail, search, tokens, artifacts, and admin surfaces. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 
@@ -1293,8 +1296,8 @@ the pipe — so the token is the whole of the authorization: every tool runs wit
 exactly its capabilities. Mint one with `maidan init` or the token API.
 
 Without a token there is no context to serve but an unrestricted one, so it will
-not start unless you say so: `--allow-insecure-no-auth` (or the environment
-variable of the same name) serves every tool with full authority over that
+not start unless you say so: `--allow-insecure-no-auth` (or
+`MAIDAN_ALLOW_INSECURE_NO_AUTH=1`) serves every tool with full authority over that
 database, and logs a warning saying it did. Use it for a scratch database, not a
 real one.
 
@@ -1327,7 +1330,7 @@ ADR shape, so any agent reads it the same way:
 `status` is one of `proposed` / `accepted` / `rejected` / `superseded`. The decision lives on
 its own thread (title = the question); the thread's FSM state tracks progress, the result
 holds the record. Nothing here is a new server type — it is a JSON convention over the
-The server facet for listing results is
+existing thread-result primitive. The server facet for listing results is
 `result_kind` (the namespaced string above), not this convention's `"kind"`
 field — a payload that only has `"kind": "decision"` will not match
 `?result_kind=decision`.

@@ -19,7 +19,8 @@ curl http://localhost:8080/health  # after maidan-server lands /health
 
 ### Publishing the host port
 
-`MAIDAN_BIND` is the port *inside* the container and stays 8080. What the
+`MAIDAN_BIND` is the address *inside* the container (`0.0.0.0:8080` by default)
+and stays on 8080. What the
 host sees is the published mapping, and 8080 is one of the most contended
 ports on a developer machine — if something else already owns it, the bind
 fails and the stack does not start at all. Override the host side:
@@ -56,6 +57,7 @@ To leave the server outside the container and only run the deps:
 ```sh
 docker compose -f compose.dev.yaml up postgres minio
 MAIDAN_ALLOW_INSECURE_DEV_KEK=1 \
+MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 \
 DATABASE_URL=postgres://maidan:maidan@localhost:5432/maidan cargo run --bin maidan-server
 ```
 
@@ -64,18 +66,25 @@ DATABASE_URL=postgres://maidan:maidan@localhost:5432/maidan cargo run --bin maid
 For pure host development against SQLite — no `docker compose` needed:
 
 ```sh
-MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite://./dev.db cargo run --bin maidan-server
+MAIDAN_ALLOW_INSECURE_DEV_KEK=1 \
+MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 \
+DATABASE_URL='sqlite://./dev.db?mode=rwc' cargo run --bin maidan-server
 ```
 
 Or against an in-memory SQLite (lost on shutdown):
 
 ```sh
-MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
+MAIDAN_ALLOW_INSECURE_DEV_KEK=1 \
+MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 \
+DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
 ```
 
 `MAIDAN_ALLOW_INSECURE_DEV_KEK=1` is the explicit development opt-in to a public
 content key-encryption key; without it, or a real `MAIDAN_CONTENT_KEK`, the server
 refuses to start ([Production.md](Production.md#crypto-shredding)).
+`MAIDAN_SESSION_SECRET` (at least 32 bytes) signs browser sessions and
+subscribe-resume tokens; with authentication on and no OIDC the server refuses
+to start without it. `?mode=rwc` lets SQLite create `dev.db` on first run.
 
 The server detects the dialect from the `DATABASE_URL` prefix
 (`postgres://`, `postgresql://`, or `sqlite:`) and selects the
@@ -132,7 +141,10 @@ The `prod` overlay is a template. Before applying:
 | Key                  | Required?            | Notes                                  |
 |----------------------|----------------------|----------------------------------------|
 | `DATABASE_URL`       | yes                  | Postgres connection string.            |
-| `S3_ENDPOINT`        | only if S3 backend   | Lands in Cluster E.                    |
+| `MAIDAN_CONTENT_KEK` | yes                  | 32-byte key-encryption key (`openssl rand -hex 32`); wraps per-message content keys. Keep it out of data backups. |
+| `MAIDAN_CONTENT_KEK_PREVIOUS` | during a rotation | Comma-separated retired KEKs still able to unwrap. |
+| `MAIDAN_SESSION_SECRET` | yes (unless OIDC) | At least 32 bytes; signs sessions and subscribe-resume tokens. Must match across replicas. |
+| `S3_ENDPOINT`        | only if S3 backend   |                                        |
 | `S3_BUCKET`          | only if S3 backend   |                                        |
 | `S3_REGION`          | only if S3 backend   |                                        |
 | `S3_ACCESS_KEY_ID`   | only if S3 backend   |                                        |
@@ -150,6 +162,8 @@ values.
 | `maidan-server`  | `crates/maidan-server/Dockerfile`           | Production binary.     |
 | `maidan-server`  | `crates/maidan-server/Dockerfile.dev`       | Dev hot-reload.        |
 | `maidan-postgres`| `docker/Dockerfile.db`                      | Postgres + pgvector.   |
+| `maidan-cli`     | `docker/Dockerfile.cli`                     | The `maidan` CLI, pinned to the server's tag. |
+| (local only)     | `docker/Dockerfile.quickstart`              | Built by `compose.quickstart.yaml` from a pinned release binary; not published, not for production. |
 
 ## Migrations
 

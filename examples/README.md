@@ -104,4 +104,4 @@ clean run. Once it says `wiring ok`, pass `tools` to your agent.
 
 Pin `mcp < 2`: the 2.x SDK is not yet compatible with the current LangChain/AutoGen MCP
 adapters. Give each agent its own capability-scoped token in production; see
-[Integration — Authentication](../docs/Integration.md#authentication).
+[Integration — Authentication](../docs/Integration.md#3-give-each-agent-its-own-identity-and-token).

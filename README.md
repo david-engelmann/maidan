@@ -176,10 +176,15 @@ Signed, multi-arch (amd64 + arm64) server images are published to GHCR, so you c
 without cloning the repo:
 
 ```sh
+export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)"   # keep it in your secret manager
 docker run -p 8080:8080 \
   -e DATABASE_URL="postgres://…" -e MAIDAN_SESSION_SECRET=<32+ bytes> \
+  -e MAIDAN_CONTENT_KEK \
   ghcr.io/david-engelmann/maidan-server:v412.0.0     # pin a tag, not :latest
 ```
+
+The server refuses to start without `MAIDAN_CONTENT_KEK`: it wraps the key that
+encrypts each message's content, so losing it loses every message's words.
 
 The server image is a single distroless binary (no shell, no bundled CLI). Seed the first
 admin token with the separately published, tag-matched CLI image (or a downloaded release
@@ -189,7 +194,7 @@ binary) against the same database:
 MAIDAN_TAG=v412.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
-  -e DATABASE_URL="postgres://…" \
+  -e DATABASE_URL="postgres://…" -e MAIDAN_CONTENT_KEK \
   "ghcr.io/david-engelmann/maidan-cli:${MAIDAN_TAG}" init --workspace my-team
 ```
 
@@ -259,8 +264,9 @@ were the tagged image. Edge / Raspberry Pi notes: [`docs/Pi.md`](docs/Pi.md).
 
 Contributors should read [`CLAUDE.md`](CLAUDE.md) (operating manual) and
 [`docs/Operations.md`](docs/Operations.md) (PR flow, CI, releases) first. Work
-is sliced into small PRs that each pass the full CI suite (lint, secret scan,
-unit, integration, and docker-compose smoke).
+is sliced into small PRs that each pass the eight required checks (lint, secrets
+scan, unit tests, integration, docker compose smoke, scale-out smoke, alert
+rules and OTLP smoke).
 
 ## License
 

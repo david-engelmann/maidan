@@ -28,7 +28,7 @@ post-gate hardening (no new gate tag).
 | "Durable, shared memory: threads, results, artifacts, tool-call transcripts, all searchable" | `maidan-store` (Postgres + SQLite `Store` parity, `backend_parity` test); content-addressed artifacts; `thread_results`; `tool_transcript`; full-text (`tsvector`/FTS5) + semantic (`pgvector`) search | Shipped |
 | "Tasks with dependencies, skill-based claiming, assignment + leases, scheduled runs, blocking waits" | Task-DAG + queue, scheduled/recurring tasks, skill routing, coordination waits (`wait_for_ready`/`wait_for_result`) — store tests `thread_deps`, `skill_routing`, `task_schedules`, `run_ready_dependents_suite`; e2es `thread_dependencies_e2e`, `thread_result_e2e` | Shipped |
 | "Pull exactly the context a step needs — far fewer tokens" | Thread/workspace context packs (lean edits by default, `include_edits` opt-in); `snippet_only` search; capability-filtered `tools/list`; opt-in lean event frames; omit-empty metadata. **Measured: a scoped pack is ~6.8× fewer tokens than dumping the whole channel** (`token_pack` harness → [Benchmark.md](Benchmark.md#context-pack-token-savings-token_pack)) | Shipped + measured |
-| "Access is scoped on every token; private channels enforced on reads, events, and search; **privileged** actions are audited" | Capability model (every route + tool checks caps); per-channel/thread RBAC — e2es `channel_access_e2e`, `dm_participation_e2e`; filtered-ANN search excludes private channels in-query; subscribe-grant enforcement; audit trail over **28 security-sensitive action kinds** (token/app-token mint + revoke, channel membership, purge, legal hold, member freeze, gate clears, replays, reindex) — `audit_coverage_e2e` | Shipped — see the audit-scope note below |
+| "Access is scoped on every token; private channels enforced on reads, events, and search; **privileged** actions are audited" | Capability model (every route + tool checks caps); per-channel/thread RBAC — e2es `channel_access_e2e`, `dm_participation_e2e`; filtered-ANN search excludes private channels in-query; subscribe-grant enforcement; every successful change attributed; 40 named privileged audit actions, authority changes written transactionally (fail-closed) — `audit_coverage_e2e` | Shipped — see the audit-scope note below |
 | "Speaks MCP, REST, and WebSocket over one data model and one login" | One `AppState`/`Store`; REST (OpenAPI 3.1, `openapi_e2e` bijection), MCP (JSON-RPC + streamable HTTP), WebSocket subscribe — all bearer-authed | Shipped |
 | "MCP-native — an MCP client connects directly and gets typed tools + live notifications" | `POST /mcp` + streamable HTTP; MCP `2026-07-28` (negotiated, default) with `2024-11-05` fallback; `resources/updated`; live-verified LangChain + AutoGen recipes (`docs/Framework Integrations.md`) | Shipped |
 | "Single static binary, laptop SQLite → multi-replica Postgres cluster" | One binary selected by `DATABASE_URL`; `scale-out smoke` required CI job; workspace-sharded fan-out; LSN causal read-replica routing (`read_routing` e2e vs real streaming replication) | Shipped (`maidan-scale-1.0`) |
@@ -40,20 +40,36 @@ post-gate hardening (no new gate tag).
 
 ## What "audited" covers
 
-The audit trail is **not** a log of every mutation, and is not meant to be. It
-records the ~28 privileged action kinds — the ones where "who did this, and when"
-is the question you will actually ask after an incident. Three deliberate
-exclusions, so the scope is not mistaken for a gap:
+Every successful authenticated change leaves an attributed record — who acted,
+and on whose behalf — and the privileged ones leave a named audit row.
 
-- **Ordinary content mutations are in the event log, not the audit log.** Posting,
-  editing and reacting are durable, ordered and replayable there; writing them a
-  second time into `maidan_audit` would double every write for no added answer.
-- **Denials are not audited** (decided). A rejected,
-  attacker-controlled request stream is an unbounded write amplifier against the
-  audit table. Denials go to logs and metrics.
-- **Reads are not audited.** There is no per-read access log; `audit:read-global`
-  and `operator:global` bound who *can* read across tenants rather than recording
-  each read.
+- **Privileged actions have named audit rows** — 40 action kinds: token and
+  app-token mint, delegation and revoke; delegation grants and policy; share
+  tickets; channel membership; member freeze; SCIM provisioning; secrets and
+  egress targets; legal hold; message purge, workspace purge, erase, export and
+  import; artifact erase; gate and review-requirement clears; delivery, outbox
+  and automation replays; reindex. `audit_coverage_e2e` and `authority_audit_contract` exercise them.
+- **Authority changes fail closed.** Tokens, grants, share tickets, the grant
+  ceiling, purge, erase, import and legal hold write their audit row inside the
+  change's own transaction, so a failed audit write aborts the change
+  (`authority_audit_contract`). Routine rows are best-effort: a failed write is
+  counted in `maidan_audit_write_failures_total` and pages
+  `MaidanAuditWriteFailures` on the first.
+- **Every other mutation is attributed.** A successful `POST`/`PUT`/`PATCH`/`DELETE`
+  that wrote no attributed event or audit row of its own gets a generic
+  `mutation` row (operation, path, status). Ordinary content — posts, edits,
+  reactions — is recorded in the event log, which is durable, ordered and
+  replayable. MCP records per tool call.
+- **Denials are counted, not stored**, with one exception. Anonymous and ordinary
+  401/403s go to `maidan_authorization_decisions_total` and sampled logs, since an
+  attacker-controlled request stream would otherwise be an unbounded write
+  amplifier against the audit table. A denial of a **delegated** actor — a named
+  member holding an expiring, revocable grant — is stored as
+  `authorization.decision`.
+- **Reads are not audited**, except the reads that release a whole workspace or a
+  secret (`workspace.export`, `secret.resolve`, `legal_hold.preserved_read`),
+  which write their row before releasing anything. `audit:read-global` and
+  `operator:global` bound who *can* read across tenants.
 
 ## Not yet / honest limits
 

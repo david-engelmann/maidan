@@ -1,9 +1,7 @@
-> **Reconciled (Cluster 291, 2026-08-27):** David gave the go — the actionable items from
-> this pack are folded into [Open Work](Open%20Work.md), the single canonical backlog
-> ("Adoption & ecosystem" section). The "new-files-only / do not fold / do not splice into
-> Open Work" rules below are **superseded**; this doc now serves as the detailed spec/index
-> behind those backlog items. The `sdk/` scaffolds remain gated 0.0.1 name-holds — "do not
-> implement the client code without a go" still stands.
+> **Status (2026-09-29):** the four SDKs implement this contract and are published at
+> 0.1.0 (TypeScript, Python, Go, Rust; see [`sdk/README.md`](../sdk/README.md)).
+> 0.2 adds a retry with an `Idempotency-Key` per write and auto-paging. Where this page
+> and a running server's `GET /openapi.json` disagree, the server wins.
 # Client Contract — frozen SDK surface (v1)
 
 Pin this before writing Python / TypeScript / Rust 0.1. If this
@@ -31,7 +29,7 @@ Ignore unknown JSON fields and unknown WS `kind` strings
 | Door | When | How the v1 SDK treats it |
 |------|------|--------------------------|
 | REST + WS | Default. Agent they wrote. Slack adapter later | **This is the SDK.** Methods below |
-| MCP | LangChain / AutoGen / Cursor / any MCP host | Not a method. `client.mcp_url` is `{base_url}/mcp/streamable`. Tool names in §6 must stay twins of the SDK names. Until J3 the server negotiates **`2024-11-05` only** |
+| MCP | LangChain / AutoGen / Cursor / any MCP host | Not a method. `client.mcp_url` is `{base_url}/mcp/streamable`. Tool names in §6 must stay twins of the SDK names. The server negotiates `2026-07-28` by default and `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05` on request |
 | A2A | Another vendor's agent | Not in the v1 SDK. Use any A2A v1.0 client; `examples/a2a_interop.py` is a walkthrough. Agent Card at `GET /.well-known/agent-card.json` |
 | Webhooks | n8n / Zapier | Not in the v1 SDK. REST `POST /workspaces/{wid}/webhooks` already exists. OpenAPI is the contract |
 
@@ -100,8 +98,8 @@ Create body: `{ "name", "private": false }`.
 |-----|------|------------|
 | `subscribe` | `GET /ws/subscribe` | `event:subscribe` |
 | `list_events` | `GET /workspaces/{id}/events` | `workspace:read` |
-| `snapshot` | `GET /workspaces/{id}/snapshot` | `workspace:read` (`include_graph=true` needs `token:admin`) |
-| `catch_up` | `GET /workspaces/{id}/events/catch-up` | `workspace:read` |
+| `snapshot` (not in 0.1) | `GET /workspaces/{id}/snapshot` | `workspace:read` (`include_graph=true` needs `token:admin`) |
+| `catch_up` (not in 0.1) | `GET /workspaces/{id}/events/catch-up` | `token:admin` or a federation peer (the whole log; an agent token reads `GET /workspaces/{id}/events`, filtered to what it may see) |
 | `follow` | HTTP backfill then WS cutover | `workspace:read` + `event:subscribe` |
 
 Subscribe frame: `contracts/ws-subscribe-filter.schema.json`
@@ -162,7 +160,7 @@ call them; it uses WS so a bot does not need an MCP host.
 
 Map non-2xx to a single error type that includes HTTP status and
 the JSON body the server already returns. Honor `Retry-After` on
-429 (Cluster 172). Treat 409 as conflict (`errors.Is` in Go later;
+429 (Cluster 172), and on 503, which the server answers when it sheds load. Treat 409 as conflict (`errors.Is` in Go later;
 Python/TS/Rust should still distinguish it). A 409 with
 `must_refetch: true` / `type: cursor-too-old` is
 `is_cursor_too_old` — fail loud, never clamp the cursor onto
@@ -249,7 +247,7 @@ An MCP-only agent cannot bootstrap. Seed via REST, CLI, or the
 SDK, then MCP for claim / wait / post.
 
 MCP endpoint: `POST /mcp/streamable`. Pin `mcp>=1.9,<2` in
-examples, not in the SDK. Protocol until J3: `2024-11-05`.
+examples, not in the SDK. Protocol: `2026-07-28` (default).
 
 ---
 
