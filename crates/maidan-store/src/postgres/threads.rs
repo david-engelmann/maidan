@@ -474,7 +474,12 @@ pub async fn list_review_requests(
              WHERE r.thread_id = t.id AND r.reviewer_id = $1 AND r.decision = 'approve'
                AND r.dismissed_at IS NULL
            )
-         ORDER BY t.updated_at ASC, t.id ASC",
+         -- Oldest review first, by when the thread last entered review: a claim
+         -- renewal or other touch bumps updated_at but not its place in line.
+         ORDER BY COALESCE(
+                    (SELECT MAX(tt.occurred_at) FROM maidan_thread_transitions tt
+                     WHERE tt.thread_id = t.id AND tt.to_state = 'in_review'),
+                    t.updated_at) ASC, t.id ASC",
     )
     .bind(member_id.0)
     .bind(workspace_id.0)

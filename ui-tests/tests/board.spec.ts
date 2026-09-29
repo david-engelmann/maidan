@@ -58,7 +58,10 @@ test("a thread shows its state, holder, result and authors by name", async ({ pa
   await expect(page.locator("#thread-badge .chrome-badge")).toHaveText("in review");
   await expect(page.locator("#thread-facts")).toContainText("held by");
   await expect(page.locator("#thread-facts")).toContainText("Deployer");
-  await expect(page.locator("#thread-facts")).toContainText('{"status":"fixed"}');
+  // The result reads as a field, not as JSON.
+  await expect(page.locator("#thread-facts .result .kv .k")).toHaveText("status");
+  await expect(page.locator("#thread-facts .result .kv .v")).toHaveText("fixed");
+  await expect(page.locator("#thread-facts")).not.toContainText("{");
 
   const msg = page.locator("#message-list .msg").first();
   await expect(msg.locator(".meta .person .name")).toHaveText("Deployer");

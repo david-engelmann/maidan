@@ -22,6 +22,14 @@ export interface Fixtures {
   board_claimed_thread_id: string;
   board_review_thread_id: string;
   board_done_thread_id: string;
+  /** The operator with thread:transition, to approve and close. */
+  review_token: string;
+  /** The `desk` channel: three tasks in review naming the operator as reviewer. */
+  desk_channel_id: string;
+  desk_approve_thread_id: string;
+  desk_send_back_thread_id: string;
+  /** Stays in review: a token without thread:transition cannot approve it. */
+  desk_waiting_thread_id: string;
 }
 
 export function fixtures(): Fixtures {

@@ -172,6 +172,58 @@ async fn main() {
         .await
         .expect("close");
 
+    // A review desk: three tasks the deployer handed to review, each naming the
+    // operator as its one required reviewer, for the "Needs you" inbox. Its
+    // own channel, so approving and sending back here leaves the board alone.
+    let desk = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "desk".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("desk channel");
+    let mut desk_threads = Vec::new();
+    for (title, result) in [
+        (
+            "Approve me: the flaky login test is fixed",
+            serde_json::json!({ "runs": 500, "failures": 0 }),
+        ),
+        (
+            "Send me back: the rate limit",
+            serde_json::json!({ "limit_per_min": 60 }),
+        ),
+        (
+            "Still waiting: the upload path",
+            serde_json::json!({ "p95_ms": 180 }),
+        ),
+    ] {
+        let t = store
+            .create_thread(NewThread {
+                channel_id: desk.id,
+                parent_thread_id: None,
+                title: Some(title.into()),
+            })
+            .await
+            .expect("desk thread");
+        store.claim_thread(t.id, requester.id).await.expect("claim");
+        store
+            .set_thread_result(t.id, requester.id, &result)
+            .await
+            .expect("desk result");
+        store
+            .transition_thread(t.id, requester.id, ThreadAction::StartReview)
+            .await
+            .expect("desk review");
+        store
+            .set_review_requirement(t.id, 1)
+            .await
+            .expect("requirement");
+        store.add_reviewer(t.id, member.id).await.expect("reviewer");
+        desk_threads.push(t);
+    }
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -229,6 +281,27 @@ async fn main() {
         .await
         .expect("live token");
 
+    // The operator as a reviewer: approving and closing are thread
+    // transitions.
+    let review_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: hash_secret(review_secret.as_str()),
+            label: Some("ui-test-review".into()),
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::WORKSPACE_WRITE.into(),
+                capability::MESSAGE_POST.into(),
+                capability::THREAD_TRANSITION.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .expect("review token");
+
     let art_dir = std::env::temp_dir().join(format!("maidan-ui-test-{}", std::process::id()));
     std::fs::create_dir_all(&art_dir).expect("art dir");
     let artifacts = Arc::new(LocalFsStore::new(&art_dir));
@@ -264,6 +337,11 @@ async fn main() {
         "board_claimed_thread_id": claimed_thread.id.0.to_string(),
         "board_review_thread_id": review_thread.id.0.to_string(),
         "board_done_thread_id": done_thread.id.0.to_string(),
+        "review_token": review_secret.as_str(),
+        "desk_channel_id": desk.id.0.to_string(),
+        "desk_approve_thread_id": desk_threads[0].id.0.to_string(),
+        "desk_send_back_thread_id": desk_threads[1].id.0.to_string(),
+        "desk_waiting_thread_id": desk_threads[2].id.0.to_string(),
     });
     std::fs::write(
         &fixtures_path,

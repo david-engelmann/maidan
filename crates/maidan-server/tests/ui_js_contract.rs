@@ -598,6 +598,57 @@ fn ui_js_thread_header_ignores_stale_overlapping_renders() {
 }
 
 #[test]
+fn ui_js_puts_the_decisions_agents_wait_on_first() {
+    let s = script(HTML);
+    assert!(
+        HTML.contains("id=\"needs-you\"") && HTML.contains("id=\"needs-you-list\""),
+        "the Needs you queue must exist"
+    );
+    let needs = HTML.find("id=\"needs-you\"").expect("needs-you");
+    let board = HTML.find("id=\"board-panel\"").expect("board-panel");
+    assert!(needs < board, "Needs you sits above the board");
+    assert!(
+        s.contains("uiReadPath(`/members/${me}/waiting`)")
+            && s.contains("new Set([\"review_request\", \"open_gate\"])"),
+        "the queue reads the waiting inbox and keeps the decisions: reviews and gates"
+    );
+    assert!(
+        s.contains("`${base()}/threads/${tid}/reviews`") && s.contains("{ action: \"close\" }"),
+        "approve, request changes and close go through the review and FSM routes"
+    );
+    assert!(
+        s.contains("document.title = n > 0 ? `(${n}) Maidan` : \"Maidan\""),
+        "the waiting count reaches the tab title"
+    );
+    assert!(
+        s.contains("renderNeedsYou") && s.contains("loadNeedsYou();"),
+        "the queue refreshes with the board"
+    );
+}
+
+#[test]
+fn ui_js_renders_results_as_fields_and_errors_as_sentences() {
+    let s = script(HTML);
+    assert!(
+        s.contains("function renderResult(")
+            && s.contains("fact(\"result \", renderResult(r.result))"),
+        "the thread header shows a result as fields, not JSON.stringify"
+    );
+    assert!(
+        !s.contains("code.textContent = JSON.stringify(r.result)"),
+        "the raw-JSON result rendering is gone"
+    );
+    assert!(
+        s.contains("function humanError(") && s.contains("Mint a token with it in Tokens"),
+        "a 403 names the missing capability and the fix"
+    );
+    assert!(
+        s.contains("const said = humanError(res.status, detail);"),
+        "every responseError leads with the plain sentence"
+    );
+}
+
+#[test]
 fn ui_js_drops_thread_responses_for_a_channel_no_longer_selected() {
     let s = script(HTML);
     assert!(
@@ -642,4 +693,39 @@ fn ui_js_socket_presence_uses_the_member_it_authenticates_as() {
         !s.contains("if (sessionMemberId) frame.member_id = sessionMemberId;"),
         "the session member is not sent alongside another member's token"
     );
+}
+
+#[test]
+fn ui_js_keeps_a_needs_you_row_until_its_decision_is_recorded() {
+    let s = script(HTML);
+    assert!(
+        s.contains("return { ok: true };") && s.contains("const out = await answerGate(item.gate_id, action, v.request_state);\n              if (!out.ok) {"),
+        "a gate row leaves only when the answer was recorded, and says why otherwise"
+    );
+    assert!(
+        s.contains("if (send.disabled) return;"),
+        "Enter cannot send the same change request twice"
+    );
+}
+
+#[test]
+fn ui_js_review_and_close_report_network_failures_instead_of_rejecting() {
+    let s = script(HTML);
+    for (func, lead) in [
+        (
+            "async function submitReview",
+            "Review not recorded: could not reach the server",
+        ),
+        (
+            "async function closeThread",
+            "Not closed: could not reach the server",
+        ),
+    ] {
+        let start = s.find(func).expect(func);
+        let body = &s[start..start + 900];
+        assert!(
+            body.contains("try {") && body.contains("} catch (e) {") && body.contains(lead),
+            "{func} turns a thrown fetch into {{ ok: false, why }} so its row re-enables and says why"
+        );
+    }
 }
