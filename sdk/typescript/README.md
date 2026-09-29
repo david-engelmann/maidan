@@ -39,6 +39,7 @@ const ready = await client.waitForReady(wid); // event or null on timeout
   `MAIDAN_TOKEN`; explicit args win. `client.mcpUrl` is `{baseUrl}/mcp/streamable`.
 - Errors throw `MaidanError` (`.status`, `.body`, `.retryAfter` on 429, `.isConflict` /
   `.isCursorTooOld` / `.isForbidden` / `.isRateLimited`).
+- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `maxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads.listAll(cid)` and `workspaces.eventsAll(wid)` are async iterators over every page.
 - Surface (frozen v1): `workspaces.{create,get,import}`, `channels.{list,create}`,
   `threads.{create,get,context,transition,setResult,getResult}`, `claimNextThread`,
   `renewClaim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,

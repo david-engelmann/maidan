@@ -6,9 +6,12 @@ package maidan
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
+	mrand "math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,7 +21,7 @@ import (
 )
 
 // Version is the client version, tracked independently of the server.
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 // RoomLSNHeader is the projector-lag header (HTTP is case-insensitive).
 // Distinct from Maidan-Consistency-Token (Postgres WAL LSN).
@@ -98,6 +101,14 @@ type Client struct {
 	// Nil until a stamped response is seen. Not a WAL token.
 	LastRoomLSN *int64
 
+	// MaxRetries bounds the retries of a request that failed in transit or
+	// answered 408, 429 (honouring Retry-After), 500/502/503/504, or a 409
+	// idempotency-key-in-flight. New sets 2; 0 turns retries off. Writes carry
+	// one Idempotency-Key across their attempts.
+	MaxRetries int
+	// Sleep waits between attempts (a test seam; New sets time.Sleep).
+	Sleep func(time.Duration)
+
 	Workspaces *WorkspacesService
 	Members    *MembersService
 	Tokens     *TokensService
@@ -125,6 +136,9 @@ func New(baseURL, token string) *Client {
 		Token:   token,
 		MCPURL:  baseURL + "/mcp/streamable",
 		HTTP:    &http.Client{Timeout: 30 * time.Second},
+
+		MaxRetries: 2,
+		Sleep:      time.Sleep,
 	}
 	c.Workspaces = &WorkspacesService{c}
 	c.Members = &MembersService{c}
@@ -136,31 +150,114 @@ func New(baseURL, token string) *Client {
 	return c
 }
 
+const inFlightType = "https://maidan.dev/problems/idempotency-key-in-flight"
+
+// NewIdempotencyKey returns a fresh Idempotency-Key (a random UUID): one per
+// logical write, reused by its retries.
+func NewIdempotencyKey() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// RetryDelay is the wait before retry attempt (0-based): the server's
+// Retry-After when it sent one (capped at 60s), else 0.5s*2^attempt capped at
+// 8s, jittered. rnd returns a value in [0,1).
+func RetryDelay(attempt int, retryAfter string, rnd func() float64) time.Duration {
+	if retryAfter != "" {
+		if f, err := strconv.ParseFloat(retryAfter, 64); err == nil && f >= 0 {
+			return time.Duration(math.Min(f, 60) * float64(time.Second))
+		}
+	}
+	base := math.Min(8, 0.5*math.Pow(2, float64(attempt)))
+	return time.Duration((base/2 + rnd()*base/2) * float64(time.Second))
+}
+
+func retryable(status int, raw []byte) bool {
+	switch status {
+	case 408, 429, 500, 502, 503, 504:
+		return true
+	case 409:
+		var p struct {
+			Type string `json:"type"`
+		}
+		return json.Unmarshal(raw, &p) == nil && p.Type == inFlightType
+	}
+	return false
+}
+
+func isWrite(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	}
+	return false
+}
+
+// send issues a request with retries and returns the last answer. A write
+// carries one Idempotency-Key across all its attempts, so a retry after a lost
+// response gets the first answer back instead of writing twice.
+func (c *Client) send(method, path, contentType string, body []byte) (*http.Response, []byte, error) {
+	key := ""
+	if isWrite(method) {
+		key = NewIdempotencyKey()
+	}
+	sleep := c.Sleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	for attempt := 0; ; attempt++ {
+		var reader io.Reader
+		if body != nil {
+			reader = bytes.NewReader(body)
+		}
+		req, err := http.NewRequest(method, c.BaseURL+path, reader)
+		if err != nil {
+			return nil, nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		if key != "" {
+			req.Header.Set("Idempotency-Key", key)
+		}
+		resp, err := c.HTTP.Do(req)
+		if err != nil {
+			if attempt >= c.MaxRetries {
+				return nil, nil, err
+			}
+			sleep(RetryDelay(attempt, "", mrand.Float64))
+			continue
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		c.captureRoomLSN(resp.Header)
+		if attempt < c.MaxRetries && retryable(resp.StatusCode, raw) {
+			sleep(RetryDelay(attempt, resp.Header.Get("Retry-After"), mrand.Float64))
+			continue
+		}
+		return resp, raw, nil
+	}
+}
+
 // do sends a JSON request and returns the raw response body (nil on 204/empty).
 func (c *Client) do(method, path string, body any) (json.RawMessage, error) {
-	var reader io.Reader
+	var payload []byte
+	contentType := ""
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return nil, err
 		}
-		reader = bytes.NewReader(b)
+		payload, contentType = b, "application/json"
 	}
-	req, err := http.NewRequest(method, c.BaseURL+path, reader)
+	resp, raw, err := c.send(method, path, contentType, payload)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	c.captureRoomLSN(resp.Header)
-	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		return nil, apiError(resp, raw)
 	}
@@ -172,22 +269,10 @@ func (c *Client) do(method, path string, body any) (json.RawMessage, error) {
 
 // doRaw is do for non-JSON bodies/responses (artifact bytes).
 func (c *Client) doRaw(method, path string, body []byte) ([]byte, json.RawMessage, error) {
-	var reader io.Reader
-	if body != nil {
-		reader = bytes.NewReader(body)
-	}
-	req, err := http.NewRequest(method, c.BaseURL+path, reader)
+	resp, raw, err := c.send(method, path, "", body)
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer resp.Body.Close()
-	c.captureRoomLSN(resp.Header)
-	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		return nil, nil, apiError(resp, raw)
 	}
@@ -349,6 +434,39 @@ func (s *WorkspacesService) ListEvents(id string, query url.Values) ([]M, error)
 	return decodeArr(raw)
 }
 
+// ListEventsAll calls fn for every event after query's after_id, fetching
+// query's limit (default 100) per page. It stops at the first error fn returns.
+func (s *WorkspacesService) ListEventsAll(id string, query url.Values, fn func(M) error) error {
+	q := url.Values{}
+	for k, v := range query {
+		q[k] = append([]string(nil), v...)
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 {
+		limit = 100
+	}
+	after, _ := strconv.ParseInt(q.Get("after_id"), 10, 64)
+	for {
+		q.Set("limit", strconv.Itoa(limit))
+		q.Set("after_id", strconv.FormatInt(after, 10))
+		page, err := s.ListEvents(id, q)
+		if err != nil {
+			return err
+		}
+		for _, row := range page {
+			if f, ok := row["id"].(float64); ok && int64(f) > after {
+				after = int64(f)
+			}
+			if err := fn(row); err != nil {
+				return err
+			}
+		}
+		if len(page) < limit {
+			return nil
+		}
+	}
+}
+
 // Import is admin-only (token:admin). mode "" uses the default (new).
 func (s *WorkspacesService) Import(bundle any, mode string) (M, error) {
 	path := "/workspaces/import"
@@ -381,6 +499,43 @@ func (s *ThreadsService) Create(channelID, title string) (M, error) {
 	return s.c.postObj("/channels/"+channelID+"/threads", M{"title": title})
 }
 func (s *ThreadsService) Get(id string) (M, error) { return s.c.getObj("/threads/" + id) }
+
+// List is GET /channels/{cid}/threads — one page (limit, cursor = last thread id).
+func (s *ThreadsService) List(channelID string, query url.Values) ([]M, error) {
+	raw, err := s.c.do(http.MethodGet, "/channels/"+channelID+"/threads"+qs(query), nil)
+	if err != nil {
+		return nil, err
+	}
+	return decodeArr(raw)
+}
+
+// ListAll calls fn for every live thread in the channel, fetching pageSize
+// (default 100) per request. It stops at the first error fn returns.
+func (s *ThreadsService) ListAll(channelID string, pageSize int, fn func(M) error) error {
+	if pageSize <= 0 {
+		pageSize = 100
+	}
+	cursor := ""
+	for {
+		q := url.Values{"limit": {strconv.Itoa(pageSize)}}
+		if cursor != "" {
+			q.Set("cursor", cursor)
+		}
+		page, err := s.List(channelID, q)
+		if err != nil {
+			return err
+		}
+		for _, th := range page {
+			if err := fn(th); err != nil {
+				return err
+			}
+		}
+		if len(page) < pageSize {
+			return nil
+		}
+		cursor, _ = page[len(page)-1]["id"].(string)
+	}
+}
 func (s *ThreadsService) Context(id string, query url.Values) (M, error) {
 	return s.c.getObj("/threads/" + id + "/context" + qs(query))
 }

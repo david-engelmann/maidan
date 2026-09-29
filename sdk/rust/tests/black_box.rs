@@ -237,3 +237,27 @@ fn provisioning_seeds_a_member_and_mints_a_scoped_token() {
         "listing must never return a secret"
     );
 }
+
+#[test]
+fn threads_list_all_walks_every_page() {
+    let Some(base) = base() else {
+        eprintln!("skip: MAIDAN_URL unset");
+        return;
+    };
+    let c = Client::new(&base, std::env::var("MAIDAN_TOKEN").unwrap_or_default());
+    let (_ws, _member, channel, thread) = seed(&c, &base);
+    let cid = channel["id"].as_str().unwrap();
+    let mut made = vec![thread["id"].as_str().unwrap().to_string()];
+    for i in 0..4 {
+        let t = c.threads().create(cid, &format!("t{i}")).unwrap();
+        made.push(t["id"].as_str().unwrap().to_string());
+    }
+    let mut seen: Vec<String> = c
+        .threads()
+        .list_all(cid, 2)
+        .map(|t| t.unwrap()["id"].as_str().unwrap().to_string())
+        .collect();
+    made.sort();
+    seen.sort();
+    assert_eq!(seen, made);
+}

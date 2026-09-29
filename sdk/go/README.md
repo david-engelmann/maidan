@@ -49,6 +49,7 @@ func main() {
   `MAIDAN_TOKEN`. `c.MCPURL` is `{baseURL}/mcp/streamable`.
 - Errors are `*maidan.APIError` (`.Status`, `.Body`, `.RetryAfter` on 429, `.IsConflict()` /
   `.IsCursorTooOld()` / `.IsForbidden()` / `.IsRateLimited()`); use `errors.As`.
+- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `Client.MaxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `Threads.ListAll` and `Workspaces.ListEventsAll` call a func for every item across pages.
 - Object responses come back as `maidan.M` (`map[string]any`) and lists as `[]maidan.M`, so
   unknown fields are preserved and ignored (forward-compat). Typed models are a future
   refinement.

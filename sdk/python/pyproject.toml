@@ -1,6 +1,6 @@
 [project]
 name = "maidan"
-version = "0.1.0"
+version = "0.2.0"
 description = "Client for Maidan, the operating layer for teams of AI agents"
 readme = "README.md"
 license = {text = "MIT"}

@@ -23,8 +23,10 @@
 //! # }
 //! ```
 
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hasher};
 use std::io::Read;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -34,7 +36,7 @@ mod subscribe;
 pub use subscribe::{Follow, Subscription};
 
 /// The client version, tracked independently of the server.
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.2.0";
 
 /// Wire name of the projector-lag header (HTTP is case-insensitive).
 /// Distinct from `Maidan-Consistency-Token` (Postgres WAL LSN).
@@ -108,6 +110,84 @@ impl std::fmt::Display for MaidanError {
 
 impl std::error::Error for MaidanError {}
 
+const IN_FLIGHT_TYPE: &str = "https://maidan.dev/problems/idempotency-key-in-flight";
+
+/// 64 random bits from the std hasher's per-process random keys, mixed with
+/// the clock and a counter. Enough for a unique key and for jitter; not a
+/// secret.
+fn random_u64() -> u64 {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let mut h = RandomState::new().build_hasher();
+    h.write_u64(COUNTER.fetch_add(1, Ordering::Relaxed));
+    if let Ok(t) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        h.write_u128(t.as_nanos());
+    }
+    h.finish()
+}
+
+/// A fresh `Idempotency-Key` (a v4-shaped UUID): one per logical write,
+/// reused by its retries.
+pub fn new_idempotency_key() -> String {
+    let (a, b) = (random_u64(), random_u64());
+    let mut bytes = [0u8; 16];
+    bytes[..8].copy_from_slice(&a.to_be_bytes());
+    bytes[8..].copy_from_slice(&b.to_be_bytes());
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
+}
+
+/// The wait before retry `attempt` (0-based): the server's `Retry-After` when
+/// it sent one (capped at 60s), else 0.5s·2^attempt capped at 8s, jittered by
+/// `unit` in `[0, 1)`.
+pub fn retry_delay(attempt: u32, retry_after: Option<&str>, unit: f64) -> Duration {
+    if let Some(ra) = retry_after.and_then(|s| s.trim().parse::<f64>().ok()) {
+        if ra >= 0.0 {
+            return Duration::from_secs_f64(ra.min(60.0));
+        }
+    }
+    let base = (0.5 * 2f64.powi(attempt.min(16) as i32)).min(8.0);
+    Duration::from_secs_f64(base / 2.0 + unit * base / 2.0)
+}
+
+fn retryable(status: u16, raw: &[u8]) -> bool {
+    match status {
+        408 | 429 | 500 | 502 | 503 | 504 => true,
+        409 => serde_json::from_slice::<Value>(raw)
+            .ok()
+            .and_then(|v| {
+                v.get("type")
+                    .and_then(Value::as_str)
+                    .map(|t| t == IN_FLIGHT_TYPE)
+            })
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
+enum Payload<'a> {
+    None,
+    Json(&'a Value),
+    Bytes(&'a [u8]),
+}
+
+/// One answer: status, `Retry-After`, body.
+struct Answer {
+    status: u16,
+    retry_after: Option<String>,
+    raw: Vec<u8>,
+}
+
+type Sleeper = Arc<dyn Fn(Duration) + Send + Sync>;
+
 /// A Maidan v1 client over REST + WebSocket.
 #[derive(Clone)]
 pub struct Client {
@@ -118,6 +198,8 @@ pub struct Client {
     agent: ureq::Agent,
     /// Last seen `Maidan-Room-LSN` (event-log high-water). Not a WAL token.
     last_room_lsn: Arc<AtomicI64>,
+    max_retries: u32,
+    sleep: Sleeper,
 }
 
 impl Client {
@@ -133,7 +215,24 @@ impl Client {
                 .timeout(Duration::from_secs(30))
                 .build(),
             last_room_lsn: Arc::new(AtomicI64::new(-1)),
+            max_retries: 2,
+            sleep: Arc::new(std::thread::sleep),
         }
+    }
+
+    /// Bound the retries of a request that failed in transit or answered
+    /// 408, 429 (honouring `Retry-After`), 500/502/503/504, or a 409
+    /// `idempotency-key-in-flight`. Default 2; 0 turns retries off. Writes
+    /// carry one `Idempotency-Key` across their attempts.
+    pub fn with_max_retries(mut self, max_retries: u32) -> Self {
+        self.max_retries = max_retries;
+        self
+    }
+
+    /// Replace how the client waits between attempts (a test seam).
+    pub fn with_sleep(mut self, sleep: impl Fn(Duration) + Send + Sync + 'static) -> Self {
+        self.sleep = Arc::new(sleep);
+        self
     }
 
     /// Highest `maidan_events.id` from the last REST response, if the server
@@ -224,85 +323,121 @@ impl Client {
     }
 
     // --- HTTP core ---
-    fn send(&self, method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
+
+    /// Send with retries and return the last answer. A write carries one
+    /// `Idempotency-Key` across all its attempts, so a retry after a lost
+    /// response gets the first answer back instead of writing twice.
+    fn exchange(&self, method: &str, path: &str, payload: Payload<'_>) -> Result<Answer> {
         let url = format!("{}{}", self.base_url, path);
-        let req = self
-            .agent
-            .request(method, &url)
-            .set("Authorization", &self.bearer());
-        let result = match body {
-            Some(v) => req.send_json(v),
-            None => req.call(),
-        };
-        match result {
-            Ok(resp) => {
-                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
-                let status = resp.status();
-                let text = resp
-                    .into_string()
-                    .map_err(|e| MaidanError::transport(e.to_string()))?;
-                if status == 204 || text.is_empty() {
-                    return Ok(Value::Null);
+        let key = matches!(method, "POST" | "PUT" | "PATCH" | "DELETE").then(new_idempotency_key);
+        let mut attempt = 0u32;
+        loop {
+            let mut req = self
+                .agent
+                .request(method, &url)
+                .set("Authorization", &self.bearer());
+            if let Some(key) = &key {
+                req = req.set("Idempotency-Key", key);
+            }
+            let result = match payload {
+                Payload::None => req.call(),
+                Payload::Json(v) => req.send_json(v),
+                Payload::Bytes(b) => req.send_bytes(b),
+            };
+            let resp = match result {
+                Ok(resp) | Err(ureq::Error::Status(_, resp)) => resp,
+                Err(ureq::Error::Transport(t)) => {
+                    if attempt >= self.max_retries {
+                        return Err(MaidanError::transport(t.to_string()));
+                    }
+                    (self.sleep)(retry_delay(attempt, None, unit()));
+                    attempt += 1;
+                    continue;
                 }
-                serde_json::from_str(&text).map_err(|e| MaidanError::transport(e.to_string()))
+            };
+            self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
+            let status = resp.status();
+            let retry_after = resp.header("retry-after").map(str::to_string);
+            let mut raw = Vec::new();
+            resp.into_reader()
+                .read_to_end(&mut raw)
+                .map_err(|e| MaidanError::transport(e.to_string()))?;
+            if attempt < self.max_retries && retryable(status, &raw) {
+                (self.sleep)(retry_delay(attempt, retry_after.as_deref(), unit()));
+                attempt += 1;
+                continue;
             }
-            Err(ureq::Error::Status(code, resp)) => {
-                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
-                Err(api_error(code, resp))
-            }
-            Err(ureq::Error::Transport(t)) => Err(MaidanError::transport(t.to_string())),
+            return Ok(Answer {
+                status,
+                retry_after,
+                raw,
+            });
         }
+    }
+
+    fn json_answer(answer: Answer) -> Result<Value> {
+        if answer.status >= 400 {
+            return Err(api_error(answer));
+        }
+        if answer.status == 204 || answer.raw.is_empty() {
+            return Ok(Value::Null);
+        }
+        serde_json::from_slice(&answer.raw).map_err(|e| MaidanError::transport(e.to_string()))
+    }
+
+    fn send(&self, method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
+        let payload = body.map_or(Payload::None, Payload::Json);
+        Self::json_answer(self.exchange(method, path, payload)?)
     }
 
     fn send_bytes(&self, path: &str, data: &[u8]) -> Result<Value> {
-        let url = format!("{}{}", self.base_url, path);
-        match self
-            .agent
-            .post(&url)
-            .set("Authorization", &self.bearer())
-            .send_bytes(data)
-        {
-            Ok(resp) => {
-                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
-                let status = resp.status();
-                let text = resp
-                    .into_string()
-                    .map_err(|e| MaidanError::transport(e.to_string()))?;
-                if status == 204 || text.is_empty() {
-                    return Ok(Value::Null);
-                }
-                serde_json::from_str(&text).map_err(|e| MaidanError::transport(e.to_string()))
-            }
-            Err(ureq::Error::Status(code, resp)) => {
-                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
-                Err(api_error(code, resp))
-            }
-            Err(ureq::Error::Transport(t)) => Err(MaidanError::transport(t.to_string())),
-        }
+        Self::json_answer(self.exchange("POST", path, Payload::Bytes(data))?)
     }
 
     fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
-        let url = format!("{}{}", self.base_url, path);
-        match self
-            .agent
-            .get(&url)
-            .set("Authorization", &self.bearer())
-            .call()
-        {
-            Ok(resp) => {
-                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
-                let mut buf = Vec::new();
-                resp.into_reader()
-                    .read_to_end(&mut buf)
-                    .map_err(|e| MaidanError::transport(e.to_string()))?;
-                Ok(buf)
-            }
-            Err(ureq::Error::Status(code, resp)) => {
-                self.capture_room_lsn_header(resp.header(ROOM_LSN_HEADER));
-                Err(api_error(code, resp))
-            }
-            Err(ureq::Error::Transport(t)) => Err(MaidanError::transport(t.to_string())),
+        let answer = self.exchange("GET", path, Payload::None)?;
+        if answer.status >= 400 {
+            return Err(api_error(answer));
         }
+        Ok(answer.raw)
+    }
+
+    /// Every event after `after_id`, `limit` (default 100) per page, fetched
+    /// as the iterator is consumed. Other `query` keys pass through.
+    pub fn list_events_all<'a>(
+        &'a self,
+        workspace_id: &'a str,
+        query: &[(&str, &str)],
+    ) -> impl Iterator<Item = Result<Value>> + 'a {
+        let owned: Vec<(String, String)> = query
+            .iter()
+            .filter(|(k, _)| *k != "after_id" && *k != "limit")
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let find = |key: &str| query.iter().find(|(k, _)| *k == key).map(|(_, v)| *v);
+        let limit: usize = find("limit")
+            .and_then(|v| v.parse().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(100);
+        let mut after: i64 = find("after_id").and_then(|v| v.parse().ok()).unwrap_or(0);
+        Pager::new(move || {
+            let limit_s = limit.to_string();
+            let after_s = after.to_string();
+            let mut q: Vec<(&str, &str)> = owned
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect();
+            q.push(("after_id", &after_s));
+            q.push(("limit", &limit_s));
+            let page = page_of(self.list_events(workspace_id, &q)?);
+            for row in &page {
+                if let Some(id) = row.get("id").and_then(Value::as_i64) {
+                    after = after.max(id);
+                }
+            }
+            let done = page.len() < limit;
+            Ok((page, done))
+        })
     }
 
     pub(crate) fn bearer(&self) -> String {
@@ -326,12 +461,68 @@ pub(crate) fn cursor_too_old_body(status: u16, body: Option<&Value>) -> bool {
     )
 }
 
-fn api_error(code: u16, resp: ureq::Response) -> MaidanError {
-    let retry_after = resp
-        .header("retry-after")
-        .and_then(|s| s.parse::<f64>().ok());
-    let text = resp.into_string().unwrap_or_default();
-    let body = serde_json::from_str::<Value>(&text).ok();
+fn unit() -> f64 {
+    (random_u64() >> 11) as f64 / (1u64 << 53) as f64
+}
+
+fn page_of(v: Value) -> Vec<Value> {
+    match v {
+        Value::Array(rows) => rows,
+        _ => Vec::new(),
+    }
+}
+
+/// An iterator over items fetched a page at a time by `fetch`, which returns
+/// the page and whether it was the last. An error ends the iteration after
+/// it is yielded.
+struct Pager<F> {
+    fetch: F,
+    buf: std::collections::VecDeque<Value>,
+    done: bool,
+}
+
+impl<F> Pager<F> {
+    fn new(fetch: F) -> Self {
+        Self {
+            fetch,
+            buf: Default::default(),
+            done: false,
+        }
+    }
+}
+
+impl<F: FnMut() -> Result<(Vec<Value>, bool)>> Iterator for Pager<F> {
+    type Item = Result<Value>;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(v) = self.buf.pop_front() {
+                return Some(Ok(v));
+            }
+            if self.done {
+                return None;
+            }
+            match (self.fetch)() {
+                Ok((page, last)) => {
+                    self.done = last;
+                    self.buf.extend(page);
+                }
+                Err(e) => {
+                    self.done = true;
+                    return Some(Err(e));
+                }
+            }
+        }
+    }
+}
+
+fn api_error(answer: Answer) -> MaidanError {
+    let code = answer.status;
+    let retry_after = if code == 429 {
+        answer.retry_after.and_then(|s| s.parse::<f64>().ok())
+    } else {
+        None
+    };
+    let body = serde_json::from_slice::<Value>(&answer.raw).ok();
     MaidanError {
         status: code,
         body,
@@ -512,6 +703,41 @@ impl Threads<'_> {
     }
     pub fn get(&self, id: &str) -> Result<Value> {
         self.c.send("GET", &format!("/threads/{id}"), None)
+    }
+    /// `GET /channels/{cid}/threads` — one page (`limit`, `cursor` = last thread id).
+    pub fn list(&self, channel_id: &str, query: &[(&str, &str)]) -> Result<Value> {
+        self.c.send(
+            "GET",
+            &format!("/channels/{channel_id}/threads{}", qs(query)),
+            None,
+        )
+    }
+    /// Every live thread in the channel, `page_size` (0 = 100) per request,
+    /// fetched as the iterator is consumed.
+    pub fn list_all(
+        &self,
+        channel_id: &str,
+        page_size: usize,
+    ) -> impl Iterator<Item = Result<Value>> + '_ {
+        let page_size = if page_size == 0 { 100 } else { page_size };
+        let channel_id = channel_id.to_string();
+        let c = self.c;
+        let mut cursor: Option<String> = None;
+        Pager::new(move || {
+            let limit = page_size.to_string();
+            let mut q = vec![("limit", limit.as_str())];
+            if let Some(cur) = &cursor {
+                q.push(("cursor", cur.as_str()));
+            }
+            let page = page_of(c.threads().list(&channel_id, &q)?);
+            cursor = page
+                .last()
+                .and_then(|t| t.get("id"))
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let done = page.len() < page_size;
+            Ok((page, done))
+        })
     }
     pub fn context(&self, id: &str, query: &[(&str, &str)]) -> Result<Value> {
         self.c

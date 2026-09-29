@@ -68,6 +68,8 @@ Create body: `{ "name", "private": false }`.
 
 | SDK | HTTP | Capability | Notes |
 |-----|------|------------|-------|
+| `threads.list` | `GET /channels/{cid}/threads` | `workspace:read` | One page: `limit` (1–500, default 100), `cursor` = the last thread id of the previous page |
+| `threads.list_all` | same, page after page | `workspace:read` | **0.2.** Auto-paging: TS async iterator, Python generator, Go callback, Rust iterator; `page_size` per request |
 | `threads.create` | `POST /channels/{cid}/threads` | `workspace:write` | Body `{ "title" }` |
 | `threads.get` | `GET /threads/{id}` | `workspace:read` | |
 | `threads.context` | `GET /threads/{id}/context` | `workspace:read` | Paginated; used by `examples/rest_maidan.py` |
@@ -179,8 +181,19 @@ different request is 422 `problems/idempotency-key-reused`; a retry while
 the first request is still running is 409
 `problems/idempotency-key-in-flight` (retry shortly). A 5xx or a
 "not now" 4xx (408, 409, 425, 429) or an SSE response is not kept, so a retry after one
-runs again. SCIM and A2A routes ignore the header. Keys last 24 hours. The server
-half ships first; SDKs will send a key per logical write on retry.
+runs again. SCIM and A2A routes ignore the header. Keys last 24 hours.
+
+**SDK 0.2 retries and keys.** Every write sends a fresh
+`Idempotency-Key` (a UUID) and reuses it on each retry of that call, so
+a retry after a lost response gets the first answer instead of writing
+twice. The client retries up to `max_retries` times (default 2; 0 turns
+retries off) after a failure in transit, 408, 429, 500, 502, 503, 504,
+or a 409 `problems/idempotency-key-in-flight`. It waits `Retry-After`
+when sent (capped at 60s), else 0.5s·2^n capped at 8s with jitter. Any
+other 4xx, including a plain 409, is raised at once. Reads are retried
+the same way, without a key. The event backfill pages too:
+`workspaces.eventsAll` (TS) / `list_events_all` (Python, Rust) /
+`Workspaces.ListEventsAll` (Go), by `after_id`.
 
 ---
 
@@ -207,6 +220,8 @@ Not `token:admin`. `artifact:upload` only if the cookbook uploads.
 | `client.mcp_url` | `{base_url}/mcp/streamable`. String only. No MCP dependency |
 | `last_room_lsn` | Last seen `Maidan-Room-LSN` (decimal). Not a WAL token |
 | `event_type(kind)` | `maidan.event.{kind}/1` |
+| `max_retries` | 0.2. Retry budget (default 2): TS `{ maxRetries }`, Python `max_retries=`, Go `Client.MaxRetries`, Rust `.with_max_retries(n)` |
+| `new_idempotency_key()` / `retry_delay(...)` | 0.2. Exported so callers can reuse the policy |
 | Typed IDs | Thread id is not a channel id at the type level |
 | Unknown fields | Ignore on REST JSON and WS envelopes |
 

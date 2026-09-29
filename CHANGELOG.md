@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### SDK 0.2: retries with idempotency keys, and auto-paging
+
+- **Added (all four SDKs, 0.2.0):** every write sends a fresh
+  `Idempotency-Key` and reuses it across retries of that call. Requests are
+  retried up to `max_retries` (default 2) after a failure in transit, 408,
+  429 (waiting `Retry-After`), 500/502/503/504, or a 409
+  `problems/idempotency-key-in-flight`; backoff is 0.5s·2^n capped at 8s
+  with jitter. A plain 409 and other 4xx are raised at once.
+- **Added:** `threads.list` (one page) and `threads.list_all` (every page by
+  cursor), and an auto-paging event backfill (`eventsAll` / `list_events_all`
+  / `ListEventsAll`) by `after_id`.
+- Tests: unit tests per SDK against a scripted server (retry, key reuse,
+  budget, 409 in flight vs plain, paging) and a black-box paging test in each
+  `scripts/sdk-test.sh` suite.
+
 ### A requested review reaches the reviewer, and a refused close says what to do next
 
 - **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP
