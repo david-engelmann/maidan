@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `70a6d78b` (2026-09-29).
+on a decision. Last reconciled against `main` at `1d8d111c` (2026-09-29).
 
 **The rule.** The PR that changes an item's state edits its row here, in the
 same PR. A shipped item is deleted, not struck through: its record is the
@@ -17,15 +17,13 @@ Direction is in [Roadmap](Roadmap.md); what shipped is in
 
 | PR | What it does | Closes | Waiting on |
 |---|---|---|---|
-| #1086 | A command palette, a Connect an agent sheet with copyable MCP config, empty states that say how work arrives | Part of thread items 6, 8 and 24 | CI |
-| #1093 | The `/ui` audit: axe-clean contrast and keyboard, one-column phone layout, resilient Live, error states | Part of thread item 26 | #1086 |
+| #1093 | The `/ui` audit: axe-clean contrast and keyboard, one-column phone layout, resilient Live, error states | Part of thread item 26 | CI |
 | #1097 | `ClaimUnacknowledged`: a leased claim nobody acknowledged is reported (migration 0120) | The second half of eager reclaim | #1107 (registers `MAIDAN_CLAIM_ACK_TIMEOUT_SECS`) |
-| #1098 | Review and land-gate verdicts keep their history (migration 0121) | Decision history | CI |
 | #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | The store delegation duplication | Last in the queue, since it touches every `Store` method |
 | #1107 | A misspelt `MAIDAN_*` variable refuses boot, with a did-you-mean (F-52) | F-52 | CI |
 | #1113 | Six docs fixes from the enhancement thread | Thread items 13, 14a, 19, 20, 22, 23 | CI |
 | #1114 | A2A pushes go over https; plaintext gRPC off loopback needs `MAIDAN_A2A_GRPC_PLAINTEXT=1` | Thread items 15 and 16 | #1107 (registers the new variable) |
-| #1116 | `POST /tokens/{id}/rotate` and MCP `rotate_token`: a new secret for the same authority, quotas and derived tokens kept | Thread item 11, the server half of Next #3 | #1113, #1098 |
+| #1116 | `POST /tokens/{id}/rotate` and MCP `rotate_token`: a new secret for the same authority, quotas and derived tokens kept | Thread item 11, the server half of Next #3 | #1113 |
 
 ## Next: ranked
 
@@ -40,9 +38,9 @@ dispositions are recorded below.
 | 2 | **One thread surface** (thread 3) | M | The board is the thread surface; the sidebar list becomes a compact switcher (or is removed), so a thread is drawn once; `loadThreads` renders one surface | `loadThreads` renders `#thread-list` and `#board` from the same fetch, so every thread appears twice | #1093 |
 | 3 | **Bearer tokens in the browser: warn, rotate, stop storing** (thread 2a, 11 and 2b) | M, then M | `POST /tokens/{id}/rotate` returns a new secret and revokes the old one, audited in the same transaction (D-A), with an MCP twin; the `/ui` warns that a pasted token is kept in this browser and offers rotation in the Session tab; then (analysed 2026-09-29) `POST /auth/session/from-token` exchanges a pasted bearer for the existing `HttpOnly; SameSite=Lax` session cookie, the session row keeps the token's id and each request re-resolves that token's authority (a session today carries a fixed five capabilities, so it could not hold a pasted `token:admin`), so revoking or rotating the token ends the session and no token sits in `localStorage`; unsafe `/ui/api` requests on a session are refused when `Origin` is another origin; the unread `csrf_secret` column is dropped, since `SameSite=Lax` and JSON-only writes are the CSRF defence | `static/index.html` keeps the bearer in `localStorage` (`maidan_token`) with no warning; `routes/token.rs` has no rotation; the session stores a `csrf_secret` nothing reads | — |
 | 4 | **Workspace-wide `claim_next`** | M | `POST /workspaces/{wid}/threads/claim-next` and an MCP twin hand out the oldest ready thread across every channel the caller can read, with the channel route's filters (open state, skills, blocked reasons, DAG readiness, claim gates), its fencing token and the default lease; a private channel's threads go only to its members; a two-tenant test | The only route is `/channels/{cid}/threads/claim-next` (`app.rs`), so a workspace agent polls every channel | #1097 |
-| 5 | **Review-loop signals** | S | A change request notifies the thread's last worker (a `changes_requested` notification), and every verdict appends a `ReviewSubmitted` event, in the lexicon | `notification_router.rs` has no change-request arm; an approval emits no event; a reopened worker learns of it only by polling | #1098 |
+| 5 | **Review-loop signals** | S | A change request notifies the thread's last worker (a `changes_requested` notification), and every verdict appends a `ReviewSubmitted` event, in the lexicon | `notification_router.rs` has no change-request arm; an approval emits no event; a reopened worker learns of it only by polling | — |
 | 6 | **The wall-clock budget is charged when the reaper frees a claim** | S–M | A claim freed by the reaper charges the time worked against `max_wall_secs`, and one past it stops with `ClaimFailed`, as `report_usage` would | The budget is enforced only inside `report_usage`, which a hung agent never sends | — |
-| 7 | **First run and the header** (thread 24 and 6, after #1086) | M | A blank page walks a new user from API base and workspace to a token or OIDC login and a connected socket; the raw API base / Workspace / Token fields move behind a connection popover; "Out" reads "Sign out" | The header paste fields are the whole onboarding; #1086's Connect sheet covers the agent side only | #1086 |
+| 7 | **First run and the header** (thread 24 and 6, after #1086) | M | A blank page walks a new user from API base and workspace to a token or OIDC login and a connected socket; the raw API base / Workspace / Token fields move behind a connection popover; "Out" reads "Sign out" | The header paste fields are the whole onboarding; #1086's Connect sheet covers the agent side only | — |
 | 8 | **Inline attachment previews** (thread 4) | M | Image artifacts render inline and every artifact shows its filename; artifact bytes are served with their content type, `X-Content-Type-Options: nosniff` and a sandboxing CSP, so inline rendering cannot run script | The artifact card is a link with a 16-character SHA prefix; the attach message is "Attached artifact" and a 12-character prefix | — |
 | 9 | **A shared egress retry budget** | M | Retries across the webhook, automation, egress and mail workers draw on one budget per destination host; past it, retries are deferred, not dropped; `maidan_egress_retry_deferred_total`; a test where a recovering destination receives at most the budget | Each worker retries on its own backoff, so a destination that recovers takes the whole backlog at once | — |
 | 10 | **Every audit row belongs to a workspace** | S–M | `maidan_audit.workspace_id`, stamped at write and backfilled; `GET /workspaces/{wid}/audit` reads it; a legal hold exempts only its workspace's rows from pruning; a two-tenant test | Audit rows carry no workspace, so a hold freezes audit pruning for the whole instance (`retention.rs`), and a workspace's audit view omits rows with no actor: app-token mints (`app_oauth.rs`), SCIM provisioning (`scim.rs`), result-delivery attempts (`egress_worker.rs`) | — |
