@@ -722,7 +722,9 @@ request is 0.3 and refused with `VersionNotSupportedError`.
   sealed with `FEDERATION_ENCRYPTION_KEY` and never return them. A push
   POSTs the task as `{"task": …}` with `Authorization` and
   `X-A2A-Notification-Token`. Listing a task's configs pages in id order
-  with `pageSize` (1–100, default 50) and `nextPageToken`.
+  with `pageSize` (1–100, default 50) and `nextPageToken`. A task holds at
+  most 10 configs; an eleventh is `-32602` until you delete one (re-sending an
+  existing `id` replaces it). Your receiver has 10 s to answer each push.
 - A task you cannot read is `TaskNotFoundError`. `ListTasks` pages with
   `nextPageToken` and an exact `totalSize`; every pending approval gate the
   caller can read is listed as an `input-required` task, however many there
@@ -1191,7 +1193,9 @@ peers, and A2A push targets. This is checked again when Maidan sends, so a DNS
 change cannot turn a previously public registration into private-network
 access.
 
-Deliveries are HMAC-signed (`X-Maidan-Signature`). The JSON body also carries
+Deliveries are HMAC-signed (`X-Maidan-Signature`). Answer within 10 s (5 s to
+connect): a slower answer is a failed attempt, retried with backoff like any
+other, so acknowledge first and do slow work afterwards. The JSON body also carries
 `$type` (`maidan.event.{kind}/1`) on the envelope and the nested `event`.
 Each POST stamps `Maidan-Room-LSN` with the subscribing workspace's event-log
 high-water (decimal; not a WAL token), never the instance's, so a receiver

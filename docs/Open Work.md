@@ -689,7 +689,8 @@ design; the net-new candidates are named inline in the Wave rows above and detai
 - `tower-load-shed` + `tower-http-middleware` — ~~a fail-fast `LoadShed`+`ConcurrencyLimit` layer **below auth**~~
   + a shared egress retry-budget (Cloudflare 2023 recovery storm), and ~~standardized request-id + sensitive-header
   **redaction** + catch-panic~~ **✅ except the egress retry budget (Next wave #4, #1092):** load shedding, catch-panic
-  and header redaction shipped; request ids already existed. The shared egress retry budget is still open.
+  and header redaction shipped; request ids already existed. The shared egress retry budget is still open;
+  every egress client is now at least bounded in time (5 s connect, 10 s total, #1109).
 - `ws-frame-limits` — explicit `max_message_size`/`max_frame_size` on `/ws/subscribe` aligned with the REST body
   cap (the WS door inherits tungstenite's ~64 MiB default vs the 2 MiB REST cap; RFC 6455 §"resource exhaustion").
 - `replica-divergence-fence` — a health-gated breaker forcing **all** reads (incl. no-token) to the primary once

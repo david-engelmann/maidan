@@ -23,6 +23,12 @@ use super::ops::{find, page_size, Found};
 use crate::state::AppState;
 
 const MAX_ATTEMPTS: u32 = 3;
+/// The most push configs one task may hold. Every task update is sent to each
+/// of them, up to [`MAX_ATTEMPTS`] times, so an unbounded list made one update
+/// into as many outbound requests as a caller cared to register.
+/// Checked before the write, so adds racing each other can pass it together:
+/// it bounds the fan-out, not an exact count.
+pub(crate) const MAX_PUSH_CONFIGS_PER_TASK: usize = 10;
 
 /// A validated config with its secrets sealed, not yet tied to a task.
 pub(super) struct Prepared {
@@ -85,6 +91,21 @@ pub(super) async fn attach(
     task_id: &str,
     prepared: Prepared,
 ) -> Result<TaskPushNotificationConfig, A2aError> {
+    let existing = state
+        .store
+        .list_a2a_task_push_configs(task_id)
+        .await
+        .map_err(store)?;
+    let replaces = existing
+        .iter()
+        .any(|config| config.config_id == prepared.config_id);
+    if !replaces && existing.len() >= MAX_PUSH_CONFIGS_PER_TASK {
+        return Err(A2aError::invalid_params(format!(
+            "a task holds at most {MAX_PUSH_CONFIGS_PER_TASK} push notification configs; \
+             delete one before adding another"
+        ))
+        .with("taskId", task_id));
+    }
     let row = A2aPushConfigRow {
         task_id: task_id.to_string(),
         config_id: prepared.config_id,

@@ -10,20 +10,12 @@ pub struct Outbound {
     client: Client,
 }
 
-impl Default for Outbound {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Outbound {
-    pub fn new() -> Self {
-        Self {
-            client: Client::new(),
-        }
-    }
-
-    pub fn with_client(client: Client) -> Self {
+    /// Poll through `client`, which must be the egress-guarded client for the
+    /// peer's URL (`egress_http::client_for`): a peer's base URL is
+    /// operator-supplied, so a default client would reach internal addresses
+    /// and wait forever on a peer that never answers.
+    pub fn new(client: Client) -> Self {
         Self { client }
     }
 

@@ -58,7 +58,7 @@ async fn poll_once(state: &AppState) -> Result<(), String> {
                 continue;
             }
         };
-        let outbound = Outbound::with_client(client);
+        let outbound = Outbound::new(client);
         let Some(secret) = resolve_outbound_secret(state, &peer) else {
             warn!(
                 peer = %peer.id,

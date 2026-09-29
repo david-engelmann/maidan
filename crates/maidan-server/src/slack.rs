@@ -280,7 +280,10 @@ impl SlackWebClient {
         Self {
             bot_token,
             base_url,
-            http: reqwest::Client::new(),
+            // `build` fails only where `Client::new` would panic: no TLS backend.
+            http: crate::egress_http::bounded()
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
         }
     }
 

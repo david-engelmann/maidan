@@ -368,3 +368,43 @@ mod payload_tests {
 pub struct WebhookDeliverySummary {
     pub delivered: bool,
 }
+
+#[cfg(test)]
+mod timeout_tests {
+    use super::*;
+
+    /// A receiver that accepts the connection and never answers once held the
+    /// webhook poller, and so every tenant's deliveries, until the process
+    /// restarted. The delivery now fails within the egress timeout.
+    #[tokio::test]
+    async fn a_receiver_that_never_answers_fails_the_delivery_within_the_timeout() {
+        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let held = tokio::spawn(async move {
+            let mut open = Vec::new();
+            loop {
+                let (socket, _) = listener.accept().await.unwrap();
+                open.push(socket);
+            }
+        });
+        let started = std::time::Instant::now();
+        let outcome = deliver_http(
+            &format!("http://{addr}/hook"),
+            1,
+            EventKind::MessagePosted,
+            "secret",
+            "{}",
+            None,
+        )
+        .await;
+        let waited = started.elapsed();
+        held.abort();
+        assert!(outcome.is_err(), "a silent receiver is a failed delivery");
+        assert!(
+            waited >= crate::egress_http::EGRESS_TIMEOUT
+                && waited < crate::egress_http::EGRESS_TIMEOUT * 2,
+            "failed after {waited:?}, not at the egress timeout"
+        );
+    }
+}
