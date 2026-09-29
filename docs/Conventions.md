@@ -1,57 +1,35 @@
 # Conventions
 
-How work flows through the repo.
+How work flows through the repo. [`CONTRIBUTING.md`](../CONTRIBUTING.md) is the
+short version; this page adds the detail.
 
 ## Branches
 
 `<kind>/<scope>-<short-slug>` where:
 
-- `kind ∈ {feat, chore, build, ci, docs, test, refactor}`.
-- `scope` matches the relevant Conventional Commits scope, often a crate
-  name (e.g. `maidan-store`).
+- `kind ∈ {feat, fix, perf, refactor, test, docs, ci, build, chore}`.
+- `scope` matches the Conventional Commits scope, often a crate or an area
+  (`store`, `mcp`, `ui`, `legal-hold`).
 
-Examples:
+Examples: `feat/request-changes`, `fix/event-log-channel-access`,
+`test/schema-parity`, `docs/cluster-418-close`, `ci/loom`.
 
-- `chore/governance-bootstrap`
-- `feat/maidan-store-postgres`
-- `feat/maidan-server-health`
-- `docs/cluster-a-retro`
+## Commit and PR titles
 
-## Commit + PR titles
+[Conventional Commits](https://www.conventionalcommits.org/). The PR title
+becomes the squash commit's title on `main`, so it must read well as a release
+note: say what changed for the user of the code, not what the diff does.
 
-[Conventional Commits](https://www.conventionalcommits.org/). The PR
-title becomes the squash commit on `main`, so it must read well as
-release notes.
+- `feat(review): a change request sends work back for rework`
+- `fix(security): the event log reads back only what the reader may see`
+- `test(store): the two backends' migrations build the same schema`
 
-Examples:
+## PR body
 
-- `chore: governance + workspace scaffold`
-- `feat(maidan-store): postgres impl + schema 0001`
-- `feat(maidan-server): /health endpoint + compose.yaml`
-
-## PR body template
+Start from the [PR template](../.github/pull_request_template.md): a summary,
+what you ran to verify it, and the retrospective.
 
 ```markdown
-## What this PR does
-
-<2–4 bullets>
-
-## Linked cluster
-
-[[Clusters/Cluster A]] · Phase A.<N>
-
-## Acceptance test
-
-<the command(s) the reviewer runs to verify green>
-
-## Risk / rollback
-
-<what reverts cleanly; what does not>
-
-## Out of scope
-
-<things deferred and to which PR>
-
 ## Retrospective (PR-level)
 
 - **What was surprising:**
@@ -59,37 +37,59 @@ Examples:
 - **What we learned:**
 ```
 
-The Retrospective section is mandatory. Squash-merge preserves it in the
-commit body so each merged commit carries its own retro.
+The retrospective is mandatory. The repository squashes with the branch's commit
+messages as the body, not the PR description, so the retro lives in the PR;
+anything a later reader needs from it (a deferral, a decision) also goes into
+[`docs/Open Work.md`](Open%20Work.md) or [`docs/Decisions.md`](Decisions.md) in
+the same PR.
 
 ## Code
 
-- Rust 2021; toolchain pinned in `rust-toolchain.toml` (currently 1.91).
-- `cargo fmt --check` and `cargo clippy --all-targets --workspace -- -D warnings`
-  must pass.
+- Rust 2021; toolchain pinned in `rust-toolchain.toml` (1.91).
+- `cargo fmt --all --check` and both clippy passes must be clean:
+  `cargo clippy --all-targets --workspace -- -D warnings` and
+  `cargo clippy --workspace --lib --bins -- -D clippy::unwrap_used -D clippy::expect_used`.
 - `thiserror` in libraries; `anyhow` only at binary boundaries.
-- `tracing` for logging — no `println!` in library code.
-- Tests next to the code (`#[cfg(test)]`); integration tests in
-  `tests/`; property tests via `proptest`.
-- testcontainers for DB integration tests.
+- `tracing` for logging; no `println!` in library code.
+- Unit tests next to the code (`#[cfg(test)]`); integration tests in `tests/`;
+  property tests with `proptest`; store behavior on both backends from one
+  suite.
+- testcontainers (`pgvector/pgvector:pg17`) for Postgres integration tests.
 
 ## Secrets
 
 - `.env`, `maidan.toml`, `*.pem`, `*.key` are ignored.
-- All credentials from env vars or external secret managers.
+- All credentials come from env vars or an external secret manager.
 - CI runs a secrets scan on every PR.
 - Fixtures use synthetic data only.
 
 ## CI matrix
 
-| Job                            | Tool                       | Required |
-|--------------------------------|----------------------------|----------|
-| `lint (fmt + clippy + deny)`   | fmt + clippy + deny        | yes      |
-| `secrets scan`                 | trufflehog                 | yes      |
-| `unit tests`                   | cargo test                 | yes      |
-| `integration (testcontainers)` | nextest + testcontainers   | yes      |
-| `docker compose smoke`         | docker compose + curl      | yes      |
-| `helm install (kind)`          | kind + helm                | no       |
-| `sqlite-vec (optional feature)`| cargo test + feature flag  | no       |
-| `bootstrap compile-time strip` | cargo build/test           | no       |
-| `coverage (llvm-cov)`          | cargo-llvm-cov             | no       |
+Jobs in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). A docs-only
+PR runs only lint, the secrets scan, the unit and integration tests and the
+alert-rule check; it skips the required jobs marked *code* and every
+non-required job, and a skipped required job reports as passed.
+
+| Job | What it runs | Required |
+|---|---|---|
+| `lint (fmt + clippy + deny)` | fmt, both clippy passes, cargo-deny | yes |
+| `secrets scan` | trufflehog | yes |
+| `unit tests` | `cargo nextest run --lib --bins --profile ci` | yes |
+| `integration (testcontainers)` | `cargo nextest run --tests --profile ci`, Postgres and MinIO containers | yes |
+| `docker compose smoke` | the compose stack up, health checks | yes (*code*) |
+| `scale-out smoke` | two replicas behind one Postgres | yes (*code*) |
+| `promtool (alert rules)` | Prometheus rule checks | yes |
+| `otlp smoke` | traces reach a collector | yes (*code*) |
+| `helm install (kind)` | the chart on a kind cluster | no |
+| `sqlite-vec (optional feature)` | the `sqlite-vec` feature build and tests | no |
+| `bootstrap compile-time strip` | a release build without the `bootstrap` feature | no |
+| `coverage (llvm-cov)` | per-crate coverage floors | no |
+| `a2a tck` | the official A2A conformance kit | no |
+| `mcp inspector (report-only)` | the official MCP Inspector against the server | no |
+| `sdk interop (report-only)` | the four SDKs against a live server | no |
+| `pitr drill` | point-in-time recovery to a chosen moment | no |
+| `replica routing (LSN)` | read-your-writes across a streaming replica | no |
+| `ui tests (playwright)` | the `/ui` specs in a headless browser | no |
+
+The docs site builds in [`docs.yml`](../.github/workflows/docs.yml) (`mdbook`,
+not required). `nightly.yml` runs slower checks such as cargo-mutants.
