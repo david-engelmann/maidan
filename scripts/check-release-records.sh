@@ -67,9 +67,12 @@ done
 # binary than its scripts expect.
 readme_clones="$(rg '^\s*git clone .*github\.com/david-engelmann/maidan' README.md || true)"
 [[ -n "$readme_clones" ]] || die "could not find the README quickstart's git clone"
-if rg -q -e '--branch|(^|\s)-b(\s|$)|--branch=' <<<"$readme_clones"; then
-  die "the README quickstart must clone main, not a branch or tag: $readme_clones"
-fi
+# Allow only the default-branch form, so no clone option (--branch, -b,
+# --revision, …) can select a tag.
+while IFS= read -r clone; do
+  [[ "$clone" =~ ^[[:space:]]*git\ clone(\ --depth[\ =]1)?\ https://github\.com/david-engelmann/maidan(\.git)?(\ \&\&\ .*)?[[:space:]]*$ ]] || \
+    die "the README quickstart must clone main with no branch, tag or revision option: $clone"
+done <<<"$readme_clones"
 git rev-parse -q --verify "refs/tags/v$quickstart_arg" >/dev/null || \
   die "the quickstart and Helm pin v$quickstart_arg, which is not a published tag"
 
