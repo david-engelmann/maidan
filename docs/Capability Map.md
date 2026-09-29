@@ -41,7 +41,7 @@ fails if a new capability is added without deciding which it is.
 | `secret:read` | `GET /workspaces/:wid/secrets`, `POST /workspaces/:wid/secrets/:name/resolve` |
 | `secret:admin` | `POST /workspaces/:wid/secrets`, `DELETE /workspaces/:wid/secrets/:name` |
 | `audit:read-global` | `GET /operator/audit` — cross-workspace audit read |
-| `operator:global` | `GET /operator/legal-holds`, `GET /operator/status` |
+| `operator:global` | `GET /operator/legal-holds`, `GET /operator/status`; an instance-wide `POST /operator/reindex-embeddings` (no `workspace_id`) and reading its job (a workspace-scoped reindex is `workspace:write`) |
 | `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); create/list/revoke `/workspaces/:wid/delegation-grants`; `PUT /workspaces/:wid/delegation-policy` (the grant-lifetime ceiling); issue/list/revoke `/workspaces/:wid/share-tickets`; signed workspace export / verify / import; snapshot `include_graph=true`; **destroying the record** — `POST /workspaces/:id/purge`, `DELETE /workspaces/:id` (erase), `DELETE /messages/:id/purge`, `DELETE /artifacts/:sha` (erase this workspace's reference); legal holds — `POST/GET /workspaces/:id/legal-holds`, `DELETE /workspaces/:id/legal-holds/:hold_id`, and `GET /workspaces/:id/legal-holds/preserved` (audited); GET `/workspaces/:wid/events/catch-up` (the whole log as one chain, every private channel and DM included; or a registered federation peer) |
 
 ## MCP (`POST /mcp` tools/call)
