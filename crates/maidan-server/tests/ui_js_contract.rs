@@ -568,3 +568,31 @@ fn ui_js_wires_live_board_and_collapsed_live_bar() {
         "the Live bar expands only once connected"
     );
 }
+
+#[test]
+fn ui_js_thread_header_ignores_stale_overlapping_renders() {
+    // A quiet board refresh can re-render the thread header while an earlier
+    // render (from a card click) is still awaiting /result and /review-status.
+    // Each render takes a generation token, and a stale one must not append facts.
+    let js = script(HTML);
+    let start = js
+        .find("async function renderThreadHeader()")
+        .expect("renderThreadHeader is defined");
+    let body = &js[start
+        ..start
+            + js[start..]
+                .find("function selectThread")
+                .expect("selectThread")];
+    assert!(
+        body.contains("const gen = ++headerGen;"),
+        "each render takes a generation"
+    );
+    assert!(
+        body.matches("gen !== headerGen").count() >= 2,
+        "results from a stale render are dropped after each await"
+    );
+    assert!(
+        !body.contains("tid === selectedThreadId"),
+        "the thread-id guard alone lets two renders of the same thread both append"
+    );
+}

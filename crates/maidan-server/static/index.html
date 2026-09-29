@@ -1493,7 +1493,11 @@
       }
 
       // The open thread's header: state, holder, result and review progress.
+      // Bumped on every render so an overlapping call (a board refresh landing
+      // right after a card click) cannot append its facts a second time.
+      let headerGen = 0;
       async function renderThreadHeader() {
+        const gen = ++headerGen;
         const th = threadsById.get(selectedThreadId);
         const badgeBox = document.getElementById("thread-badge");
         const facts = document.getElementById("thread-facts");
@@ -1516,8 +1520,9 @@
             headers: headers(),
             credentials: "include",
           });
-          if (res.ok && tid === selectedThreadId) {
+          if (res.ok && gen === headerGen) {
             const r = await res.json();
+            if (gen !== headerGen) return;
             const code = document.createElement("code");
             code.textContent = JSON.stringify(r.result);
             const f = fact("result ", code);
@@ -1526,11 +1531,12 @@
         } catch (_e) {
           /* no result yet */
         }
-        if (!token()) return;
+        if (!token() || gen !== headerGen) return;
         try {
           const res = await fetch(`${base()}/threads/${tid}/review-status`, { headers: headers() });
-          if (res.ok && tid === selectedThreadId) {
+          if (res.ok && gen === headerGen) {
             const rs = await res.json();
+            if (gen !== headerGen) return;
             if (rs.required_count > 0) {
               const s = document.createElement("span");
               s.className = rs.approvals_met ? "ok" : "wait";
