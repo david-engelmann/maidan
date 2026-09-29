@@ -1855,11 +1855,16 @@
         if (!token()) {
           return { ok: false, why: "Approving needs a token with thread:transition. Set one with Change, or mint one in Tokens." };
         }
-        const res = await fetch(`${base()}/threads/${tid}/reviews`, {
-          method: "POST",
-          headers: headers(true),
-          body: JSON.stringify(note ? { decision, note } : { decision }),
-        });
+        let res;
+        try {
+          res = await fetch(`${base()}/threads/${tid}/reviews`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify(note ? { decision, note } : { decision }),
+          });
+        } catch (e) {
+          return { ok: false, why: `Review not recorded: could not reach the server (${e}). Check the connection and try again.` };
+        }
         if (!res.ok) return { ok: false, why: await responseError(res, "Review not recorded") };
         return { ok: true };
       }
@@ -1872,11 +1877,16 @@
         }
       }
       async function closeThread(tid) {
-        const res = await fetch(`${base()}/threads/${tid}`, {
-          method: "POST",
-          headers: headers(true),
-          body: JSON.stringify({ action: "close" }),
-        });
+        let res;
+        try {
+          res = await fetch(`${base()}/threads/${tid}`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ action: "close" }),
+          });
+        } catch (e) {
+          return { ok: false, why: `Not closed: could not reach the server (${e}). Check the connection and try again.` };
+        }
         if (!res.ok) return { ok: false, why: await responseError(res, "Not closed") };
         return { ok: true };
       }

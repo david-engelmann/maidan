@@ -707,3 +707,25 @@ fn ui_js_keeps_a_needs_you_row_until_its_decision_is_recorded() {
         "Enter cannot send the same change request twice"
     );
 }
+
+#[test]
+fn ui_js_review_and_close_report_network_failures_instead_of_rejecting() {
+    let s = script(HTML);
+    for (func, lead) in [
+        (
+            "async function submitReview",
+            "Review not recorded: could not reach the server",
+        ),
+        (
+            "async function closeThread",
+            "Not closed: could not reach the server",
+        ),
+    ] {
+        let start = s.find(func).expect(func);
+        let body = &s[start..start + 900];
+        assert!(
+            body.contains("try {") && body.contains("} catch (e) {") && body.contains(lead),
+            "{func} turns a thrown fetch into {{ ok: false, why }} so its row re-enables and says why"
+        );
+    }
+}

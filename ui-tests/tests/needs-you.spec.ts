@@ -94,3 +94,18 @@ test("approving without thread:transition says what is missing and how to fix it
   await expect(err).toContainText("Mint a token with it in Tokens");
   expect(await threadState(page, fx.desk_waiting_thread_id)).toBe("in_review");
 });
+
+// A dropped connection is reported in the row and the buttons come back, so
+// the reviewer can retry without reloading the page.
+test("a network failure while approving says so and leaves the row usable", async ({ page }) => {
+  await signIn(page, fx.token);
+  await page.route(`**/threads/${fx.desk_waiting_thread_id}/reviews`, (route) =>
+    route.request().method() === "POST" ? route.abort("internetdisconnected") : route.continue(),
+  );
+  const waiting = row(page, fx.desk_waiting_thread_id);
+  const approveBtn = waiting.getByRole("button", { name: "Approve" });
+  await approveBtn.click();
+  await expect(waiting.locator(".ny-err")).toContainText("Review not recorded: could not reach the server");
+  await expect(approveBtn).toBeEnabled();
+  expect(await threadState(page, fx.desk_waiting_thread_id)).toBe("in_review");
+});
