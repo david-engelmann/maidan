@@ -8,11 +8,11 @@
 //! Task rows carry no message words: history is rendered from the sealed
 //! message log on every read, so shredding a message removes it from A2A too.
 
-mod card;
+pub(crate) mod card;
 mod error;
 mod jsonrpc;
 pub(crate) mod ops;
-mod push;
+pub(crate) mod push;
 mod rest;
 mod version;
 

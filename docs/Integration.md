@@ -31,9 +31,8 @@ The MCP server negotiates whichever revision your client asks for — `2026-07-2
 stateless streamable HTTP with SEP-2243 routing headers. Only `2024-11-05` uses
 protocol-level sessions. The official MCP Inspector and TypeScript SDK connect as
 they are. The A2A
-endpoint speaks A2A v1.0 over JSON-RPC and REST (§11). A gRPC binding (§10)
-covers reading, cancelling and listing tasks; sending a message stays on
-JSON-RPC or REST.
+endpoint speaks A2A v1.0 over JSON-RPC, REST (§11) and, opt-in, gRPC (§10):
+the official `lf.a2a.v1.A2AService`, every operation included.
 
 Maidan has passed these capability milestones (each is a named gate in the
 release history):

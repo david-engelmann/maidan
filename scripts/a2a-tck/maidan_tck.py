@@ -1,8 +1,9 @@
 """pytest plugin that runs the official A2A TCK against an authenticated Maidan.
 
 Loaded with `-p maidan_tck` by scripts/a2a-tck.sh. It
-  * adds `Authorization: Bearer $MAIDAN_TOKEN` to every TCK HTTP request (the
-    TCK has no auth option; Maidan refuses anonymous A2A calls);
+  * adds `Authorization: Bearer $MAIDAN_TOKEN` to every TCK HTTP request and
+    `authorization` metadata to every gRPC call (the TCK has no auth option;
+    Maidan refuses anonymous A2A calls);
   * deselects the test ids listed in $A2A_TCK_EXCLUSIONS, each with a reason,
     and fails the run if an entry no longer matches any test;
   * fails the run if fewer than $A2A_TCK_MIN_PASSED tests pass, so a
@@ -33,6 +34,10 @@ def _with_auth(init):
 if _TOKEN:
     httpx.Client.__init__ = _with_auth(httpx.Client.__init__)
     httpx.AsyncClient.__init__ = _with_auth(httpx.AsyncClient.__init__)
+
+    from tck.transport.grpc_client import GrpcClient
+
+    GrpcClient._METADATA = (*GrpcClient._METADATA, ("authorization", f"Bearer {_TOKEN}"))
 
 
 def _exclusions() -> dict[str, str]:

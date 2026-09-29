@@ -268,7 +268,7 @@ over the same operations and auth:
 |---------|----------|---------|
 | JSON-RPC | `POST /a2a/v1/rpc` | always on |
 | HTTP+JSON/REST | `/a2a/v1/*` (e.g. `POST /a2a/v1/message:send`, `GET /a2a/v1/tasks/{id}`) | always on |
-| gRPC | tonic `A2AService` on a separate port | **opt-in** |
+| gRPC | the official `lf.a2a.v1.A2AService` (every operation) on a separate port | **opt-in** |
 
 The **Agent Card** (`GET /.well-known/agent-card.json`) advertises the available
 interfaces so clients can negotiate a transport (A2A §5.2). Configure it for your
