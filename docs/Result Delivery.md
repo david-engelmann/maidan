@@ -53,7 +53,7 @@ requires a new `schema` value. The `result_kind` list facet shipped.
 | Per-thread delivery status + replay | **Shipped**. `GET /threads/:id/deliveries` + `POST …/deliveries/:did/replay` + MCP `list_result_deliveries` / `replay_result_delivery`. |
 | Inline per-finding PR review comments | **Shipped**. After the GitHub summary, a `reviewed` envelope with `head_sha` and usable findings posts `POST /repos/{repo}/pulls/{n}/reviews` (`commit_id = head_sha`, `event: COMMENT`, RIGHT, `line` = `line_range.end`). |
 | `result_kind` list facet | **Shipped**. Exact-match on the namespaced string — see [Discoverability](#discoverability). |
-| Run lineage (`parent_run_id`) | **Shipped**. The producer's `run_id` is accepted as-is and homed on the thread. **Not** a delivery-routing field. See [Run lineage](#run-lineage-cluster-387). |
+| Run lineage (`parent_run_id`) | **Shipped**. The producer's `run_id` is accepted as-is and homed on the thread. **Not** a delivery-routing field. See [Run lineage](#run-lineage). |
 
 **Producer loop:** write `deliver_to` on the envelope; bless the destination once over
 the allowlist; confirm where it landed with the status API. A perfectly correct
@@ -94,7 +94,7 @@ field never breaks delivery.
 
 `run_id` is **not** a delivery-routing field. Delivery parse still ignores it.
 The producer's string is homed as `parent_run_id` on the thread — see
-[Run lineage](#run-lineage-cluster-387). Everything else in the envelope —
+[Run lineage](#run-lineage). Everything else in the envelope —
 `corroboration`, `per_seat`, `seats`, `cost_usd`, `duration_secs`, `sandbox`,
 `finding_count`, `diff_available` — is carried through untouched. Maidan does
 not interpret those for delivery.
@@ -135,8 +135,8 @@ Nested occupancy is the two-clocks partition (`queued` / `claimed` / `working` /
 F7 mute (`maidan_thread_mutes`) is a different table and is **not** consulted —
 a muted nested thread still counts.
 
-**Still open on Wave 2 #28:** follow a member's occupancy; a manager digest.
-Those are later slices, not this cluster.
+Following one member's occupancy and the manager digest shipped later
+(Cluster 404): see [Integration — the waiter loop](Integration.md#the-waiter-loop).
 
 ---
 
@@ -464,7 +464,7 @@ All three are now carried.
    rather than resolving the PR head at delivery time.
 2. ~~**The frame of reference for `line_range`.**~~ **Pinned (380.1).** File-absolute
    **post-image** lines at `head_sha`, 1-indexed inclusive, GitHub **RIGHT**. See
-   [Inline findings](#inline-findings-cluster-380).
+   [Inline findings](#inline-findings).
 3. ~~**Call `report_usage`** with the run's cost and wall time.~~ **Carried, and
    the wall half needs nothing.** Maidan ships a per-task token/USD/turn/wall
    budget envelope that stops a run when it is exceeded, and a producer that

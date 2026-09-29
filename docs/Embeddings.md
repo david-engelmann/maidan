@@ -91,11 +91,11 @@ per-message write path retries `ensure_model` lazily.
    embedding *new* messages under it immediately.
 3. **Backfill existing messages** into the new model's table. Either:
    - **HTTP (operator):** `POST /operator/reindex-embeddings` with
-     `{"workspace_id": "<uuid>"}` (workspace-scoped, needs `workspace.write`) or
-     `{}` (whole instance, needs `token.admin`). Returns a `ReindexJob`; poll
+     `{"workspace_id": "<uuid>"}` (workspace-scoped, needs `workspace:write`) or
+     `{}` (whole instance, needs `operator:global`). Returns a `ReindexJob`; poll
      `GET /operator/reindex-embeddings/{job_id}` for `processed`/`failed`. The
      job re-embeds using the server's **active** provider, in batches.
-   - **CLI (offline / large):** `maidan-cli reindex-embeddings --embedding-provider openai-compatible [--workspace-id <uuid>]`
+   - **CLI (offline / large):** `maidan reindex-embeddings --embedding-provider openai-compatible [--workspace-id <uuid>]`
      with the same `MAIDAN_EMBEDDING_*` env. Runs against its own pool, so it
      won't contend with the live server's statement-timeout cap.
 4. **Verify**, then optionally **cut over reads.** Semantic search uses the

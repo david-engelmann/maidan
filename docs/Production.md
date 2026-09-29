@@ -63,15 +63,38 @@ period is cut, and clients retry.
 | `MAIDAN_EMBEDDING_ENDPOINT` | when provider is `openai-compatible` | Full URL to embeddings endpoint (OpenAI-compatible response shape). |
 | `MAIDAN_EMBEDDING_MODEL` | when provider is `openai-compatible` | Embedding model id sent in request body. |
 | `MAIDAN_EMBEDDING_API_KEY` | optional | Bearer token for remote provider. |
-| `MAIDAN_EMBEDDING_DIM` | no | Expected embedding dimension (default `1024`). |
+| `MAIDAN_EMBEDDING_DIM` | no | Embedding dimension for `openai-compatible`. Unset → the server embeds one probe string at boot and uses its length; set it to skip the probe. |
 | `MAIDAN_EMBEDDING_TIMEOUT_SECS` | no | HTTP timeout for remote embeddings (default `15`). |
 | `INDEXER_STALE_SECS` | no | When **> 0**, `/health/ready` is degraded if the embedding indexer has not observed an event for this many seconds. Default `0` (disabled). **Recommended `300`** on Postgres deployments with embeddings enabled. |
-| `GET /metrics` | no | Prometheus text exposition (HTTP + subscribe recovery + indexer/bus gauges). Label cardinality is fixed (no workspace UUIDs). |
 | `OTLP_ENDPOINT` | no | gRPC OTLP collector URL for **traces** (and metrics when `OTLP_METRICS=1`). Each request's `debug` span carries its method, path (never the query, where an OAuth `code` travels) and headers, with `Authorization`, `Proxy-Authorization`, `Cookie`, `Mcp-Session-Id` and the Slack and GitHub signatures printed as `Sensitive`; so are `Set-Cookie` and `Mcp-Session-Id` on the response. |
 | `OTLP_SERVICE_NAME` | no | Resource `service.name` for OTLP (default `maidan-server`). |
 | `OTLP_METRICS` | no | Set to `1` to push the same `metrics` crate instruments to OTLP (fanout with Prometheus scrape). Requires `OTLP_ENDPOINT` unless `OTLP_METRICS_ENDPOINT` is set. |
 | `OTLP_METRICS_ENDPOINT` | no | Override OTLP gRPC URL for metrics only. |
 | `OTLP_METRICS_INTERVAL_SECS` | no | Periodic push interval (default `15`). |
+| `MAIDAN_RATE_LIMIT_MAX` | no | Global HTTP rate limit per bearer token (or the socket peer IP). **Default `1200` per 60 s window**; set `0` to turn it off. `/health/*` and `/metrics` exempt. |
+| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` | no | Web Push. All three enable a VAPID sender: base64url P-256 private scalar + uncompressed public key + a `mailto:`/`https:` contact. The router delivers a Web Push message to a member's registered subscriptions when they have no live WebSocket. Unset → no web push. |
+| `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` | no | Presence window (default `60`) for the "notify iff no live WS" gate: a member seen within this many seconds is treated as connected and not pushed. |
+| `MAIDAN_RATE_LIMIT_WINDOW_SECS` | no | Fixed window length in seconds (default `60`). |
+| `MAIDAN_TRUSTED_PROXY_HOPS` | no | Number of rightmost reverse-proxy hops trusted when deriving the client IP from `X-Forwarded-For` (default `0`, so the header is ignored and the socket peer is used). Set this to the exact proxy/LB chain length; malformed or shorter chains fail closed to the socket peer. Bearer-token keys are unchanged. |
+| `MAIDAN_ALLOW_PRIVATE_EGRESS` | no | Development-only escape hatch for loopback webhook/hook test receivers. Rejected when `MAIDAN_ENV=production`. Production operator-supplied HTTP targets are parsed canonically at registration; every delivery resolves again, rejects the whole answer set if any address is private/link-local/loopback/reserved, DNS-pins that set for the request, and never follows redirects. |
+| `MAIDAN_RATE_LIMIT_REDIS_URL` | no | When set, global and per-token quotas use Redis fixed-window counters (multi-replica). Falls back to in-memory if unset or connection fails. |
+| `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` | no | When **> 0**, per-workspace fairness limit (`v110.0.0`): caps total requests for one workspace across **all** its tokens, on `/workspaces/{wid}/…` routes (incl. search). Default off. Independent of the global limit; reuses the Redis backend when set. |
+| `MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS` | no | Per-workspace fixed window in seconds (default `60`). |
+| `MAIDAN_PRESENCE_HEARTBEAT_SECS` | no | Interval at which each replica re-announces its locally-connected members over `maidan_presence` (default `10`). Cross-replica presence is active only in Postgres NOTIFY mode. |
+| `MAIDAN_PRESENCE_TTL_SECS` | no | A remote member with no heartbeat for this long is dropped from the merged roster (default `30`). Keep it a small multiple of the heartbeat. |
+| `MAIDAN_DB_MAX_CONNECTIONS` | no | Pool size per process. Default **Postgres 16**, **SQLite 1** (SQLite serializes through one connection: concurrent read-modify-write transactions deadlock on the writer upgrade, which `busy_timeout` cannot resolve). See the replica caveat below. |
+| `MAIDAN_DB_ACQUIRE_TIMEOUT_SECS` | no | How long a request waits for a free pooled connection before erroring instead of hanging (default `30`). Under saturation this surfaces a clean `500`/timeout rather than blocking indefinitely. |
+| `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | no | Postgres per-connection `statement_timeout`. **Default `30000` (30 s)** — caps runaway queries so one can't pin a pooled connection indefinitely. Set `0` to disable. See the caveat below. |
+| `MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | no | Postgres `idle_in_transaction_session_timeout`. **Default `60000` (60 s).** A connection left idle inside an open transaction holds its locks and its snapshot, which blocks vacuum cluster-wide; this ends it. Set `0` to disable. |
+| `MAIDAN_MAX_CONCURRENT_REQUESTS` | no | The most HTTP requests in flight at once. **Default `1024`; `0` turns it off.** Past it a request is refused at once with a `503` problem and `Retry-After: 1`, before the rate limiter or authentication run, so overload costs no database or Redis work. A request holds its slot until its response starts, so a long-poll MCP wait holds one while it waits; streaming bodies and WebSockets do not. `/health*` and `/metrics` are exempt. Watch `maidan_http_in_flight_requests` and `maidan_http_shed_total` (alert `MaidanLoadShedding`). |
+| `MAIDAN_MAX_WS_CONNECTIONS` | no | The most concurrent `/ws/subscribe` connections accepted. **Default `10000`.** Past it an upgrade gets `503`, so long-lived sockets cannot exhaust the process; watch `maidan_ws_connections`. Client frames are capped at 64 KiB. |
+| `MAIDAN_DB_LOCK_TIMEOUT_MS` | no | Postgres `lock_timeout`. **Default `10000` (10 s)**, so a request queued behind a held lock fails fast instead of piling up until `statement_timeout`. Boot migrations exempt themselves. Set `0` to disable. |
+| `MAIDAN_DB_BUSY_TIMEOUT_MS` | no | SQLite `busy_timeout` (default `5000`). |
+| `MAIDAN_DELIVERY_STABILITY_SECS` | no | At-least-once delivery (`v125.0.0`) stability window: a subscribe with `at_least_once` only delivers events whose insert time is older than this. Must exceed the longest insert-transaction duration. Default `2`; `0` disables the gate. |
+| `MAIDAN_DELIVERY_RECONCILE_MS` | no | Poll cadence for the at-least-once reconcile loop (a NOTIFY also wakes it). Default `1000`. |
+
+`GET /metrics` serves the Prometheus text exposition (HTTP, subscribe recovery,
+indexer and bus gauges) with fixed label cardinality — no workspace UUIDs.
 
 **Compiling OpenTelemetry out.** OTLP export is a default-on
 cargo feature (`otel`) on `maidan-server`. Building with `--no-default-features`
@@ -81,9 +104,6 @@ stack entirely for a leaner binary — plain `tracing` logs and the Prometheus
 inert (an `OTLP_ENDPOINT` that is set is reported to stderr at startup and
 otherwise ignored). Leave the feature on (the default) to keep OTLP traces +
 metrics push available.
-| `MAIDAN_RATE_LIMIT_MAX` | no | When **> 0**, global HTTP rate limit per bearer token (or the socket peer IP). Default off. `/health/*` and `/metrics` exempt. |
-| `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` | no | Web Push. All three enable a VAPID sender: base64url P-256 private scalar + uncompressed public key + a `mailto:`/`https:` contact. The router delivers a Web Push message to a member's registered subscriptions when they have no live WebSocket. Unset → no web push. |
-| `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` | no | Presence window (default `60`) for the "notify iff no live WS" gate: a member seen within this many seconds is treated as connected and not pushed. |
 
 **SCIM 2.0 provisioning.** An IdP (Okta / Azure AD /
 …) can provision and deprovision workspace members via SCIM 2.0 at `/scim/v2/`
@@ -94,24 +114,6 @@ workspace). A SCIM `id` is the Maidan member id and `userName` the member handle
 deactivation (`active=false`) and delete revoke the member's API tokens. No env
 config — the endpoint is always available, gated on `token:admin`. Not yet
 supported (P3 scope): Groups, userName/displayName rename, and complex filters.
-| `MAIDAN_RATE_LIMIT_WINDOW_SECS` | no | Fixed window length in seconds (default `60`). |
-| `MAIDAN_TRUSTED_PROXY_HOPS` | no | Number of rightmost reverse-proxy hops trusted when deriving the client IP from `X-Forwarded-For` (default `0`, so the header is ignored and the socket peer is used). Set this to the exact proxy/LB chain length; malformed or shorter chains fail closed to the socket peer. Bearer-token keys are unchanged. |
-| `MAIDAN_ALLOW_PRIVATE_EGRESS` | no | Development-only escape hatch for loopback webhook/hook test receivers. Rejected when `MAIDAN_ENV=production`. Production operator-supplied HTTP targets are parsed canonically at registration; every delivery resolves again, rejects the whole answer set if any address is private/link-local/loopback/reserved, DNS-pins that set for the request, and never follows redirects. |
-| `MAIDAN_RATE_LIMIT_REDIS_URL` | no | When set, global and per-token quotas use Redis fixed-window counters (multi-replica). Falls back to in-memory if unset or connection fails. |
-| `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` | no | When **> 0**, per-workspace fairness limit (`v110.0.0`): caps total requests for one workspace across **all** its tokens, on `/workspaces/{wid}/…` routes (incl. search). Default off. Independent of the global limit; reuses the Redis backend when set. |
-| `MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS` | no | Per-workspace fixed window in seconds (default `60`). |
-| `MAIDAN_PRESENCE_HEARTBEAT_SECS` | no | Interval at which each replica re-announces its locally-connected members over `maidan_presence` (default `10`). Cross-replica presence is active only in Postgres NOTIFY mode. |
-| `MAIDAN_PRESENCE_TTL_SECS` | no | A remote member with no heartbeat for this long is dropped from the merged roster (default `30`). Keep it a small multiple of the heartbeat. |
-| `MAIDAN_DB_MAX_CONNECTIONS` | no | Pool size per process. Default preserves the dialect default (**Postgres 16**, **SQLite 8**). See the replica caveat below. |
-| `MAIDAN_DB_ACQUIRE_TIMEOUT_SECS` | no | How long a request waits for a free pooled connection before erroring instead of hanging (default `30`). Under saturation this surfaces a clean `500`/timeout rather than blocking indefinitely. |
-| `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | no | Postgres per-connection `statement_timeout`. **Default `30000` (30 s)** — caps runaway queries so one can't pin a pooled connection indefinitely. Set `0` to disable. See the caveat below. |
-| `MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | no | Postgres `idle_in_transaction_session_timeout`. **Default `60000` (60 s).** A connection left idle inside an open transaction holds its locks and its snapshot, which blocks vacuum cluster-wide; this ends it. Set `0` to disable. |
-| `MAIDAN_MAX_CONCURRENT_REQUESTS` | no | The most HTTP requests in flight at once. **Default `1024`; `0` turns it off.** Past it a request is refused at once with a `503` problem and `Retry-After: 1`, before the rate limiter or authentication run, so overload costs no database or Redis work. A request holds its slot until its response starts, so a long-poll MCP wait holds one while it waits; streaming bodies and WebSockets do not. `/health*` and `/metrics` are exempt. Watch `maidan_http_in_flight_requests` and `maidan_http_shed_total` (alert `MaidanLoadShedding`). |
-| `MAIDAN_MAX_WS_CONNECTIONS` | no | The most concurrent `/ws/subscribe` connections accepted. **Default `10000`.** Past it an upgrade gets `503`, so long-lived sockets cannot exhaust the process; watch `maidan_ws_connections`. Client frames are capped at 64 KiB. |
-| `MAIDAN_DB_LOCK_TIMEOUT_MS` | no | Postgres `lock_timeout`. **Default `10000` (10 s)**, so a request queued behind a held lock fails fast instead of piling up until `statement_timeout`. Boot migrations exempt themselves. Set `0` to disable. |
-| `MAIDAN_DB_BUSY_TIMEOUT_MS` | no | SQLite `busy_timeout` (default `5000`). |
-| `MAIDAN_DELIVERY_STABILITY_SECS` | no | At-least-once delivery (`v125.0.0`) stability window: a subscribe with `at_least_once` only delivers events whose insert time is older than this. Must exceed the longest insert-transaction duration. Default `2`; `0` disables the gate. |
-| `MAIDAN_DELIVERY_RECONCILE_MS` | no | Poll cadence for the at-least-once reconcile loop (a NOTIFY also wakes it). Default `1000`. |
 
 ### Database tuning (`v107.0.0`)
 
@@ -166,7 +168,7 @@ distroless server image. Put it on a network that can reach the database and
 pin it to the server's exact tag:
 
 ```sh
-MAIDAN_TAG=v406.0.0
+MAIDAN_TAG=v412.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL=postgres://maidan:…@postgres/maidan \
@@ -259,6 +261,14 @@ Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 | Endpoint            | Use                                      |
 |---------------------|------------------------------------------|
 | `GET /openapi.json` | Machine-readable OpenAPI 3.1 (Track W.1). HTTP routes and `application/problem+json` errors; subscribe/resume protocol summary in `info.description`. Auth/session routes are under the `auth` tag (`/auth/oidc/*`, `/auth/session`, `/ui/api/...`). |
+| `GET /workspaces/:wid/search` | See [Search](#search-get-workspaceswidsearch). OpenAPI `SearchHit` documents `embedding_model`. |
+| `GET /metrics`    | Prometheus text (HTTP counters, subscribe replay, indexer age, bus listener). |
+| `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires `token:admin`. |
+| `POST /workspaces/:id/purge` | Deep workspace erasure (`v28.0.0`): tombstone+purge all messages, remove embeddings/references, revoke API tokens, delete event log; returns counts JSON. Requires `token:admin`. |
+| `GET /workspaces/:id/audit` | Workspace-scoped audit trail (`workspace:read`). |
+
+Import into Swagger UI, Redoc, or your client generator. The document
+version tracks the server release (`info.version`).
 
 ## A2A transports (`v282.0.0`+)
 
@@ -534,8 +544,8 @@ Scrape `GET /metrics` for agent-substrate health (see [Agent Integration](Agent%
 |-----------------|---------|------------------|
 | `maidan_bus_lag_total` | Subscribers behind | Scope WS filters; scale consumers |
 | `maidan_indexer_last_event_age_seconds` | Stale embeddings | Fix embedding provider; run `maidan reindex-embeddings` |
-| `maidan_outbox_pending` / quarantined | Relay stuck | [Outbox relay](#outbox-relay) |
-| `maidan_automation_delivery_total{outcome="failure"}` | Slash/FSM HTTP failing | [Automation HTTP delivery](#automation-http-delivery) |
+| `maidan_outbox_pending` / quarantined | Relay stuck | [Outbox relay](#outbox-relay-v1000-postgres-v1200-quarantine-v1400-sqlite) |
+| `maidan_automation_delivery_total{outcome="failure"}` | Slash/FSM HTTP failing | [Automation HTTP delivery](#automation-http-delivery-v6800) |
 | MCP tool latency | Not exported per-tool yet | Use HTTP request metrics + logs |
 
 Example Grafana dashboard (Prometheus datasource): `docs/dashboards/maidan-operator.json` (`v89.0.0`).
@@ -598,15 +608,6 @@ background job (202 + `job_id`). Poll `GET /operator/reindex-embeddings/:job_id`
 body `{ "workspace_id": "<uuid>" }` scopes to one workspace (`workspace:write`);
 omit `workspace_id` for all workspaces (`operator:global`; before, a workspace's `token:admin` could start and read an instance-wide job). CLI `maidan reindex-embeddings`
 remains for shell/CI. A job runs in-process on the replica that started it; its record is durable (see below), so a replica that dies mid-run leaves it `Running`.
-
-| `GET /workspaces/:wid/search` | See table above. OpenAPI `SearchHit` documents `embedding_model`. |
-| `GET /metrics`    | Prometheus text (HTTP counters, subscribe replay, indexer age, bus listener). |
-| `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires bearer with `workspace:write`. |
-| `POST /workspaces/:id/purge` | Deep workspace erasure (`v28.0.0`): tombstone+purge all messages, remove embeddings/references, revoke API tokens, delete event log; returns counts JSON. |
-| `GET /workspaces/:id/audit` | Workspace-scoped audit trail (`workspace:read`). |
-
-Import into Swagger UI, Redoc, or your client generator. The document
-version tracks the server release (`info.version`).
 
 ## Helm (production)
 

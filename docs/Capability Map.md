@@ -30,7 +30,7 @@ fails if a new capability is added without deciding which it is.
 
 | Capability | Routes / behavior |
 |------------|-------------------|
-| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/members/:id/manager-digest`, GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:wid/snapshot` (header + `graph_hash`; `include_graph=true` needs `token:admin`), GET `/workspaces/:wid/events/catch-up`, GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:id/tombstones`, GET `/workspaces/:id/kind-census`, GET `/messages/:id/backlinks`, GET `/workspaces/:wid/mention-webhook`, GET `/workspaces/:id/room`, GET `/workspaces/:id/handle`, GET `/capability-sets`, `POST /tokens/attenuate` (holder-side; no `token:admin`), group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
+| `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/members/:id/manager-digest`, GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:wid/snapshot` (header + `graph_hash`; `include_graph=true` needs `token:admin`), GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:id/tombstones`, GET `/workspaces/:id/kind-census`, GET `/messages/:id/backlinks`, GET `/workspaces/:wid/mention-webhook`, GET `/workspaces/:id/room`, GET `/workspaces/:id/handle`, GET `/capability-sets`, `POST /tokens/attenuate` (holder-side; no `token:admin`), group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
 | `workspace:write` | POST channels, threads, messages (mentions, votes), references; automation replay; slash/FSM hook CRUD; `PUT /workspaces/:wid/mention-webhook`; `PUT /workspaces/:id/handle` |
 | `message:post` | POST thread messages, A2A `SendMessage`; `PATCH /messages/:id` and `DELETE /messages/:id` on **your own** message — only the author can edit a message (no capability lets anyone rewrite another member's words), and tombstoning someone else's needs `channel:admin` |
 | `thread:transition` | POST thread FSM transitions; experimental `POST /threads/:id/land-gate/advice` when enabled; MCP `transition_thread` |
@@ -42,13 +42,13 @@ fails if a new capability is added without deciding which it is.
 | `secret:admin` | `POST /workspaces/:wid/secrets`, `DELETE /workspaces/:wid/secrets/:name` |
 | `audit:read-global` | `GET /operator/audit` — cross-workspace audit read |
 | `operator:global` | `GET /operator/legal-holds`, `GET /operator/status` |
-| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); create/list/revoke `/workspaces/:wid/delegation-grants`; `PUT /workspaces/:wid/delegation-policy` (the grant-lifetime ceiling); issue/list/revoke `/workspaces/:wid/share-tickets`; signed workspace export / verify / import; snapshot `include_graph=true`; **destroying the record** — `POST /workspaces/:id/purge`, `DELETE /workspaces/:id` (erase), `DELETE /messages/:id/purge`, `DELETE /artifacts/:sha` (erase this workspace's reference); legal holds — `POST/GET /workspaces/:id/legal-holds`, `DELETE /workspaces/:id/legal-holds/:hold_id`, and `GET /workspaces/:id/legal-holds/preserved` (audited) |
+| `token:admin` | Mint/revoke/list API tokens (`GET/POST .../members/:mid/tokens`, `DELETE /tokens/:id`); create/list/revoke `/workspaces/:wid/delegation-grants`; `PUT /workspaces/:wid/delegation-policy` (the grant-lifetime ceiling); issue/list/revoke `/workspaces/:wid/share-tickets`; signed workspace export / verify / import; snapshot `include_graph=true`; **destroying the record** — `POST /workspaces/:id/purge`, `DELETE /workspaces/:id` (erase), `DELETE /messages/:id/purge`, `DELETE /artifacts/:sha` (erase this workspace's reference); legal holds — `POST/GET /workspaces/:id/legal-holds`, `DELETE /workspaces/:id/legal-holds/:hold_id`, and `GET /workspaces/:id/legal-holds/preserved` (audited); GET `/workspaces/:wid/events/catch-up` (the whole log as one chain, every private channel and DM included; or a registered federation peer) |
 
 ## MCP (`POST /mcp` tools/call)
 
 | Capability | Tools |
 |------------|-------|
-| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks`, `get_thread_context`, `get_workspace_context`, `get_manager_digest`, `get_log_snapshot`, `catch_up_events`, `verify_event_chain`, `list_tombstones`, `list_message_backlinks`, `get_kind_census`, `list_capability_sets`, `parse_maidan_uri`, `get_room`, `attenuate_token` |
+| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks`, `get_thread_context`, `get_workspace_context`, `get_manager_digest`, `get_log_snapshot`, `verify_event_chain`, `list_tombstones`, `list_message_backlinks`, `get_kind_census`, `list_capability_sets`, `parse_maidan_uri`, `get_room`, `attenuate_token` |
 | `workspace:write` | `record_mention`, `cast_vote`, `add_reaction`, `remove_reaction`, `pin_message`, `unpin_message`, `add_reference`, `register_slash_command`, `register_fsm_hook`, `set_workspace_handle` |
 | `message:post` | `open_dm_conversation`, `post_dm_message`, `post_message`, `edit_message` (author only) |
 | `artifact:upload` | `upload_artifact`, `begin_artifact_multipart`, `upload_artifact_multipart_part`, `complete_artifact_multipart`, `abort_artifact_multipart` |
@@ -56,7 +56,7 @@ fails if a new capability is added without deciding which it is.
 | `thread:transition` | `transition_thread` |
 | `channel:admin` | `add_channel_member`, `list_channel_members`, `remove_channel_member`, `clear_land_gate` |
 | `secret:read` | `list_secrets`, `resolve_secret` |
-| `token:admin` | `create_share_ticket`, `list_share_tickets`, `revoke_share_ticket` |
+| `token:admin` | `create_share_ticket`, `list_share_tickets`, `revoke_share_ticket`, `create_delegation_grant`, `list_delegation_grants`, `revoke_delegation_grant`, `set_delegation_policy`, `freeze_member`, `unfreeze_member`, `list_frozen_members`, `export_workspace`, `verify_workspace_export`, `import_workspace`, `catch_up_events` (the whole log as one chain, every private channel and DM included) |
 
 MCP protocol methods (not tools):
 
