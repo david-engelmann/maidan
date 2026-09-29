@@ -216,7 +216,7 @@ pub async fn agent_card(State(state): State<AppState>, headers: HeaderMap) -> Re
 }
 
 /// `GetExtendedAgentCard`: the card for an authenticated client.
-pub(super) fn extended(state: &AppState, auth: &AuthContext) -> Result<AgentCard, A2aError> {
+pub(crate) fn extended(state: &AppState, auth: &AuthContext) -> Result<AgentCard, A2aError> {
     auth.require_capability(MESSAGE_POST).map_err(denied)?;
     Ok(state.a2a_card.card())
 }

@@ -132,7 +132,7 @@ async fn target(state: &AppState, auth: &AuthContext, task_id: &str) -> Result<(
     }
 }
 
-pub(super) async fn create(
+pub(crate) async fn create(
     state: &AppState,
     auth: &AuthContext,
     config: TaskPushNotificationConfig,
@@ -143,7 +143,7 @@ pub(super) async fn create(
     attach(state, &task_id, prepared).await
 }
 
-pub(super) async fn get(
+pub(crate) async fn get(
     state: &AppState,
     auth: &AuthContext,
     req: GetTaskPushNotificationConfigRequest,
@@ -167,7 +167,7 @@ pub(super) async fn get(
 
 /// A task's configs in id order, keyset-paged: `nextPageToken` encodes the
 /// last config's id.
-pub(super) async fn list(
+pub(crate) async fn list(
     state: &AppState,
     auth: &AuthContext,
     req: ListTaskPushNotificationConfigsRequest,
@@ -210,7 +210,7 @@ fn decode_page_token(token: &str) -> Result<String, A2aError> {
 }
 
 /// Deleting a config that is already gone succeeds: the call is idempotent.
-pub(super) async fn delete(
+pub(crate) async fn delete(
     state: &AppState,
     auth: &AuthContext,
     req: DeleteTaskPushNotificationConfigRequest,

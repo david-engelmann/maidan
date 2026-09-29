@@ -324,7 +324,7 @@ pub(super) fn gate_as_task(gate: &ApprovalGate) -> Task {
 /// value is a client-chosen context, bound on first use to a new thread.
 /// Maidan tasks complete on delivery, so a message naming an existing
 /// `taskId` is refused.
-pub(super) async fn send_message(
+pub(crate) async fn send_message(
     state: &AppState,
     auth: &AuthContext,
     req: SendMessageRequest,
@@ -417,7 +417,7 @@ pub(super) async fn send_message(
 
 /// `SendStreamingMessage`: the delivery as a stream, a `working` task then its
 /// completion.
-pub(super) async fn send_streaming_message(
+pub(crate) async fn send_streaming_message(
     state: &AppState,
     auth: &AuthContext,
     req: SendMessageRequest,
@@ -726,7 +726,7 @@ pub(crate) async fn cancel_task(
 
 /// `SubscribeToTask`: the task now, then each status change until it ends.
 /// A task that already ended has nothing to stream (§3.1.6).
-pub(super) async fn subscribe(
+pub(crate) async fn subscribe(
     state: &AppState,
     auth: &AuthContext,
     req: SubscribeToTaskRequest,

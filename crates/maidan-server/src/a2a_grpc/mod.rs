@@ -1,36 +1,41 @@
 //! A2A v1.0 gRPC binding (§10).
 //!
-//! A tonic server exposing the A2A task read/cancel/list operations, as thin
-//! adapters over the same operations the JSON-RPC and HTTP+JSON bindings use.
-//! Calls name their protocol version in `a2a-version` metadata. The proto is
-//! compiled locally and the generated code vendored (`generated.rs`) so no
-//! build-time `protoc` is needed in CI or the image.
+//! A tonic server for the official `lf.a2a.v1.A2AService` (`proto/a2a.proto`,
+//! vendored unmodified from a2aproject/A2A v1.0.1). Every call is a thin
+//! adapter over the operations the JSON-RPC and HTTP+JSON bindings use: the
+//! request is converted to the shared operation type through its ProtoJSON
+//! form (the JSON the other bindings speak) and the result converted back, so
+//! the three bindings cannot drift in what they accept or return. Calls name
+//! their protocol version in `a2a-version` metadata. The generated code is
+//! vendored (`generated.rs`, `generated.serde.rs`; see
+//! `scripts/gen-a2a-grpc.sh`) so no build-time `protoc` is needed.
 //!
-//! Config-gated: the server only starts when `MAIDAN_A2A_GRPC_ADDR` is set, so
-//! default deployments, CI, and tests are unaffected. Streaming ops
-//! (SendStreamingMessage, SubscribeToTask), SendMessage, push configs, and the
-//! extended card are deferred to follow-up clusters.
+//! Config-gated: the server only starts when `MAIDAN_A2A_GRPC_ADDR` is set.
+//! The `tenant` field is accepted and ignored: one endpoint serves one agent.
 
 #[allow(
     clippy::all,
     clippy::pedantic,
+    clippy::nursery,
     clippy::unwrap_used,
     clippy::expect_used,
-    missing_docs
+    missing_docs,
+    unused_qualifications
 )]
 pub mod generated;
 
 use std::net::SocketAddr;
+use std::pin::Pin;
 
+use futures::{Stream, StreamExt};
 use maidan_auth::{resolve_bearer, AuthContext};
+use serde::{de::DeserializeOwned, Serialize};
 use tonic::{Request, Response, Status};
 
-use crate::a2a_agent::{self, ops};
+use crate::a2a_agent::{self, card, ops, push};
 use crate::state::AppState;
+use generated as pb;
 use generated::a2a_service_server::{A2aService, A2aServiceServer};
-use generated::{
-    CancelTaskRequest, GetTaskRequest, ListTasksRequest, ListTasksResponse, Task, TaskStatus,
-};
 
 /// The gRPC A2A service, backed by the shared [`AppState`].
 pub struct GrpcA2a {
@@ -54,8 +59,33 @@ async fn auth_from_grpc<T>(state: &AppState, request: &Request<T>) -> Result<Aut
         .map_err(|_| Status::unauthenticated("invalid token"))
 }
 
-/// An operation failure as the gRPC status its kind maps to (§10.6).
+/// `google.rpc.Status`, the payload of `grpc-status-details-bin`.
+#[derive(Clone, PartialEq, prost::Message)]
+struct RpcStatus {
+    #[prost(int32, tag = "1")]
+    code: i32,
+    #[prost(string, tag = "2")]
+    message: String,
+    #[prost(message, repeated, tag = "3")]
+    details: Vec<pbjson_types::Any>,
+}
+
+/// `google.rpc.ErrorInfo`.
+#[derive(Clone, PartialEq, prost::Message)]
+struct ErrorInfo {
+    #[prost(string, tag = "1")]
+    reason: String,
+    #[prost(string, tag = "2")]
+    domain: String,
+    #[prost(btree_map = "string, string", tag = "3")]
+    metadata: std::collections::BTreeMap<String, String>,
+}
+
+/// An operation failure as the gRPC status its kind maps to, with the A2A
+/// error's `google.rpc.ErrorInfo` in the status details (§10.6), the same
+/// detail the JSON-RPC and REST bindings carry.
 fn status(err: maidan_a2a::A2aError) -> Status {
+    use prost::Message as _;
     use tonic::Code;
     let code = match err.kind.rpc_status() {
         "NOT_FOUND" => Code::NotFound,
@@ -65,7 +95,23 @@ fn status(err: maidan_a2a::A2aError) -> Status {
         "INVALID_ARGUMENT" => Code::InvalidArgument,
         _ => Code::Internal,
     };
-    Status::new(code, err.message)
+    let Some(reason) = err.kind.reason() else {
+        return Status::new(code, err.message);
+    };
+    let info = ErrorInfo {
+        reason: reason.to_string(),
+        domain: maidan_a2a::A2A_ERROR_DOMAIN.to_string(),
+        metadata: err.metadata,
+    };
+    let details = RpcStatus {
+        code: code as i32,
+        message: err.message.clone(),
+        details: vec![pbjson_types::Any {
+            type_url: maidan_a2a::ERROR_INFO_TYPE.to_string(),
+            value: info.encode_to_vec().into(),
+        }],
+    };
+    Status::with_details(code, err.message, details.encode_to_vec().into())
 }
 
 /// The caller's auth, after checking the protocol version it names.
@@ -74,63 +120,162 @@ async fn caller<T>(state: &AppState, request: &Request<T>) -> Result<AuthContext
     auth_from_grpc(state, request).await
 }
 
-fn task(task: maidan_a2a::Task) -> Task {
-    Task {
-        id: task.id,
-        context_id: task.context_id.unwrap_or_default(),
-        status: Some(TaskStatus {
-            state: task.status.state,
-        }),
-    }
+/// A generated request as the shared operation type, through ProtoJSON. A
+/// message the operation type refuses (a part with no content, a message
+/// with no role) is the caller's error.
+fn from_proto<P: Serialize, T: DeserializeOwned>(message: &P) -> Result<T, Status> {
+    serde_json::to_value(message)
+        .and_then(serde_json::from_value)
+        .map_err(|e| Status::invalid_argument(e.to_string()))
+}
+
+/// An operation result as the generated message, through ProtoJSON.
+fn to_proto<T: Serialize, P: DeserializeOwned>(value: &T) -> Result<P, Status> {
+    serde_json::to_value(value)
+        .and_then(serde_json::from_value)
+        .map_err(|e| Status::internal(format!("result does not fit a2a.proto: {e}")))
+}
+
+/// A server-streaming response.
+type EventStream = Pin<Box<dyn Stream<Item = Result<pb::StreamResponse, Status>> + Send>>;
+
+fn events<S>(stream: S) -> EventStream
+where
+    S: Stream<Item = maidan_a2a::StreamResponse> + Send + 'static,
+{
+    Box::pin(stream.map(|event| to_proto(&event)))
 }
 
 #[tonic::async_trait]
 impl A2aService for GrpcA2a {
-    async fn get_task(&self, request: Request<GetTaskRequest>) -> Result<Response<Task>, Status> {
+    async fn send_message(
+        &self,
+        request: Request<pb::SendMessageRequest>,
+    ) -> Result<Response<pb::SendMessageResponse>, Status> {
         let auth = caller(&self.state, &request).await?;
-        let req = maidan_a2a::GetTaskRequest {
-            id: request.into_inner().id,
-            history_length: None,
-        };
+        let req = from_proto(request.get_ref())?;
+        let task = ops::send_message(&self.state, &auth, req)
+            .await
+            .map_err(status)?;
+        let reply = maidan_a2a::SendMessageResponse::Task(task);
+        Ok(Response::new(to_proto(&reply)?))
+    }
+
+    type SendStreamingMessageStream = EventStream;
+
+    async fn send_streaming_message(
+        &self,
+        request: Request<pb::SendMessageRequest>,
+    ) -> Result<Response<Self::SendStreamingMessageStream>, Status> {
+        let auth = caller(&self.state, &request).await?;
+        let req = from_proto(request.get_ref())?;
+        let sent = ops::send_streaming_message(&self.state, &auth, req)
+            .await
+            .map_err(status)?;
+        Ok(Response::new(events(futures::stream::iter(sent))))
+    }
+
+    async fn get_task(
+        &self,
+        request: Request<pb::GetTaskRequest>,
+    ) -> Result<Response<pb::Task>, Status> {
+        let auth = caller(&self.state, &request).await?;
+        let req = from_proto(request.get_ref())?;
         let found = ops::get_task(&self.state, &auth, req)
             .await
             .map_err(status)?;
-        Ok(Response::new(task(found)))
-    }
-
-    async fn cancel_task(
-        &self,
-        request: Request<CancelTaskRequest>,
-    ) -> Result<Response<Task>, Status> {
-        let auth = caller(&self.state, &request).await?;
-        let req = maidan_a2a::CancelTaskRequest {
-            id: request.into_inner().id,
-            metadata: None,
-        };
-        let canceled = ops::cancel_task(&self.state, &auth, req)
-            .await
-            .map_err(status)?;
-        Ok(Response::new(task(canceled)))
+        Ok(Response::new(to_proto(&found)?))
     }
 
     async fn list_tasks(
         &self,
-        request: Request<ListTasksRequest>,
-    ) -> Result<Response<ListTasksResponse>, Status> {
+        request: Request<pb::ListTasksRequest>,
+    ) -> Result<Response<pb::ListTasksResponse>, Status> {
         let auth = caller(&self.state, &request).await?;
-        let req = request.into_inner();
-        let req = maidan_a2a::ListTasksRequest {
-            context_id: (!req.context_id.is_empty()).then_some(req.context_id),
-            page_size: (req.page_size > 0).then_some(req.page_size),
-            ..Default::default()
-        };
+        let req = from_proto(request.get_ref())?;
         let listed = ops::list_tasks(&self.state, &auth, req)
             .await
             .map_err(status)?;
-        Ok(Response::new(ListTasksResponse {
-            tasks: listed.tasks.into_iter().map(task).collect(),
-            next_page_token: listed.next_page_token,
-        }))
+        Ok(Response::new(to_proto(&listed)?))
+    }
+
+    async fn cancel_task(
+        &self,
+        request: Request<pb::CancelTaskRequest>,
+    ) -> Result<Response<pb::Task>, Status> {
+        let auth = caller(&self.state, &request).await?;
+        let req = from_proto(request.get_ref())?;
+        let canceled = ops::cancel_task(&self.state, &auth, req)
+            .await
+            .map_err(status)?;
+        Ok(Response::new(to_proto(&canceled)?))
+    }
+
+    type SubscribeToTaskStream = EventStream;
+
+    async fn subscribe_to_task(
+        &self,
+        request: Request<pb::SubscribeToTaskRequest>,
+    ) -> Result<Response<Self::SubscribeToTaskStream>, Status> {
+        let auth = caller(&self.state, &request).await?;
+        let req = from_proto(request.get_ref())?;
+        let stream = ops::subscribe(&self.state, &auth, req)
+            .await
+            .map_err(status)?;
+        Ok(Response::new(events(stream)))
+    }
+
+    async fn create_task_push_notification_config(
+        &self,
+        request: Request<pb::TaskPushNotificationConfig>,
+    ) -> Result<Response<pb::TaskPushNotificationConfig>, Status> {
+        let auth = caller(&self.state, &request).await?;
+        let config = from_proto(request.get_ref())?;
+        let created = push::create(&self.state, &auth, config)
+            .await
+            .map_err(status)?;
+        Ok(Response::new(to_proto(&created)?))
+    }
+
+    async fn get_task_push_notification_config(
+        &self,
+        request: Request<pb::GetTaskPushNotificationConfigRequest>,
+    ) -> Result<Response<pb::TaskPushNotificationConfig>, Status> {
+        let auth = caller(&self.state, &request).await?;
+        let req = from_proto(request.get_ref())?;
+        let config = push::get(&self.state, &auth, req).await.map_err(status)?;
+        Ok(Response::new(to_proto(&config)?))
+    }
+
+    async fn list_task_push_notification_configs(
+        &self,
+        request: Request<pb::ListTaskPushNotificationConfigsRequest>,
+    ) -> Result<Response<pb::ListTaskPushNotificationConfigsResponse>, Status> {
+        let auth = caller(&self.state, &request).await?;
+        let req = from_proto(request.get_ref())?;
+        let listed = push::list(&self.state, &auth, req).await.map_err(status)?;
+        Ok(Response::new(to_proto(&listed)?))
+    }
+
+    async fn get_extended_agent_card(
+        &self,
+        request: Request<pb::GetExtendedAgentCardRequest>,
+    ) -> Result<Response<pb::AgentCard>, Status> {
+        let auth = caller(&self.state, &request).await?;
+        let card = card::extended(&self.state, &auth).map_err(status)?;
+        Ok(Response::new(to_proto(&card)?))
+    }
+
+    async fn delete_task_push_notification_config(
+        &self,
+        request: Request<pb::DeleteTaskPushNotificationConfigRequest>,
+    ) -> Result<Response<pbjson_types::Empty>, Status> {
+        let auth = caller(&self.state, &request).await?;
+        let req = from_proto(request.get_ref())?;
+        push::delete(&self.state, &auth, req)
+            .await
+            .map_err(status)?;
+        Ok(Response::new(pbjson_types::Empty::default()))
     }
 }
 

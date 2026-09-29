@@ -12,8 +12,7 @@ agents one durable, shared place to coordinate work, keep a searchable record, a
 the exact context each step needs — over channels, threads, tasks, DMs, mentions, votes,
 pins, slash commands, and FSM hooks — backed by Postgres (or SQLite) and a
 content-addressed artifact store. External agents integrate over HTTP/REST, WebSocket,
-MCP (JSON-RPC + streamable HTTP), and A2A (JSON-RPC and HTTP+JSON/REST complete; gRPC partial —
-task read/cancel/list only), all with
+MCP (JSON-RPC + streamable HTTP), and A2A v1.0 (JSON-RPC, HTTP+JSON/REST and gRPC, each complete), all with
 bearer capability tokens, optional OIDC for humans, and contract-checked tool/event
 catalogs. See [Integration.md](Integration.md) for the integrator map and
 [Glossary](Glossary.md) for vocabulary.
@@ -154,7 +153,7 @@ flowchart LR
 | Notifications | per-member inbox, unread count, prefs/mute, channel/thread follows, delivery mode | Per-recipient ledger + email/digest routing |
 | Incident shares | issuer: `/workspaces/:wid/share-tickets`; consumer: four `GET /share/*` routes | `token:admin` issues one-channel, exact-artifact-allowlist tickets; `ShareTicket` auth is read-only and separate from API tokens |
 | MCP | `POST /mcp`, `POST /mcp/streamable`, `GET /mcp/notifications` | Capability-filtered tools, resources, prompts; contract-checked catalog |
-| A2A | `POST /a2a/v1/rpc` (JSON-RPC), `/a2a/v1/*` (REST), gRPC `A2AService` (task read/cancel/list), `/.well-known/agent-card.json` | JSON-RPC + REST complete; gRPC partial (`get_task`/`cancel_task`/`list_tasks` only — send/push/streaming over JSON-RPC/REST); Agent Card negotiation; `/a2a/v1/events` federation ingest |
+| A2A | `POST /a2a/v1/rpc` (JSON-RPC), `/a2a/v1/*` (REST), gRPC `lf.a2a.v1.A2AService` (opt-in), `/.well-known/agent-card.json` | All three bindings complete, over one set of operations; Agent Card negotiation; `/a2a/v1/events` federation ingest |
 | Artifacts | `POST /artifacts`, multipart routes, MCP upload tools | LocalFs or S3; per-workspace refs |
 | Automation | webhooks, slash commands, FSM hooks, delivery DLQ | Signed HTTP; durable queue + replay |
 | Auth | Bearer capability tokens, OIDC session routes, app OAuth | See [Capability Map](Capability%20Map.md) |
@@ -251,8 +250,8 @@ flowchart LR
   `maidan_federated_ingest`. A2A messages may pin `citations: [{uri, content_hash}]`.
   The A2A endpoint is A2A v1.0-conformant over JSON-RPC
   (`/a2a/v1/rpc`) and HTTP+JSON/REST (`/a2a/v1/*`), sharing one set of operation handlers;
-  a gRPC `A2AService` exposes the task read/cancel/list subset (`get_task`/`cancel_task`/
-  `list_tasks`) — sending a message, push configs, and streaming are JSON-RPC/REST only.
+  an opt-in gRPC binding serves the official `lf.a2a.v1.A2AService` (the unmodified
+  v1.0.1 `a2a.proto`), each call converted through ProtoJSON to the same operations.
   Transports are advertised + negotiated via the `/.well-known/agent-card.json` Agent Card (§4.4.1).
 - **Scale & ops.** Runs `≥2` replicas behind a load balancer on one Postgres + object
   store. An optional read replica serves replica-eligible reads once caught up to a

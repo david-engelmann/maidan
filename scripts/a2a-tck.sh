@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A2A conformance: the official A2A TCK (Technology Compatibility Kit) against
-# a real Maidan, over the JSON-RPC and HTTP+JSON bindings.
+# a real Maidan, over all three bindings: JSON-RPC, HTTP+JSON and gRPC.
 #
 # Boots a source-built Maidan on a throwaway SQLite file with auth ENABLED,
 # seeds it with `maidan init`, runs the walkthrough in examples/a2a_interop.py,
@@ -12,6 +12,7 @@
 #
 # Usage:  scripts/a2a-tck.sh
 # Env:    MAIDAN_A2A_PORT (default 18095)
+#         MAIDAN_A2A_GRPC_PORT (default 18096)
 #         MAIDAN_BIN_DIR (default ./target/debug; skip the build if set)
 #         A2A_TCK_DIR (reuse a checkout of the pinned TCK commit)
 set -euo pipefail
@@ -25,9 +26,10 @@ export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 tck_repo="https://github.com/a2aproject/a2a-tck.git"
 tck_commit="263b9cfaf16a554bdfb166a7ba5b67716e946349"
 # Tests that pass at this commit. Raise it when a fix makes more pass.
-min_passed=135
+min_passed=182
 
 port="${MAIDAN_A2A_PORT:-18095}"
+grpc_port="${MAIDAN_A2A_GRPC_PORT:-18096}"
 base="http://127.0.0.1:${port}"
 bin_dir="${MAIDAN_BIN_DIR:-}"
 
@@ -77,6 +79,7 @@ echo "=== booting (auth enabled) ==="
 FEDERATION_ENCRYPTION_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')" \
   MAIDAN_ALLOW_PRIVATE_EGRESS=1 MAIDAN_RATE_LIMIT_MAX=0 \
   MAIDAN_A2A_PUBLIC_ORIGIN="${base}" MAIDAN_BIND="127.0.0.1:${port}" \
+  MAIDAN_A2A_GRPC_ADDR="127.0.0.1:${grpc_port}" MAIDAN_A2A_GRPC_PUBLIC_ADDR="127.0.0.1:${grpc_port}" \
   "${bin_dir}/maidan-server" >"${work}/server.log" 2>&1 &
 server_pid=$!
 for _ in $(seq 1 60); do
@@ -89,14 +92,12 @@ curl -sf "${base}/health" >/dev/null || { cat "${work}/server.log" >&2; exit 1; 
 echo "=== walkthrough (examples/a2a_interop.py) ==="
 MAIDAN_URL="$base" MAIDAN_TOKEN="$token" "$tck/.venv/bin/python" examples/a2a_interop.py
 
-echo "=== A2A TCK (jsonrpc, http_json) ==="
-# The gRPC binding serves only GetTask/CancelTask/ListTasks, so the TCK's gRPC
-# transport is not run; see docs/Protocols.md.
+echo "=== A2A TCK (jsonrpc, http_json, grpc) ==="
 cd "$tck"
 MAIDAN_TOKEN="$token" \
   A2A_TCK_EXCLUSIONS="${root}/scripts/a2a-tck/exclusions.txt" \
   A2A_TCK_MIN_PASSED="$min_passed" \
   PYTHONPATH="${root}/scripts/a2a-tck" \
   "$tck/.venv/bin/python" -m pytest tests/compatibility/ \
-  --sut-host="$base" --transport=jsonrpc,http_json \
+  --sut-host="$base" --transport=jsonrpc,http_json,grpc \
   -p maidan_tck -p no:cacheprovider -q --tb=short -rfE

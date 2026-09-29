@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### The A2A gRPC binding serves the official proto
+
+- **Changed:** the gRPC binding (`MAIDAN_A2A_GRPC_ADDR`) served a
+  self-written subset proto (`a2a.v1`, GetTask/CancelTask/ListTasks, a task
+  with no history or timestamps). It now serves `lf.a2a.v1.A2AService` from
+  the official v1.0.1 `a2a.proto`, unmodified: SendMessage,
+  SendStreamingMessage, SubscribeToTask, the four push-config operations and
+  GetExtendedAgentCard too. Each call converts through ProtoJSON to the
+  operations the JSON-RPC and REST bindings run, so the three cannot drift.
+  Clients generated from the old subset proto must regenerate from the
+  official one.
+- **Fixed:** a gRPC error now carries the A2A `google.rpc.ErrorInfo`
+  (reason, domain, metadata) in its status details, as the other bindings do.
+- The official A2A TCK now runs over gRPC as well as JSON-RPC and HTTP+JSON;
+  182 tests pass (was 135).
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
