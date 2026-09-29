@@ -32,6 +32,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   accepted. A refusal for `token:admin` no longer points you at Tokens, which
   needs `token:admin` itself.
 - **Fixed:** exception text shown in lists is escaped.
+- **Fixed:** switching channel clears the previous task's buttons and drops
+  its header requests still in flight, so Approve or Close task can no longer
+  act on a task that is off screen.
+- **Fixed:** a Needs-you row survives a queue reload while it is in use. A
+  change note being typed stays, and an approved row keeps its Close task.
+  A refused inbox load clears the queue and the count in the tab title.
+- **Fixed:** a lapsed or failed claim, or a reassignment, no longer marks
+  the member it names as live.
+- **Fixed:** the board loads every page of a large channel (the 20,000-task
+  cap is gone) and stops if a cursor does not advance.
 - **Fixed:** an MCP call with an id that does not exist answers `-32004`
   not found, as REST answers 404, instead of `-32603` internal error.
 - **Changed:** the Connect prompt names the channel by id with `lease_secs`,

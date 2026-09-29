@@ -1481,7 +1481,9 @@
           const threads = [];
           const pageSize = 500;
           let cursor = null;
-          for (let page = 0; page < 40; page++) {
+          // No page cap: a large channel gets every card. A cursor that does
+          // not advance would loop forever, so that stops the walk instead.
+          for (;;) {
             const q = new URLSearchParams({ limit: String(pageSize) });
             if (cursor) q.set("cursor", cursor);
             const res = await fetch(
@@ -1493,7 +1495,9 @@
             if (stale()) return;
             threads.push(...batch);
             if (batch.length < pageSize) break;
-            cursor = batch[batch.length - 1].id;
+            const next = batch[batch.length - 1].id;
+            if (next === cursor) break;
+            cursor = next;
           }
           const gates = await fetchPendingGatesByThread();
           if (stale()) return;
@@ -1836,9 +1840,18 @@
       // reconnect replays only what it missed, so arrival time is close to
       // when an event happened.
       const ACTOR_KEYS = ["actor_id", "author_id", "assignee_id", "member_id", "produced_by", "reviewer_id", "requested_by", "resolved_by", "editor_id", "updated_by"];
+      // Some kinds name a subject, not an actor: a lapsed or failed claim names
+      // the holder that went quiet, and a reassignment names who received the
+      // work. Those members did not act, so they do not light up.
+      const SUBJECT_KEYS = {
+        claim_expired: ["member_id", "assignee_id"],
+        claim_failed: ["member_id", "assignee_id"],
+        thread_assignment_changed: ["assignee_id", "member_id"],
+      };
       function markSeenFromFrame(v) {
         if (!v) return;
-        for (const k of ACTOR_KEYS) if (typeof v[k] === "string") markSeen(v[k]);
+        const skip = SUBJECT_KEYS[v.kind] || [];
+        for (const k of ACTOR_KEYS) if (!skip.includes(k) && typeof v[k] === "string") markSeen(v[k]);
         if (v.message && typeof v.message.author_id === "string") markSeen(v.message.author_id);
         if (v.attribution && typeof v.attribution.actor_id === "string") markSeen(v.attribution.actor_id);
       }
@@ -2055,7 +2068,12 @@
             credentials: "include",
           });
           if (!res.ok) {
+            // A refused token has nothing waiting that it may see: clear the
+            // queue and the count in the tab title, unless a newer load won.
+            if (gen !== needsYouGen) return;
             box.hidden = true;
+            needsYou = [];
+            setAttention(0);
             return;
           }
           items = (await res.json()).items.filter((i) => NY_KINDS.has(i.kind));
@@ -2078,6 +2096,17 @@
         const count = document.getElementById("needs-you-count");
         const hint = document.getElementById("needs-you-hint");
         box.hidden = false;
+        // A row the human is using (typing a change note, or approved and
+        // about to close) survives a reload, even if its request has left the
+        // inbox: rebuilding it would drop the note or the Close task button.
+        const keep = new Map();
+        for (const li of list.children) {
+          const note = li.querySelector(".ny-note input");
+          const inUse = li.classList.contains("in-use") || li.contains(document.activeElement) || (note && note.value.trim());
+          if (!li.classList.contains("leaving") && inUse) {
+            keep.set(li.dataset.key, li);
+          }
+        }
         list.replaceChildren();
         const n = needsYou.length;
         count.textContent = n ? String(n) : "";
@@ -2086,12 +2115,22 @@
           ? `${n === 1 ? "An agent is" : "Agents are"} waiting on your decision.`
           : "Nothing is waiting on you. Reviews and approvals agents ask you for show up here.";
         setAttention(n);
-        needsYou.forEach((item) => list.appendChild(needsYouRow(item)));
+        needsYou.forEach((item) => {
+          const k = nyKey(item);
+          list.appendChild(keep.get(k) || needsYouRow(item));
+          keep.delete(k);
+        });
+        keep.forEach((li) => list.appendChild(li));
+        if (keep.size) box.classList.remove("clear");
         renderTeam([...threadsById.values()]);
+      }
+      function nyKey(item) {
+        return `${item.kind}:${item.thread_id || ""}:${item.gate_id || ""}`;
       }
       function needsYouRow(item) {
         const li = document.createElement("li");
         li.className = "ny-item";
+        li.dataset.key = nyKey(item);
         li.dataset.kind = item.kind;
         if (item.thread_id) li.dataset.threadId = item.thread_id;
         const kind = document.createElement("span");
@@ -2195,7 +2234,8 @@
       function dropRow(item, li) {
         li.classList.add("leaving");
         setTimeout(() => {
-          needsYou = needsYou.filter((i) => i !== item);
+          // By identity: a reload may have replaced the item object.
+          needsYou = needsYou.filter((i) => nyKey(i) !== nyKey(item));
           renderNeedsYou();
         }, 380);
       }
@@ -2248,6 +2288,7 @@
           actions.querySelectorAll("button").forEach((b) => (b.disabled = false));
           return showRowError(li, out.why);
         }
+        li.classList.add("in-use");
         const rs = await reviewStatus(item.thread_id);
         actions.replaceChildren();
         const note = document.createElement("span");
@@ -4359,6 +4400,10 @@
               document.getElementById("thread-context").classList.add("muted");
               document.getElementById("thread-badge").replaceChildren();
               document.getElementById("thread-facts").replaceChildren();
+              // Buttons of the previous task act on that task, so they go too,
+              // and a header request still in flight for it must not paint.
+              document.getElementById("thread-actions").replaceChildren();
+              headerGen++;
               document.querySelectorAll("#channel-list li").forEach((n) => {
                 n.classList.toggle("selected", n.dataset.id === ch.id);
               });

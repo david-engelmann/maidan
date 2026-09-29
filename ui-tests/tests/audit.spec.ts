@@ -244,3 +244,15 @@ test("pasting a token signs in, and a bad token says why", async ({ page }) => {
   await expect(page.locator("#identity-pill")).toBeVisible();
   await expect(page.locator("#identity-who")).toContainText("Operator");
 });
+
+// Switching channel drops the previous task's buttons: they act on a task
+// that is no longer on screen.
+test("switching channel clears the previous task's header and actions", async ({ page }) => {
+  await signIn(page, fx.review_token, fx.desk_channel_id);
+  await page.click(`#board .card[data-id="${fx.desk_waiting_thread_id}"]`);
+  await expect(page.locator("#thread-actions button").first()).toBeVisible();
+  await page.click(`#channel-list li[data-id="${fx.quiet_channel_id}"]`);
+  await expect(page.locator("#thread-context")).toHaveText("none selected");
+  await expect(page.locator("#thread-actions button")).toHaveCount(0);
+  await expect(page.locator("#thread-facts")).toBeEmpty();
+});

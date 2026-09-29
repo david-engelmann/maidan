@@ -680,7 +680,8 @@ fn ui_js_loads_every_page_of_a_channel_and_only_the_newest_load_paints() {
     assert!(
         body.contains("q.set(\"cursor\", cursor)")
             && body.contains("if (batch.length < pageSize) break;")
-            && body.contains("cursor = batch[batch.length - 1].id;"),
+            && body.contains("const next = batch[batch.length - 1].id;")
+            && body.contains("cursor = next;"),
         "the board follows the keyset cursor until a short page instead of stopping at one page"
     );
 }
@@ -748,7 +749,7 @@ fn ui_js_shows_the_team_and_moves_cards_between_lanes() {
         "live means seen on the socket in the last two minutes, fed by event frames"
     );
     assert!(
-        s.contains("for (const k of ACTOR_KEYS) if (typeof v[k] === \"string\") markSeen(v[k]);")
+        s.contains("for (const k of ACTOR_KEYS) if (!skip.includes(k) && typeof v[k] === \"string\") markSeen(v[k]);")
             && !s.contains("(v && v.payload) || {}"),
         "event frames are flat: actor fields are read from the top level"
     );
@@ -868,5 +869,43 @@ fn ui_js_missing_token_admin_does_not_send_you_back_to_tokens() {
     assert!(
         s.contains("if (status === 403 && needs && needs[1] === \"token:admin\")"),
         "minting needs token:admin, so a token:admin refusal must not say mint one in Tokens"
+    );
+}
+
+#[test]
+fn ui_js_presence_skips_subjects_that_did_not_act() {
+    let s = script(HTML);
+    assert!(
+        s.contains("claim_expired: [\"member_id\", \"assignee_id\"],")
+            && s.contains("thread_assignment_changed: [\"assignee_id\", \"member_id\"],")
+            && s.contains("if (!skip.includes(k) && typeof v[k] === \"string\") markSeen(v[k]);"),
+        "a lapsed claim or a reassignment does not mark its subject live"
+    );
+}
+
+#[test]
+fn ui_js_thread_pages_have_no_cap_but_stop_on_a_stuck_cursor() {
+    let s = script(HTML);
+    assert!(!s.contains("page < 40"), "no 40-page cap on the board walk");
+    assert!(
+        s.contains("if (next === cursor) break;"),
+        "a cursor that does not advance ends the walk"
+    );
+}
+
+#[test]
+fn ui_js_needs_you_clears_on_refusal_and_keeps_rows_in_use() {
+    let s = script(HTML);
+    assert!(
+        s.contains("needsYou = [];\n            setAttention(0);"),
+        "a refused inbox load clears the queue and the tab count"
+    );
+    assert!(
+        s.contains("list.appendChild(keep.get(k) || needsYouRow(item));"),
+        "a row in use survives a reload"
+    );
+    assert!(
+        s.contains("document.getElementById(\"thread-actions\").replaceChildren();\n              headerGen++;"),
+        "a channel switch drops the previous task's buttons and in-flight header"
     );
 }
