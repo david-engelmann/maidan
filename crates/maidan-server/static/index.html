@@ -1732,6 +1732,12 @@
             return;
           }
           items = (await res.json()).items.filter((i) => NY_KINDS.has(i.kind));
+          // Gate rows show the requester and answer with the state of the gate, both
+          // from the gate views. The board fills them, but a first visit with no
+          // channel open has not loaded the board yet.
+          if (items.some((i) => i.gate_id && !pendingGateViews.has(i.gate_id))) {
+            await fetchPendingGatesByThread();
+          }
         } catch (_e) {
           return;
         }
@@ -1801,7 +1807,11 @@
             b.textContent = label;
             if (cls) b.className = cls;
             b.onclick = async () => {
-              const v = pendingGateViews.get(item.gate_id);
+              let v = pendingGateViews.get(item.gate_id);
+              if (!v) {
+                await fetchPendingGatesByThread();
+                v = pendingGateViews.get(item.gate_id);
+              }
               if (!v) return showRowError(li, "This gate is no longer pending.");
               const buttons = actions.querySelectorAll("button");
               buttons.forEach((x) => (x.disabled = true));

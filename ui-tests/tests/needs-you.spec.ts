@@ -109,3 +109,35 @@ test("a network failure while approving says so and leaves the row usable", asyn
   await expect(approveBtn).toBeEnabled();
   expect(await threadState(page, fx.desk_waiting_thread_id)).toBe("in_review");
 });
+
+// On a first visit nothing has opened a channel, so the board has not loaded
+// the gate views yet. A gate row still names who asked and answers the gate.
+test("a gate in needs you names its requester and answers without a channel open", async ({ page, request }) => {
+  const prompt = `Deploy the fix ${Date.now()}?`;
+  const mcp = await request.post(`${fx.base_url}/mcp`, {
+    headers: { Authorization: `Bearer ${fx.requester_token}`, "Content-Type": "application/json" },
+    data: {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "request_approval", arguments: { prompt, thread_id: fx.thread_id } },
+    },
+  });
+  expect(mcp.ok()).toBeTruthy();
+
+  // A returning visitor: token and workspace are stored, no channel is.
+  await page.goto("/ui/");
+  await page.evaluate(([t, w]) => {
+    localStorage.setItem("maidan_token", t);
+    localStorage.setItem("maidan_workspace", w);
+    localStorage.removeItem("maidan_channel");
+  }, [fx.token, fx.workspace_id]);
+  await page.reload();
+  await expect(page.locator("#channel-list li[data-id]").first()).toBeVisible();
+  await expect(page.locator("#channel-list li.selected")).toHaveCount(0);
+  const gateRow = page.locator("#needs-you-list .ny-item").filter({ hasText: prompt });
+  await expect(gateRow).toBeVisible();
+  await expect(gateRow.locator(".ny-sub")).toContainText("asked by");
+  await gateRow.getByRole("button", { name: "Approve" }).click();
+  await expect(gateRow).toHaveCount(0);
+});
