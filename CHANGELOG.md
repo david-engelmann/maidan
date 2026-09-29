@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Room-LSN is the room's on every outbound path
+
+- **Fixed:** webhook POSTs, automation deliveries and the WebSocket and MCP
+  stream `subscribe_ack` stamped `Maidan-Room-LSN` with the instance-wide
+  event-log head, so a webhook's third-party receiver could read the
+  instance's total event volume. They now carry the subscribing workspace's
+  head; a subscriber watching no single workspace gets `null`.
+
 ### NOTIFY floor simulation
 
 - **Added:** a seeded deterministic simulation of the Postgres listener's

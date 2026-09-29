@@ -109,7 +109,8 @@ Subscribe frame: `contracts/ws-subscribe-filter.schema.json`
 `member_id`, `kinds[]`, `channel_grants[]`). `after_id` and
 `consumer_id` are siblings of `filter` on the subscribe frame, not
 inside it. Server replies `subscribe_ack`, `schema_version`,
-`resume_token`, `after_id`, `room_lsn`. `type: cursor_too_old` is **not** a
+`resume_token`, `after_id`, `room_lsn` (the filter's workspace head, or `null`
+when the subscription spans workspaces). `type: cursor_too_old` is **not** a
 benign control frame — deliver it and stop.
 
 Live frames and REST `GET /workspaces/{id}/events` (`StoredEvent`)
@@ -118,7 +119,8 @@ row also carries `{lsn, prev_hash, content_hash}` (Cluster 392 hash
 chain; `lsn` equals `id`). Ignore unknown fields. The pack is
 `contracts/lexicon/`. `$type` is not a stored column.
 
-REST responses stamp `Maidan-Room-LSN` (decimal event-log high-water).
+REST responses and webhook POSTs stamp `Maidan-Room-LSN`: the caller's (or the
+subscribing) workspace's event-log high-water, in decimal.
 Clients expose `last_room_lsn` / `LastRoomLSN` / `lastRoomLsn` from
 that header and **must not** parse a `Maidan-Consistency-Token` WAL
 string (`0/hex`) as a room head. The two headers answer different
@@ -136,8 +138,8 @@ until `has_more` is false, then `follow` from the page head.
 the SDK default.
 
 Taps (webhook, WS, search) verify backfill, drain history before
-live, and compare live-ready to the **workspace / shape** head —
-not the global `Maidan-Room-LSN`.
+live, and compare live-ready to the **workspace / shape** head, which is what
+`Maidan-Room-LSN` reports.
 
 Wait helpers are **not** extra HTTP methods. They wrap `subscribe`:
 

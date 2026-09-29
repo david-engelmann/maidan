@@ -53,13 +53,25 @@ fn skip_path(path: &str) -> bool {
     ) || path.starts_with("/.well-known/")
 }
 
-/// Best-effort **instance** head. `None` if the store read fails (fail-open: no
-/// header).
-///
-/// Used by `subscribe_ack` callers that have no workspace in hand. Prefer
-/// [`current_for_room`] wherever the room is known — see its doc for why the
-/// instance head is the wrong number to hand a projector.
-pub async fn current(store: &dyn Store) -> Option<i64> {
+/// The head for whatever room the caller is in: its workspace's head, or
+/// `None` (no header, or `null` in a frame) when there is no one room, as for a
+/// bypass subscriber watching every workspace. The instance-wide head is never
+/// reported: it is incomparable to any `log_id` a client has seen, and it would
+/// tell a tenant, or a webhook's third-party receiver, the instance's total
+/// event volume.
+pub async fn current_for_scope(
+    store: &dyn Store,
+    workspace_id: Option<maidan_types::WorkspaceId>,
+) -> Option<i64> {
+    match workspace_id {
+        Some(workspace_id) => current_for_room(store, workspace_id).await,
+        None => None,
+    }
+}
+
+/// The instance head, only for an auth-disabled dev server, which has no rooms
+/// to tell apart.
+async fn instance_head(store: &dyn Store) -> Option<i64> {
     match store.max_event_id().await {
         Ok(id) => Some(RoomLsn::from_max_id(id).as_i64()),
         Err(err) => {
@@ -143,7 +155,7 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
         // single-tenant by configuration, so the instance head *is* the room
         // head. Outside that, no scope means no authenticated room and the
         // header is omitted rather than guessed.
-        None if state.auth_disabled => current(state.store.as_ref()).await,
+        None if state.auth_disabled => instance_head(state.store.as_ref()).await,
         None => return resp,
     };
     if let Some(lsn) = lsn {

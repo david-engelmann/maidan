@@ -161,7 +161,7 @@ pub async fn stream(
     let ack = subscribe_ack_payload(
         &token,
         high_water,
-        crate::room_lsn::current(state.store.as_ref()).await,
+        crate::room_lsn::current_for_scope(state.store.as_ref(), filter.workspace_id).await,
     )
     .ok_or_else(|| ApiError::Internal("subscribe_ack serialization failed".into()))?;
     if text_tx.send(ack).await.is_err() {

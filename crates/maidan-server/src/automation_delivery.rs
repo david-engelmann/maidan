@@ -40,7 +40,8 @@ pub async fn deliver_pending(
     let (client, target) = crate::egress_http::client_for(&delivery.target_url).await?;
     let secret = resolve_secret(state, delivery).await?;
     let signature = sign_payload(&secret, &delivery.payload);
-    let room_lsn = crate::room_lsn::current(state.store.as_ref()).await;
+    let room_lsn =
+        crate::room_lsn::current_for_room(state.store.as_ref(), delivery.workspace_id).await;
     let mut request = client
         .post(target)
         .header("Content-Type", "application/json")

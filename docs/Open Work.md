@@ -1330,13 +1330,19 @@ because the tests assert the happy path of a single tenant.
    answer was to make the resolved workspace flow *outward* — `auth` tags the
    response with a `RoomScope` extension from all four authenticating paths
    (bearer, peer, `/ui` bearer, `/ui` session), and the outer middleware reads it
-   on the way back. That keeps one stamping site instead of three routers, and a
-   response with no scope (unauthenticated, or `AUTH_DISABLED`) falls back to the
-   instance head rather than omitting the header, so the Cluster-390 published
-   contract — *always on* — still holds. A caught-up projector can now actually
-   reach the number it is compared against, and a tenant no longer learns
-   instance-wide event volume from a header shipped to third-party webhook
-   endpoints.
+   on the way back. That keeps one stamping site instead of three routers. An
+   `AUTH_DISABLED` server, single-tenant by configuration, stamps the instance
+   head; any other response with no scope omits the header. A caught-up
+   projector can now actually reach the number it is compared against.
+
+   The **outbound half (#1105)**: 398.8 scoped the HTTP header, but the webhook
+   POST, the automation delivery and the WS / MCP-stream `subscribe_ack` still
+   read the instance head, so a tenant's third-party webhook receiver learned
+   instance-wide event volume after all. All four now report the subscribing
+   workspace's head (`room_lsn::current_for_room` / `current_for_scope`); a
+   subscriber with no single workspace gets `null`. The instance-head reader is
+   private to the `AUTH_DISABLED` arm, so a new caller cannot reach for it
+   (`room_lsn_scope_e2e`).
 10. **Unbounded reads — mostly ✅ FIXED (Cluster 397.8, #879), one residual.**
     `verify_chain` now streams instead of collecting every link and payload;
     `backfill_chain` never rewrites a row that already carries a `content_hash`,
