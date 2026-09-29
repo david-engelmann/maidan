@@ -25,6 +25,7 @@ Direction is in [Roadmap](Roadmap.md); what shipped is in
 | #1107 | A misspelt `MAIDAN_*` variable refuses boot, with a did-you-mean (F-52) | F-52 | CI |
 | #1113 | Six docs fixes from the enhancement thread | Thread items 13, 14a, 19, 20, 22, 23 | CI |
 | #1114 | A2A pushes go over https; plaintext gRPC off loopback needs `MAIDAN_A2A_GRPC_PLAINTEXT=1` | Thread items 15 and 16 | #1107 (registers the new variable) |
+| #1116 | `POST /tokens/{id}/rotate` and MCP `rotate_token`: a new secret for the same authority, quotas and derived tokens kept | Thread item 11, the server half of Next #3 | #1113, #1098 |
 
 ## Next: ranked
 
@@ -189,7 +190,7 @@ not re-filed.
 **Sequencing.** The three P0s (Next #1–3) come first. Items 1 and 3 of the
 thread rewrite the same `static/index.html` that #1086 and #1093 are
 rewriting, so they start the moment #1093 lands; the server half of Next #3
-(the rotation endpoint) does not touch the page and starts now.
+(the rotation endpoint) does not touch the page and is in flight as #1116.
 
 **Where the thread was wrong.** Item 2b assumed the UI had no cookie session:
 `crates/maidan-server/src/session/mod.rs` already issues `HttpOnly;
