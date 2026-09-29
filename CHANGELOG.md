@@ -101,8 +101,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### TLA+ specs
 
 - **Added:** TLA+ specs of the claim state machine and of the hash-chained
-  log with crypto-shredding (`specs/tla`), checked by TLC with
-  `scripts/tla.sh`. They run locally; a CI job for them is not wired up yet.
+  log with crypto-shredding (`specs/tla`), checked by TLC in the
+  non-required `tla` CI job (`scripts/tla.sh`).
 - **Fixed:** a thread claimed by id, assigned or released kept the previous
   holder's lease deadline, so a holder without a lease could lose the
   thread to `claim_next` with a `ClaimExpired`. Every write that changes the

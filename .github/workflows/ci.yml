@@ -231,6 +231,24 @@ jobs:
       - name: mcp external verifier
         run: scripts/mcp-inspector.sh
 
+  tla:
+    name: tla
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Model-checks the TLA+ specs in specs/tla with TLC (pinned in
+    # scripts/tla.sh). Not a required check (docs/Decisions.md).
+    steps:
+      - uses: actions/checkout@v4
+      - name: set up java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: tlc
+        run: scripts/tla.sh
+
   sdk-interop:
     name: sdk interop (report-only)
     needs: changes
