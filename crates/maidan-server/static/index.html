@@ -1634,13 +1634,17 @@
       // minutes. Nothing here is inferred beyond that.
       const lastSeen = new Map();
       const LIVE_MS = 120000;
-      function markSeen(id) {
-        if (id && memberDirectory.has(id)) lastSeen.set(id, Date.now());
+      function markSeen(id, at) {
+        if (!id || !memberDirectory.has(id)) return;
+        const t = Math.min(Date.now(), at || Date.now());
+        if (t > (lastSeen.get(id) || 0)) lastSeen.set(id, t);
       }
+      // A replayed event counts from when it happened, not when it arrived.
       function markSeenFromFrame(v) {
         const p = (v && v.payload) || {};
+        const at = v && v.occurred_at ? Date.parse(v.occurred_at) : Date.now();
         for (const k of ["author_id", "actor_id", "assignee_id", "member_id", "produced_by", "reviewer_id", "requested_by"]) {
-          if (typeof p[k] === "string") markSeen(p[k]);
+          if (typeof p[k] === "string") markSeen(p[k], at);
         }
       }
       function renderTeam(threads) {
