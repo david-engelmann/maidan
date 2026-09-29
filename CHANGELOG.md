@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Delivery retention covers every delivery table
+
+- **Fixed:** `MAIDAN_RETENTION_DELIVERIES_DAYS` pruned only webhook and
+  automation deliveries. Published transactional-outbox rows, delivered egress,
+  delivered mail and dead-lettered agent runs grew forever; the outbox alone
+  gains a row per event. They are pruned now. Pending rows are still never
+  pruned, and egress and mail dead letters stay until an operator requeues
+  them, since an alert fires while they exist. A legal hold exempts a
+  workspace's egress, mail and agent runs, as it does its events.
+- **Docs:** Production.md has a Retention section for all five knobs.
+
 ### A requested review reaches the reviewer, and a refused close says what to do next
 
 - **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP

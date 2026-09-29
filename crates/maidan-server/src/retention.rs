@@ -1,6 +1,8 @@
 //! Background data-retention pruning.
 //!
-//! The event log, audit trail, and delivery tables grow without bound. This
+//! The event log, audit trail, and delivery tables (webhook and automation
+//! deliveries, the transactional, egress and mail outboxes, the agent-run DLQ)
+//! grow without bound. This
 //! sweeper deletes rows past a per-table age, in batches (so a first sweep over
 //! a long-unpruned table doesn't lock it). Everything is opt-in: with no
 //! `MAIDAN_RETENTION_*_DAYS` set, nothing runs.
