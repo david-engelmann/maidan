@@ -394,8 +394,9 @@ async fn a2a_grpc_serves_the_whole_service() {
             },
             &token,
         ))
-        .await;
-    assert!(subscribed.is_err(), "a completed task streams nothing");
+        .await
+        .expect_err("a completed task streams nothing");
+    assert_eq!(subscribed.code(), tonic::Code::Unimplemented);
 
     // Push configs: create (secrets accepted, never echoed), get, page, delete.
     for id in ["a", "b"] {

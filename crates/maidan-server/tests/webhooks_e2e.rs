@@ -1,5 +1,8 @@
 //! Outbound webhook delivery with HMAC verification.
 
+// Mock receivers are plain axum servers, not the API (see clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 use std::{
     net::SocketAddr,
     sync::{

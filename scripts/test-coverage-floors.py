@@ -30,6 +30,14 @@ SF:/home/runner/.cargo/registry/src/some-dep/src/lib.rs
 LF:100
 LH:0
 end_of_record
+SF:/home/runner/work/maidan/maidan/crates/maidan-fsm/src/a2a_grpc/generated.serde.rs
+LF:1000
+LH:1
+end_of_record
+SF:/home/runner/work/maidan/maidan/crates/maidan-fsm/src/a2a_grpc/generated.rs
+LF:500
+LH:1
+end_of_record
 """
 
 
@@ -38,7 +46,7 @@ def config(workspace, **crates):
 
 
 class PerCrate(unittest.TestCase):
-    def test_lines_are_summed_per_crate_and_foreign_files_ignored(self):
+    def test_lines_are_summed_per_crate_and_foreign_and_generated_files_ignored(self):
         totals = floors.per_crate(LCOV)
         self.assertEqual(sorted(totals), ["maidan-auth", "maidan-fsm"])
         self.assertEqual((totals["maidan-auth"].covered, totals["maidan-auth"].found), (19, 20))

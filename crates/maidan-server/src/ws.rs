@@ -16,7 +16,7 @@
 //! 8. After subscribe, client may send `{"type":"presence","status":"online"|"away"}`
 //!    or `{"type":"typing","thread_id":"…","active":true|false}`.
 
-use std::{borrow::Cow, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use axum::{
     extract::{
@@ -194,12 +194,12 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
         Ok(r) => r,
         Err(reject) => {
             if let Some(frame) = reject.frame {
-                let _ = socket.send(WsMessage::Text(frame)).await;
+                let _ = socket.send(WsMessage::Text(frame.into())).await;
             }
             let _ = socket
                 .send(WsMessage::Close(Some(CloseFrame {
                     code: reject.code,
-                    reason: Cow::Owned(reject.reason),
+                    reason: reject.reason.into(),
                 })))
                 .await;
             return;
@@ -213,7 +213,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
         let (text_tx, mut text_rx) = mpsc::channel::<String>(SEND_QUEUE);
         tokio::spawn(async move {
             while let Some(payload) = text_rx.recv().await {
-                if ws_tx.send(WsMessage::Text(payload)).await.is_err() {
+                if ws_tx.send(WsMessage::Text(payload.into())).await.is_err() {
                     break;
                 }
             }
@@ -233,7 +233,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
             let _ = socket
                 .send(WsMessage::Close(Some(CloseFrame {
                     code: 1011,
-                    reason: Cow::Borrowed("bus unavailable"),
+                    reason: "bus unavailable".into(),
                 })))
                 .await;
             return;
@@ -269,7 +269,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
                 let _ = socket
                     .send(WsMessage::Close(Some(CloseFrame {
                         code: 1011,
-                        reason: Cow::Borrowed("replay failed"),
+                        reason: "replay failed".into(),
                     })))
                     .await;
                 return;
@@ -283,7 +283,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
             let _ = socket
                 .send(WsMessage::Close(Some(CloseFrame {
                     code: 1011,
-                    reason: Cow::Owned(reason),
+                    reason: reason.into(),
                 })))
                 .await;
             return;
@@ -425,12 +425,12 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
                     let _ = socket
                         .send(WsMessage::Close(Some(CloseFrame {
                             code: 1011,
-                            reason: Cow::Borrowed("pong timeout"),
+                            reason: "pong timeout".into(),
                         })))
                         .await;
                     break;
                 }
-                if socket.send(WsMessage::Ping(Vec::new())).await.is_err() {
+                if socket.send(WsMessage::Ping(Default::default())).await.is_err() {
                     break;
                 }
             }

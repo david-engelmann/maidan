@@ -1,5 +1,8 @@
 //! FSM hooks fire on ThreadStateChanged via the event bus.
 
+// Mock receivers are plain axum servers, not the API (see clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},

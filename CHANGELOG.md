@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### axum 0.8, and handlers checked at compile time
+
+- **Changed:** the HTTP server is on axum 0.8 (one axum in the tree; the
+  `axum@0.8.9` duplicate that tonic pulled is gone). Routes use the `{id}`
+  path syntax. No API change.
+- Routes register through `crate::routing`, which accepts a handler only when
+  every extractor answers a rejection as an RFC 9457 problem (or a protocol's
+  own envelope). A handler taking axum's `Json`, `Path`, `Query`, `Bytes` or
+  `String` does not compile, and clippy refuses axum's own routing functions.
+  This replaces a source scan of handler signatures.
+
 ### TLA+ specs
 
 - **Added:** TLA+ specs of the claim state machine and of the hash-chained

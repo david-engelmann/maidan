@@ -69,7 +69,8 @@ crate::extract::wrap_extractor!(
 /// in SCIM's error envelope when it is over the body-size limit or not UTF-8.
 pub struct ScimText(pub String);
 
-#[axum::async_trait]
+impl crate::routing::Checked for ScimText {}
+
 impl<S> FromRequest<S> for ScimText
 where
     S: Send + Sync,

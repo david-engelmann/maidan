@@ -5,6 +5,9 @@
 //! loopback server (via the new `with_base_url`) and assert the exact request
 //! they send, plus the success/error decoding.
 
+// Mock receivers are plain axum servers, not the API (see clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},

@@ -357,6 +357,7 @@ async fn deliver_a2a_push(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // mock servers, not the API
 mod tests {
     use super::*;
     use std::sync::{

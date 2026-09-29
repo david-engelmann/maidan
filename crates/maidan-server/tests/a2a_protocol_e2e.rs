@@ -4,6 +4,9 @@
 //! threads, the author is the caller, tasks hold no words) and the fixes the
 //! TCK drove.
 
+// Mock receivers are plain axum servers, not the API (see clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 use std::collections::HashSet;
 use std::sync::atomic::AtomicI64;
 use std::sync::{Arc, Mutex};

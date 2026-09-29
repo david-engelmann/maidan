@@ -6,7 +6,9 @@ Reads an lcov report (``cargo llvm-cov report --lcov``) and the floors in
 workspace crate, and exits non-zero when the workspace or any crate is under
 its floor. A crate that shows up in the report without a floor, or a floor for
 a crate the report does not cover, is also a failure: a new crate gets a floor
-when it lands, and a removed one takes its floor with it.
+when it lands, and a removed one takes its floor with it. Vendored generated
+code (``generated.rs``, ``generated.serde.rs``, e.g. the A2A gRPC codegen) is
+not counted: most of it is the full protocol surface, not code we wrote.
 
 Usage: coverage-floors.py LCOV [--floors PATH]
 """
@@ -22,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 CRATE_PATH = re.compile(r"(?:^|/)crates/([^/]+)/")
+GENERATED = re.compile(r"/generated(?:\.serde)?\.rs$")
 
 
 @dataclass
@@ -42,7 +45,8 @@ def per_crate(lcov: str) -> dict[str, Lines]:
         line = raw.strip()
         if line.startswith("SF:"):
             match = CRATE_PATH.search(line[3:])
-            crate = match.group(1) if match else None
+            generated = GENERATED.search(line[3:])
+            crate = match.group(1) if match and not generated else None
         elif crate is None:
             continue
         elif line.startswith("LF:"):
