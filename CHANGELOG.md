@@ -40,14 +40,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   lists `500` on every operation and `503` on every sheddable one.
 ### Idempotency keys on writes (server half)
 
-- **Added:** writes (POST/PUT/PATCH/DELETE) from an authenticated caller take
+- **Added:** writes (POST/PUT/PATCH/DELETE) from an authenticated,
+  non-bypass caller on the protected router take
   an optional `Idempotency-Key` header (1–255 visible ASCII characters, else
   400). The first request with a key runs and its response is stored; a retry
   with the same key and the same method, path, query and body gets that
   response back with `Idempotent-Replayed: true` and does not run again. The
   same key on a different request is 422 `problems/idempotency-key-reused`; a
   retry while the first request runs is 409 `problems/idempotency-key-in-flight`. A 5xx, a "not now" 4xx (408,
-  409, 425, 429), a stream or a body over 1 MiB is not kept, so a retry runs
+  409, 425, 429), an SSE response (`text/event-stream`) or a body over
+  1 MiB is not kept, so a retry runs
   again. The first request holds the key for 5 minutes, so one that crashed
   is taken over by the next retry of the same request; each reservation
   carries a lease, so a holder that lost its key cannot complete or release
