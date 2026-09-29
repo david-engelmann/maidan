@@ -7,11 +7,21 @@ export interface Fixtures {
   token: string;
   /** A second member's token, for opening a gate the operator then answers. */
   requester_token: string;
+  /** The operator with workspace:read + event:subscribe, for the Live bar. */
+  live_token: string;
   workspace_id: string;
   member_id: string;
   channel_id: string;
   thread_id: string;
   gate_id: string;
+  /** The requesting agent ("Deployer"), who holds the board's claimed thread. */
+  requester_id: string;
+  /** The `build` channel: one thread per board lane. */
+  board_channel_id: string;
+  board_open_thread_id: string;
+  board_claimed_thread_id: string;
+  board_review_thread_id: string;
+  board_done_thread_id: string;
 }
 
 export function fixtures(): Fixtures {

@@ -2,7 +2,8 @@
 //!
 //! This is **test support, not a shipped binary**: it stands up the real
 //! `maidan-server` router on an in-memory SQLite store, seeds a deterministic
-//! workspace / channel / thread / pending approval gate, mints a bearer token,
+//! workspace / channel / thread / pending approval gate (plus a `build` channel
+//! with one thread per board lane), mints a bearer token,
 //! writes the fixtures to a JSON file, and then serves forever so a headless
 //! browser can drive the actual `/ui`. Playwright's `webServer` starts it,
 //! waits for `/ui/`, runs the specs, and kills it.
@@ -16,10 +17,12 @@ use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
+use maidan_fsm::ThreadAction;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewThread, NewWorkspace,
+    MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewMessage, NewThread,
+    NewWorkspace,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -100,6 +103,75 @@ async fn main() {
         .await
         .expect("gate");
 
+    // A second channel laid out as a board: one thread in each lane, so the
+    // board, the state badges and the name rendering have something real to
+    // show. Kept out of "general" so the specs that pick the first thread
+    // there are unaffected.
+    let build = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "build".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("build channel");
+    let board_thread = |title: &'static str| {
+        let store = store.clone();
+        async move {
+            store
+                .create_thread(NewThread {
+                    channel_id: build.id,
+                    parent_thread_id: None,
+                    title: Some(title.into()),
+                })
+                .await
+                .expect("board thread")
+        }
+    };
+    let open_thread = board_thread("Open: nobody holds this").await;
+    let claimed_thread = board_thread("Claimed: the deployer holds this").await;
+    store
+        .claim_thread(claimed_thread.id, requester.id)
+        .await
+        .expect("claim");
+    let review_thread = board_thread("Review: result waiting on a reviewer").await;
+    store
+        .claim_thread(review_thread.id, requester.id)
+        .await
+        .expect("claim for review");
+    store
+        .post_message(NewMessage {
+            thread_id: review_thread.id,
+            author_id: requester.id,
+            body: "Done; result attached.".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .expect("message");
+    store
+        .set_thread_result(
+            review_thread.id,
+            requester.id,
+            &serde_json::json!({ "status": "fixed" }),
+        )
+        .await
+        .expect("result");
+    store
+        .transition_thread(review_thread.id, requester.id, ThreadAction::StartReview)
+        .await
+        .expect("start review");
+    let done_thread = board_thread("Done: closed").await;
+    store
+        .transition_thread(done_thread.id, member.id, ThreadAction::StartReview)
+        .await
+        .expect("review before close");
+    store
+        .transition_thread(done_thread.id, member.id, ThreadAction::Close)
+        .await
+        .expect("close");
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -139,6 +211,24 @@ async fn main() {
         .await
         .expect("requester token");
 
+    // The operator again, with `event:subscribe`: what the Live bar needs.
+    let live_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: hash_secret(live_secret.as_str()),
+            label: Some("ui-test-live".into()),
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::EVENT_SUBSCRIBE.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .expect("live token");
+
     let art_dir = std::env::temp_dir().join(format!("maidan-ui-test-{}", std::process::id()));
     std::fs::create_dir_all(&art_dir).expect("art dir");
     let artifacts = Arc::new(LocalFsStore::new(&art_dir));
@@ -162,11 +252,18 @@ async fn main() {
         "base_url": format!("http://127.0.0.1:{port}"),
         "token": secret.as_str(),
         "requester_token": requester_secret.as_str(),
+        "live_token": live_secret.as_str(),
         "workspace_id": ws.id.0.to_string(),
         "member_id": member.id.0.to_string(),
         "channel_id": channel.id.0.to_string(),
         "thread_id": thread.id.0.to_string(),
         "gate_id": gate.id.0.to_string(),
+        "requester_id": requester.id.0.to_string(),
+        "board_channel_id": build.id.0.to_string(),
+        "board_open_thread_id": open_thread.id.0.to_string(),
+        "board_claimed_thread_id": claimed_thread.id.0.to_string(),
+        "board_review_thread_id": review_thread.id.0.to_string(),
+        "board_done_thread_id": done_thread.id.0.to_string(),
     });
     std::fs::write(
         &fixtures_path,

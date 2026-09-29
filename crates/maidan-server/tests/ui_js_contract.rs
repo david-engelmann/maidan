@@ -260,9 +260,10 @@ fn ui_js_wires_session_capability_card() {
     );
 }
 
-/// Session-chrome badges on the thread list. Guard the mapping's wiring
-/// statically — the pure classifier must be defined, invoked by loadThreads,
-/// and cover all five chrome states.
+/// Session-chrome badges on the thread list and board. Guard the mapping's
+/// wiring statically — the pure classifier must be defined, invoked by
+/// loadThreads, read the real FSM state (`in_review`) and claim, and cover every
+/// chrome state. There is no catch-all "idle": an unclaimed thread is "open".
 #[test]
 fn ui_js_wires_session_chrome_badges() {
     let s = script(HTML);
@@ -278,9 +279,19 @@ fn ui_js_wires_session_chrome_badges() {
         s.contains("function fetchPendingGatesByThread("),
         "the gate lookup must be defined"
     );
+    assert!(
+        s.contains("th.state === \"in_review\""),
+        "the classifier must read the thread's FSM state, not only its claim"
+    );
+    assert!(
+        !s.contains("chrome-idle"),
+        "\"idle\" hid real state (in review, claimed); it must not come back"
+    );
     for state in [
+        "chrome-open",
+        "chrome-claimed",
         "chrome-running",
-        "chrome-idle",
+        "chrome-in-review",
         "chrome-needs-input",
         "chrome-needs-approval",
         "chrome-done",
@@ -499,5 +510,136 @@ fn ui_uses_locked_brand_mark_and_palette() {
             && HTML.contains("M38.95,32.85L48.07,37.53L59.65,35.70")
             && HTML.contains("M37.52,27.69L47.28,24.55L51.08,17.60"),
         "the /ui header must retain the locked Sweep Reach mark"
+    );
+}
+
+/// People are shown by name. Every place that renders a member resolves it
+/// through the workspace member directory; the raw id survives only as a
+/// tooltip.
+#[test]
+fn ui_js_renders_members_by_display_name() {
+    let s = script(HTML);
+    for f in [
+        "async function loadMembers(",
+        "function memberName(",
+        "function personEl(",
+    ] {
+        assert!(s.contains(f), "the UI must define {f}");
+    }
+    assert!(
+        s.contains("m.display_name || m.handle"),
+        "names come from display_name, falling back to the handle"
+    );
+    for raw in [
+        "`${m.id} · ${m.author_id}`",
+        "`${m.author_id}: ${m.body}`",
+        "`${m.member_id} · ${m.status}",
+    ] {
+        assert!(
+            !s.contains(raw),
+            "a raw member id is rendered as text again: {raw}"
+        );
+    }
+}
+
+/// The channel renders as a live board, and the Live bar stays collapsed until
+/// the socket is up.
+#[test]
+fn ui_js_wires_live_board_and_collapsed_live_bar() {
+    let s = script(HTML);
+    assert!(
+        s.contains("function renderBoard("),
+        "renderBoard must be defined"
+    );
+    assert!(
+        s.contains("renderBoard(threads, gates)"),
+        "loadThreads must render the board"
+    );
+    assert!(
+        s.contains("THREAD_BOARD_KINDS.has(kind)) scheduleBoardRefresh()"),
+        "thread/claim events on the socket must refresh the board"
+    );
+    assert!(
+        HTML.contains("<pre id=\"live-feed\" hidden>"),
+        "the raw live feed starts hidden"
+    );
+    assert!(
+        s.contains("classList.toggle(\"connected\", cls === \"connected\")"),
+        "the Live bar expands only once connected"
+    );
+}
+
+#[test]
+fn ui_js_thread_header_ignores_stale_overlapping_renders() {
+    // A quiet board refresh can re-render the thread header while an earlier
+    // render (from a card click) is still awaiting /result and /review-status.
+    // Each render takes a generation token, and a stale one must not append facts.
+    let js = script(HTML);
+    let start = js
+        .find("async function renderThreadHeader()")
+        .expect("renderThreadHeader is defined");
+    let body = &js[start
+        ..start
+            + js[start..]
+                .find("function selectThread")
+                .expect("selectThread")];
+    assert!(
+        body.contains("const gen = ++headerGen;"),
+        "each render takes a generation"
+    );
+    assert!(
+        body.matches("gen !== headerGen").count() >= 2,
+        "results from a stale render are dropped after each await"
+    );
+    assert!(
+        !body.contains("tid === selectedThreadId"),
+        "the thread-id guard alone lets two renders of the same thread both append"
+    );
+}
+
+#[test]
+fn ui_js_drops_thread_responses_for_a_channel_no_longer_selected() {
+    let s = script(HTML);
+    assert!(
+        s.contains(
+            "const stale = () => selectedChannelId !== channelId || gen !== threadLoadGen;"
+        )
+            && s.contains("if (stale()) return;\n          list.innerHTML = \"\";\n          renderBoard(threads, gates);"),
+        "loadThreads renders only for the channel it was asked for"
+    );
+    assert!(
+        s.contains("li[data-id=\"${CSS.escape(remembered)}\"]"),
+        "the remembered channel id is escaped before it goes into a selector"
+    );
+}
+
+#[test]
+fn ui_js_loads_every_page_of_a_channel_and_only_the_newest_load_paints() {
+    let s = script(HTML);
+    let start = s.find("async function loadThreads").expect("loadThreads");
+    let body = &s[start..start + 3000];
+    assert!(
+        body.contains("const gen = ++threadLoadGen;"),
+        "each load takes a generation, so an older load for the same channel is dropped"
+    );
+    assert!(
+        body.contains("q.set(\"cursor\", cursor)")
+            && body.contains("if (batch.length < pageSize) break;")
+            && body.contains("cursor = batch[batch.length - 1].id;"),
+        "the board follows the keyset cursor until a short page instead of stopping at one page"
+    );
+}
+
+#[test]
+fn ui_js_socket_presence_uses_the_member_it_authenticates_as() {
+    let s = script(HTML);
+    assert!(
+        s.contains("const presenceId = authorId();")
+            && s.contains("if (presenceId) frame.member_id = presenceId;"),
+        "presence goes to the bearer's member when a token is set, matching who the socket authenticates as"
+    );
+    assert!(
+        !s.contains("if (sessionMemberId) frame.member_id = sessionMemberId;"),
+        "the session member is not sent alongside another member's token"
     );
 }
