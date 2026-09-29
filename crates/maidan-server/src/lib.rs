@@ -66,6 +66,7 @@ pub mod result_delivery;
 pub mod retention;
 pub mod room_lsn;
 pub mod routes;
+pub mod routing;
 pub mod scheduler;
 pub mod scim;
 pub mod secret_broker;

@@ -1,5 +1,8 @@
 //! Dedicated mention webhook config and `mention_recorded` delivery.
 
+// Mock receivers are plain axum servers, not the API (see clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 use std::{
     net::SocketAddr,
     sync::{

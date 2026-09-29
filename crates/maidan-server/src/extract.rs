@@ -5,8 +5,8 @@
 //! through these wrappers instead, so a malformed path parameter, query
 //! string or body, a body that is not JSON, or one over the body-size limit
 //! (`MAIDAN_MAX_BODY_BYTES`) answers with `application/problem+json` like any
-//! other client error. `openapi::lint` fails on a handler that takes a raw
-//! axum extractor.
+//! other client error. `crate::routing` refuses, at compile time, a route
+//! whose handler takes a raw axum extractor.
 //!
 //! | Rejection | Status |
 //! |---|---|
@@ -34,7 +34,8 @@ macro_rules! wrap_extractor {
         $(#[$doc])*
         pub struct $name<T>(pub T);
 
-        #[axum::async_trait]
+        impl<T> $crate::routing::Checked for $name<T> {}
+
         impl<T, S> axum::extract::FromRequestParts<S> for $name<T>
         where
             T: serde::de::DeserializeOwned + Send,
@@ -57,7 +58,8 @@ macro_rules! wrap_extractor {
         $(#[$doc])*
         pub struct $name<T>(pub T);
 
-        #[axum::async_trait]
+        impl<T> $crate::routing::Checked for $name<T> {}
+
         impl<T, S> axum::extract::FromRequest<S> for $name<T>
         where
             T: serde::de::DeserializeOwned,
@@ -107,7 +109,8 @@ fn rejected(status: StatusCode, detail: String) -> ApiError {
 /// The raw request body, within the body-size limit.
 pub struct ApiBytes(pub Bytes);
 
-#[axum::async_trait]
+impl crate::routing::Checked for ApiBytes {}
+
 impl<S> FromRequest<S> for ApiBytes
 where
     S: Send + Sync,
@@ -125,7 +128,8 @@ where
 /// The request body as UTF-8 text, within the body-size limit.
 pub struct ApiText(pub String);
 
-#[axum::async_trait]
+impl crate::routing::Checked for ApiText {}
+
 impl<S> FromRequest<S> for ApiText
 where
     S: Send + Sync,
@@ -163,9 +167,8 @@ wrap_extractor!(
 );
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // mock servers, not the API
 mod tests {
-    use std::path::Path as FsPath;
-
     use axum::{
         body::Body,
         http::{header, Request as HttpRequest},
@@ -195,7 +198,7 @@ mod tests {
 
     fn app() -> Router {
         Router::new()
-            .route("/:id", post(add))
+            .route("/{id}", post(add))
             .layer(axum::extract::DefaultBodyLimit::max(64))
     }
 
@@ -319,69 +322,5 @@ mod tests {
                 .status(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
-    }
-
-    /// Source lines where axum, not this module, would answer a rejection: a
-    /// handler parameter destructuring axum's `Path`, `Query` or `Json`, or
-    /// taking the body as raw `Bytes` or `String`. Test modules are skipped;
-    /// their mock servers are not the API.
-    fn raw_extractors(source: &str) -> Vec<(usize, String)> {
-        let code = source.split("#[cfg(test)]").next().unwrap_or(source);
-        code.lines()
-            .enumerate()
-            .filter_map(|(n, line)| {
-                let line = line.trim();
-                let destructures = ["Path", "Query", "Json"].iter().any(|name| {
-                    line.contains(&format!("): {name}<"))
-                        || line.contains(&format!("): axum::extract::{name}<"))
-                        || line.contains(&format!("): axum::{name}<"))
-                });
-                let raw_body = line.ends_with(": Bytes,")
-                    || line.ends_with(": axum::body::Bytes,")
-                    || line == "body: String,";
-                (destructures || raw_body).then(|| (n + 1, line.to_owned()))
-            })
-            .collect()
-    }
-
-    fn rust_files(dir: &FsPath, out: &mut Vec<std::path::PathBuf>) {
-        for entry in std::fs::read_dir(dir).expect("read src").flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                rust_files(&path, out);
-            } else if path.extension().is_some_and(|e| e == "rs") {
-                out.push(path);
-            }
-        }
-    }
-
-    #[test]
-    fn no_handler_lets_axum_answer_a_rejection() {
-        let src = FsPath::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut files = Vec::new();
-        rust_files(&src, &mut files);
-        let mut found = Vec::new();
-        for file in files {
-            let source = std::fs::read_to_string(&file).expect("read source");
-            for (line, text) in raw_extractors(&source) {
-                let file = file.strip_prefix(&src).unwrap_or(&file).display();
-                found.push(format!("src/{file}:{line}: {text}"));
-            }
-        }
-        assert!(
-            found.is_empty(),
-            "take these through crate::extract (or a protocol's own wrap_extractor!):\n{}",
-            found.join("\n")
-        );
-    }
-
-    #[test]
-    fn the_scan_sees_each_raw_extractor_it_forbids() {
-        let source = "async fn h(\n    Path(id): Path<Uuid>,\n    Query(q): Query<Q>,\n    \
-                      Json(b): Json<B>,\n    body: Bytes,\n    body: String,\n) {}\n\
-                      async fn ok(ApiPath(id): ApiPath<Uuid>) {}\n\
-                      #[cfg(test)]\nmod tests { async fn mock(Json(b): Json<B>) {} }\n";
-        let lines: Vec<usize> = raw_extractors(source).into_iter().map(|(n, _)| n).collect();
-        assert_eq!(lines, vec![2, 3, 4, 5, 6]);
     }
 }

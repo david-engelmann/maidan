@@ -1,12 +1,7 @@
-use axum::{
-    extract::DefaultBodyLimit,
-    middleware,
-    routing::{delete, get, post, put},
-    Router,
-};
+use axum::{extract::DefaultBodyLimit, middleware, Router};
 use tower_http::trace::TraceLayer;
 
-/// Default request body-size cap: 2 MiB. Matches axum 0.7's implicit extractor
+/// Default request body-size cap: 2 MiB. Matches axum's implicit extractor
 /// default, but now explicit + tunable via `MAIDAN_MAX_BODY_BYTES` — a
 /// deployment can tighten it (smaller JSON payloads) or widen it (larger
 /// single-shot artifacts) without a rebuild.
@@ -27,10 +22,15 @@ pub fn max_body_bytes_from_env() -> usize {
 use crate::bootstrap;
 use crate::{
     a2a_agent, agui_stream, app_oauth, apps, auth, automation_deliveries, consistency,
-    delivery_ops, dm, error::ApiError, federation, fsm_hooks, github, group_dm, health, mcp,
-    mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi, quota, rate_limit,
-    reindex_ops, request_id, room_lsn, routes, scim, session, share_consumer, slack,
-    slash_commands, state::AppState, webhooks, ws,
+    delivery_ops, dm,
+    error::ApiError,
+    federation, fsm_hooks, github, group_dm, health, mcp, mcp_notifications, mcp_stream,
+    mcp_streamable, metrics, oidc, openapi, quota, rate_limit, reindex_ops, request_id, room_lsn,
+    routes,
+    routing::{delete, get, patch, post, put},
+    scim, session, share_consumer, slack, slash_commands,
+    state::AppState,
+    webhooks, ws,
 };
 
 /// Build the axum [`Router`] with all routes wired up.
@@ -41,7 +41,7 @@ pub fn router(state: AppState) -> Router {
     #[cfg(feature = "bootstrap")]
     let bootstrap = Router::new()
         .route("/workspaces", post(routes::create_workspace))
-        .route("/workspaces/:wid/members", post(routes::create_member))
+        .route("/workspaces/{wid}/members", post(routes::create_member))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             bootstrap::middleware,
@@ -61,19 +61,19 @@ pub fn router(state: AppState) -> Router {
         .route("/a2a/v1/rpc/", post(a2a_agent::json_rpc))
         // `message:send` and `message:stream`: the router captures the
         // `:method` suffix after the static `message` prefix.
-        .route("/a2a/v1/message:method", post(a2a_agent::rest_message))
+        .route("/a2a/v1/message{method}", post(a2a_agent::rest_message))
         .route("/a2a/v1/tasks", get(a2a_agent::rest_list_tasks))
         .route(
-            "/a2a/v1/tasks/:id",
-            get(a2a_agent::rest_task_get).post(a2a_agent::rest_task_post),
+            "/a2a/v1/tasks/{id}",
+            get(a2a_agent::rest_task_get).merge(post(a2a_agent::rest_task_post)),
         )
         .route(
-            "/a2a/v1/tasks/:id/pushNotificationConfigs",
-            post(a2a_agent::rest_create_push_config).get(a2a_agent::rest_list_push_configs),
+            "/a2a/v1/tasks/{id}/pushNotificationConfigs",
+            post(a2a_agent::rest_create_push_config).merge(get(a2a_agent::rest_list_push_configs)),
         )
         .route(
-            "/a2a/v1/tasks/:id/pushNotificationConfigs/:config_id",
-            get(a2a_agent::rest_get_push_config).delete(a2a_agent::rest_delete_push_config),
+            "/a2a/v1/tasks/{id}/pushNotificationConfigs/{config_id}",
+            get(a2a_agent::rest_get_push_config).merge(delete(a2a_agent::rest_delete_push_config)),
         )
         .route(
             "/a2a/v1/extendedAgentCard",
@@ -82,45 +82,48 @@ pub fn router(state: AppState) -> Router {
         .route("/mcp/notifications", get(mcp_notifications::stream))
         .route("/mcp/stream", get(mcp_stream::stream))
         .route("/agui/stream", get(agui_stream::stream))
-        .route("/workspaces/:id", get(routes::get_workspace))
-        .route("/workspaces/:id/purge", post(routes::purge_workspace))
-        .route("/workspaces/:id", delete(routes::erase_workspace))
-        .route("/workspaces/:id/audit", get(routes::list_workspace_audit))
-        .route("/workspaces/:id/export", get(routes::export_workspace))
+        .route("/workspaces/{id}", get(routes::get_workspace))
+        .route("/workspaces/{id}/purge", post(routes::purge_workspace))
+        .route("/workspaces/{id}", delete(routes::erase_workspace))
+        .route("/workspaces/{id}/audit", get(routes::list_workspace_audit))
+        .route("/workspaces/{id}/export", get(routes::export_workspace))
         .route(
             "/workspaces/export/verify",
             post(routes::verify_workspace_export),
         )
         .route("/workspaces/import", post(routes::import_workspace))
-        .route("/workspaces/:id/usage", get(routes::get_workspace_usage))
+        .route("/workspaces/{id}/usage", get(routes::get_workspace_usage))
         .route(
-            "/workspaces/:id/tombstones",
+            "/workspaces/{id}/tombstones",
             get(routes::list_workspace_tombstones),
         )
         .route(
-            "/workspaces/:id/kind-census",
+            "/workspaces/{id}/kind-census",
             get(routes::get_workspace_kind_census),
         )
         .route(
-            "/workspaces/:id/results",
+            "/workspaces/{id}/results",
             get(routes::list_workspace_results),
         )
-        .route("/workspaces/:id/run-threads", get(routes::list_run_threads))
         .route(
-            "/workspaces/:id/run-occupancy",
+            "/workspaces/{id}/run-threads",
+            get(routes::list_run_threads),
+        )
+        .route(
+            "/workspaces/{id}/run-occupancy",
             get(routes::get_run_occupancy),
         )
         .route(
-            "/workspaces/:id/legal-holds",
-            post(routes::place_legal_hold).get(routes::list_workspace_legal_holds),
+            "/workspaces/{id}/legal-holds",
+            post(routes::place_legal_hold).merge(get(routes::list_workspace_legal_holds)),
         )
         .route(
-            "/workspaces/:id/legal-holds/preserved",
+            "/workspaces/{id}/legal-holds/preserved",
             get(routes::get_preserved_messages),
         )
         .route(
-            "/workspaces/:id/legal-holds/:hold_id",
-            axum::routing::delete(routes::lift_legal_hold),
+            "/workspaces/{id}/legal-holds/{hold_id}",
+            delete(routes::lift_legal_hold),
         )
         // SCIM 2.0 provisioning — outside OpenAPI/capability-map (like /mcp);
         // each handler enforces token:admin inline and scopes to the token's
@@ -131,611 +134,612 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/scim/v2/Users",
-            post(scim::create_user).get(scim::list_users),
+            post(scim::create_user).merge(get(scim::list_users)),
         )
         .route(
-            "/scim/v2/Users/:id",
+            "/scim/v2/Users/{id}",
             get(scim::get_user)
-                .put(scim::replace_user)
-                .patch(scim::patch_user)
-                .delete(scim::delete_user),
+                .merge(put(scim::replace_user))
+                .merge(patch(scim::patch_user))
+                .merge(delete(scim::delete_user)),
         )
         .route(
-            "/workspaces/:id/wip-limit",
-            axum::routing::put(routes::set_wip_limit).get(routes::get_wip_limit),
+            "/workspaces/{id}/wip-limit",
+            put(routes::set_wip_limit).merge(get(routes::get_wip_limit)),
         )
         .route(
-            "/workspaces/:id/delegation-policy",
-            axum::routing::put(routes::set_delegation_policy).get(routes::get_delegation_policy),
+            "/workspaces/{id}/delegation-policy",
+            put(routes::set_delegation_policy).merge(get(routes::get_delegation_policy)),
         )
         .route(
-            "/workspaces/:id/spawn-budget",
-            axum::routing::put(routes::set_spawn_budget).get(routes::get_spawn_budget),
+            "/workspaces/{id}/spawn-budget",
+            put(routes::set_spawn_budget).merge(get(routes::get_spawn_budget)),
         )
         .route("/me", get(routes::get_me))
         .route(
-            "/workspaces/:wid/glossary",
+            "/workspaces/{wid}/glossary",
             get(routes::list_glossary_terms),
         )
         .route(
-            "/workspaces/:wid/glossary/:term",
+            "/workspaces/{wid}/glossary/{term}",
             put(routes::set_glossary_term)
-                .get(routes::get_glossary_term)
-                .delete(routes::delete_glossary_term),
+                .merge(get(routes::get_glossary_term))
+                .merge(delete(routes::delete_glossary_term)),
         )
-        .route("/workspaces/:wid/events", get(routes::list_events))
+        .route("/workspaces/{wid}/events", get(routes::list_events))
         .route(
-            "/workspaces/:wid/events/verify",
+            "/workspaces/{wid}/events/verify",
             get(routes::verify_event_chain),
         )
         .route(
-            "/workspaces/:wid/events/catch-up",
+            "/workspaces/{wid}/events/catch-up",
             get(routes::catch_up_events),
         )
-        .route("/workspaces/:wid/snapshot", get(routes::get_log_snapshot))
+        .route("/workspaces/{wid}/snapshot", get(routes::get_log_snapshot))
         .route(
-            "/workspaces/:wid/outbox/:oid/replay",
+            "/workspaces/{wid}/outbox/{oid}/replay",
             post(routes::replay_quarantined_outbox),
         )
         .route(
-            "/workspaces/:wid/outbox/quarantined",
+            "/workspaces/{wid}/outbox/quarantined",
             get(routes::list_quarantined_outbox),
         )
         .route(
-            "/workspaces/:wid/context",
+            "/workspaces/{wid}/context",
             get(routes::get_workspace_context),
         )
-        .route("/workspaces/:wid/search", get(routes::search_messages))
-        .route("/workspaces/:wid/members", get(routes::list_members))
+        .route("/workspaces/{wid}/search", get(routes::search_messages))
+        .route("/workspaces/{wid}/members", get(routes::list_members))
         .route(
-            "/workspaces/:wid/members/:mid/tokens",
-            post(routes::mint_api_token).get(routes::list_api_tokens),
+            "/workspaces/{wid}/members/{mid}/tokens",
+            post(routes::mint_api_token).merge(get(routes::list_api_tokens)),
         )
         .route(
-            "/workspaces/:wid/delegation-grants",
-            post(routes::create_delegation_grant).get(routes::list_delegation_grants),
+            "/workspaces/{wid}/delegation-grants",
+            post(routes::create_delegation_grant).merge(get(routes::list_delegation_grants)),
         )
         .route(
-            "/workspaces/:wid/delegation-grants/:gid",
+            "/workspaces/{wid}/delegation-grants/{gid}",
             delete(routes::revoke_delegation_grant),
         )
         .route(
-            "/workspaces/:wid/apps",
-            post(apps::register_app).get(apps::list_apps),
+            "/workspaces/{wid}/apps",
+            post(apps::register_app).merge(get(apps::list_apps)),
         )
         .route(
-            "/workspaces/:wid/apps/:app_id/install",
+            "/workspaces/{wid}/apps/{app_id}/install",
             post(apps::install_app),
         )
         .route(
-            "/workspaces/:wid/apps/:app_id/oauth/authorize",
+            "/workspaces/{wid}/apps/{app_id}/oauth/authorize",
             post(app_oauth::authorize_app_install),
         )
         .route(
-            "/workspaces/:wid/app-installations",
+            "/workspaces/{wid}/app-installations",
             get(apps::list_app_installations),
         )
         .route(
-            "/workspaces/:wid/app-installations/:iid",
+            "/workspaces/{wid}/app-installations/{iid}",
             delete(apps::revoke_app_installation),
         )
         .route(
-            "/workspaces/:wid/app-installations/:iid/tokens",
+            "/workspaces/{wid}/app-installations/{iid}/tokens",
             post(apps::mint_app_token),
         )
-        .route("/members/:id", get(routes::get_member))
+        .route("/members/{id}", get(routes::get_member))
         .route(
-            "/members/:id/assigned-threads",
+            "/members/{id}/assigned-threads",
             get(routes::list_assigned_threads),
         )
-        .route("/members/:id/wip", get(routes::get_member_wip))
-        .route("/members/:id/occupancy", get(routes::get_member_occupancy))
+        .route("/members/{id}/wip", get(routes::get_member_wip))
+        .route("/members/{id}/occupancy", get(routes::get_member_occupancy))
         .route(
-            "/members/:id/mentions",
+            "/members/{id}/mentions",
             get(routes::list_mentions_for_member),
         )
-        .route("/members/:id/inbox", get(routes::get_member_inbox))
+        .route("/members/{id}/inbox", get(routes::get_member_inbox))
         .route(
-            "/members/:id/inbox/read",
+            "/members/{id}/inbox/read",
             post(routes::mark_member_inbox_read),
         )
         .route(
-            "/members/:id/notifications",
+            "/members/{id}/notifications",
             get(routes::list_member_notifications),
         )
         .route(
-            "/members/:id/notifications/grouped",
+            "/members/{id}/notifications/grouped",
             get(routes::list_member_notifications_grouped),
         )
-        .route("/members/:id/decisions", get(routes::list_member_decisions))
         .route(
-            "/members/:id/manager-digest",
+            "/members/{id}/decisions",
+            get(routes::list_member_decisions),
+        )
+        .route(
+            "/members/{id}/manager-digest",
             get(routes::get_member_manager_digest),
         )
-        .route("/members/:id/waiting", get(routes::get_member_waiting))
+        .route("/members/{id}/waiting", get(routes::get_member_waiting))
         .route(
-            "/members/:id/notifications/unread-count",
+            "/members/{id}/notifications/unread-count",
             get(routes::member_unread_notification_count),
         )
         .route(
-            "/members/:id/notifications/read-all",
+            "/members/{id}/notifications/read-all",
             post(routes::mark_all_member_notifications_read),
         )
         .route(
-            "/members/:id/notifications/:nid/read",
+            "/members/{id}/notifications/{nid}/read",
             post(routes::mark_member_notification_read),
         )
         .route(
-            "/members/:id/notifications/:nid/snooze",
+            "/members/{id}/notifications/{nid}/snooze",
             post(routes::snooze_member_notification),
         )
         .route(
-            "/members/:id/notification-prefs",
-            axum::routing::put(routes::set_member_notification_pref)
-                .get(routes::list_member_notification_prefs),
+            "/members/{id}/notification-prefs",
+            put(routes::set_member_notification_pref)
+                .merge(get(routes::list_member_notification_prefs)),
         )
         .route(
-            "/members/:id/channel-follows",
-            post(routes::follow_member_channel).get(routes::list_member_channel_follows),
+            "/members/{id}/channel-follows",
+            post(routes::follow_member_channel).merge(get(routes::list_member_channel_follows)),
         )
         .route(
-            "/members/:id/channel-follows/:cid",
-            axum::routing::delete(routes::unfollow_member_channel),
+            "/members/{id}/channel-follows/{cid}",
+            delete(routes::unfollow_member_channel),
         )
         .route(
-            "/members/:id/thread-follows",
-            post(routes::follow_member_thread).get(routes::list_member_thread_follows),
+            "/members/{id}/thread-follows",
+            post(routes::follow_member_thread).merge(get(routes::list_member_thread_follows)),
         )
         .route(
-            "/members/:id/thread-follows/:tid",
-            axum::routing::delete(routes::unfollow_member_thread),
+            "/members/{id}/thread-follows/{tid}",
+            delete(routes::unfollow_member_thread),
         )
         .route(
-            "/members/:id/member-follows",
-            post(routes::follow_member_occupancy).get(routes::list_member_occupancy_follows),
+            "/members/{id}/member-follows",
+            post(routes::follow_member_occupancy).merge(get(routes::list_member_occupancy_follows)),
         )
         .route(
-            "/members/:id/member-follows/:followed_id",
+            "/members/{id}/member-follows/{followed_id}",
             delete(routes::unfollow_member_occupancy),
         )
         .route(
-            "/members/:id/email",
-            axum::routing::put(routes::set_member_email)
-                .get(routes::get_member_email)
-                .delete(routes::delete_member_email),
+            "/members/{id}/email",
+            put(routes::set_member_email)
+                .merge(get(routes::get_member_email))
+                .merge(delete(routes::delete_member_email)),
         )
         .route(
-            "/members/:id/delivery-mode",
-            axum::routing::put(routes::set_member_delivery_mode)
-                .get(routes::get_member_delivery_mode),
+            "/members/{id}/delivery-mode",
+            put(routes::set_member_delivery_mode).merge(get(routes::get_member_delivery_mode)),
         )
         .route(
-            "/members/:id/push-subscriptions",
-            post(routes::register_push_subscription).get(routes::list_push_subscriptions),
+            "/members/{id}/push-subscriptions",
+            post(routes::register_push_subscription).merge(get(routes::list_push_subscriptions)),
         )
         .route(
-            "/members/:id/push-subscriptions/:sub_id",
+            "/members/{id}/push-subscriptions/{sub_id}",
             delete(routes::delete_push_subscription),
         )
         .route(
-            "/members/:id/skills",
-            post(routes::add_member_skill).get(routes::list_member_skills),
+            "/members/{id}/skills",
+            post(routes::add_member_skill).merge(get(routes::list_member_skills)),
         )
         .route(
-            "/members/:id/skills/:skill",
-            axum::routing::delete(routes::remove_member_skill),
+            "/members/{id}/skills/{skill}",
+            delete(routes::remove_member_skill),
         )
         .route(
-            "/threads/:id/required-skills",
-            post(routes::add_thread_required_skill).get(routes::list_thread_required_skills),
+            "/threads/{id}/required-skills",
+            post(routes::add_thread_required_skill).merge(get(routes::list_thread_required_skills)),
         )
         .route(
-            "/threads/:id/required-skills/:skill",
-            axum::routing::delete(routes::remove_thread_required_skill),
+            "/threads/{id}/required-skills/{skill}",
+            delete(routes::remove_thread_required_skill),
         )
         .route(
-            "/threads/:id/result",
-            axum::routing::put(routes::set_thread_result).get(routes::get_thread_result),
+            "/threads/{id}/result",
+            put(routes::set_thread_result).merge(get(routes::get_thread_result)),
         )
         .route(
-            "/threads/:id/deliveries",
+            "/threads/{id}/deliveries",
             get(routes::list_thread_deliveries),
         )
         .route(
-            "/threads/:id/deliveries/:did/replay",
+            "/threads/{id}/deliveries/{did}/replay",
             post(routes::replay_thread_delivery),
         )
         .route(
-            "/threads/:id/steer",
-            axum::routing::put(routes::set_thread_steer).get(routes::get_thread_steer),
+            "/threads/{id}/steer",
+            put(routes::set_thread_steer).merge(get(routes::get_thread_steer)),
         )
         .route(
-            "/threads/:id/lineage",
-            axum::routing::put(routes::set_thread_lineage)
-                .get(routes::get_thread_lineage)
-                .delete(routes::clear_thread_lineage),
+            "/threads/{id}/lineage",
+            put(routes::set_thread_lineage)
+                .merge(get(routes::get_thread_lineage))
+                .merge(delete(routes::clear_thread_lineage)),
         )
-        .route("/threads/:id/children", get(routes::list_child_threads))
+        .route("/threads/{id}/children", get(routes::list_child_threads))
         .route(
-            "/threads/:id/mute",
-            axum::routing::post(routes::mute_thread).delete(routes::unmute_thread),
-        )
-        .route(
-            "/workspaces/:wid/approval-gates",
-            axum::routing::get(routes::list_approval_gates),
+            "/threads/{id}/mute",
+            post(routes::mute_thread).merge(delete(routes::unmute_thread)),
         )
         .route(
-            "/approval-gates/:id/answer",
+            "/workspaces/{wid}/approval-gates",
+            get(routes::list_approval_gates),
+        )
+        .route(
+            "/approval-gates/{id}/answer",
             post(routes::answer_approval_gate),
         )
         .route(
-            "/workspaces/:wid/dm",
-            post(dm::open_dm_conversation).get(dm::list_dm_conversations),
+            "/workspaces/{wid}/dm",
+            post(dm::open_dm_conversation).merge(get(dm::list_dm_conversations)),
         )
-        .route("/dm/:id", get(dm::get_dm_conversation))
+        .route("/dm/{id}", get(dm::get_dm_conversation))
         .route(
-            "/dm/:id/messages",
-            post(dm::post_dm_message).get(dm::list_dm_messages),
+            "/dm/{id}/messages",
+            post(dm::post_dm_message).merge(get(dm::list_dm_messages)),
         )
         .route(
-            "/workspaces/:wid/group-dms",
-            post(group_dm::open_group_dm).get(group_dm::list_group_dms),
+            "/workspaces/{wid}/group-dms",
+            post(group_dm::open_group_dm).merge(get(group_dm::list_group_dms)),
         )
-        .route("/group-dms/:id", get(group_dm::get_group_dm))
+        .route("/group-dms/{id}", get(group_dm::get_group_dm))
         .route(
-            "/group-dms/:id/messages",
+            "/group-dms/{id}/messages",
             post(group_dm::post_group_dm_message),
         )
         .route(
-            "/workspaces/:wid/channels",
-            post(routes::create_channel).get(routes::list_channels),
+            "/workspaces/{wid}/channels",
+            post(routes::create_channel).merge(get(routes::list_channels)),
         )
-        .route("/channels/:id", get(routes::get_channel))
+        .route("/channels/{id}", get(routes::get_channel))
         .route(
-            "/channels/:cid/queue-depth",
+            "/channels/{cid}/queue-depth",
             get(routes::get_channel_queue_depth),
         )
         .route(
-            "/channels/:cid/unclaimable",
+            "/channels/{cid}/unclaimable",
             get(routes::list_channel_unclaimable),
         )
-        .route("/channels/:cid/blocked", get(routes::list_channel_blocked))
+        .route("/channels/{cid}/blocked", get(routes::list_channel_blocked))
         .route(
-            "/channels/:cid/occupancy",
+            "/channels/{cid}/occupancy",
             get(routes::get_channel_occupancy),
         )
         .route(
-            "/channels/:cid/mute",
-            post(routes::mute_channel).delete(routes::unmute_channel),
+            "/channels/{cid}/mute",
+            post(routes::mute_channel).merge(delete(routes::unmute_channel)),
         )
-        .route("/channels/:cid/dlq", get(routes::list_channel_dlq))
+        .route("/channels/{cid}/dlq", get(routes::list_channel_dlq))
         .route(
-            "/channels/:cid/members",
-            post(routes::add_channel_member).get(routes::list_channel_members),
-        )
-        .route(
-            "/channels/:cid/members/:mid",
-            axum::routing::delete(routes::remove_channel_member),
+            "/channels/{cid}/members",
+            post(routes::add_channel_member).merge(get(routes::list_channel_members)),
         )
         .route(
-            "/channels/:cid/threads",
-            post(routes::create_thread).get(routes::list_threads),
+            "/channels/{cid}/members/{mid}",
+            delete(routes::remove_channel_member),
         )
         .route(
-            "/channels/:cid/recent-threads",
+            "/channels/{cid}/threads",
+            post(routes::create_thread).merge(get(routes::list_threads)),
+        )
+        .route(
+            "/channels/{cid}/recent-threads",
             get(routes::list_recently_active_threads),
         )
         .route(
-            "/channels/:cid/threads/claim-next",
+            "/channels/{cid}/threads/claim-next",
             post(routes::claim_next_thread),
         )
-        .route("/threads/:id/claim/renew", post(routes::renew_claim))
+        .route("/threads/{id}/claim/renew", post(routes::renew_claim))
         .route(
-            "/threads/:id/claim/acknowledge",
+            "/threads/{id}/claim/acknowledge",
             post(routes::acknowledge_claim),
         )
-        .route("/threads/:id/claim/release", post(routes::release_claim))
+        .route("/threads/{id}/claim/release", post(routes::release_claim))
         .route(
-            "/threads/:id",
-            get(routes::get_thread).post(routes::transition_thread),
+            "/threads/{id}",
+            get(routes::get_thread).merge(post(routes::transition_thread)),
         )
-        .route("/threads/:id/context", get(routes::get_thread_context))
+        .route("/threads/{id}/context", get(routes::get_thread_context))
         .route(
-            "/threads/:id/context/snapshot",
+            "/threads/{id}/context/snapshot",
             post(routes::snapshot_thread_context),
         )
         .route(
-            "/threads/:id/tool-transcript",
+            "/threads/{id}/tool-transcript",
             get(routes::get_tool_transcript),
         )
         .route(
-            "/threads/:id/assignee",
-            axum::routing::put(routes::assign_thread).delete(routes::unassign_thread),
+            "/threads/{id}/assignee",
+            put(routes::assign_thread).merge(delete(routes::unassign_thread)),
         )
         .route(
-            "/threads/:id/owner",
-            axum::routing::put(routes::set_thread_owner).delete(routes::remove_thread_owner),
+            "/threads/{id}/owner",
+            put(routes::set_thread_owner).merge(delete(routes::remove_thread_owner)),
+        )
+        .route("/threads/{id}/title", put(routes::rename_thread))
+        .route(
+            "/threads/{id}/budget",
+            put(routes::set_thread_budget)
+                .merge(patch(routes::patch_thread_budget))
+                .merge(get(routes::get_thread_budget)),
+        )
+        .route("/threads/{id}/usage", post(routes::report_thread_usage))
+        .route("/threads/{id}/assignee/claim", post(routes::claim_thread))
+        .route(
+            "/threads/{id}/unclaimable",
+            put(routes::mark_thread_unclaimable).merge(delete(routes::mark_thread_claimable)),
         )
         .route(
-            "/threads/:id/title",
-            axum::routing::put(routes::rename_thread),
+            "/threads/{id}/block",
+            put(routes::set_thread_block)
+                .merge(get(routes::get_thread_block))
+                .merge(delete(routes::clear_thread_block)),
         )
         .route(
-            "/threads/:id/budget",
-            axum::routing::put(routes::set_thread_budget)
-                .patch(routes::patch_thread_budget)
-                .get(routes::get_thread_budget),
-        )
-        .route("/threads/:id/usage", post(routes::report_thread_usage))
-        .route("/threads/:id/assignee/claim", post(routes::claim_thread))
-        .route(
-            "/threads/:id/unclaimable",
-            axum::routing::put(routes::mark_thread_unclaimable)
-                .delete(routes::mark_thread_claimable),
+            "/threads/{id}/wait",
+            put(routes::set_thread_wait)
+                .merge(delete(routes::cancel_thread_wait))
+                .merge(get(routes::get_thread_wait)),
         )
         .route(
-            "/threads/:id/block",
-            axum::routing::put(routes::set_thread_block)
-                .get(routes::get_thread_block)
-                .delete(routes::clear_thread_block),
+            "/threads/{id}/priority",
+            put(routes::set_thread_priority).merge(get(routes::get_thread_priority)),
         )
         .route(
-            "/threads/:id/wait",
-            axum::routing::put(routes::set_thread_wait)
-                .delete(routes::cancel_thread_wait)
-                .get(routes::get_thread_wait),
+            "/threads/{id}/dependencies",
+            post(routes::add_thread_dependency).merge(get(routes::list_thread_dependencies)),
         )
         .route(
-            "/threads/:id/priority",
-            axum::routing::put(routes::set_thread_priority).get(routes::get_thread_priority),
-        )
-        .route(
-            "/threads/:id/dependencies",
-            post(routes::add_thread_dependency).get(routes::list_thread_dependencies),
-        )
-        .route(
-            "/threads/:id/dependencies/:dep_id",
+            "/threads/{id}/dependencies/{dep_id}",
             delete(routes::remove_thread_dependency),
         )
         .route(
-            "/threads/:id/dependents",
+            "/threads/{id}/dependents",
             get(routes::list_thread_dependents),
         )
         .route(
-            "/threads/:tid/messages",
-            post(routes::post_message).get(routes::list_messages),
+            "/threads/{tid}/messages",
+            post(routes::post_message).merge(get(routes::list_messages)),
         )
         .route(
-            "/messages/:id",
+            "/messages/{id}",
             get(routes::get_message)
-                .patch(routes::edit_message)
-                .delete(routes::tombstone_message),
+                .merge(patch(routes::edit_message))
+                .merge(delete(routes::tombstone_message)),
         )
-        .route("/messages/:id/edits", get(routes::list_message_edits))
+        .route("/messages/{id}/edits", get(routes::list_message_edits))
         .route(
-            "/messages/:id/backlinks",
+            "/messages/{id}/backlinks",
             get(routes::list_message_backlinks),
         )
-        .route("/messages/:id/purge", delete(routes::purge_message))
-        .route("/messages/:id/seed", post(routes::seed_from_message))
-        .route("/messages/:id/mentions", post(routes::create_mention))
+        .route("/messages/{id}/purge", delete(routes::purge_message))
+        .route("/messages/{id}/seed", post(routes::seed_from_message))
+        .route("/messages/{id}/mentions", post(routes::create_mention))
         .route(
-            "/messages/:id/votes",
-            post(routes::cast_vote).get(routes::list_votes),
+            "/messages/{id}/votes",
+            post(routes::cast_vote).merge(get(routes::list_votes)),
         )
         .route(
-            "/messages/:id/reactions",
+            "/messages/{id}/reactions",
             post(routes::add_reaction)
-                .get(routes::list_reactions)
-                .delete(routes::remove_reaction),
+                .merge(get(routes::list_reactions))
+                .merge(delete(routes::remove_reaction)),
         )
         .route(
-            "/threads/:id/pins",
+            "/threads/{id}/pins",
             post(routes::pin_message)
-                .get(routes::list_pins)
-                .delete(routes::unpin_message),
+                .merge(get(routes::list_pins))
+                .merge(delete(routes::unpin_message)),
         )
         .route("/artifacts", post(routes::upload_artifact))
         .route(
             "/artifacts/multipart",
-            post(routes::begin_multipart_artifact).delete(routes::abort_multipart_artifact),
+            post(routes::begin_multipart_artifact).merge(delete(routes::abort_multipart_artifact)),
         )
         .route(
-            "/artifacts/multipart/:upload_id/complete",
+            "/artifacts/multipart/{upload_id}/complete",
             post(routes::complete_multipart_artifact),
         )
         .route(
-            "/artifacts/multipart/:upload_id/parts/:part_number",
+            "/artifacts/multipart/{upload_id}/parts/{part_number}",
             put(routes::upload_multipart_artifact_part),
         )
         .route(
-            "/artifacts/:sha",
-            get(routes::get_artifact).delete(routes::erase_artifact),
+            "/artifacts/{sha}",
+            get(routes::get_artifact).merge(delete(routes::erase_artifact)),
         )
-        .route("/artifacts/:sha/meta", get(routes::get_artifact_metadata))
+        .route("/artifacts/{sha}/meta", get(routes::get_artifact_metadata))
         .route(
             "/references",
-            post(routes::create_reference).get(routes::list_references),
+            post(routes::create_reference).merge(get(routes::list_references)),
         )
-        .route("/tokens/:id", delete(routes::revoke_api_token))
+        .route("/tokens/{id}", delete(routes::revoke_api_token))
         .route("/tokens/attenuate", post(routes::attenuate_api_token))
         .route("/tokens/delegate", post(routes::delegate_api_token))
         .route(
-            "/workspaces/:wid/share-tickets",
-            post(routes::create_share_ticket).get(routes::list_share_tickets),
+            "/workspaces/{wid}/share-tickets",
+            post(routes::create_share_ticket).merge(get(routes::list_share_tickets)),
         )
         .route(
-            "/workspaces/:wid/share-tickets/:tid",
+            "/workspaces/{wid}/share-tickets/{tid}",
             delete(routes::revoke_share_ticket),
         )
         .route("/capability-sets", get(routes::list_capability_sets))
-        .route("/workspaces/:id/room", get(routes::get_workspace_room))
+        .route("/workspaces/{id}/room", get(routes::get_workspace_room))
         .route(
-            "/workspaces/:id/handle",
-            get(routes::get_workspace_handle).put(routes::set_workspace_handle),
+            "/workspaces/{id}/handle",
+            get(routes::get_workspace_handle).merge(put(routes::set_workspace_handle)),
         )
         .route(
-            "/workspaces/:wid/peers",
-            post(federation::create_peer).get(federation::list_peers),
+            "/workspaces/{wid}/peers",
+            post(federation::create_peer).merge(get(federation::list_peers)),
         )
         .route(
-            "/workspaces/:wid/peers/:pid",
+            "/workspaces/{wid}/peers/{pid}",
             delete(federation::delete_peer),
         )
         .route(
-            "/workspaces/:wid/task-schedules",
-            post(routes::create_task_schedule).get(routes::list_task_schedules),
+            "/workspaces/{wid}/task-schedules",
+            post(routes::create_task_schedule).merge(get(routes::list_task_schedules)),
         )
         .route(
-            "/task-schedules/:id",
-            axum::routing::put(routes::set_task_schedule_active)
-                .delete(routes::delete_task_schedule),
+            "/task-schedules/{id}",
+            put(routes::set_task_schedule_active).merge(delete(routes::delete_task_schedule)),
         )
         .route(
-            "/workspaces/:wid/recipes",
-            post(routes::create_recipe).get(routes::list_recipes),
+            "/workspaces/{wid}/recipes",
+            post(routes::create_recipe).merge(get(routes::list_recipes)),
         )
         .route(
-            "/workspaces/:wid/recipes/:id",
-            get(routes::get_recipe).delete(routes::delete_recipe),
+            "/workspaces/{wid}/recipes/{id}",
+            get(routes::get_recipe).merge(delete(routes::delete_recipe)),
         )
         .route(
-            "/workspaces/:wid/recipes/:id/instantiate",
+            "/workspaces/{wid}/recipes/{id}/instantiate",
             post(routes::instantiate_recipe),
         )
         .route(
-            "/workspaces/:wid/secrets",
-            post(routes::create_secret).get(routes::list_secrets),
+            "/workspaces/{wid}/secrets",
+            post(routes::create_secret).merge(get(routes::list_secrets)),
         )
         .route(
-            "/workspaces/:wid/secrets/:name/resolve",
+            "/workspaces/{wid}/secrets/{name}/resolve",
             post(routes::resolve_secret),
         )
         .route(
-            "/workspaces/:wid/secrets/:name",
+            "/workspaces/{wid}/secrets/{name}",
             delete(routes::delete_secret),
         )
         .route(
-            "/members/:id/freeze",
+            "/members/{id}/freeze",
             post(routes::freeze_member)
-                .delete(routes::unfreeze_member)
-                .get(routes::get_member_freeze),
+                .merge(delete(routes::unfreeze_member))
+                .merge(get(routes::get_member_freeze)),
         )
         .route(
-            "/workspaces/:wid/frozen-members",
+            "/workspaces/{wid}/frozen-members",
             get(routes::list_frozen_members),
         )
         .route(
-            "/workspaces/:wid/memory-blocks",
-            post(routes::create_memory_block).get(routes::list_memory_blocks),
+            "/workspaces/{wid}/memory-blocks",
+            post(routes::create_memory_block).merge(get(routes::list_memory_blocks)),
         )
         .route(
-            "/workspaces/:wid/memory-blocks/:id",
+            "/workspaces/{wid}/memory-blocks/{id}",
             get(routes::get_memory_block)
-                .put(routes::set_memory_block_value)
-                .delete(routes::delete_memory_block),
+                .merge(put(routes::set_memory_block_value))
+                .merge(delete(routes::delete_memory_block)),
         )
         .route(
-            "/threads/:id/memory-blocks",
+            "/threads/{id}/memory-blocks",
             get(routes::list_thread_memory_blocks),
         )
         .route(
-            "/threads/:id/memory-blocks/:block_id",
-            post(routes::attach_memory_block).delete(routes::detach_memory_block),
+            "/threads/{id}/memory-blocks/{block_id}",
+            post(routes::attach_memory_block).merge(delete(routes::detach_memory_block)),
         )
         .route(
-            "/threads/:id/review-requirement",
+            "/threads/{id}/review-requirement",
             put(routes::set_review_requirement)
-                .get(routes::get_review_requirement)
-                .delete(routes::clear_review_requirement),
+                .merge(get(routes::get_review_requirement))
+                .merge(delete(routes::clear_review_requirement)),
         )
         .route(
-            "/threads/:id/reviewers",
-            post(routes::add_reviewer).get(routes::list_reviewers),
+            "/threads/{id}/reviewers",
+            post(routes::add_reviewer).merge(get(routes::list_reviewers)),
         )
         .route(
-            "/threads/:id/reviewers/:member_id",
+            "/threads/{id}/reviewers/{member_id}",
             delete(routes::remove_reviewer),
         )
         .route(
-            "/threads/:id/reviews",
-            post(routes::submit_review).get(routes::list_reviews),
+            "/threads/{id}/reviews",
+            post(routes::submit_review).merge(get(routes::list_reviews)),
         )
-        .route("/threads/:id/review-status", get(routes::get_review_status))
         .route(
-            "/threads/:id/land-gate",
+            "/threads/{id}/review-status",
+            get(routes::get_review_status),
+        )
+        .route(
+            "/threads/{id}/land-gate",
             put(routes::set_land_gate)
-                .get(routes::get_land_gate)
-                .delete(routes::clear_land_gate),
+                .merge(get(routes::get_land_gate))
+                .merge(delete(routes::clear_land_gate)),
         )
         .route(
-            "/threads/:id/land-gate/requirement",
+            "/threads/{id}/land-gate/requirement",
             put(routes::require_land_gate),
         )
         .route(
-            "/threads/:id/land-gate/advice",
+            "/threads/{id}/land-gate/advice",
             post(routes::advise_land_gate),
         )
         .route(
-            "/workspaces/:wid/webhooks",
-            post(webhooks::create_webhook).get(webhooks::list_webhooks),
+            "/workspaces/{wid}/webhooks",
+            post(webhooks::create_webhook).merge(get(webhooks::list_webhooks)),
         )
         .route(
-            "/workspaces/:wid/webhooks/:whid",
+            "/workspaces/{wid}/webhooks/{whid}",
             delete(webhooks::revoke_webhook),
         )
         .route(
-            "/workspaces/:wid/mention-webhook",
-            get(webhooks::get_mention_webhook).put(webhooks::set_mention_webhook),
+            "/workspaces/{wid}/mention-webhook",
+            get(webhooks::get_mention_webhook).merge(put(webhooks::set_mention_webhook)),
         )
         .route(
-            "/workspaces/:wid/slash-commands",
-            post(slash_commands::create_slash_command).get(slash_commands::list_slash_commands),
+            "/workspaces/{wid}/slash-commands",
+            post(slash_commands::create_slash_command)
+                .merge(get(slash_commands::list_slash_commands)),
         )
         .route(
-            "/workspaces/:wid/slash-commands/:cid",
+            "/workspaces/{wid}/slash-commands/{cid}",
             delete(slash_commands::revoke_slash_command),
         )
         .route(
-            "/workspaces/:wid/slack-links",
-            post(slack::link_slack_channel).get(slack::list_slack_channel_links),
+            "/workspaces/{wid}/slack-links",
+            post(slack::link_slack_channel).merge(get(slack::list_slack_channel_links)),
         )
         .route(
-            "/workspaces/:wid/slack-links/:slack_channel_id",
+            "/workspaces/{wid}/slack-links/{slack_channel_id}",
             delete(slack::unlink_slack_channel),
         )
         .route(
-            "/workspaces/:wid/github-links",
+            "/workspaces/{wid}/github-links",
             post(github::link_github_issue)
-                .get(github::list_github_issue_links)
-                .delete(github::unlink_github_issue),
+                .merge(get(github::list_github_issue_links))
+                .merge(delete(github::unlink_github_issue)),
         )
         .route(
-            "/workspaces/:wid/egress-targets",
-            post(routes::allow_egress_target).get(routes::list_egress_targets),
+            "/workspaces/{wid}/egress-targets",
+            post(routes::allow_egress_target).merge(get(routes::list_egress_targets)),
         )
         .route(
-            "/workspaces/:wid/egress-targets/:tid",
+            "/workspaces/{wid}/egress-targets/{tid}",
             delete(routes::revoke_egress_target),
         )
         .route(
-            "/workspaces/:wid/fsm-hooks",
-            post(fsm_hooks::create_fsm_hook).get(fsm_hooks::list_fsm_hooks),
+            "/workspaces/{wid}/fsm-hooks",
+            post(fsm_hooks::create_fsm_hook).merge(get(fsm_hooks::list_fsm_hooks)),
         )
         .route(
-            "/workspaces/:wid/fsm-hooks/:hid",
+            "/workspaces/{wid}/fsm-hooks/{hid}",
             delete(fsm_hooks::revoke_fsm_hook),
         )
         .route(
-            "/workspaces/:wid/deliveries",
+            "/workspaces/{wid}/deliveries",
             get(delivery_ops::list_deliveries),
         )
         .route(
-            "/workspaces/:wid/deliveries/:did",
+            "/workspaces/{wid}/deliveries/{did}",
             get(delivery_ops::get_delivery),
         )
         .route(
-            "/workspaces/:wid/deliveries/:did/replay",
+            "/workspaces/{wid}/deliveries/{did}/replay",
             post(delivery_ops::replay_delivery),
         )
         .route(
@@ -743,7 +747,7 @@ pub fn router(state: AppState) -> Router {
             post(reindex_ops::start_reindex_embeddings),
         )
         .route(
-            "/operator/reindex-embeddings/:job_id",
+            "/operator/reindex-embeddings/{job_id}",
             get(reindex_ops::get_reindex_embeddings_job),
         )
         .route(
@@ -755,28 +759,28 @@ pub fn router(state: AppState) -> Router {
         .route("/operator/status", get(crate::status::operator_status))
         .route("/operator/mail/dead", get(routes::list_dead_mail))
         .route(
-            "/operator/mail/dead/:id/requeue",
+            "/operator/mail/dead/{id}/requeue",
             post(routes::requeue_dead_mail),
         )
         .route("/operator/egress/dead", get(routes::list_dead_egress))
         .route(
-            "/operator/egress/dead/:id/requeue",
+            "/operator/egress/dead/{id}/requeue",
             post(routes::requeue_dead_egress),
         )
         .route(
-            "/workspaces/:wid/automation/dlq",
+            "/workspaces/{wid}/automation/dlq",
             get(automation_deliveries::list_quarantined_automation_deliveries),
         )
         .route(
-            "/workspaces/:wid/automation/deliveries",
+            "/workspaces/{wid}/automation/deliveries",
             get(automation_deliveries::list_automation_deliveries),
         )
         .route(
-            "/workspaces/:wid/automation/deliveries/:did",
+            "/workspaces/{wid}/automation/deliveries/{did}",
             get(automation_deliveries::get_automation_delivery),
         )
         .route(
-            "/workspaces/:wid/automation/deliveries/:did/replay",
+            "/workspaces/{wid}/automation/deliveries/{did}/replay",
             post(automation_deliveries::replay_automation_delivery),
         )
         .layer(middleware::from_fn_with_state(
@@ -807,11 +811,11 @@ pub fn router(state: AppState) -> Router {
         .route("/share/manifest", get(share_consumer::manifest))
         .route("/share/threads", get(share_consumer::list_threads))
         .route(
-            "/share/threads/:tid/messages",
+            "/share/threads/{tid}/messages",
             get(share_consumer::list_messages),
         )
         .route(
-            "/share/artifacts/:sha",
+            "/share/artifacts/{sha}",
             get(share_consumer::download_artifact),
         )
         .layer(middleware::from_fn_with_state(
@@ -839,117 +843,126 @@ pub fn router(state: AppState) -> Router {
         );
 
     let ui_api_read = Router::new()
-        .route("/ui/api/workspaces/:wid/events", get(routes::list_events))
+        .route("/ui/api/workspaces/{wid}/events", get(routes::list_events))
         .route(
-            "/ui/api/workspaces/:wid/channels",
+            "/ui/api/workspaces/{wid}/channels",
             get(routes::list_channels),
         )
-        .route("/ui/api/channels/:cid/threads", get(routes::list_threads))
-        .route("/ui/api/threads/:tid/messages", get(routes::list_messages))
+        .route("/ui/api/channels/{cid}/threads", get(routes::list_threads))
+        .route("/ui/api/threads/{tid}/messages", get(routes::list_messages))
         .route(
-            "/ui/api/workspaces/:wid/search",
+            "/ui/api/workspaces/{wid}/search",
             get(routes::search_messages),
         )
         .route(
-            "/ui/api/workspaces/:wid/audit",
+            "/ui/api/workspaces/{wid}/audit",
             get(routes::list_workspace_audit),
         )
-        .route("/ui/api/workspaces/:wid/peers", get(federation::list_peers))
         .route(
-            "/ui/api/messages/:mid/edits",
+            "/ui/api/workspaces/{wid}/peers",
+            get(federation::list_peers),
+        )
+        .route(
+            "/ui/api/messages/{mid}/edits",
             get(routes::list_message_edits),
         )
         .route(
-            "/ui/api/messages/:mid/reactions",
+            "/ui/api/messages/{mid}/reactions",
             get(routes::list_reactions),
         )
-        .route("/ui/api/threads/:tid/pins", get(routes::list_pins))
+        .route("/ui/api/threads/{tid}/pins", get(routes::list_pins))
         .route(
-            "/ui/api/workspaces/:wid/group-dms",
+            "/ui/api/workspaces/{wid}/group-dms",
             get(group_dm::list_group_dms),
         )
-        .route("/ui/api/group-dms/:id", get(group_dm::get_group_dm))
-        .route("/ui/api/workspaces/:wid/dm", get(dm::list_dm_conversations))
+        .route("/ui/api/group-dms/{id}", get(group_dm::get_group_dm))
         .route(
-            "/ui/api/workspaces/:wid/slash-commands",
+            "/ui/api/workspaces/{wid}/dm",
+            get(dm::list_dm_conversations),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/slash-commands",
             get(slash_commands::list_slash_commands),
         )
         .route(
-            "/ui/api/workspaces/:wid/deliveries",
+            "/ui/api/workspaces/{wid}/deliveries",
             get(delivery_ops::list_deliveries),
         )
-        .route("/ui/api/workspaces/:wid/members", get(routes::list_members))
         .route(
-            "/ui/api/workspaces/:wid/members/:mid/tokens",
+            "/ui/api/workspaces/{wid}/members",
+            get(routes::list_members),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/members/{mid}/tokens",
             get(routes::list_api_tokens),
         )
         .route(
-            "/ui/api/workspaces/:wid/app-installations",
+            "/ui/api/workspaces/{wid}/app-installations",
             get(apps::list_app_installations),
         )
         .route(
-            "/ui/api/members/:id/notifications",
+            "/ui/api/members/{id}/notifications",
             get(routes::list_member_notifications),
         )
         .route(
-            "/ui/api/members/:id/notifications/unread-count",
+            "/ui/api/members/{id}/notifications/unread-count",
             get(routes::member_unread_notification_count),
         )
         .route(
-            "/ui/api/workspaces/:wid/approval-gates",
+            "/ui/api/workspaces/{wid}/approval-gates",
             get(routes::list_approval_gates),
         )
         .route("/ui/api/me", get(routes::get_me))
         // Work tab: the human work-observability console — queue depth,
         // occupancy, task results, DAG dependencies, and schedules.
         .route(
-            "/ui/api/channels/:cid/queue-depth",
+            "/ui/api/channels/{cid}/queue-depth",
             get(routes::get_channel_queue_depth),
         )
         .route(
-            "/ui/api/channels/:cid/occupancy",
+            "/ui/api/channels/{cid}/occupancy",
             get(routes::get_channel_occupancy),
         )
         .route(
-            "/ui/api/threads/:tid/result",
+            "/ui/api/threads/{tid}/result",
             get(routes::get_thread_result),
         )
         .route(
-            "/ui/api/threads/:tid/dependencies",
+            "/ui/api/threads/{tid}/dependencies",
             get(routes::list_thread_dependencies),
         )
         .route(
-            "/ui/api/workspaces/:wid/task-schedules",
+            "/ui/api/workspaces/{wid}/task-schedules",
             get(routes::list_task_schedules),
         )
         // Prefs console: a member's notification preferences, delivery, and
         // follows — self-only reads.
         .route(
-            "/ui/api/members/:id/notification-prefs",
+            "/ui/api/members/{id}/notification-prefs",
             get(routes::list_member_notification_prefs),
         )
         .route(
-            "/ui/api/members/:id/delivery-mode",
+            "/ui/api/members/{id}/delivery-mode",
             get(routes::get_member_delivery_mode),
         )
-        .route("/ui/api/members/:id/email", get(routes::get_member_email))
+        .route("/ui/api/members/{id}/email", get(routes::get_member_email))
         .route(
-            "/ui/api/members/:id/channel-follows",
+            "/ui/api/members/{id}/channel-follows",
             get(routes::list_member_channel_follows),
         )
         .route(
-            "/ui/api/members/:id/thread-follows",
+            "/ui/api/members/{id}/thread-follows",
             get(routes::list_member_thread_follows),
         )
         // Looking-glass explorer: artifact metadata by sha
         // (events/threads/peers reuse the routes above).
         .route(
-            "/ui/api/artifacts/:sha/meta",
+            "/ui/api/artifacts/{sha}/meta",
             get(routes::get_artifact_metadata),
         )
         // Waiting-on-you inbox.
         .route(
-            "/ui/api/members/:id/waiting",
+            "/ui/api/members/{id}/waiting",
             get(routes::get_member_waiting),
         )
         .layer(middleware::from_fn_with_state(
@@ -959,39 +972,45 @@ pub fn router(state: AppState) -> Router {
 
     let ui_api_write = Router::new()
         .route(
-            "/ui/api/workspaces/:wid/channels",
+            "/ui/api/workspaces/{wid}/channels",
             post(routes::create_channel),
         )
-        .route("/ui/api/channels/:cid/threads", post(routes::create_thread))
-        .route("/ui/api/threads/:tid/messages", post(routes::post_message))
         .route(
-            "/ui/api/messages/:mid/reactions",
-            post(routes::add_reaction).delete(routes::remove_reaction),
+            "/ui/api/channels/{cid}/threads",
+            post(routes::create_thread),
+        )
+        .route("/ui/api/threads/{tid}/messages", post(routes::post_message))
+        .route(
+            "/ui/api/messages/{mid}/reactions",
+            post(routes::add_reaction).merge(delete(routes::remove_reaction)),
         )
         .route(
-            "/ui/api/threads/:tid/pins",
-            post(routes::pin_message).delete(routes::unpin_message),
+            "/ui/api/threads/{tid}/pins",
+            post(routes::pin_message).merge(delete(routes::unpin_message)),
         )
         .route(
-            "/ui/api/workspaces/:wid/group-dms",
+            "/ui/api/workspaces/{wid}/group-dms",
             post(group_dm::open_group_dm),
         )
         .route(
-            "/ui/api/group-dms/:id/messages",
+            "/ui/api/group-dms/{id}/messages",
             post(group_dm::post_group_dm_message),
         )
-        .route("/ui/api/workspaces/:wid/dm", post(dm::open_dm_conversation))
-        .route("/ui/api/dm/:id/messages", post(dm::post_dm_message))
         .route(
-            "/ui/api/workspaces/:wid/slash-commands",
+            "/ui/api/workspaces/{wid}/dm",
+            post(dm::open_dm_conversation),
+        )
+        .route("/ui/api/dm/{id}/messages", post(dm::post_dm_message))
+        .route(
+            "/ui/api/workspaces/{wid}/slash-commands",
             post(slash_commands::create_slash_command),
         )
         .route(
-            "/ui/api/workspaces/:wid/slash-commands/:cid",
+            "/ui/api/workspaces/{wid}/slash-commands/{cid}",
             delete(slash_commands::revoke_slash_command),
         )
         .route(
-            "/ui/api/workspaces/:wid/deliveries/:did/replay",
+            "/ui/api/workspaces/{wid}/deliveries/{did}/replay",
             post(delivery_ops::replay_delivery),
         )
         .route(
@@ -1001,48 +1020,48 @@ pub fn router(state: AppState) -> Router {
         // GET on the write router: a workspace-scoped reindex job needs
         // workspace:write to read, which only the write session grants.
         .route(
-            "/ui/api/operator/reindex-embeddings/:job_id",
+            "/ui/api/operator/reindex-embeddings/{job_id}",
             get(reindex_ops::get_reindex_embeddings_job),
         )
         .route(
-            "/ui/api/members/:id/notifications/:nid/read",
+            "/ui/api/members/{id}/notifications/{nid}/read",
             post(routes::mark_member_notification_read),
         )
         .route(
-            "/ui/api/members/:id/notifications/read-all",
+            "/ui/api/members/{id}/notifications/read-all",
             post(routes::mark_all_member_notifications_read),
         )
         .route(
-            "/ui/api/approval-gates/:id/answer",
+            "/ui/api/approval-gates/{id}/answer",
             post(routes::answer_approval_gate),
         )
         // Prefs console: self-only writes.
         .route(
-            "/ui/api/members/:id/notification-prefs",
+            "/ui/api/members/{id}/notification-prefs",
             put(routes::set_member_notification_pref),
         )
         .route(
-            "/ui/api/members/:id/delivery-mode",
+            "/ui/api/members/{id}/delivery-mode",
             put(routes::set_member_delivery_mode),
         )
         .route(
-            "/ui/api/members/:id/email",
-            put(routes::set_member_email).delete(routes::delete_member_email),
+            "/ui/api/members/{id}/email",
+            put(routes::set_member_email).merge(delete(routes::delete_member_email)),
         )
         .route(
-            "/ui/api/members/:id/channel-follows",
+            "/ui/api/members/{id}/channel-follows",
             post(routes::follow_member_channel),
         )
         .route(
-            "/ui/api/members/:id/channel-follows/:cid",
+            "/ui/api/members/{id}/channel-follows/{cid}",
             delete(routes::unfollow_member_channel),
         )
         .route(
-            "/ui/api/members/:id/thread-follows",
+            "/ui/api/members/{id}/thread-follows",
             post(routes::follow_member_thread),
         )
         .route(
-            "/ui/api/members/:id/thread-follows/:tid",
+            "/ui/api/members/{id}/thread-follows/{tid}",
             delete(routes::unfollow_member_thread),
         )
         .layer(middleware::from_fn_with_state(

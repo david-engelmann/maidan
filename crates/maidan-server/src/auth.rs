@@ -74,7 +74,7 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
     let operation = req
         .extensions()
         .get::<MatchedPath>()
-        .map(|matched| route_template(matched.as_str()))
+        .map(|matched| matched.as_str().to_owned())
         .unwrap_or_else(|| path.clone());
     let (response, recorded) =
         maidan_store::attribution::with_attribution_tracked(attribution, next.run(req)).await;
@@ -113,19 +113,6 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
 
 /// The audit action of a change that did not record itself.
 pub const MUTATION_ACTION: &str = "mutation";
-
-/// `/threads/:id/owner` → `/threads/{id}/owner`, the spelling the capability
-/// map and OpenAPI use, so an operation reads the same in every contract.
-fn route_template(matched: &str) -> String {
-    matched
-        .split('/')
-        .map(|segment| match segment.strip_prefix(':') {
-            Some(name) => format!("{{{name}}}"),
-            None => segment.to_owned(),
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
 
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
     if state.auth_disabled {

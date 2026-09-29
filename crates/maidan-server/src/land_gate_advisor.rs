@@ -446,6 +446,7 @@ pub async fn from_env() -> Result<Option<Arc<dyn LandGateAdvisor>>, LandGateAdvi
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // mock servers, not the API
 mod tests {
     use super::*;
     use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};

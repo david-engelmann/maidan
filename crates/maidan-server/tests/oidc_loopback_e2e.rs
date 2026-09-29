@@ -3,6 +3,9 @@
 //! JWKS verification, nonce/audience/issuer validation, provisioning, session,
 //! and RP-initiated logout without `MAIDAN_OIDC_MOCK`.
 
+// Mock receivers are plain axum servers, not the API (see clippy.toml).
+#![allow(clippy::disallowed_methods)]
+
 use std::{
     collections::HashMap,
     net::SocketAddr,

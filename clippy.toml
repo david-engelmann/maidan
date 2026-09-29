@@ -1,3 +1,22 @@
 cognitive-complexity-threshold = 30
 too-many-arguments-threshold = 8
 type-complexity-threshold = 250
+
+# Routes register through maidan-server's `crate::routing`, whose `get`/`post`/
+# `put`/`patch`/`delete` only accept handlers whose extractors answer a
+# rejection as a problem (checked at compile time). Test mock servers opt out
+# with `#[allow(clippy::disallowed_methods)]`.
+disallowed-methods = [
+    { path = "axum::routing::get", reason = "use maidan-server's crate::routing::get (checked extractors)" },
+    { path = "axum::routing::post", reason = "use maidan-server's crate::routing::post (checked extractors)" },
+    { path = "axum::routing::put", reason = "use maidan-server's crate::routing::put (checked extractors)" },
+    { path = "axum::routing::patch", reason = "use maidan-server's crate::routing::patch (checked extractors)" },
+    { path = "axum::routing::delete", reason = "use maidan-server's crate::routing::delete (checked extractors)" },
+    { path = "axum::routing::any", reason = "use maidan-server's crate::routing (checked extractors)" },
+    { path = "axum::routing::on", reason = "use maidan-server's crate::routing (checked extractors)" },
+    { path = "axum::routing::MethodRouter::get", reason = "chain with .merge(crate::routing::get(..))" },
+    { path = "axum::routing::MethodRouter::post", reason = "chain with .merge(crate::routing::post(..))" },
+    { path = "axum::routing::MethodRouter::put", reason = "chain with .merge(crate::routing::put(..))" },
+    { path = "axum::routing::MethodRouter::patch", reason = "chain with .merge(crate::routing::patch(..))" },
+    { path = "axum::routing::MethodRouter::delete", reason = "chain with .merge(crate::routing::delete(..))" },
+]

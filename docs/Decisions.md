@@ -450,10 +450,14 @@ layer that rewrites axum's text rejections after the fact.
 one status for "the request cannot be read" is simpler to handle than two. A
 rewriting layer would have to parse axum's text back into a status and
 detail, and would miss nothing only by accident; the extractors fail with the
-right problem at the source, and `no_handler_lets_axum_answer_a_rejection`
-keeps a raw extractor out.
+right problem at the source. Since axum 0.8 (#1081) the compiler keeps a raw
+extractor out: routes register through `crate::routing`, whose `get`/`post`/
+`put`/`patch`/`delete` accept a handler only when every argument implements
+`Checked` (the wrappers, and extractors that cannot fail on client input), and
+`clippy.toml` disallows axum's own routing functions. This replaced a source
+scan that matched handler signatures by text.
 
-**To revisit:** on the move to axum 0.8, whose rejection types change.
+**To revisit:** if axum grows a way to set a rejection type per router.
 
 ### A2A v1.0 as the official TCK reads it
 

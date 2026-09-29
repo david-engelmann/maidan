@@ -65,7 +65,8 @@ Docker daemon and otherwise fail loud (#1072); A2A lists page all the way
 through (#1076); blob reaps run under a lease, not a held transaction (#1077).
 
 **Since `v412.0.0`, merged to `main`, untagged:** the gRPC binding serves the
-official `a2a.proto`, every operation, and the TCK runs over it (#1080).
+official `a2a.proto`, every operation, and the TCK runs over it (#1080); axum
+0.8, with every route's extractors checked at compile time (#1081).
 
 **In progress (not on `main`):** Wave 4 #45's loom, madsim and TLA+
 models are in review (#1073–#1075). Row #45 stays open until they land.
