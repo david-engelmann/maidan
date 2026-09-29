@@ -60,6 +60,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   session can do both. A token the server accepts clears the rejection shown
   for the previous one.
 
+### One store delegation list (#1100)
+
+- **Changed:** the Postgres and SQLite store impls expand from one
+  `store_delegations!` list (`crates/maidan-store/src/delegate.rs`). A method
+  added on one backend and not the other no longer compiles. The call each
+  method makes is unchanged. Reads go through `read_pool`; on SQLite that is
+  the only pool. `write_lsn` calls `current_wal_lsn`: a WAL position on
+  Postgres, none on SQLite. The dialect merge (F-48 tiers 2 and 3) is not
+  this change.
+
 ### A misspelt MAIDAN_* variable refuses boot
 
 - **Changed:** the server refuses to start when the environment holds a

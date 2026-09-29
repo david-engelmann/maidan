@@ -104,7 +104,9 @@ mod claim_next;
 pub mod content_keyring;
 mod content_keys;
 mod delegation_grants;
-pub mod dialect;
+#[macro_use]
+mod delegate;
+mod dialect;
 pub mod dm;
 pub mod embeddings_purge;
 pub mod error;
