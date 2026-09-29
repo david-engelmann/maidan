@@ -22,6 +22,41 @@ env:
   RUSTFLAGS: -D warnings -C debuginfo=line-tables-only
 
 jobs:
+  # Decides whether a change touches anything but documentation. On a
+  # docs-only pull request the heavy jobs below are skipped with a job-level
+  # `if` (GitHub reports a job skipped by `if` as successful, so a required
+  # check still passes), and integration runs only the tests that read the
+  # docs. Pushes to main, manual runs and any code change run everything.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Documentation: docs/, book/, and Markdown anywhere. Everything
+          # else (code, workflows, scripts, deploy files, openapi) is code.
+          changed="$(git diff --name-only "$BASE" HEAD)"
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -Ev '^(docs/|book/)|\.md$' | grep -q .; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs-only change: heavy jobs skip"
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: lint (fmt + clippy + deny)
     runs-on: ubuntu-latest
@@ -62,6 +97,8 @@ jobs:
 
   helm-kind:
     name: helm install (kind)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -123,6 +160,8 @@ jobs:
 
   a2a-tck:
     name: a2a tck
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Runs the official A2A TCK (pinned in scripts/a2a-tck.sh) against a
@@ -145,6 +184,8 @@ jobs:
 
   mcp-inspector:
     name: mcp inspector (report-only)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     # Boots a source-built server with auth enabled and runs the official MCP
@@ -170,6 +211,8 @@ jobs:
 
   sdk-interop:
     name: sdk interop (report-only)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Boots a source-built server (SQLite, auth disabled) and runs each client
@@ -208,6 +251,7 @@ jobs:
 
   integration:
     name: integration (testcontainers)
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -225,7 +269,17 @@ jobs:
         with:
           tool: cargo-nextest
       - name: integration tests
+        if: needs.changes.outputs.code == 'true'
         run: cargo nextest run --workspace --tests --profile ci
+      - name: doc contract tests (docs-only change)
+        # The tests that read docs/, book/ or Markdown; nothing else can be
+        # affected by a docs-only change.
+        if: needs.changes.outputs.code != 'true'
+        run: >-
+          cargo nextest run --workspace --tests --profile ci -E
+          'binary(docs_numbers_contract) | binary(mcp_reference_current) |
+          binary(alert_templates_contract) | binary(result_delivery_e2e) |
+          binary(token_pack) | binary(openapi_well_formed)'
       - name: upload JUnit report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -236,6 +290,8 @@ jobs:
 
   sqlite-vec:
     name: sqlite-vec (optional feature)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -259,6 +315,8 @@ jobs:
 
   bootstrap-strip:
     name: bootstrap compile-time strip
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # A release build: 10–11 min on an idle runner, over 15 on a busy one,
     # where it was killed mid-compile on three PRs in a day.
@@ -288,6 +346,8 @@ jobs:
 
   coverage:
     name: coverage (llvm-cov)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     # Coverage gates on the WHOLE test suite (unit + integration), so the
@@ -347,6 +407,8 @@ jobs:
 
   e2e:
     name: docker compose smoke
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -420,6 +482,8 @@ jobs:
     # covered by the in-process two_replica_*_e2e tests.
     # NOTE: also add "scale-out smoke" to branch-protection required checks.
     name: scale-out smoke
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -433,6 +497,8 @@ jobs:
     # recovery point between dumps; this is the evidence the PITR procedure in
     # docs/Production.md works. Not (yet) a required check.
     name: pitr drill
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -488,6 +554,8 @@ jobs:
     # in-process metrics_push unit test.
     # Required check as (v124.0.0).
     name: otlp smoke
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -518,6 +586,8 @@ jobs:
     # set; unset elsewhere they skip. Closes the "LSN routing is CI-untested"
     # gap. Not a required check yet.
     name: replica routing (LSN)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -544,6 +614,8 @@ jobs:
 
   ui-tests:
     name: ui tests (playwright)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Real headless-Chromium coverage of the /ui console. The example harness
