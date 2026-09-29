@@ -65,8 +65,10 @@ done
 # release. A release tag's own tree still pins the release before it (the pin
 # can only move once the tag's tarballs exist), so cloning a tag runs an older
 # binary than its scripts expect.
-if rg -n 'git clone .*--branch v[0-9]+\.[0-9]+\.[0-9]+ https://github\.com/david-engelmann/maidan' README.md >/dev/null; then
-  die "the README quickstart must clone main, not a release tag"
+readme_clones="$(rg '^\s*git clone .*github\.com/david-engelmann/maidan' README.md || true)"
+[[ -n "$readme_clones" ]] || die "could not find the README quickstart's git clone"
+if rg -q -e '--branch|(^|\s)-b(\s|$)|--branch=' <<<"$readme_clones"; then
+  die "the README quickstart must clone main, not a branch or tag: $readme_clones"
 fi
 git rev-parse -q --verify "refs/tags/v$quickstart_arg" >/dev/null || \
   die "the quickstart and Helm pin v$quickstart_arg, which is not a published tag"
