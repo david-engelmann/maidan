@@ -1957,7 +1957,7 @@ Still open, tracked here rather than left to a re-audit:
   and that is enough. It is not enough for decisions — a review verdict, an
   approval-gate answer — whose earlier values are overwritten; those want
   domain records carrying the decision, and belong with 411.10. **Closed by
-  Next wave item 5 (#PRNUM):** review and land-gate verdicts are appended to a
+  Next wave item 5 (#1098):** review and land-gate verdicts are appended to a
   history. Approval-gate answers were never overwritten: the first answer is
   final.
 
