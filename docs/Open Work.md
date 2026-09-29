@@ -36,7 +36,7 @@ dispositions are recorded below.
 
 | # | Item | Size | Acceptance criteria | Open because | Depends on |
 |---|---|---|---|---|---|
-| 1 | **Inline errors instead of `alert()`** (thread 1, with 9) | M | One inline and toast error component; every `alert(` in `static/index.html` replaced; `ui_js_contract` fails on a new `alert(`; the dead first `#live-panel` / `#live-toolbar` / `#live-feed` CSS block removed | 39 blocking native dialogs in `static/index.html`, all validation guards | #1093 |
+| 1 | **Inline errors instead of `alert()`** (thread 1, with 9) | M | One inline and toast error component; every `alert(` in `static/index.html` replaced; `ui_js_contract` fails on a new `alert(`; the two `#live-panel` / `#live-toolbar` / `#live-feed` rule sets merged into one per element with the same computed styles | 39 blocking native dialogs in `static/index.html`, all validation guards | #1093 |
 | 2 | **One thread surface** (thread 3) | M | The board is the thread surface; the sidebar list becomes a compact switcher (or is removed), so a thread is drawn once; `loadThreads` renders one surface | `loadThreads` renders `#thread-list` and `#board` from the same fetch, so every thread appears twice | #1093 |
 | 3 | **Bearer tokens in the browser: warn, rotate, stop storing** (thread 2a, 11 and 2b) | M, then M | `POST /tokens/{id}/rotate` returns a new secret and revokes the old one, audited in the same transaction (D-A), with an MCP twin; the `/ui` warns that a pasted token is kept in this browser and offers rotation in the Session tab; then a pasted bearer is exchanged for the existing `HttpOnly; SameSite=Lax` session cookie, so no token sits in `localStorage`, and the session's `csrf_secret` is either verified on `/ui/api` writes or removed | `static/index.html` keeps the bearer in `localStorage` (`maidan_token`) with no warning; `routes/token.rs` has no rotation; the session stores a `csrf_secret` nothing reads | — |
 | 4 | **Workspace-wide `claim_next`** | M | `POST /workspaces/{wid}/threads/claim-next` and an MCP twin hand out the oldest ready thread across every channel the caller can read, with the channel route's filters (open state, skills, blocked reasons, DAG readiness, claim gates), its fencing token and the default lease; a private channel's threads go only to its members; a two-tenant test | The only route is `/channels/{cid}/threads/claim-next` (`app.rs`), so a workspace agent polls every channel | #1097 |
@@ -168,7 +168,7 @@ not re-filed.
 | 6 | Header cleanup | **Adapt**: the residual after #1086's Connect sheet | Next #7 |
 | 7 | Edit affordance on messages | **Adopt** | Next #11 |
 | 8 | Reorganize the tools drawer | **Adapt**: the palette (#1086) is the fast path; group the tabs and drop the Work tab's copy of the board | Next #11 |
-| 9 | Dead `#live-*` CSS | **Adopt**, with item 1 (same file, same PR) | Next #1 |
+| 9 | Dead `#live-*` CSS | **Adapt**: the first block is not dead (see below); merge the two into one rule per element instead | Next #1 |
 | 10 | Per-peer egress allowlist | **Defer** until a real federation peer; production already refuses the bypass | Later, Federation |
 | 11 | Token rotation endpoint | **Adopt**, with 2a | Next #3 |
 | 12 | Board screenshot in the README | **Adopt**, after the P0s so the image shows the fixed UI, captured by a script | Next #12 |
@@ -196,4 +196,8 @@ rewriting, so they start the moment #1093 lands; the server half of Next #3
 `crates/maidan-server/src/session/mod.rs` already issues `HttpOnly;
 SameSite=Lax` (and `Secure` when configured) cookies for OIDC sign-in, and each
 session stores a `csrf_secret` that no handler reads, so `SameSite=Lax` is the
-CSRF defence in force. Everything else checked out.
+CSRF defence in force. Item 9 took the first `#live-panel` / `#live-toolbar` /
+`#live-feed` block for dead because a later block restyles the same
+elements, but the cascade is per property: the later block never sets the flex
+layout or the feed's colours, font, overflow and wrapping, so removing the
+first would break the Live bar. Everything else checked out.
