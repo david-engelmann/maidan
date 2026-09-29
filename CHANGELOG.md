@@ -257,6 +257,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the caller's trace after the request has finished. It is not part of the
   event content hash.
 
+### The `/ui` reports mistakes in the page
+
+- **Changed:** the 40 blocking `alert()` dialogs in the `/ui` are toasts: a
+  `role="alert"` region a screen reader announces, dismissible, cleared after
+  eight seconds, the same message refreshed rather than stacked. Workspace
+  purge drops its third, blocking `confirm()`; typing the workspace id and
+  ticking the box already confirm it. `ui_js_contract` fails on a new
+  `alert(`, `confirm(` or `prompt(`.
+- **Changed:** the Live bar's CSS is one rule per element. The earlier block
+  was not dead, as the audit thought: it still supplied the flex layout and
+  the feed's colours, font and scrolling, which the later block never set.
+
 ### Tenant isolation is a conformance test
 
 - **Fixed (security):** seven MCP tools took a `workspace_id` and never

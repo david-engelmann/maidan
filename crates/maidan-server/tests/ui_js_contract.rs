@@ -922,3 +922,31 @@ fn ui_js_needs_you_clears_on_refusal_and_keeps_rows_in_use() {
         "a channel switch drops the previous task's buttons and in-flight header"
     );
 }
+
+/// A blocking `alert()`, `confirm()` or `prompt()` stops the page and cannot
+/// be styled, dismissed or read by a screen reader as part of it. The `/ui`
+/// reports a user's mistake with `showError`, a toast in a `role="alert"`
+/// region, and asks for confirmation inline (workspace purge: type the id and
+/// tick the box).
+#[test]
+fn ui_js_reports_errors_without_blocking_dialogs() {
+    let js = script(HTML);
+    let bytes = js.as_bytes();
+    for dialog in ["alert(", "confirm(", "prompt("] {
+        let mut from = 0;
+        while let Some(offset) = js[from..].find(dialog) {
+            let at = from + offset;
+            let called_bare =
+                at == 0 || !(is_ident(bytes[at - 1] as char) || bytes[at - 1] == b'.');
+            assert!(
+                !called_bare,
+                "a blocking {dialog}) at byte {at}: use showError or an inline confirmation"
+            );
+            from = at + dialog.len();
+        }
+    }
+    assert!(
+        HTML.contains(r#"<div id="toasts"></div>"#),
+        "the toast region"
+    );
+}
