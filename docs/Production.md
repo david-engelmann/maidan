@@ -654,7 +654,7 @@ drives the cross-replica REST paths.
 | Resource | Why it must be shared |
 |----------|----------------------|
 | Postgres (`DATABASE_URL`) | System of record + the `LISTEN`/`NOTIFY` fabric for cross-replica events, presence, and resource notifications. Durable ephemeral state (OAuth codes, reindex job status — `v104.0.0`) lives here too. |
-| Object store (`ARTIFACT_BACKEND=s3`) | Artifacts written on one replica must be readable on another. Do **not** use `localfs` with multiple replicas. |
+| Object store (`ARTIFACT_BACKEND=s3`) | Artifacts written on one replica must be readable on another. Do **not** use `localfs` with multiple replicas. The client gives up after 5 s to connect and 30 s waiting for the store to start answering (a large body may take longer once it flows), then retries as the AWS SDK does. |
 | `MAIDAN_SESSION_SECRET` | Must be **identical** on every replica so subscribe-resume tokens (and session signing) validate regardless of which replica issued them. |
 
 **Still pod-local (do not assume cross-replica):**

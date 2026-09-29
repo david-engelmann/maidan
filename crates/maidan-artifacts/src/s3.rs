@@ -1,8 +1,10 @@
 //! S3-compatible implementation of [`ArtifactStore`] (MinIO, AWS S3).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
+use aws_config::timeout::TimeoutConfig;
 use aws_config::BehaviorVersion;
 use aws_credential_types::Credentials;
 use aws_sdk_s3::config::Region;
@@ -26,6 +28,13 @@ pub struct S3Config {
     pub secret_key: String,
 }
 
+/// How long a request to the object store may take to connect.
+pub const S3_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long the object store may take to start answering. It bounds a stalled
+/// store without capping a large body that is still arriving; before it, a
+/// store that accepted a connection and went quiet held the request forever.
+pub const S3_READ_TIMEOUT: Duration = Duration::from_secs(30);
+
 #[derive(Debug, Clone)]
 pub struct S3Store {
     client: Client,
@@ -34,6 +43,15 @@ pub struct S3Store {
 
 impl S3Store {
     pub async fn new(config: S3Config) -> Result<Self, ArtifactError> {
+        Self::with_timeouts(config, S3_CONNECT_TIMEOUT, S3_READ_TIMEOUT).await
+    }
+
+    /// [`Self::new`] with the connect and first-byte timeouts given.
+    pub async fn with_timeouts(
+        config: S3Config,
+        connect: Duration,
+        read: Duration,
+    ) -> Result<Self, ArtifactError> {
         let creds = Credentials::new(
             config.access_key,
             config.secret_key,
@@ -45,6 +63,12 @@ impl S3Store {
             .endpoint_url(&config.endpoint)
             .region(Region::new(config.region.clone()))
             .credentials_provider(creds)
+            .timeout_config(
+                TimeoutConfig::builder()
+                    .connect_timeout(connect)
+                    .read_timeout(read)
+                    .build(),
+            )
             .load()
             .await;
         let s3_conf = aws_sdk_s3::config::Builder::from(&shared)
