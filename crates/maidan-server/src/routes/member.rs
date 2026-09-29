@@ -655,10 +655,20 @@ pub async fn get_member_waiting(
         .store
         .list_assigned_threads(member.workspace_id, MemberId(id))
         .await?;
-    let reviews = state
+    // Being named a reviewer does not grant access to a private channel: list
+    // only the requests the caller can open (and so can act on).
+    let mut reviews = Vec::new();
+    for thread in state
         .store
         .list_review_requests(member.workspace_id, MemberId(id))
-        .await?;
+        .await?
+    {
+        if auth.bypass
+            || maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await?
+        {
+            reviews.push(thread);
+        }
+    }
     let gates = state
         .store
         .list_pending_approval_gates(member.workspace_id, 200)

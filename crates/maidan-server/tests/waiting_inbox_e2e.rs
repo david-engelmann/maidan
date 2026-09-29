@@ -142,6 +142,36 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
         .unwrap();
     store.add_reviewer(reviewed.id, member.id).await.unwrap();
 
+    // A review in a private channel the member is not in. Naming them as a
+    // reviewer does not let them open it, so its title must not reach them.
+    let secret_ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "secret".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .unwrap();
+    let hidden = store
+        .create_thread(NewThread {
+            channel_id: secret_ch.id,
+            parent_thread_id: None,
+            title: Some("private acquisition plan".into()),
+        })
+        .await
+        .unwrap();
+    store
+        .claim_next_thread(secret_ch.id, agent.id, Some(60))
+        .await
+        .unwrap()
+        .expect("claimable");
+    store
+        .transition_thread(hidden.id, agent.id, ThreadAction::StartReview)
+        .await
+        .unwrap();
+    store.add_reviewer(hidden.id, member.id).await.unwrap();
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -187,6 +217,34 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
     assert_eq!(review["thread_id"], serde_json::json!(reviewed.id.0));
     assert_eq!(review["summary"], "fix the flaky test");
     assert_eq!(inbox["sla_secs"], 86400);
+    assert!(
+        !inbox.to_string().contains("private acquisition plan"),
+        "a review in a private channel the member cannot open is not listed"
+    );
+
+    // The MCP tool applies the same rule.
+    let mcp: serde_json::Value = client
+        .post(format!("{base}/mcp"))
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "get_waiting_inbox", "arguments": {"member_id": member.id.0}}
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let text = mcp.to_string();
+    assert!(
+        text.contains("fix the flaky test"),
+        "MCP lists the open review: {text}"
+    );
+    assert!(
+        !text.contains("private acquisition plan"),
+        "MCP hides the private review too"
+    );
     // Freshly-created items are not yet overdue (the overdue math is unit-tested
     // against aged items in `assemble_waiting_inbox`).
     assert_eq!(inbox["overdue"], 0);
