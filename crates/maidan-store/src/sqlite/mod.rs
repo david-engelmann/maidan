@@ -31,6 +31,7 @@ mod github_links;
 mod glossary;
 mod governance_audited;
 mod group_dm;
+mod idempotency;
 mod import;
 mod inbox;
 mod land_gate;
@@ -2513,6 +2514,37 @@ impl AppStore for SqliteStore {
         id: AppInstallationId,
     ) -> Result<AppInstallation, StoreError> {
         apps::revoke_installation(&self.pool, id).await
+    }
+}
+
+#[async_trait]
+impl IdempotencyStore for SqliteStore {
+    async fn reserve_idempotency_key(
+        &self,
+        new: &crate::idempotency::NewIdempotencyKey,
+    ) -> Result<crate::idempotency::IdempotencyReservation, StoreError> {
+        idempotency::reserve(&self.pool, new).await
+    }
+
+    async fn complete_idempotency_key(
+        &self,
+        workspace_id: WorkspaceId,
+        actor_id: MemberId,
+        key: &str,
+        lease: &str,
+        response: &crate::idempotency::StoredResponse,
+    ) -> Result<(), StoreError> {
+        idempotency::complete(&self.pool, workspace_id, actor_id, key, lease, response).await
+    }
+
+    async fn release_idempotency_key(
+        &self,
+        workspace_id: WorkspaceId,
+        actor_id: MemberId,
+        key: &str,
+        lease: &str,
+    ) -> Result<(), StoreError> {
+        idempotency::release(&self.pool, workspace_id, actor_id, key, lease).await
     }
 }
 

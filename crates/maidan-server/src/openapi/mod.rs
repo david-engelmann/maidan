@@ -7,7 +7,7 @@ mod responses;
 mod schemas;
 
 use axum::Json;
-use utoipa::openapi::path::{Operation, Parameter, ParameterIn, PathItem};
+use utoipa::openapi::path::{Operation, Parameter, ParameterBuilder, ParameterIn, PathItem};
 use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa::openapi::{Ref, Required};
 use utoipa::{Modify, OpenApi};
@@ -20,8 +20,8 @@ use crate::land_gate_advisor::{
     LandGateAdvice, LandGateAdviceRequest, LandGateAdviceThresholds, LandGateAdviceUsage,
 };
 use crate::openapi::responses::{
-    BadRequest, Conflict, Forbidden, InternalServerError, NotFound, Overloaded, PayloadTooLarge,
-    TooManyRequests, Unauthorized, UnsupportedMediaType,
+    BadRequest, Conflict, Forbidden, IdempotencyKeyReused, InternalServerError, NotFound,
+    Overloaded, PayloadTooLarge, TooManyRequests, Unauthorized, UnsupportedMediaType,
 };
 use crate::openapi::schemas::{LivenessOk, SearchHit};
 use crate::share_consumer::*;
@@ -102,6 +102,61 @@ impl Modify for MiddlewareResponses {
                     responses
                         .entry("503".to_owned())
                         .or_insert_with(|| Ref::from_response_name("Overloaded").into());
+                }
+            }
+        }
+    }
+}
+
+/// What `crate::idempotency::middleware` adds to every credentialed write it
+/// wraps (all but SCIM and A2A, which keep their own error envelopes): the
+/// optional `Idempotency-Key` header, 400 for a malformed key, 409 for a retry
+/// while the first request runs, and 422 for a key reused on a different
+/// request. An operation's own description of a status is kept.
+struct IdempotencyResponses;
+
+impl Modify for IdempotencyResponses {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        for (path, item) in openapi.paths.paths.iter_mut() {
+            if path.starts_with("/scim/") || path.starts_with("/a2a/") {
+                continue;
+            }
+            let writes = [
+                &mut item.post,
+                &mut item.put,
+                &mut item.patch,
+                &mut item.delete,
+            ];
+            for op in writes.into_iter().filter_map(Option::as_mut) {
+                if !requires_credential(op) {
+                    continue;
+                }
+                let key = ParameterBuilder::new()
+                    .name(crate::idempotency::IDEMPOTENCY_KEY_HEADER)
+                    .parameter_in(ParameterIn::Header)
+                    .required(Required::False)
+                    .description(Some(
+                        "1 to 255 visible ASCII characters, scoped to the caller. A retry with \
+                         the same key and request gets the first response back with \
+                         `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+                    ))
+                    .schema(Some(
+                        utoipa::openapi::schema::ObjectBuilder::new()
+                            .schema_type(utoipa::openapi::schema::Type::String)
+                            .min_length(Some(1))
+                            .max_length(Some(255)),
+                    ))
+                    .build();
+                op.parameters.get_or_insert_with(Vec::new).push(key);
+                let responses = &mut op.responses.responses;
+                for (status, name) in [
+                    ("400", "BadRequest"),
+                    ("409", "Conflict"),
+                    ("422", "IdempotencyKeyReused"),
+                ] {
+                    responses
+                        .entry(status.to_owned())
+                        .or_insert_with(|| Ref::from_response_name(name).into());
                 }
             }
         }
@@ -532,6 +587,7 @@ fn requires_credential(op: &Operation) -> bool {
         TooManyRequests,
         InternalServerError,
         Overloaded,
+        IdempotencyKeyReused,
     ),
     schemas(
         LivenessOk,
@@ -836,7 +892,12 @@ fn requires_credential(op: &Operation) -> bool {
         IngestSummary,
         SessionResponse,
     )),
-    modifiers(&SecurityAddon, &MiddlewareResponses, &ExtractorResponses),
+    modifiers(
+        &SecurityAddon,
+        &MiddlewareResponses,
+        &ExtractorResponses,
+        &IdempotencyResponses
+    ),
     tags(
         (name = "health", description = "Liveness and readiness"),
         (name = "workspaces", description = "Workspaces and event log"),
