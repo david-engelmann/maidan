@@ -840,6 +840,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/tokens/{id}/rotate",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/ui/api/channels/{cid}/threads",
     "capability": "workspace:read",

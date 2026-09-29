@@ -183,6 +183,57 @@ pub async fn revoke_api_token(
     Ok(Json(revoked))
 }
 
+/// Replace a token's secret. The successor keeps everything but the secret
+/// (member, capabilities, label, expiry, quotas, the tokens derived from it)
+/// and the old secret stops working in the same transaction.
+///
+/// A holder may rotate the token it is calling with; rotating any other token
+/// takes `token:admin` in its workspace. The capability check runs before the
+/// lookup, so a caller without it cannot learn which token ids exist.
+pub async fn rotate_api_token(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<MintApiTokenResponse>> {
+    let token_id = ApiTokenId(id);
+    let own = auth.token_id == Some(token_id);
+    if !own {
+        cap(&auth, TOKEN_ADMIN)?;
+    }
+    let existing = state.store.get_api_token(token_id).await?;
+    ensure_workspace(&auth, existing.workspace_id)?;
+    let secret = TokenSecret::generate();
+    let actor = auth.actor_id;
+    let rotated = state
+        .store
+        .rotate_api_token_audited(
+            token_id,
+            &hash_secret(secret.as_str()),
+            Box::new(move |successor| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "token.rotate".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(successor.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": successor.workspace_id.0,
+                    "subject_member_id": successor.member_id.0,
+                    "replaces": token_id.0,
+                }),
+            }),
+        )
+        .await?;
+    let quotas = state.store.list_token_quotas(rotated.id).await?;
+    Ok(Json(MintApiTokenResponse {
+        id: rotated.id,
+        secret: secret.as_str().to_string(),
+        workspace_id: rotated.workspace_id,
+        member_id: rotated.member_id,
+        capabilities: rotated.capabilities,
+        expires_at: rotated.expires_at,
+        quotas,
+    }))
+}
+
 /// Named capability-set catalog (`maidan.agent.worker`, `maidan.human.admin`).
 pub async fn list_capability_sets(
     Extension(auth): Extension<AuthContext>,

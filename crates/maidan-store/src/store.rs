@@ -2451,6 +2451,17 @@ pub trait TokenStore: Send + Sync {
         id: ApiTokenId,
         audit: crate::AuditFor<ApiToken>,
     ) -> Result<ApiToken, StoreError>;
+    /// Replace a live token's secret with `token_hash`: the successor keeps the
+    /// old token's member, capabilities, label, expiry, app installation,
+    /// parent and quotas, and inherits its derived tokens; the old token is
+    /// revoked. `audit` is written for the successor in the same transaction.
+    /// There is no unaudited form. A delegated token is a `Conflict`.
+    async fn rotate_api_token_audited(
+        &self,
+        id: ApiTokenId,
+        token_hash: &str,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError>;
     async fn list_api_tokens_for_member(
         &self,
         workspace_id: WorkspaceId,
