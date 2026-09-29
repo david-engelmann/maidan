@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### NOTIFY floor simulation
+
+- **Added:** a seeded deterministic simulation of the Postgres listener's
+  NOTIFY floor on three replicas, with out-of-order commits, rollbacks, lost
+  NOTIFYs, reconnects and failing reads. A failing seed replays with
+  `MAIDAN_SIM_SEED`.
+- **Fixed:** when the back-fill of a NOTIFY gap hit a store error, or the
+  event a NOTIFY pointed at could not be read, the listener still moved its
+  mark past those ids, so the missed events were never delivered. The mark
+  now only moves past events that were delivered.
+
 ### Overload is refused fast, panics answer, credentials stay out of traces
 
 - **Added:** an in-flight request ceiling (`MAIDAN_MAX_CONCURRENT_REQUESTS`,

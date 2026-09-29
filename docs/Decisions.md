@@ -1338,7 +1338,7 @@ the named invariant violated.
 
 **Why this:** a spec nobody runs drifts from the code. A passing check says
 nothing if the invariant is too weak to fail; the failing config shows it
-catches the bug it names. Both runs take seconds.
+catches the bug it names.
 
 **To revisit:** when the claim or sealing code changes shape: change the
 spec in the same PR.
@@ -1360,6 +1360,52 @@ the fix on both backends.
 
 **To revisit:** if assign should hand over a lease; it would then take a
 lease length, not inherit a deadline.
+
+### A seeded simulation of the NOTIFY floor, not madsim
+
+**Decision.** The listener's floor logic (`notify_floor`) reads the log
+through an `EventLog` trait. A unit test runs it on three replicas against a
+model log for 400 seeds (splitmix64, one thread, no clock): transactions
+commit out of order or roll back, NOTIFYs are lost, replicas reconnect and
+reads fail. It checks that only committed events are delivered and that every
+committed event arrives, except the one gap the floor cannot see (a late
+commit at or below the mark whose NOTIFY was lost). `MAIDAN_SIM_SEED`
+replays one seed with its full trace.
+
+**Alternative.** madsim, which runs the real crates under a simulated
+runtime.
+
+**Why this:** madsim needs `--cfg madsim` across the whole build, and sqlx,
+reqwest, tonic and hyper do their own I/O, so the server would not run under
+it without replacing its drivers. The floor is where replicas can lose
+events, and it is pure logic once the log is behind a trait. The loom models
+cover the presence hub's interleavings.
+
+**To revisit:** if more of the replication path (federation ingest, the
+outbox relay) is moved behind traits, simulate it the same way.
+
+### The NOTIFY floor only moves past delivered events
+
+**Decision.** After a pointer, the mark moves to the pointer's id only if the
+gap below it was fully back-filled and the pointer's event was delivered;
+otherwise it stays at the last id delivered in order. The starting mark is
+the log head read at connect, after LISTEN; if that read fails, the connect
+fails rather than guess a mark.
+A single row that cannot be decoded (a bad kind, a content key that will
+not unwrap) is skipped and counted as a failed hydrate, not a store error:
+the back-fill reads each row's result beside its id, so one such row cannot
+hold the mark below it forever. That row is the one exception to "delivered":
+the mark can move past its id without publishing it.
+
+**Alternative.** Move the mark to the pointer's id regardless (the old
+behaviour).
+
+**Why this:** the simulation found that a store error during the back-fill,
+or a failed read of the pointer's event, moved the mark past ids never
+delivered, and no later NOTIFY or reconnect drained them. Staying low can
+deliver an event twice, which the at-least-once contract allows.
+
+**To revisit:** never; this is the floor's contract.
 
 ## Workflow
 

@@ -19,6 +19,9 @@ pub enum BusError {
 
     #[error("failed to hydrate log_id={log_id}: {reason}")]
     HydrateFailed { log_id: i64, reason: String },
+
+    #[error("event log read failed: {0}")]
+    Store(#[from] maidan_store::StoreError),
 }
 
 #[cfg(test)]

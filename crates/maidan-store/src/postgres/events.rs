@@ -243,6 +243,33 @@ pub async fn list_after_global(
         .collect()
 }
 
+/// [`list_after_global`], with each row's conversion result beside its id,
+/// so one row that cannot be decoded (a bad kind, a content key that will not
+/// unwrap) does not fail the whole page. The NOTIFY floor's back-fill uses it
+/// to skip such a row and keep draining past it.
+pub async fn list_after_global_each(
+    pool: &PgPool,
+    keys: &ContentKeyring,
+    after_id: i64,
+    limit: i64,
+) -> Result<Vec<(i64, Result<StoredEvent, StoreError>)>, StoreError> {
+    let rows = sqlx::query(&format!(
+        "SELECT {EVENT_COLUMNS}
+         FROM {EVENTS_FROM}
+         WHERE e.id > $1
+         ORDER BY e.id ASC
+         LIMIT $2"
+    ))
+    .bind(after_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| (row.get::<i64, _>("id"), row_to_stored(row, Some(keys))))
+        .collect())
+}
+
 /// A thread's events with `id <= through_id`, in `id` order — the immutable
 /// substrate for as-of context replay. The assembler folds the message events
 /// into the message set as it stood at that log position.

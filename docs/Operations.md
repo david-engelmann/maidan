@@ -461,7 +461,18 @@ No CI job runs these yet. `scripts/tla.sh` model-checks the TLA+ specs in `specs
 `tla2tools.jar`, Java 21); run it after touching claims or the event log. Each spec has a
 passing config and one that turns off a mechanism (`ClaimNoReset.cfg`,
 `EventLogUnordered.cfg`), where TLC must find the named invariant violated.
-A failure prints the shortest trace that breaks the invariant.
+A failure prints a counterexample trace that breaks the invariant.
+
+### NOTIFY floor simulation fails
+
+`the_floor_delivers_every_committed_event_under_faults` in `maidan-bus`
+prints the failing seed and its last steps. Replay it with the full trace:
+
+```bash
+MAIDAN_SIM_SEED=<seed> cargo test -p maidan-bus --lib notify_floor::sim -- --nocapture
+```
+
+`MAIDAN_SIM_SEEDS=5000` runs more seeds.
 
 ### `coverage (llvm-cov)` fails
 
