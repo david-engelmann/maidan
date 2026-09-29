@@ -79,8 +79,8 @@ change.
   [`docs/Open Work.md`](docs/Open%20Work.md).** What shipped is in
   [`docs/Capabilities.md`](docs/Capabilities.md) and [`CHANGELOG.md`](CHANGELOG.md).
   Everything else in `docs/` that looks like a plan is history.
-- **Decisions only the maintainer makes** are listed in Open Work under "Still
-  David's call". Don't guess at them.
+- **Decisions only the maintainer makes** are listed in Open Work under
+  "Decisions pending the maintainer". Don't guess at them.
 
 Lessons that cost real time, and that still apply:
 

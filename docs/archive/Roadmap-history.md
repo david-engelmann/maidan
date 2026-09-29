@@ -731,7 +731,7 @@ Cross-cutting tracks **T, U, V, W, X** are complete.
 ([[Retros/Cluster 68.0]]).
 
 **Recently closed:** Product Ladder **59+** at **`v67.0.0`** ([[Clusters/Product Ladder 59+]],
-[[Agent Integration]]).
+[[Integration]]).
 
 **Recently closed:** **Cluster 67.0** — Workspace context packages at **`v67.0.0`**.
 

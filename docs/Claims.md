@@ -15,7 +15,7 @@ its evidence, that's a bug: open an issue.
 |------|-----|-------------------|
 | `maidan-2.0` | `v58.0.0` | Core collaboration surface |
 | `maidan-agent-1.0` | `v76.0.0` | Agent-facing surface (MCP tools, subscribe) |
-| `maidan-operator-1.0` | `v101.0.0` | Operator surface (audit, deliveries, reindex) |
+| `maidan-operator-1.0` | `v101.0.0` | Operator surface: the web UI, health, metrics, OpenAPI (`maidan_operator_gate_e2e`) |
 | `maidan-scale-1.0` | `v120.0.0` | Scale-out (multi-replica, sharded fan-out, SLOs) |
 
 All four gate tags are cut. Post-120 work ships on the same `vX.0.0` ladder as
