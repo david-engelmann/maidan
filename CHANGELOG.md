@@ -112,8 +112,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Loom models
 
 - **Added:** loom models of the sharded bus and the presence hub, behind a
-  `loom` feature. They run locally (see Operations); a CI job for them is
-  not wired up yet.
+  `loom` feature, in the non-required `loom` CI job.
 - **Fixed:** presence changes could be announced out of order, so a
   reconnecting member could show as offline, or a status change end on the
   wrong status. Changes are now announced under the hub lock and published

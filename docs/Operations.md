@@ -440,11 +440,10 @@ retry is reported as `FLAKY`, not hidden. Common failures:
   so a pull failure fails them instead of passing with `s3.rs` untested. Keep
   the image pinned to the digest `compose.yaml` uses.
 
-### `loom` models fail
+### `loom` fails
 
-The loom models check every interleaving of the sharded bus and the presence
-hub with [loom](https://docs.rs/loom). No CI job runs them yet; run them
-locally after touching either:
+The job model-checks every interleaving of the sharded bus and the presence
+hub with [loom](https://docs.rs/loom). Run it locally:
 
 ```bash
 cargo test -p maidan-bus --features loom --release --lib loom
