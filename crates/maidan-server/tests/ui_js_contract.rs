@@ -672,7 +672,15 @@ fn ui_js_drops_thread_responses_for_a_channel_no_longer_selected() {
 fn ui_js_loads_every_page_of_a_channel_and_only_the_newest_load_paints() {
     let s = script(HTML);
     let start = s.find("async function loadThreads").expect("loadThreads");
-    let body = &s[start..(start + 3000).min(s.len())];
+    // A fixed byte window can land inside a multibyte character (the
+    // ellipsis in a comment, for example), so the end walks back to a
+    // character boundary.
+    let end = (start + 3000).min(s.len());
+    let end = (0..=end)
+        .rev()
+        .find(|i| s.is_char_boundary(*i))
+        .unwrap_or(start);
+    let body = &s[start..end];
     assert!(
         body.contains("const gen = ++threadLoadGen;"),
         "each load takes a generation, so an older load for the same channel is dropped"
@@ -727,7 +735,12 @@ fn ui_js_review_and_close_report_network_failures_instead_of_rejecting() {
         ),
     ] {
         let start = s.find(func).expect(func);
-        let body = &s[start..(start + 900).min(s.len())];
+        let end = (start + 900).min(s.len());
+        let end = (0..=end)
+            .rev()
+            .find(|i| s.is_char_boundary(*i))
+            .unwrap_or(start);
+        let body = &s[start..end];
         assert!(
             body.contains("try {") && body.contains("} catch (e) {") && body.contains(lead),
             "{func} turns a thrown fetch into {{ ok: false, why }} so its row re-enables and says why"
