@@ -30,16 +30,13 @@ use crate::error::BusError;
 use crate::hydrate_stats::{HydrateResult, HydrateStats};
 use crate::item::BusItem;
 use crate::listener_health::ListenerHealth;
+use crate::notify_floor::{drain, NotifyFloor, PgEventLog};
 use crate::stream::EventStream;
 use crate::traits::EventBus;
 
 const CHANNEL: &str = "maidan_events";
 const PAYLOAD_LIMIT: usize = 7990;
 const NOTIFY_POINTER_SCHEMA: &str = "log_id_v1";
-/// Page size for the self-healing back-fill: a gap or reconnect drains the
-/// missed event range in batches of this size, so even a large gap (a long
-/// `LISTEN` disconnect) heals without loading it all at once.
-const BACKFILL_BATCH: i64 = 256;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct NotifyPointerPayload {
@@ -120,55 +117,24 @@ impl PostgresBus {
             listener.listen(CHANNEL).await?;
 
             let health = listener_health.clone();
+            let log = PgEventLog {
+                pool: listener_pool,
+                keys: options.content_keys.clone(),
+            };
             let stats = hydrate_stats.clone();
-            let keys = options.content_keys.clone();
+            // Seeded from the log head read after LISTEN is up, so only
+            // events appended from here on are back-filled.
+            let mut floor = NotifyFloor::start(log, listener_tx, stats.clone()).await?;
             tokio::spawn(async move {
-                // High-water mark of the last event id delivered to the local
-                // broadcast. Seeded from the current log head so we back-fill only
-                // events appended after we started listening, not all of history.
-                let mut last_seen = maidan_store::postgres::events::max_event_id(&listener_pool)
-                    .await
-                    .unwrap_or(0);
                 loop {
                     match listener.recv().await {
                         Ok(note) => {
                             health.record_ok();
                             match decode_notify_payload(note.payload(), &stats) {
                                 Ok(NotifyOutcome::Pointer(log_id)) => {
-                                    // A pointer whose id sits above the high-water
-                                    // plus one means we silently missed the events in
-                                    // between (a lost NOTIFY across a transparent
-                                    // reconnect); back-fill that middle range from the
-                                    // log first, in order, so nothing is dropped.
-                                    if log_id > last_seen + 1 {
-                                        drain_new_events(
-                                            &listener_pool,
-                                            &keys,
-                                            &listener_tx,
-                                            last_seen,
-                                            Some(log_id),
-                                            &stats,
-                                        )
-                                        .await;
-                                    }
-                                    // Always hydrate the pointer's own id — never
-                                    // skipping on `<= last_seen`, so a lower id that
-                                    // committed late still gets delivered.
-                                    match hydrate_envelope(&listener_pool, &keys, log_id).await {
-                                        Ok(envelope) => {
-                                            stats.record(HydrateResult::Ok);
-                                            listener_tx.publish(envelope);
-                                        }
-                                        Err(err) => {
-                                            record_hydrate_error(&stats, &err);
-                                            tracing::warn!(error = %err, log_id, "drop notify pointer");
-                                        }
-                                    }
-                                    last_seen = last_seen.max(log_id);
+                                    floor.on_pointer(log_id).await
                                 }
-                                Ok(NotifyOutcome::Envelope(envelope)) => {
-                                    listener_tx.publish(*envelope);
-                                }
+                                Ok(NotifyOutcome::Envelope(envelope)) => floor.publish(*envelope),
                                 Err(err) => {
                                     tracing::warn!(
                                         error = %err,
@@ -182,19 +148,9 @@ impl PostgresBus {
                             health.record_error();
                             tracing::error!(error = %e, "pg listener errored; sleeping then retrying");
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                            // Reconnect catch-up: any NOTIFYs emitted while the
-                            // listener was disconnected are lost, so drain the log
-                            // range above the high-water to heal the gap before
-                            // resuming live delivery.
-                            last_seen = drain_new_events(
-                                &listener_pool,
-                                &keys,
-                                &listener_tx,
-                                last_seen,
-                                None,
-                                &stats,
-                            )
-                            .await;
+                            // NOTIFYs sent while disconnected are lost: drain
+                            // above the high-water before resuming.
+                            floor.on_reconnect().await;
                         }
                     }
                 }
@@ -228,15 +184,13 @@ impl PostgresBus {
     /// automatically on a gap or reconnect; it is exposed so an operator (or a
     /// test) can force a heal without waiting for the next NOTIFY.
     pub async fn backfill(&self, after_id: i64) -> i64 {
-        drain_new_events(
-            &self.pool,
-            &self.keys,
-            &self.local,
-            after_id,
-            None,
-            &self.hydrate_stats,
-        )
-        .await
+        let log = PgEventLog {
+            pool: self.pool.clone(),
+            keys: self.keys.clone(),
+        };
+        drain(&log, &self.local, &self.hydrate_stats, after_id, None)
+            .await
+            .reached
     }
 }
 
@@ -259,98 +213,6 @@ fn decode_notify_payload(payload: &str, stats: &HydrateStats) -> Result<NotifyOu
         Err(err) => {
             stats.record(HydrateResult::InvalidPayload);
             Err(err.into())
-        }
-    }
-}
-
-fn record_hydrate_error(stats: &HydrateStats, err: &BusError) {
-    match err {
-        BusError::HydrateNotFound { .. } => stats.record(HydrateResult::NotFound),
-        _ => stats.record(HydrateResult::Failed),
-    }
-}
-
-async fn hydrate_envelope(
-    pool: &PgPool,
-    keys: &ContentKeyring,
-    log_id: i64,
-) -> Result<BusEnvelope, BusError> {
-    let stored = maidan_store::postgres::events::get_by_id(pool, keys, log_id)
-        .await
-        .map_err(|err| match err {
-            maidan_store::StoreError::NotFound => BusError::HydrateNotFound { log_id },
-            maidan_store::StoreError::Database(e) => BusError::Database(e),
-            other => BusError::HydrateFailed {
-                log_id,
-                reason: other.to_string(),
-            },
-        })?;
-    envelope_from_stored(stored)
-}
-
-fn envelope_from_stored(stored: maidan_types::StoredEvent) -> Result<BusEnvelope, BusError> {
-    BusEnvelope::from_stored(&stored).map_err(|err| BusError::HydrateFailed {
-        log_id: stored.id,
-        reason: err.to_string(),
-    })
-}
-
-/// Drain every event with `id > from_exclusive` from the log onto the local
-/// broadcast, in `id` order and in bounded batches, returning the new
-/// high-water mark. This is the self-healing floor: it back-fills a gap the
-/// live NOTIFY path missed (a coalesced/lost notification, or the range that
-/// accumulated while the `LISTEN` was disconnected). Best-effort — a store
-/// error stops the drain at the last id delivered, to be retried on the next
-/// NOTIFY.
-async fn drain_new_events(
-    pool: &PgPool,
-    keys: &ContentKeyring,
-    tx: &ShardedBroadcast,
-    from_exclusive: i64,
-    to_exclusive: Option<i64>,
-    stats: &HydrateStats,
-) -> i64 {
-    let mut cursor = from_exclusive;
-    loop {
-        let batch = match maidan_store::postgres::events::list_after_global(
-            pool,
-            keys,
-            cursor,
-            BACKFILL_BATCH,
-        )
-        .await
-        {
-            Ok(b) => b,
-            Err(err) => {
-                tracing::warn!(error = %err, after = cursor, "notify floor: back-fill query failed");
-                return cursor;
-            }
-        };
-        if batch.is_empty() {
-            return cursor;
-        }
-        let len = batch.len() as i64;
-        for stored in batch {
-            let id = stored.id;
-            // The pointer's own id (the upper bound, when set) is delivered by the
-            // caller's single hydrate — back-fill only the range strictly below it.
-            if to_exclusive.is_some_and(|to| id >= to) {
-                return cursor;
-            }
-            match envelope_from_stored(stored) {
-                Ok(envelope) => {
-                    stats.record(HydrateResult::Backfilled);
-                    tx.publish(envelope);
-                }
-                Err(err) => {
-                    stats.record(HydrateResult::Failed);
-                    tracing::warn!(error = %err, log_id = id, "notify floor: skip undecodable event");
-                }
-            }
-            cursor = id;
-        }
-        if len < BACKFILL_BATCH {
-            return cursor;
         }
     }
 }

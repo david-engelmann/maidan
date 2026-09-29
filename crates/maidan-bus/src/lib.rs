@@ -14,6 +14,7 @@ pub mod hydrate_stats;
 pub mod inmem;
 pub mod item;
 pub mod listener_health;
+mod notify_floor;
 pub mod postgres;
 pub mod presence_notify;
 pub mod resource_notify;
