@@ -390,6 +390,9 @@ mod sim {
         delivered: Vec<i64>,
         /// Events whose NOTIFY to this replica was lost or not delivered.
         missed_notify: HashSet<i64>,
+        /// Pointers whose NOTIFY arrived but whose event the read did not
+        /// deliver. A lost NOTIFY and a failed read are different faults.
+        failed_read: VecDeque<i64>,
         /// The replica's mark when each event committed.
         mark_at_commit: HashMap<i64, i64>,
     }
@@ -440,6 +443,7 @@ mod sim {
                         queue: VecDeque::new(),
                         delivered: Vec::new(),
                         missed_notify: HashSet::new(),
+                        failed_read: VecDeque::new(),
                         mark_at_commit: HashMap::new(),
                     }
                 })
@@ -503,6 +507,22 @@ mod sim {
                 .push(format!("commit {id}, notify lost to {lost:?}"));
         }
 
+        fn retry_failed(&mut self, r: usize) {
+            let Some(id) = self.replicas[r].failed_read.pop_front() else {
+                return;
+            };
+            let replica = &mut self.replicas[r];
+            block_on(replica.floor.on_pointer(id));
+            let got = replica.collect();
+            if !got.contains(&id) {
+                replica.failed_read.push_back(id);
+            }
+            self.trace.push(format!(
+                "replica {r}: retry {id}, delivered {got:?}, mark {}",
+                replica.floor.last_seen()
+            ));
+        }
+
         fn deliver(&mut self, r: usize) {
             let Some(id) = self.replicas[r].queue.pop_front() else {
                 return;
@@ -511,7 +531,9 @@ mod sim {
             block_on(replica.floor.on_pointer(id));
             let got = replica.collect();
             if !got.contains(&id) {
-                replica.missed_notify.insert(id);
+                // The NOTIFY arrived and the read failed. That is not a lost
+                // notification: the floor must still deliver it later.
+                replica.failed_read.push_back(id);
             }
             self.trace.push(format!(
                 "replica {r}: notify {id}, delivered {got:?}, mark {}",
@@ -544,7 +566,11 @@ mod sim {
                 }
                 60..=91 => {
                     let r = self.rng.below(REPLICAS as u64) as usize;
-                    self.deliver(r);
+                    if !self.replicas[r].failed_read.is_empty() && self.rng.chance(2) {
+                        self.retry_failed(r);
+                    } else {
+                        self.deliver(r);
+                    }
                 }
                 92..=95 => {
                     let r = self.rng.below(REPLICAS as u64) as usize;
@@ -593,8 +619,10 @@ mod sim {
             self.begin();
             self.commit(0, false);
             for r in 0..REPLICAS {
-                while !self.replicas[r].queue.is_empty() {
+                while !self.replicas[r].queue.is_empty() || !self.replicas[r].failed_read.is_empty()
+                {
                     self.deliver(r);
+                    self.retry_failed(r);
                 }
             }
         }
@@ -605,14 +633,16 @@ mod sim {
                 let delivered: BTreeSet<i64> = replica.delivered.iter().copied().collect();
                 for id in committed.difference(&delivered) {
                     let mark = replica.mark_at_commit.get(id).copied().unwrap_or(0);
-                    let explained = replica.missed_notify.contains(id) && *id <= mark;
-                    if !explained {
+                    let lost_below_mark = replica.missed_notify.contains(id) && *id <= mark;
+                    if !lost_below_mark {
                         self.fail(&format!(
                             "replica {r} never delivered {id} (mark at commit {mark}, notify {})",
                             if replica.missed_notify.contains(id) {
-                                "lost or not delivered"
+                                "lost"
+                            } else if replica.failed_read.contains(id) {
+                                "arrived, read failed"
                             } else {
-                                "delivered"
+                                "arrived"
                             }
                         ));
                     }
