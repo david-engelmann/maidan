@@ -1803,7 +1803,13 @@
             b.onclick = async () => {
               const v = pendingGateViews.get(item.gate_id);
               if (!v) return showRowError(li, "This gate is no longer pending.");
-              await answerGate(item.gate_id, action, v.request_state);
+              const buttons = actions.querySelectorAll("button");
+              buttons.forEach((x) => (x.disabled = true));
+              const out = await answerGate(item.gate_id, action, v.request_state);
+              if (!out.ok) {
+                buttons.forEach((x) => (x.disabled = false));
+                return showRowError(li, out.why);
+              }
               dropRow(item, li);
             };
             actions.appendChild(b);
@@ -1922,6 +1928,7 @@
         send.type = "button";
         send.textContent = "Send back";
         const go = async () => {
+          if (send.disabled) return;
           send.disabled = true;
           const out = await submitReview(item.thread_id, "request_changes", input.value.trim());
           if (!out.ok) {
@@ -3476,20 +3483,30 @@
         }
       }
 
+      // Answers a gate and says whether it took: { ok } or { ok: false, why }.
       async function answerGate(gateId, action, requestState) {
-        if (!requireAuthForWrite()) return;
-        const res = await fetch(apiWritePath(`/approval-gates/${gateId}/answer`), {
-          method: "POST",
-          headers: headers(true),
-          credentials: "include",
-          body: JSON.stringify({ request_state: requestState, action }),
-        });
+        if (!requireAuthForWrite()) return { ok: false, why: "Sign in or paste a token first." };
+        let res;
+        try {
+          res = await fetch(apiWritePath(`/approval-gates/${gateId}/answer`), {
+            method: "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ request_state: requestState, action }),
+          });
+        } catch (e) {
+          const why = `Could not reach the server: ${e}`;
+          setStatus(why, "err");
+          return { ok: false, why };
+        }
         if (!res.ok) {
-          setStatus(await responseError(res, `Could not ${action} gate`), "err");
-          return;
+          const why = await responseError(res, `Could not ${action} gate`);
+          setStatus(why, "err");
+          return { ok: false, why };
         }
         setStatus(`gate ${action}ed`, "ok");
         await loadApprovals();
+        return { ok: true };
       }
 
       async function loadSession() {

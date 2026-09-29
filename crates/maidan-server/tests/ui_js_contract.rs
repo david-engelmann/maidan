@@ -694,3 +694,16 @@ fn ui_js_socket_presence_uses_the_member_it_authenticates_as() {
         "the session member is not sent alongside another member's token"
     );
 }
+
+#[test]
+fn ui_js_keeps_a_needs_you_row_until_its_decision_is_recorded() {
+    let s = script(HTML);
+    assert!(
+        s.contains("return { ok: true };") && s.contains("const out = await answerGate(item.gate_id, action, v.request_state);\n              if (!out.ok) {"),
+        "a gate row leaves only when the answer was recorded, and says why otherwise"
+    );
+    assert!(
+        s.contains("if (send.disabled) return;"),
+        "Enter cannot send the same change request twice"
+    );
+}
