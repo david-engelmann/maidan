@@ -16,10 +16,13 @@ async function signIn(page: Page) {
 // jumps there.
 test("the palette jumps to a channel and to a task by keyboard", async ({ page }) => {
   await signIn(page);
-  // The shortcut is labelled the way this keyboard names it (Linux here).
-  await expect(page.locator("#palette-open .kbd")).toHaveText("Ctrl K");
+  // The shortcut is labelled the way this keyboard names it.
+  const shortcut = await page.evaluate(() =>
+    /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "⌘K" : "Ctrl K",
+  );
+  await expect(page.locator("#palette-open .kbd")).toHaveText(shortcut);
   await page.locator("body").click();
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("ControlOrMeta+k");
   const palette = page.locator("#palette");
   await expect(palette).toBeVisible();
   await expect(page.locator("#palette-input")).toBeFocused();
@@ -41,7 +44,7 @@ test("the palette jumps to a channel and to a task by keyboard", async ({ page }
   await expect(page.locator("#thread-context")).toHaveText("Review: result waiting on a reviewer");
 
   // Nothing matching says what to try; Escape closes.
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("ControlOrMeta+k");
   await page.keyboard.type("zzzz nothing");
   await expect(page.locator("#palette-list li.empty")).toContainText("Nothing matches");
   await page.keyboard.press("Escape");
@@ -103,4 +106,27 @@ test("connect an agent gives copyable MCP config for this server", async ({ page
   await page.click("#cx-mint");
   await expect(dialog).toBeHidden();
   await expect(page.locator("#tools [data-tab='tokens']")).toHaveAttribute("aria-selected", "true");
+});
+
+// "Open next review" opens the oldest review waiting on me, even from another
+// channel, and puts focus on its Approve button.
+test("the palette opens the next review waiting on me", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.fill("#workspace", fx.workspace_id);
+  await page.fill("#token", fx.review_token);
+  await page.locator("#token").dispatchEvent("change");
+  await page.click("#refresh-channels");
+  await page.click(`#channel-list li[data-id="${fx.board_channel_id}"]`);
+  await expect(page.locator("#needs-you-list .ny-item").first()).toBeVisible();
+
+  await page.locator("#board-title").click();
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.keyboard.type("next review");
+  const label = page.locator("#palette-list li[aria-selected='true'] .pl");
+  await expect(label).toContainText("Open next review: ");
+  await expect(label).not.toContainText("untitled");
+  const title = ((await label.textContent()) || "").replace("Open next review: ", "");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#thread-context")).toHaveText(title);
+  await expect(page.locator("#needs-you-list .ny-item button.primary:focus")).toHaveCount(1);
 });

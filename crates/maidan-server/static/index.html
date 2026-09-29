@@ -503,10 +503,10 @@
       .cx-body { padding: 0.4rem 1.2rem 1.1rem; display: grid; gap: 0.8rem; }
       .cx-block h3 { margin: 0 0 0.3rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); display: flex; align-items: center; gap: 0.5rem; }
       .cx-block h3 .spacer { flex: 1; }
-      .cx-block pre { margin: 0; padding: 0.65rem 0.8rem; background: #0f172a; color: #e2e8f0; border-radius: 0.5rem; font-size: 0.74rem; line-height: 1.45; white-space: pre-wrap; word-break: break-all; }
+      .cx-block pre { margin: 0; padding: 0.65rem 0.8rem; background: #0f172a; color: #e2e8f0; border-radius: 0.5rem; font-size: 0.74rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
       .cx-note { font-size: 0.78rem; color: var(--muted); margin: 0; }
       .cx-links { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-      .cx-links a.button { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.7rem; border: 1px solid var(--line); border-radius: 0.4rem; color: var(--ink); text-decoration: none; font-size: 0.8rem; background: #fff; }
+      .cx-links a.button, .cx-links button { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.7rem; border: 1px solid var(--line); border-radius: 0.4rem; color: var(--ink); text-decoration: none; font-size: 0.8rem; background: #fff; }
       .onboard { grid-column: 1 / -1; padding: 1.6rem 1.4rem; border: 1px dashed #cbd5e1; border-radius: 0.8rem; background: #fff; text-align: left; }
       .onboard h3 { margin: 0 0 0.4rem; font-size: 1rem; }
       .onboard p { margin: 0 0 0.8rem; color: var(--muted); font-size: 0.85rem; max-width: 42rem; }
@@ -4008,11 +4008,15 @@
         const next = needsYou.find((i) => i.kind === "review_request");
         if (next) {
           const th = threadsById.get(next.thread_id);
+          const title = (th && th.title) || next.summary || "untitled";
           items.push({
             kind: "Needs you",
-            label: `Open next review: ${(th && th.title) || next.title || "untitled"}`,
+            label: `Open next review: ${title}`,
             run: () => {
-              const row = document.querySelector(`#needs-you-list .ny-item[data-thread-id="${next.thread_id}"]`);
+              // Open the thread (it may live in another channel), then put
+              // focus on the row decision.
+              selectThread(next.thread_id, title);
+              const row = document.querySelector(`#needs-you-list .ny-item[data-thread-id="${CSS.escape(next.thread_id)}"]`);
               if (row) {
                 row.scrollIntoView({ block: "center" });
                 const btn = row.querySelector("button.primary");

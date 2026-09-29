@@ -777,7 +777,9 @@ fn ui_js_has_a_command_palette_and_connect_an_agent() {
         "Cmd/Ctrl+K opens a command palette"
     );
     assert!(
-        s.contains("kind: \"Channel\"") && s.contains("kind: \"Task\"") && s.contains("kind: \"Tool\""),
+        s.contains("kind: \"Channel\"")
+            && s.contains("kind: \"Task\"")
+            && s.contains("kind: \"Tool\""),
         "the palette reaches channels, tasks and every tool tab"
     );
     assert!(
@@ -795,5 +797,15 @@ fn ui_js_has_a_command_palette_and_connect_an_agent() {
     assert!(
         html.contains("id=\"board-onboard\"") && s.contains("function emptyChannelHelp("),
         "the empty board and an empty channel explain how work arrives"
+    );
+}
+
+#[test]
+fn ui_js_palette_opens_the_next_review_by_its_summary() {
+    let s = script(HTML);
+    assert!(
+        s.contains("(th && th.title) || next.summary || \"untitled\"")
+            && s.contains("selectThread(next.thread_id, title);"),
+        "the next-review action opens the thread and names it by the inbox summary"
     );
 }
