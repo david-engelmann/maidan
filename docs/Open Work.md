@@ -1746,7 +1746,7 @@ similarity:
 SQLite): 429 `Store` trait methods whose signatures are byte-identical across
 backends and whose bodies are a one-line delegation to the module fn. The only
 difference is the pool accessor (`self.read_pool()` vs `&self.pool`). A
-declarative `store_impl!` macro taking the method→module mapping replaces those
+declarative `store_delegations!` macro taking the method→module mapping replaces those
 ~6,079 lines with ~429 invocation lines.
 
 **`mod.rs` scores 0.50 similarity, which lands it in the least-similar band —
