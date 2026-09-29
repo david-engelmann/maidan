@@ -1012,6 +1012,7 @@ async fn no_mcp_tool_serves_or_changes_another_workspace() {
         stream_routes(),
         vec![
             "/agui/stream",
+            "/mcp/notifications",
             "/mcp/stream",
             "/mcp/streamable",
             "/ws/subscribe"
