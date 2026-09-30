@@ -435,9 +435,11 @@ pub struct ThreadBlock {
 /// A per-thread budget envelope. An orchestrator sets any of the optional
 /// maxima; an agent reports incremental usage as it works, and when a dimension
 /// is exceeded the run is stopped (the claim fails → DLQ). USD is integer
-/// micros ($1 = 1_000_000) to keep money out of floats. Wall time is not stored
-/// — it derives from the thread's working clock (`work_started_at`) against
-/// `max_wall_secs`.
+/// micros ($1 = 1_000_000) to keep money out of floats. Wall time is measured,
+/// never reported: the live claim's share comes from the thread's working clock
+/// (`work_started_at`), and `used_wall_secs` holds what earlier claims worked
+/// before their lease lapsed, charged when the reaper (or the next claim)
+/// freed them.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadBudget {
@@ -449,6 +451,11 @@ pub struct ThreadBudget {
     pub used_tokens: i64,
     pub used_usd_micros: i64,
     pub used_turns: i64,
+    /// Seconds worked by earlier claims on this thread whose lease lapsed, from
+    /// each one's acknowledgement to its deadline. Counted against
+    /// `max_wall_secs` together with the live claim's working time.
+    #[serde(default)]
+    pub used_wall_secs: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -698,10 +705,11 @@ impl BudgetReason {
 
 impl ThreadBudget {
     /// The first budget dimension exceeded, if any — checked in a fixed order
-    /// (tokens, usd, turns, wall). `wall_secs_elapsed` is the thread's
-    /// working-clock elapsed time; pass `None` when the thread isn't working
-    /// (the wall dimension is then never exceeded). A dimension with no
-    /// maximum, or a non-positive maximum, never binds.
+    /// (tokens, usd, turns, wall). `wall_secs_elapsed` is the live claim's
+    /// working-clock elapsed time; pass `None` when no claim is working, and
+    /// the wall dimension is then the time already charged
+    /// (`used_wall_secs`) alone. A dimension with no maximum, or a
+    /// non-positive maximum, never binds.
     pub fn exceeded(&self, wall_secs_elapsed: Option<i64>) -> Option<BudgetReason> {
         let bound = |used: i64, max: Option<i64>| max.is_some_and(|m| m > 0 && used >= m);
         if bound(self.used_tokens, self.max_tokens) {
@@ -713,10 +721,11 @@ impl ThreadBudget {
         if bound(self.used_turns, self.max_turns) {
             return Some(BudgetReason::Turns);
         }
-        if let (Some(max), Some(elapsed)) = (self.max_wall_secs, wall_secs_elapsed) {
-            if max > 0 && elapsed >= max {
-                return Some(BudgetReason::Wall);
-            }
+        let worked = self
+            .used_wall_secs
+            .saturating_add(wall_secs_elapsed.unwrap_or(0).max(0));
+        if bound(worked, self.max_wall_secs) {
+            return Some(BudgetReason::Wall);
         }
         None
     }
@@ -3180,6 +3189,7 @@ mod budget_tests {
             used_tokens,
             used_usd_micros,
             used_turns,
+            used_wall_secs: 0,
             created_at: DateTime::from_timestamp(0, 0).unwrap(),
             updated_at: DateTime::from_timestamp(0, 0).unwrap(),
         }
@@ -3242,6 +3252,31 @@ mod budget_tests {
         let b = budget(None, None, None, Some(60), 0, 0, 0);
         assert_eq!(b.exceeded(None), None, "not working → no wall check");
         assert_eq!(b.exceeded(Some(60)), Some(BudgetReason::Wall));
+    }
+
+    #[test]
+    fn charged_wall_time_counts_with_the_live_claim() {
+        let b = ThreadBudget {
+            used_wall_secs: 40,
+            ..budget(None, None, None, Some(60), 0, 0, 0)
+        };
+        assert_eq!(b.exceeded(None), None, "40 of 60 charged");
+        assert_eq!(b.exceeded(Some(19)), None);
+        assert_eq!(b.exceeded(Some(20)), Some(BudgetReason::Wall));
+        let spent = ThreadBudget {
+            used_wall_secs: 60,
+            ..b.clone()
+        };
+        assert_eq!(
+            spent.exceeded(None),
+            Some(BudgetReason::Wall),
+            "charged time alone binds, with no claim working"
+        );
+        assert_eq!(
+            b.exceeded(Some(-100)),
+            None,
+            "a clock behind the start charges nothing back"
+        );
     }
 
     #[test]

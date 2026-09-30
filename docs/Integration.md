@@ -1016,12 +1016,29 @@ and dead-letters the run. A supervisor learns of the stop with
 result.
 
 **There is no wall-clock argument, and you should not invent one.** You report
-three dimensions — tiered `tokens`, `usd_micros`, and `turns`. Wall time is the fourth, and
-the server derives it from `work_started_at` against the budget's `max_wall_secs`
-at the moment you report. Two things follow. A thread you never acknowledged has
-no working clock, so its wall bound can never bind. And wall time is only ever
-checked when someone reports, so `max_wall_secs` does not catch a silent agent —
-a lapsed lease does.
+three dimensions — tiered `tokens`, `usd_micros`, and `turns`. Wall time is the
+fourth, and the server measures it. Against `max_wall_secs` it counts the live
+claim's working time (from `work_started_at` to the moment you report) plus the
+budget's `used_wall_secs`: the time earlier claims on the thread worked before
+their lease lapsed.
+
+That charge is how `max_wall_secs` catches a silent agent. When the claim
+reaper frees a lapsed claim (or the next `claim_next_thread` takes it over), the
+same transaction adds the time the claim worked, from its acknowledgement to its
+lease deadline, to `used_wall_secs`. If the thread is then over budget, the claim
+ends the way an over-budget report ends it: `ClaimFailed` naming the hung holder,
+with the binding dimension as `reason`, and a DLQ entry, in place of
+`ClaimExpired`. Under budget, it is charged and requeued with `ClaimExpired` as
+before, and the next claim starts with that time already spent. Each lapsed
+claim is charged once, whichever of the reaper and `claim_next_thread` frees it
+and however many replicas sweep. A released claim is not charged.
+
+A claim you never acknowledged has no working clock: it is charged nothing and
+its wall time never binds at a report, however long you held it. Acknowledge
+when you start; `ClaimUnacknowledged` is the signal for a claim that never
+does. A budget stop does not take the thread out of the queue, so a thread whose
+wall budget is spent fails each claim that reports or lapses on it until someone
+raises `max_wall_secs` with `update_thread_budget`.
 
 ### 5. Deliver the result
 
@@ -1157,7 +1174,9 @@ token, and emits `ClaimExpired` for the holder: the "an agent died" signal that
 `wait_for_claim_expired` blocks on and that the notification router sends as stuck
 work to the owner and followers. It fires on an idle channel too, with nobody
 calling `claim_next_thread`. If a claimer gets there between ticks, that reclaim
-emits the `ClaimExpired` instead; each lapsed lease is reported once. A thread you
+emits the `ClaimExpired` instead; each lapsed lease is reported once. The freed
+claim's worked time is charged to the thread's wall budget, and a claim that
+leaves the thread over budget gets `ClaimFailed` instead (see step 4). A thread you
 moved to `in_review` is not reaped. Its lease still lapses, and it stays yours
 until you release it.
 

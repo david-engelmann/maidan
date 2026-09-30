@@ -186,6 +186,8 @@ const POSTGRES_UP_V124: &str =
 const POSTGRES_UP_V126: &str =
     include_str!("../../../migrations/postgres/0126_mcp_resource_subscriptions.sql");
 const POSTGRES_UP_V127: &str = include_str!("../../../migrations/postgres/0127_scim_groups.sql");
+const POSTGRES_UP_V132: &str =
+    include_str!("../../../migrations/postgres/0132_thread_budget_wall_charge.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -337,6 +339,8 @@ const SQLITE_UP_V124: &str = include_str!("../../../migrations/sqlite/0124_threa
 const SQLITE_UP_V126: &str =
     include_str!("../../../migrations/sqlite/0126_mcp_resource_subscriptions.sql");
 const SQLITE_UP_V127: &str = include_str!("../../../migrations/sqlite/0127_scim_groups.sql");
+const SQLITE_UP_V132: &str =
+    include_str!("../../../migrations/sqlite/0132_thread_budget_wall_charge.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -522,6 +526,8 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 126, POSTGRES_UP_V126).await?;
     // 123–126 are other lanes.
     apply_postgres(pool, 127, POSTGRES_UP_V127).await?;
+    // 127–131 belong to other lanes.
+    apply_postgres(pool, 132, POSTGRES_UP_V132).await?;
     Ok(())
 }
 
@@ -663,6 +669,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 124, SQLITE_UP_V124).await?;
     apply_sqlite(pool, 126, SQLITE_UP_V126).await?;
     apply_sqlite(pool, 127, SQLITE_UP_V127).await?;
+    apply_sqlite(pool, 132, SQLITE_UP_V132).await?;
     Ok(())
 }
 

@@ -556,6 +556,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `docs/Integration.md` lists the server's problem types. Package versions are
   unchanged; see Open Work for when to publish.
 
+### The wall-clock budget stops a hung agent
+
+- **Fixed:** `max_wall_secs` was checked only inside `report_usage`, which a
+  hung agent never sends, so its lease lapsed, the thread went back to the
+  queue with a fresh clock, and the bound never bound. The claim reaper (and a
+  `claim_next` that takes over a lapsed lease) now charges the freed claim's
+  worked time, from its acknowledgement to its lease deadline, to the
+  thread's budget in the transaction that frees it. A claim that leaves the
+  thread over budget ends with `ClaimFailed` and a DLQ entry, as an
+  over-budget report does, instead of `ClaimExpired`. A claim never
+  acknowledged is charged nothing. Each lapsed claim is charged once,
+  whichever frees it.
+- **Added:** `ThreadBudget.used_wall_secs`, the time charged so far. The wall
+  dimension counts it plus the live claim's working time, at a report and at a
+  reap. Migration `0132`.
+
 ### Loom models
 
 - **Added:** loom models of the sharded bus and the presence hub, behind a

@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    BudgetLimits, BudgetPatch, ChannelId, Event, MemberId, NewDlqEntry, NewUsageLedgerEntry,
-    PayerStamp, StoredEvent, ThreadBudget, ThreadId, UsageDelta, UsageLedgerEntry, UsageReport,
-    WorkspaceId,
+    BudgetLimits, BudgetPatch, BudgetReason, ChannelId, Event, MemberId, NewDlqEntry,
+    NewUsageLedgerEntry, PayerStamp, StoredEvent, Thread, ThreadBudget, ThreadId, UsageDelta,
+    UsageLedgerEntry, UsageReport, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -11,7 +11,7 @@ use super::{dlq, events, threads, usage_ledger};
 use crate::error::StoreError;
 
 const COLS: &str = "thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-     used_tokens, used_usd_micros, used_turns, created_at, updated_at";
+     used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at";
 
 /// Set (upsert) a thread's budget maxima. Accumulated usage is preserved — this
 /// touches only the `max_*` dimensions. See the SQLite twin.
@@ -31,7 +31,7 @@ pub async fn set_budget(
              max_wall_secs = excluded.max_wall_secs,
              updated_at = now()
          RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-             used_tokens, used_usd_micros, used_turns, created_at, updated_at",
+             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at",
     )
     .bind(thread_id.0)
     .bind(limits.max_tokens)
@@ -73,7 +73,7 @@ pub async fn add_usage(
              used_turns = maidan_thread_budgets.used_turns + excluded.used_turns,
              updated_at = now()
          RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-             used_tokens, used_usd_micros, used_turns, created_at, updated_at",
+             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at",
     )
     .bind(thread_id.0)
     .bind(delta.tokens)
@@ -101,7 +101,7 @@ async fn add_usage_in_tx(
              used_turns = maidan_thread_budgets.used_turns + excluded.used_turns,
              updated_at = now()
          RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-             used_tokens, used_usd_micros, used_turns, created_at, updated_at",
+             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at",
     )
     .bind(thread_id.0)
     .bind(delta.tokens)
@@ -154,32 +154,17 @@ pub async fn report_usage(
             .fetch_one(&mut *tx)
             .await?;
             let thread = threads::row_to_thread(&row)?;
-            let reason_str = reason.as_str().to_string();
-            let event = Event::ClaimFailed {
-                occurred_at: Utc::now(),
+            let stored = fail_claim_in_tx(
+                &mut tx,
                 workspace_id,
                 channel_id,
-                thread_id,
-                member_id: member,
-                reason: reason_str.clone(),
                 thread,
-            };
-            let stored = events::append_in_tx(&mut tx, &event).await?;
-            dlq::record_in_tx(
-                &mut tx,
-                &NewDlqEntry {
-                    workspace_id,
-                    channel_id,
-                    thread_id,
-                    member_id: member,
-                    reason: reason_str.clone(),
-                    used_tokens: budget.used_tokens,
-                    used_usd_micros: budget.used_usd_micros,
-                    used_turns: budget.used_turns,
-                },
+                member,
+                reason,
+                &budget,
             )
             .await?;
-            (true, Some(reason_str), Some(stored))
+            (true, Some(reason.as_str().to_owned()), Some(stored))
         }
         _ => (false, None, None),
     };
@@ -284,35 +269,17 @@ pub async fn report_accounted_usage(
         .fetch_one(&mut *tx)
         .await?;
         let thread = threads::row_to_thread(&row)?;
-        let reason = reason.as_str().to_owned();
-        let failed = events::append_in_tx(
+        let failed = fail_claim_in_tx(
             &mut tx,
-            &Event::ClaimFailed {
-                occurred_at: Utc::now(),
-                workspace_id,
-                channel_id,
-                thread_id: new.thread_id,
-                member_id: new.reporter,
-                reason: reason.clone(),
-                thread,
-            },
+            workspace_id,
+            channel_id,
+            thread,
+            new.reporter,
+            reason,
+            &budget,
         )
         .await?;
-        dlq::record_in_tx(
-            &mut tx,
-            &NewDlqEntry {
-                workspace_id,
-                channel_id,
-                thread_id: new.thread_id,
-                member_id: new.reporter,
-                reason: reason.clone(),
-                used_tokens: budget.used_tokens,
-                used_usd_micros: budget.used_usd_micros,
-                used_turns: budget.used_turns,
-            },
-        )
-        .await?;
-        (true, Some(reason), Some(failed))
+        (true, Some(reason.as_str().to_owned()), Some(failed))
     } else {
         (false, None, None)
     };
@@ -334,6 +301,88 @@ pub async fn report_accounted_usage(
     Ok((entry, emitted))
 }
 
+/// Stop a claimed run for going over budget, on the caller's transaction:
+/// append `ClaimFailed` naming `holder` and dead-letter the run. The caller has
+/// already taken the claim off `holder`, and `thread` is the row after that
+/// write. Every budget stop comes through here, whether a usage report or the
+/// claim reaper caught it, so a supervisor sees one kind of stop.
+pub(super) async fn fail_claim_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workspace_id: WorkspaceId,
+    channel_id: ChannelId,
+    thread: Thread,
+    holder: MemberId,
+    reason: BudgetReason,
+    budget: &ThreadBudget,
+) -> Result<StoredEvent, StoreError> {
+    let thread_id = thread.id;
+    let reason = reason.as_str().to_owned();
+    let failed = events::append_in_tx(
+        tx,
+        &Event::ClaimFailed {
+            occurred_at: Utc::now(),
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id: holder,
+            reason: reason.clone(),
+            thread,
+        },
+    )
+    .await?;
+    dlq::record_in_tx(
+        tx,
+        &NewDlqEntry {
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id: holder,
+            reason,
+            used_tokens: budget.used_tokens,
+            used_usd_micros: budget.used_usd_micros,
+            used_turns: budget.used_turns,
+        },
+    )
+    .await?;
+    Ok(failed)
+}
+
+/// Charge `worked_secs` of wall time to a thread's budget on the caller's
+/// transaction, creating the row (with no maxima) as a usage report does, and
+/// return the totals. `None` charges nothing and returns the budget as it
+/// stands, or `None` when the thread has no budget row.
+pub(super) async fn charge_wall_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    worked_secs: Option<i64>,
+) -> Result<Option<ThreadBudget>, StoreError> {
+    let row = match worked_secs {
+        Some(secs) => Some(
+            sqlx::query(&format!(
+                "INSERT INTO maidan_thread_budgets (thread_id, used_wall_secs)
+                 VALUES ($1, $2)
+                 ON CONFLICT (thread_id) DO UPDATE SET
+                     used_wall_secs = maidan_thread_budgets.used_wall_secs + excluded.used_wall_secs,
+                     updated_at = now()
+                 RETURNING {COLS}"
+            ))
+            .bind(thread_id.0)
+            .bind(secs)
+            .fetch_one(&mut **tx)
+            .await?,
+        ),
+        None => {
+            sqlx::query(&format!(
+                "SELECT {COLS} FROM maidan_thread_budgets WHERE thread_id = $1"
+            ))
+            .bind(thread_id.0)
+            .fetch_optional(&mut **tx)
+            .await?
+        }
+    };
+    Ok(row.as_ref().map(row_to_budget))
+}
+
 fn row_to_budget(row: &sqlx::postgres::PgRow) -> ThreadBudget {
     ThreadBudget {
         thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
@@ -344,6 +393,7 @@ fn row_to_budget(row: &sqlx::postgres::PgRow) -> ThreadBudget {
         used_tokens: row.get::<i64, _>("used_tokens"),
         used_usd_micros: row.get::<i64, _>("used_usd_micros"),
         used_turns: row.get::<i64, _>("used_turns"),
+        used_wall_secs: row.get::<i64, _>("used_wall_secs"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
     }
@@ -390,7 +440,7 @@ pub async fn patch_budget(
              max_wall_secs = excluded.max_wall_secs,
              updated_at = excluded.updated_at
          RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-             used_tokens, used_usd_micros, used_turns, created_at, updated_at",
+             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at",
     )
     .bind(thread_id.0)
     .bind(merged.max_tokens)
