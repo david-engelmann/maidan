@@ -15,3 +15,29 @@
 # same advisory in deny.toml for the OIDC RS256 path).
 id = "RUSTSEC-2023-0071"
 reason = "fuzz/Cargo.lock: rsa is locked through sqlx-mysql but compiled into no fuzz target; no fixed release"
+
+# fuzz/Cargo.lock. Since the protocol-decoder targets (#1125) the fuzz crate
+# depends on maidan-mcp, which depends on maidan-artifacts, which always links
+# the AWS S3 client; that stack locks h2 0.3 and rustls-webpki 0.101. Unlike
+# `rsa` above, these are compiled into the fuzz binaries (`cargo tree
+# --manifest-path fuzz/Cargo.toml -e normal -i h2@0.3.27`), but no fuzz target
+# constructs an S3 client or opens a connection: each feeds bytes to a pure
+# decoder. The fuzz crate is never shipped. The root lockfile accepts the same
+# four advisories in deny.toml, with the reason they do not reach an untrusted
+# peer there either; they clear together when the AWS stack moves to h2 0.4
+# and rustls-webpki 0.103.
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0258"
+reason = "fuzz/Cargo.lock: h2 0.3 via the S3 client maidan-artifacts links; no fuzz target makes a connection; accepted in deny.toml for the root lockfile"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0098"
+reason = "fuzz/Cargo.lock: rustls-webpki 0.101 via the S3 client; no fuzz target validates a certificate; accepted in deny.toml"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0099"
+reason = "fuzz/Cargo.lock: rustls-webpki 0.101 via the S3 client; no fuzz target validates a certificate; accepted in deny.toml"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0104"
+reason = "fuzz/Cargo.lock: rustls-webpki 0.101 via the S3 client; no fuzz target checks a CRL; accepted in deny.toml"
