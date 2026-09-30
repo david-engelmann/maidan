@@ -490,7 +490,11 @@ arguments whose names end in `_id` — only those, because other arguments can
 carry secrets. A change is recorded once: a request that wrote its own event or
 audit row gets no `mutation` row. Reads are not recorded, with two exceptions
 that take data out: a workspace export writes `workspace.export`, and resolving
-a secret is recorded like a change. The row says who changed what and when, not
+a secret writes `secret.resolve`. A POST that only reads (verifying an export,
+asking the land-gate advisor) gets no `mutation` row either:
+[contracts/http-operation-kinds.json](../contracts/http-operation-kinds.json)
+classifies every HTTP operation as `reads` or `changes` and gives the reason
+wherever the method says otherwise. The row says who changed what and when, not
 the new value; the value is the current state.
 
 Delegated requests are additionally recorded whether allowed or refused, as
@@ -540,6 +544,7 @@ Canonical maps (CI-enforced):
 |------|------|
 | [contracts/mcp-capability-map.json](../contracts/mcp-capability-map.json) | MCP tool → capability |
 | [contracts/http-capability-map.json](../contracts/http-capability-map.json) | HTTP method+path → capability |
+| [contracts/http-operation-kinds.json](../contracts/http-operation-kinds.json) | HTTP method+path → `reads` or `changes`, with the reason where the method says otherwise |
 | [contracts/mcp-tool-names.json](../contracts/mcp-tool-names.json) | Allowed MCP tool names |
 
 Human-readable summary: [Capability Map.md](Capability%20Map.md).
@@ -1303,6 +1308,8 @@ Panels include channels, live WS tail, search, tokens, artifacts, and admin surf
 
 - `http_openapi_capability_map_contract` — OpenAPI bearer ops ↔ `http-capability-map.json`
 - `http_capability_matrix_e2e` — denies each map row without capability
+- `http_operation_kinds_contract` — every routed operation ↔ `http-operation-kinds.json`
+- `http_operation_kinds_e2e` — a successful read writes nothing; a successful change leaves an attributed record
 - `mcp_capability_matrix_e2e` — per-tool capability enforcement
 
 ---

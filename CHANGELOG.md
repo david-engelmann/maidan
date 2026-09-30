@@ -129,6 +129,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   allowed to do this; it needs thread:transition. Mint a token with it in
   Tokens".
 
+### Every HTTP operation says whether it reads or changes, and CI checks it does
+
+- **Added:** `contracts/http-operation-kinds.json` classifies each of the 394
+  operations the router serves as `reads` or `changes`. The method is the
+  default. The eight that break it give a reason: five GETs write (the OIDC
+  login and callback, an expired-session cleanup, and the delivery cursors and
+  last-seen stamp a stream or WebSocket subscription advances), and three POSTs
+  only read (verifying an export, asking the land-gate advisor, resolving a
+  secret). `http_operation_kinds_contract` fails on a routed operation with no
+  entry, an entry for a route that is gone, or an exception with no reason.
+- **Fixed:** verifying an export and asking the land-gate advisor no longer
+  write a `mutation` audit row. The request layer recorded every successful
+  POST that recorded nothing itself, so these reads were logged as changes.
+  It now skips the operations in `auth::READ_ONLY_OPERATIONS`, which the
+  contract test holds to the POSTs the contract classifies as reads.
+- **Tests:** `http_operation_kinds_e2e` calls every documented operation as
+  the owner of a seeded workspace. A read that succeeds must leave every table
+  as it was and write no `mutation` row; a change that succeeds must leave an
+  event or audit row naming the caller. 139 reads and 123 changes succeed and
+  are checked; the ones that do not (multipart, OIDC, share tickets, federation,
+  bootstrap, held claims) are printed. The seeding it shares with
+  `tenant_isolation_e2e` moved to `tests/seeded_workspace/`.
+
 ### A requested review reaches the reviewer, and a refused close says what to do next
 
 - **Added:** the waiting-on-you inbox (`GET /members/:id/waiting`, MCP
