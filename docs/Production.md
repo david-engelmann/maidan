@@ -75,12 +75,12 @@ period is cut, and clients retry.
 | `MAIDAN_RATE_LIMIT_MAX` | no | Global HTTP rate limit per bearer token (or the socket peer IP). **Default `1200` per 60 s window**; set `0` to turn it off. `/health/*` and `/metrics` exempt. |
 | `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` | no | Web Push. All three enable a VAPID sender: base64url P-256 private scalar + uncompressed public key + a `mailto:`/`https:` contact. The router delivers a Web Push message to a member's registered subscriptions when they have no live WebSocket. Unset → no web push. |
 | `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` | no | Presence window (default `60`) for the "notify iff no live WS" gate: a member seen within this many seconds is treated as connected and not pushed. |
-| `MAIDAN_RATE_LIMIT_WINDOW_SECS` | no | Fixed window length in seconds (default `60`). |
+| `MAIDAN_RATE_LIMIT_WINDOW_SECS` | no | Fixed window length in seconds (default `60`). Read only with an explicit `MAIDAN_RATE_LIMIT_MAX`; the built-in default is always 1200 per 60 s. |
 | `MAIDAN_TRUSTED_PROXY_HOPS` | no | Number of rightmost reverse-proxy hops trusted when deriving the client IP from `X-Forwarded-For` (default `0`, so the header is ignored and the socket peer is used). Set this to the exact proxy/LB chain length; malformed or shorter chains fail closed to the socket peer. Bearer-token keys are unchanged. |
 | `MAIDAN_ALLOW_PRIVATE_EGRESS` | no | Development-only escape hatch for loopback webhook/hook test receivers. Rejected when `MAIDAN_ENV=production`. Production operator-supplied HTTP targets are parsed canonically at registration; every delivery resolves again, rejects the whole answer set if any address is private/link-local/loopback/reserved, DNS-pins that set for the request, and never follows redirects. |
 | `MAIDAN_RATE_LIMIT_REDIS_URL` | no | When set, global and per-token quotas use Redis fixed-window counters (multi-replica). Falls back to in-memory if unset or connection fails. |
-| `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` | no | When **> 0**, per-workspace fairness limit (`v110.0.0`): caps total requests for one workspace across **all** its tokens, on `/workspaces/{wid}/…` routes (incl. search). Default off. Independent of the global limit; reuses the Redis backend when set. |
-| `MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS` | no | Per-workspace fixed window in seconds (default `60`). |
+| `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` | no | Per-workspace fairness limit: caps total requests for one workspace across **all** its tokens, on `/workspaces/{wid}/…` routes (incl. search). **Default `6000` per 60 s window**; set `0` to turn it off. Independent of the global limit; reuses the Redis backend when set. |
+| `MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS` | no | Per-workspace fixed window in seconds (default `60`). Read only with an explicit `MAIDAN_WORKSPACE_RATE_LIMIT_MAX`; the built-in default is always 6000 per 60 s. |
 | `MAIDAN_PRESENCE_HEARTBEAT_SECS` | no | Interval at which each replica re-announces its locally-connected members over `maidan_presence` (default `10`). Cross-replica presence is active only in Postgres NOTIFY mode. |
 | `MAIDAN_PRESENCE_TTL_SECS` | no | A remote member with no heartbeat for this long is dropped from the merged roster (default `30`). Keep it a small multiple of the heartbeat. |
 | `MAIDAN_DB_MAX_CONNECTIONS` | no | Pool size per process. Default **Postgres 16**, **SQLite 1** (SQLite serializes through one connection: concurrent read-modify-write transactions deadlock on the writer upgrade, which `busy_timeout` cannot resolve). See the replica caveat below. |
@@ -173,11 +173,15 @@ On a shared instance, `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` bounds the total request
 rate for any single workspace (across all its tokens) on `/workspaces/{wid}/…`
 routes — so one tenant's heavy loop (a tight semantic-search poll, a backfill)
 can't monopolize the connection pool and degrade search/write latency for
-others. It is **independent** of the per-client `MAIDAN_RATE_LIMIT_MAX`: enable
-either or both. With `MAIDAN_RATE_LIMIT_REDIS_URL` set, the per-workspace counter
-is shared across replicas; otherwise it is per-process. Start generous (a
-legitimate large workspace shouldn't hit it in normal use) and tighten only if a
-noisy tenant is observed. Not a substitute for hard CPU/IO isolation — that is
+others. It is on by default at 6000 requests per 60 s (about 100 a second):
+five clients each at the per-client default of 1200 per 60 s, so a busy
+workspace's agents meet their own limits before the shared one, and well under
+what one node serves (666–1586 requests a second on the SQLite
+[benchmark](Benchmark.md)). Set a value to change it, or `0` to turn it off.
+It is **independent** of the per-client `MAIDAN_RATE_LIMIT_MAX`. With
+`MAIDAN_RATE_LIMIT_REDIS_URL` set, the per-workspace counter is shared across
+replicas; otherwise it is per-process, so N replicas without Redis admit up to N
+times the limit. Not a substitute for hard CPU/IO isolation — that is
 infra-level (separate instances / Postgres resource groups).
 
 ### Local embedding servers (e.g. LM Studio)
@@ -1030,8 +1034,9 @@ While a workspace has any hold:
 
 - workspace purge and erase, message purge, artifact erase, and an import that
   replaces the workspace are refused (409), inside the destroying transaction;
-- its event-log rows and its audit rows are exempt from retention pruning.
-  Other workspaces' rows, and instance-level audit rows, still prune;
+- its event-log rows and its audit rows are exempt from retention pruning,
+  and its own retention policy prunes nothing. Other workspaces' rows, and
+  instance-level audit rows, still prune;
 - **a withdrawn message keeps its words.** When a member (or a moderator)
   tombstones a message, it disappears for everyone exactly as it would unheld,
   but its last body and every earlier version are kept. Nothing in the product
@@ -1052,11 +1057,12 @@ message's earlier versions with it.
 
 ## Retention
 
-Nothing is pruned unless you set a retention. Each knob is an age in days; the
-sweeper starts when any is set, runs every `MAIDAN_RETENTION_SWEEP_SECS`
+Nothing is pruned unless you set a retention, or a workspace sets its own. Each
+knob is an age in days; the sweeper runs every `MAIDAN_RETENTION_SWEEP_SECS`
 (default 86400) and deletes in batches of `MAIDAN_RETENTION_BATCH` (default
 5000), so a first sweep over a long-unpruned table does not lock it. Each sweep
-counts what it deleted in `maidan_retention_pruned_total{table}`.
+counts what it deleted in `maidan_retention_pruned_total{table}` (`events`,
+`audit`, `deliveries`, and `messages` for workspace policies).
 
 | Variable | What it prunes | What it never prunes |
 |---|---|---|
@@ -1081,6 +1087,21 @@ cutoff. It does not: it starts from the log head and replays only across a
 subscriber lag. The external comment or message a result delivery
 edits in place is tracked on `maidan_result_deliveries`, which retention does
 not touch.
+
+### Per-workspace retention
+
+A workspace administrator can set a shorter retention for that workspace's
+messages, events and finished deliveries with `PUT /workspaces/{wid}/retention`
+(`token:admin`, audited; see [Integration](Integration.md#workspace-retention)).
+The instance knobs above are the ceiling: a workspace value longer than the
+instance's for that kind is refused, and if you later lower an instance knob
+below a workspace's value, the instance's applies. Messages have no instance
+knob, so the instance never prunes them and a workspace may set any value up to
+3650 days. After the instance sweep, each sweep prunes every workspace that set
+a policy past its own cutoff; a held workspace keeps everything. Message
+pruning erases a message the way a purge does, including its embeddings,
+references and content key. Policies are stored in
+`maidan_retention_policies` (migration 0134) and removed with their workspace.
 
 ## Event-log hash chain
 

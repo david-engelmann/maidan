@@ -61,6 +61,7 @@ mod reindex_jobs;
 pub mod replication;
 mod result_deliveries;
 mod retention;
+mod retention_policy;
 mod reviews;
 mod scim_audited;
 mod scim_groups;
@@ -529,6 +530,26 @@ impl WorkspaceStore for PostgresStore {
         audit: crate::AuditFor<DelegationPolicy>,
     ) -> Result<DelegationPolicy, StoreError> {
         delegation_grants::set_policy_audited(&self.pool, workspace_id, max_grant_days, audit).await
+    }
+    async fn get_retention_policy(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<RetentionDays, StoreError> {
+        retention_policy::get(&self.pool, workspace_id).await
+    }
+    async fn set_retention_policy_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        days: RetentionDays,
+        instance: RetentionDays,
+        audit: crate::AuditFor<RetentionDays>,
+    ) -> Result<RetentionDays, StoreError> {
+        retention_policy::set_audited(&self.pool, workspace_id, days, instance, audit).await
+    }
+    async fn list_retention_policies(
+        &self,
+    ) -> Result<Vec<(WorkspaceId, RetentionDays)>, StoreError> {
+        retention_policy::list(&self.pool).await
     }
     async fn set_workspace_handle(
         &self,
@@ -3367,6 +3388,30 @@ impl DeliveryCursorStore for PostgresStore {
         limit: i64,
     ) -> Result<u64, StoreError> {
         retention::prune_deliveries(&self.pool, cutoff, limit).await
+    }
+    async fn prune_workspace_events(
+        &self,
+        workspace_id: WorkspaceId,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError> {
+        retention::prune_workspace_events(&self.pool, workspace_id, cutoff, limit).await
+    }
+    async fn prune_workspace_messages(
+        &self,
+        workspace_id: WorkspaceId,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError> {
+        retention::prune_workspace_messages(&self.pool, workspace_id, cutoff, limit).await
+    }
+    async fn prune_workspace_deliveries(
+        &self,
+        workspace_id: WorkspaceId,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError> {
+        retention::prune_workspace_deliveries(&self.pool, workspace_id, cutoff, limit).await
     }
 }
 

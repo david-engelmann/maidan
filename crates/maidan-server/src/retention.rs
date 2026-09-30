@@ -5,7 +5,14 @@
 //! grow without bound. This
 //! sweeper deletes rows past a per-table age, in batches (so a first sweep over
 //! a long-unpruned table doesn't lock it). Everything is opt-in: with no
-//! `MAIDAN_RETENTION_*_DAYS` set, nothing runs.
+//! `MAIDAN_RETENTION_*_DAYS` set and no workspace policy, nothing is pruned.
+//!
+//! **Per-workspace retention.** A workspace may set a shorter retention for
+//! its messages, events and finished deliveries (`maidan_retention_policies`,
+//! never longer than the instance keeps). Each sweep then prunes that
+//! workspace's rows past its own cutoff, after the instance sweep. A workspace
+//! under legal hold loses nothing either way: the store's per-workspace prunes
+//! check the hold in the deleting statement or transaction.
 //!
 //! **Event-log safety.** Events are pruned only up to `min_delivery_cursor` —
 //! the lowest watermark across all at-least-once consumers — so a lagging
@@ -17,7 +24,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use maidan_store::retention_policy::parse_days as parse_days_raw;
 use maidan_store::Store;
+use maidan_types::{RetentionDays, WorkspaceId};
 
 /// Resolved retention policy. `None` day fields mean "keep forever" for that
 /// table.
@@ -31,19 +40,27 @@ pub struct RetentionConfig {
 }
 
 fn parse_days(raw: Option<String>) -> Option<u32> {
-    raw.and_then(|s| s.trim().parse::<u32>().ok())
-        .filter(|&d| d > 0)
+    parse_days_raw(raw.as_deref())
 }
 
-/// Build the policy from the environment, or `None` when no table has a
-/// retention set (the sweeper is not started).
-pub fn config_from_env() -> Option<RetentionConfig> {
+impl RetentionConfig {
+    /// What the instance keeps, the ceiling a workspace policy is held to.
+    pub fn instance(&self) -> RetentionDays {
+        RetentionDays {
+            messages_days: None,
+            events_days: self.events_days.map(i64::from),
+            deliveries_days: self.deliveries_days.map(i64::from),
+        }
+    }
+}
+
+/// Build the policy from the environment. The sweeper always runs, since a
+/// workspace can set its own retention at any time; with nothing set, a sweep
+/// is one read of the (empty) policy table.
+pub fn config_from_env() -> RetentionConfig {
     let events_days = parse_days(std::env::var("MAIDAN_RETENTION_EVENTS_DAYS").ok());
     let audit_days = parse_days(std::env::var("MAIDAN_RETENTION_AUDIT_DAYS").ok());
     let deliveries_days = parse_days(std::env::var("MAIDAN_RETENTION_DELIVERIES_DAYS").ok());
-    if events_days.is_none() && audit_days.is_none() && deliveries_days.is_none() {
-        return None;
-    }
     let sweep = std::env::var("MAIDAN_RETENTION_SWEEP_SECS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
@@ -54,13 +71,13 @@ pub fn config_from_env() -> Option<RetentionConfig> {
         .and_then(|s| s.parse::<i64>().ok())
         .filter(|&b| b > 0)
         .unwrap_or(5_000);
-    Some(RetentionConfig {
+    RetentionConfig {
         events_days,
         audit_days,
         deliveries_days,
         sweep: Duration::from_secs(sweep),
         batch,
-    })
+    }
 }
 
 fn cutoff(now: chrono::DateTime<chrono::Utc>, days: u32) -> chrono::DateTime<chrono::Utc> {
@@ -105,6 +122,59 @@ pub async fn sweep_once(store: &Arc<dyn Store>, cfg: &RetentionConfig) {
         .await;
         record("deliveries", deleted);
     }
+
+    match store.list_retention_policies().await {
+        Ok(policies) => {
+            let instance = cfg.instance();
+            for (workspace_id, policy) in policies {
+                sweep_workspace(store, cfg.batch, now, workspace_id, &policy, &instance).await;
+            }
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "retention: listing workspace policies failed");
+        }
+    }
+}
+
+/// A workspace's own days for one kind of row, when they are shorter than the
+/// instance's; otherwise the instance sweep already covers it.
+fn stricter(workspace: Option<i64>, instance: Option<i64>) -> Option<u32> {
+    let days = workspace?;
+    if instance.is_some_and(|ceiling| ceiling <= days) {
+        return None;
+    }
+    u32::try_from(days).ok()
+}
+
+async fn sweep_workspace(
+    store: &Arc<dyn Store>,
+    batch: i64,
+    now: chrono::DateTime<chrono::Utc>,
+    workspace_id: WorkspaceId,
+    policy: &RetentionDays,
+    instance: &RetentionDays,
+) {
+    if let Some(days) = stricter(policy.messages_days, instance.messages_days) {
+        let deleted = prune_loop("messages", batch, |limit| {
+            store.prune_workspace_messages(workspace_id, cutoff(now, days), limit)
+        })
+        .await;
+        record("messages", deleted);
+    }
+    if let Some(days) = stricter(policy.events_days, instance.events_days) {
+        let deleted = prune_loop("events", batch, |limit| {
+            store.prune_workspace_events(workspace_id, cutoff(now, days), limit)
+        })
+        .await;
+        record("events", deleted);
+    }
+    if let Some(days) = stricter(policy.deliveries_days, instance.deliveries_days) {
+        let deleted = prune_loop("deliveries", batch, |limit| {
+            store.prune_workspace_deliveries(workspace_id, cutoff(now, days), limit)
+        })
+        .await;
+        record("deliveries", deleted);
+    }
 }
 
 /// Call `prune(batch)` repeatedly until a page comes back short (table drained
@@ -142,8 +212,7 @@ fn record(table: &str, pruned: u64) {
     }
 }
 
-/// Loop: sweep, then sleep `cfg.sweep`. Spawned once at startup when retention is
-/// configured.
+/// Loop: sweep, then sleep `cfg.sweep`. Spawned once at startup.
 pub async fn run(store: Arc<dyn Store>, cfg: RetentionConfig) {
     tracing::info!(
         events_days = ?cfg.events_days,
@@ -169,6 +238,16 @@ mod tests {
         assert_eq!(parse_days(Some("  ".into())), None);
         assert_eq!(parse_days(Some("nope".into())), None);
         assert_eq!(parse_days(Some("30".into())), Some(30));
+    }
+
+    #[test]
+    fn a_workspace_sweep_runs_only_where_it_is_stricter_than_the_instance() {
+        assert_eq!(stricter(None, Some(30)), None);
+        assert_eq!(stricter(Some(7), None), Some(7));
+        assert_eq!(stricter(Some(7), Some(30)), Some(7));
+        assert_eq!(stricter(Some(30), Some(30)), None);
+        // Set before the operator lowered the instance's: the instance's wins.
+        assert_eq!(stricter(Some(60), Some(30)), None);
     }
 
     #[test]

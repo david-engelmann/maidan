@@ -2,7 +2,9 @@
 //! sweep over a long-unpruned table doesn't lock it.
 
 use chrono::{DateTime, Utc};
+use maidan_types::{MessageId, WorkspaceId};
 use sqlx::SqlitePool;
+use uuid::Uuid;
 
 use crate::error::StoreError;
 
@@ -82,6 +84,9 @@ struct TerminalRows {
     terminal: &'static str,
     /// Whether rows carry a `workspace_id` a legal hold exempts, like events.
     held: bool,
+    /// The workspace a row belongs to, as SQL over the row, for a workspace's
+    /// own retention.
+    owner: &'static str,
 }
 
 const TERMINAL_ROWS: &[TerminalRows] = &[
@@ -90,36 +95,42 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         age: "created_at",
         terminal: "(delivered_at IS NOT NULL OR quarantined_at IS NOT NULL)",
         held: false,
+        owner: "(SELECT s.workspace_id FROM maidan_webhook_subscriptions s WHERE s.id = subscription_id)",
     },
     TerminalRows {
         table: "maidan_automation_deliveries",
         age: "created_at",
         terminal: "(delivered_at IS NOT NULL OR quarantined_at IS NOT NULL)",
         held: false,
+        owner: "workspace_id",
     },
     TerminalRows {
         table: "maidan_outbox",
         age: "published_at",
         terminal: "published_at IS NOT NULL",
         held: false,
+        owner: "(SELECT e.workspace_id FROM maidan_events e WHERE e.id = log_id)",
     },
     TerminalRows {
         table: "maidan_egress_outbox",
         age: "updated_at",
         terminal: "status = 'delivered'",
         held: true,
+        owner: "workspace_id",
     },
     TerminalRows {
         table: "maidan_mail_outbox",
         age: "updated_at",
         terminal: "status = 'delivered'",
         held: true,
+        owner: "workspace_id",
     },
     TerminalRows {
         table: "maidan_agent_work_dlq",
         age: "failed_at",
         terminal: "TRUE",
         held: true,
+        owner: "workspace_id",
     },
 ];
 
@@ -139,6 +150,7 @@ pub async fn prune_deliveries(
             age,
             terminal,
             held,
+            ..
         } = rows;
         let unheld = if *held {
             "AND (workspace_id IS NULL
@@ -163,4 +175,130 @@ pub async fn prune_deliveries(
         total += res.rows_affected();
     }
     Ok(total)
+}
+
+/// One workspace's event-log rows older than `cutoff`; see the Postgres twin.
+pub async fn prune_workspace_events(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64, StoreError> {
+    let res = sqlx::query(
+        "DELETE FROM maidan_events
+         WHERE id IN (
+             SELECT id FROM maidan_events
+             WHERE workspace_id = ?1 AND occurred_at < ?2
+               AND id <= COALESCE(
+                   (SELECT MIN(last_delivered_log_id) FROM maidan_delivery_cursor
+                    WHERE workspace_id = ?1 AND updated_at >= ?2),
+                   9223372036854775807)
+               AND NOT EXISTS (SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = ?1)
+             ORDER BY id ASC
+             LIMIT ?3
+         )",
+    )
+    .bind(workspace_id.0)
+    .bind(cutoff)
+    .bind(limit)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
+/// [`prune_deliveries`] for one workspace's rows; see the Postgres twin.
+pub async fn prune_workspace_deliveries(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64, StoreError> {
+    let mut total = 0u64;
+    for rows in TERMINAL_ROWS {
+        let TerminalRows {
+            table,
+            age,
+            terminal,
+            owner,
+            ..
+        } = rows;
+        let sql = format!(
+            "DELETE FROM {table}
+             WHERE id IN (
+                 SELECT id FROM {table}
+                 WHERE julianday({age}) < julianday(?1) AND {terminal} AND {owner} = ?2
+                   AND NOT EXISTS (SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = ?2)
+                 ORDER BY julianday({age}) ASC
+                 LIMIT ?3
+             )"
+        );
+        let res = sqlx::query(&sql)
+            .bind(cutoff)
+            .bind(workspace_id.0)
+            .bind(limit)
+            .execute(pool)
+            .await?;
+        total += res.rows_affected();
+    }
+    Ok(total)
+}
+
+/// One workspace's messages posted before `cutoff`, erased as the Postgres
+/// twin describes. Emptying them first fires the full-text trigger, which
+/// only a tombstone does, so their words leave the search index too.
+pub async fn prune_workspace_messages(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64, StoreError> {
+    let mut tx = pool.begin().await?;
+    match super::legal_hold::refuse_if_held(&mut tx, workspace_id).await {
+        Ok(()) => {}
+        Err(StoreError::Conflict(_) | StoreError::NotFound) => return Ok(0),
+        Err(err) => return Err(err),
+    }
+    let ids: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT m.id FROM maidan_messages m
+         INNER JOIN maidan_threads t ON m.thread_id = t.id
+         INNER JOIN maidan_channels c ON t.channel_id = c.id
+         WHERE c.workspace_id = ? AND julianday(m.posted_at) < julianday(?)
+         ORDER BY julianday(m.posted_at) ASC
+         LIMIT ?",
+    )
+    .bind(workspace_id.0)
+    .bind(cutoff)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+    let now = Utc::now();
+    let mut deleted = 0u64;
+    for id in ids {
+        crate::embeddings_purge::purge_message_embeddings_sqlite(&mut tx, MessageId(id)).await?;
+        super::content_keys::shred_in_tx(&mut tx, id).await?;
+        sqlx::query(
+            "DELETE FROM maidan_references
+             WHERE (src_kind = 'message' AND src_id = ?1)
+                OR (dst_kind = 'message' AND dst_id = ?1)",
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "UPDATE maidan_messages
+             SET tombstoned_at = COALESCE(tombstoned_at, ?), body = '', metadata = '{}', content = NULL
+             WHERE id = ?",
+        )
+        .bind(now)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        deleted += sqlx::query("DELETE FROM maidan_messages WHERE id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+    }
+    tx.commit().await?;
+    Ok(deleted)
 }

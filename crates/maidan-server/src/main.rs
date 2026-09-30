@@ -549,8 +549,10 @@ async fn main() -> anyhow::Result<()> {
     state.slash = maidan_server::SlashRuntime::new(federation_encryption_key.clone());
     state.fsm_hooks = maidan_server::FsmHookRuntime::new(federation_encryption_key);
     state.rate_limit_redis = maidan_server::rate_limit::connect_redis_from_env().await;
-    // Default-on global rate limit: a deployment that configures nothing still
-    // gets a DoS floor. `MAIDAN_RATE_LIMIT_MAX` (incl. `0`) overrides.
+    // Default-on rate limits: a deployment that configures nothing still gets a
+    // DoS floor per client and a fairness cap per workspace.
+    // `MAIDAN_RATE_LIMIT_MAX` and `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` (incl. `0`)
+    // override each.
     state.rate_limit_default_on = true;
     // A2A Agent Card transport advertisement: public origin for absolute
     // interface URLs + the advertised gRPC address (§5.2 negotiation).
@@ -694,10 +696,12 @@ async fn main() -> anyhow::Result<()> {
             .set_export_verify_keys(state.export_verify_keys.clone());
     }
 
-    // Background data-retention sweeper: opt-in via `MAIDAN_RETENTION_*_DAYS`.
-    // Prunes the event log (floored at the durable delivery watermark), audit
-    // trail, and delivery tables past their age.
-    if let Some(retention_cfg) = maidan_server::retention::config_from_env() {
+    // Background data-retention sweeper. Prunes the event log (floored at the
+    // durable delivery watermark), audit trail and delivery tables past the
+    // instance's `MAIDAN_RETENTION_*_DAYS`, then each workspace's rows past its
+    // own, shorter policy. Nothing is pruned unless one of those is set.
+    {
+        let retention_cfg = maidan_server::retention::config_from_env();
         let retention_store = state.store.clone();
         tokio::spawn(async move {
             maidan_server::retention::run(retention_store, retention_cfg).await;

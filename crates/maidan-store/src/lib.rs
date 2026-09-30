@@ -117,6 +117,7 @@ pub mod migrate;
 pub mod outbox;
 pub mod postgres;
 pub mod result_delivery;
+pub mod retention_policy;
 mod share_tickets;
 pub mod shred_residue;
 pub mod sqlite;

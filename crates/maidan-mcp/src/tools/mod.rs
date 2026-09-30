@@ -98,6 +98,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "get_memory_block",
     "get_priority",
     "get_queue_depth",
+    "get_retention_policy",
     "get_review_status",
     "get_room",
     "get_run_occupancy",
@@ -237,6 +238,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_assigned_threads"
         | "get_wip_limit"
         | "get_delegation_policy"
+        | "get_retention_policy"
         | "get_spawn_budget"
         | "get_member_wip"
         | "get_member_occupancy"
@@ -317,7 +319,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         "create_delegation_grant"
         | "list_delegation_grants"
         | "revoke_delegation_grant"
-        | "set_delegation_policy" => Ok(TOKEN_ADMIN),
+        | "set_delegation_policy"
+        | "set_retention_policy" => Ok(TOKEN_ADMIN),
         "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
             Ok(MESSAGE_POST)
         }
@@ -1043,6 +1046,8 @@ pub async fn dispatch(
         "create_delegation_grant" => room::create_delegation_grant(store, auth, args).await,
         "set_delegation_policy" => room::set_delegation_policy(store, auth, args).await,
         "get_delegation_policy" => room::get_delegation_policy(store, auth, args).await,
+        "set_retention_policy" => room::set_retention_policy(server, auth, args).await,
+        "get_retention_policy" => room::get_retention_policy(server, auth, args).await,
         "list_delegation_grants" => room::list_delegation_grants(store, auth, args).await,
         "revoke_delegation_grant" => room::revoke_delegation_grant(store, auth, args).await,
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),

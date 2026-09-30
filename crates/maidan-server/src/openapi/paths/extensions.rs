@@ -330,6 +330,36 @@ pub fn set_delegation_policy() {}
 )]
 pub fn get_delegation_policy() {}
 
+/// Set a workspace's retention
+#[utoipa::path(
+    put,
+    path = "/workspaces/{id}/retention",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = RetentionDays,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = RetentionPolicy, description = "The workspace's retention, the instance's, and what is pruned in effect"),
+        (status = 400, description = "Days outside 1–3650, or longer than the instance keeps that kind of row", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, description = "Requires token:admin", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn set_retention_policy() {}
+
+/// Get a workspace's retention
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/retention",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = RetentionPolicy, description = "The workspace's retention, the instance's, and what is pruned in effect"),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn get_retention_policy() {}
+
 /// Get a member's work in progress
 #[utoipa::path(
     get,

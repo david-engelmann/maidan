@@ -33,10 +33,6 @@ struct RateLimitConfig {
     window: Duration,
 }
 
-fn config_from_env() -> Option<RateLimitConfig> {
-    config_from_env_named("MAIDAN_RATE_LIMIT_MAX", "MAIDAN_RATE_LIMIT_WINDOW_SECS")
-}
-
 /// Built-in global per-client limit used when `MAIDAN_RATE_LIMIT_MAX` is unset
 /// and the bootstrap enabled the default: 1200 requests / 60 s per bearer/IP —
 /// ~20 req/s sustained, generous for a real agent but a firm floor against a
@@ -44,46 +40,87 @@ fn config_from_env() -> Option<RateLimitConfig> {
 const DEFAULT_GLOBAL_MAX: u32 = 1200;
 const DEFAULT_GLOBAL_WINDOW_SECS: u64 = 60;
 
-fn default_global() -> RateLimitConfig {
-    RateLimitConfig {
-        max: DEFAULT_GLOBAL_MAX,
-        window: Duration::from_secs(DEFAULT_GLOBAL_WINDOW_SECS),
-    }
+/// Built-in per-workspace limit, on the same terms as the global one: 6000
+/// requests / 60 s for one workspace across all its tokens, ~100 req/s. That is
+/// five clients each running at the per-client ceiling above, so a busy
+/// workspace meets its own clients' limits long before its shared one. It is
+/// also well under what one node serves (666–1586 req/s on the SQLite
+/// benchmark, `docs/Benchmark.md`), so one tenant cannot take the instance.
+const DEFAULT_WORKSPACE_MAX: u32 = 6000;
+const DEFAULT_WORKSPACE_WINDOW_SECS: u64 = 60;
+// A workspace's shared limit must sit well above one client's, or a single
+// busy agent would meet the workspace cap before its own.
+const _: () = assert!(
+    DEFAULT_WORKSPACE_WINDOW_SECS == DEFAULT_GLOBAL_WINDOW_SECS
+        && DEFAULT_WORKSPACE_MAX >= 5 * DEFAULT_GLOBAL_MAX
+);
+
+/// One limit's environment names and its built-in default.
+struct LimitSpec {
+    max_var: &'static str,
+    window_var: &'static str,
+    default: RateLimitConfig,
 }
 
-/// Resolve the global limit: an explicit `MAIDAN_RATE_LIMIT_MAX` always wins
-/// (including `0`/invalid → disabled); otherwise apply the built-in default when
-/// `default_on` (the server bootstrap sets it; tests leave it off).
-fn resolve_global(default_on: bool) -> Option<RateLimitConfig> {
-    if std::env::var("MAIDAN_RATE_LIMIT_MAX").is_ok() {
-        config_from_env()
-    } else if default_on {
-        Some(default_global())
-    } else {
-        None
-    }
-}
+const GLOBAL: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: DEFAULT_GLOBAL_MAX,
+        window: Duration::from_secs(DEFAULT_GLOBAL_WINDOW_SECS),
+    },
+};
 
 /// Per-workspace fairness limit: caps total request rate for a single workspace
 /// across *all* its tokens, so one tenant's heavy loop can't monopolize the
-/// shared instance. Independently opt-in from the global limit.
-fn workspace_config_from_env() -> Option<RateLimitConfig> {
-    config_from_env_named(
-        "MAIDAN_WORKSPACE_RATE_LIMIT_MAX",
-        "MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS",
+/// shared instance. Resolved independently of the global limit.
+const WORKSPACE: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_WORKSPACE_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: DEFAULT_WORKSPACE_MAX,
+        window: Duration::from_secs(DEFAULT_WORKSPACE_WINDOW_SECS),
+    },
+};
+
+fn resolve_global(default_on: bool) -> Option<RateLimitConfig> {
+    resolve_env(&GLOBAL, default_on)
+}
+
+fn resolve_workspace(default_on: bool) -> Option<RateLimitConfig> {
+    resolve_env(&WORKSPACE, default_on)
+}
+
+fn resolve_env(spec: &LimitSpec, default_on: bool) -> Option<RateLimitConfig> {
+    resolve(
+        spec,
+        std::env::var(spec.max_var).ok().as_deref(),
+        std::env::var(spec.window_var).ok().as_deref(),
+        default_on,
     )
 }
 
-fn config_from_env_named(max_var: &str, window_var: &str) -> Option<RateLimitConfig> {
-    let max: u32 = std::env::var(max_var).ok()?.parse().ok()?;
+/// Resolve a limit: an explicit max always wins (including `0`/invalid →
+/// disabled); otherwise apply the built-in default when `default_on` (the
+/// server bootstrap sets it; tests leave it off).
+fn resolve(
+    spec: &LimitSpec,
+    max: Option<&str>,
+    window: Option<&str>,
+    default_on: bool,
+) -> Option<RateLimitConfig> {
+    match max {
+        Some(max) => config_from(max, window),
+        None => default_on.then_some(spec.default),
+    }
+}
+
+fn config_from(max: &str, window: Option<&str>) -> Option<RateLimitConfig> {
+    let max: u32 = max.parse().ok()?;
     if max == 0 {
         return None;
     }
-    let secs: u64 = std::env::var(window_var)
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(60)
-        .max(1);
+    let secs: u64 = window.and_then(|s| s.parse().ok()).unwrap_or(60).max(1);
     Some(RateLimitConfig {
         max,
         window: Duration::from_secs(secs),
@@ -160,7 +197,7 @@ pub async fn middleware(
     next: Next,
 ) -> Response {
     let global = resolve_global(state.rate_limit_default_on);
-    let workspace = workspace_config_from_env();
+    let workspace = resolve_workspace(state.rate_limit_default_on);
     if (global.is_none() && workspace.is_none()) || exempt_path(req.uri().path()) {
         return next.run(req).await;
     }
@@ -287,35 +324,45 @@ mod tests {
         assert_eq!(forwarded_client_ip("198.51.100.4", peer, 2), None);
     }
 
-    #[test]
-    fn default_on_applies_a_floor_and_explicit_env_overrides() {
-        // Save/restore so this stays hermetic within the lib-test process.
-        let saved_max = std::env::var("MAIDAN_RATE_LIMIT_MAX").ok();
-        let saved_window = std::env::var("MAIDAN_RATE_LIMIT_WINDOW_SECS").ok();
-        std::env::remove_var("MAIDAN_RATE_LIMIT_MAX");
-        std::env::remove_var("MAIDAN_RATE_LIMIT_WINDOW_SECS");
-
-        // Unset env: off unless the bootstrap enabled the default.
-        assert!(resolve_global(false).is_none());
-        let d = resolve_global(true).expect("default floor when default_on");
-        assert_eq!(d.max, DEFAULT_GLOBAL_MAX);
-        assert_eq!(d.window, Duration::from_secs(DEFAULT_GLOBAL_WINDOW_SECS));
+    /// The rules both limits share, checked on the raw values so the test
+    /// does not race other lib tests over the process environment.
+    fn assert_default_rules(spec: &LimitSpec, default_max: u32, default_window_secs: u64) {
+        // Unset: off unless the bootstrap enabled the default.
+        assert!(resolve(spec, None, None, false).is_none());
+        let d = resolve(spec, None, None, true).expect("default floor when default_on");
+        assert_eq!(d.max, default_max);
+        assert_eq!(d.window, Duration::from_secs(default_window_secs));
+        // A window alone does not change the default.
+        let d = resolve(spec, None, Some("5"), true).expect("default");
+        assert_eq!(d.window, Duration::from_secs(default_window_secs));
 
         // Explicit value wins regardless of the flag.
-        std::env::set_var("MAIDAN_RATE_LIMIT_MAX", "5");
-        assert_eq!(resolve_global(false).map(|c| c.max), Some(5));
-        assert_eq!(resolve_global(true).map(|c| c.max), Some(5));
+        assert_eq!(
+            resolve(spec, Some("5"), None, false).map(|c| c.max),
+            Some(5)
+        );
+        assert_eq!(resolve(spec, Some("5"), None, true).map(|c| c.max), Some(5));
+        assert_eq!(
+            resolve(spec, Some("5"), Some("10"), true).map(|c| c.window),
+            Some(Duration::from_secs(10))
+        );
 
-        // Explicit 0 disables even with the default on.
-        std::env::set_var("MAIDAN_RATE_LIMIT_MAX", "0");
-        assert!(resolve_global(true).is_none());
+        // Explicit 0, or junk, disables even with the default on.
+        assert!(resolve(spec, Some("0"), None, true).is_none());
+        assert!(resolve(spec, Some("lots"), None, true).is_none());
+    }
 
-        match saved_max {
-            Some(v) => std::env::set_var("MAIDAN_RATE_LIMIT_MAX", v),
-            None => std::env::remove_var("MAIDAN_RATE_LIMIT_MAX"),
-        }
-        if let Some(v) = saved_window {
-            std::env::set_var("MAIDAN_RATE_LIMIT_WINDOW_SECS", v);
-        }
+    #[test]
+    fn default_on_applies_a_floor_and_explicit_env_overrides() {
+        assert_default_rules(&GLOBAL, DEFAULT_GLOBAL_MAX, DEFAULT_GLOBAL_WINDOW_SECS);
+    }
+
+    #[test]
+    fn workspace_limit_has_a_default_on_the_global_limits_terms() {
+        assert_default_rules(
+            &WORKSPACE,
+            DEFAULT_WORKSPACE_MAX,
+            DEFAULT_WORKSPACE_WINDOW_SECS,
+        );
     }
 }
