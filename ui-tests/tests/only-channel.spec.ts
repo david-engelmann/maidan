@@ -23,12 +23,21 @@ test("several channels stay on pick a channel until one is chosen", async ({ pag
 // One channel is the board. The viewer should not have to click it while a
 // Needs you queue is already live above an empty stage.
 test("the only channel opens by itself", async ({ page }) => {
-  await page.route(`**/workspaces/${fx.workspace_id}/channels`, async (route) => {
-    if (route.request().method() !== "GET") return route.continue();
-    const res = await route.fetch();
+  await page.route(/\/workspaces\/[^/]+\/channels$/, async (route) => {
+    // The page also probes this list through the session proxy before a bearer
+    // token is in the field. Leave that request alone. The signed-in load is
+    // the bearer list, which is an array; keep only the empty channel.
+    if (route.request().method() !== "GET" || route.request().url().includes("/ui/api/")) {
+      return route.continue();
+    }
+    const res = await route.fetch({ headers: route.request().headers() });
     const all = await res.json();
     const one = all.filter((c: { id: string }) => c.id === fx.quiet_channel_id);
-    await route.fulfill({ response: res, json: one });
+    await route.fulfill({
+      status: res.status(),
+      contentType: "application/json",
+      body: JSON.stringify(one),
+    });
   });
   await signIn(page);
   const row = page.locator(`#channel-list li[data-id="${fx.quiet_channel_id}"]`);
