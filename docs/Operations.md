@@ -369,6 +369,16 @@ advisory does not apply, add an `[[IgnoredVulns]]` entry to
 added to the TypeScript or Python SDK needs a committed lockfile; the script
 says so.
 
+### `cargo vet` fails
+
+The job runs `cargo vet --locked` (cargo-vet 0.10.2) over the root
+`Cargo.lock`. It fails when a crate version has neither an audit nor an
+exemption in `supply-chain/`, which happens only when the lockfile changes: it
+names each crate, the version and the criteria it is missing. Run `cargo vet`
+locally, then certify or exempt what it lists, as
+[Conventions](Conventions.md) ("Dependencies") describes, and commit
+`supply-chain/` with the lockfile change.
+
 ### NOTIFY floor simulation fails
 
 `the_floor_delivers_every_committed_event_under_faults` in `maidan-bus`

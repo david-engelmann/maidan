@@ -267,6 +267,30 @@ jobs:
       - name: osv-scanner
         run: scripts/osv-scan.sh
 
+  cargo-vet:
+    name: cargo vet (root lockfile)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Every crate in Cargo.lock needs an audit (ours in supply-chain/audits.toml
+    # or one imported from a publisher in supply-chain/config.toml) or an
+    # exemption. The exemptions are the crates present when cargo-vet was
+    # adopted, so only a new or updated crate turns this red. `--locked` reads
+    # the imported audits from supply-chain/imports.lock rather than fetching
+    # them, so a publisher's upstream change cannot alter the result. Not a
+    # required check (docs/Conventions.md, "Dependencies").
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: install cargo-vet
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-vet@0.10.2
+      - name: cargo vet
+        run: cargo vet --locked
+
   sdk-interop:
     name: sdk interop (report-only)
     needs: changes

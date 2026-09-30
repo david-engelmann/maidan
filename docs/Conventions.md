@@ -61,6 +61,44 @@ the same PR.
   that breaks it (a GET that writes delivery bookkeeping, a POST that only
   verifies) says why in `reason`.
 
+## Dependencies
+
+`cargo deny check` (in `lint`) refuses advisories, banned crates and
+licences. [`cargo-vet`](https://mozilla.github.io/cargo-vet/) records that
+someone looked at each third-party crate in the root `Cargo.lock`. Its files
+are in `supply-chain/`:
+
+- `config.toml`: the audit sets imported from Mozilla, Google, the Bytecode
+  Alliance, Zcash and ISRG, and the **exemptions**. The exemptions are the
+  crates in the lockfile when cargo-vet was adopted that no import covered;
+  they are a record of what was trusted without review, not an audit.
+- `audits.toml`: audits this repository has done itself.
+- `imports.lock`: the imported audits as fetched. CI runs
+  `cargo vet --locked`, which reads this file and fetches nothing.
+
+A dependency bump or a new crate turns the `cargo vet (root lockfile)` job red
+until the new version is covered. With cargo-vet 0.10.2 installed
+(`cargo install --locked cargo-vet@0.10.2`):
+
+1. Run `cargo vet` (without `--locked`). It fetches the imported sets again
+   and updates `imports.lock` if a publisher has since audited the new
+   version; if that covers it, you are done.
+2. Otherwise read the code and certify it. For an update, review the diff
+   (`cargo vet diff <crate> <old> <new>`) and record a delta audit with
+   `cargo vet certify <crate> <old> <new>`; for a new crate,
+   `cargo vet inspect <crate> <version>` and `cargo vet certify <crate>
+   <version>`. The criteria are `safe-to-deploy` for anything that reaches a
+   shipped binary and `safe-to-run` for a crate used only by tests, benches or
+   build tooling. `cargo vet suggest` lists what is missing and the smallest
+   diff that would cover it.
+3. If you do not review it, exempt it with
+   `cargo vet add-exemption <crate> <version> --notes "<why>"`, and give the
+   same reason in the PR body.
+
+Then run `cargo vet prune` to drop exemptions and imports nothing needs any
+more, and commit the `supply-chain/` changes with the `Cargo.lock` change.
+`cargo vet --locked` must pass locally before you push.
+
 ## Secrets
 
 - `.env`, `maidan.toml`, `*.pem`, `*.key` are ignored.
@@ -93,6 +131,7 @@ non-required job, and a skipped required job reports as passed.
 | `loom` | every interleaving of the sharded bus and the presence hub | no |
 | `tla` | TLC over the TLA+ specs, each with a config it must fail | no |
 | `osv scan (lockfiles outside cargo-deny)` | osv-scanner over `fuzz/`, `ui-tests/` and the SDK lockfiles | no |
+| `cargo vet (root lockfile)` | `cargo vet --locked`: every crate in `Cargo.lock` audited or exempted | no |
 | `mcp inspector (report-only)` | the official MCP Inspector against the server | no |
 | `sdk interop (report-only)` | the four SDKs against a live server | no |
 | `pitr drill` | point-in-time recovery to a chosen moment | no |
