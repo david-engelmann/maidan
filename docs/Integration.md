@@ -756,8 +756,28 @@ the stored message's `metadata.citations`. Malformed hashes fail closed
 ### Long-poll waits (`wait_for_*`)
 
 The MCP `wait_for_mention` / `wait_for_notification` / `wait_for_result` /
-`wait_for_ready` / `wait_for_claim_expired` tools block until their signal
-arrives or the timeout lapses. Three rules for using them safely:
+`wait_for_ready` / `wait_for_claim_expired` / `wait_for_claim_failed` /
+`wait_for_blocked_resolved` / `wait_for_landed` / `wait_for_memory_block` tools
+block until their signal arrives or the timeout lapses. They need
+`workspace:read`, take `timeout_ms` (default 30 000, at most 300 000) and,
+all but `wait_for_memory_block`, `since_log_id`, and return `null` when the
+window lapses with nothing to report. Each sees only its own workspace, and
+skips an event in a thread you cannot read.
+
+| Tool | Returns | Scope |
+|------|---------|-------|
+| `wait_for_ready` | `ThreadReady`: a task's last blocking dependency finished | `channel_id` |
+| `wait_for_claim_expired` | `ClaimExpired`: a lease lapsed and the thread was reclaimed; `member_id` is the holder that went quiet | `channel_id` |
+| `wait_for_claim_failed` | `ClaimFailed`: a run went over its budget and was stopped; `member_id` is the stopped holder, `reason` the budget axis (`tokens`, `usd`, `turns`, `wall`) | `channel_id` |
+| `wait_for_blocked_resolved` | `BlockedResolved`: an explicit dispatch block was cleared; carries the `reason` that cleared and `resolved_by` | `thread_id` and/or `channel_id` |
+| `wait_for_landed` | `ThreadLanded`: a linked GitHub PR merged | `thread_id` and/or `channel_id` |
+
+Omit the scope to wait on the whole workspace. A `channel_id` or `thread_id`
+you cannot read is refused at once rather than waited out. Clearing a thread
+that was not blocked emits nothing, so `wait_for_blocked_resolved` on it waits
+out its window.
+
+Three rules for using them safely:
 
 - **Resume without missing a signal — pass `since_log_id`.** A wait is live by
   default (it only sees events after it subscribes), so a signal that fired
@@ -827,7 +847,7 @@ ask again.
 An orchestrator parks a thread with `PUT /threads/:id/block` `{ "reason": "gate" }`
 (MCP `set_thread_block`). `GET` / `list` (`GET /channels/:cid/blocked`, MCP
 `list_blocked_threads`) read the row. `DELETE` (MCP `clear_thread_block`) clears
-it and emits `BlockedResolved`. An explicit `claim` against a blocked thread is
+it and emits `BlockedResolved`, which `wait_for_blocked_resolved` blocks on. An explicit `claim` against a blocked thread is
 409 / InvalidParams. This is not the unclaimable park — that table
 stays; `unclaimable` here is one of the six reasons.
 
@@ -917,7 +937,8 @@ before totals change. The response is the durable ledger entry, including its
 PayerStamp, accumulated `budget`, `stopped`, and `reason`. Report as you go:
 this call is where a runaway run gets caught. If a report crosses a bound, the
 same transaction releases the claim, emits `UsageReported` then `ClaimFailed`,
-and dead-letters the run. A hard stop is not a success; don't follow one with a
+and dead-letters the run. A supervisor learns of the stop with
+`wait_for_claim_failed`. A hard stop is not a success; don't follow one with a
 result.
 
 **There is no wall-clock argument, and you should not invent one.** You report

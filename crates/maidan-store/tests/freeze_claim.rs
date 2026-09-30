@@ -76,7 +76,11 @@ async fn run_suite(store: &dyn Store) {
     );
 
     // Unfreeze → claim_next works again.
-    assert!(store.unfreeze_member(member.id).await.expect("unfreeze"));
+    assert!(store
+        .unfreeze_member(member.id, member.id)
+        .await
+        .expect("unfreeze")
+        .is_some());
     let ok = store
         .claim_next_thread(channel.id, member.id, None)
         .await

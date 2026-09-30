@@ -424,6 +424,20 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
             gate_id: maidan_types::ApprovalGateId::new(),
             requested_by: worker.id,
         },
+        Event::MemberFrozen {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            member_id: worker.id,
+            frozen_by: actor.id,
+            reason: Some("runaway".into()),
+            released: 1,
+        },
+        Event::MemberUnfrozen {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            member_id: worker.id,
+            unfrozen_by: actor.id,
+        },
     ];
     for (offset, event) in events.iter().enumerate() {
         notification_router::route_event(&state, 100 + offset as i64, event)
@@ -446,7 +460,24 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
             EventKind::ClaimExpired,
             EventKind::WaitTimedOut,
             EventKind::ApprovalRequested,
+            EventKind::MemberFrozen,
+            EventKind::MemberUnfrozen,
         ])
+    );
+    let frozen = notes
+        .iter()
+        .find(|n| n.kind == EventKind::MemberFrozen)
+        .unwrap();
+    assert_eq!(frozen.actor_id, Some(actor.id), "the operator froze them");
+    assert_eq!((frozen.channel_id, frozen.thread_id), (None, None));
+    assert!(
+        store
+            .list_notifications(worker.id, false, 20)
+            .await
+            .unwrap()
+            .iter()
+            .all(|n| n.kind != EventKind::MemberFrozen),
+        "the frozen member is not notified of its own freeze"
     );
 
     store
@@ -462,7 +493,7 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
             .await
             .unwrap()
             .len(),
-        7,
+        9,
         "member-follow lifecycle notifications honor per-kind mutes"
     );
 

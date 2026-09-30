@@ -9,7 +9,7 @@ use std::{
 
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
-use maidan_server::{router, AppState, FederationRuntime};
+use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
@@ -51,7 +51,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
-    let state = AppState::new(
+    let mut state = AppState::new(
         store.clone(),
         artifacts,
         bus,
@@ -63,6 +63,8 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         Arc::new(AtomicI64::new(0)),
         None,
     );
+    // The WebSocket subscribe ack carries a resume token signed with this.
+    state.subscribe_resume_secret = Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -191,4 +193,129 @@ async fn freeze_member_over_http() {
         .await
         .unwrap();
     assert_eq!(gone.status(), StatusCode::NOT_FOUND);
+}
+
+/// Every text frame a WebSocket subscriber receives within `window`.
+async fn drain_ws<S>(ws: &mut S, window: std::time::Duration) -> Vec<Value>
+where
+    S: futures::Stream<
+            Item = Result<
+                tokio_tungstenite::tungstenite::Message,
+                tokio_tungstenite::tungstenite::Error,
+            >,
+        > + Unpin,
+{
+    use futures::StreamExt;
+    let mut frames = Vec::new();
+    let deadline = tokio::time::Instant::now() + window;
+    while let Ok(Some(Ok(msg))) = tokio::time::timeout_at(deadline, ws.next()).await {
+        if let tokio_tungstenite::tungstenite::Message::Text(text) = msg {
+            if let Ok(frame) = serde_json::from_str(&text) {
+                frames.push(frame);
+            }
+        }
+    }
+    frames
+}
+
+/// A freeze and its lift reach the live subscribers of the frozen member's
+/// workspace, naming the operator who did it, and no one else's.
+#[tokio::test]
+async fn a_freeze_is_announced_to_its_own_workspace_only() {
+    use futures::SinkExt;
+    use std::time::Duration;
+    use tokio_tungstenite::{
+        connect_async,
+        tungstenite::{client::IntoClientRequest, Message},
+    };
+
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let seed = |name: &'static str| {
+        let store = store.clone();
+        async move {
+            let ws = store
+                .create_workspace(NewWorkspace { name: name.into() })
+                .await
+                .unwrap();
+            let member = |handle: &str, kind| NewMember {
+                workspace_id: ws.id,
+                handle: handle.into(),
+                display_name: None,
+                kind,
+            };
+            let op = store
+                .create_member(member("op", MemberKind::Human))
+                .await
+                .unwrap();
+            let agent = store
+                .create_member(member("agent", MemberKind::Agent))
+                .await
+                .unwrap();
+            let caps = vec![
+                capability::TOKEN_ADMIN.into(),
+                capability::EVENT_SUBSCRIBE.into(),
+            ];
+            let token = mint(store.as_ref(), ws.id, op.id, caps).await;
+            (ws.id, op.id, agent.id, token)
+        }
+    };
+    let (_, op, agent, admin) = seed("home").await;
+    let (_, _, _, stranger) = seed("away").await;
+
+    let mut subscribers = Vec::new();
+    for token in [&admin, &stranger] {
+        let url = format!("ws://{addr}/ws/subscribe");
+        let (mut ws, _) = connect_async(url.into_client_request().unwrap())
+            .await
+            .unwrap();
+        ws.send(Message::Text(
+            serde_json::json!({ "token": token, "filter": {} }).to_string(),
+        ))
+        .await
+        .unwrap();
+        drain_ws(&mut ws, Duration::from_millis(300)).await;
+        subscribers.push(ws);
+    }
+
+    let frozen = client
+        .post(format!("{base}/members/{}/freeze", agent.0))
+        .header("Authorization", format!("Bearer {admin}"))
+        .json(&serde_json::json!({ "reason": "runaway spend" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(frozen.status(), StatusCode::OK);
+    let lifted = client
+        .delete(format!("{base}/members/{}/freeze", agent.0))
+        .header("Authorization", format!("Bearer {admin}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(lifted.status(), StatusCode::NO_CONTENT);
+
+    let kind_of = |frame: &Value| frame["kind"].as_str().map(str::to_owned);
+    let home = drain_ws(&mut subscribers[0], Duration::from_millis(800)).await;
+    let frozen = home
+        .iter()
+        .find(|f| kind_of(f).as_deref() == Some("member_frozen"))
+        .unwrap_or_else(|| panic!("no member_frozen frame: {home:?}"));
+    assert_eq!(frozen["member_id"], agent.0.to_string());
+    assert_eq!(frozen["frozen_by"], op.0.to_string());
+    assert_eq!(frozen["reason"], "runaway spend");
+    assert_eq!(frozen["attribution"]["actor_id"], op.0.to_string());
+    assert!(
+        home.iter()
+            .any(|f| kind_of(f).as_deref() == Some("member_unfrozen")),
+        "no member_unfrozen frame: {home:?}"
+    );
+
+    let away = drain_ws(&mut subscribers[1], Duration::from_millis(300)).await;
+    assert!(
+        away.iter().all(|f| !matches!(
+            kind_of(f).as_deref(),
+            Some("member_frozen" | "member_unfrozen")
+        )),
+        "another workspace's subscriber saw the freeze: {away:?}"
+    );
 }

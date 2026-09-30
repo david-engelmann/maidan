@@ -1976,11 +1976,15 @@ impl MemberFreezeStore for PostgresStore {
         member_id: MemberId,
         frozen_by: MemberId,
         reason: Option<&str>,
-    ) -> Result<(MemberFreeze, u64), StoreError> {
+    ) -> Result<(MemberFreeze, u64, StoredEvent), StoreError> {
         member_freezes::freeze(&self.pool, member_id, frozen_by, reason).await
     }
-    async fn unfreeze_member(&self, member_id: MemberId) -> Result<bool, StoreError> {
-        member_freezes::unfreeze(&self.pool, member_id).await
+    async fn unfreeze_member(
+        &self,
+        member_id: MemberId,
+        unfrozen_by: MemberId,
+    ) -> Result<Option<StoredEvent>, StoreError> {
+        member_freezes::unfreeze(&self.pool, member_id, unfrozen_by).await
     }
     async fn is_member_frozen(&self, member_id: MemberId) -> Result<bool, StoreError> {
         member_freezes::is_frozen(self.read_pool(), member_id).await
@@ -3674,15 +3678,16 @@ impl GovernanceAuditStore for PostgresStore {
         frozen_by: MemberId,
         reason: Option<&str>,
         audit: crate::AuditFor<(MemberFreeze, u64)>,
-    ) -> Result<(MemberFreeze, u64), StoreError> {
+    ) -> Result<(MemberFreeze, u64, StoredEvent), StoreError> {
         governance_audited::freeze_member(&self.pool, member_id, frozen_by, reason, audit).await
     }
     async fn unfreeze_member_audited(
         &self,
         member_id: MemberId,
+        unfrozen_by: MemberId,
         audit: NewAuditEvent,
-    ) -> Result<bool, StoreError> {
-        governance_audited::unfreeze_member(&self.pool, member_id, audit).await
+    ) -> Result<Option<StoredEvent>, StoreError> {
+        governance_audited::unfreeze_member(&self.pool, member_id, unfrozen_by, audit).await
     }
     async fn add_channel_member_audited(
         &self,

@@ -299,6 +299,20 @@ fn sample_event(kind: EventKind) -> Event {
             selector: "example/repo#1".into(),
             error: "401".into(),
         },
+        EventKind::MemberFrozen => Event::MemberFrozen {
+            occurred_at,
+            workspace_id,
+            member_id,
+            frozen_by: maidan_types::MemberId(id(13)),
+            reason: Some("runaway spend".into()),
+            released: 1,
+        },
+        EventKind::MemberUnfrozen => Event::MemberUnfrozen {
+            occurred_at,
+            workspace_id,
+            member_id,
+            unfrozen_by: maidan_types::MemberId(id(13)),
+        },
         EventKind::MessagePosted => Event::MessagePosted {
             occurred_at,
             workspace_id,
@@ -435,6 +449,8 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ScheduleSkipped
             | EventKind::ThreadSpawnDenied
             | EventKind::ProjectorMisconfigured
+            | EventKind::MemberFrozen
+            | EventKind::MemberUnfrozen
             | EventKind::MessagePosted
             | EventKind::MessageEdited
             | EventKind::MessageTombstoned

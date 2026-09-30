@@ -7,7 +7,7 @@
 use maidan_types::{
     AllowedEgressTarget, AppInstallation, AppInstallationId, ChannelId, ChannelMember,
     ChannelMemberRole, EgressTargetId, MemberFreeze, MemberId, NewAuditEvent, NewEgressTarget,
-    NewSecret, Secret, ThreadId, ThreadReviewRequirement, WorkspaceId,
+    NewSecret, Secret, StoredEvent, ThreadId, ThreadReviewRequirement, WorkspaceId,
 };
 use sqlx::SqlitePool;
 
@@ -31,24 +31,32 @@ macro_rules! audited {
     }};
 }
 
+/// The freeze, its audit row and its `MemberFrozen` event commit together.
 pub async fn freeze_member(
     pool: &SqlitePool,
     member_id: MemberId,
     frozen_by: MemberId,
     reason: Option<&str>,
     audit_for: AuditFor<(MemberFreeze, u64)>,
-) -> Result<(MemberFreeze, u64), StoreError> {
-    audited!(pool, |tx| member_freezes::freeze_on(&mut tx, member_id, frozen_by, reason).await?,
-        result => Some(audit_for(&result)))
+) -> Result<(MemberFreeze, u64, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
+    let (freeze, released, stored) =
+        member_freezes::freeze_on(&mut tx, member_id, frozen_by, reason).await?;
+    let change = (freeze, released);
+    audit::append_counted(&mut tx, audit_for(&change)).await?;
+    tx.commit().await?;
+    let (freeze, released) = change;
+    Ok((freeze, released, stored))
 }
 
 pub async fn unfreeze_member(
     pool: &SqlitePool,
     member_id: MemberId,
+    unfrozen_by: MemberId,
     event: NewAuditEvent,
-) -> Result<bool, StoreError> {
-    audited!(pool, |tx| member_freezes::unfreeze_on(&mut tx, member_id).await?,
-        unfrozen => unfrozen.then_some(event))
+) -> Result<Option<StoredEvent>, StoreError> {
+    audited!(pool, |tx| member_freezes::unfreeze_on(&mut tx, member_id, unfrozen_by).await?,
+        unfrozen => unfrozen.is_some().then_some(event))
 }
 
 pub async fn add_channel_member(

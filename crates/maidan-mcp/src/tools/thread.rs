@@ -1313,21 +1313,171 @@ pub(super) async fn get_dependency_results(
     Ok(content_json(&json!({ "dependencies": out })))
 }
 
+/// Where a single-kind `wait_for_*` looks: the caller's workspace, narrowed to
+/// a channel and/or a thread when given. Access to a named channel (and, for
+/// the tools that take one, thread) is checked before dispatch.
+struct EventWait {
+    tool: &'static str,
+    kind: EventKind,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    timeout_ms: Option<i64>,
+    since_log_id: Option<i64>,
+}
+
+/// Block until an event of `wait.kind` the caller may read arrives, or the
+/// window lapses: returns the event, or `null` on timeout. An event in a thread
+/// the caller can't access is skipped, not revealed, on both the lookback and
+/// the live path. The subscription opens before the lookback runs, so an event
+/// written between the two is caught by one or the other.
+async fn wait_for_event(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    wait: EventWait,
+) -> Result<Value, McpError> {
+    let Some(bus) = server.event_bus.as_ref() else {
+        return Err(McpError::InvalidParams(format!(
+            "{} requires an event bus",
+            wait.tool
+        )));
+    };
+    let window = wait
+        .timeout_ms
+        .unwrap_or(DEFAULT_WAIT_MS)
+        .clamp(1, MAX_WAIT_MS);
+    let kinds = std::collections::HashSet::from([wait.kind]);
+
+    let filter = EventFilter {
+        workspace_id: Some(auth.workspace_id),
+        channel_id: wait.channel_id,
+        thread_id: wait.thread_id,
+        kinds: Some(kinds.clone()),
+        ..EventFilter::default()
+    };
+    let mut stream = bus
+        .subscribe(filter)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+
+    let store = server.store.as_ref();
+
+    if let Some(since) = wait.since_log_id {
+        if let Some(event) = lookback_event(
+            store,
+            auth,
+            &kinds,
+            wait.channel_id,
+            wait.thread_id,
+            since,
+            true,
+        )
+        .await?
+        {
+            return Ok(content_json(&event));
+        }
+    }
+
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(window as u64);
+    loop {
+        let item = match tokio::time::timeout_at(deadline, stream.next()).await {
+            // Timed out or the bus closed: nothing arrived in the window.
+            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
+            Ok(Some(item)) => item,
+        };
+        // A lag marker means the buffer overflowed; keep waiting (same deadline).
+        let maidan_bus::BusItem::Event(envelope) = item else {
+            continue;
+        };
+        if !auth.bypass {
+            if let Some(tid) = envelope.event.thread_id() {
+                if !maidan_auth::can_access_thread(store, auth, tid).await? {
+                    continue;
+                }
+            }
+        }
+        return Ok(content_json(&envelope.event));
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WaitForReadyArgs {
-    /// Optional channel to scope readiness to; omit to await any accessible ready
-    /// thread in the caller's workspace.
+struct ChannelWaitArgs {
+    /// Optional channel to scope to; omit to await any accessible event of the
+    /// kind in the caller's workspace.
     #[serde(default)]
     channel_id: Option<uuid::Uuid>,
     /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
     #[serde(default)]
     timeout_ms: Option<i64>,
     /// Lookback anchor: the caller's high-water `log_id`. When set, replay the
-    /// log for a `ThreadReady` with `log_id > since_log_id` (in scope,
-    /// RBAC-filtered) before parking live.
+    /// log for a match with `log_id > since_log_id` (in scope, RBAC-filtered)
+    /// before parking live.
     #[serde(default)]
     since_log_id: Option<i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ThreadWaitArgs {
+    /// Optional thread to scope to; omit to await any accessible event of the
+    /// kind in the caller's workspace (or channel).
+    #[serde(default)]
+    thread_id: Option<uuid::Uuid>,
+    /// Optional channel to scope to.
+    #[serde(default)]
+    channel_id: Option<uuid::Uuid>,
+    /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
+    #[serde(default)]
+    timeout_ms: Option<i64>,
+    /// Lookback anchor, as for `ChannelWaitArgs`.
+    #[serde(default)]
+    since_log_id: Option<i64>,
+}
+
+async fn channel_wait(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+    tool: &'static str,
+    kind: EventKind,
+) -> Result<Value, McpError> {
+    let a: ChannelWaitArgs = serde_json::from_value(args.clone())?;
+    wait_for_event(
+        server,
+        auth,
+        EventWait {
+            tool,
+            kind,
+            channel_id: a.channel_id.map(ChannelId),
+            thread_id: None,
+            timeout_ms: a.timeout_ms,
+            since_log_id: a.since_log_id,
+        },
+    )
+    .await
+}
+
+async fn thread_wait(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+    tool: &'static str,
+    kind: EventKind,
+) -> Result<Value, McpError> {
+    let a: ThreadWaitArgs = serde_json::from_value(args.clone())?;
+    wait_for_event(
+        server,
+        auth,
+        EventWait {
+            tool,
+            kind,
+            channel_id: a.channel_id.map(ChannelId),
+            thread_id: a.thread_id.map(ThreadId),
+            timeout_ms: a.timeout_ms,
+            since_log_id: a.since_log_id,
+        },
+    )
+    .await
 }
 
 /// Block until a task becomes ready — its last blocking dependency reached a
@@ -1344,87 +1494,7 @@ pub(super) async fn wait_for_ready(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: WaitForReadyArgs = serde_json::from_value(args.clone())?;
-    let Some(bus) = server.event_bus.as_ref() else {
-        return Err(McpError::InvalidParams(
-            "wait_for_ready requires an event bus".into(),
-        ));
-    };
-    let wait = a
-        .timeout_ms
-        .unwrap_or(DEFAULT_WAIT_MS)
-        .clamp(1, MAX_WAIT_MS);
-
-    let filter = EventFilter {
-        workspace_id: Some(auth.workspace_id),
-        channel_id: a.channel_id.map(ChannelId),
-        kinds: Some(std::collections::HashSet::from([EventKind::ThreadReady])),
-        ..EventFilter::default()
-    };
-    let mut stream = bus
-        .subscribe(filter)
-        .await
-        .map_err(|e| McpError::Internal(e.to_string()))?;
-
-    let store = server.store.as_ref();
-
-    // Lookback: a readiness signalled in the gap before this subscribe is still
-    // caught, RBAC-filtered like the live path.
-    if let Some(since) = a.since_log_id {
-        let kinds = std::collections::HashSet::from([EventKind::ThreadReady]);
-        if let Some(event) = lookback_event(
-            store,
-            auth,
-            &kinds,
-            a.channel_id.map(ChannelId),
-            None,
-            since,
-            true,
-        )
-        .await?
-        {
-            return Ok(content_json(&event));
-        }
-    }
-
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
-    loop {
-        let item = match tokio::time::timeout_at(deadline, stream.next()).await {
-            // Timed out or the bus closed → no task became ready in the window.
-            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
-            Ok(Some(item)) => item,
-        };
-        // A lag marker means the buffer overflowed; keep waiting (same deadline).
-        let maidan_bus::BusItem::Event(envelope) = item else {
-            continue;
-        };
-        // Don't reveal readiness of a thread the caller can't access.
-        if !auth.bypass {
-            if let Some(tid) = envelope.event.thread_id() {
-                if !maidan_auth::can_access_thread(store, auth, tid).await? {
-                    continue;
-                }
-            }
-        }
-        return Ok(content_json(&envelope.event));
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct WaitForClaimExpiredArgs {
-    /// Optional channel to scope to; omit to await any accessible expiry in the
-    /// caller's workspace.
-    #[serde(default)]
-    channel_id: Option<uuid::Uuid>,
-    /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
-    #[serde(default)]
-    timeout_ms: Option<i64>,
-    /// Lookback anchor: the caller's high-water `log_id`. When set, replay the
-    /// log for a `ClaimExpired` with `log_id > since_log_id` (in scope,
-    /// RBAC-filtered) before parking live.
-    #[serde(default)]
-    since_log_id: Option<i64>,
+    channel_wait(server, auth, args, "wait_for_ready", EventKind::ThreadReady).await
 }
 
 /// Block until a claim's lease lapses and its thread is reclaimed, emitting
@@ -1440,89 +1510,34 @@ pub(super) async fn wait_for_claim_expired(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: WaitForClaimExpiredArgs = serde_json::from_value(args.clone())?;
-    let Some(bus) = server.event_bus.as_ref() else {
-        return Err(McpError::InvalidParams(
-            "wait_for_claim_expired requires an event bus".into(),
-        ));
-    };
-    let wait = a
-        .timeout_ms
-        .unwrap_or(DEFAULT_WAIT_MS)
-        .clamp(1, MAX_WAIT_MS);
-
-    let filter = EventFilter {
-        workspace_id: Some(auth.workspace_id),
-        channel_id: a.channel_id.map(ChannelId),
-        kinds: Some(std::collections::HashSet::from([EventKind::ClaimExpired])),
-        ..EventFilter::default()
-    };
-    let mut stream = bus
-        .subscribe(filter)
-        .await
-        .map_err(|e| McpError::Internal(e.to_string()))?;
-
-    let store = server.store.as_ref();
-
-    // Lookback: an expiry reclaimed in the gap before this subscribe is still
-    // caught, RBAC-filtered like the live path.
-    if let Some(since) = a.since_log_id {
-        let kinds = std::collections::HashSet::from([EventKind::ClaimExpired]);
-        if let Some(event) = lookback_event(
-            store,
-            auth,
-            &kinds,
-            a.channel_id.map(ChannelId),
-            None,
-            since,
-            true,
-        )
-        .await?
-        {
-            return Ok(content_json(&event));
-        }
-    }
-
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
-    loop {
-        let item = match tokio::time::timeout_at(deadline, stream.next()).await {
-            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
-            Ok(Some(item)) => item,
-        };
-        let maidan_bus::BusItem::Event(envelope) = item else {
-            continue;
-        };
-        // Don't reveal an expiry in a thread the caller can't access.
-        if !auth.bypass {
-            if let Some(tid) = envelope.event.thread_id() {
-                if !maidan_auth::can_access_thread(store, auth, tid).await? {
-                    continue;
-                }
-            }
-        }
-        return Ok(content_json(&envelope.event));
-    }
+    channel_wait(
+        server,
+        auth,
+        args,
+        "wait_for_claim_expired",
+        EventKind::ClaimExpired,
+    )
+    .await
 }
 
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct WaitForLandedArgs {
-    /// Optional thread to scope to — wait for *this* thread's PR to land. Omit to
-    /// await any accessible land in the caller's workspace (or channel).
-    #[serde(default)]
-    thread_id: Option<uuid::Uuid>,
-    /// Optional channel to scope to; omit to await any accessible land in the
-    /// caller's workspace.
-    #[serde(default)]
-    channel_id: Option<uuid::Uuid>,
-    /// Long-poll window in milliseconds (default 30 000, clamped 1 000–300 000).
-    #[serde(default)]
-    timeout_ms: Option<i64>,
-    /// Lookback anchor: the caller's high-water `log_id`. When set, replay the
-    /// log for a `ThreadLanded` with `log_id > since_log_id` (in scope,
-    /// RBAC-filtered) before parking live.
-    #[serde(default)]
-    since_log_id: Option<i64>,
+/// Block until a claimed run is stopped for exceeding its budget, emitting
+/// `ClaimFailed` — the "an agent ran out" signal, the `wait_for_claim_expired`
+/// sibling for a run that was killed rather than one that died. Returns the
+/// `ClaimFailed` event (`member_id` is the stopped holder, `reason` the budget
+/// axis) or `null` on timeout; scoped like `wait_for_claim_expired`.
+pub(super) async fn wait_for_claim_failed(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    channel_wait(
+        server,
+        auth,
+        args,
+        "wait_for_claim_failed",
+        EventKind::ClaimFailed,
+    )
+    .await
 }
 
 /// `wait_for_landed` — block until a thread's linked GitHub PR lands: subscribe
@@ -1538,67 +1553,33 @@ pub(super) async fn wait_for_landed(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: WaitForLandedArgs = serde_json::from_value(args.clone())?;
-    let Some(bus) = server.event_bus.as_ref() else {
-        return Err(McpError::InvalidParams(
-            "wait_for_landed requires an event bus".into(),
-        ));
-    };
-    let wait = a
-        .timeout_ms
-        .unwrap_or(DEFAULT_WAIT_MS)
-        .clamp(1, MAX_WAIT_MS);
+    thread_wait(
+        server,
+        auth,
+        args,
+        "wait_for_landed",
+        EventKind::ThreadLanded,
+    )
+    .await
+}
 
-    let filter = EventFilter {
-        workspace_id: Some(auth.workspace_id),
-        channel_id: a.channel_id.map(ChannelId),
-        thread_id: a.thread_id.map(ThreadId),
-        kinds: Some(std::collections::HashSet::from([EventKind::ThreadLanded])),
-        ..EventFilter::default()
-    };
-    let mut stream = bus
-        .subscribe(filter)
-        .await
-        .map_err(|e| McpError::Internal(e.to_string()))?;
-
-    let store = server.store.as_ref();
-
-    // Lookback: a land emitted in the gap before this subscribe is still
-    // caught, RBAC-filtered like the live path.
-    if let Some(since) = a.since_log_id {
-        let kinds = std::collections::HashSet::from([EventKind::ThreadLanded]);
-        if let Some(event) = lookback_event(
-            store,
-            auth,
-            &kinds,
-            a.channel_id.map(ChannelId),
-            a.thread_id.map(ThreadId),
-            since,
-            true,
-        )
-        .await?
-        {
-            return Ok(content_json(&event));
-        }
-    }
-
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
-    loop {
-        let item = match tokio::time::timeout_at(deadline, stream.next()).await {
-            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
-            Ok(Some(item)) => item,
-        };
-        let maidan_bus::BusItem::Event(envelope) = item else {
-            continue;
-        };
-        // Don't reveal a land in a thread the caller can't access.
-        if !auth.bypass {
-            if let Some(tid) = envelope.event.thread_id() {
-                if !maidan_auth::can_access_thread(store, auth, tid).await? {
-                    continue;
-                }
-            }
-        }
-        return Ok(content_json(&envelope.event));
-    }
+/// Block until an explicit dispatch block is cleared, emitting
+/// `BlockedResolved`, so a waiter parked on a blocked thread needn't poll
+/// `get_thread_block`. Scoped to `thread_id` and/or `channel_id` when given,
+/// else any accessible thread in the caller's workspace; returns the
+/// `BlockedResolved` event (the `reason` that cleared, and `resolved_by`) or
+/// `null` on timeout. Clearing a thread that was not blocked emits nothing.
+pub(super) async fn wait_for_blocked_resolved(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    thread_wait(
+        server,
+        auth,
+        args,
+        "wait_for_blocked_resolved",
+        EventKind::BlockedResolved,
+    )
+    .await
 }

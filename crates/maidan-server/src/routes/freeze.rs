@@ -1,13 +1,14 @@
 //! Member-freeze kill-switch management. An operator freezes a member
 //! (`token:admin`) — which drops their leases and makes `claim_next` refuse
 //! them — and unfreezes to lift it. Freeze/unfreeze are audited (a
-//! security-sensitive mutation). Not G4 PAUSE.
+//! security-sensitive mutation) and announced as `MemberFrozen` /
+//! `MemberUnfrozen`. Not G4 PAUSE.
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{capability::TOKEN_ADMIN, AuthContext};
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, ApiResult};
+use super::{cap, ensure_workspace, publish_stored, ApiResult};
 use crate::dto::*;
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
@@ -39,7 +40,7 @@ pub async fn freeze_member(
         .map(str::trim)
         .filter(|r| !r.is_empty());
     let actor = auth.actor_id;
-    let (freeze, released) = state
+    let (freeze, released, stored) = state
         .store
         .freeze_member_audited(
             member_id,
@@ -54,6 +55,7 @@ pub async fn freeze_member(
             }),
         )
         .await?;
+    publish_stored(&state, stored).await;
     Ok(Json(FreezeResult { freeze, released }))
 }
 
@@ -65,10 +67,11 @@ pub async fn unfreeze_member(
     cap(&auth, TOKEN_ADMIN)?;
     let member_id = MemberId(id);
     authorize_member(&state, &auth, member_id).await?;
-    let unfrozen = state
+    let stored = state
         .store
         .unfreeze_member_audited(
             member_id,
+            auth.member_id,
             NewAuditEvent {
                 actor_id: Some(auth.actor_id),
                 action: "member.unfreeze".into(),
@@ -78,9 +81,10 @@ pub async fn unfreeze_member(
             },
         )
         .await?;
-    if !unfrozen {
+    let Some(stored) = stored else {
         return Err(ApiError::NotFound);
-    }
+    };
+    publish_stored(&state, stored).await;
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -2055,6 +2055,16 @@ mod tests {
         );
         assert_eq!(got["kind"], json!("thread_landed"));
         assert_eq!(got["thread_id"], json!(pub_thread.id.0));
+
+        // A thread the agent can't read is refused before the wait parks.
+        let refused = server
+            .call_tool(
+                &auth,
+                "wait_for_landed",
+                &json!({ "thread_id": secret_thread.id.0, "timeout_ms": 300 }),
+            )
+            .await;
+        assert!(refused.is_err(), "an unreadable thread_id was waited on");
     }
 
     #[tokio::test]
@@ -2196,6 +2206,312 @@ mod tests {
                 .unwrap()
         )
         .is_null());
+    }
+
+    /// A workspace with a public and a private channel (the waiter is in
+    /// neither's member list; public is workspace-open), plus a second
+    /// workspace with its own thread, for the single-kind waits.
+    struct WaitFixture {
+        server: McpServer,
+        store: Arc<dyn Store>,
+        auth: AuthContext,
+        agent: Member,
+        ws: WorkspaceId,
+        public: Thread,
+        public_sibling: Thread,
+        secret: Thread,
+        other_ws: WorkspaceId,
+        other: Thread,
+    }
+
+    async fn wait_fixture(caps: &[&str]) -> WaitFixture {
+        use maidan_bus::InMemoryBus;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let seed = |name: &'static str| {
+            let store = store.clone();
+            async move {
+                let ws = store
+                    .create_workspace(NewWorkspace { name: name.into() })
+                    .await
+                    .unwrap();
+                let agent = store
+                    .create_member(NewMember {
+                        workspace_id: ws.id,
+                        handle: "agent".into(),
+                        display_name: None,
+                        kind: MemberKind::Agent,
+                    })
+                    .await
+                    .unwrap();
+                let channel = |name: &str, private: bool| NewChannel {
+                    workspace_id: ws.id,
+                    name: name.into(),
+                    topic: None,
+                    private,
+                };
+                let public = store.create_channel(channel("open", false)).await.unwrap();
+                let secret = store.create_channel(channel("secret", true)).await.unwrap();
+                let thread = |channel_id| NewThread {
+                    channel_id,
+                    parent_thread_id: None,
+                    title: Some("t".into()),
+                };
+                (
+                    ws.id,
+                    agent,
+                    store.create_thread(thread(public.id)).await.unwrap(),
+                    store.create_thread(thread(public.id)).await.unwrap(),
+                    store.create_thread(thread(secret.id)).await.unwrap(),
+                )
+            }
+        };
+        let (ws, agent, public, public_sibling, secret) = seed("a").await;
+        let (other_ws, _, other, _, _) = seed("b").await;
+
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        let auth =
+            AuthContext::from_session(agent.id, ws, caps.iter().map(|c| c.to_string()).collect());
+        WaitFixture {
+            server,
+            store,
+            auth,
+            agent,
+            ws,
+            public,
+            public_sibling,
+            secret,
+            other_ws,
+            other,
+        }
+    }
+
+    fn tool_content(v: Value) -> Value {
+        serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn wait_for_claim_failed_returns_the_stop_and_sees_no_other_tenant() {
+        use chrono::Utc;
+        use maidan_auth::capability::WORKSPACE_READ;
+        use std::time::Duration;
+
+        let f = wait_fixture(&[WORKSPACE_READ]).await;
+        let failed = |ws: WorkspaceId, thread: &Thread, member_id: MemberId| Event::ClaimFailed {
+            occurred_at: Utc::now(),
+            workspace_id: ws,
+            channel_id: thread.channel_id,
+            thread_id: thread.id,
+            member_id,
+            reason: "tokens".into(),
+            thread: thread.clone(),
+        };
+        let call = |args: Value| {
+            let (server, auth) = (&f.server, &f.auth);
+            async move {
+                tool_content(
+                    server
+                        .call_tool(auth, "wait_for_claim_failed", &args)
+                        .await
+                        .unwrap(),
+                )
+            }
+        };
+
+        // A stop in the public thread wakes the workspace-wide waiter.
+        let (got, _) = tokio::join!(call(json!({ "timeout_ms": 5000 })), async {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            f.server
+                .publish_event(failed(f.ws, &f.public, f.agent.id))
+                .await;
+        });
+        assert_eq!(got["kind"], json!("claim_failed"));
+        assert_eq!(got["thread_id"], json!(f.public.id.0));
+        assert_eq!(got["member_id"], json!(f.agent.id.0));
+        assert_eq!(got["reason"], json!("tokens"));
+
+        // Nothing happens: the wait returns null once its window lapses.
+        let started = tokio::time::Instant::now();
+        assert!(call(json!({ "timeout_ms": 200 })).await.is_null());
+        assert!(started.elapsed() >= Duration::from_millis(200));
+
+        // A stop in a private channel the waiter can't read, or in another
+        // workspace, is never delivered.
+        let (got, _) = tokio::join!(call(json!({ "timeout_ms": 400 })), async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            f.server
+                .publish_event(failed(f.ws, &f.secret, f.agent.id))
+                .await;
+            f.server
+                .publish_event(failed(f.other_ws, &f.other, f.agent.id))
+                .await;
+        });
+        assert!(got.is_null(), "a private or foreign stop leaked: {got}");
+
+        // A stop before the call is caught with since_log_id; the lookback is
+        // held to the same rules.
+        let id = f
+            .server
+            .publish_event(failed(f.ws, &f.public, f.agent.id))
+            .await
+            .unwrap();
+        let got = call(json!({ "timeout_ms": 300, "since_log_id": id - 1 })).await;
+        assert_eq!(got["kind"], json!("claim_failed"));
+        for (ws, thread) in [(f.ws, &f.secret), (f.other_ws, &f.other)] {
+            let id = f
+                .server
+                .publish_event(failed(ws, thread, f.agent.id))
+                .await
+                .unwrap();
+            assert!(call(json!({ "timeout_ms": 300, "since_log_id": id - 1 }))
+                .await
+                .is_null());
+        }
+
+        // Naming a channel the caller can't read is refused before it parks.
+        for channel_id in [f.secret.channel_id, f.other.channel_id] {
+            let refused = f
+                .server
+                .call_tool(
+                    &f.auth,
+                    "wait_for_claim_failed",
+                    &json!({ "channel_id": channel_id.0, "timeout_ms": 300 }),
+                )
+                .await;
+            assert!(refused.is_err(), "channel {channel_id:?} was not refused");
+        }
+    }
+
+    #[tokio::test]
+    async fn wait_for_blocked_resolved_returns_the_clear_and_sees_no_other_tenant() {
+        use chrono::Utc;
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use std::time::Duration;
+
+        let f = wait_fixture(&[WORKSPACE_READ, THREAD_TRANSITION]).await;
+        let resolved = |ws: WorkspaceId, thread: &Thread| Event::BlockedResolved {
+            occurred_at: Utc::now(),
+            workspace_id: ws,
+            channel_id: thread.channel_id,
+            thread_id: thread.id,
+            reason: BlockedReason::Human,
+            resolved_by: f.agent.id,
+        };
+        let call = |args: Value| {
+            let (server, auth) = (&f.server, &f.auth);
+            async move {
+                server
+                    .call_tool(auth, "wait_for_blocked_resolved", &args)
+                    .await
+            }
+        };
+
+        // Clearing a real block wakes a waiter scoped to that thread.
+        f.store
+            .set_thread_block(f.public.id, BlockedReason::Human, f.agent.id)
+            .await
+            .unwrap();
+        let (got, _) = tokio::join!(
+            call(json!({ "thread_id": f.public.id.0, "timeout_ms": 5000 })),
+            async {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                f.server
+                    .call_tool(
+                        &f.auth,
+                        "clear_thread_block",
+                        &json!({ "thread_id": f.public.id.0 }),
+                    )
+                    .await
+                    .unwrap();
+            }
+        );
+        let got = tool_content(got.unwrap());
+        assert_eq!(got["kind"], json!("blocked_resolved"));
+        assert_eq!(got["thread_id"], json!(f.public.id.0));
+        assert_eq!(got["reason"], json!("human"));
+        assert_eq!(got["resolved_by"], json!(f.agent.id.0));
+
+        // Nothing happens: null once the window lapses.
+        let started = tokio::time::Instant::now();
+        assert!(tool_content(call(json!({ "timeout_ms": 200 })).await.unwrap()).is_null());
+        assert!(started.elapsed() >= Duration::from_millis(200));
+
+        // A clear on a sibling thread does not satisfy a thread-scoped wait; a
+        // private or foreign clear does not satisfy a workspace-wide one.
+        let (scoped, wide, _) = tokio::join!(
+            call(json!({ "thread_id": f.public.id.0, "timeout_ms": 400 })),
+            call(json!({ "timeout_ms": 400 })),
+            async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                f.server
+                    .publish_event(resolved(f.ws, &f.public_sibling))
+                    .await;
+                f.server.publish_event(resolved(f.ws, &f.secret)).await;
+                f.server.publish_event(resolved(f.other_ws, &f.other)).await;
+            }
+        );
+        assert!(tool_content(scoped.unwrap()).is_null());
+        let wide = tool_content(wide.unwrap());
+        assert_eq!(
+            wide["thread_id"],
+            json!(f.public_sibling.id.0),
+            "only the readable clear in this workspace is delivered"
+        );
+
+        // A clear before the call is caught with since_log_id; the lookback
+        // skips private and foreign clears.
+        let id = f
+            .server
+            .publish_event(resolved(f.ws, &f.public))
+            .await
+            .unwrap();
+        let got = tool_content(
+            call(json!({ "thread_id": f.public.id.0, "timeout_ms": 300, "since_log_id": id - 1 }))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(got["kind"], json!("blocked_resolved"));
+        let secret_id = f
+            .server
+            .publish_event(resolved(f.ws, &f.secret))
+            .await
+            .unwrap();
+        f.server
+            .publish_event(resolved(f.other_ws, &f.other))
+            .await
+            .unwrap();
+        assert!(tool_content(
+            call(json!({ "timeout_ms": 300, "since_log_id": secret_id - 1 }))
+                .await
+                .unwrap()
+        )
+        .is_null());
+
+        // Naming a thread or channel the caller can't read is refused before
+        // it parks, rather than waiting out a window that can never fire.
+        for args in [
+            json!({ "thread_id": f.secret.id.0, "timeout_ms": 300 }),
+            json!({ "thread_id": f.other.id.0, "timeout_ms": 300 }),
+            json!({ "channel_id": f.other.channel_id.0, "timeout_ms": 300 }),
+        ] {
+            assert!(call(args.clone()).await.is_err(), "{args} was not refused");
+        }
     }
 
     #[tokio::test]
@@ -5294,8 +5610,11 @@ mod tests {
 
     #[tokio::test]
     async fn freeze_tools_freeze_unfreeze_and_list() {
+        use futures::StreamExt;
         use maidan_auth::capability::TOKEN_ADMIN;
+        use maidan_bus::{BusItem, EventBus, InMemoryBus};
         use maidan_types::NewThread;
+        use std::time::Duration;
 
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
@@ -5348,13 +5667,36 @@ mod tests {
             .await
             .unwrap();
         store.assign_thread(thread.id, agent.id).await.unwrap();
+        let elsewhere = store
+            .create_workspace(NewWorkspace {
+                name: "other".into(),
+            })
+            .await
+            .unwrap();
 
+        let bus = Arc::new(InMemoryBus::new());
         let server = McpServer::new(
             store.clone(),
             Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
-        );
+        )
+        .with_event_bus(bus.clone());
+        let kinds = [EventKind::MemberFrozen, EventKind::MemberUnfrozen];
+        let mut here = bus
+            .subscribe(EventFilter::workspace(ws.id).with_kinds(kinds))
+            .await
+            .unwrap();
+        let mut there = bus
+            .subscribe(EventFilter::workspace(elsewhere.id).with_kinds(kinds))
+            .await
+            .unwrap();
+        async fn next(stream: &mut maidan_bus::EventStream) -> Option<Event> {
+            match tokio::time::timeout(Duration::from_millis(500), stream.next()).await {
+                Ok(Some(BusItem::Event(envelope))) => Some(envelope.event),
+                _ => None,
+            }
+        }
         let auth = AuthContext::from_session(op.id, ws.id, vec![TOKEN_ADMIN.to_string()]);
         let content = |v: Value| -> Value {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
@@ -5369,6 +5711,17 @@ mod tests {
         );
         assert_eq!(frozen["released"], json!(1));
         assert_eq!(store.get_thread(thread.id).await.unwrap().assignee_id, None);
+        match next(&mut here).await {
+            Some(Event::MemberFrozen {
+                member_id,
+                frozen_by,
+                released,
+                ..
+            }) => {
+                assert_eq!((member_id, frozen_by, released), (agent.id, op.id, 1));
+            }
+            other => panic!("expected MemberFrozen, got {other:?}"),
+        }
 
         // List shows the frozen agent.
         let list = content(
@@ -5392,6 +5745,15 @@ mod tests {
         );
         assert_eq!(un["unfrozen"], json!(true));
         assert!(!store.is_member_frozen(agent.id).await.unwrap());
+        assert!(matches!(
+            next(&mut here).await,
+            Some(Event::MemberUnfrozen { member_id, unfrozen_by, .. })
+                if member_id == agent.id && unfrozen_by == op.id
+        ));
+        assert!(
+            next(&mut there).await.is_none(),
+            "another workspace's subscriber saw the freeze"
+        );
     }
 
     #[tokio::test]

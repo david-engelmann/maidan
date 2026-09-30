@@ -491,6 +491,34 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             recipe_id,
             reason,
         },
+        // Non-federatable (this deployment's kill-switch) — never actually
+        // ingested/remapped, but the exhaustive match must classify it.
+        MemberFrozen {
+            occurred_at,
+            workspace_id: _,
+            member_id,
+            frozen_by,
+            reason,
+            released,
+        } => MemberFrozen {
+            occurred_at,
+            workspace_id,
+            member_id,
+            frozen_by,
+            reason,
+            released,
+        },
+        MemberUnfrozen {
+            occurred_at,
+            workspace_id: _,
+            member_id,
+            unfrozen_by,
+        } => MemberUnfrozen {
+            occurred_at,
+            workspace_id,
+            member_id,
+            unfrozen_by,
+        },
         MessagePosted {
             occurred_at,
             workspace_id: _,

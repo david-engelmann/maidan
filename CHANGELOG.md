@@ -246,6 +246,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   budget, 409 in flight vs plain, paging) and a black-box paging test in each
   `scripts/sdk-test.sh` suite.
 
+### Waits for a stopped run and a cleared block; a freeze is an event
+
+- **Added:** MCP `wait_for_claim_failed` (`channel_id`) and
+  `wait_for_blocked_resolved` (`thread_id` and/or `channel_id`), built like
+  `wait_for_claim_expired`: `workspace:read`, `timeout_ms` up to 300 000,
+  `since_log_id` lookback, `null` on timeout. Each returns the `ClaimFailed` or
+  `BlockedResolved` event that satisfied it, and skips events in threads the
+  caller cannot read. A supervisor no longer polls for a run stopped over
+  budget, nor a waiter for a block to clear. 196 MCP tools.
+- **Added:** `MemberFrozen` and `MemberUnfrozen` events. A freeze appends one
+  in the same transaction as the freeze row, the released claims and its
+  audit row; an unfreeze appends one only when it lifts a freeze. Both carry
+  the request's attribution, reach the frozen member's workspace only, are not
+  federatable, and notify the frozen member's followers, as `ClaimFailed`
+  does. `freeze_member_audited` and `unfreeze_member_audited` now return the
+  event; `unfreeze_member*` takes who lifted it.
+- **Fixed:** `wait_for_landed` waited out its window on a `thread_id` the
+  caller could not read. It now refuses it before parking, as
+  `wait_for_blocked_resolved` does.
+- Freeze expiry is not part of this: a freeze still lasts until an unfreeze.
+
 ### Overload is refused fast, panics answer, credentials stay out of traces
 
 - **Added:** an in-flight request ceiling (`MAIDAN_MAX_CONCURRENT_REQUESTS`,

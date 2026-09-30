@@ -317,6 +317,47 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 .await?;
             }
         }
+        Event::MemberFrozen {
+            workspace_id,
+            member_id,
+            frozen_by: actor_id,
+            ..
+        }
+        | Event::MemberUnfrozen {
+            workspace_id,
+            member_id,
+            unfrozen_by: actor_id,
+            ..
+        } => {
+            // A freeze drops every claim the member holds and an unfreeze lets
+            // them claim again: an occupancy change for a followed member, like
+            // `ClaimFailed`. Their followers are the ones watching their work;
+            // the frozen member finds out when `claim_next` refuses them, and
+            // the operator did it. No thread, so no per-thread access check.
+            let mut recipients = HashSet::new();
+            add_accessible_member_followers(
+                state,
+                *workspace_id,
+                None,
+                vec![*member_id],
+                &mut recipients,
+            )
+            .await?;
+            for recipient_id in recipients {
+                notify(
+                    state,
+                    *workspace_id,
+                    recipient_id,
+                    event.kind(),
+                    log_id,
+                    None,
+                    None,
+                    None,
+                    Some(*actor_id),
+                )
+                .await?;
+            }
+        }
         Event::ThreadAssignmentChanged {
             workspace_id,
             channel_id,

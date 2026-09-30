@@ -91,6 +91,16 @@
     "thread_id": "00000000-0000-0000-0000-000000000004",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.member_frozen/1": {
+    "$type": "maidan.event.member_frozen/1",
+    "frozen_by": "00000000-0000-0000-0000-00000000000d",
+    "kind": "member_frozen",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reason": "runaway spend",
+    "released": 1,
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.member_joined/1": {
     "$type": "maidan.event.member_joined/1",
     "kind": "member_joined",
@@ -105,6 +115,14 @@
       "workspace_id": "00000000-0000-0000-0000-000000000001"
     },
     "occurred_at": "2023-11-14T22:13:20Z",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.member_unfrozen/1": {
+    "$type": "maidan.event.member_unfrozen/1",
+    "kind": "member_unfrozen",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "unfrozen_by": "00000000-0000-0000-0000-00000000000d",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
   "maidan.event.memory_block_updated/1": {

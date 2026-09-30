@@ -31,6 +31,8 @@ fn event_kinds_match_contract_file() {
         EventKind::ScheduleSkipped,
         EventKind::ThreadSpawnDenied,
         EventKind::ProjectorMisconfigured,
+        EventKind::MemberFrozen,
+        EventKind::MemberUnfrozen,
         EventKind::MessagePosted,
         EventKind::MessageEdited,
         EventKind::MessageTombstoned,

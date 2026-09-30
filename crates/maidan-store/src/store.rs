@@ -1343,17 +1343,24 @@ pub trait SecretStore: Send + Sync {
 
 #[async_trait]
 pub trait MemberFreezeStore: Send + Sync {
-    /// Member-freeze kill-switch. `freeze_member` records the freeze AND drops
-    /// the member's active leases in one tx, returning the freeze + the number
-    /// of threads released; `claim_next` refuses a frozen member. Re-freezing
-    /// refreshes the record.
+    /// Member-freeze kill-switch. `freeze_member` records the freeze, drops
+    /// the member's active leases and appends `MemberFrozen` in one tx,
+    /// returning the freeze, the number of threads released and the event to
+    /// publish; `claim_next` refuses a frozen member. Re-freezing refreshes the
+    /// record and appends another event.
     async fn freeze_member(
         &self,
         member_id: MemberId,
         frozen_by: MemberId,
         reason: Option<&str>,
-    ) -> Result<(MemberFreeze, u64), StoreError>;
-    async fn unfreeze_member(&self, member_id: MemberId) -> Result<bool, StoreError>;
+    ) -> Result<(MemberFreeze, u64, StoredEvent), StoreError>;
+    /// Lift a freeze, appending `MemberUnfrozen` with it. `None` when the
+    /// member was not frozen.
+    async fn unfreeze_member(
+        &self,
+        member_id: MemberId,
+        unfrozen_by: MemberId,
+    ) -> Result<Option<StoredEvent>, StoreError>;
     async fn is_member_frozen(&self, member_id: MemberId) -> Result<bool, StoreError>;
     async fn get_member_freeze(
         &self,
@@ -2995,20 +3002,23 @@ pub trait GovernanceAuditStore: Send + Sync {
         member_id: MemberId,
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError>;
-    /// Freeze a member and release their claims.
+    /// Freeze a member and release their claims; the `MemberFrozen` event
+    /// commits with the audit row.
     async fn freeze_member_audited(
         &self,
         member_id: MemberId,
         frozen_by: MemberId,
         reason: Option<&str>,
         audit: crate::AuditFor<(MemberFreeze, u64)>,
-    ) -> Result<(MemberFreeze, u64), StoreError>;
-    /// `true` when the member was frozen; nothing is recorded otherwise.
+    ) -> Result<(MemberFreeze, u64, StoredEvent), StoreError>;
+    /// The `MemberUnfrozen` event when the member was frozen; nothing is
+    /// recorded or appended otherwise.
     async fn unfreeze_member_audited(
         &self,
         member_id: MemberId,
+        unfrozen_by: MemberId,
         audit: NewAuditEvent,
-    ) -> Result<bool, StoreError>;
+    ) -> Result<Option<StoredEvent>, StoreError>;
     /// Add or re-role a channel member.
     async fn add_channel_member_audited(
         &self,

@@ -48,7 +48,7 @@ fails if a new capability is added without deciding which it is.
 
 | Capability | Tools |
 |------------|-------|
-| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks`, `get_thread_context`, `get_workspace_context`, `get_manager_digest`, `get_log_snapshot`, `verify_event_chain`, `list_tombstones`, `list_message_backlinks`, `get_kind_census`, `list_capability_sets`, `parse_maidan_uri`, `get_room`, `attenuate_token`, `rotate_token` |
+| `workspace:read` | `list_channels`, `list_threads`, `list_messages`, `list_dm_conversations`, `list_reactions`, `list_pins`, `get_artifact_metadata`, `list_slash_commands`, `list_fsm_hooks`, `get_thread_context`, `get_workspace_context`, `get_manager_digest`, `get_log_snapshot`, `verify_event_chain`, `list_tombstones`, `list_message_backlinks`, `get_kind_census`, `list_capability_sets`, `parse_maidan_uri`, `get_room`, `attenuate_token`, `rotate_token`; the long-poll waits `wait_for_mention`, `wait_for_notification`, `wait_for_result`, `wait_for_ready`, `wait_for_claim_expired`, `wait_for_claim_failed`, `wait_for_blocked_resolved`, `wait_for_landed`, `wait_for_memory_block` |
 | `workspace:write` | `record_mention`, `cast_vote`, `add_reaction`, `remove_reaction`, `pin_message`, `unpin_message`, `add_reference`, `register_slash_command`, `register_fsm_hook`, `set_workspace_handle` |
 | `message:post` | `open_dm_conversation`, `post_dm_message`, `post_message`, `edit_message` (author only) |
 | `artifact:upload` | `upload_artifact`, `begin_artifact_multipart`, `upload_artifact_multipart_part`, `complete_artifact_multipart`, `abort_artifact_multipart` |

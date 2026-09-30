@@ -2322,7 +2322,7 @@ Resolve a named secret to its value (the 'fetch at exec' path). The value is dec
 
 ### `freeze_member`
 
-Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released. The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.
+Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released, and emits member_frozen to the workspace (the reason included). The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.
 
 **Capability:** `token:admin`
 
@@ -2347,7 +2347,7 @@ Freeze a member (the kill-switch): drops their active leases (releases their cla
 
 ### `unfreeze_member`
 
-Lift a member's freeze so they can claim work again. Requires token:admin. Returns {unfrozen} (false if they were not frozen).
+Lift a member's freeze so they can claim work again. Requires token:admin. Returns {unfrozen} (false if they were not frozen); an unfreeze that lifts a freeze emits member_unfrozen.
 
 **Capability:** `token:admin`
 
@@ -3245,6 +3245,71 @@ Block until a claim's lease lapses and its thread is reclaimed (by the claim rea
     "since_log_id": {
       "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
       "type": "integer"
+    },
+    "timeout_ms": {
+      "default": 30000,
+      "description": "long-poll window in milliseconds",
+      "maximum": 300000,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `wait_for_claim_failed`
+
+Block until a claimed run is stopped for going over its budget (report_usage past a tokens/usd/turns/wall limit releases the claim, dead-letters the run and emits claim_failed), or the timeout lapses. Returns the ClaimFailed event (member_id is the stopped holder, reason the budget axis), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch a stop in the gap before this call subscribes; omit it for pure-live.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "channel_id": {
+      "description": "optional: scope to one channel's tasks",
+      "format": "uuid",
+      "type": "string"
+    },
+    "since_log_id": {
+      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "type": "integer"
+    },
+    "timeout_ms": {
+      "default": 30000,
+      "description": "long-poll window in milliseconds",
+      "maximum": 300000,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `wait_for_blocked_resolved`
+
+Block until an explicit dispatch block is cleared (clear_thread_block emits blocked_resolved), or the timeout lapses. Returns the BlockedResolved event (the reason that cleared, resolved_by), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible thread in the workspace. Clearing a thread that was not blocked emits nothing. Pass since_log_id (your high-water log_id) to also catch a clear in the gap before this call subscribes; omit it for pure-live.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "channel_id": {
+      "description": "optional: scope to one channel's threads",
+      "format": "uuid",
+      "type": "string"
+    },
+    "since_log_id": {
+      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "type": "integer"
+    },
+    "thread_id": {
+      "description": "optional: wait for this thread's block to clear",
+      "format": "uuid",
+      "type": "string"
     },
     "timeout_ms": {
       "default": 30000,

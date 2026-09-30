@@ -1,12 +1,14 @@
-//! Member-freeze kill-switch store. Freezing records the freeze AND drops the
-//! member's active leases in one tx.
+//! Member-freeze kill-switch store. Freezing records the freeze, drops the
+//! member's active leases and appends `MemberFrozen` in one tx; an unfreeze
+//! that lifts a freeze appends `MemberUnfrozen` with it.
 
 use chrono::{DateTime, Utc};
-use maidan_types::{MemberFreeze, MemberId, WorkspaceId};
+use maidan_types::{Event, MemberFreeze, MemberId, StoredEvent, WorkspaceId};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::sqlite::events;
 
 const COLS: &str = "member_id, frozen_at, frozen_by, reason";
 
@@ -19,12 +21,25 @@ fn row_to_freeze(row: &sqlx::sqlite::SqliteRow) -> MemberFreeze {
     }
 }
 
+/// The member's workspace, read in the change's transaction for its event.
+async fn member_workspace_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    member_id: MemberId,
+) -> Result<WorkspaceId, StoreError> {
+    let row = sqlx::query("SELECT workspace_id FROM maidan_members WHERE id = ?")
+        .bind(member_id.0)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+    Ok(WorkspaceId(row.get::<Uuid, _>("workspace_id")))
+}
+
 pub async fn freeze(
     pool: &SqlitePool,
     member_id: MemberId,
     frozen_by: MemberId,
     reason: Option<&str>,
-) -> Result<(MemberFreeze, u64), StoreError> {
+) -> Result<(MemberFreeze, u64, StoredEvent), StoreError> {
     let mut conn = pool.acquire().await?;
     freeze_on(&mut conn, member_id, frozen_by, reason).await
 }
@@ -34,9 +49,10 @@ pub(crate) async fn freeze_on(
     member_id: MemberId,
     frozen_by: MemberId,
     reason: Option<&str>,
-) -> Result<(MemberFreeze, u64), StoreError> {
+) -> Result<(MemberFreeze, u64, StoredEvent), StoreError> {
     let now = Utc::now().to_rfc3339();
     let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let workspace_id = member_workspace_in_tx(&mut tx, member_id).await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_member_freezes (member_id, frozen_at, frozen_by, reason)
          VALUES (?, ?, ?, ?)
@@ -60,25 +76,62 @@ pub(crate) async fn freeze_on(
     .bind(&now)
     .bind(member_id.0)
     .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    let stored = events::append_in_tx(
+        &mut tx,
+        &Event::MemberFrozen {
+            occurred_at: freeze.frozen_at,
+            workspace_id,
+            member_id,
+            frozen_by,
+            reason: freeze.reason.clone(),
+            released: i64::try_from(released).unwrap_or(i64::MAX),
+        },
+    )
     .await?;
     tx.commit().await?;
-    Ok((freeze, released.rows_affected()))
+    Ok((freeze, released, stored))
 }
 
-pub async fn unfreeze(pool: &SqlitePool, member_id: MemberId) -> Result<bool, StoreError> {
+/// Postgres twin: `None` when the member was not frozen, and nothing is
+/// appended.
+pub async fn unfreeze(
+    pool: &SqlitePool,
+    member_id: MemberId,
+    unfrozen_by: MemberId,
+) -> Result<Option<StoredEvent>, StoreError> {
     let mut conn = pool.acquire().await?;
-    unfreeze_on(&mut conn, member_id).await
+    unfreeze_on(&mut conn, member_id, unfrozen_by).await
 }
 
 pub(crate) async fn unfreeze_on(
     conn: &mut sqlx::SqliteConnection,
     member_id: MemberId,
-) -> Result<bool, StoreError> {
+    unfrozen_by: MemberId,
+) -> Result<Option<StoredEvent>, StoreError> {
+    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let done = sqlx::query("DELETE FROM maidan_member_freezes WHERE member_id = ?")
         .bind(member_id.0)
-        .execute(&mut *conn)
+        .execute(&mut *tx)
         .await?;
-    Ok(done.rows_affected() > 0)
+    if done.rows_affected() == 0 {
+        tx.commit().await?;
+        return Ok(None);
+    }
+    let workspace_id = member_workspace_in_tx(&mut tx, member_id).await?;
+    let stored = events::append_in_tx(
+        &mut tx,
+        &Event::MemberUnfrozen {
+            occurred_at: Utc::now(),
+            workspace_id,
+            member_id,
+            unfrozen_by,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Some(stored))
 }
 
 pub async fn is_frozen(pool: &SqlitePool, member_id: MemberId) -> Result<bool, StoreError> {
