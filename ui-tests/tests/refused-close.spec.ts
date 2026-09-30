@@ -39,7 +39,8 @@ test("a refused close is visible on the board", async ({ page, request }) => {
   await expect(
     page.locator(`#board .card[data-id="${fx.desk_waiting_thread_id}"] .card-refusal`),
   ).toHaveText("Close refused");
-  expect(await (await request.get(`${fx.base_url}/threads/${fx.desk_waiting_thread_id}`, {
+  const after = await (await request.get(`${fx.base_url}/threads/${fx.desk_waiting_thread_id}`, {
     headers: { Authorization: `Bearer ${fx.review_token}` },
-  })).json()).state).toBe("in_review");
+  })).json();
+  expect(after.state).toBe("in_review");
 });

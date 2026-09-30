@@ -6800,7 +6800,11 @@ mod tests {
             m.metadata.get("notice").and_then(|v| v.as_str()) == Some("transition_refused")
         });
         let note = note.expect("the refused close is recorded on the thread");
-        assert!(note.body.contains("review requirement not met"), "{}", note.body);
+        assert!(
+            note.body.contains("review requirement not met"),
+            "{}",
+            note.body
+        );
         assert_eq!(note.author_id, owner_auth.member_id);
 
         store

@@ -1660,9 +1660,13 @@
         const banner = document.getElementById("board-refusal");
         if (!banner) return;
         const visible = [...refusals.entries()].filter(([id]) => threadsById.has(id) || !threadsById.size);
-        // Prefer a refusal on a thread this board is showing.
+        // Prefer a refusal on a thread this board is showing. The newest
+        // sentence wins; Map order does not, because updating a key does
+        // not move it.
         const onBoard = [...refusals.entries()].filter(([id]) => threadsById.has(id));
-        const pick = onBoard[onBoard.length - 1] || visible[visible.length - 1];
+        const pool = onBoard.length ? onBoard : visible;
+        pool.sort((a, b) => String((a[1] && a[1].at) || "").localeCompare(String((b[1] && b[1].at) || "")));
+        const pick = pool[pool.length - 1];
         if (!pick) {
           banner.hidden = true;
           banner.replaceChildren();
@@ -1681,9 +1685,17 @@
         banner.append(text);
         banner.dataset.threadId = id;
       }
-      function rememberRefusal(threadId, actorId, text) {
+      function rememberRefusal(threadId, actorId, text, at) {
         if (!threadId || !text) return;
-        refusals.set(threadId, { actorId, text });
+        const stamp = at || new Date().toISOString();
+        const prev = refusals.get(threadId);
+        // A later notice replaces an earlier one. An older fetch must not
+        // cover a refusal that already arrived live.
+        if (prev && prev.at && String(prev.at) > String(stamp)) {
+          paintRefusal();
+          return;
+        }
+        refusals.set(threadId, { actorId, text, at: stamp });
         paintRefusal();
         const card = document.querySelector(`#board .card[data-id="${CSS.escape(threadId)}"]`);
         if (card && !card.querySelector(".card-refusal")) {
@@ -1696,7 +1708,7 @@
       function noteRefusalFromFrame(v) {
         const meta = v && v.message && v.message.metadata;
         if (!meta || meta.notice !== "transition_refused") return;
-        rememberRefusal(v.thread_id, v.message.author_id, v.message.body);
+        rememberRefusal(v.thread_id, v.message.author_id, v.message.body, (v.message && v.message.created_at) || (v.occurred_at));
       }
       async function hydrateRefusals(threads) {
         if (!token() && !sessionMemberId) return;
@@ -1704,13 +1716,13 @@
         await Promise.all(pending.map(async (th) => {
           try {
             const url = token()
-              ? `${base()}/threads/${th.id}/messages?limit=30`
-              : uiReadPath(`/threads/${th.id}/messages?limit=30`);
+              ? `${base()}/threads/${th.id}/messages?limit=500`
+              : uiReadPath(`/threads/${th.id}/messages?limit=500`);
             const res = await fetch(url, { headers: headers(), credentials: "include" });
             if (!res.ok) return;
             const msgs = await res.json();
             const hit = [...msgs].reverse().find((m) => m.metadata && m.metadata.notice === "transition_refused");
-            if (hit) refusals.set(th.id, { actorId: hit.author_id, text: hit.body });
+            if (hit) rememberRefusal(th.id, hit.author_id, hit.body, hit.created_at);
           } catch (_e) {
             /* the live frame is the other way this arrives */
           }

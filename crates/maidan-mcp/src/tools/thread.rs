@@ -347,7 +347,15 @@ async fn record_close_refusal(
         )
         .await;
     match posted {
-        Ok((_, stored)) => server.publish_stored(&stored).await,
+        Ok((message, stored)) => {
+            server.publish_stored(&stored).await;
+            // The tool is about to return the refusal, so the success path
+            // that notifies resource subscribers will not run. The notice is
+            // still a message on the thread.
+            let updates =
+                crate::resource_updates::uris_for_message(server.store.as_ref(), message.id).await;
+            server.publish_resource_uris(updates).await;
+        }
         Err(note_err) => {
             tracing::warn!(error = %note_err, %thread_id, "close refusal was not recorded on the thread");
         }
