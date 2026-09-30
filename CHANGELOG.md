@@ -489,6 +489,41 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   no longer overrides local state. One replica's `offline` no longer hides a
   member still connected to another replica.
 
+### A read is not recorded as a change, and every change is recorded as its author's
+
+- **Fixed:** A2A calls were recorded by HTTP method. `POST /a2a/v1/rpc` serves
+  every method and answers a JSON-RPC error with 200, so `ListTasks`, `GetTask`,
+  `SubscribeToTask`, the push-config reads and refused calls each wrote a
+  `mutation` audit row. A2A now records per method on all three bindings:
+  `maidan_a2a::Method::changes` classifies each method with no wildcard, a read
+  or a failed call records nothing, and a change that records nothing itself
+  gets a `mutation` row with `surface: "a2a"`, the binding and the method.
+- **Fixed:** the gRPC binding ran its calls outside any attribution scope, so a
+  message sent over gRPC was attributed to nobody. Each call now runs as its
+  caller.
+- **Fixed:** signing in through OIDC and `POST /auth/logout` changed a
+  credential with no record. They now write `session.create` (saying whether
+  the member already existed, was linked, or was provisioned) and
+  `session.delete`, with the member as actor, in the session write's own
+  transaction. A sign-out whose record cannot be written now fails instead of
+  clearing the cookie over a session that is still valid.
+- **Fixed:** `PUT /threads/{id}/owner`, `PUT /threads/{id}/assignee` and
+  `POST /messages/{id}/mentions` answered 500 for a member id that names no
+  member, and accepted a member of another workspace, as did
+  `POST /workspaces/{wid}/dm` and the MCP twins of all four. Each now answers
+  404 for both and writes nothing.
+- **Fixed:** tasks spawned while serving a request (the WebSocket's last-seen
+  stamp and delivery cursors, the SSE streams, A2A subscribe and push, the
+  reindex job) ran outside the request's attribution scope, so their writes
+  were recorded as the system's and the reindex audit row named the member a
+  delegate acted for. They now spawn through `maidan_store::attribution::spawn`,
+  and the WebSocket session runs as its subscriber.
+- **Tests:** `a2a_operation_kinds_e2e` calls every A2A method and checks what
+  it writes; `member_reference_e2e` sends every documented body that names a
+  member an unknown and a foreign id; `member_references` checks the store on
+  both backends; `attribution_scope_contract` now scans every server and MCP
+  module, not only `routes/` and the MCP tools.
+
 ### A stalled object store fails the request
 
 - **Fixed:** the S3 artifact client had a connect timeout from the SDK's
