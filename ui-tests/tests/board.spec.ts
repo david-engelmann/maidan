@@ -39,12 +39,14 @@ test("the board puts each thread in its real lane with its holder's name", async
   await expect(page.locator("#board-summary")).toContainText("1 agent working");
   await expect(page.locator("#board-summary")).toContainText("1 waiting on review");
 
-  // The sidebar list carries the same real states; nothing reads "idle".
-  const rows = page.locator("#thread-list li .chrome-badge");
-  await expect(rows).toHaveCount(4);
-  await expect(page.locator("#thread-list")).not.toContainText("idle");
+  // Each thread is drawn once, on the board, with its real state; the
+  // sidebar lists channels only.
+  await expect(page.locator("#thread-list")).toHaveCount(0);
+  const badges = page.locator("#board .card .chrome-badge");
+  await expect(badges).toHaveCount(4);
+  await expect(page.locator("#board")).not.toContainText("idle");
   await expect(
-    page.locator(`#thread-list li[data-id="${fx.board_claimed_thread_id}"] .who`),
+    page.locator(`#board .card[data-id="${fx.board_claimed_thread_id}"] .card-foot .name`),
   ).toHaveText("Deployer");
 });
 

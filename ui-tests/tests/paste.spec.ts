@@ -11,7 +11,7 @@ test("pasting a file into the composer attaches it to the thread", async ({ page
   await page.fill("#token", fx.token);
   await page.click("#refresh-channels");
   await page.click(`#channel-list li[data-id="${fx.channel_id}"]`);
-  await page.click(`#thread-list li[data-id="${fx.thread_id}"]`);
+  await page.click(`#board .card[data-id="${fx.thread_id}"]`);
 
   const uploaded = page.waitForResponse(
     (r) => r.url().includes("/artifacts?") && r.request().method() === "POST",

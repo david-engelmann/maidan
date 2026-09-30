@@ -17,7 +17,7 @@ test("the thread list badges the gated fixture thread as needs-approval", async 
   // Selecting the seeded channel loads its threads (with chrome badges).
   await page.click(`#channel-list li[data-id="${fx.channel_id}"]`);
 
-  const row = page.locator(`#thread-list li[data-id="${fx.thread_id}"]`);
+  const row = page.locator(`#board .card[data-id="${fx.thread_id}"]`);
   await expect(row).toBeVisible();
   const badge = row.locator(".chrome-badge");
   await expect(badge).toHaveText("needs-approval");
