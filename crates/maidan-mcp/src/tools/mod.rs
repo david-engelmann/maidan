@@ -165,7 +165,9 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "search_messages",
     "verify_event_chain",
     "verify_workspace_export",
+    "wait_for_blocked_resolved",
     "wait_for_claim_expired",
+    "wait_for_claim_failed",
     "wait_for_landed",
     "wait_for_memory_block",
     "wait_for_mention",
@@ -224,7 +226,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_mention"
         | "wait_for_ready"
         | "wait_for_claim_expired"
+        | "wait_for_claim_failed"
         | "wait_for_landed"
+        | "wait_for_blocked_resolved"
         | "get_queue_depth"
         | "get_channel_occupancy"
         | "get_run_occupancy"
@@ -541,7 +545,7 @@ const CHANNEL_SCOPED_TOOLS: &[&str] = &[
     "claim_next_thread",
     "wait_for_ready",
     "wait_for_claim_expired",
-    "wait_for_landed",
+    "wait_for_claim_failed",
     "get_queue_depth",
     "get_channel_occupancy",
     "list_recently_active_threads",
@@ -557,7 +561,12 @@ const CHANNEL_SCOPED_TOOLS: &[&str] = &[
 
 /// Tools whose optional `channel_id` and `thread_id` are both checked before
 /// dispatch.
-const CHANNEL_AND_THREAD_SCOPED_TOOLS: &[&str] = &["list_tombstones", "get_kind_census"];
+const CHANNEL_AND_THREAD_SCOPED_TOOLS: &[&str] = &[
+    "list_tombstones",
+    "get_kind_census",
+    "wait_for_blocked_resolved",
+    "wait_for_landed",
+];
 
 /// Tools with a `channel_id` that is deliberately not checked for channel
 /// access at dispatch, each for a reason its handler or the store carries.
@@ -866,6 +875,8 @@ pub async fn dispatch(
         "list_member_follows" => member::list_member_follows(store, args).await,
         "wait_for_ready" => thread::wait_for_ready(server, auth, args).await,
         "wait_for_claim_expired" => thread::wait_for_claim_expired(server, auth, args).await,
+        "wait_for_claim_failed" => thread::wait_for_claim_failed(server, auth, args).await,
+        "wait_for_blocked_resolved" => thread::wait_for_blocked_resolved(server, auth, args).await,
         "wait_for_landed" => thread::wait_for_landed(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, args).await,
         "get_channel_occupancy" => thread::get_channel_occupancy(store, args).await,
@@ -891,8 +902,8 @@ pub async fn dispatch(
         "instantiate_recipe" => recipe::instantiate_recipe(server, auth, args).await,
         "list_secrets" => secret::list_secrets(store, auth, args).await,
         "resolve_secret" => secret::resolve_secret(server, auth, args).await,
-        "freeze_member" => freeze::freeze_member(store, auth, args).await,
-        "unfreeze_member" => freeze::unfreeze_member(store, auth, args).await,
+        "freeze_member" => freeze::freeze_member(server, auth, args).await,
+        "unfreeze_member" => freeze::unfreeze_member(server, auth, args).await,
         "list_frozen_members" => freeze::list_frozen_members(store, auth, args).await,
         "create_share_ticket" => share::create_share_ticket(server, auth, args).await,
         "list_share_tickets" => share::list_share_tickets(server, auth, args).await,

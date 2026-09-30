@@ -1,10 +1,24 @@
-//! Member-freeze kill-switch store: freeze drops the member's active leases +
-//! records the freeze; unfreeze clears it. Both backends. `claim_next` refusal
-//! is exercised by the server's claim tests.
+//! Member-freeze kill-switch store: freeze drops the member's active leases,
+//! records the freeze and appends `MemberFrozen`; unfreeze clears it and
+//! appends `MemberUnfrozen`. Both backends. `claim_next` refusal is exercised
+//! by the server's claim tests.
 
-use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
+use maidan_store::{attribution::with_attribution, prelude::*, run_sqlite_migrations};
+use maidan_types::{
+    Attribution, Event, EventKind, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
+    StoredEvent, WorkspaceId,
+};
 use sqlx::sqlite::SqlitePoolOptions;
+
+async fn logged(store: &dyn Store, workspace_id: WorkspaceId, kind: EventKind) -> Vec<StoredEvent> {
+    store
+        .list_events_after(workspace_id, 0, 500)
+        .await
+        .expect("events")
+        .into_iter()
+        .filter(|e| e.kind == kind)
+        .collect()
+}
 
 async fn sqlite() -> SqliteStore {
     let pool = SqlitePoolOptions::new()
@@ -73,15 +87,49 @@ async fn run_suite(store: &dyn Store) {
     // Not frozen yet.
     assert!(!store.is_member_frozen(member.id).await.expect("is_frozen"));
 
-    // Freeze: records the freeze AND drops the lease (releases the claimed thread).
-    let (freeze, released) = store
-        .freeze_member(member.id, op.id, Some("compromised"))
-        .await
-        .expect("freeze");
+    // Freeze: records the freeze AND drops the lease (releases the claimed thread),
+    // appending the event under the request's principal.
+    let principal = Attribution {
+        actor_id: op.id,
+        subject_id: op.id,
+        grant_id: None,
+    };
+    let (freeze, released, stored) = with_attribution(
+        Some(principal),
+        store.freeze_member(member.id, op.id, Some("compromised")),
+    )
+    .await
+    .expect("freeze");
     assert_eq!(freeze.member_id, member.id);
     assert_eq!(freeze.frozen_by, op.id);
     assert_eq!(freeze.reason.as_deref(), Some("compromised"));
     assert_eq!(released, 1, "the one active claim was released");
+    assert_eq!(stored.kind, EventKind::MemberFrozen);
+    assert_eq!(stored.workspace_id, Some(ws.id));
+    assert_eq!(stored.channel_id, None);
+    assert_eq!(stored.attribution(), Some(principal));
+    match stored.opened_event().expect("event") {
+        Event::MemberFrozen {
+            workspace_id,
+            member_id,
+            frozen_by,
+            reason,
+            released,
+            ..
+        } => {
+            assert_eq!(workspace_id, ws.id);
+            assert_eq!(member_id, member.id);
+            assert_eq!(frozen_by, op.id);
+            assert_eq!(reason.as_deref(), Some("compromised"));
+            assert_eq!(released, 1);
+        }
+        other => panic!("expected MemberFrozen, got {other:?}"),
+    }
+    assert_eq!(
+        logged(store, ws.id, EventKind::MemberFrozen).await[0].id,
+        stored.id,
+        "the returned event is the one in the log"
+    );
     assert!(store.is_member_frozen(member.id).await.expect("is_frozen"));
     assert_eq!(
         store.get_thread(thread.id).await.unwrap().assignee_id,
@@ -96,15 +144,35 @@ async fn run_suite(store: &dyn Store) {
     assert!(store.get_member_freeze(member.id).await.unwrap().is_some());
 
     // Re-freezing is idempotent (refreshes the record) and releases nothing new.
-    let (_, released2) = store
+    let (_, released2, _) = store
         .freeze_member(member.id, op.id, None)
         .await
         .expect("refreeze");
     assert_eq!(released2, 0);
+    assert_eq!(logged(store, ws.id, EventKind::MemberFrozen).await.len(), 2);
 
-    // Unfreeze clears it; a second unfreeze is a no-op.
-    assert!(store.unfreeze_member(member.id).await.expect("unfreeze"));
-    assert!(!store.unfreeze_member(member.id).await.expect("unfreeze2"));
+    // Unfreeze clears it and says so; a second unfreeze is a no-op that
+    // appends nothing.
+    let lifted = store
+        .unfreeze_member(member.id, op.id)
+        .await
+        .expect("unfreeze")
+        .expect("was frozen");
+    assert_eq!(lifted.kind, EventKind::MemberUnfrozen);
+    assert!(matches!(
+        lifted.opened_event().expect("event"),
+        Event::MemberUnfrozen { member_id, unfrozen_by, .. }
+            if member_id == member.id && unfrozen_by == op.id
+    ));
+    assert!(store
+        .unfreeze_member(member.id, op.id)
+        .await
+        .expect("unfreeze2")
+        .is_none());
+    assert_eq!(
+        logged(store, ws.id, EventKind::MemberUnfrozen).await.len(),
+        1
+    );
     assert!(!store.is_member_frozen(member.id).await.expect("is_frozen"));
     assert!(store
         .list_frozen_members(ws.id)

@@ -1,14 +1,16 @@
 //! Member-freeze kill-switch store: the `maidan_member_freezes` table. Freezing
-//! a member records the freeze AND drops their active leases (releases their
-//! claimed threads) in one transaction; `claim_next` refuses a frozen member
-//! (enforced in `threads.rs`). See the SQLite twin.
+//! a member records the freeze, drops their active leases (releases their
+//! claimed threads) and appends `MemberFrozen` in one transaction; an unfreeze
+//! that lifts a freeze appends `MemberUnfrozen` with it. `claim_next` refuses a
+//! frozen member (enforced in `threads.rs`). See the SQLite twin.
 
 use chrono::{DateTime, Utc};
-use maidan_types::{MemberFreeze, MemberId, WorkspaceId};
+use maidan_types::{Event, MemberFreeze, MemberId, StoredEvent, WorkspaceId};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::postgres::events;
 
 const COLS: &str = "member_id, frozen_at, frozen_by, reason";
 
@@ -21,15 +23,29 @@ fn row_to_freeze(row: &sqlx::postgres::PgRow) -> MemberFreeze {
     }
 }
 
-/// Freeze a member: upsert the freeze row and release every active claim they
-/// hold (drop leases), in one transaction. Returns the freeze + the number of
-/// threads released. Re-freezing refreshes `frozen_by`/`reason`/`frozen_at`.
+/// The member's workspace, read in the change's transaction for its event.
+async fn member_workspace_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    member_id: MemberId,
+) -> Result<WorkspaceId, StoreError> {
+    let row = sqlx::query("SELECT workspace_id FROM maidan_members WHERE id = $1")
+        .bind(member_id.0)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+    Ok(WorkspaceId(row.get::<Uuid, _>("workspace_id")))
+}
+
+/// Freeze a member: upsert the freeze row, release every active claim they
+/// hold (drop leases) and append `MemberFrozen`, in one transaction. Returns
+/// the freeze, the number of threads released and the event. Re-freezing
+/// refreshes `frozen_by`/`reason`/`frozen_at`.
 pub async fn freeze(
     pool: &PgPool,
     member_id: MemberId,
     frozen_by: MemberId,
     reason: Option<&str>,
-) -> Result<(MemberFreeze, u64), StoreError> {
+) -> Result<(MemberFreeze, u64, StoredEvent), StoreError> {
     let mut conn = pool.acquire().await?;
     freeze_on(&mut conn, member_id, frozen_by, reason).await
 }
@@ -39,8 +55,9 @@ pub(crate) async fn freeze_on(
     member_id: MemberId,
     frozen_by: MemberId,
     reason: Option<&str>,
-) -> Result<(MemberFreeze, u64), StoreError> {
+) -> Result<(MemberFreeze, u64, StoredEvent), StoreError> {
     let mut tx = sqlx::Connection::begin(&mut *conn).await?;
+    let workspace_id = member_workspace_in_tx(&mut tx, member_id).await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_member_freezes (member_id, frozen_at, frozen_by, reason)
          VALUES ($1, NOW(), $2, $3)
@@ -64,25 +81,62 @@ pub(crate) async fn freeze_on(
     )
     .bind(member_id.0)
     .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    let stored = events::append_in_tx(
+        &mut tx,
+        &Event::MemberFrozen {
+            occurred_at: freeze.frozen_at,
+            workspace_id,
+            member_id,
+            frozen_by,
+            reason: freeze.reason.clone(),
+            released: i64::try_from(released).unwrap_or(i64::MAX),
+        },
+    )
     .await?;
     tx.commit().await?;
-    Ok((freeze, released.rows_affected()))
+    Ok((freeze, released, stored))
 }
 
-pub async fn unfreeze(pool: &PgPool, member_id: MemberId) -> Result<bool, StoreError> {
+/// Lift a freeze and append `MemberUnfrozen`, together. `None` when the member
+/// was not frozen: nothing changed, so nothing is appended.
+pub async fn unfreeze(
+    pool: &PgPool,
+    member_id: MemberId,
+    unfrozen_by: MemberId,
+) -> Result<Option<StoredEvent>, StoreError> {
     let mut conn = pool.acquire().await?;
-    unfreeze_on(&mut conn, member_id).await
+    unfreeze_on(&mut conn, member_id, unfrozen_by).await
 }
 
 pub(crate) async fn unfreeze_on(
     conn: &mut sqlx::PgConnection,
     member_id: MemberId,
-) -> Result<bool, StoreError> {
+    unfrozen_by: MemberId,
+) -> Result<Option<StoredEvent>, StoreError> {
+    let mut tx = sqlx::Connection::begin(&mut *conn).await?;
     let done = sqlx::query("DELETE FROM maidan_member_freezes WHERE member_id = $1")
         .bind(member_id.0)
-        .execute(&mut *conn)
+        .execute(&mut *tx)
         .await?;
-    Ok(done.rows_affected() > 0)
+    if done.rows_affected() == 0 {
+        tx.commit().await?;
+        return Ok(None);
+    }
+    let workspace_id = member_workspace_in_tx(&mut tx, member_id).await?;
+    let stored = events::append_in_tx(
+        &mut tx,
+        &Event::MemberUnfrozen {
+            occurred_at: Utc::now(),
+            workspace_id,
+            member_id,
+            unfrozen_by,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Some(stored))
 }
 
 pub async fn is_frozen(pool: &PgPool, member_id: MemberId) -> Result<bool, StoreError> {

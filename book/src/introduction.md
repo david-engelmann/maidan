@@ -50,7 +50,7 @@ token (ids shortened, responses trimmed):
 
 ```jsonc
 // → initialize {"protocolVersion":"2026-07-28", ...}
-{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 195 tools in tools/list
+{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 197 tools in tools/list
 
 // → tools/call whoami {}
 {"member_id":"01a0e957-4413…","capabilities":["workspace:read","workspace:write","message:post","thread:transition"]}

@@ -175,6 +175,8 @@ pub enum EventKind {
     ScheduleSkipped,
     ThreadSpawnDenied,
     ProjectorMisconfigured,
+    MemberFrozen,
+    MemberUnfrozen,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -210,6 +212,8 @@ impl EventKind {
             Self::ScheduleSkipped => "schedule_skipped",
             Self::ThreadSpawnDenied => "thread_spawn_denied",
             Self::ProjectorMisconfigured => "projector_misconfigured",
+            Self::MemberFrozen => "member_frozen",
+            Self::MemberUnfrozen => "member_unfrozen",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -245,6 +249,8 @@ impl EventKind {
             "schedule_skipped" => Some(Self::ScheduleSkipped),
             "thread_spawn_denied" => Some(Self::ThreadSpawnDenied),
             "projector_misconfigured" => Some(Self::ProjectorMisconfigured),
+            "member_frozen" => Some(Self::MemberFrozen),
+            "member_unfrozen" => Some(Self::MemberUnfrozen),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -305,6 +311,8 @@ impl EventKind {
         Self::ScheduleSkipped,
         Self::ThreadSpawnDenied,
         Self::ProjectorMisconfigured,
+        Self::MemberFrozen,
+        Self::MemberUnfrozen,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -385,6 +393,9 @@ impl EventKind {
             // credentials and *this* deployment's link table; a peer has no
             // standing to declare our egress misconfigured.
             Self::ProjectorMisconfigured => false,
+            // A freeze is *this* deployment's kill-switch over its own
+            // members; a peer has no standing to freeze or unfreeze one.
+            Self::MemberFrozen | Self::MemberUnfrozen => false,
             // A memory-block update is a locally-derived signal over local
             // shared state; a peer must not inject one.
             Self::MemoryBlockUpdated => false,
@@ -631,6 +642,31 @@ pub enum Event {
         /// Why the firing was skipped (e.g. the prior run is not yet terminal).
         reason: String,
     },
+    /// A member was frozen (the kill-switch): their active claims were
+    /// released and `claim_next` now refuses them. Appended in the freeze's own
+    /// transaction; a re-freeze appends another. Workspace-scoped, no channel,
+    /// so every subscriber of the workspace sees it. Locally derived
+    /// governance: not federatable.
+    MemberFrozen {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        /// The member who was frozen.
+        member_id: MemberId,
+        frozen_by: MemberId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+        /// How many claimed threads the freeze returned to the queue.
+        released: i64,
+    },
+    /// A member's freeze was lifted, so `claim_next` serves them again. Only
+    /// an unfreeze that removed a freeze appends one.
+    MemberUnfrozen {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        /// The member whose freeze was lifted.
+        member_id: MemberId,
+        unfrozen_by: MemberId,
+    },
     MessagePosted {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -756,6 +792,8 @@ impl Event {
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
             Self::ThreadSpawnDenied { .. } => EventKind::ThreadSpawnDenied,
             Self::ProjectorMisconfigured { .. } => EventKind::ProjectorMisconfigured,
+            Self::MemberFrozen { .. } => EventKind::MemberFrozen,
+            Self::MemberUnfrozen { .. } => EventKind::MemberUnfrozen,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -791,6 +829,8 @@ impl Event {
             | Self::ScheduleSkipped { occurred_at, .. }
             | Self::ThreadSpawnDenied { occurred_at, .. }
             | Self::ProjectorMisconfigured { occurred_at, .. }
+            | Self::MemberFrozen { occurred_at, .. }
+            | Self::MemberUnfrozen { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -826,6 +866,8 @@ impl Event {
             | Self::ScheduleSkipped { workspace_id, .. }
             | Self::ThreadSpawnDenied { workspace_id, .. }
             | Self::ProjectorMisconfigured { workspace_id, .. }
+            | Self::MemberFrozen { workspace_id, .. }
+            | Self::MemberUnfrozen { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -922,6 +964,9 @@ impl Event {
             Self::BlockedResolved { resolved_by, .. } => Some(*resolved_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
             Self::ClaimFailed { member_id, .. } => Some(*member_id),
+            Self::MemberFrozen { member_id, .. } | Self::MemberUnfrozen { member_id, .. } => {
+                Some(*member_id)
+            }
             Self::UsageReported { stamp, .. } => Some(stamp.reporter),
             Self::ThreadSpawnDenied { member_id, .. } => *member_id,
             Self::MentionRecorded { member_id, .. }
@@ -1268,6 +1313,8 @@ mod kind_tests {
                 | EventKind::ScheduleSkipped
                 | EventKind::ThreadSpawnDenied
                 | EventKind::ProjectorMisconfigured
+                | EventKind::MemberFrozen
+                | EventKind::MemberUnfrozen
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -1345,6 +1392,8 @@ mod kind_tests {
             EventKind::ScheduleSkipped,
             EventKind::ThreadSpawnDenied,
             EventKind::ProjectorMisconfigured,
+            EventKind::MemberFrozen,
+            EventKind::MemberUnfrozen,
             EventKind::MemoryBlockUpdated,
             EventKind::UsageReported,
         ];

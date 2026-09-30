@@ -1,6 +1,7 @@
 //! Member-freeze kill-switch MCP tools. An orchestrator with `token:admin` can
 //! freeze a misbehaving member (dropping their leases; `claim_next` then
-//! refuses them), unfreeze, and list the frozen.
+//! refuses them), unfreeze, and list the frozen. A freeze and an unfreeze that
+//! lifts one publish `MemberFrozen` / `MemberUnfrozen`.
 
 use std::sync::Arc;
 
@@ -42,16 +43,17 @@ struct FreezeArgs {
 /// Freeze a member: drops their active leases and makes `claim_next` refuse
 /// them. Returns the freeze + the count of claims released.
 pub(super) async fn freeze_member(
-    store: &Arc<dyn Store>,
+    server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
+    let store = &server.store;
     let a: FreezeArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
     ensure_same_workspace(store, auth, member_id).await?;
     let reason = a.reason.as_deref().map(str::trim).filter(|r| !r.is_empty());
     let actor = auth.actor_id;
-    let (freeze, released) = store
+    let (freeze, released, stored) = store
         .freeze_member_audited(
             member_id,
             auth.member_id,
@@ -65,6 +67,7 @@ pub(super) async fn freeze_member(
             }),
         )
         .await?;
+    server.publish_stored(&stored).await;
     Ok(content_json(
         &json!({ "freeze": freeze, "released": released }),
     ))
@@ -77,16 +80,18 @@ struct UnfreezeArgs {
 }
 
 pub(super) async fn unfreeze_member(
-    store: &Arc<dyn Store>,
+    server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
+    let store = &server.store;
     let a: UnfreezeArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
     ensure_same_workspace(store, auth, member_id).await?;
-    let unfrozen = store
+    let stored = store
         .unfreeze_member_audited(
             member_id,
+            auth.member_id,
             maidan_types::NewAuditEvent {
                 actor_id: Some(auth.actor_id),
                 action: "member.unfreeze".into(),
@@ -96,7 +101,10 @@ pub(super) async fn unfreeze_member(
             },
         )
         .await?;
-    Ok(content_json(&json!({ "unfrozen": unfrozen })))
+    if let Some(stored) = &stored {
+        server.publish_stored(stored).await;
+    }
+    Ok(content_json(&json!({ "unfrozen": stored.is_some() })))
 }
 
 /// List the frozen members in the caller's workspace.

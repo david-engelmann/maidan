@@ -11,7 +11,7 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{
-    AppInstallation, ChannelMemberRole, EgressSurface, MemberKind, NewApiToken, NewApp,
+    AppInstallation, ChannelMemberRole, EgressSurface, EventKind, MemberKind, NewApiToken, NewApp,
     NewAppInstallation, NewAuditEvent, NewChannel, NewEgressTarget, NewMember, NewSecret,
     NewThread, NewWorkspace, REVIEW_SKILL,
 };
@@ -97,10 +97,11 @@ where
     };
 
     // Misses record nothing.
-    assert!(!store
-        .unfreeze_member_audited(worker.id, event("miss.unfreeze"))
+    assert!(store
+        .unfreeze_member_audited(worker.id, admin.id, event("miss.unfreeze"))
         .await
-        .unwrap());
+        .unwrap()
+        .is_none());
     assert!(!store
         .clear_land_gate_audited(t, event("miss.land"))
         .await
@@ -202,6 +203,16 @@ where
 
     let other = store.create_thread(thread("other")).await.unwrap().id;
     let fails = |r: Result<(), StoreError>, what: &str| assert!(r.is_err(), "{what} happened");
+    let member_events = || async {
+        store
+            .list_events_after(ws.id, 0, 500)
+            .await
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e.kind, EventKind::MemberFrozen | EventKind::MemberUnfrozen))
+            .count()
+    };
+    let before = member_events().await;
     fails(
         store
             .freeze_member_audited(admin.id, admin.id, None, audit_for("x"))
@@ -212,12 +223,17 @@ where
     assert!(!store.is_member_frozen(admin.id).await.unwrap());
     fails(
         store
-            .unfreeze_member_audited(worker.id, event("x"))
+            .unfreeze_member_audited(worker.id, admin.id, event("x"))
             .await
             .map(drop),
         "unfreeze",
     );
     assert!(store.is_member_frozen(worker.id).await.unwrap());
+    assert_eq!(
+        member_events().await,
+        before,
+        "a freeze or unfreeze that did not commit left its event behind"
+    );
     fails(
         store
             .add_channel_member_audited(

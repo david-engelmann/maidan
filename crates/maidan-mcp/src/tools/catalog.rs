@@ -1036,7 +1036,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "freeze_member",
-            "description": "Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released. The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.",
+            "description": "Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released, and emits member_frozen to the workspace (the reason included). The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1048,7 +1048,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "unfreeze_member",
-            "description": "Lift a member's freeze so they can claim work again. Requires token:admin. Returns {unfrozen} (false if they were not frozen).",
+            "description": "Lift a member's freeze so they can claim work again. Requires token:admin. Returns {unfrozen} (false if they were not frozen); an unfreeze that lifts a freeze emits member_unfrozen.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1472,6 +1472,31 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid", "description": "optional: scope to one channel's tasks"},
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"},
+                    "since_log_id": {"type": "integer", "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live"}
+                }
+            }
+        }),
+        json!({
+            "name": "wait_for_claim_failed",
+            "description": "Block until a claimed run is stopped for going over its budget (report_usage past a tokens/usd/turns/wall limit releases the claim, dead-letters the run and emits claim_failed), or the timeout lapses. Returns the ClaimFailed event (member_id is the stopped holder, reason the budget axis), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch a stop in the gap before this call subscribes; omit it for pure-live.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid", "description": "optional: scope to one channel's tasks"},
+                    "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"},
+                    "since_log_id": {"type": "integer", "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live"}
+                }
+            }
+        }),
+        json!({
+            "name": "wait_for_blocked_resolved",
+            "description": "Block until an explicit dispatch block is cleared (clear_thread_block emits blocked_resolved), or the timeout lapses. Returns the BlockedResolved event (the reason that cleared, resolved_by), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible thread in the workspace. Clearing a thread that was not blocked emits nothing. Pass since_log_id (your high-water log_id) to also catch a clear in the gap before this call subscribes; omit it for pure-live.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid", "description": "optional: wait for this thread's block to clear"},
+                    "channel_id": {"type": "string", "format": "uuid", "description": "optional: scope to one channel's threads"},
                     "timeout_ms": {"type": "integer", "default": 30000, "minimum": 1, "maximum": 300000, "description": "long-poll window in milliseconds"},
                     "since_log_id": {"type": "integer", "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live"}
                 }
