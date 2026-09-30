@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use base64::Engine as _;
 use chrono::{DateTime, SecondsFormat, Utc};
+use maidan_a2a::page_token::{decode_task_cursor, encode_task_cursor};
 use maidan_a2a::{
     is_terminal_task_state, message_content, message_parts_from_content, message_text,
     normalize_task_state, A2aError, A2aErrorKind, CancelTaskRequest, GetTaskRequest,
@@ -806,24 +806,6 @@ async fn wait_unless_closed<T>(tx: &tokio::sync::mpsc::Sender<T>, period: Durati
 
 // ===== ListTasks =====
 
-/// A page position: the `(status timestamp, id)` of the last task shown.
-type Cursor = (DateTime<Utc>, String);
-
-fn encode_page_token((at, id): &Cursor) -> String {
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!("{}|{id}", timestamp(*at)))
-}
-
-fn decode_page_token(token: &str) -> Result<Cursor, A2aError> {
-    let invalid = || A2aError::invalid_params("invalid pageToken");
-    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(token)
-        .map_err(|_| invalid())?;
-    let raw = String::from_utf8(raw).map_err(|_| invalid())?;
-    let (at, id) = raw.split_once('|').ok_or_else(invalid)?;
-    let at = DateTime::parse_from_rfc3339(at).map_err(|_| invalid())?;
-    Ok((at.with_timezone(&Utc), id.to_string()))
-}
-
 /// One row of a `ListTasks` page before rendering.
 enum Entry {
     Stored(Task),
@@ -902,7 +884,7 @@ pub(crate) async fn list_tasks(
     };
     let cursor = match req.page_token.as_deref().filter(|t| !t.is_empty()) {
         None => None,
-        Some(token) => Some(decode_page_token(token)?),
+        Some(token) => Some(decode_task_cursor(token)?),
     };
     let context_id = req.context_id.as_deref().filter(|c| !c.is_empty());
     let workspace_id = auth.workspace_id;
@@ -1028,7 +1010,7 @@ pub(crate) async fn list_tasks(
         entries.truncate(page_size as usize);
         entries
             .last()
-            .map(|(at, id, _)| encode_page_token(&(*at, id.clone())))
+            .map(|(at, id, _)| encode_task_cursor(&(*at, id.clone())))
             .unwrap_or_default()
     } else {
         String::new()
@@ -1082,24 +1064,6 @@ mod tests {
         )
         .await;
         assert_eq!(waited, Ok(false));
-    }
-
-    #[test]
-    fn page_tokens_round_trip_and_reject_garbage() {
-        let at = DateTime::parse_from_rfc3339("2026-09-28T12:00:00.123Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let cursor = (at, "0192-task".to_string());
-        assert_eq!(
-            decode_page_token(&encode_page_token(&cursor)).unwrap(),
-            cursor
-        );
-        for bad in ["!!", "bm8tc2VwYXJhdG9y", "bm90LWEtdGltZXxpZA"] {
-            assert_eq!(
-                decode_page_token(bad).unwrap_err().kind,
-                A2aErrorKind::InvalidParams
-            );
-        }
     }
 
     #[test]

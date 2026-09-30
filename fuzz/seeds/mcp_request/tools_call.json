@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"a","method":"tools/call","params":{"name":"get_inbox","arguments":{"member_id":"00000000-0000-0000-0000-000000000001","workspace_id":"00000000-0000-0000-0000-000000000002"}}}

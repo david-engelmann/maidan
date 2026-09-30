@@ -4,7 +4,7 @@ use std::io::{self, BufRead, Write};
 
 use maidan_auth::AuthContext;
 
-use crate::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, McpServer, McpSession};
+use crate::{JsonRpcNotification, JsonRpcResponse, McpServer, McpSession};
 
 /// Run the MCP dispatcher until stdin EOF. The process is one session: what
 /// it subscribes to is written after each response, and nothing else is.
@@ -18,10 +18,10 @@ pub async fn run_stdio(server: &McpServer, auth: &AuthContext) -> io::Result<()>
         if trimmed.is_empty() {
             continue;
         }
-        let request: JsonRpcRequest = match serde_json::from_str(trimmed) {
+        let request = match crate::protocol::parse_request(trimmed.as_bytes()) {
             Ok(r) => r,
-            Err(_) => {
-                write_response(&mut stdout, JsonRpcResponse::parse_error())?;
+            Err(rejected) => {
+                write_response(&mut stdout, JsonRpcResponse::rejected(rejected))?;
                 continue;
             }
         };

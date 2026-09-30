@@ -666,7 +666,10 @@ streamable POST reads the *header* to decide how to answer — so a request that
 One-shot JSON-RPC without holding SSE: use `POST /mcp`, or send `Accept: application/json` (with no
 `text/event-stream`) to the streamable POST. `POST /mcp` is also the endpoint that takes a top-level
 array as a JSON-RPC batch and answers a notification (a request with no `id`) with `202 Accepted` and
-no body; the streamable POST handles one request per call.
+no body; the streamable POST handles one request per call. Every transport (both POSTs and stdio)
+reads a request the same way: a JSON object, whose duplicate members keep the last value. Anything
+else, including a positional array such as `["2.0", 1, "tools/list"]` or a body that is not valid
+UTF-8 JSON, is a parse error (`-32700`) with a `null` id.
 
 Maidan never issues requests *to* your client: there is no sampling, roots, or elicitation
 back-channel. When an agent needs a human, it opens a durable approval gate — see "Asking a human

@@ -29,7 +29,9 @@ use axum::{
 use futures::StreamExt;
 use maidan_auth::{
     capability::{EVENT_SUBSCRIBE, SEARCH_QUERY, WORKSPACE_READ},
-    resolve_bearer, AuthContext,
+    resolve_bearer,
+    subscribe::{resolve_subscribe, SubscribeFrame, SubscribeRefusal},
+    AuthContext,
 };
 use maidan_store::StoreError;
 use maidan_types::{EventFilter, LogSnapshot, MemberId, ThreadId, WorkspaceId};
@@ -45,42 +47,11 @@ use crate::event_stream::{
 };
 use crate::session::load_session;
 use crate::state::AppState;
-use crate::subscribe_resume;
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 const PONG_TIMEOUT: Duration = Duration::from_secs(60);
 const SEND_QUEUE: usize = 256;
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(10);
-
-#[derive(Debug, Deserialize)]
-pub struct SubscribeFrame {
-    #[serde(default)]
-    pub token: Option<String>,
-    #[serde(default)]
-    pub resume_token: Option<String>,
-    #[serde(default)]
-    pub filter: EventFilter,
-    /// Replay persisted events with `id > after_id` before attaching to the bus.
-    #[serde(default)]
-    pub after_id: i64,
-    /// Optional durable consumer id; server skips replay at or below stored cursor.
-    #[serde(default)]
-    pub consumer_id: Option<String>,
-    /// When set with `filter.workspace_id`, enables presence/typing fan-out.
-    #[serde(default)]
-    pub member_id: Option<Uuid>,
-    /// Opt into gap-free at-least-once delivery: cursor-driven reconcile
-    /// instead of the optimistic live path. Requires `filter.workspace_id` and
-    /// `consumer_id`; adds a stability-window latency floor on fresh events.
-    #[serde(default)]
-    pub at_least_once: bool,
-    /// Opt into lean event frames: domain-event frames carry only `{log_id,
-    /// kind,...ids}` — a "something happened, go fetch" pointer — instead of
-    /// the full serialized event, saving tokens for an agent that tails for
-    /// activity and reads on demand.
-    #[serde(default)]
-    pub lean: bool,
-}
 
 struct SubscribeRequest {
     filter: EventFilter,
@@ -458,7 +429,7 @@ async fn send_subscribe_ack(
     let secret = state
         .subscribe_resume_secret()
         .ok_or_else(|| "subscribe resume not configured on server".to_string())?;
-    let token = subscribe_resume::sign_resume_token(
+    let token = maidan_auth::subscribe::sign_resume_token(
         filter,
         after_id,
         secret,
@@ -497,7 +468,14 @@ async fn read_subscribe(
     let sub: SubscribeFrame =
         serde_json::from_str(&text).map_err(|e| (1008u16, format!("invalid subscribe: {e}")))?;
 
-    let (mut filter, mut after_id) = resolve_subscribe_params(&sub, state)?;
+    let (mut filter, mut after_id) = resolve_subscribe(&sub, state.subscribe_resume_secret())
+        .map_err(|refusal| {
+            let code = match refusal {
+                SubscribeRefusal::ResumeNotConfigured => 1011u16,
+                _ => 1008,
+            };
+            (code, refusal.to_string())
+        })?;
     // Resolve the caller's identity *before* expanding the filter / applying
     // channel grants, so the DM-participant check and the grant verification
     // can both check real membership.
@@ -608,39 +586,4 @@ fn handle_client_frame(
             hub.set_typing(workspace_id, ThreadId(*thread_id), member_id, *active);
         }
     }
-}
-
-fn resolve_subscribe_params(
-    sub: &SubscribeFrame,
-    state: &AppState,
-) -> Result<(EventFilter, i64), (u16, String)> {
-    if let Some(token) = sub.resume_token.as_deref().filter(|t| !t.is_empty()) {
-        if state.subscribe_resume_secret.is_none() && state.oidc.is_none() {
-            return Err((1011u16, "subscribe resume not configured on server".into()));
-        }
-        let secret = state.subscribe_resume_secret().ok_or((
-            1011u16,
-            "subscribe resume not configured on server".to_string(),
-        ))?;
-        let (filter, after_id) = subscribe_resume::verify_resume_token(token, secret)
-            .map_err(|e| (1008u16, format!("invalid resume_token: {e}")))?;
-        if after_id > 0 && filter.workspace_id.is_none() {
-            return Err((
-                1008u16,
-                "resume token requires filter.workspace_id for replay".into(),
-            ));
-        }
-        return Ok((filter, after_id));
-    }
-
-    if sub.after_id < 0 {
-        return Err((1008u16, "after_id must be non-negative".into()));
-    }
-    if sub.after_id > 0 && sub.filter.workspace_id.is_none() {
-        return Err((
-            1008u16,
-            "after_id requires filter.workspace_id for replay".into(),
-        ));
-    }
-    Ok((sub.filter.clone(), sub.after_id))
 }

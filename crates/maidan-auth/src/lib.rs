@@ -11,6 +11,7 @@ pub mod error;
 pub mod export_sign;
 pub mod peer_secret;
 pub mod resolve;
+pub mod subscribe;
 pub mod token;
 
 pub use access::{

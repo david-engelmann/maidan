@@ -22,7 +22,6 @@ use crate::event_stream::{
 };
 use crate::extract::ApiQuery;
 use crate::state::AppState;
-use crate::subscribe_resume;
 
 #[derive(Debug, Deserialize)]
 pub struct McpStreamQuery {
@@ -151,7 +150,7 @@ pub async fn stream(
     let secret = state
         .subscribe_resume_secret()
         .ok_or_else(|| ApiError::Internal("subscribe resume not configured on server".into()))?;
-    let token = subscribe_resume::sign_resume_token(
+    let token = maidan_auth::subscribe::sign_resume_token(
         &filter,
         high_water,
         secret,
@@ -228,7 +227,7 @@ fn resolve_stream_params(
         let secret = state.subscribe_resume_secret().ok_or_else(|| {
             ApiError::Internal("subscribe resume not configured on server".into())
         })?;
-        let (filter, after_id) = subscribe_resume::verify_resume_token(token, secret)
+        let (filter, after_id) = maidan_auth::subscribe::verify_resume_token(token, secret)
             .map_err(|e| ApiError::BadRequest(format!("invalid resume_token: {e}")))?;
         if after_id > 0 && filter.workspace_id.is_none() {
             return Err(ApiError::BadRequest(

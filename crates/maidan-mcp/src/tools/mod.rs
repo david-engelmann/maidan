@@ -604,6 +604,30 @@ fn enforce_workspace_scope(auth: &AuthContext, args: &Value) -> Result<(), McpEr
     }
 }
 
+/// A `tools/call`'s tool name and arguments; absent arguments are an empty
+/// object.
+pub fn tool_call(params: &Value) -> Result<(&str, Value), McpError> {
+    let name = params
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| McpError::InvalidParams("missing tool name".into()))?;
+    let args = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
+    Ok((name, args))
+}
+
+/// The checks on a tool's raw arguments that need no store: a named workspace
+/// is the caller's, and a member tool's `member_id` is the caller. They read
+/// the arguments before any handler decodes them, so what they read and what
+/// the handler decodes must agree. Public so that pair can be fuzzed
+/// (`fuzz/fuzz_targets/mcp_request.rs`).
+pub fn check_argument_scope(auth: &AuthContext, name: &str, args: &Value) -> Result<(), McpError> {
+    enforce_workspace_scope(auth, args)?;
+    enforce_member_self_scope(auth, name, args)
+}
+
 async fn enforce_channel_access(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -754,8 +778,7 @@ pub async fn dispatch(
     name: &str,
     args: &Value,
 ) -> Result<Value, McpError> {
-    enforce_workspace_scope(auth, args)?;
-    enforce_member_self_scope(auth, name, args)?;
+    check_argument_scope(auth, name, args)?;
     enforce_channel_access(server, auth, name, args).await?;
     let store = &server.store;
     let artifacts = &server.artifacts;

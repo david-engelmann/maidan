@@ -12,10 +12,43 @@ env:
 
 jobs:
   mutation:
-    name: mutation tests
+    name: mutation tests (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 90
     continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        # Sharded so each shard fits the timeout. Locally an auth mutant takes
+        # about 6 s to build and test (about 335 of them) and a bus mutant
+        # about 20 s, its suites starting Postgres (about 260); a runner is two
+        # to three times slower. store has about 4,600 mutants and does not
+        # finish inside the timeout in any case.
+        include:
+          - name: store + artifacts
+            packages: --package maidan-store --package maidan-artifacts
+            shard: ""
+          - name: auth 1/3
+            packages: --package maidan-auth
+            shard: --shard 0/3
+          - name: auth 2/3
+            packages: --package maidan-auth
+            shard: --shard 1/3
+          - name: auth 3/3
+            packages: --package maidan-auth
+            shard: --shard 2/3
+          - name: bus 1/4
+            packages: --package maidan-bus
+            shard: --shard 0/4
+          - name: bus 2/4
+            packages: --package maidan-bus
+            shard: --shard 1/4
+          - name: bus 3/4
+            packages: --package maidan-bus
+            shard: --shard 2/4
+          - name: bus 4/4
+            packages: --package maidan-bus
+            shard: --shard 3/4
     steps:
       - uses: actions/checkout@v4
       - name: install rust
@@ -26,13 +59,13 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-mutants
-      - name: mutants on store + artifacts
+      - name: mutants
         run: |
           cargo mutants \
             --no-shuffle \
             --timeout 120 \
-            --package maidan-store \
-            --package maidan-artifacts \
+            ${{ matrix.packages }} \
+            ${{ matrix.shard }} \
             --in-place \
             --output target/mutants
 
@@ -53,7 +86,8 @@ jobs:
   fuzz:
     name: fuzz the input parsers
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Nine targets at five minutes each, plus the sanitizer build.
+    timeout-minutes: 90
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +106,11 @@ jobs:
         run: |
           for target in $(cargo +nightly fuzz list); do
             echo "::group::$target"
-            cargo +nightly fuzz run "$target" -- -max_total_time=300
+            mkdir -p "corpus/$target"
+            seeds=()
+            if [ -d "seeds/$target" ]; then seeds=("seeds/$target"); fi
+            cargo +nightly fuzz run "$target" "corpus/$target" "${seeds[@]}" -- \
+              -dict=json.dict -max_total_time=300
             echo "::endgroup::"
           done
       - name: keep what crashed

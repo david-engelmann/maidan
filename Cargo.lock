@@ -2663,6 +2663,7 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 name = "maidan-a2a"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "futures",
  "maidan-types",
@@ -2703,9 +2704,12 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "ed25519-dalek",
+ "hex",
+ "hmac 0.12.1",
  "maidan-store",
  "maidan-types",
  "metrics",
+ "serde",
  "serde_json",
  "sha2 0.10.9",
  "sqlx",

@@ -12,6 +12,7 @@ use axum::{
     Extension, Json,
 };
 use maidan_auth::AuthContext;
+use maidan_mcp::protocol::RequestBody;
 use maidan_mcp::{is_supported_protocol_version, JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 
 use crate::error::ApiError;
@@ -117,15 +118,12 @@ pub async fn handler(
     if let Err(err) = validate_protocol_version(&headers) {
         return err.into_response();
     }
-    let value: serde_json::Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => return Json(JsonRpcResponse::parse_error()).into_response(),
-    };
-    match value {
+    match maidan_mcp::protocol::parse_body(&body) {
+        Err(rejected) => Json(JsonRpcResponse::rejected(rejected)).into_response(),
         // Routing headers describe a single op; a batch names many, so they are
         // validated per single request, not against an array.
-        serde_json::Value::Array(items) => batch_response(&state, &auth, items).await,
-        other => single_response(&state, &auth, &headers, other).await,
+        Ok(RequestBody::Batch(items)) => batch_response(&state, &auth, items).await,
+        Ok(RequestBody::Single(request)) => single_response(&state, &auth, &headers, request).await,
     }
 }
 
@@ -133,12 +131,8 @@ async fn single_response(
     state: &AppState,
     auth: &AuthContext,
     headers: &HeaderMap,
-    value: serde_json::Value,
+    request: JsonRpcRequest,
 ) -> Response {
-    let request: JsonRpcRequest = match serde_json::from_value(value) {
-        Ok(r) => r,
-        Err(_) => return Json(JsonRpcResponse::parse_error()).into_response(),
-    };
     if let Err(err) = validate_routing_headers(headers, &request) {
         return err.into_response();
     }
@@ -156,26 +150,14 @@ async fn single_response(
 async fn batch_response(
     state: &AppState,
     auth: &AuthContext,
-    items: Vec<serde_json::Value>,
+    items: Vec<Result<JsonRpcRequest, JsonRpcError>>,
 ) -> Response {
-    // JSON-RPC 2.0: an empty batch array is itself an invalid request.
-    if items.is_empty() {
-        return Json(JsonRpcResponse::failure(
-            serde_json::Value::Null,
-            JsonRpcError {
-                code: -32600,
-                message: "invalid request: empty batch".into(),
-                data: None,
-            },
-        ))
-        .into_response();
-    }
     let mut responses = Vec::new();
     for item in items {
-        let request: JsonRpcRequest = match serde_json::from_value(item) {
-            Ok(r) => r,
-            Err(_) => {
-                responses.push(JsonRpcResponse::parse_error());
+        let request = match item {
+            Ok(request) => request,
+            Err(rejected) => {
+                responses.push(JsonRpcResponse::rejected(rejected));
                 continue;
             }
         };

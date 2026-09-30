@@ -2,9 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonRpcRequest {
     pub jsonrpc: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<serde_json::Value>,
     pub method: String,
     #[serde(default)]
@@ -58,14 +59,23 @@ impl JsonRpcResponse {
     /// Parse-failure response per the JSON-RPC spec (id = null when the
     /// request was unparseable).
     pub fn parse_error() -> Self {
-        Self::failure(
-            serde_json::Value::Null,
-            JsonRpcError {
-                code: -32700,
-                message: "parse error".into(),
-                data: None,
-            },
-        )
+        Self::rejected(JsonRpcError::parse_error())
+    }
+
+    /// The answer to a body that is not a request: its id could not be read,
+    /// so it is null.
+    pub fn rejected(error: JsonRpcError) -> Self {
+        Self::failure(serde_json::Value::Null, error)
+    }
+}
+
+impl JsonRpcError {
+    pub fn parse_error() -> Self {
+        Self {
+            code: -32700,
+            message: "parse error".into(),
+            data: None,
+        }
     }
 }
 
@@ -77,6 +87,54 @@ impl JsonRpcNotification {
             params,
         }
     }
+}
+
+/// What a JSON-RPC body decodes to: one request, or a batch whose items are
+/// decoded one at a time so a bad item is answered without failing the rest.
+#[derive(Debug)]
+pub enum RequestBody {
+    Single(JsonRpcRequest),
+    Batch(Vec<Result<JsonRpcRequest, JsonRpcError>>),
+}
+
+/// Decode a `POST /mcp` body: a request object or a batch of them. The error is
+/// answered with [`JsonRpcResponse::rejected`]. A public function rather than a step inside the
+/// handler so the parser can be fuzzed (`fuzz/fuzz_targets/mcp_request.rs`).
+pub fn parse_body(body: &[u8]) -> Result<RequestBody, JsonRpcError> {
+    let value: serde_json::Value =
+        serde_json::from_slice(body).map_err(|_| JsonRpcError::parse_error())?;
+    match value {
+        serde_json::Value::Array(items) if items.is_empty() => Err(JsonRpcError {
+            code: -32600,
+            message: "invalid request: empty batch".into(),
+            data: None,
+        }),
+        serde_json::Value::Array(items) => Ok(RequestBody::Batch(
+            items.into_iter().map(request_from_value).collect(),
+        )),
+        other => request_from_value(other).map(RequestBody::Single),
+    }
+}
+
+/// Decode a body or stdio line that carries exactly one request, as the
+/// streamable-HTTP and stdio transports do. It reads the body the way
+/// [`parse_body`] does, so every transport agrees on what a body says.
+pub fn parse_request(body: &[u8]) -> Result<JsonRpcRequest, JsonRpcError> {
+    let value: serde_json::Value =
+        serde_json::from_slice(body).map_err(|_| JsonRpcError::parse_error())?;
+    request_from_value(value)
+}
+
+/// Through a JSON value rather than straight into the struct: serde reads a
+/// struct from an array by position and skips unknown members without
+/// checking their UTF-8, so a direct read accepted `["2.0",1,"tools/call"]`
+/// and bodies that are not JSON at all, which a gateway reading the body as
+/// JSON would route differently or refuse.
+fn request_from_value(value: serde_json::Value) -> Result<JsonRpcRequest, JsonRpcError> {
+    if !value.is_object() {
+        return Err(JsonRpcError::parse_error());
+    }
+    serde_json::from_value(value).map_err(|_| JsonRpcError::parse_error())
 }
 
 #[cfg(test)]
@@ -158,6 +216,35 @@ mod tests {
         assert_eq!(v["method"], "notifications/message");
         assert_eq!(v["params"]["level"], "info");
         assert!(v.get("id").is_none(), "notifications have no id");
+    }
+
+    #[test]
+    fn a_request_is_an_object_on_every_transport() {
+        let positional = br#"["2.0",1,"tools/call",{"name":"get_inbox"}]"#;
+        assert!(parse_request(positional).is_err());
+        let Ok(RequestBody::Batch(items)) = parse_body(br#"[["2.0",1,"tools/list"]]"#) else {
+            panic!("a batch is a batch");
+        };
+        assert!(items[0].is_err(), "a positional batch item was read");
+    }
+
+    #[test]
+    fn a_body_that_is_not_json_is_refused_even_where_serde_would_skip_it() {
+        // Found by the `mcp_request` fuzz target: invalid UTF-8 inside an
+        // unknown member was skipped unchecked by a direct struct read.
+        let body = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"x\":\"\xcd\"}";
+        assert!(parse_request(body).is_err());
+        assert!(parse_body(body).is_err());
+    }
+
+    #[test]
+    fn single_and_batch_transports_read_a_request_alike() {
+        let body = br#"{"jsonrpc":"2.0","id":1,"method":"tools/list","method":"tools/call"}"#;
+        let single = parse_request(body).expect("parses");
+        let Ok(RequestBody::Single(same)) = parse_body(body) else {
+            panic!("a single request");
+        };
+        assert_eq!(single, same);
     }
 
     proptest! {
