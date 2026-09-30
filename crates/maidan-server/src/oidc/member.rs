@@ -24,6 +24,29 @@ pub fn handle_from_claims(subject: &str, email: Option<&str>) -> String {
     format!("oidc-{short}")
 }
 
+/// How a sign-in found its member, recorded on the `session.create` row: a
+/// sign-in that provisions a member or links an identity changes more than the
+/// session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoginMember {
+    /// The identity was already linked to the member.
+    Existing,
+    /// The identity was linked to a member that already existed.
+    Linked,
+    /// The member was created for this identity.
+    Provisioned,
+}
+
+impl LoginMember {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Existing => "existing",
+            Self::Linked => "linked",
+            Self::Provisioned => "provisioned",
+        }
+    }
+}
+
 pub async fn resolve_member_for_login(
     store: &dyn Store,
     workspace_id: WorkspaceId,
@@ -33,9 +56,9 @@ pub async fn resolve_member_for_login(
     email_verified: bool,
     auto_provision: bool,
     link_email: bool,
-) -> Result<MemberId, ApiError> {
+) -> Result<(MemberId, LoginMember), ApiError> {
     if let Ok(identity) = store.get_oidc_identity(workspace_id, issuer, subject).await {
-        return Ok(identity.member_id);
+        return Ok((identity.member_id, LoginMember::Existing));
     }
 
     if link_email && email_verified {
@@ -50,7 +73,7 @@ pub async fn resolve_member_for_login(
                         email: Some(email.to_string()),
                     })
                     .await?;
-                return Ok(member.id);
+                return Ok((member.id, LoginMember::Linked));
             }
         }
     }
@@ -62,17 +85,18 @@ pub async fn resolve_member_for_login(
     }
 
     let handle = handle_from_claims(subject, email);
-    let member = match store.get_member_by_handle(workspace_id, &handle).await {
-        Ok(m) => m,
+    let (member, how) = match store.get_member_by_handle(workspace_id, &handle).await {
+        Ok(m) => (m, LoginMember::Linked),
         Err(maidan_store::StoreError::NotFound) => {
-            store
+            let created = store
                 .create_member(NewMember {
                     workspace_id,
                     handle,
                     display_name: email.map(str::to_string),
                     kind: MemberKind::Human,
                 })
-                .await?
+                .await?;
+            (created, LoginMember::Provisioned)
         }
         Err(err) => return Err(err.into()),
     };
@@ -87,7 +111,7 @@ pub async fn resolve_member_for_login(
         })
         .await?;
 
-    Ok(member.id)
+    Ok((member.id, how))
 }
 
 pub async fn touch_identity(

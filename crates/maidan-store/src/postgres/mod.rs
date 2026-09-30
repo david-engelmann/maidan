@@ -1478,6 +1478,23 @@ impl SessionStore for PostgresStore {
     async fn delete_session(&self, id: SessionId) -> Result<(), StoreError> {
         sessions::delete(&self.pool, id).await
     }
+    async fn create_session_audited(
+        &self,
+        new: NewMaidanSession,
+        audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<MaidanSession, StoreError> {
+        sessions::create_audited(&self.pool, new, audit).await
+    }
+    async fn delete_session_audited(
+        &self,
+        id: SessionId,
+        audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<MaidanSession, StoreError> {
+        sessions::delete_audited(&self.pool, id, audit).await
+    }
+    async fn delete_expired_session(&self, id: SessionId) -> Result<(), StoreError> {
+        sessions::delete_expired(&self.pool, id).await
+    }
 }
 
 #[async_trait]

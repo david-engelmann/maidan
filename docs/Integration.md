@@ -478,7 +478,12 @@ an orchestrator posts for an agent is the agent's message. Attribution is what
 records that the orchestrator wrote it.
 
 **Every change leaves a record.** Most changes record themselves, as an event or
-a named audit row (`token.mint`, `workspace.purge`). A change that does not —
+a named audit row (`token.mint`, `workspace.purge`). Signing in through OIDC
+writes `session.create` (with `metadata.member`: `existing`, `linked` when the
+sign-in linked the identity to a member, or `provisioned` when it created one)
+and `POST /auth/logout` writes `session.delete`, each naming the member as actor
+and written in the session's own transaction, so a sign-in or sign-out that
+cannot be recorded does not happen. A change that does not —
 setting a delivery address, a thread's owner, a webhook — gets an audit row
 written for it by the request layer, with `action: "mutation"`:
 

@@ -45,6 +45,8 @@ const UNAUDITED: &[&str] = &[
     ".create_scim_user(",
     ".update_scim_user(",
     ".delete_scim_user(",
+    ".create_session(",
+    ".delete_session(",
 ];
 
 fn rust_files(path: &Path, out: &mut Vec<PathBuf>) {

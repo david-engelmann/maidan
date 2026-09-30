@@ -1066,6 +1066,28 @@ pub trait SessionStore: Send + Sync {
     async fn create_session(&self, new: NewMaidanSession) -> Result<MaidanSession, StoreError>;
     async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError>;
     async fn delete_session(&self, id: SessionId) -> Result<(), StoreError>;
+
+    // D-A: a browser session is a credential, so signing in and signing out
+    // write their audit row in the session write's transaction. Request
+    // handlers use these; `authority_changes_are_audited_in_their_transaction`
+    // fails if one calls the unaudited form above.
+
+    /// [`Self::create_session`] with its audit row in the same transaction.
+    async fn create_session_audited(
+        &self,
+        new: NewMaidanSession,
+        audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<MaidanSession, StoreError>;
+    /// Delete a session with its audit row in the same transaction, returning
+    /// what was deleted. `NotFound`, with nothing written, if it is gone.
+    async fn delete_session_audited(
+        &self,
+        id: SessionId,
+        audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<MaidanSession, StoreError>;
+    /// Delete a session if, and only if, it has expired: housekeeping for a
+    /// credential that already grants nothing, so it is not audited.
+    async fn delete_expired_session(&self, id: SessionId) -> Result<(), StoreError>;
 }
 
 #[async_trait]
