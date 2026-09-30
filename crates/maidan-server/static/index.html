@@ -82,36 +82,9 @@
       #channel-list li.selected { background: #dbeafe; font-weight: 600; }
       #channel-list .private { color: var(--muted); font-size: 0.8rem; }
       main { display: flex; flex-direction: column; min-height: 0; }
-      #live-panel {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        padding: 0.75rem;
-        min-height: 14rem;
-      }
-      #live-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        align-items: center;
-        margin-bottom: 0.5rem;
-      }
       #ws-status { font-size: 0.85rem; color: var(--muted); }
       #ws-status.connected { color: var(--ok); }
       #ws-status.error { color: var(--err); }
-      #live-feed {
-        flex: 1;
-        background: #18181b;
-        color: #e4e4e7;
-        font-family: ui-monospace, monospace;
-        font-size: 0.8rem;
-        padding: 0.75rem;
-        overflow: auto;
-        border-radius: 0.35rem;
-        margin: 0;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
       #tools {
         border-top: 1px solid var(--border);
         background: var(--panel);
@@ -329,8 +302,8 @@
       .chrome-legend { font-size: 0.68rem; margin-top: 0.4rem; border-top: none; }
       main { background: var(--bg); }
       /* Live: a slim status bar until connected; the raw feed is opt-in. */
-      #live-panel { flex: none; min-height: 0; padding: 0.45rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel); }
-      #live-toolbar { margin: 0; gap: 0.6rem; font-size: 0.85rem; }
+      #live-panel { display: flex; flex-direction: column; flex: none; min-height: 0; padding: 0.45rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel); }
+      #live-toolbar { display: flex; flex-wrap: wrap; align-items: center; margin: 0; gap: 0.6rem; font-size: 0.85rem; }
       #live-toolbar label { margin: 0; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--muted); }
       #live-toolbar label select { width: auto; margin: 0; padding: 0.15rem 0.35rem; font-size: 0.8rem; }
       #live-toolbar label input[type="checkbox"] { width: auto; margin: 0; }
@@ -342,8 +315,15 @@
       #live-panel.connected .live-hint { display: none; }
       #live-panel:not(.connected) .when-connected { display: none; }
       #live-panel.connected .when-disconnected { display: none; }
-      #live-feed { margin-top: 0.45rem; max-height: 11rem; min-height: 5rem; font-size: 0.75rem; }
+      #live-feed { flex: 1; background: #18181b; color: #e4e4e7; font-family: ui-monospace, monospace; padding: 0.75rem; overflow: auto; border-radius: 0.35rem; margin: 0.45rem 0 0; white-space: pre-wrap; word-break: break-word; max-height: 11rem; min-height: 5rem; font-size: 0.75rem; }
       #live-feed[hidden] { display: none; }
+      /* Errors a user caused (a missing field, no token) as a toast, not a
+         blocking showError(): announced by screen readers, dismissible, gone in
+         a few seconds. */
+      #toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; max-width: min(26rem, calc(100vw - 2rem)); }
+      .toast { display: flex; align-items: flex-start; gap: 0.75rem; background: var(--panel); color: var(--err); border: 1px solid var(--border); border-left: 4px solid var(--err); border-radius: 0.35rem; padding: 0.6rem 0.75rem; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); font-size: 0.9rem; }
+      .toast span { flex: 1; }
+      .toast button { background: none; border: none; color: var(--muted); padding: 0 0.25rem; font-size: 1.1rem; line-height: 1; cursor: pointer; }
       /* Board */
       #board-panel { padding: 1rem 1rem 0.5rem; }
       #board-head { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
@@ -546,6 +526,7 @@
     </style>
   </head>
   <body data-ui-version="8">
+    <div id="toasts"></div>
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <header>
       <h1><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" fill="currentColor"/><path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" fill="currentColor"/><path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" fill="currentColor"/><path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" fill="currentColor"/><path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" fill="currentColor"/><path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" fill="currentColor"/><path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" fill="currentColor"/><path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" fill="currentColor"/></svg><span>Maidan</span></h1>
@@ -1227,6 +1208,30 @@
         if (t) h["Authorization"] = "Bearer " + t;
         return h;
       }
+      // Tell the user what to fix without stopping the page. The same message
+      // again refreshes the one on screen rather than stacking a copy.
+      function showError(message) {
+        const region = document.getElementById("toasts");
+        let toast = [...region.children].find((t) => t.dataset.message === message);
+        if (!toast) {
+          toast = document.createElement("div");
+          toast.className = "toast";
+          toast.setAttribute("role", "alert");
+          toast.dataset.message = message;
+          const text = document.createElement("span");
+          text.textContent = message;
+          const close = document.createElement("button");
+          close.type = "button";
+          close.setAttribute("aria-label", "Dismiss");
+          close.textContent = "×";
+          close.onclick = () => toast.remove();
+          toast.append(text, close);
+          region.appendChild(toast);
+          while (region.children.length > 3) region.firstElementChild.remove();
+        }
+        clearTimeout(Number(toast.dataset.timer));
+        toast.dataset.timer = String(setTimeout(() => toast.remove(), 8000));
+      }
       function setStatus(msg, cls) {
         document.getElementById("status").textContent = msg;
         document.getElementById("status").className = cls || "";
@@ -1429,7 +1434,7 @@
       }
       function requireTokenForWrite() {
         if (!token()) {
-          alert("Bearer token required for writes (mint from session or Tokens tab).");
+          showError("Bearer token required for writes (mint from session or Tokens tab).");
           return false;
         }
         return true;
@@ -1445,7 +1450,7 @@
       // A write is allowed with either a bearer token or a signed-in session.
       function requireAuthForWrite() {
         if (token() || sessionMemberId) return true;
-        alert("Sign in (session) or set a bearer token to write.");
+        showError("Sign in (session) or set a bearer token to write.");
         return false;
       }
 
@@ -2759,10 +2764,10 @@
       async function openDm() {
         if (!requireAuthForWrite()) return;
         const me = authorId();
-        if (!me) return alert("Sign in or set a valid bearer token");
+        if (!me) return showError("Sign in or set a valid bearer token");
         const other = document.getElementById("dm-other-id").value.trim();
-        if (!other) return alert("Enter the other member's ID");
-        if (other === me) return alert("Cannot open a DM with yourself");
+        if (!other) return showError("Enter the other member's ID");
+        if (other === me) return showError("Cannot open a DM with yourself");
         try {
           const res = await fetch(apiWritePath(`/workspaces/${wid()}/dm`), {
             method: "POST",
@@ -2781,10 +2786,10 @@
       async function sendDmMessage() {
         if (!requireAuthForWrite()) return;
         const me = authorId();
-        if (!me) return alert("Sign in or set a valid bearer token");
-        if (!selectedDm) return alert("Select a DM first");
+        if (!me) return showError("Sign in or set a valid bearer token");
+        if (!selectedDm) return showError("Select a DM first");
         const body = document.getElementById("dm-body").value.trim();
-        if (!body) return alert("Message body required");
+        if (!body) return showError("Message body required");
         try {
           const res = await fetch(apiWritePath(`/dm/${selectedDm.id}/messages`), {
             method: "POST",
@@ -2876,14 +2881,14 @@
       async function openGroupDm() {
         if (!requireAuthForWrite()) return;
         const me = authorId();
-        if (!me) return alert("Sign in or set a valid bearer token");
+        if (!me) return showError("Sign in or set a valid bearer token");
         const ids = document
           .getElementById("gdm-member-ids")
           .value.split(",")
           .map((s) => s.trim())
           .filter(Boolean);
         if (!ids.includes(me)) ids.push(me);
-        if (ids.length < 2) return alert("A group DM needs at least 2 members");
+        if (ids.length < 2) return showError("A group DM needs at least 2 members");
         const title = document.getElementById("gdm-title").value.trim() || null;
         try {
           const res = await fetch(apiWritePath(`/workspaces/${wid()}/group-dms`), {
@@ -2903,10 +2908,10 @@
       async function sendGroupDmMessage() {
         if (!requireAuthForWrite()) return;
         const me = authorId();
-        if (!me) return alert("Sign in or set a valid bearer token");
-        if (!selectedGdm) return alert("Select a group DM first");
+        if (!me) return showError("Sign in or set a valid bearer token");
+        if (!selectedGdm) return showError("Select a group DM first");
         const body = document.getElementById("gdm-body").value.trim();
-        if (!body) return alert("Message body required");
+        if (!body) return showError("Message body required");
         try {
           const res = await fetch(apiWritePath(`/group-dms/${selectedGdm.id}/messages`), {
             method: "POST",
@@ -3163,10 +3168,10 @@
       async function registerSlashCommand() {
         if (!requireAuthForWrite()) return;
         const name = document.getElementById("slash-name").value.trim();
-        if (!name) return alert("Name required");
+        if (!name) return showError("Name required");
         const handlerKind = document.getElementById("slash-kind").value;
         const handlerTarget = document.getElementById("slash-target").value.trim();
-        if (!handlerTarget) return alert("Handler target required");
+        if (!handlerTarget) return showError("Handler target required");
         const description = document.getElementById("slash-desc").value.trim() || null;
         const secretBox = document.getElementById("slash-secret");
         secretBox.innerHTML = "";
@@ -4543,16 +4548,16 @@
           old.close();
         }
         wsUserDisconnect = false;
-        if (!wid()) return alert("Workspace ID required");
+        if (!wid()) return showError("Workspace ID required");
         const preset = document.getElementById("ws-preset").value;
         if (preset === "channel" && !selectedChannelId) {
-          return alert("Select a channel for the channel preset");
+          return showError("Select a channel for the channel preset");
         }
         if (preset === "thread" && !selectedThreadId) {
-          return alert("Select a thread for the thread preset");
+          return showError("Select a thread for the thread preset");
         }
         if (!token() && !sessionMemberId) {
-          return alert("Bearer token or OIDC session required for WebSocket subscribe");
+          return showError("Bearer token or OIDC session required for WebSocket subscribe");
         }
         persist();
         const frame = { filter: buildWsFilter() };
@@ -4678,7 +4683,7 @@
       }
 
       document.getElementById("login").onclick = () => {
-        if (!wid()) return alert("Enter workspace ID first.");
+        if (!wid()) return showError("Enter workspace ID first.");
         persist();
         window.location.href =
           `${base()}/auth/oidc/login?workspace_id=${encodeURIComponent(wid())}&return_to=/ui/`;
@@ -4769,7 +4774,7 @@
       };
       document.getElementById("run-search").onclick = async () => {
         persist();
-        if (!wid()) return alert("Workspace ID required");
+        if (!wid()) return showError("Workspace ID required");
         const q = document.getElementById("search-q").value.trim();
         const mode = document.getElementById("search-mode").value;
         const params = new URLSearchParams({ q, mode, limit: "20" });
@@ -4811,9 +4816,9 @@
       };
       document.getElementById("create-channel").onclick = async () => {
         if (!requireAuthForWrite()) return;
-        if (!wid()) return alert("Workspace ID required");
+        if (!wid()) return showError("Workspace ID required");
         const name = document.getElementById("new-channel-name").value.trim();
-        if (!name) return alert("Channel name required");
+        if (!name) return showError("Channel name required");
         persist();
         const res = await fetch(apiWritePath(`/workspaces/${wid()}/channels`), {
           method: "POST",
@@ -4833,7 +4838,7 @@
       };
       document.getElementById("create-thread").onclick = async () => {
         if (!requireAuthForWrite()) return;
-        if (!selectedChannelId) return alert("Select a channel first");
+        if (!selectedChannelId) return showError("Select a channel first");
         const title = document.getElementById("new-thread-title").value.trim();
         persist();
         const res = await fetch(
@@ -4859,9 +4864,9 @@
       };
       document.getElementById("post-message").onclick = async () => {
         if (!requireAuthForWrite()) return;
-        if (!selectedThreadId) return alert("Select a thread first");
+        if (!selectedThreadId) return showError("Select a thread first");
         const text = document.getElementById("compose-body").value.trim();
-        if (!text) return alert("Message body required");
+        if (!text) return showError("Message body required");
         persist();
         const res = await fetch(
           apiWritePath(`/threads/${selectedThreadId}/messages`),
@@ -4899,7 +4904,7 @@
       document.getElementById("edit-message").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const id = document.getElementById("edit-message-id").value.trim();
-        if (!id) return alert("Message ID required");
+        if (!id) return showError("Message ID required");
         const text = document.getElementById("edit-message-body").value.trim();
         persist();
         const res = await fetch(`${base()}/messages/${id}`, {
@@ -4961,7 +4966,7 @@
       document.getElementById("upload-artifact").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const fileInput = document.getElementById("artifact-file");
-        if (!fileInput.files || !fileInput.files[0]) return alert("Choose a file");
+        if (!fileInput.files || !fileInput.files[0]) return showError("Choose a file");
         const kind = document.getElementById("artifact-kind").value;
         persist();
         const artifact = await uploadArtifact(fileInput.files[0], kind);
@@ -5040,7 +5045,7 @@
       }
 
       document.getElementById("load-audit").onclick = async () => {
-        if (!wid()) return alert("Workspace ID required");
+        if (!wid()) return showError("Workspace ID required");
         persist();
         const limit = document.getElementById("audit-limit").value || "50";
         const url = `${uiReadPath(`/workspaces/${wid()}/audit`)}?limit=${encodeURIComponent(limit)}`;
@@ -5072,14 +5077,13 @@
       document.getElementById("purge-workspace").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const w = wid();
-        if (!w) return alert("Workspace ID required");
+        if (!w) return showError("Workspace ID required");
         if (document.getElementById("purge-confirm").value.trim() !== w) {
-          return alert("Confirmation must match workspace ID exactly");
+          return showError("Confirmation must match workspace ID exactly");
         }
         if (!document.getElementById("purge-understand").checked) {
-          return alert("Check the confirmation box");
+          return showError("Check the confirmation box");
         }
-        if (!confirm(`Purge all messages in workspace ${w}?`)) return;
         persist();
         const res = await fetch(`${base()}/workspaces/${w}/purge`, {
           method: "POST",
@@ -5129,10 +5133,10 @@
       document.getElementById("refresh-peers").onclick = loadPeers;
       document.getElementById("create-peer").onclick = async () => {
         if (!requireTokenForWrite()) return;
-        if (!wid()) return alert("Workspace ID required");
+        if (!wid()) return showError("Workspace ID required");
         const name = document.getElementById("peer-name").value.trim();
         const baseUrl = document.getElementById("peer-base-url").value.trim();
-        if (!name || !baseUrl) return alert("Name and base URL required");
+        if (!name || !baseUrl) return showError("Name and base URL required");
         persist();
         const res = await fetch(`${base()}/workspaces/${wid()}/peers`, {
           method: "POST",
@@ -5152,7 +5156,7 @@
       document.getElementById("delete-peer").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const pid = document.getElementById("peer-delete-id").value.trim();
-        if (!pid || !wid()) return alert("Peer ID and workspace required");
+        if (!pid || !wid()) return showError("Peer ID and workspace required");
         persist();
         const res = await fetch(`${base()}/workspaces/${wid()}/peers/${pid}`, {
           method: "DELETE",
@@ -5205,10 +5209,10 @@
         setOut(parsed);
       };
       document.getElementById("list-member-tokens").onclick = async () => {
-        if (!wid()) return alert("Workspace ID required");
+        if (!wid()) return showError("Workspace ID required");
         const mid =
           document.getElementById("token-member").value.trim() || sessionMemberId;
-        if (!mid) return alert("Member ID required");
+        if (!mid) return showError("Member ID required");
         persist();
         const path = token()
           ? `${base()}/workspaces/${wid()}/members/${mid}/tokens`
@@ -5238,7 +5242,7 @@
         });
       };
       document.getElementById("list-app-installations").onclick = async () => {
-        if (!wid()) return alert("Workspace ID required");
+        if (!wid()) return showError("Workspace ID required");
         persist();
         const path = uiReadPath(`/workspaces/${wid()}/app-installations`);
         const res = await fetch(path, { headers: headers(), credentials: "include" });
@@ -5264,7 +5268,7 @@
       document.getElementById("revoke-token").onclick = async () => {
         if (!requireTokenForWrite()) return;
         const id = document.getElementById("token-revoke-id").value.trim();
-        if (!id) return alert("Token ID required");
+        if (!id) return showError("Token ID required");
         persist();
         const res = await fetch(`${base()}/tokens/${id}`, {
           method: "DELETE",
