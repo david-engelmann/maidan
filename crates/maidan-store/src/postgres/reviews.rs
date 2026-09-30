@@ -7,8 +7,8 @@
 use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    review_decision_from_waiter, MemberId, ReviewDecision, ReviewStatus, ReviewVerdict,
-    StoredEvent, ThreadId, ThreadReview, ThreadReviewRequirement, CRITICAL_REVIEW_NOTE,
+    review_decision_from_waiter, Event, MemberId, ReviewDecision, ReviewStatus, ReviewSubmission,
+    ReviewVerdict, ThreadId, ThreadReview, ThreadReviewRequirement, CRITICAL_REVIEW_NOTE,
     REVIEW_SKILL,
 };
 use sqlx::{PgPool, Row};
@@ -174,7 +174,7 @@ pub async fn submit_review(
     reviewer_id: MemberId,
     decision: ReviewDecision,
     note: Option<&str>,
-) -> Result<(ThreadReview, Option<StoredEvent>), StoreError> {
+) -> Result<ReviewSubmission, StoreError> {
     let actor_id = crate::attribution::delegate_acting_for(reviewer_id);
     let mut tx = pool.begin().await?;
     let row = sqlx::query(&format!(
@@ -208,7 +208,7 @@ pub async fn submit_review(
     .bind(review.updated_at)
     .execute(&mut *tx)
     .await?;
-    let mut event = None;
+    let mut reopened = None;
     if decision == ReviewDecision::RequestChanges
         && sends_back_in_tx(&mut tx, thread_id, reviewer_id, actor_id).await?
     {
@@ -226,12 +226,37 @@ pub async fn submit_review(
         .bind(thread_id.0)
         .execute(&mut *tx)
         .await?;
-        event = Some(
-            super::thread_transitions::state_changed_in_tx(&mut tx, reviewer_id, &result).await?,
-        );
+        reopened = Some(result);
     }
+    let (workspace_id, channel_id) = super::events::thread_scope_in_tx(&mut tx, thread_id).await?;
+    let worker_id = super::thread_workers::last_worker_in_tx(&mut tx, thread_id).await?;
+    let submitted = super::events::append_in_tx(
+        &mut tx,
+        &Event::ReviewSubmitted {
+            occurred_at: review.updated_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reviewer_id,
+            actor_id,
+            decision,
+            sent_back: reopened.is_some(),
+            worker_id,
+        },
+    )
+    .await?;
+    let reopened = match reopened {
+        Some(result) => Some(
+            super::thread_transitions::state_changed_in_tx(&mut tx, reviewer_id, &result).await?,
+        ),
+        None => None,
+    };
     tx.commit().await?;
-    Ok((review, event))
+    Ok(ReviewSubmission {
+        review,
+        submitted,
+        reopened,
+    })
 }
 
 /// Whether a change request from `reviewer_id` sends the thread back (SQLite
@@ -361,12 +386,19 @@ pub async fn apply_critical_review_decision(
     thread_id: ThreadId,
     reviewer_id: MemberId,
     result: &serde_json::Value,
-) -> Result<Option<(ThreadReview, Option<StoredEvent>)>, StoreError> {
+) -> Result<Option<ReviewSubmission>, StoreError> {
     let Some(decision) = review_decision_from_waiter(result) else {
         return Ok(None);
     };
     let skills = super::member_skills::list(pool, reviewer_id).await?;
     if !skills.iter().any(|s| s.skill == REVIEW_SKILL) {
+        return Ok(None);
+    }
+    // The router applies this again for the same result on every replica and
+    // on replay. Each verdict is an event, and a change request notifies the
+    // worker, so a verdict already given on the stored result is not given
+    // twice.
+    if verdict_covers_result(pool, thread_id, reviewer_id, decision).await? {
         return Ok(None);
     }
     let review = submit_review(
@@ -381,6 +413,28 @@ pub async fn apply_critical_review_decision(
         set_requirement(pool, thread_id, 1).await?;
     }
     Ok(Some(review))
+}
+
+/// Whether `reviewer_id`'s standing review already gives `decision` on the
+/// thread's current result: it was recorded after the result was produced.
+async fn verdict_covers_result(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    reviewer_id: MemberId,
+    decision: ReviewDecision,
+) -> Result<bool, StoreError> {
+    let row = sqlx::query(
+        "SELECT 1 FROM maidan_thread_reviews r
+         JOIN maidan_thread_results tr ON tr.thread_id = r.thread_id
+         WHERE r.thread_id = $1 AND r.reviewer_id = $2 AND r.decision = $3
+           AND r.dismissed_at IS NULL AND r.updated_at >= tr.produced_at",
+    )
+    .bind(thread_id.0)
+    .bind(reviewer_id.0)
+    .bind(decision.as_str())
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.is_some())
 }
 
 /// Every review verdict on a thread, oldest first.

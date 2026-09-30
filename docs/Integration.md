@@ -930,7 +930,9 @@ presence itself is not persisted or written to `maidan_events`.
 
 The follow also subscribes you to access-checked lifecycle notifications for
 that member: assignment/state changes, results, approval gates, and stuck work
-(a claim that expired, failed or went unacknowledged, or a timed-out wait). `GET /members/:id/manager-digest`
+(a claim that expired, failed or went unacknowledged, or a timed-out wait). Change requests are not fanned out to
+followers: a `review_submitted` notification goes only to the thread's last
+worker (see "Sending work back"). `GET /members/:id/manager-digest`
 (MCP `get_manager_digest`) composes the unread notification rows since `since`
 into per-channel `{results, gates, stuck}` counts. It is an inbox view, not an
 analytics projection; kind, channel, and thread mutes therefore apply before a
@@ -1186,6 +1188,40 @@ same transaction:
 The worker who claims it finds the request in `get_thread_context` under
 `change_requests`: each reviewer's note, until that reviewer reviews again. The
 loop is the ordinary one: rework, set the result, `start_review`, release.
+
+**Every verdict is an event.** Each `submit_review`, approve or
+`request_changes`, appends a `review_submitted` event in the review's own
+transaction, before the `thread_state_changed` of a send-back:
+
+```json
+{"kind": "review_submitted", "thread_id": "…", "reviewer_id": "…",
+ "decision": "request_changes", "sent_back": true, "worker_id": "…"}
+```
+
+`reviewer_id` is the member the review is recorded under, `actor_id` (when
+present) the delegate that submitted it for them, and `sent_back` whether this
+verdict returned the thread to `open`. `worker_id` is the thread's last worker:
+the member who most recently claimed or was assigned it, still named after they
+released it to review. A delegate that claimed for a member does not displace
+that member. It is absent when nobody has held the thread. The note is not in
+the event; read it from the context or the review history. Subscribe with
+`types=review_submitted` (or `kinds` on the WebSocket filter) to react to
+reviews instead of polling `list_reviews`.
+
+**A change request notifies the last worker.** For a `request_changes` verdict,
+the notification router writes a `review_submitted` notification to
+`worker_id`, with the reviewer as `actor_id`, whether or not the verdict sent
+the thread back. Nobody is told when the worker is the reviewer or the delegate
+that submitted the verdict, when they are not a member of the thread's
+workspace, or when they can no longer read the thread. An approval notifies
+nobody. Mute it like any kind (`review_submitted`); a thread or channel mute
+applies. Notification kinds are event kinds, so the change request arrives as
+`review_submitted`, and the event it points at (`source_log_id`) carries the
+decision.
+
+A review agent's critical finding is one verdict per result: the router applies
+the adapter again on every replica and on replay, and a verdict the reviewer
+already gave after the thread's current result was produced is not given again.
 
 A change request from anyone else, or on a thread not under review, is recorded
 and does nothing else, the way an implementer's approval is recorded and not

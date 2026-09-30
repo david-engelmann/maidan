@@ -197,11 +197,13 @@ pub async fn arm_critical_review(state: &AppState, thread_id: ThreadId) -> Resul
         .apply_critical_review_decision(thread_id, stored.produced_by, &stored.result)
         .await
     {
-        Ok(Some((_, Some(reopened)))) => {
-            crate::routes::publish_stored(state, reopened).await;
+        Ok(Some(submission)) => {
+            for stored in submission.events() {
+                crate::routes::publish_stored(state, stored.clone()).await;
+            }
             Ok(())
         }
-        Ok(_) => Ok(()),
+        Ok(None) => Ok(()),
         Err(err) => Err(err.to_string()),
     }
 }

@@ -216,14 +216,16 @@ pub async fn submit_review(
         .as_deref()
         .map(str::trim)
         .filter(|n| !n.is_empty());
-    let (review, reopened) = state
+    let submission = state
         .store
         .submit_review(thread_id, auth.member_id, body.decision, note)
         .await?;
+    for stored in submission.events() {
+        super::publish_stored(&state, stored.clone()).await;
+    }
     // A change request that sent the thread back for rework: the same
     // announcements a transition makes.
-    if let Some(stored) = reopened {
-        super::publish_stored(&state, stored).await;
+    if submission.reopened.is_some() {
         let uris = maidan_mcp::resource_updates::uris_for_thread_transition(
             state.store.as_ref(),
             thread_id,
@@ -231,7 +233,7 @@ pub async fn submit_review(
         .await;
         state.mcp.publish_resource_uris(uris).await;
     }
-    Ok(Json(review))
+    Ok(Json(submission.review))
 }
 
 pub async fn list_reviews(

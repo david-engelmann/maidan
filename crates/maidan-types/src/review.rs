@@ -104,6 +104,26 @@ pub struct ReviewVerdict {
     pub recorded_at: DateTime<Utc>,
 }
 
+/// What `submit_review` wrote: the reviewer's current review and the events
+/// appended with it in one transaction, in log order, for the caller to
+/// publish.
+#[derive(Debug, Clone)]
+pub struct ReviewSubmission {
+    pub review: ThreadReview,
+    /// The `ReviewSubmitted` event every verdict appends.
+    pub submitted: crate::StoredEvent,
+    /// The `ThreadStateChanged` (`in_review` → `open`) of a change request that
+    /// sent the thread back. `None` when the verdict reopened nothing.
+    pub reopened: Option<crate::StoredEvent>,
+}
+
+impl ReviewSubmission {
+    /// Every event the verdict appended, oldest first.
+    pub fn events(&self) -> impl Iterator<Item = &crate::StoredEvent> {
+        std::iter::once(&self.submitted).chain(self.reopened.as_ref())
+    }
+}
+
 /// The computed review standing of a thread — what the close-gate reads for the
 /// **approval** side (the `refutes`-edge block is checked separately at the gate).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

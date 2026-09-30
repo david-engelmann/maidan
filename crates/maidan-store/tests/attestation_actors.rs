@@ -125,7 +125,7 @@ async fn run_suite(store: &dyn Store) {
     )
     .await
     .unwrap()
-    .0;
+    .review;
     assert_eq!(own.actor_id, Some(orchestrator));
     assert_eq!(store.review_status(worked.id).await.unwrap().approvals, 0);
     assert!(
@@ -141,7 +141,7 @@ async fn run_suite(store: &dyn Store) {
     )
     .await
     .unwrap()
-    .0;
+    .review;
     assert_eq!(independent.actor_id, Some(outsider));
     assert_eq!(store.review_status(worked.id).await.unwrap().approvals, 1);
     let direct = with_attribution(
@@ -150,7 +150,7 @@ async fn run_suite(store: &dyn Store) {
     )
     .await
     .unwrap()
-    .0;
+    .review;
     assert_eq!(
         direct.actor_id, None,
         "a reviewer acting for itself records no delegate"

@@ -306,8 +306,12 @@ pub async fn set_thread_result(
         .apply_critical_review_decision(thread_id, auth.member_id, &body.result)
         .await
     {
-        Ok(Some((_, Some(reopened)))) => super::publish_stored(&state, reopened).await,
-        Ok(_) => {}
+        Ok(Some(submission)) => {
+            for stored in submission.events() {
+                super::publish_stored(&state, stored.clone()).await;
+            }
+        }
+        Ok(None) => {}
         Err(err) => tracing::warn!(
             error = %err,
             %thread_id,

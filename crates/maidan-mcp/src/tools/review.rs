@@ -143,18 +143,20 @@ pub(super) async fn submit_review(
     let a: SubmitReviewArgs = serde_json::from_value(args.clone())?;
     let note = a.note.as_deref().map(str::trim).filter(|n| !n.is_empty());
     let thread_id = ThreadId(a.thread_id);
-    let (review, reopened) = server
+    let submission = server
         .store
         .submit_review(thread_id, auth.member_id, a.decision, note)
         .await?;
-    if let Some(stored) = reopened {
-        server.publish_stored(&stored).await;
+    for stored in submission.events() {
+        server.publish_stored(stored).await;
+    }
+    if submission.reopened.is_some() {
         let uris =
             crate::resource_updates::uris_for_thread_transition(server.store.as_ref(), thread_id)
                 .await;
         server.publish_resource_uris(uris).await;
     }
-    Ok(content_json(&review))
+    Ok(content_json(&submission.review))
 }
 
 #[derive(Deserialize)]
