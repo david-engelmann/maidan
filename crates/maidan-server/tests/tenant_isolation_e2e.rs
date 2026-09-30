@@ -321,7 +321,7 @@ fn stream_routes() -> Vec<String> {
     let source = include_str!("../src/app.rs");
     let route_count = source.matches(".route(").count();
     assert_eq!(
-        route_count, 307,
+        route_count, 308,
         "{route_count} routes in app.rs; if one you added is a live stream, probe it in stream_probes and update both numbers"
     );
     let mut routes = std::collections::BTreeSet::new();
