@@ -333,6 +333,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   through the new `GET /ui/api/artifacts/{sha}` with the viewer's header or
   cookie (never a token in a URL), and renders the name as text. A paste or
   upload now posts "Attached diagram.png" instead of a SHA prefix.
+- **Fixed:** `GET /artifacts/{sha}`, `GET /artifacts/{sha}/meta`, MCP
+  `get_artifact_metadata` and `resources/read` served a tombstoned artifact;
+  the share route and thread context already refused one. All of them now
+  answer `404` / `NotFound`.
 
 ### Decisions keep their history
 

@@ -369,6 +369,13 @@ from `blob:` URLs, which run in the page's origin without this CSP. `GET
 /artifacts/{sha}/meta` returns the metadata as JSON. `GET /share/artifacts/{sha}`
 and the console's `GET /ui/api/artifacts/{sha}` serve the same headers.
 
+A tombstoned artifact is a `404` on all of these, and `NotFound` from MCP
+`get_artifact_metadata` and `resources/read` of `maidan://artifacts/{sha}`,
+the same answer as for a sha the workspace never held. `DELETE
+/artifacts/{sha}` (`token:admin`) removes only the caller's workspace's copy:
+it is a `404` there at once, and another workspace that uploaded the same
+bytes keeps reading them.
+
 ---
 
 ## Capability strings
