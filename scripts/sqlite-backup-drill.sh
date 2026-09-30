@@ -19,7 +19,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 work="$(mktemp -d)"
 writer=""
 cleanup() {
-  [[ -n "$writer" ]] && kill "$writer" 2>/dev/null || true
+  [[ -n "$writer" ]] && { touch "$stop" 2>/dev/null; wait "$writer" 2>/dev/null; } || true
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -28,30 +28,36 @@ fail() { echo "sqlite-backup-drill: FAIL: $*" >&2; exit 1; }
 
 src_db="$work/live/maidan.db"
 mkdir -p "$work/live" "$work/artifacts"
-sqlite3 "$src_db" "PRAGMA journal_mode=WAL; CREATE TABLE events (id INTEGER PRIMARY KEY, body TEXT NOT NULL);" >/dev/null
+# Every call on the live database waits out a lock: the writer below holds one
+# for each insert.
+live() { sqlite3 -cmd ".timeout 10000" "$src_db" "$@"; }
+live "PRAGMA journal_mode=WAL; CREATE TABLE events (id INTEGER PRIMARY KEY, body TEXT NOT NULL);" >/dev/null
 echo "blob" > "$work/artifacts/ab12"
 
-# Keep a write in flight the whole time the snapshot runs.
+# Keep a write in flight the whole time the snapshot runs. The writer stops
+# at a flag and is waited for: killing its loop would leave the insert it is
+# running holding the lock.
+stop="$work/stop-writer"
 (
   i=0
-  while true; do
+  while [[ ! -e "$stop" ]]; do
     i=$((i + 1))
-    sqlite3 -cmd ".timeout 5000" "$src_db" "INSERT INTO events (body) VALUES ('event $i');" || true
+    live "INSERT INTO events (body) VALUES ('event $i');" || true
   done
 ) &
 writer=$!
-until [[ "$(sqlite3 -cmd ".timeout 5000" "$src_db" "SELECT count(*) FROM events")" -ge 50 ]]; do :; done
+until [[ "$(live "SELECT count(*) FROM events")" -ge 50 ]]; do :; done
 
 DATABASE_URL="sqlite://$src_db?mode=rwc" ARTIFACT_LOCALFS_ROOT="$work/artifacts" \
   bash "$here/backup.sh" "$work/backup" >/dev/null
-kill "$writer"
+touch "$stop"
 wait "$writer" 2>/dev/null || true
 writer=""
 
 snap="$work/backup/maidan.sqlite"
 [[ "$(sqlite3 "$snap" "PRAGMA integrity_check")" == "ok" ]] || fail "snapshot integrity"
 snap_rows="$(sqlite3 "$snap" "SELECT count(*) FROM events")"
-live_rows="$(sqlite3 "$src_db" "SELECT count(*) FROM events")"
+live_rows="$(live "SELECT count(*) FROM events")"
 [[ "$snap_rows" -ge 50 ]] || fail "snapshot holds $snap_rows rows, expected at least 50"
 [[ "$snap_rows" -lt "$live_rows" ]] || fail "the writer never overlapped the snapshot ($snap_rows of $live_rows)"
 grep -q '^database=sqlite$' "$work/backup/MANIFEST.txt" || fail "manifest does not say sqlite"
