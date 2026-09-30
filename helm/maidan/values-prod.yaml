@@ -1,5 +1,9 @@
 replicaCount: 2
 
+# Turns on the chart's production refusals (templates/_helpers.tpl): no
+# development image and no untagged one.
+production: true
+
 # The base values.yaml ships `maidan-server:dev` for local kind installs, so a
 # production overlay has to name a real image or it deploys the dev tag from an
 # unqualified repository. Set `image.tag` to the release you intend to run —

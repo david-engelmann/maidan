@@ -22,8 +22,17 @@ minio:
 
 maidan:
   replicaCount: 2
+  # The chart refuses a production render without a release tag or digest, so
+  # this names both the registry and the release (the same pin as
+  # helm/maidan/values-prod.yaml; scripts/check-deploy-pins.sh keeps them equal).
+  # Prefer `--set maidan.image.digest=sha256:…`. `IfNotPresent`: a pinned tag
+  # has nothing to re-pull, and `Always` on a re-pointed tag would change the
+  # running version on a pod restart.
+  production: true
   image:
-    pullPolicy: Always
+    repository: ghcr.io/david-engelmann/maidan-server
+    tag: v412.0.0
+    pullPolicy: IfNotPresent
   ingress:
     enabled: true
     className: nginx

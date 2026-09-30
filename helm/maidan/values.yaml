@@ -8,6 +8,10 @@ podSecurityContext:
   fsGroup: 65532
   runAsNonRoot: true
 
+# Set by the prod values files. A production render refuses the development
+# image below (`maidan-server:dev`) and needs a release tag or a digest.
+production: false
+
 image:
   repository: maidan-server
   tag: dev
