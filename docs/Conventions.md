@@ -84,9 +84,9 @@ non-required job, and a skipped required job reports as passed.
 | `sqlite-vec (optional feature)` | the `sqlite-vec` feature build and tests | no |
 | `bootstrap compile-time strip` | a release build without the `bootstrap` feature | no |
 | `coverage (llvm-cov)` | per-crate coverage floors | no |
-| `a2a tck` | the official A2A conformance kit | no |
-| `loom` | loom models of the sharded bus and the presence hub | no |
-| `tla` | TLC over the TLA+ specs in `specs/tla` | no |
+| `a2a tck` | the official A2A conformance kit, over JSON-RPC, HTTP+JSON and gRPC | no |
+| `loom` | every interleaving of the sharded bus and the presence hub | no |
+| `tla` | TLC over the TLA+ specs, each with a config it must fail | no |
 | `osv scan (lockfiles outside cargo-deny)` | osv-scanner over `fuzz/`, `ui-tests/` and the SDK lockfiles | no |
 | `mcp inspector (report-only)` | the official MCP Inspector against the server | no |
 | `sdk interop (report-only)` | the four SDKs against a live server | no |
@@ -94,6 +94,15 @@ non-required job, and a skipped required job reports as passed.
 | `sqlite backup drill` | a SQLite snapshot taken mid-write, restored over a killed server's files | no |
 | `replica routing (LSN)` | read-your-writes across a streaming replica | no |
 | `ui tests (playwright)` | the `/ui` specs in a headless browser | no |
+
+**When a non-required job goes red.** "Not required" means it cannot block a
+merge, not that a red result is ignored. These jobs carry claims the docs make
+(A2A conformance, model-checked claims and the shredded log, SDK interop), so a
+red run on `main` is a regression of that claim: the next PR either fixes it or
+records why in Open Work, and the claim's wording is corrected while it stands.
+A job that stays red for a week is removed rather than left to rot. Which of
+them become required is the maintainer's decision (Open Work, "Decisions
+pending the maintainer").
 
 The docs site builds in [`docs.yml`](../.github/workflows/docs.yml) (`mdbook`,
 not required). `nightly.yml` runs the slower checks: cargo-mutants over the

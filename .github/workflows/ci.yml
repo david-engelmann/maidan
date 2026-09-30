@@ -165,7 +165,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Runs the official A2A TCK (pinned in scripts/a2a-tck.sh) against a
-    # source-built server over the JSON-RPC and HTTP+JSON bindings. Fails on any
+    # source-built server over the JSON-RPC, HTTP+JSON and gRPC bindings. Fails on any
     # TCK failure, a stale exclusion, or a pass count below the recorded floor.
     # Not a required check (docs/Decisions.md); the binding behaviour is also
     # gated by the required Rust e2e tests.

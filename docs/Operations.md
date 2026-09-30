@@ -227,6 +227,12 @@ Tagging is the maintainer's call, not part of closing a cluster. To cut
 
    Tags are annotated and unsigned: no GPG key is configured. Release
    artifacts are signed keylessly with cosign.
+
+   Push the tag the day the record PR merges. A release record with no tag
+   reads as a release that is not there, which is what happened to
+   `v411.0.0`. If you decide not to tag after all, the next PR renames the
+   CHANGELOG heading to `## [X.0.0] — (never tagged; ships in Y.0.0)` and the
+   Capabilities section to a source record, as #1078 did for 411.
 3. The push runs [`.github/workflows/release.yml`](../.github/workflows/release.yml):
    - `release record matches tag` re-runs the record check against the tag;
    - binaries for `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`

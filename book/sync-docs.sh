@@ -52,6 +52,7 @@ cp "$repo_root/docs/Clusters/Cluster A.md"      "$src_docs/Clusters/Cluster-A.md
 cp "$repo_root/docs/Retros/README.md"           "$src_docs/Retros/README.md"
 cp "$repo_root/docs/assets/maidan-mark.svg"     "$src_docs/assets/maidan-mark.svg"
 cp "$repo_root/docs/assets/maidan-social.png"   "$src_docs/assets/maidan-social.png"
+cp "$repo_root/docs/assets/handoff-demo.gif"    "$src_docs/assets/handoff-demo.gif"
 
 export GH="https://github.com/david-engelmann/maidan/blob/main"
 export GHTREE="https://github.com/david-engelmann/maidan/tree/main"
