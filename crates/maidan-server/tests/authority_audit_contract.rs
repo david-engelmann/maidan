@@ -9,8 +9,18 @@
 //!
 //! The unaudited forms stay on the trait for tests, fixtures and the offline
 //! `maidan init` bootstrap, none of which runs as a request.
+//!
+//! Test items are skipped one at a time. This used to stop reading a file at
+//! its first `#[cfg(test)]`, which left 1,693 lines of real code in six files
+//! unscanned, among them all of `openapi/mod.rs` (a `#[cfg(test)] use` on its
+//! third line) and the MCP tool dispatch after a test-only constant in
+//! `tools/mod.rs`.
 
-use std::path::{Path, PathBuf};
+mod source_scan;
+
+use std::path::Path;
+
+use source_scan::{rust_files, without_tests};
 
 /// Store calls that change authority. Each has an `_audited` twin.
 const UNAUDITED: &[&str] = &[
@@ -51,21 +61,6 @@ const UNAUDITED: &[&str] = &[
     ".delete_session(",
 ];
 
-fn rust_files(path: &Path, out: &mut Vec<PathBuf>) {
-    if path.is_file() {
-        out.push(path.to_path_buf());
-        return;
-    }
-    for entry in std::fs::read_dir(path).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            rust_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
-}
-
 #[test]
 fn authority_changes_are_audited_in_their_transaction() {
     let server = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -78,8 +73,7 @@ fn authority_changes_are_audited_in_their_transaction() {
     let mut offenders = Vec::new();
     for file in files {
         let source = std::fs::read_to_string(&file).unwrap();
-        let code = source.split("#[cfg(test)]").next().unwrap_or_default();
-        for (line_no, line) in code.lines().enumerate() {
+        for (line_no, line) in without_tests(&source).lines().enumerate() {
             if line.trim_start().starts_with("//") {
                 continue;
             }
