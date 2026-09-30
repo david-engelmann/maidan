@@ -7,14 +7,17 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    Member, MemberId, MemberKind, NewAuditEvent, NewMember, NewScimGroup, NewWorkspace,
+    AuditScope, Member, MemberId, MemberKind, NewAuditEvent, NewMember, NewScimGroup, NewWorkspace,
     ScimGroupChange, ScimGroupId, ScimMembersOp, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
+// These tests are about where a group and its members may live, not about
+// which workspace an audit row names (`audit_workspace` covers that).
 fn event(action: &str) -> NewAuditEvent {
     NewAuditEvent {
+        scope: AuditScope::Instance,
         actor_id: None,
         action: action.into(),
         target_kind: None,

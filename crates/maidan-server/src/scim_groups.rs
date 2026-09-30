@@ -21,7 +21,8 @@ use axum::Extension;
 use maidan_auth::AuthContext;
 use maidan_store::StoreError;
 use maidan_types::{
-    MemberId, NewAuditEvent, NewScimGroup, ScimGroup, ScimGroupChange, ScimGroupId, ScimMembersOp,
+    AuditScope, MemberId, NewAuditEvent, NewScimGroup, ScimGroup, ScimGroupChange, ScimGroupId,
+    ScimMembersOp,
 };
 use serde_json::{json, Value};
 
@@ -252,6 +253,7 @@ pub async fn create_group(
         Err(fault) => return fault.into_response(),
     };
     let actor = auth.actor_id;
+    let workspace_id = auth.workspace_id;
     match state
         .store
         .scim_create_group_audited(
@@ -262,6 +264,7 @@ pub async fn create_group(
                 members,
             },
             Box::new(move |group| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "scim.group.create".into(),
                 target_kind: Some("scim_group".into()),
@@ -287,6 +290,7 @@ async fn update_group(
     change: ScimGroupChange,
 ) -> Response {
     let actor = auth.actor_id;
+    let workspace_id = auth.workspace_id;
     match state
         .store
         .scim_update_group_audited(
@@ -294,6 +298,7 @@ async fn update_group(
             id,
             change,
             Box::new(move |write| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "scim.group.update".into(),
                 target_kind: Some("scim_group".into()),
@@ -486,6 +491,7 @@ pub async fn delete_group(
         Err(err) => return store_failure(err),
     };
     let event = NewAuditEvent {
+        scope: AuditScope::Workspace(auth.workspace_id),
         actor_id: Some(auth.actor_id),
         action: "scim.group.delete".into(),
         target_kind: Some("scim_group".into()),
