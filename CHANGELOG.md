@@ -814,6 +814,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   terminated in front of it. An unparseable `MAIDAN_A2A_GRPC_ADDR` now refuses
   boot instead of logging and starting without gRPC.
 
+### SQLite backups are snapshots, and a restore cannot bring back the old database
+
+- **Added:** `scripts/backup.sh` and `scripts/restore.sh` take a SQLite
+  `DATABASE_URL`. A backup is a `VACUUM INTO` snapshot, taken with the server
+  running and checked with `PRAGMA integrity_check`; before, the scripts were
+  Postgres-only and Production documented no SQLite backup at all, which left
+  copying the file, and that misses whatever is still in the `-wal`.
+- **Added:** a restore puts the snapshot in place of the file and deletes the
+  old `-wal` and `-shm`. A `-wal` left by a killed server, or beside a file
+  someone removed, would otherwise be replayed over the restored file the next
+  time it is opened. It refuses a target that has tables unless `--force`, as
+  the Postgres restore does.
+- **Added:** `scripts/sqlite-backup-drill.sh`, run in CI as `sqlite backup
+  drill` (not required), and the store test `sqlite_backup`.
+
+### A claim nobody acknowledges is reported
+
+- **Added:** the `ClaimUnacknowledged` event. A leased claim still
+  unacknowledged `MAIDAN_CLAIM_ACK_TIMEOUT_SECS` after it was taken (default
+  120 s, `0` off) gets one, from the claim reaper's tick, naming the holder
+  and `claimed_at`. The claim is left alone. The notification router sends it
+  to the owner and the holder's followers as stuck work, and the manager
+  digest counts it under `stuck`. Not federatable. Counter
+  `maidan_claims_unacknowledged_total`. Migration `0120` adds
+  `maidan_threads.claimed_at` and `unacknowledged_lease_id`.
+- **Changed:** `contracts/event-kinds.json` is checked against
+  `EventKind::ALL`, so a new kind cannot be left out of it.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
@@ -829,21 +857,6 @@ and everything merged through #1077.
   in a transaction. The reap now takes a per-sha lease (migration 0117),
   deletes outside any transaction, and gives up on a delete after 30 s. Only
   an upload of the same bytes waits for it.
-
-### SQLite backups are snapshots, and a restore cannot bring back the old database
-
-- **Added:** `scripts/backup.sh` and `scripts/restore.sh` take a SQLite
-  `DATABASE_URL`. A backup is a `VACUUM INTO` snapshot, taken with the server
-  running and checked with `PRAGMA integrity_check`; before, the scripts were
-  Postgres-only and Production documented no SQLite backup at all, which left
-  copying the file, and that misses whatever is still in the `-wal`.
-- **Added:** a restore puts the snapshot in place of the file and deletes the
-  old `-wal` and `-shm`. A `-wal` left by a killed server, or beside a file
-  someone removed, would otherwise be replayed over the restored file the next
-  time it is opened. It refuses a target that has tables unless `--force`, as
-  the Postgres restore does.
-- **Added:** `scripts/sqlite-backup-drill.sh`, run in CI as `sqlite backup
-  drill` (not required), and the store test `sqlite_backup`.
 
 ### A2A lists page all the way through
 
@@ -986,19 +999,6 @@ and everything merged through #1077.
   as `change_requests`.
 - **Fixed:** on Postgres, two concurrent transitions of one thread could both
   act on the state they read; a transition now locks the thread row.
-
-### A claim nobody acknowledges is reported
-
-- **Added:** the `ClaimUnacknowledged` event. A leased claim still
-  unacknowledged `MAIDAN_CLAIM_ACK_TIMEOUT_SECS` after it was taken (default
-  120 s, `0` off) gets one, from the claim reaper's tick, naming the holder
-  and `claimed_at`. The claim is left alone. The notification router sends it
-  to the owner and the holder's followers as stuck work, and the manager
-  digest counts it under `stuck`. Not federatable. Counter
-  `maidan_claims_unacknowledged_total`. Migration `0120` adds
-  `maidan_threads.claimed_at` and `unacknowledged_lease_id`.
-- **Changed:** `contracts/event-kinds.json` is checked against
-  `EventKind::ALL`, so a new kind cannot be left out of it.
 
 ### The OpenAPI document
 

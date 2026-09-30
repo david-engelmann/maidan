@@ -25,7 +25,6 @@ Rows without a PR number are being built in a lane and get one when opened.
 |---|---|---|---|
 | #1127 | Rotate a token from the Session and Tokens tabs; `/me` returns `token_id`; the Session tab stops saying a token acts as any member | The rotation half of thread 2a | — |
 | #1142 | A pasted token is exchanged for the `HttpOnly` session, so no token stays in `localStorage`; unsafe session requests from another origin are refused; `csrf_secret` is dropped | Thread 2b; the `localStorage` risk | #1127 (reconcile with the session-audit methods #1136 added; rotation ends a session, so the Session tab re-exchanges the successor) |
-| #1135 | Attachments show their name and images render inline; artifact bytes carry their stored type, `nosniff` and a sandboxing CSP; no read serves a tombstoned artifact | Thread 4 | — |
 | #1137 | A2A `ListTasks` decides access in the store query, so the query count does not grow with hidden tasks | ListTasks pushdown | — |
 | #1140 | `secret://` references are substituted on automation and A2A push egress, against a per-workspace allowlist | Secret substitution on every egress path | — |
 | #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | The store delegation duplication | Everything above that adds a `Store` method |
@@ -120,6 +119,7 @@ Each links its record. Entries roll off after about a month.
 
 | Date | Decision | Record |
 |---|---|---|
+| 2026-09-30 | Artifact bytes are served with their stored type, `nosniff` and a sandboxing CSP; images render inline; no read serves a tombstoned artifact | #1135 |
 | 2026-09-30 | A blank `/ui` opens on a first-run card; the discovery document says which sign-in paths exist; Sign out forgets the token | #1123 |
 | 2026-09-30 | A claim freed on a lapsed lease is charged its worked time against `max_wall_secs` | #1139 |
 | 2026-09-30 | A verdict is a `ReviewSubmitted` event; a change request notifies the last worker to hold the thread | #1132 |

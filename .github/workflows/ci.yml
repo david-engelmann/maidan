@@ -581,6 +581,19 @@ jobs:
       - name: Open Work against history
         run: bash scripts/check-open-work.sh
 
+  changelog-released:
+    # A released CHANGELOG section gains no entries after its tag; new work
+    # goes under [Unreleased]. Not required.
+    name: changelog (released sections)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Released sections match their tags
+        run: bash scripts/check-changelog-released.sh
+
   sqlite-backup-drill:
     # The SQLite half of backup and restore: a VACUUM INTO snapshot taken while
     # a writer runs, restored over a killed server's database and an orphaned
