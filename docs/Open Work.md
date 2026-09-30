@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `77367c0f` (2026-09-30).
+on a decision. Last reconciled against `main` at `4b1cbb9e` (2026-09-30).
 
 **The rule.** The PR that changes an item's state edits its row here, in the
 same PR. A shipped item is deleted, not struck through: its record is the
@@ -23,12 +23,10 @@ Rows without a PR number are being built in a lane and get one when opened.
 
 | PR | What it does | Closes | Merge after |
 |---|---|---|---|
-| #1123 | A blank `/ui` opens on a first-run card; `/.well-known/maidan.json` says which sign-in paths exist; Sign out forgets the token | Next item "first run and the header"; thread 6, 24, 56 | — |
-| #1127 | Rotate a token from the Session and Tokens tabs; `/me` returns `token_id`; the Session tab stops saying a token acts as any member | The rotation half of thread 2a | #1123 |
+| #1127 | Rotate a token from the Session and Tokens tabs; `/me` returns `token_id`; the Session tab stops saying a token acts as any member | The rotation half of thread 2a | — |
 | #1142 | A pasted token is exchanged for the `HttpOnly` session, so no token stays in `localStorage`; unsafe session requests from another origin are refused; `csrf_secret` is dropped | Thread 2b; the `localStorage` risk | #1127 (reconcile with the session-audit methods #1136 added; rotation ends a session, so the Session tab re-exchanges the successor) |
-| #1135 | Attachments show their name and images render inline; artifact bytes carry their stored type, `nosniff` and a sandboxing CSP; no read serves a tombstoned artifact | Thread 4 | #1123 |
+| #1135 | Attachments show their name and images render inline; artifact bytes carry their stored type, `nosniff` and a sandboxing CSP; no read serves a tombstoned artifact | Thread 4 | — |
 | #1137 | A2A `ListTasks` decides access in the store query, so the query count does not grow with hidden tasks | ListTasks pushdown | — |
-| #1139 | The reaper charges a lapsed claim's worked time against `max_wall_secs` and stops it with `ClaimFailed` past the budget | Wall-clock budget on reap | — |
 | #1140 | `secret://` references are substituted on automation and A2A push egress, against a per-workspace allowlist | Secret substitution on every egress path | — |
 | #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | The store delegation duplication | Everything above that adds a `Store` method |
 | (lane S) | `POST /workspaces/{wid}/threads/claim-next` and an MCP twin | Workspace-wide `claim_next` | — |
@@ -49,7 +47,7 @@ whose dispositions are recorded below.
 | 3 | **The UI improvement specs** (thread 48) | S per surface | Signed in, the header is an identity pill plus Change and Sign out; the drawer groups its tabs (yours, observe, operate), starts closed and drops the Work tab; messages get a hover toolbar with keyboard parity and inline edit; the Session tab shows an identity card; the board keeps a one-line badge legend; every empty state names the next action; phone layout last | The QA pass graded the drawer B+, session management C and error states D | #1–2 |
 | 4 | **Split the UI into typed modules** (thread 27, superseded by 49) | L, in steps | The CSS and JS leave `index.html` as ES modules, one per surface, with JSDoc types checked by `tsc --noEmit --checkJs` in CI; files served from the binary (`include_str!` or `rust-embed`), so `cargo build` needs no Node; a typed client module generated from `/openapi.json`; the DM and group-DM code collapsed into one module (thread 39); one `api()` fetch wrapper and one feedback surface (thread 40); Playwright specs unchanged | One 5,000-line file every UI change lands in, and no type checking | #3 |
 | 5 | **A restrictive CSP for `/ui`** (thread 28) | S | `/ui`, `/ui/` and `/ui/static/*` send `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`; a test asserts the header and that the page loads under it | `app.rs` serves the page with no CSP; inline script and styles would need nonces until #4 moves them out | #4 |
-| 6 | **Budget stops leave the thread claimable** | S | A thread past any budget is not handed out by `claim_next` until its budget is raised or reset, with a test per budget kind | Found by #1139: after a stop the thread stays claimable, so each new claim fails in turn | #1139 |
+| 6 | **Budget stops leave the thread claimable** | S | A thread past any budget is not handed out by `claim_next` until its budget is raised or reset, with a test per budget kind | Found by #1139: after a stop the thread stays claimable, so each new claim fails in turn | — |
 | 7 | **Freeze follow-ups** | S | A freeze emits `ThreadAssignmentChanged` for each claim it releases; a freeze can carry an expiry | #1124 releases claims with a raw `UPDATE` and records only a count; freezes last until an unfreeze | — |
 | 8 | **Per-workspace fairness by default** (thread 51) | S | `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` has a built-in default, as the global limit does, and `0` turns it off | The per-workspace limit is off unless set (`rate_limit/mod.rs`, Production) | — |
 | 9 | **Per-workspace retention** (thread 51) | M | A workspace can set its own retention for messages, events and deliveries within the instance's bounds; a two-tenant test | Retention is global env only (`retention.rs`) | — |
@@ -122,6 +120,8 @@ Each links its record. Entries roll off after about a month.
 
 | Date | Decision | Record |
 |---|---|---|
+| 2026-09-30 | A blank `/ui` opens on a first-run card; the discovery document says which sign-in paths exist; Sign out forgets the token | #1123 |
+| 2026-09-30 | A claim freed on a lapsed lease is charged its worked time against `max_wall_secs` | #1139 |
 | 2026-09-30 | A verdict is a `ReviewSubmitted` event; a change request notifies the last worker to hold the thread | #1132 |
 | 2026-09-30 | A member id naming no member, or another workspace's, is a 404; sign-in and sign-out are audited; A2A reads are not recorded as changes | #1136 |
 | 2026-09-30 | Every audit row names a workspace (or the instance), stamped at write; a hold keeps only its own workspace's rows | #1134 |
