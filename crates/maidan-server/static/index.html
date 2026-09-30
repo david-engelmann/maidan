@@ -4299,10 +4299,9 @@
       // a snippet or replaced by the agent's secret.
       const WORKER_PRESET = "maidan.agent.worker";
       document.getElementById("cx-create-agent").onclick = async () => {
+        const button = document.getElementById("cx-create-agent");
         const status = document.getElementById("cx-status");
         const secretBox = document.getElementById("cx-secret");
-        secretBox.hidden = true;
-        secretBox.replaceChildren();
         if (!requireTokenForWrite()) {
           status.textContent = "Sign in with an admin token first (maidan init prints one).";
           return;
@@ -4317,8 +4316,13 @@
           status.textContent = "A handle is required. It is the member's name on the board.";
           return;
         }
+        // One submission at a time. The one-time secret stays until a new
+        // token is actually minted, so a failed retry does not erase it.
+        if (button.disabled) return;
+        button.disabled = true;
         persist();
         status.textContent = "Creating the member…";
+        try {
         let res;
         try {
           res = await fetch(`${base()}/workspaces/${wid()}/members`, {
@@ -4351,9 +4355,10 @@
           return;
         }
         const minted = await res.json();
+        secretBox.hidden = false;
+        secretBox.replaceChildren();
         document.getElementById("token-member").value = member.id;
         const caps = (minted.capabilities || []).join(", ");
-        secretBox.hidden = false;
         const lead = document.createElement("span");
         lead.textContent = `Token for ${display || handle} (shown once). It can claim, post, and transition. Paste it where the snippet says REPLACE_WITH_MAIDAN_TOKEN. `;
         const code = document.createElement("code");
@@ -4374,6 +4379,9 @@
         if (caps) secretBox.append(document.createTextNode(" Capabilities: " + caps + "."));
         status.textContent = `Member ${handle} created. The worker preset is ${WORKER_PRESET}.`;
         loadMembers();
+        } finally {
+          button.disabled = false;
+        }
       };
       document.querySelectorAll("#connect-dialog [data-copy]").forEach((b) => {
         b.onclick = async () => {

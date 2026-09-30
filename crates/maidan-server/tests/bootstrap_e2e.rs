@@ -446,6 +446,8 @@ async fn worker_preset_can_claim_post_and_transition() {
         json!({"thread_id": thread.id.0, "body": "Looking at the race."}),
     )
     .await;
+    assert!(posted.get("error").is_none(), "{posted}");
+    assert!(posted["result"].is_object(), "{posted}");
     assert_ne!(posted["result"]["isError"], json!(true), "{posted}");
     let moved = mcp(
         &client,
