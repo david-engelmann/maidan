@@ -75,6 +75,7 @@ pub mod routes;
 pub mod routing;
 pub mod scheduler;
 pub mod scim;
+pub mod scim_groups;
 pub mod secret_broker;
 pub mod session;
 pub mod share_consumer;

@@ -106,6 +106,25 @@ pub async fn list(pool: &PgPool, workspace_id: WorkspaceId) -> Result<Vec<Member
     rows.iter().map(row_to_member).collect()
 }
 
+/// Change a member's handle — see the SQLite twin.
+pub(crate) async fn rename_on(
+    conn: &mut sqlx::PgConnection,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    handle: &str,
+) -> Result<bool, StoreError> {
+    let done = sqlx::query(
+        "UPDATE maidan_members SET handle = $1, updated_at = NOW() WHERE id = $2 AND workspace_id = $3",
+    )
+    .bind(handle)
+    .bind(member_id.0)
+    .bind(workspace_id.0)
+    .execute(&mut *conn)
+    .await
+    .map_err(map_member_err)?;
+    Ok(done.rows_affected() > 0)
+}
+
 fn map_member_err(err: sqlx::Error) -> StoreError {
     if let sqlx::Error::Database(ref db) = err {
         if db.is_unique_violation() {

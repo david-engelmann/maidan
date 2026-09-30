@@ -66,6 +66,7 @@ mod result_deliveries;
 mod retention;
 mod reviews;
 mod scim_audited;
+mod scim_groups;
 mod scim_users;
 mod secrets;
 mod sessions;
@@ -326,6 +327,19 @@ impl MemberStore for SqliteStore {
     }
     async fn delete_scim_user(&self, member_id: MemberId) -> Result<bool, StoreError> {
         scim_users::delete(&self.pool, member_id).await
+    }
+    async fn get_scim_group(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ScimGroupId,
+    ) -> Result<Option<ScimGroup>, StoreError> {
+        scim_groups::get(&self.pool, workspace_id, id).await
+    }
+    async fn list_scim_groups(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<ScimGroup>, StoreError> {
+        scim_groups::list(&self.pool, workspace_id).await
     }
 }
 
@@ -3410,23 +3424,49 @@ impl GovernanceAuditStore for SqliteStore {
     ) -> Result<(Member, ScimUser), StoreError> {
         scim_audited::provision(&self.pool, new, external_id, active, audit).await
     }
-    async fn scim_set_active_audited(
+    async fn scim_update_user_audited(
         &self,
         workspace_id: WorkspaceId,
         member_id: MemberId,
+        user_name: Option<&str>,
         external_id: Option<&str>,
         active: bool,
         audit: NewAuditEvent,
     ) -> Result<Option<ScimUser>, StoreError> {
-        scim_audited::set_active(
+        scim_audited::update_user(
             &self.pool,
             workspace_id,
             member_id,
+            user_name,
             external_id,
             active,
             audit,
         )
         .await
+    }
+    async fn scim_create_group_audited(
+        &self,
+        new: NewScimGroup,
+        audit: crate::AuditFor<ScimGroup>,
+    ) -> Result<ScimGroup, StoreError> {
+        scim_groups::create_audited(&self.pool, new, audit).await
+    }
+    async fn scim_update_group_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ScimGroupId,
+        change: ScimGroupChange,
+        audit: crate::AuditFor<ScimGroupWrite>,
+    ) -> Result<Option<ScimGroupWrite>, StoreError> {
+        scim_groups::update_audited(&self.pool, workspace_id, id, change, audit).await
+    }
+    async fn scim_delete_group_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ScimGroupId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        scim_groups::delete_audited(&self.pool, workspace_id, id, audit).await
     }
     async fn scim_deprovision_audited(
         &self,

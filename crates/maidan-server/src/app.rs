@@ -25,7 +25,7 @@ use crate::{
     mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi, panic_guard, quota,
     rate_limit, reindex_ops, request_id, room_lsn, routes,
     routing::{delete, get, patch, post, put, ProblemFallbacks},
-    scim, session, share_consumer, slack, slash_commands,
+    scim, scim_groups, session, share_consumer, slack, slash_commands,
     state::AppState,
     trace_context, trace_redaction, webhooks, ws,
 };
@@ -139,6 +139,17 @@ pub fn router(state: AppState) -> Router {
                 .merge(put(scim::replace_user))
                 .merge(patch(scim::patch_user))
                 .merge(delete(scim::delete_user)),
+        )
+        .route(
+            "/scim/v2/Groups",
+            post(scim_groups::create_group).merge(get(scim_groups::list_groups)),
+        )
+        .route(
+            "/scim/v2/Groups/{id}",
+            get(scim_groups::get_group)
+                .merge(put(scim_groups::replace_group))
+                .merge(patch(scim_groups::patch_group))
+                .merge(delete(scim_groups::delete_group)),
         )
         .route(
             "/workspaces/{id}/wip-limit",

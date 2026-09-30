@@ -1378,6 +1378,13 @@ signature from the provider's JWKS before issuing a session. `MAIDAN_OIDC_MOCK=1
 is deterministic test/development infrastructure and is rejected in production.
 See [OIDC](OIDC.md) for configuration and the trust model.
 
+People can also be provisioned from the IdP over SCIM 2.0 at `/scim/v2/`
+(`Users` and `Groups`, with a `token:admin` bearer confined to its workspace).
+A SCIM `userName` is the member handle, and changing it renames the member
+without changing its id. Groups record the IdP's membership and grant nothing.
+[Production](Production.md) lists the supported operations and the Okta and
+Entra ID request shapes.
+
 Panels include channels, live WS tail, search, tokens, artifacts, and admin surfaces. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 
 ---

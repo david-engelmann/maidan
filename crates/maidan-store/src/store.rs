@@ -197,6 +197,18 @@ pub trait MemberStore: Send + Sync {
     ) -> Result<Option<ScimUser>, StoreError>;
     /// Remove a member's SCIM link — `true` when one existed.
     async fn delete_scim_user(&self, member_id: MemberId) -> Result<bool, StoreError>;
+    /// A SCIM group and its members, or `None` when the workspace has no such
+    /// group.
+    async fn get_scim_group(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ScimGroupId,
+    ) -> Result<Option<ScimGroup>, StoreError>;
+    /// Every SCIM group in a workspace with its members, oldest first.
+    async fn list_scim_groups(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<ScimGroup>, StoreError>;
 }
 
 #[async_trait]
@@ -3050,16 +3062,47 @@ pub trait GovernanceAuditStore: Send + Sync {
         active: bool,
         audit: crate::AuditFor<(Member, ScimUser)>,
     ) -> Result<(Member, ScimUser), StoreError>;
-    /// Update a SCIM link; deactivating revokes the member's live tokens in the
-    /// same transaction, each recorded. `None` when there is no link.
-    async fn scim_set_active_audited(
+    /// Update a SCIM user: rename it when `user_name` is given, and set its
+    /// link's `external_id` and `active`. Deactivating revokes the member's
+    /// live tokens in the same transaction, each recorded. `None` when the
+    /// workspace has no such SCIM user; a `user_name` another member of the
+    /// workspace holds is a [`StoreError::Conflict`].
+    async fn scim_update_user_audited(
         &self,
         workspace_id: WorkspaceId,
         member_id: MemberId,
+        user_name: Option<&str>,
         external_id: Option<&str>,
         active: bool,
         audit: NewAuditEvent,
     ) -> Result<Option<ScimUser>, StoreError>;
+    /// Create a SCIM group with its members. A member that is not a SCIM user
+    /// of the group's workspace is a [`StoreError::InvalidInput`], and nothing
+    /// is written.
+    async fn scim_create_group_audited(
+        &self,
+        new: NewScimGroup,
+        audit: crate::AuditFor<ScimGroup>,
+    ) -> Result<ScimGroup, StoreError>;
+    /// Apply a change to a SCIM group, membership operations in order. `None`
+    /// when the workspace has no such group; a member to add that is not a
+    /// SCIM user of the workspace is a [`StoreError::InvalidInput`], and
+    /// nothing is written.
+    async fn scim_update_group_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ScimGroupId,
+        change: ScimGroupChange,
+        audit: crate::AuditFor<ScimGroupWrite>,
+    ) -> Result<Option<ScimGroupWrite>, StoreError>;
+    /// Delete a SCIM group and its memberships. `false` when the workspace
+    /// has no such group; nothing is recorded then.
+    async fn scim_delete_group_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: ScimGroupId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
     /// Revoke the member's live tokens and remove its SCIM link, together.
     /// `false` when there was no link.
     async fn scim_deprovision_audited(

@@ -1,5 +1,6 @@
 //! SCIM provisioning commits with its record, and a deprovision that cannot
-//! finish leaves nothing half-done (D-A, 413.4b), on both backends.
+//! finish leaves nothing half-done (D-A, 413.4b), on both backends. So do a
+//! rename and every group write.
 //!
 //! Before, deprovisioning revoked tokens one by one, logged any failure, and
 //! reported success: a deprovisioned user could keep a live token while the
@@ -7,7 +8,10 @@
 
 use maidan_auth::hash_secret;
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewApiToken, NewAuditEvent, NewMember, NewWorkspace};
+use maidan_types::{
+    MemberKind, NewApiToken, NewAuditEvent, NewMember, NewScimGroup, NewWorkspace, ScimGroupChange,
+    ScimMembersOp,
+};
 use sqlx::sqlite::SqlitePoolOptions;
 
 fn event(action: &str) -> NewAuditEvent {
@@ -70,7 +74,14 @@ where
             .unwrap();
     }
     store
-        .scim_set_active_audited(ws.id, alice.id, Some("ext"), false, event("deactivate"))
+        .scim_update_user_audited(
+            ws.id,
+            alice.id,
+            None,
+            Some("ext"),
+            false,
+            event("deactivate"),
+        )
         .await
         .unwrap()
         .unwrap();
@@ -89,8 +100,70 @@ where
     let (carol, _) = provision("carol").await.unwrap();
     store.create_api_token(mint(bob.id, "b1")).await.unwrap();
     store.create_api_token(mint(carol.id, "c1")).await.unwrap();
+    let group = store
+        .scim_create_group_audited(
+            NewScimGroup {
+                workspace_id: ws.id,
+                display_name: "Eng".into(),
+                external_id: None,
+                members: vec![bob.id],
+            },
+            Box::new(|_| event("scim.group.create")),
+        )
+        .await
+        .unwrap();
 
     break_audit().await;
+
+    // Group writes and a rename commit with their record or not at all.
+    assert!(store
+        .scim_create_group_audited(
+            NewScimGroup {
+                workspace_id: ws.id,
+                display_name: "Ops".into(),
+                external_id: None,
+                members: vec![carol.id],
+            },
+            Box::new(|_| event("scim.group.create")),
+        )
+        .await
+        .is_err());
+    assert_eq!(store.list_scim_groups(ws.id).await.unwrap().len(), 1);
+    assert!(store
+        .scim_update_group_audited(
+            ws.id,
+            group.id,
+            ScimGroupChange {
+                display_name: Some("Renamed".into()),
+                external_id: None,
+                members: vec![ScimMembersOp::Replace(vec![carol.id])],
+            },
+            Box::new(|_| event("scim.group.update")),
+        )
+        .await
+        .is_err());
+    let kept = store
+        .get_scim_group(ws.id, group.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(kept.display_name, "Eng");
+    assert_eq!(kept.members.len(), 1);
+    assert_eq!(kept.members[0].member_id, bob.id);
+    assert!(store
+        .scim_delete_group_audited(ws.id, group.id, event("scim.group.delete"))
+        .await
+        .is_err());
+    assert!(store
+        .get_scim_group(ws.id, group.id)
+        .await
+        .unwrap()
+        .is_some());
+    assert!(store
+        .scim_update_user_audited(ws.id, bob.id, Some("robert"), Some("ext"), true, event("u"))
+        .await
+        .is_err());
+    assert_eq!(store.get_member(bob.id).await.unwrap().handle, "bob");
 
     assert!(provision("dave").await.is_err());
     assert!(
@@ -98,7 +171,7 @@ where
         "no member without its link and record"
     );
     assert!(store
-        .scim_set_active_audited(ws.id, bob.id, Some("ext"), false, event("deactivate"))
+        .scim_update_user_audited(ws.id, bob.id, None, Some("ext"), false, event("deactivate"))
         .await
         .is_err());
     assert!(

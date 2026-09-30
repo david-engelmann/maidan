@@ -1350,6 +1350,66 @@ pub struct ScimUser {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A SCIM 2.0 Group (RFC 7643 §4.2): an identity provider's named set of the
+/// users it provisioned into one workspace. It records who the IdP grouped
+/// together and grants nothing by itself.
+#[derive(Debug, Clone)]
+pub struct ScimGroup {
+    pub id: ScimGroupId,
+    pub workspace_id: WorkspaceId,
+    pub display_name: String,
+    pub external_id: Option<String>,
+    /// Ordered by handle.
+    pub members: Vec<ScimGroupMember>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A group member, with the handle read at query time so a rename shows at
+/// once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScimGroupMember {
+    pub member_id: MemberId,
+    pub handle: String,
+}
+
+/// A SCIM group to create. Every member must be a SCIM user of the workspace.
+#[derive(Debug, Clone)]
+pub struct NewScimGroup {
+    pub workspace_id: WorkspaceId,
+    pub display_name: String,
+    pub external_id: Option<String>,
+    pub members: Vec<MemberId>,
+}
+
+/// A change to a SCIM group: a PUT sets every field, a PATCH the ones it
+/// names. Membership operations apply in order, as a PatchOp's do.
+#[derive(Debug, Clone, Default)]
+pub struct ScimGroupChange {
+    pub display_name: Option<String>,
+    /// `Some(None)` clears the external id.
+    pub external_id: Option<Option<String>>,
+    pub members: Vec<ScimMembersOp>,
+}
+
+/// One membership operation of a [`ScimGroupChange`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScimMembersOp {
+    Add(Vec<MemberId>),
+    Remove(Vec<MemberId>),
+    /// Make the member set exactly this; empty removes everyone.
+    Replace(Vec<MemberId>),
+}
+
+/// A committed group change: the group as it now is, and the net membership
+/// difference, which is what its audit row records.
+#[derive(Debug, Clone)]
+pub struct ScimGroupWrite {
+    pub group: ScimGroup,
+    pub added: Vec<MemberId>,
+    pub removed: Vec<MemberId>,
+}
+
 /// A member due for an email digest: the sweeper's enumeration row — a
 /// digest-mode member with an address who has unread notifications created
 /// since their last digest. Carries the address so the sweeper needs no extra
