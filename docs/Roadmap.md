@@ -43,20 +43,29 @@ flight and the ranked plan are the **Now** and **Next** sections of
 
 ## Horizons
 
-1. **Agents coordinate at workspace scale.** An agent serving a workspace
-   pulls work from it, not channel by channel; a reviewer's verdict reaches the
-   worker without polling; a hung agent's time is charged; the SDKs return
-   typed results and typed errors.
-2. **Nothing is silently lost, and nothing grows without bound.** Every queue
-   and ledger has a retention story, retries share a budget so a recovering
-   destination is not stampeded, every audit row belongs to a workspace, and
-   operators have a tested backup path on both backends.
-3. **Proof over tests.** The decoders are fuzzed, the auth and bus tests are
-   mutation-checked, each Threat-Model row has a named regression test, and
-   releases carry attestations, not only signatures.
-4. **Launch** (the maintainer's call): the public site, an in-browser
-   playground, and the hosted control plane as the paid tier, with the room
-   itself staying open source.
+1. **Agents coordinate at workspace scale.** The SDKs return typed results and
+   errors (#1129) and stateless MCP subscriptions work across replicas (#1131).
+   In flight: a verdict reaches the worker as an event (#1132), a hung agent's
+   time is charged against its budget (#1139), and an agent pulls work from the
+   whole workspace rather than channel by channel.
+2. **Nothing is silently lost, and nothing grows without bound.** Mostly there:
+   retries share a per-host budget (#1122), every audit row belongs to a
+   workspace (#1134), and both backends have a tested backup path (#1126).
+   What remains is per-workspace retention and partitioning the append-only
+   tables.
+3. **Proof over tests.** The protocol decoders are fuzzed and the auth and bus
+   tests are mutation-checked (#1125), releases attest their SBOMs (#1119), and
+   every HTTP operation is classified as reading or changing state (#1121).
+   What remains is Kani proofs, a store mutation job that finishes, and a named
+   regression test per Threat-Model row.
+4. **A web UI worth showing.** The board, first run, sign-out, token rotation
+   and attachments are landing now (#1118, #1123, #1127, #1135), and the token
+   leaves the browser's storage (#1142). Next come the UI improvement specs, a
+   split of the one-file page into typed modules with a CSP, and a set of
+   screenshots captured by a script.
+5. **Launch** (the maintainer's call): the public site, an in-browser
+   playground, and paid self-hosted tiers before any hosted service, with the
+   room itself staying open source.
 
 ## What Maidan will not become
 
