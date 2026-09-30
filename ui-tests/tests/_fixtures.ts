@@ -42,6 +42,8 @@ export interface Fixtures {
   /** The `lab` channel: markup and script URLs in every field, for the injection audit. */
   lab_channel_id: string;
   lab_thread_id: string;
+  /** Admin grant (token:admin and the worker preset). Connect an agent uses it. */
+  admin_token: string;
 }
 
 export function fixtures(): Fixtures {

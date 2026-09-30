@@ -442,6 +442,22 @@ async fn main() {
         .await
         .expect("review token");
 
+    // An admin, so Connect an agent can create a member (bootstrap is on)
+    // and mint the worker preset. The operator token above stays narrow.
+    let admin_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: hash_secret(admin_secret.as_str()),
+            label: Some("ui-test-admin".into()),
+            capabilities: capability::all(),
+            expires_at: None,
+        })
+        .await
+        .expect("admin token");
+
     let art_dir = std::env::temp_dir().join(format!("maidan-ui-test-{}", std::process::id()));
     std::fs::create_dir_all(&art_dir).expect("art dir");
     let artifacts = Arc::new(LocalFsStore::new(&art_dir));
@@ -453,7 +469,7 @@ async fn main() {
         search,
         Arc::new(maidan_search::HashV1Provider),
         false, // auth ENABLED — the specs drive the real bearer path
-        false,
+        true,  // bootstrap: the same member-create route the product calls
         FederationRuntime::new(true, None),
         Arc::new(AtomicI64::new(0)),
         None,
@@ -490,6 +506,7 @@ async fn main() {
         "quiet_channel_id": quiet.id.0.to_string(),
         "lab_channel_id": lab.id.0.to_string(),
         "lab_thread_id": lab_thread.id.0.to_string(),
+        "admin_token": admin_secret.as_str(),
     });
     std::fs::write(
         &fixtures_path,
