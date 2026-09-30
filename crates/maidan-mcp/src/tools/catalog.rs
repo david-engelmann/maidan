@@ -451,7 +451,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "set_wait",
-            "description": "Set (upsert) a wait timer on a thread (G2): it is waiting until wait_until, and on timeout the sweeper escalates via on_timeout — never a decision (notify reaches the owner; park also marks the thread unclaimable). Default policy is notify. Cancel it when the awaited thing happens. Requires thread:transition.",
+            "description": "Set (upsert) a wait timer on a thread: it is waiting until wait_until, and on timeout the sweeper escalates via on_timeout but decides nothing (notify reaches the owner; park also marks the thread unclaimable). Default policy is notify. Cancel it when the awaited thing happens. Requires thread:transition. This returns at once and does not block; to block until something happens, use a wait_for_* tool such as wait_for_result or wait_for_ready.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -903,7 +903,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_result",
-            "description": "Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result).",
+            "description": "Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result). To put a deadline on a thread instead, use set_wait.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1467,7 +1467,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_ready",
-            "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first).",
+            "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first). To put a deadline on a thread instead, use set_wait.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1479,7 +1479,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_claim_expired",
-            "description": "Block until a claim's lease lapses and its thread is reclaimed (by the claim reaper within seconds, or by the next claim_next_thread; either emits claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal — returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease on a thread in review is not reaped and emits nothing.",
+            "description": "Block until a claim's lease lapses and its thread is reclaimed (by the claim reaper within seconds, or by the next claim_next_thread; either emits claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal: returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease on a thread in review is not reaped and emits nothing. To put a deadline on a thread instead, use set_wait.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1491,7 +1491,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_claim_failed",
-            "description": "Block until a claimed run is stopped for going over its budget (report_usage past a tokens/usd/turns/wall limit releases the claim, dead-letters the run and emits claim_failed), or the timeout lapses. Returns the ClaimFailed event (member_id is the stopped holder, reason the budget axis), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch a stop in the gap before this call subscribes; omit it for pure-live.",
+            "description": "Block until a claimed run is stopped for going over its budget (report_usage past a tokens/usd/turns/wall limit releases the claim, dead-letters the run and emits claim_failed), or the timeout lapses. Returns the ClaimFailed event (member_id is the stopped holder, reason the budget axis), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch a stop in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1503,7 +1503,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_blocked_resolved",
-            "description": "Block until an explicit dispatch block is cleared (clear_thread_block emits blocked_resolved), or the timeout lapses. Returns the BlockedResolved event (the reason that cleared, resolved_by), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible thread in the workspace. Clearing a thread that was not blocked emits nothing. Pass since_log_id (your high-water log_id) to also catch a clear in the gap before this call subscribes; omit it for pure-live.",
+            "description": "Block until an explicit dispatch block is cleared (clear_thread_block emits blocked_resolved), or the timeout lapses. Returns the BlockedResolved event (the reason that cleared, resolved_by), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible thread in the workspace. Clearing a thread that was not blocked emits nothing. Pass since_log_id (your high-water log_id) to also catch a clear in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1516,7 +1516,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_landed",
-            "description": "Block until a thread's linked GitHub PR lands (is merged, emitting thread_landed), or the timeout lapses. Returns the ThreadLanded event (repo, pr_number, merged_by, merge_commit_sha, title), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible land in the workspace. The room 'steals the landed fact' — it does NOT transition the thread's FSM. Pass since_log_id (your high-water log_id) to also catch a land emitted in the gap before this call subscribes; omit it for pure-live. Live-only; the GET /mcp/stream SSE transport (kinds=thread_landed) is the resumable alternative.",
+            "description": "Block until a thread's linked GitHub PR lands (is merged, emitting thread_landed), or the timeout lapses. Returns the ThreadLanded event (repo, pr_number, merged_by, merge_commit_sha, title), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible land in the workspace. The room records the landing but does NOT transition the thread's FSM. Pass since_log_id (your high-water log_id) to also catch a land emitted in the gap before this call subscribes; omit it for pure-live. Live-only; the GET /mcp/stream SSE transport (kinds=thread_landed) is the resumable alternative. To put a deadline on a thread instead, use set_wait.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1541,7 +1541,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_inbox",
-            "description": "A member's mention inbox: recent mentions plus the read-cursor, so an agent can find what it hasn't seen.",
+            "description": "A member's mention inbox: recent mentions plus the read-cursor, so an agent can find what it hasn't seen. Mentions only; for everything waiting on the member (assigned tasks, requested reviews, open approval gates and unread mentions), use get_waiting_inbox.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1591,7 +1591,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_waiting_inbox",
-            "description": "The waiting-on-you inbox: everything needing a member's attention — their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the workspace's pending approval gates, and their unread mentions — oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone.",
+            "description": "The waiting-on-you inbox, everything needing a member's attention: their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the workspace's pending approval gates, and their unread mentions. Oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone. For mentions alone, with a read-cursor you advance with mark_inbox_read, use get_inbox.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
