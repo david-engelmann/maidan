@@ -764,3 +764,179 @@ async fn mcp_unsupported_protocol_version_header_is_rejected() {
     assert_eq!(ok.status(), StatusCode::OK);
     server.abort();
 }
+
+/// The `enum` a tool publishes is the set its handler accepts: a value it
+/// lists goes through, and one outside it is refused as invalid params, not
+/// absorbed. An enum narrower than the handler hides a value an agent may
+/// need; a wider one invites a call the server refuses.
+#[tokio::test]
+async fn published_enums_are_the_values_the_server_accepts() {
+    let (addr, client, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+
+    let tools = rpc(&client, &base, 1, "tools/list", json!({})).await;
+    let tool = |name: &str| {
+        tools["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["name"] == name)
+            .unwrap_or_else(|| panic!("tools/list has no {name}"))
+            .clone()
+    };
+    let strings = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .unwrap_or_else(|| panic!("not an enum: {v}"))
+            .iter()
+            .map(|s| s.as_str().unwrap().to_string())
+            .collect()
+    };
+    let actions =
+        strings(&tool("transition_thread")["inputSchema"]["properties"]["action"]["enum"]);
+    assert_eq!(actions, ["start_review", "close", "archive"]);
+    let block_types = strings(
+        &tool("post_message")["inputSchema"]["properties"]["content"]["items"]["properties"]
+            ["type"]["enum"],
+    );
+
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "enums"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    let alice: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "alice", "kind": "agent"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let alice_id = alice["id"].as_str().unwrap().to_string();
+    let ch: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "work"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let channel_id = ch["id"].as_str().unwrap().to_string();
+    let th: Value = client
+        .post(format!("{base}/channels/{channel_id}/threads"))
+        .json(&json!({"title": "enums"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let thread_id = th["id"].as_str().unwrap().to_string();
+    let call = |id: u64, name: &'static str, arguments: Value| {
+        let (client, base, alice_id) = (client.clone(), base.clone(), alice_id.clone());
+        async move {
+            rpc_as(
+                &client,
+                &base,
+                id,
+                "tools/call",
+                json!({"name": name, "arguments": arguments}),
+                &alice_id,
+            )
+            .await
+        }
+    };
+
+    let refused = call(
+        10,
+        "transition_thread",
+        json!({"thread_id": thread_id, "action": "reopen"}),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("unknown action \"reopen\""),
+        "{refused}"
+    );
+
+    // Each listed action, in the order the FSM takes them, is accepted.
+    for (i, (action, to_state)) in actions
+        .iter()
+        .zip(["in_review", "closed", "archived"])
+        .enumerate()
+    {
+        let resp = call(
+            11 + i as u64,
+            "transition_thread",
+            json!({"thread_id": thread_id, "action": action}),
+        )
+        .await;
+        assert!(resp["error"].is_null(), "{action}: {resp}");
+        let moved = unwrap_tool_text(&resp["result"]);
+        assert_eq!(moved["state"], to_state, "{action}: {moved}");
+    }
+
+    let open: Value = client
+        .post(format!("{base}/channels/{channel_id}/threads"))
+        .json(&json!({"title": "blocks"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let open_id = open["id"].as_str().unwrap().to_string();
+    let block = |kind: &str| match kind {
+        "text" => json!({"type": "text", "text": "hi"}),
+        "code" => json!({"type": "code", "language": "rust", "code": "fn main() {}"}),
+        "tool_use" => json!({"type": "tool_use", "id": "t1", "name": "grep", "input": {}}),
+        "tool_result" => json!({"type": "tool_result", "tool_use_id": "t1", "content": "ok"}),
+        "resource_link" => json!({"type": "resource_link", "uri": "maidan://threads/x"}),
+        other => panic!("post_message lists a block type this test does not know: {other}"),
+    };
+    for (i, kind) in block_types.iter().enumerate() {
+        let resp = call(
+            20 + i as u64,
+            "post_message",
+            json!({"thread_id": open_id, "body": "", "content": [block(kind)]}),
+        )
+        .await;
+        assert!(resp["error"].is_null(), "{kind}: {resp}");
+        let posted = unwrap_tool_text(&resp["result"]);
+        assert_eq!(posted["content"][0]["type"], kind.as_str(), "{posted}");
+    }
+    let refused = call(
+        30,
+        "post_message",
+        json!({"thread_id": open_id, "body": "", "content": [{"type": "image", "url": "x"}]}),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    // The handler's own list of block types is the published one.
+    let message = refused["error"]["message"].as_str().unwrap();
+    let mut accepted: Vec<String> = message
+        .split("expected one of ")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no expected list in {message}"))
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect();
+    accepted.sort();
+    let mut published = block_types.clone();
+    published.sort();
+    assert_eq!(published, accepted, "{message}");
+
+    server.abort();
+}

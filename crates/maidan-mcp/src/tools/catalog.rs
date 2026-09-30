@@ -433,7 +433,7 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "action": {"type": "string", "description": "start_review, close, or archive"}
+                    "action": {"type": "string", "enum": ["start_review", "close", "archive"], "description": "start_review (open to in_review), close (in_review to closed) or archive (closed to archived). To send work back, use submit_review with request_changes"}
                 },
                 "required": ["thread_id", "action"]
             }
@@ -1911,7 +1911,7 @@ pub fn catalog() -> Vec<Value> {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "body": {"type": "string", "description": "plain text; omit when sending typed content (body is derived from it)"},
                     "metadata": {"type": "object"},
-                    "content": {"type": "array", "items": {"type": "object"}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
+                    "content": {"type": "array", "items": {"type": "object", "properties": {"type": {"type": "string", "enum": ["text", "code", "tool_use", "tool_result", "resource_link"]}}, "required": ["type"]}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
                 "required": ["thread_id", "body"]
             }

@@ -1017,7 +1017,12 @@ Advance a thread's FSM state (start_review, close, or archive). The MCP twin of 
 {
   "properties": {
     "action": {
-      "description": "start_review, close, or archive",
+      "description": "start_review (open to in_review), close (in_review to closed) or archive (closed to archived). To send work back, use submit_review with request_changes",
+      "enum": [
+        "start_review",
+        "close",
+        "archive"
+      ],
       "type": "string"
     },
     "thread_id": {
@@ -4207,6 +4212,21 @@ Post a message to a thread as the authenticated member.
     "content": {
       "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}",
       "items": {
+        "properties": {
+          "type": {
+            "enum": [
+              "text",
+              "code",
+              "tool_use",
+              "tool_result",
+              "resource_link"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
         "type": "object"
       },
       "type": "array"
