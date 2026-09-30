@@ -1243,6 +1243,43 @@ and everything merged through #1077.
   deletes outside any transaction, and gives up on a delete after 30 s. Only
   an upload of the same bytes waits for it.
 
+### SQLite backups are snapshots, and a restore cannot bring back the old database
+
+- **Added:** `scripts/backup.sh` and `scripts/restore.sh` take a SQLite
+  `DATABASE_URL`. A backup is a `VACUUM INTO` snapshot, taken with the server
+  running and checked with `PRAGMA integrity_check`; before, the scripts were
+  Postgres-only and Production documented no SQLite backup at all, which left
+  copying the file, and that misses whatever is still in the `-wal`.
+- **Added:** a restore puts the snapshot in place of the file and deletes the
+  old `-wal` and `-shm`. A `-wal` left by a killed server, or beside a file
+  someone removed, would otherwise be replayed over the restored file the next
+  time it is opened. It refuses a target that has tables unless `--force`, as
+  the Postgres restore does.
+- **Added:** `scripts/sqlite-backup-drill.sh`, run in CI as `sqlite backup
+  drill` (not required), and the store test `sqlite_backup`.
+
+### A member of another workspace is answered as no member; JSON-RPC errors follow the spec
+
+- **Fixed:** channel membership, reviewers, delegation grants, member tokens,
+  group DMs, freezes, follows and every `/members/{id}/...` route answered a
+  member of another workspace with a `400` or `403` that differed from the
+  `404` for an unknown id, which told the caller the id was a member
+  somewhere. Every route and MCP tool that takes a member id now answers both
+  alike: `404 not-found` (MCP `-32004`), writing nothing
+  (`foreign_member_e2e`, 108 probes). The event-less `record_mention` that
+  `@handle` routing uses checks the member's workspace, as the evented form
+  does since #1136.
+- **Fixed:** MCP answered `-32700 Parse error` for JSON that is not a request
+  (`[1]` in a batch, an object with no `method`, a `"jsonrpc": "1.0"`); that is
+  now `-32600 Invalid Request`, and `-32700` is kept for bytes that are not
+  JSON. A `null` id, which MCP forbids, is refused instead of being run as a
+  notification and never answered. The A2A binding already did this.
+- **Fixed:** the stdio MCP transport answered notifications; a line with no
+  `id` now gets no response.
+- **Changed:** `authority_audit_contract` skips each `#[cfg(test)]` item
+  instead of the rest of the file, so it now reads 1,693 lines it skipped
+  before (all of `openapi/mod.rs`, the MCP tool dispatch). It found nothing.
+
 ### A2A lists page all the way through
 
 - **Fixed:** `ListTasks` listed pending approval gates from one scan of the
