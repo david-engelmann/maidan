@@ -418,6 +418,11 @@
       .ny-count:empty { display: none; }
       .ny-hint { color: var(--muted); font-size: 0.8rem; }
       #needs-you-list { list-style: none; margin: 0; padding: 0; }
+      #board-refusal { margin: 0 0 0.7rem; padding: 0.55rem 0.75rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius); font-size: 0.86rem; }
+      #board-refusal[hidden] { display: none; }
+      #board-refusal strong { color: #991b1b; }
+      .card-refusal { margin-top: 0.35rem; color: #991b1b; font-size: 0.75rem; font-weight: 600; }
+      #needs-you-list .ny-item.ny-primary { outline: 2px solid #d97706; }
       #needs-you-list:empty { display: none; }
       .ny-item { display: grid; grid-template-columns: auto 1fr auto; gap: 0.35rem 0.75rem; align-items: center; padding: 0.6rem 0.9rem; border-top: 1px solid var(--line); }
       .ny-item:first-child { border-top: none; }
@@ -650,6 +655,7 @@
             </div>
           </div>
           <div id="team" aria-label="Who is on this board"></div>
+          <div id="board-refusal" role="status" hidden></div>
           <div id="board"><div class="onboard" id="board-onboard">
             <h3>One board for your agents and you</h3>
             <p>Agents claim tasks, report results and hand them to review. You watch the board move and approve what they hand you.</p>
@@ -1515,6 +1521,7 @@
           if (stale()) return;
           renderBoard(threads, gates);
           boardShownFor = channelId;
+          hydrateRefusals(threads);
           loadNeedsYou();
           if (!threads.length) {
             document.getElementById("board-summary").textContent =
@@ -1646,6 +1653,83 @@
       // The channel as a board: one card per task, in the column its real
       // state puts it, with the one member holding it. Cards that changed since
       // the last render flash once, so a live update is visible.
+      // A refused close, in the server's own words. The agent already got
+      // this sentence; the board shows the same one. Nothing here is invented.
+      const refusals = new Map();
+      function paintRefusal() {
+        const banner = document.getElementById("board-refusal");
+        if (!banner) return;
+        const visible = [...refusals.entries()].filter(([id]) => threadsById.has(id) || !threadsById.size);
+        // Prefer a refusal on a thread this board is showing.
+        const onBoard = [...refusals.entries()].filter(([id]) => threadsById.has(id));
+        const pick = onBoard[onBoard.length - 1] || visible[visible.length - 1];
+        if (!pick) {
+          banner.hidden = true;
+          banner.replaceChildren();
+          return;
+        }
+        const [id, rec] = pick;
+        banner.hidden = false;
+        banner.replaceChildren();
+        const strong = document.createElement("strong");
+        strong.textContent = "Close refused";
+        banner.append(strong, " · ");
+        if (rec.actorId) banner.append(personEl(rec.actorId), " · ");
+        const text = document.createElement("span");
+        text.className = "refusal-text";
+        text.textContent = rec.text;
+        banner.append(text);
+        banner.dataset.threadId = id;
+      }
+      function rememberRefusal(threadId, actorId, text) {
+        if (!threadId || !text) return;
+        refusals.set(threadId, { actorId, text });
+        paintRefusal();
+        const card = document.querySelector(`#board .card[data-id="${CSS.escape(threadId)}"]`);
+        if (card && !card.querySelector(".card-refusal")) {
+          const line = document.createElement("div");
+          line.className = "card-refusal";
+          line.textContent = "Close refused";
+          card.appendChild(line);
+        }
+      }
+      function noteRefusalFromFrame(v) {
+        const meta = v && v.message && v.message.metadata;
+        if (!meta || meta.notice !== "transition_refused") return;
+        rememberRefusal(v.thread_id, v.message.author_id, v.message.body);
+      }
+      async function hydrateRefusals(threads) {
+        if (!token() && !sessionMemberId) return;
+        const pending = threads.filter((th) => th.state === "in_review" && !refusals.has(th.id));
+        await Promise.all(pending.map(async (th) => {
+          try {
+            const url = token()
+              ? `${base()}/threads/${th.id}/messages?limit=30`
+              : uiReadPath(`/threads/${th.id}/messages?limit=30`);
+            const res = await fetch(url, { headers: headers(), credentials: "include" });
+            if (!res.ok) return;
+            const msgs = await res.json();
+            const hit = [...msgs].reverse().find((m) => m.metadata && m.metadata.notice === "transition_refused");
+            if (hit) refusals.set(th.id, { actorId: hit.author_id, text: hit.body });
+          } catch (_e) {
+            /* the live frame is the other way this arrives */
+          }
+        }));
+        if (pending.length) {
+          paintRefusal();
+          pending.forEach((th) => {
+            if (!refusals.has(th.id)) return;
+            const card = document.querySelector(`#board .card[data-id="${CSS.escape(th.id)}"]`);
+            if (card && !card.querySelector(".card-refusal")) {
+              const line = document.createElement("div");
+              line.className = "card-refusal";
+              line.textContent = "Close refused";
+              card.appendChild(line);
+            }
+          });
+        }
+      }
+
       function renderBoard(threads, gates) {
         threadsById = new Map(threads.map((th) => [th.id, th]));
         lastGates = gates;
@@ -1712,6 +1796,13 @@
               : ago(th.updated_at);
           foot.appendChild(when);
           card.append(chromeBadge(chrome), t, foot);
+          const refused = refusals.get(th.id);
+          if (refused) {
+            const line = document.createElement("div");
+            line.className = "card-refusal";
+            line.textContent = "Close refused";
+            card.appendChild(line);
+          }
           card.onclick = () => selectThread(th.id, title);
           card.onkeydown = (e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -2060,6 +2151,17 @@
             return;
           }
           items = (await res.json()).items.filter((i) => NY_KINDS.has(i.kind));
+          // The request an agent just handed over is the obvious row. Older
+          // ones stay, behind it, so a stale review is not the first button.
+          items.sort((a, b) => {
+            const ar = a.kind === "review_request";
+            const br = b.kind === "review_request";
+            if (ar && br) return String(b.since).localeCompare(String(a.since));
+            if (ar) return -1;
+            if (br) return 1;
+            return 0;
+          });
+          if (items.length) items[0].primary = true;
           // Gate rows show the requester and answer with the state of the gate, both
           // from the gate views. The board fills them, but a first visit with no
           // channel open has not loaded the board yet.
@@ -2095,7 +2197,9 @@
         count.textContent = n ? String(n) : "";
         box.classList.toggle("clear", n === 0);
         hint.textContent = n
-          ? `${n === 1 ? "An agent is" : "Agents are"} waiting on your decision.`
+          ? (n === 1
+              ? "An agent is waiting on your decision."
+              : "Agents are waiting on your decision. The latest request is first.")
           : "Nothing is waiting on you. Reviews and approvals agents ask you for show up here.";
         setAttention(n);
         needsYou.forEach((item) => {
@@ -2116,6 +2220,7 @@
         li.dataset.key = nyKey(item);
         li.dataset.kind = item.kind;
         if (item.thread_id) li.dataset.threadId = item.thread_id;
+        if (item.primary) li.classList.add("ny-primary");
         const kind = document.createElement("span");
         kind.className = `ny-kind${item.kind === "open_gate" ? " gate" : ""}`;
         kind.textContent = item.kind === "open_gate" ? "Approval" : "Review";
@@ -4745,6 +4850,7 @@
             }
             if (liveFrameTargetsOpenThread(v)) scheduleLiveRefresh();
             if (THREAD_BOARD_KINDS.has(kind)) scheduleBoardRefresh();
+            if (kind === "message_posted") noteRefusalFromFrame(v);
             return;
           }
           if (v.kind) {

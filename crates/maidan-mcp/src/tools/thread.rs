@@ -317,6 +317,43 @@ struct TransitionThreadArgs {
 /// `transition_thread_with_event` (SoD, close-gate, required reviewers, and the
 /// critical composition all live in `transition_in_tx`). Unknown actions and
 /// gate refusals are `InvalidParams`. Thread access is enforced pre-dispatch.
+
+/// A refused close is a message on the thread, in the server's own words, so
+/// the board can show it. Best-effort: failing to record it does not change
+/// the refusal the caller already received.
+async fn record_close_refusal(
+    server: &crate::server::McpServer,
+    member_id: MemberId,
+    thread_id: ThreadId,
+    err: &maidan_store::StoreError,
+) {
+    let maidan_store::StoreError::Conflict(reason) = err else {
+        return;
+    };
+    if !reason.contains("review requirement not met") && !reason.contains("refutes") {
+        return;
+    }
+    let posted = server
+        .store
+        .post_message_with_event(
+            NewMessage {
+                thread_id,
+                author_id: member_id,
+                body: reason.clone(),
+                metadata: json!({ "notice": "transition_refused", "action": "close" }),
+                content: None,
+            },
+            None,
+        )
+        .await;
+    match posted {
+        Ok((_, stored)) => server.publish_stored(&stored).await,
+        Err(note_err) => {
+            tracing::warn!(error = %note_err, %thread_id, "close refusal was not recorded on the thread");
+        }
+    }
+}
+
 pub(super) async fn transition_thread(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -331,10 +368,21 @@ pub(super) async fn transition_thread(
         ))
     })?;
     let thread_id = ThreadId(a.thread_id);
-    let (result, stored) = server
+    let (result, stored) = match server
         .store
         .transition_thread_with_event(thread_id, auth.member_id, action)
-        .await?;
+        .await
+    {
+        Ok(pair) => pair,
+        Err(err) => {
+            // The caller already gets the refusal. Record the same sentence on
+            // the thread so someone watching the board can see it.
+            if action == maidan_fsm::ThreadAction::Close {
+                record_close_refusal(server, auth.member_id, thread_id, &err).await;
+            }
+            return Err(err.into());
+        }
+    };
     server.publish_stored(&stored).await;
     // Entering a terminal state can unblock dependents. Same derived
     // `ThreadReady` emit as REST — best-effort, never undoes the committed

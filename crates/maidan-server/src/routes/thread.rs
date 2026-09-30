@@ -9,6 +9,7 @@ use maidan_auth::{
 use maidan_fsm::ThreadAction;
 use maidan_router::resolve_channel_context;
 use maidan_types::*;
+use serde_json::json;
 
 use super::{
     cap, clamp_context_transition_limit, ensure_workspace, observe_spawn_denial, publish_stored,
@@ -226,6 +227,41 @@ pub async fn get_tool_transcript(
     Ok(Json(tool_transcript(thread_id, &messages)))
 }
 
+/// Same record as the MCP path: the refusal text, on the thread, so `/ui`
+/// can show it. Best-effort.
+async fn record_close_refusal(
+    state: &AppState,
+    member_id: MemberId,
+    thread_id: ThreadId,
+    err: &maidan_store::StoreError,
+) {
+    let maidan_store::StoreError::Conflict(reason) = err else {
+        return;
+    };
+    if !reason.contains("review requirement not met") && !reason.contains("refutes") {
+        return;
+    }
+    match state
+        .store
+        .post_message_with_event(
+            NewMessage {
+                thread_id,
+                author_id: member_id,
+                body: reason.clone(),
+                metadata: json!({ "notice": "transition_refused", "action": "close" }),
+                content: None,
+            },
+            None,
+        )
+        .await
+    {
+        Ok((_, stored)) => publish_stored(state, stored).await,
+        Err(note_err) => {
+            tracing::warn!(error = %note_err, %thread_id, "close refusal was not recorded on the thread");
+        }
+    }
+}
+
 pub async fn transition_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -243,10 +279,19 @@ pub async fn transition_thread(
     let thread_id = ThreadId(id);
     // One fetch resolves scope + authorizes (was resolve + ws + access).
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    let (result, stored) = state
+    let (result, stored) = match state
         .store
         .transition_thread_with_event(thread_id, auth.member_id, action)
-        .await?;
+        .await
+    {
+        Ok(pair) => pair,
+        Err(err) => {
+            if action == ThreadAction::Close {
+                record_close_refusal(&state, auth.member_id, thread_id, &err).await;
+            }
+            return Err(err.into());
+        }
+    };
     super::publish_stored(&state, stored).await;
     // Entering a terminal state can unblock dependents. Push a `ThreadReady`
     // for each task that just became ready, so an agent waiting on the DAG
