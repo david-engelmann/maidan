@@ -36,7 +36,8 @@ test("the live controls and a refused subscribe stay off the first screen", asyn
   await expect(status).toHaveCSS("text-overflow", "ellipsis");
   const after = await bar.boundingBox();
   expect(after!.height).toBeLessThan(64);
-  await expect(page.locator("#board-refusal")).toHaveCount(0);
+  // A refused close has its own banner. A refused subscribe must not open it.
+  await expect(page.locator("#board-refusal")).toBeHidden();
 });
 
 // A decision row has one filled button. The other action is a quiet control,
