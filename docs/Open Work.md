@@ -18,7 +18,6 @@ Direction is in [Roadmap](Roadmap.md); what shipped is in
 | PR | What it does | Closes | Waiting on |
 |---|---|---|---|
 | #1093 | The `/ui` audit: axe-clean contrast and keyboard, one-column phone layout, resilient Live, error states | Part of thread item 26 | CI |
-| #1097 | `ClaimUnacknowledged`: a leased claim nobody acknowledged is reported (migration 0120) | The second half of eager reclaim | #1107 (registers `MAIDAN_CLAIM_ACK_TIMEOUT_SECS`) |
 | #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | The store delegation duplication | Last in the queue, since it touches every `Store` method |
 | #1113 | Six docs fixes from the enhancement thread | Thread items 13, 14a, 19, 20, 22, 23 | CI |
 | #1114 | A2A pushes go over https; plaintext gRPC off loopback needs `MAIDAN_A2A_GRPC_PLAINTEXT=1` | Thread items 15 and 16 | #1107 (registers the new variable) |

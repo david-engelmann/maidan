@@ -68,21 +68,20 @@ async fn claim(
         .expect("a claimable thread")
 }
 
-/// Report with a cutoff just ahead of now, so every claim taken so far is
-/// past its acknowledgement window.
+/// Report with a cutoff ahead of now, so every claim taken so far is past its
+/// acknowledgement window. The margin is wide because Postgres stamps a claim
+/// with the container's clock, which can run ahead of the host's.
 async fn report(store: &dyn Store, limit: i64) -> Vec<StoredEvent> {
     let now = Utc::now();
     store
-        .report_unacknowledged_claims(now, now + Duration::seconds(1), limit)
+        .report_unacknowledged_claims(now, now + Duration::minutes(10), limit)
         .await
         .unwrap()
 }
 
 async fn an_unacknowledged_claim_is_reported_once_and_left_alone(store: &dyn Store) {
     let (channel, holder) = setup(store, 1).await;
-    let before = Utc::now();
     let held = claim(store, channel, holder, Some(3600)).await;
-    let after = Utc::now();
 
     let events = report(store, 100).await;
     assert_eq!(events.len(), 1);
@@ -99,10 +98,12 @@ async fn an_unacknowledged_claim_is_reported_once_and_left_alone(store: &dyn Sto
         panic!("not a ClaimUnacknowledged: {event:?}");
     };
     assert_eq!(member_id, holder, "names the holder");
+    // A claim stamps `updated_at` and `claimed_at` together, on the store's
+    // clock (the container's, for Postgres), so compare against that.
     assert!(
-        before - Duration::milliseconds(1) <= claimed_at
-            && claimed_at <= after + Duration::milliseconds(1),
-        "claimed_at {claimed_at} is when the claim was taken ({before}..{after})"
+        (claimed_at - held.updated_at).num_milliseconds().abs() <= 1,
+        "claimed_at {claimed_at} is when the claim was taken ({})",
+        held.updated_at
     );
     assert_eq!(thread.assignee_id, Some(holder));
 
@@ -130,9 +131,13 @@ async fn claims_that_are_not_stuck_are_not_reported(store: &dyn Store) {
     let _unleased = claim(store, channel, holder, None).await;
     let lapsed = claim(store, channel, holder, Some(3600)).await;
     let in_review = claim(store, channel, holder, Some(3600)).await;
-    // Taken after the cutoff: still inside its window.
-    let cutoff = Utc::now();
+    // Taken after the cutoff: still inside its window. The cutoff and `now`
+    // come from the store's clock, read off the claims themselves: Postgres
+    // stamps a claim with the container's time, and the host's can differ.
+    let cutoff = in_review.updated_at + Duration::milliseconds(1);
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     let fresh = claim(store, channel, holder, Some(3600)).await;
+    let now = fresh.updated_at + Duration::milliseconds(1);
 
     store
         .acknowledge_claim(
@@ -152,7 +157,7 @@ async fn claims_that_are_not_stuck_are_not_reported(store: &dyn Store) {
         .unwrap();
 
     let events = store
-        .report_unacknowledged_claims(Utc::now(), cutoff, 100)
+        .report_unacknowledged_claims(now, cutoff, 100)
         .await
         .unwrap();
     assert!(events.is_empty(), "nothing is stuck: {events:?}");

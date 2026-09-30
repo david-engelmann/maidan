@@ -178,7 +178,6 @@ const POSTGRES_UP_V120: &str =
 const POSTGRES_UP_V121: &str =
     include_str!("../../../migrations/postgres/0121_decision_history.sql");
 
-
 const POSTGRES_UP_V122: &str = include_str!("../../../migrations/postgres/0122_trace_context.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");

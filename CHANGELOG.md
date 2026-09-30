@@ -7,19 +7,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### A claim nobody acknowledges is reported
-
-- **Added:** the `ClaimUnacknowledged` event. A leased claim still
-  unacknowledged `MAIDAN_CLAIM_ACK_TIMEOUT_SECS` after it was taken (default
-  120 s, `0` off) gets one, from the claim reaper's tick, naming the holder
-  and `claimed_at`. The claim is left alone. The notification router sends it
-  to the owner and the holder's followers as stuck work, and the manager
-  digest counts it under `stuck`. Not federatable. Counter
-  `maidan_claims_unacknowledged_total`. Migration `0120` adds
-  `maidan_threads.claimed_at` and `unacknowledged_lease_id`.
-- **Changed:** `contracts/event-kinds.json` is checked against
-  `EventKind::ALL`, so a new kind cannot be left out of it.
-
 ### A misspelt MAIDAN_* variable refuses boot
 
 - **Changed:** the server refuses to start when the environment holds a
@@ -755,6 +742,19 @@ and everything merged through #1077.
   as `change_requests`.
 - **Fixed:** on Postgres, two concurrent transitions of one thread could both
   act on the state they read; a transition now locks the thread row.
+
+### A claim nobody acknowledges is reported
+
+- **Added:** the `ClaimUnacknowledged` event. A leased claim still
+  unacknowledged `MAIDAN_CLAIM_ACK_TIMEOUT_SECS` after it was taken (default
+  120 s, `0` off) gets one, from the claim reaper's tick, naming the holder
+  and `claimed_at`. The claim is left alone. The notification router sends it
+  to the owner and the holder's followers as stuck work, and the manager
+  digest counts it under `stuck`. Not federatable. Counter
+  `maidan_claims_unacknowledged_total`. Migration `0120` adds
+  `maidan_threads.claimed_at` and `unacknowledged_lease_id`.
+- **Changed:** `contracts/event-kinds.json` is checked against
+  `EventKind::ALL`, so a new kind cannot be left out of it.
 
 ### The OpenAPI document
 
