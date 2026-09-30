@@ -1073,6 +1073,21 @@ pub(super) async fn thread_workspace(
     Ok(store.get_channel(thread.channel_id).await?.workspace_id)
 }
 
+/// The member a tool call names by id, if it is one of the caller's
+/// workspace. Another workspace's member is not found, as an id that names no
+/// member is: a different answer told the caller the id was a member
+/// somewhere.
+pub(super) async fn requested_member(
+    store: &dyn maidan_store::Store,
+    auth: &AuthContext,
+    id: maidan_types::MemberId,
+) -> Result<maidan_types::Member, McpError> {
+    if auth.bypass {
+        return Ok(store.get_member(id).await?);
+    }
+    Ok(store.get_member_in(auth.workspace_id, id).await?)
+}
+
 /// Wrap a JSON payload in MCP's `content[]` envelope. The MCP spec
 /// requires tool results to be an array of content parts; for now we
 /// always return a single `text` part with the JSON-stringified value.

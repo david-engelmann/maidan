@@ -339,14 +339,11 @@ pub(super) async fn get_manager_digest(
 ) -> Result<Value, McpError> {
     let a: ManagerDigestArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
-    let member = server.store.get_member(member_id).await?;
-    if !auth.bypass {
-        auth.ensure_workspace(member.workspace_id)?;
-        if auth.token_id.is_none() && auth.member_id != member_id {
-            return Err(McpError::Forbidden(
-                "a session caller may only read its own manager digest".into(),
-            ));
-        }
+    super::requested_member(server.store.as_ref(), auth, member_id).await?;
+    if !auth.bypass && auth.token_id.is_none() && auth.member_id != member_id {
+        return Err(McpError::Forbidden(
+            "a session caller may only read its own manager digest".into(),
+        ));
     }
     let since = a
         .since
@@ -714,16 +711,11 @@ pub(super) async fn follow_member(
             "a member cannot follow itself".to_string(),
         ));
     }
-    let follower = server.store.get_member(follower_id).await?;
-    let followed = server.store.get_member(followed_id).await?;
-    if follower.workspace_id != followed.workspace_id {
-        return Err(McpError::InvalidParams(
-            "both members must belong to the same workspace".to_string(),
-        ));
-    }
-    if !auth.bypass {
-        auth.ensure_workspace(follower.workspace_id)?;
-    }
+    let follower = super::requested_member(server.store.as_ref(), auth, follower_id).await?;
+    server
+        .store
+        .get_member_in(follower.workspace_id, followed_id)
+        .await?;
     server.store.follow_member(follower_id, followed_id).await?;
     Ok(content_json(&serde_json::json!({ "following": true })))
 }
@@ -759,10 +751,7 @@ pub(super) async fn get_member_occupancy(
 ) -> Result<Value, McpError> {
     let a: MemberIdArg = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
-    let member = server.store.get_member(member_id).await?;
-    if !auth.bypass {
-        auth.ensure_workspace(member.workspace_id)?;
-    }
+    let member = super::requested_member(server.store.as_ref(), auth, member_id).await?;
     let assigned = server
         .store
         .list_assigned_threads(member.workspace_id, member_id)

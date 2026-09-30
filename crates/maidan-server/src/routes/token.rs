@@ -44,12 +44,7 @@ pub async fn mint_api_token(
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
 
-    let member = state.store.get_member(member_id).await?;
-    if member.workspace_id != workspace_id {
-        return Err(ApiError::BadRequest(
-            "member does not belong to workspace".into(),
-        ));
-    }
+    state.store.get_member_in(workspace_id, member_id).await?;
 
     // token:admin may grant any known set or list (held = vocabulary).
     // Holder-side attenuation is POST /tokens/attenuate — no token:admin.
@@ -128,12 +123,7 @@ pub async fn list_api_tokens(
     let member_id = MemberId(member_id);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    let member = state.store.get_member(member_id).await?;
-    if member.workspace_id != workspace_id {
-        return Err(ApiError::BadRequest(
-            "member does not belong to workspace".into(),
-        ));
-    }
+    state.store.get_member_in(workspace_id, member_id).await?;
     let tokens = state
         .store
         .list_api_tokens_for_member(workspace_id, member_id)
@@ -494,12 +484,7 @@ pub async fn create_delegation_grant(
     let subject_id = MemberId(body.subject_id);
     let delegate_id = MemberId(body.delegate_id);
     for member_id in [subject_id, delegate_id] {
-        let member = state.store.get_member(member_id).await?;
-        if member.workspace_id != workspace_id {
-            return Err(ApiError::BadRequest(
-                "subject and delegate must belong to the workspace".into(),
-            ));
-        }
+        state.store.get_member_in(workspace_id, member_id).await?;
     }
     let actor = auth.actor_id;
     let grant = state

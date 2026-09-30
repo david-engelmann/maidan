@@ -109,12 +109,9 @@ pub(super) async fn add_reviewer(
     if !auth.bypass {
         let thread = store.get_thread(ThreadId(a.thread_id)).await?;
         let channel = store.get_channel(thread.channel_id).await?;
-        let reviewer = store.get_member(MemberId(a.member_id)).await?;
-        if reviewer.workspace_id != channel.workspace_id {
-            return Err(McpError::InvalidParams(
-                "reviewer is not in this workspace".into(),
-            ));
-        }
+        store
+            .get_member_in(channel.workspace_id, MemberId(a.member_id))
+            .await?;
     }
     let added = store
         .add_reviewer(ThreadId(a.thread_id), MemberId(a.member_id))
