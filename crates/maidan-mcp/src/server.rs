@@ -9140,6 +9140,7 @@ mod tests {
                 mime_type: None,
                 kind: ArtifactKind::Attachment,
                 uploaded_by: None,
+                filename: None,
             })
             .await
             .unwrap();
