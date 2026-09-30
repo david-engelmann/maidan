@@ -313,11 +313,6 @@ struct TransitionThreadArgs {
     action: String,
 }
 
-/// Advance a thread's FSM state. Same store path:
-/// `transition_thread_with_event` (SoD, close-gate, required reviewers, and the
-/// critical composition all live in `transition_in_tx`). Unknown actions and
-/// gate refusals are `InvalidParams`. Thread access is enforced pre-dispatch.
-
 /// A refused close is a message on the thread, in the server's own words, so
 /// the board can show it. Best-effort: failing to record it does not change
 /// the refusal the caller already received.
@@ -362,6 +357,10 @@ async fn record_close_refusal(
     }
 }
 
+/// Advance a thread's FSM state. Same store path:
+/// `transition_thread_with_event` (SoD, close-gate, required reviewers, and the
+/// critical composition all live in `transition_in_tx`). Unknown actions and
+/// gate refusals are `InvalidParams`. Thread access is enforced pre-dispatch.
 pub(super) async fn transition_thread(
     server: &crate::server::McpServer,
     auth: &AuthContext,
