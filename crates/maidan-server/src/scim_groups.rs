@@ -26,8 +26,8 @@ use maidan_types::{
 use serde_json::{json, Value};
 
 use crate::scim::{
-    parse_eq_filter, query_param, require_admin, scim_error, scim_error_typed, scim_response,
-    ScimFault, ScimPatchOp, ScimPath, ScimText, LIST_SCHEMA,
+    eq_filter, parse_eq_filter, query_param, require_admin, scim_error, scim_error_typed,
+    scim_response, ScimFault, ScimPatchOp, ScimPath, ScimText, LIST_SCHEMA,
 };
 use crate::state::AppState;
 
@@ -160,20 +160,13 @@ pub async fn list_groups(
         return resp;
     }
     let raw = query.as_deref().unwrap_or_default();
-    let filter = match query_param(raw, "filter") {
-        None => None,
-        Some(filter) => match parse_eq_filter(&filter) {
-            Some((attr, value)) if ["displayname", "externalid", "id"].contains(&attr.as_str()) => {
-                Some((attr, value))
-            }
-            _ => {
-                return scim_error_typed(
-                    StatusCode::BAD_REQUEST,
-                    "invalidFilter",
-                    "Groups supports displayName, externalId and id with eq",
-                )
-            }
-        },
+    let filter = match eq_filter(
+        raw,
+        &["displayname", "externalid", "id"],
+        "Groups supports displayName, externalId and id with eq",
+    ) {
+        Ok(filter) => filter,
+        Err(fault) => return fault.into_response(),
     };
     let groups = match state.store.list_scim_groups(auth.workspace_id).await {
         Ok(groups) => groups,

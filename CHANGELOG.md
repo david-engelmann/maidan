@@ -330,6 +330,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   it, and the new handle shows wherever handles are read. A `userName`
   another member of the workspace holds is `409` with `scimType: uniqueness`
   and changes nothing. Before, PUT and PATCH ignored `userName`.
+- **Fixed:** `GET /scim/v2/Users` with a filter other than `userName eq`
+  returned every user in the workspace, so an IdP matching by
+  `externalId eq` could link its record to the wrong user. Users now filters
+  on `userName eq` (not case-sensitive, per RFC 7643), `externalId eq` and
+  `id eq`, and answers any other filter with `400` and
+  `scimType: invalidFilter`, as Groups does. A store error while listing is a
+  `500`, not an empty list an IdP would read as "no such user".
 - **Fixed:** PATCH of a user accepts `active` as the string `"False"` or
   `"True"`, which Entra ID sends by default. Before, Entra ID's deactivation
   was ignored and the user's tokens stayed live.
@@ -339,7 +346,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   create carries `scimType: uniqueness`. Store: `scim_set_active_audited` is
   now `scim_update_user_audited`, which takes the new `userName`. Tests:
   `scim_groups` and `scim_audit_tx` (SQLite and Postgres), `scim_e2e`
-  (two tenants, Okta and Entra ID request shapes).
+  (two tenants, Okta and Entra ID request shapes, the Users filters).
 
 ### Idempotency keys on writes (server half)
 

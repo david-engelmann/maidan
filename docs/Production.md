@@ -109,16 +109,16 @@ inert (an `OTLP_ENDPOINT` that is set is reported to stderr at startup and
 otherwise ignored). Leave the feature on (the default) to keep OTLP traces +
 metrics push available.
 
-**SCIM 2.0 provisioning.** An IdP (Okta / Entra ID /
-…) can provision and deprovision workspace members via SCIM 2.0 at `/scim/v2/`:
-`ServiceProviderConfig`, `Users` (create / read / list with the `userName eq`
-filter / replace / patch / delete) and `Groups` (create / read / list / replace /
-patch / delete). Point the IdP's SCIM connector at `https://<host>/scim/v2` with
-a `token:admin` bearer token; everything it does is confined to that token's
-workspace. No env config: the endpoint is always available, gated on
-`token:admin`. Every change writes its audit row (`scim.user.*`,
-`scim.group.*`, and one `token.revoke` per revoked token) in its own
-transaction, so a change that cannot be recorded does not happen and the IdP
+**SCIM 2.0 provisioning.** An IdP (Okta / Entra ID / …) can provision and
+deprovision workspace members via SCIM 2.0 at `/scim/v2/`:
+`ServiceProviderConfig`, `Users` (create / read / list with `userName`,
+`externalId` or `id eq` filters / replace / patch / delete) and `Groups` (create
+/ read / list / replace / patch / delete). Point the IdP's SCIM connector at
+`https://<host>/scim/v2` with a `token:admin` bearer token; everything it does
+is confined to that token's workspace. No env config: the endpoint is always
+available, gated on `token:admin`. Every change writes its audit row
+(`scim.user.*`, `scim.group.*`, and one `token.revoke` per revoked token) in its
+own transaction, so a change that cannot be recorded does not happen and the IdP
 retries it.
 
 - **Users.** A SCIM `id` is the Maidan member id and `userName` the member
@@ -144,9 +144,13 @@ retries it.
   (not case-sensitive), `externalId eq` or `id eq`, pages with `startIndex` and
   `count` (at most 200), and honours `excludedAttributes=members`; any other
   filter is `400` with `scimType: invalidFilter`.
+- **Filters.** `Users` filters on `userName eq` (not case-sensitive),
+  `externalId eq` or `id eq`, and answers with that workspace's matching users
+  only. Any other filter, on `Users` or `Groups`, is `400` with
+  `scimType: invalidFilter`, never the whole list, so an IdP matching on an
+  attribute Maidan does not filter cannot link to the wrong user.
 - **Not supported:** `Bulk`, sorting, ETags, `Schemas` and `ResourceTypes`,
-  nested groups, compound (`and`/`or`) filters, and filters on `Users` other
-  than `userName eq`.
+  nested groups, compound (`and`/`or`) filters, and paging on `Users`.
 
 ### Database tuning (`v107.0.0`)
 

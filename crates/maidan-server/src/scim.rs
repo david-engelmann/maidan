@@ -407,29 +407,65 @@ pub async fn list_users(
     if let Some(resp) = require_admin(&auth) {
         return resp;
     }
-    let filter = query.as_deref().and_then(parse_username_filter);
-    let mut resources = Vec::new();
-    if let Some(user_name) = filter {
-        // The IdP's de-dup check: resolve exactly this userName.
-        if let Ok(member) = state
-            .store
-            .get_member_by_handle(auth.workspace_id, &user_name)
-            .await
-        {
-            if let Some(resource) = load_resource(&state, auth.workspace_id, member.id).await {
-                resources.push(resource);
-            }
+    let filter = match eq_filter(
+        query.as_deref().unwrap_or_default(),
+        &["username", "externalid", "id"],
+        "Users supports userName, externalId and id with eq",
+    ) {
+        Ok(filter) => filter,
+        Err(fault) => return fault.into_response(),
+    };
+    // An error must not read as "no such user": the IdP would provision a
+    // duplicate.
+    let links = match state.store.list_scim_users(auth.workspace_id).await {
+        Ok(links) => links,
+        Err(err) => {
+            return scim_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("list failed: {err}"),
+            )
         }
-    } else {
-        let links = state
-            .store
-            .list_scim_users(auth.workspace_id)
-            .await
-            .unwrap_or_default();
-        for link in links {
-            if let Some(resource) = load_resource(&state, auth.workspace_id, link.member_id).await {
-                resources.push(resource);
-            }
+    };
+    let matching: Vec<maidan_types::MemberId> = match &filter {
+        None => links.iter().map(|link| link.member_id).collect(),
+        // userName is not caseExact (RFC 7643 §4.1.1); externalId is.
+        Some((attr, value)) if attr == "username" => {
+            let members = match state.store.list_members(auth.workspace_id).await {
+                Ok(members) => members,
+                Err(err) => {
+                    return scim_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &format!("list failed: {err}"),
+                    )
+                }
+            };
+            let wanted = value.to_lowercase();
+            let named: std::collections::HashSet<uuid::Uuid> = members
+                .iter()
+                .filter(|m| m.handle.to_lowercase() == wanted)
+                .map(|m| m.id.0)
+                .collect();
+            links
+                .iter()
+                .filter(|link| named.contains(&link.member_id.0))
+                .map(|link| link.member_id)
+                .collect()
+        }
+        Some((attr, value)) if attr == "externalid" => links
+            .iter()
+            .filter(|link| link.external_id.as_deref() == Some(value.as_str()))
+            .map(|link| link.member_id)
+            .collect(),
+        Some((_, value)) => links
+            .iter()
+            .filter(|link| link.member_id.0.to_string().eq_ignore_ascii_case(value))
+            .map(|link| link.member_id)
+            .collect(),
+    };
+    let mut resources = Vec::new();
+    for member_id in matching {
+        if let Some(resource) = load_resource(&state, auth.workspace_id, member_id).await {
+            resources.push(resource);
         }
     }
     let total = resources.len();
@@ -445,12 +481,27 @@ pub async fn list_users(
     )
 }
 
-/// Parse a SCIM `userName eq "value"` filter from the raw query string. Returns
-/// the target userName, or `None` for any other/absent filter (→ list all).
-fn parse_username_filter(raw_query: &str) -> Option<String> {
-    let filter = query_param(raw_query, "filter")?;
-    let (attribute, value) = parse_eq_filter(&filter)?;
-    (attribute == "username").then_some(value)
+/// The `filter` query parameter as `attribute eq "value"` on one of
+/// `supported` (lowercase attribute names); `None` when there is no filter.
+/// Any other filter is `invalidFilter`. Answering it with the whole list, as
+/// Users once did, lets an IdP that matches on it (say `externalId eq`) link
+/// its record to the first user it gets back.
+pub(crate) fn eq_filter(
+    raw_query: &str,
+    supported: &[&str],
+    detail: &str,
+) -> Result<Option<(String, String)>, ScimFault> {
+    let Some(filter) = query_param(raw_query, "filter") else {
+        return Ok(None);
+    };
+    match parse_eq_filter(&filter) {
+        Some((attr, value)) if supported.contains(&attr.as_str()) => Ok(Some((attr, value))),
+        _ => Err(ScimFault::new(
+            StatusCode::BAD_REQUEST,
+            "invalidFilter",
+            detail,
+        )),
+    }
 }
 
 /// A decoded query parameter. Query strings encode spaces as `%20` or `+`
@@ -724,17 +775,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_username_eq_filter_case_preserving_value() {
+    fn parses_eq_filters_and_refuses_the_rest() {
+        let users = ["username", "externalid", "id"];
+        let parse = |q: &str| eq_filter(q, &users, "x").map_err(|f| f.scim_type);
         assert_eq!(
-            parse_username_filter("filter=userName%20eq%20%22JDoe%22").as_deref(),
-            Some("JDoe")
+            parse("filter=userName%20eq%20%22JDoe%22"),
+            Ok(Some(("username".into(), "JDoe".into())))
         );
         assert_eq!(
-            parse_username_filter("startIndex=1&filter=userName+eq+%22a%40b.com%22").as_deref(),
-            Some("a@b.com")
+            parse("startIndex=1&filter=userName+eq+%22a%40b.com%22"),
+            Ok(Some(("username".into(), "a@b.com".into())))
         );
-        // A non-userName filter falls through to "list all".
-        assert!(parse_username_filter("filter=active%20eq%20true").is_none());
-        assert!(parse_username_filter("count=10").is_none());
+        assert_eq!(
+            parse("filter=externalId%20eq%20%22okta-1%22"),
+            Ok(Some(("externalid".into(), "okta-1".into())))
+        );
+        assert_eq!(parse("count=10"), Ok(None));
+        for refused in [
+            "filter=active%20eq%20true",
+            "filter=userName%20sw%20%22j%22",
+            "filter=userName%20eq%20%22a%22%20or%20userName%20eq%20%22b%22",
+            "filter=",
+        ] {
+            assert_eq!(parse(refused), Err("invalidFilter"), "{refused}");
+        }
     }
 }

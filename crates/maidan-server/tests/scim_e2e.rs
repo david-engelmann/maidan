@@ -919,3 +919,115 @@ async fn scim_groups_require_token_admin() {
         .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn scim_user_filters_match_only_their_user_and_refuse_the_rest() {
+    use reqwest::Method;
+    let h = setup().await;
+    let create = |auth: String, user_name: &'static str, external_id: &'static str| {
+        let h = &h;
+        async move {
+            let (status, body) = h
+                .scim(
+                    Method::POST,
+                    "/scim/v2/Users",
+                    &auth,
+                    Some(serde_json::json!({
+                        "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+                        "userName": user_name,
+                        "externalId": external_id,
+                        "active": true
+                    })),
+                )
+                .await;
+            assert_eq!(status, StatusCode::CREATED, "{body}");
+            body["id"].as_str().unwrap().to_string()
+        }
+    };
+    let alice = create(h.admin_auth.clone(), "alice", "okta-a").await;
+    let bob = create(h.admin_auth.clone(), "bob", "okta-b").await;
+    // The other tenant reuses bob's externalId and alice's userName.
+    let other_bob = create(h.other_auth.clone(), "alice", "okta-b").await;
+
+    let ids = |list: &serde_json::Value| -> Vec<String> {
+        list["Resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let list = |auth: String, query: String| {
+        let h = &h;
+        async move {
+            h.scim(Method::GET, &format!("/scim/v2/Users?{query}"), &auth, None)
+                .await
+        }
+    };
+
+    // externalId eq finds exactly its user, in this workspace only.
+    let (status, body) = list(
+        h.admin_auth.clone(),
+        "filter=externalId%20eq%20%22okta-b%22".into(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(ids(&body), vec![bob.clone()], "{body}");
+    assert_eq!(body["totalResults"], 1);
+    let (_, body) = list(
+        h.other_auth.clone(),
+        "filter=externalId%20eq%20%22okta-b%22".into(),
+    )
+    .await;
+    assert_eq!(ids(&body), vec![other_bob.clone()]);
+    let (_, body) = list(
+        h.admin_auth.clone(),
+        "filter=externalId%20eq%20%22okta-missing%22".into(),
+    )
+    .await;
+    assert_eq!(body["totalResults"], 0);
+
+    // userName eq is not case-sensitive (RFC 7643 §4.1.1).
+    let (_, body) = list(
+        h.admin_auth.clone(),
+        "filter=userName%20eq%20%22ALICE%22".into(),
+    )
+    .await;
+    assert_eq!(ids(&body), vec![alice.clone()], "{body}");
+
+    // id eq, and another workspace's id finds nothing.
+    let (_, body) = list(
+        h.admin_auth.clone(),
+        format!("filter=id%20eq%20%22{bob}%22"),
+    )
+    .await;
+    assert_eq!(ids(&body), vec![bob.clone()]);
+    let (_, body) = list(
+        h.other_auth.clone(),
+        format!("filter=id%20eq%20%22{bob}%22"),
+    )
+    .await;
+    assert_eq!(body["totalResults"], 0);
+
+    // Anything else is invalidFilter, never the whole list.
+    for query in [
+        "filter=displayName%20eq%20%22Alice%22",
+        "filter=active%20eq%20true",
+        "filter=userName%20sw%20%22a%22",
+        "filter=userName%20eq%20%22alice%22%20or%20userName%20eq%20%22bob%22",
+        "filter=emails%5Btype%20eq%20%22work%22%5D",
+    ] {
+        let (status, body) = list(h.admin_auth.clone(), query.into()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{query}: {body}");
+        assert_eq!(body["scimType"], "invalidFilter", "{query}");
+        assert!(body.get("Resources").is_none());
+    }
+
+    // No filter lists this workspace's users only.
+    let (_, body) = list(h.admin_auth.clone(), String::new()).await;
+    let mut all = ids(&body);
+    all.sort();
+    let mut want = vec![alice, bob];
+    want.sort();
+    assert_eq!(all, want);
+}
