@@ -1099,3 +1099,16 @@ fn ui_js_previews_attachments_as_text_names_and_fetched_images() {
         "the SHA-prefix link and message are gone"
     );
 }
+
+#[test]
+fn ui_js_opens_the_only_channel() {
+    let s = script(HTML);
+    assert!(
+        s.contains("else if (channels.length === 1) list.querySelector(\"li[data-id]\").click();"),
+        "a workspace with one channel opens it instead of asking the viewer to pick"
+    );
+    assert!(
+        s.contains("if (!selectedChannelId)") && s.contains("if (again) again.click();"),
+        "a remembered channel still wins, and a channel already open is not reloaded"
+    );
+}

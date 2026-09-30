@@ -4393,10 +4393,15 @@
             };
             list.appendChild(li);
           });
-          // Reopen the channel this browser last looked at.
+          // Reopen the channel this browser last looked at. A first visit
+          // with a single channel opens that board instead of sitting on
+          // "pick a channel" under a live Needs you queue.
           const remembered = localStorage.getItem(channelKey);
           const again = remembered && list.querySelector(`li[data-id="${CSS.escape(remembered)}"]`);
-          if (again && !selectedChannelId) again.click();
+          if (!selectedChannelId) {
+            if (again) again.click();
+            else if (channels.length === 1) list.querySelector("li[data-id]").click();
+          }
         } catch (e) {
           renderState(list, String(e), "err");
         } finally {
