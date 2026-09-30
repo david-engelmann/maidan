@@ -191,8 +191,9 @@ why=$(mcp_refused "$AT" transition_thread "{\"thread_id\":\"$t_login\",\"action\
 line refused "coder-a MCP transition_thread close → refused: $why"
 sleep "$PAUSE"
 # Two agents ask for the next task at the same moment; each gets a different one.
-claim "$AT" > /tmp/demo-board-claim-a.$$ & claim "$BT" > /tmp/demo-board-claim-b.$$ & wait
-ca=$(cat /tmp/demo-board-claim-a.$$); cb=$(cat /tmp/demo-board-claim-b.$$); rm -f /tmp/demo-board-claim-[ab].$$
+fa=$(mktemp); fb=$(mktemp)
+claim "$AT" > "$fa" & claim "$BT" > "$fb" & wait
+ca=$(cat "$fa"); cb=$(cat "$fb"); rm -f "$fa" "$fb"
 ta=$(jq -r '.title // empty' <<<"$ca"); tb=$(jq -r '.title // empty' <<<"$cb")
 if [ -z "$ta" ] || [ -z "$tb" ] || [ "$ta" = "$tb" ]; then
   echo "the two claims were not two different tasks: $ca | $cb" >&2
