@@ -234,16 +234,24 @@ healthy, authenticates `/me` with the one-time token, and confirms anonymous
 access is rejected. A source checkout or locally built image cannot satisfy
 that release gate.
 
-### HTTP bootstrap (alternative)
+### HTTP bootstrap (development only)
 
-When bearer auth is enabled, unauthenticated `POST /workspaces` and
-`POST /workspaces/:wid/members` require `MAIDAN_BOOTSTRAP=1` **and** an image built
-with the `bootstrap` Cargo feature. Only the **first** workspace may be created via
-bootstrap; a second `POST /workspaces` returns `403`. Typical seed (private network):
+`maidan init` above is how a deployment gets its first token, on a private network
+too. The published server image is built without the `bootstrap` Cargo feature, so
+the routes below do not exist in it.
 
-1. Set `MAIDAN_BOOTSTRAP=1`, `AUTH_DISABLED=1`, and `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` (the acknowledgement — `AUTH_DISABLED` alone now refuses to boot).
-2. Create workspace + member, mint admin token.
-3. Unset those flags, set `MAIDAN_ENV=production`, restart.
+A development build with the feature (`cargo run`, or
+`docker build --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 -f crates/maidan-server/Dockerfile .`)
+serves unauthenticated `POST /workspaces` and `POST /workspaces/:wid/members` when
+`MAIDAN_BOOTSTRAP=1` is set. Only the **first** workspace may be created that way; a
+second `POST /workspaces` returns `403`. Those routes mint no token, so a development
+seed over HTTP also runs without auth, which needs both variables:
+
+1. `AUTH_DISABLED=1` and `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` (the acknowledgement:
+   `AUTH_DISABLED` alone refuses to boot, and with `MAIDAN_ENV=production` it refuses
+   regardless), plus `MAIDAN_BOOTSTRAP=1`.
+2. Create the workspace and member, mint an admin token.
+3. Unset all three and restart with auth on.
 
 Integration tests use `AUTH_DISABLED=1` + `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` (bootstrap flag not required).
 

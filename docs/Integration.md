@@ -94,10 +94,10 @@ It creates the initial workspace + an admin member, mints an all-capabilities be
 token (printed once), and refuses if the database already has a workspace. Skip to
 step 4 with that token.
 
-Alternatively, seed over the HTTP bootstrap routes once
-([Production.md](Production.md#bootstrap)) — `MAIDAN_BOOTSTRAP=1` (server built with the
-`bootstrap` feature), or `AUTH_DISABLED=1` together with
-`MAIDAN_ALLOW_INSECURE_NO_AUTH=1` in dev only:
+In development only, a server built with the `bootstrap` feature can be seeded over the
+HTTP bootstrap routes once ([Production.md](Production.md#bootstrap); the published image
+has no such routes) — `MAIDAN_BOOTSTRAP=1`, or `AUTH_DISABLED=1` together with
+`MAIDAN_ALLOW_INSECURE_NO_AUTH=1`:
 
 ```http
 POST /workspaces

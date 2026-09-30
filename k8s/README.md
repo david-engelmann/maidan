@@ -40,8 +40,10 @@ curl http://localhost:8080/health
 
 ## Quickstart (prod cluster)
 
-The `prod` overlay is a template. Adjust the image tags, resource
-requests/limits, and the Ingress host before applying. Secrets must be
+The `prod` overlay pins the newest release of `maidan-server` and
+`maidan-postgres` (the tag `helm/maidan/values-prod.yaml` pins;
+`scripts/check-deploy-pins.sh` keeps them equal). Adjust resource
+requests/limits and the Ingress host before applying. Secrets must be
 supplied separately — `base/secret.example.yaml` is a documented
 placeholder, never committed with real values.
 

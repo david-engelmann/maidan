@@ -9,15 +9,17 @@ resources:
 commonAnnotations:
   maidan.dev/environment: "prod"
 
-# Override these with the actual production image tags (semver release
-# tag, not 'dev'). Recommended: pin to digest in CI/CD.
+# The release every prod deploy path pins (scripts/check-deploy-pins.sh fails
+# when they differ from the newest tagged CHANGELOG section). Both images are
+# published by release.yml under the same tag. Better still, pin digests
+# (`digest: sha256:…`, see ../../README.md).
 images:
   - name: maidan-server
     newName: ghcr.io/david-engelmann/maidan-server
-    newTag: v0.0.1
+    newTag: v412.0.0
   - name: maidan-postgres
     newName: ghcr.io/david-engelmann/maidan-postgres
-    newTag: v0.0.1
+    newTag: v412.0.0
 
 # Production deployments scale wider, expose via a real host, and
 # tighten resource limits.
