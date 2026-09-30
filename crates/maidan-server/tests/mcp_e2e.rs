@@ -678,6 +678,41 @@ async fn parse_error_for_garbage_body() {
 }
 
 #[tokio::test]
+async fn json_that_is_not_a_request_is_an_invalid_request_not_a_parse_error() {
+    let (addr, client, server, _dir) = spawn().await;
+    let post = |path: &'static str, body: &'static str| {
+        client
+            .post(format!("http://{addr}{path}"))
+            .header("content-type", "application/json")
+            .header("accept", "application/json")
+            .body(body)
+            .send()
+    };
+    for path in ["/mcp", "/mcp/streamable"] {
+        for body in [
+            r#"{"jsonrpc":"2.0","id":1}"#,
+            r#"{"jsonrpc":"2.0","id":null,"method":"tools/list"}"#,
+            r#""tools/list""#,
+        ] {
+            let resp = post(path, body).await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK, "{path} {body}");
+            let answer: Value = resp.json().await.unwrap();
+            assert_eq!(answer["error"]["code"], -32600, "{path} {body}: {answer}");
+            assert_eq!(answer["id"], Value::Null);
+        }
+    }
+    let batch: Value = post("/mcp", r#"[1,{"jsonrpc":"2.0","id":2,"method":"ping"}]"#)
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(batch[0]["error"]["code"], -32600, "{batch}");
+    assert_eq!(batch[1]["id"], 2, "{batch}");
+    server.abort();
+}
+
+#[tokio::test]
 async fn mcp_initialize_negotiates_protocol_version() {
     let (addr, client, server, _dir) = spawn().await;
     let base = format!("http://{addr}");

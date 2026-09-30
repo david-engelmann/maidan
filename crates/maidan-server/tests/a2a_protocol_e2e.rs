@@ -646,6 +646,23 @@ async fn the_json_rpc_envelope_is_checked() {
         assert_eq!(error_code(&resp), code, "{body}");
         assert_eq!(resp["id"], 3);
     }
+
+    // JSON that is not a request is Invalid Request, not a parse error.
+    for body in [
+        r#"[1]"#,
+        r#"[{"jsonrpc":"2.0","id":4,"method":"ListTasks"}]"#,
+        r#"{"jsonrpc":"2.0","id":4}"#,
+        r#"{"jsonrpc":"2.0","method":"ListTasks"}"#,
+        r#"{"jsonrpc":"2.0","id":null,"method":"ListTasks"}"#,
+    ] {
+        let resp: Value = post("/a2a/v1/rpc", "application/json", body)
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(error_code(&resp), -32600, "{body}: {resp}");
+    }
 }
 
 #[tokio::test]

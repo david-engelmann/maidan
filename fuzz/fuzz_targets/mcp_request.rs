@@ -8,6 +8,9 @@
 //! - the argument gates that run before a tool's handler agree with the typed
 //!   decode the handler makes: a `workspace_id` or member tool's `member_id`
 //!   that passes the gate but decodes to someone else is a gate bypass.
+//!
+//! And a body that is refused is refused with the right code: `-32700` for
+//! bytes that are not JSON, `-32600` for JSON that is not a request.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
@@ -81,7 +84,19 @@ fn gates_agree_with_handlers(request: &JsonRpcRequest) {
     );
 }
 
+fn refused_with_the_right_code(data: &[u8]) {
+    let is_json = serde_json::from_slice::<Value>(data).is_ok();
+    let expected = if is_json { -32600 } else { -32700 };
+    if let Err(rejected) = parse_request(data) {
+        assert_eq!(rejected.code, expected, "parse_request({data:?})");
+    }
+    if let Err(rejected) = parse_body(data) {
+        assert_eq!(rejected.code, expected, "parse_body({data:?})");
+    }
+}
+
 fuzz_target!(|data: &[u8]| {
+    refused_with_the_right_code(data);
     if let Ok(single) = parse_request(data) {
         match parse_body(data) {
             Ok(RequestBody::Single(same)) => assert_eq!(same, single, "the transports disagree"),
@@ -101,6 +116,9 @@ fuzz_target!(|data: &[u8]| {
         RequestBody::Batch(items) => {
             let raw_items = raw.as_array().expect("a batch is an array");
             for (item, raw_item) in items.iter().zip(raw_items) {
+                if let Err(rejected) = item {
+                    assert_eq!(rejected.code, -32600, "batch item {raw_item}");
+                }
                 if let Ok(request) = item {
                     round_trips(request);
                     gateway_sees(request, raw_item);

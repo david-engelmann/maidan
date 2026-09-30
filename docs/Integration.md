@@ -786,9 +786,12 @@ One-shot JSON-RPC without holding SSE: use `POST /mcp`, or send `Accept: applica
 `text/event-stream`) to the streamable POST. `POST /mcp` is also the endpoint that takes a top-level
 array as a JSON-RPC batch and answers a notification (a request with no `id`) with `202 Accepted` and
 no body; the streamable POST handles one request per call. Every transport (both POSTs and stdio)
-reads a request the same way: a JSON object, whose duplicate members keep the last value. Anything
-else, including a positional array such as `["2.0", 1, "tools/list"]` or a body that is not valid
-UTF-8 JSON, is a parse error (`-32700`) with a `null` id.
+reads a request the same way: a JSON object with `"jsonrpc": "2.0"`, a string `method`, and an `id`
+that is a string or an integer (or no `id`, for a notification); duplicate members keep the last
+value. Bytes that are not valid UTF-8 JSON are a parse error (`-32700`). JSON that is not such an
+object, including a positional array such as `["2.0", 1, "tools/list"]`, an object with no `method`,
+a `null` id (MCP forbids one) or a non-object item inside a batch, is an invalid request (`-32600`).
+Both are answered with a `null` id; in a batch, a bad item gets its own error and the rest run.
 
 Maidan never issues requests *to* your client: there is no sampling, roots, or elicitation
 back-channel. When an agent needs a human, it opens a durable approval gate — see "Asking a human
