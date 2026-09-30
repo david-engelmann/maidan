@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use base64::Engine as _;
+use maidan_a2a::page_token::{decode_config_cursor, encode_config_cursor};
 use maidan_a2a::{
     A2aError, A2aErrorKind, AuthenticationInfo, DeleteTaskPushNotificationConfigRequest,
     GetTaskPushNotificationConfigRequest, ListTaskPushNotificationConfigsRequest,
@@ -212,7 +212,7 @@ pub(crate) async fn list(
     let page_size = page_size(req.page_size)?;
     let after = match req.page_token.as_deref().filter(|t| !t.is_empty()) {
         None => None,
-        Some(token) => Some(decode_page_token(token)?),
+        Some(token) => Some(decode_config_cursor(token)?),
     };
     let mut rows = state
         .store
@@ -222,7 +222,7 @@ pub(crate) async fn list(
     let next_page_token = if rows.len() > page_size as usize {
         rows.truncate(page_size as usize);
         rows.last()
-            .map(|row| encode_page_token(&row.config_id))
+            .map(|row| encode_config_cursor(&row.config_id))
             .unwrap_or_default()
     } else {
         String::new()
@@ -231,18 +231,6 @@ pub(crate) async fn list(
         configs: rows.into_iter().map(shown).collect(),
         next_page_token,
     })
-}
-
-fn encode_page_token(config_id: &str) -> String {
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(config_id)
-}
-
-fn decode_page_token(token: &str) -> Result<String, A2aError> {
-    let invalid = || A2aError::invalid_params("invalid pageToken");
-    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(token)
-        .map_err(|_| invalid())?;
-    String::from_utf8(raw).map_err(|_| invalid())
 }
 
 /// Deleting a config that is already gone succeeds: the call is idempotent.

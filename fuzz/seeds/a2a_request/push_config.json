@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":2,"method":"CreateTaskPushNotificationConfig","params":{"taskId":"t","url":"https://example.com/hook","token":"s"}}

@@ -1,0 +1,1 @@
+{"token":"mdn_x","filter":{"workspace_id":"00000000-0000-0000-0000-000000000002","kinds":["message_posted","thread_created"],"channel_grants":["00000000-0000-0000-0000-000000000003"]},"after_id":3,"consumer_id":"c1","member_id":"00000000-0000-0000-0000-000000000001","at_least_once":true,"lean":true}

@@ -58,9 +58,9 @@ pub async fn streamable(
     crate::mcp::validate_protocol_version(&headers)?;
 
     let session_header = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
-    let request: JsonRpcRequest = match serde_json::from_slice(&body) {
+    let request = match maidan_mcp::protocol::parse_request(&body) {
         Ok(r) => r,
-        Err(_) => return Ok(Json(JsonRpcResponse::parse_error()).into_response()),
+        Err(rejected) => return Ok(Json(JsonRpcResponse::rejected(rejected)).into_response()),
     };
     // SEP-2243 routing headers (Mcp-Method / Mcp-Name), when present, must match
     // the body so a gateway can route/authorize without parsing JSON (J3.2).

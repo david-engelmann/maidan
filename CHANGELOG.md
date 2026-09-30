@@ -411,6 +411,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The official A2A TCK now runs over gRPC as well as JSON-RPC and HTTP+JSON;
   182 tests pass (was 135).
 
+### Fuzzing the protocol decoders, and mutation tests for auth and the bus
+
+- **Added:** four more nightly fuzz targets, over the decoders a client with a
+  token reaches first. `mcp_request` feeds bytes through the parser every MCP
+  transport now shares (`maidan_mcp::protocol::parse_body`/`parse_request`)
+  and checks that a request reprints to itself, that the method dispatched is
+  the one a gateway reading the body as JSON sees, and that the pre-dispatch
+  argument gates agree with the handlers' typed decode of `workspace_id` and
+  `member_id`. `a2a_request` covers the A2A JSON-RPC envelope and each
+  method's params (now `maidan_a2a::rpc`); `a2a_page_token` the two list
+  cursors (now `maidan_a2a::page_token`); `ws_subscribe` the WebSocket
+  subscribe frame and its signed resume token (now `maidan_auth::subscribe`).
+  Targets can have seed inputs under `fuzz/seeds/`, and every run uses a JSON
+  dictionary.
+- **Fixed:** `POST /mcp/streamable` and the stdio transport read the body
+  straight into the request struct, so they accepted a positional array
+  (`["2.0",1,"tools/call",{…}]`) and bodies with invalid UTF-8 inside a member
+  the struct ignores, both of which `POST /mcp` refused. A gateway routing on
+  the body saw no method, or no JSON, where Maidan ran one. Found by
+  `mcp_request` in its first seconds. All three now read a JSON object and
+  nothing else.
+- **Fixed:** a resume-token lifetime past `i64::MAX` seconds overflowed while
+  signing (a panic in debug builds, an already expired token in release); it
+  now saturates.
+- **Changed:** the nightly mutation job runs as a matrix and covers
+  `maidan-auth` (three shards) and `maidan-bus` (four) as well as the store
+  and artifacts.
+
 ### Fuzzing the parsers of untrusted input
 
 - **Added:** `fuzz/`, five cargo-fuzz targets run nightly for five minutes

@@ -93,6 +93,9 @@ non-required job, and a skipped required job reports as passed.
 
 The docs site builds in [`docs.yml`](../.github/workflows/docs.yml) (`mdbook`,
 not required). `nightly.yml` runs the slower checks: cargo-mutants over the
-store and artifacts, a benchmark build, and five minutes of fuzzing per target
-in `fuzz/` (the egress SSRF guard, room URIs, waiter results, event
-type ids, content keys). A new parser of untrusted input gets a target there.
+store, artifacts, auth and bus, a benchmark build, and five minutes of fuzzing
+per target in `fuzz/` (the egress SSRF guard, room URIs, waiter results, event
+type ids, content keys, MCP and A2A JSON-RPC requests, A2A page tokens, the
+WebSocket subscribe frame). A new parser of untrusted input gets a target
+there, with seed inputs under `fuzz/seeds/<target>/` when it reads structured
+input.
