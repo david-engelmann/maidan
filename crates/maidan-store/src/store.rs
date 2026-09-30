@@ -2085,6 +2085,9 @@ pub trait MessageStore: Send + Sync {
 
 #[async_trait]
 pub trait MentionInboxStore: Send + Sync {
+    /// Record a mention without appending its event: the `@handle` router
+    /// publishes `MentionRecorded` itself. `NotFound` unless `member_id` is a
+    /// member of the message's workspace, as for the evented form.
     async fn record_mention(
         &self,
         message_id: MessageId,

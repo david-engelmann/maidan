@@ -6,12 +6,18 @@ use uuid::Uuid;
 use crate::error::StoreError;
 use crate::sqlite::{events, members};
 
+/// Record a mention without an event. The `@handle` router does, and
+/// publishes `MentionRecorded` itself. It checks the member against the
+/// message's workspace, as [`record_with_event`] does.
 pub async fn record(
     pool: &SqlitePool,
     message_id: MessageId,
     member_id: MemberId,
 ) -> Result<(), StoreError> {
-    let now = Utc::now();
+    let mut tx = pool.begin().await?;
+    let (workspace_id, _channel_id, _thread_id) =
+        events::message_scope_in_tx(&mut tx, message_id).await?;
+    members::ensure_in_workspace(&mut tx, workspace_id, member_id).await?;
     sqlx::query(
         "INSERT INTO maidan_mentions (message_id, member_id, created_at)
          VALUES (?, ?, ?)
@@ -19,9 +25,10 @@ pub async fn record(
     )
     .bind(message_id.0)
     .bind(member_id.0)
-    .bind(now)
-    .execute(pool)
+    .bind(Utc::now())
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 
