@@ -249,6 +249,24 @@ jobs:
       - name: tlc
         run: scripts/tla.sh
 
+  osv-scan:
+    name: osv scan (lockfiles outside cargo-deny)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # osv-scanner (pinned in scripts/osv-scan.sh) over every lockfile that
+    # cargo-deny does not read: fuzz/, ui-tests/, sdk/go and a fresh resolution
+    # of the Rust SDK. Fails on any advisory not accepted, with its reason, in
+    # .config/osv-scanner.toml. Not a required check (docs/Decisions.md): a new
+    # advisory can turn it red with no change in this repo.
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: osv-scanner
+        run: scripts/osv-scan.sh
+
   sdk-interop:
     name: sdk interop (report-only)
     needs: changes

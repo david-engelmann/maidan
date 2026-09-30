@@ -1380,6 +1380,38 @@ catches the bug it names.
 **To revisit:** when the claim or sealing code changes shape: change the
 spec in the same PR.
 
+### osv-scanner covers the lockfiles cargo-deny does not; SBOMs are image attestations
+
+**Decision.** The non-required `osv scan` CI job runs `scripts/osv-scan.sh`:
+osv-scanner 2.6.0, pinned by SHA-256, over every tracked lockfile except the
+root `Cargo.lock` (`fuzz/Cargo.lock`, `ui-tests/package-lock.json`,
+`sdk/go/go.mod`) and a fresh resolution of `sdk/rust`, whose `Cargo.lock` is
+ignored because the crate's users resolve their own. The TypeScript and Python
+SDKs have no runtime dependencies; the script fails if one gains a dependency
+without a lockfile. Accepted advisories, each with its reason, are in
+`.config/osv-scanner.toml`. It fails on anything else and has no
+`continue-on-error`. The release attests one CycloneDX SBOM to each image's
+index digest (`cosign attest --type cyclonedx`, keyless, the same identity as
+`cosign sign`): cargo-cyclonedx for the server and CLI, trivy for Postgres.
+The same files are published and blob-signed beside the tarballs.
+
+**Alternative.** osv-scanner over the whole repository, root lockfile
+included; a required check; SBOMs only as release assets.
+
+**Why this:** cargo-deny reads the root lockfile against RustSec with the
+real dependency graph, and `deny.toml` holds its accepted advisories. OSV
+reads lockfiles without the graph, so over the root it reports crates that
+are locked but never built (`quinn-proto`), and it would need a second copy of
+those reasons. A new advisory can turn the job red with no change here, so a
+required check would block unrelated merges. An SBOM that is only a release
+asset is not bound to the image a user pulls; an attestation on the digest
+is, and `cosign verify-attestation` checks it against the release workflow.
+
+**To revisit:** OSV also carries GitHub advisories that RustSec does not
+(`cmov`, `opentelemetry_sdk` and `serde_with` in the root lockfile, as of
+2026-09-29). If those keep appearing, scan the root lockfile too, with its
+accepted advisories mirrored from `deny.toml`.
+
 ### Every write that changes a thread's holder sets its lease deadline
 
 **Decision.** `claim_next_thread` writes the lease deadline (or none);

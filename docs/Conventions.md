@@ -85,6 +85,9 @@ non-required job, and a skipped required job reports as passed.
 | `bootstrap compile-time strip` | a release build without the `bootstrap` feature | no |
 | `coverage (llvm-cov)` | per-crate coverage floors | no |
 | `a2a tck` | the official A2A conformance kit | no |
+| `loom` | loom models of the sharded bus and the presence hub | no |
+| `tla` | TLC over the TLA+ specs in `specs/tla` | no |
+| `osv scan (lockfiles outside cargo-deny)` | osv-scanner over `fuzz/`, `ui-tests/` and the SDK lockfiles | no |
 | `mcp inspector (report-only)` | the official MCP Inspector against the server | no |
 | `sdk interop (report-only)` | the four SDKs against a live server | no |
 | `pitr drill` | point-in-time recovery to a chosen moment | no |

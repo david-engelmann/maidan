@@ -68,7 +68,7 @@ for image in maidan-server maidan-cli maidan-postgres; do
 done
 ```
 
-**Release binary + SBOM** (each artifact ships a `.cosign.bundle` = signature + cert +
+**Release binaries** (each artifact ships a `.cosign.bundle` = signature + cert +
 Rekor proof; download the tarball and its bundle from the release page):
 
 ```sh
@@ -79,8 +79,26 @@ cosign verify-blob \
   maidan-x86_64-unknown-linux-gnu.tar.gz
 ```
 
-A `sbom.json` (CycloneDX) is published and signed the same way. A verification failure
-means the artifact was not produced by this repo's release pipeline — do not run it.
+**SBOMs.** Each image's CycloneDX SBOM is attested to the image digest by the same
+workflow identity, so it is bound to the image you pull:
+
+```sh
+for image in maidan-server maidan-cli maidan-postgres; do
+  cosign verify-attestation --type cyclonedx "ghcr.io/david-engelmann/${image}:<tag>" \
+    --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    | jq -r '.payload' | base64 -d | jq '.predicate'
+done
+```
+
+The server and CLI SBOMs come from cargo-cyclonedx and list the Rust dependencies of the
+binary (a superset: it unifies features across the workspace); the Postgres SBOM comes
+from trivy and lists the image's packages. The same files are on the release page as
+`<image>.cdx.json`, each with a `.cosign.bundle` that `verify-blob` checks as above. Tags
+up to and including v412.0.0 have neither: their SBOM step never produced a file.
+
+A verification failure means the artifact was not produced by this repo's release
+pipeline — do not run it.
 
 The identity is anchored at both ends on purpose. `^https://github.com/david-engelmann/maidan`
 alone, which these instructions used to give, also matches any workflow in a repository whose

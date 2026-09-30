@@ -235,10 +235,12 @@ Tagging is the maintainer's call, not part of closing a cluster. To cut
    - multi-arch images `ghcr.io/david-engelmann/maidan-server`,
      `maidan-cli` and `maidan-postgres`;
    - a blocking trivy scan of each image, then `cosign sign` of each image
-     digest;
+     digest and `cosign attest` of that image's CycloneDX SBOM to the same
+     digest (`generate image SBOMs`: cargo-cyclonedx for the server and CLI,
+     trivy for Postgres);
    - `published server + CLI boot smoke` against the published images;
-   - the GitHub Release, with `sbom.json` and a `.cosign.bundle` beside every
-     artifact.
+   - the GitHub Release, with the three `<image>.cdx.json` SBOMs and a
+     `.cosign.bundle` beside every artifact.
 4. Verify the release, and see "Debugging the release workflow" below if a job
    fails. Anyone can verify signatures:
 
@@ -250,7 +252,14 @@ Tagging is the maintainer's call, not part of closing a cluster. To cut
    cosign verify ghcr.io/david-engelmann/maidan-server:vX.0.0 \
      --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+   cosign verify-attestation --type cyclonedx ghcr.io/david-engelmann/maidan-server:vX.0.0 \
+     --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com
    ```
+
+   The SBOM and attestation steps first run on the first tag after
+   `v412.0.0`. On that release, run `verify-attestation` for all three images
+   before announcing it.
 
 Clusters that were never tagged ship in the next release; their Capabilities
 sections say "source record; no tag".
@@ -340,6 +349,18 @@ The job model-checks the TLA+ specs in `specs/tla` with TLC (pinned
 passing config and one that turns off a mechanism (`ClaimNoReset.cfg`,
 `EventLogUnordered.cfg`), where TLC must find the named invariant violated.
 A failure prints a counterexample trace that breaks the invariant.
+
+### `osv scan` fails
+
+The job runs `scripts/osv-scan.sh` (osv-scanner 2.6.0, pinned by SHA-256)
+over the lockfiles cargo-deny does not read. Run it locally; its table names
+the advisory, the package and the lockfile. A new advisory can turn it red
+with no change here. If a fixed version exists, bump that lockfile
+(`npm install` in `ui-tests/`, `cargo update -p <crate>` in `fuzz/`). If the
+advisory does not apply, add an `[[IgnoredVulns]]` entry to
+`.config/osv-scanner.toml` with the lockfile and the reason. A dependency
+added to the TypeScript or Python SDK needs a committed lockfile; the script
+says so.
 
 ### NOTIFY floor simulation fails
 
@@ -466,6 +487,11 @@ If the release workflow runs but doesn't produce a GitHub Release:
    - `softprops/action-gh-release` fails on
      `fail_on_unmatched_files`: one or more matrix builds didn't
      produce an artifact. Fix the matrix entry that failed.
+   - **`generate image SBOMs` fails**: signing, attestation and the GitHub
+     Release all wait on it, so no image is signed. A `mv` of
+     `crates/<crate>/sbom.json` failing means cargo-cyclonedx changed where it
+     writes (it is pinned in the job); the `jq` check failing means an SBOM
+     came out empty. Fix the job and rerun with `workflow_dispatch`.
 
 4. To retry a release without re-tagging:
 
