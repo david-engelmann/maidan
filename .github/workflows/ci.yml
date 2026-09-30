@@ -566,6 +566,21 @@ jobs:
       - name: point-in-time recovery drill
         run: bash scripts/pitr-drill.sh maidan-postgres:ci
 
+  open-work:
+    # docs/Open Work.md's live tables against history: a PR listed as in
+    # flight must not have merged, and the reconciliation stamp must be on this
+    # branch. Red means the file needs reconciling (the drift policy in
+    # docs/Conventions.md). Not required.
+    name: open work
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Open Work against history
+        run: bash scripts/check-open-work.sh
+
   sqlite-backup-drill:
     # The SQLite half of backup and restore: a VACUUM INTO snapshot taken while
     # a writer runs, restored over a killed server's database and an orphaned

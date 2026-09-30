@@ -436,6 +436,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   other workspace's content in a body. It then checks the other workspace's
   entities are unchanged. A new route is covered by being in the spec.
 
+### Open Work is checked against history
+
+- **Added:** `scripts/check-open-work.sh`, run in CI as `open work` (not
+  required). It fails when a PR listed under Open Work's **Now** has merged, or
+  when the file's reconciliation stamp is not on the branch.
+- **Changed:** Open Work reconciled at `1b28e733`: shipped rows deleted, every
+  open PR and lane listed under Now with its merge order, Next re-ranked with the
+  2026-09-30 review's surviving items, and a disposition for each of that
+  review's entries. The Roadmap's horizons say what landed and what remains.
+- **Added:** a `/ui` checklist in the pull request template (token and OIDC
+  sign-in, keyboard only, a 390 px viewport, every string re-read).
+
 ### axum 0.8, and handlers checked at compile time
 
 - **Changed:** the HTTP server is on axum 0.8 (one axum in the tree; the
