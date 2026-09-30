@@ -8,6 +8,7 @@ use tokio::sync::{mpsc, watch};
 use tokio_stream::StreamExt;
 use tracing::{info, warn};
 
+use crate::retry_budget::{deferred_until, Attempt};
 use crate::state::AppState;
 use crate::webhooks::{
     build_payload, deliver_http, delivery_backoff, event_kind_from_payload, kinds_match,
@@ -233,7 +234,10 @@ async fn run_delivery_poller(state: AppState, mut shutdown: watch::Receiver<()>)
     }
 }
 
-async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), String> {
+/// One pass over the due deliveries: send each, reschedule or quarantine a
+/// failure, and defer a retry the host's retry budget refuses. The spawned
+/// poller calls this every poll interval.
+pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), String> {
     let pending = state
         .store
         .list_pending_webhook_deliveries(DELIVERY_BATCH)
@@ -257,6 +261,16 @@ async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), Stri
             );
             continue;
         };
+        if let Some(host) = crate::retry_budget::host_of(&sub.subscription.url) {
+            let attempt = Attempt::after(i64::from(delivery.attempts));
+            if let Some(until) = deferred_until(&state.retry_budget, "webhook", &host, attempt) {
+                if let Err(err) = state.store.defer_webhook_delivery(delivery.id, until).await {
+                    // Still due, so the next poll asks the budget again.
+                    warn!(delivery_id = delivery.id, error = %err, "webhook deferral failed");
+                }
+                continue;
+            }
+        }
         let kind = event_kind_from_payload(&delivery.payload);
         // Egress SecretBroker: substitute `secret://` refs with real values
         // only when the target host is allowlisted; the plaintext is resolved

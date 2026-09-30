@@ -211,6 +211,9 @@ pub struct AppState {
     /// Optional, advisory-only Jev land-gate scorer. `None` is the default and
     /// makes the advice route unavailable without changing gate writes.
     pub land_gate_advisor: Option<Arc<dyn crate::land_gate_advisor::LandGateAdvisor>>,
+    /// Per-host bound on retries, shared by every outbound delivery worker in
+    /// this process. Tests swap in one on a manual clock.
+    pub retry_budget: Arc<crate::retry_budget::RetryBudget>,
 }
 
 impl AppState {
@@ -286,6 +289,7 @@ impl AppState {
             export_signing: None,
             export_verify_keys: Vec::new(),
             land_gate_advisor: None,
+            retry_budget: Arc::new(crate::retry_budget::RetryBudget::new()),
         }
     }
 

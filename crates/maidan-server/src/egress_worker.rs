@@ -18,6 +18,13 @@
 //! dead-letters, and a `ProjectorMisconfigured` event names the surface, the
 //! selector and the error.
 //!
+//! **Retry budget:** a retry the destination API's
+//! [retry budget](crate::retry_budget) refuses is handed back unsent
+//! ([`defer_egress`](maidan_store::Store)): due again a few seconds later with
+//! the claim's attempt given back, so Slack or GitHub coming back from an
+//! outage takes the backlog at the budget's pace, and no delivery is
+//! dead-lettered for waiting.
+//!
 //! **Runs whenever a projector sender is configured** (spawned in `main.rs` only
 //! then — and the projectors only enqueue then, so an unconfigured deployment
 //! neither queues nor drains). Tick defaults to 5s, tunable via
@@ -58,6 +65,7 @@ use maidan_types::{EgressKind, EgressOutbox, EgressTarget, ExternalRef, ResultDe
 
 use crate::egress_body::comment_carries_result_marker;
 use crate::github::GithubIssueComment;
+use crate::retry_budget::{deferred_until, Attempt};
 use crate::state::AppState;
 
 /// How far forward a claim leases a row. A projector post should finish well
@@ -113,6 +121,8 @@ pub struct EgressSweepStats {
     pub retried: u32,
     pub dead: u32,
     pub disabled: u32,
+    /// Retries the retry budget held back: rescheduled, not attempted.
+    pub deferred: u32,
 }
 
 /// A failed delivery attempt: what to record, and whether retrying could ever
@@ -646,6 +656,15 @@ async fn audit_result_attempt(
     .await;
 }
 
+/// The API host a delivery to `target` is posted to, for the retry budget.
+fn egress_host(state: &AppState, target: &EgressTarget) -> String {
+    match target {
+        EgressTarget::Slack { .. } => state.slack_sender.as_ref().map(|s| s.host()),
+        EgressTarget::Github { .. } => state.github_sender.as_ref().map(|s| s.host()),
+    }
+    .unwrap_or_else(|| target.surface().as_str().to_string())
+}
+
 /// Drain up to [`MAX_PER_TICK`] due deliveries. No-op when no projector sender is
 /// configured — without one, every claim would fail and burn the queue's attempts
 /// against a deployment that simply has the projector turned off.
@@ -682,6 +701,22 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             continue;
         };
         let surface = target.surface().as_str();
+        // The claim counted this try, so a first post has `attempts == 1`.
+        let attempt = Attempt::after(entry.attempts - 1);
+        if let Some(until) = deferred_until(
+            &state.retry_budget,
+            "egress",
+            &egress_host(state, &target),
+            attempt,
+        ) {
+            if let Err(err) = state.store.defer_egress(entry.id, until).await {
+                // The row stays leased with this claim counted: the one way a
+                // deferral can cost an attempt, and only when the store is failing.
+                tracing::warn!(error = %err, id = %entry.id, "egress worker: deferral failed");
+            }
+            stats.deferred += 1;
+            continue;
+        }
         match maidan_store::trace::maybe_scope(entry.trace.clone(), deliver(state, &entry, &target))
             .await
         {

@@ -9,6 +9,7 @@ use crate::automation_delivery::{
     backoff, deliver_pending, max_attempts_from_env, poll_interval_ms_from_env,
 };
 use crate::metrics;
+use crate::retry_budget::{deferred_until, Attempt};
 use crate::state::AppState;
 
 const DELIVERY_BATCH: i64 = 64;
@@ -49,13 +50,30 @@ async fn run(state: AppState, mut shutdown: watch::Receiver<()>) {
     }
 }
 
-async fn poll_once(state: &AppState, max_attempts: u32) -> Result<(), String> {
+/// One pass over the due deliveries: send each, reschedule or quarantine a
+/// failure, and defer a retry the host's retry budget refuses. The spawned
+/// worker calls this every poll interval.
+pub async fn poll_once(state: &AppState, max_attempts: u32) -> Result<(), String> {
     let pending = state
         .store
         .list_pending_automation_deliveries(DELIVERY_BATCH)
         .await
         .map_err(|e| e.to_string())?;
     for delivery in pending {
+        if let Some(host) = crate::retry_budget::host_of(&delivery.target_url) {
+            let attempt = Attempt::after(i64::from(delivery.attempts));
+            if let Some(until) = deferred_until(&state.retry_budget, "automation", &host, attempt) {
+                if let Err(err) = state
+                    .store
+                    .defer_automation_delivery(delivery.id, until)
+                    .await
+                {
+                    // Still due, so the next poll asks the budget again.
+                    warn!(delivery_id = delivery.id, error = %err, "automation deferral failed");
+                }
+                continue;
+            }
+        }
         let start = std::time::Instant::now();
         match maidan_store::trace::maybe_scope(
             delivery.trace.clone(),

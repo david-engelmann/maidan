@@ -158,6 +158,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   stale entry passed. The GET probe now targets a seeded instance-wide job
   instead of an unknown id. All 272 exercised routes name their capability.
 
+### A recovering destination gets its retries at a bounded rate
+
+- **Added:** a retry budget per destination host, shared by the webhook,
+  automation, projector/result egress and mail workers in a process. A host
+  takes at most 10 retries at once and 2 a second after that; first attempts
+  are never held back. Before, each worker retried on its own backoff, so a
+  host that came back after an outage got every queued retry at once and could
+  fall over again.
+- **Changed:** a retry the budget refuses is deferred: its next attempt moves
+  1 to 60 s forward and its attempt count is unchanged, so waiting never
+  dead-letters a delivery. New store methods `defer_webhook_delivery`,
+  `defer_automation_delivery`, `defer_mail` and `defer_egress` do the
+  rescheduling; no new table and no new environment variable. The budget is
+  in memory, so each replica has its own. Counter
+  `maidan_egress_retry_deferred_total{worker}`.
+
 ### Room-LSN is the room's on every outbound path
 
 - **Fixed:** webhook POSTs, automation deliveries and the WebSocket and MCP

@@ -347,6 +347,11 @@ pub trait GithubSender: Send + Sync {
         commit_id: &str,
         comments: &[GithubReviewComment],
     ) -> Result<(), GithubError>;
+
+    /// The host this sender posts to: its key in the shared retry budget.
+    fn host(&self) -> String {
+        "api.github.com".to_string()
+    }
 }
 
 /// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
@@ -388,6 +393,10 @@ impl GithubApiClient {
 
 #[async_trait::async_trait]
 impl GithubSender for GithubApiClient {
+    fn host(&self) -> String {
+        crate::retry_budget::host_of(&self.base_url).unwrap_or_else(|| "api.github.com".to_string())
+    }
+
     async fn post_comment(
         &self,
         repo: &str,

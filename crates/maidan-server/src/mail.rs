@@ -76,12 +76,19 @@ impl SmtpConfig {
 #[async_trait]
 pub trait MailTransport: Send + Sync {
     async fn send(&self, to: &str, subject: &str, body: &str) -> Result<(), MailError>;
+
+    /// The relay every message goes through: its key in the shared retry
+    /// budget.
+    fn relay_host(&self) -> String {
+        "smtp".to_string()
+    }
 }
 
 /// A `lettre`-backed async SMTP transport.
 pub struct SmtpTransport {
     mailer: AsyncSmtpTransport<Tokio1Executor>,
     from: Mailbox,
+    host: String,
 }
 
 impl SmtpTransport {
@@ -105,6 +112,7 @@ impl SmtpTransport {
         Ok(Self {
             mailer: builder.build(),
             from,
+            host: cfg.host.to_ascii_lowercase(),
         })
     }
 }
@@ -126,6 +134,10 @@ impl MailTransport for SmtpTransport {
             .await
             .map_err(|e| MailError::Send(e.to_string()))?;
         Ok(())
+    }
+
+    fn relay_host(&self) -> String {
+        self.host.clone()
     }
 }
 

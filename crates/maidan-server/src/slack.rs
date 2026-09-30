@@ -258,6 +258,11 @@ pub trait SlackSender: Send + Sync {
 
     /// Edit a message posted earlier, addressed by channel + `ts`.
     async fn update_message(&self, channel: &str, ts: &str, text: &str) -> Result<(), SlackError>;
+
+    /// The host this sender posts to: its key in the shared retry budget.
+    fn host(&self) -> String {
+        "slack.com".to_string()
+    }
 }
 
 /// The production [`SlackSender`]: posts via the Slack Web API `chat.postMessage`.
@@ -321,6 +326,10 @@ impl SlackWebClient {
 
 #[async_trait::async_trait]
 impl SlackSender for SlackWebClient {
+    fn host(&self) -> String {
+        crate::retry_budget::host_of(&self.base_url).unwrap_or_else(|| "slack.com".to_string())
+    }
+
     async fn post_message(
         &self,
         channel: &str,

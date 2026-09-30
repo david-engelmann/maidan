@@ -179,6 +179,11 @@ pub fn init() {
             "Automation HTTP deliveries (slash/fsm) by outcome"
         );
         describe_counter!(
+            "maidan_egress_retry_deferred_total",
+            "Outbound retries the per-host retry budget held back and rescheduled, by \
+             worker (webhook/automation/egress/mail); a deferral is not a failed attempt"
+        );
+        describe_counter!(
             "maidan_a2a_push_total",
             "A2A task push notifications by outcome (ok/failed after retries)"
         );
@@ -351,6 +356,14 @@ pub fn record_egress_delivery(surface: &str, outcome: &str) {
         "outcome" => outcome.to_string(),
     )
     .increment(1);
+}
+
+/// A retry the per-host retry budget refused, by `worker` (`webhook`,
+/// `automation`, `egress`, `mail`). The row was rescheduled a few seconds out
+/// with its attempt count unchanged: a sustained rate means a destination is
+/// taking retries as fast as the budget allows, not that deliveries are failing.
+pub fn record_retry_deferred(worker: &str) {
+    counter!("maidan_egress_retry_deferred_total", "worker" => worker.to_string()).increment(1);
 }
 
 /// Result-delivery trigger outcomes: `enqueued` (blessed, armed, sitting on the
