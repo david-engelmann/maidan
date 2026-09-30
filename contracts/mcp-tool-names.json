@@ -16,6 +16,7 @@
   "cast_vote",
   "catch_up_events",
   "claim_next_thread",
+  "claim_next_workspace_thread",
   "claim_thread",
   "clear_land_gate",
   "clear_thread_block",

@@ -1669,7 +1669,10 @@ pub trait AssignmentStore: Send + Sync {
     /// unfinished dependency is skipped), **and** it has no
     /// explicit [`BlockedReason`] row. `lease_secs` sets a lease deadline
     /// (`None` = durable, no lease). `None` return when there is no claimable
-    /// *ready* work. Concurrent claimers get distinct threads.
+    /// *ready* work. Concurrent claimers get distinct threads. A thread goes
+    /// only to a member who may read it, by `maidan_auth::authorize_thread`'s
+    /// rule: a `__dm__` thread to its DM's participants, a private channel's
+    /// to its members, and nothing outside the member's workspace.
     async fn claim_next_thread(
         &self,
         channel_id: ChannelId,
@@ -1686,6 +1689,16 @@ pub trait AssignmentStore: Send + Sync {
     async fn claim_next_thread_with_event(
         &self,
         channel_id: ChannelId,
+        member_id: MemberId,
+        lease_secs: Option<i64>,
+    ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
+    /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event)
+    /// across every channel of `workspace_id` that `member_id` may read: the
+    /// same filters, order, lease and events, without the channel predicate.
+    /// A `workspace_id` other than the member's own finds nothing.
+    async fn claim_next_workspace_thread_with_event(
+        &self,
+        workspace_id: WorkspaceId,
         member_id: MemberId,
         lease_secs: Option<i64>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;

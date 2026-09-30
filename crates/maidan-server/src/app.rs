@@ -442,6 +442,10 @@ pub fn router(state: AppState) -> Router {
             "/channels/{cid}/threads/claim-next",
             post(routes::claim_next_thread),
         )
+        .route(
+            "/workspaces/{wid}/threads/claim-next",
+            post(routes::claim_next_workspace_thread),
+        )
         .route("/threads/{id}/claim/renew", post(routes::renew_claim))
         .route(
             "/threads/{id}/claim/acknowledge",

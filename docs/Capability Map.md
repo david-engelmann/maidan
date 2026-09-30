@@ -33,7 +33,7 @@ fails if a new capability is added without deciding which it is.
 | `workspace:read` | GET workspaces, channels, threads, messages, artifacts, search, events (member), GET `/members/:id/manager-digest`, GET `/workspaces/:wid/events/verify` (hash-chain integrity), GET `/workspaces/:wid/snapshot` (header + `graph_hash`; `include_graph=true` needs `token:admin`), GET `/workspaces/:id/audit`, GET `/workspaces/:id/context`, GET `/workspaces/:id/tombstones`, GET `/workspaces/:id/kind-census`, GET `/messages/:id/backlinks`, GET `/workspaces/:wid/mention-webhook`, GET `/workspaces/:id/room`, GET `/workspaces/:id/handle`, GET `/capability-sets`, `POST /tokens/attenuate` and `POST /tokens/{id}/rotate` of the caller's own token (holder-side; no `token:admin`), group-DM list/get, automation list/DLQ/get, MCP notifications SSE, `POST /mcp/streamable` |
 | `workspace:write` | POST channels, threads, messages (mentions, votes), references; automation replay; slash/FSM hook CRUD; `PUT /workspaces/:wid/mention-webhook`; `PUT /workspaces/:id/handle` |
 | `message:post` | POST thread messages, A2A `SendMessage`; `PATCH /messages/:id` and `DELETE /messages/:id` on **your own** message — only the author can edit a message (no capability lets anyone rewrite another member's words), and tombstoning someone else's needs `channel:admin` |
-| `thread:transition` | POST thread FSM transitions; experimental `POST /threads/:id/land-gate/advice` when enabled; MCP `transition_thread` |
+| `thread:transition` | POST thread FSM transitions; claim the next ready thread in a channel (`POST /channels/:cid/threads/claim-next`) or anywhere in the workspace the caller may read (`POST /workspaces/:wid/threads/claim-next`); experimental `POST /threads/:id/land-gate/advice` when enabled; MCP `transition_thread` |
 | `artifact:upload` | POST `/artifacts`, multipart artifact routes |
 | `search:query` | GET workspace search |
 | `event:subscribe` | WebSocket `/ws/subscribe` (token in subscribe frame) |
@@ -53,7 +53,7 @@ fails if a new capability is added without deciding which it is.
 | `message:post` | `open_dm_conversation`, `post_dm_message`, `post_message`, `edit_message` (author only) |
 | `artifact:upload` | `upload_artifact`, `begin_artifact_multipart`, `upload_artifact_multipart_part`, `complete_artifact_multipart`, `abort_artifact_multipart` |
 | `search:query` | `search_messages` |
-| `thread:transition` | `transition_thread` |
+| `thread:transition` | `transition_thread`, `claim_next_thread`, `claim_next_workspace_thread` |
 | `channel:admin` | `add_channel_member`, `list_channel_members`, `remove_channel_member`, `clear_land_gate` |
 | `secret:read` | `list_secrets`, `resolve_secret` |
 | `token:admin` | `create_share_ticket`, `list_share_tickets`, `revoke_share_ticket`, `create_delegation_grant`, `list_delegation_grants`, `revoke_delegation_grant`, `set_delegation_policy`, `freeze_member`, `unfreeze_member`, `list_frozen_members`, `export_workspace`, `verify_workspace_export`, `import_workspace`, `catch_up_events` (the whole log as one chain, every private channel and DM included) |

@@ -28,7 +28,6 @@ Rows without a PR number are being built in a lane and get one when opened.
 | #1137 | A2A `ListTasks` decides access in the store query, so the query count does not grow with hidden tasks | ListTasks pushdown | — |
 | #1140 | `secret://` references are substituted on automation and A2A push egress, against a per-workspace allowlist | Secret substitution on every egress path | — |
 | #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | The store delegation duplication | Everything above that adds a `Store` method |
-| (lane S) | `POST /workspaces/{wid}/threads/claim-next` and an MCP twin | Workspace-wide `claim_next` | — |
 | (lane T) | A foreign member is refused like an unknown one everywhere; `authority_audit_contract` scans past `#[cfg(test)]`; JSON-RPC `-32600` for a non-request; stdio stays silent on notifications | Lane findings, 2026-09-30 | — |
 | (lane U) | TCK numbers attributed to the right check; `llms.txt` lease and create-thread wording; enums on `transition_thread`; see-also on the wait tools; `waiting.spec.ts` asserts something | Thread 34–38, part of 50 | — |
 

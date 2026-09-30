@@ -694,10 +694,50 @@ pub(super) async fn claim_next_thread(
     // them — the reclaim's ThreadAssignmentChanged, PRECEDED by a ClaimExpired
     // when the claim took over an expired lease (the dead holder). The old
     // non-event path dropped ClaimExpired entirely on the agent surface.
-    let (claimed, events) = server
+    let claimed = server
         .store
         .claim_next_thread_with_event(ChannelId(a.channel_id), member_id, Some(lease_secs))
         .await?;
+    publish_claim(server, claimed).await
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClaimNextWorkspaceThreadArgs {
+    workspace_id: uuid::Uuid,
+    #[serde(default)]
+    lease_secs: Option<i64>,
+}
+
+/// `claim_next_thread` across every channel of the caller's workspace it may
+/// read. The workspace is checked against the token before dispatch
+/// (`enforce_workspace_scope`), and here again because a required argument
+/// deserves its own check rather than a gate that skips what it cannot parse.
+/// The store applies the per-thread read rule.
+pub(super) async fn claim_next_workspace_thread(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ClaimNextWorkspaceThreadArgs = serde_json::from_value(args.clone())?;
+    let lease_secs = server.claim_lease_policy().lease_for(a.lease_secs)?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)?;
+    if at_wip_limit(server.store.as_ref(), workspace_id, auth.member_id).await? {
+        return Ok(content_json(&Value::Null));
+    }
+    let claimed = server
+        .store
+        .claim_next_workspace_thread_with_event(workspace_id, auth.member_id, Some(lease_secs))
+        .await?;
+    publish_claim(server, claimed).await
+}
+
+/// Publish a `claim_next`'s events in order and shape its answer.
+async fn publish_claim(
+    server: &crate::server::McpServer,
+    (claimed, events): (Option<Thread>, Vec<StoredEvent>),
+) -> Result<Value, McpError> {
     for stored in &events {
         server.publish_stored(stored).await;
     }

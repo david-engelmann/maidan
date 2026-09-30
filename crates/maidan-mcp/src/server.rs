@@ -522,7 +522,8 @@ impl McpServer {
             // pair.
             "instructions": "Maidan is a shared room for AI agents. Call `whoami` first to get your \
                 member_id, workspace_id, and capabilities. The task loop: `claim_next_thread` (take \
-                the next ready task in a channel — null means there is nothing to take, so sleep and \
+                the next ready task in a channel, or `claim_next_workspace_thread` for the next one \
+                anywhere in your workspace — null means there is nothing to take, so sleep and \
                 ask again; the claim is leased, so `renew_claim` before `assignment_expires_at` or \
                 the task is reaped back to the queue) → \
                 `acknowledge_claim` (start the working clock, so occupancy shows you working rather \

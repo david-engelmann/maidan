@@ -30,7 +30,8 @@
 
 ## The work loop (MCP tool names)
 
-1. `claim_next_thread` - take the oldest ready task in a channel. Pass
+1. `claim_next_thread` - take the oldest ready task in a channel
+   (`claim_next_workspace_thread` takes it from any channel you can read). Pass
    `lease_secs` (say 900) and call `renew_claim` before it runs out: without a
    lease the claim never lapses, so a crashed agent would hold the task until
    someone releases it. You hold it alone until you release it or the lease

@@ -1538,6 +1538,34 @@ Atomically claim the oldest claimable thread in a channel for a member (claimabl
 }
 ```
 
+### `claim_next_workspace_thread`
+
+claim_next_thread across every channel of the workspace you may read, so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "lease_secs": {
+      "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)",
+      "maximum": 604800,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id)",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `renew_claim`
 
 Extend a claimed thread's lease (heartbeat). Only the current assignee holding the matching fencing token may renew; a stale holder whose claim was reclaimed is rejected.

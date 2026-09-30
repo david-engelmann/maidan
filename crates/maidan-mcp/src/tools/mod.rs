@@ -377,6 +377,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "claim_thread"
         | "unassign_thread"
         | "claim_next_thread"
+        | "claim_next_workspace_thread"
         | "renew_claim"
         | "acknowledge_claim"
         | "release_claim"
@@ -839,6 +840,9 @@ pub async fn dispatch(
         "set_priority" => thread::set_priority(store, auth, args).await,
         "get_priority" => thread::get_priority(store, args).await,
         "claim_next_thread" => thread::claim_next_thread(server, auth, args).await,
+        "claim_next_workspace_thread" => {
+            thread::claim_next_workspace_thread(server, auth, args).await
+        }
         "renew_claim" => thread::renew_claim(server, auth, args).await,
         "acknowledge_claim" => thread::acknowledge_claim(server, auth, args).await,
         "release_claim" => thread::release_claim(server, auth, args).await,
