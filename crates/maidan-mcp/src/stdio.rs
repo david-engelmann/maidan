@@ -11,7 +11,7 @@ use crate::{JsonRpcNotification, JsonRpcResponse, McpServer, McpSession};
 pub async fn run_stdio(server: &McpServer, auth: &AuthContext) -> io::Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
-    let mut listener = server.listen(auth, McpSession::Stdio);
+    let mut listener = server.listen(auth, McpSession::Stdio).await;
     for line in stdin.lock().lines() {
         let line = line?;
         let trimmed = line.trim();

@@ -13,8 +13,8 @@
 # Coverage split: the WebSocket/SSE cross-replica paths (resource notifications,
 # presence/typing) and the app-OAuth mint-then-exchange path need real auth and
 # a live stream, so they are proven by the in-process Rust two-replica e2es
-# (two_replica_resource_notification_e2e, two_replica_presence_e2e,
-# two_replica_durable_state_e2e), not re-run here. This script proves the
+# (two_replica_resource_notification_e2e, two_replica_stateless_subscription_e2e,
+# two_replica_presence_e2e, two_replica_durable_state_e2e), not re-run here. This script proves the
 # container topology (shared Postgres + object store + LB) holds the REST paths.
 #
 # Usage: scripts/scale-out-smoke.sh   (run from repo root; needs docker, curl, jq)

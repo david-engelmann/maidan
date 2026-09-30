@@ -467,6 +467,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   It now waits at most 30 s for the store to start answering (5 s to connect);
   a large body still streams for as long as it takes.
 
+### Stateless MCP subscriptions work across replicas
+
+- **Fixed:** a stateless MCP client's `resources/subscribe` was held by the
+  replica that took it, so behind a load balancer with no affinity a listener
+  on another replica (`GET /mcp/notifications`, or `GET /mcp/streamable`
+  without a session) heard nothing. Stateless subscriptions are now kept in
+  the database (migration 0126, `maidan_mcp_resource_subscriptions`), keyed by
+  the caller's full principal and scoped to its workspace, and the replica
+  holding the listener delivers them from the existing NOTIFY fan-out, with
+  the same per-delivery access check. Unsubscribing on any replica ends them.
+  A replica with an open listener keeps them alive; once no replica has had
+  one for `MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS`, they lapse, including
+  when the listener's replica dies. `2024-11-05` session and stdio
+  subscriptions are unchanged.
+- **Changed:** `McpServer::listen` is `async`.
+
 ### The A2A gRPC binding serves the official proto
 
 - **Changed:** the gRPC binding (`MAIDAN_A2A_GRPC_ADDR`) served a

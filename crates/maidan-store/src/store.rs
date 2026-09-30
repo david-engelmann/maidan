@@ -2378,6 +2378,52 @@ pub trait IdempotencyStore: Send + Sync {
     ) -> Result<(), StoreError>;
 }
 
+/// Stateless MCP resource subscriptions, shared by every replica. See
+/// [`crate::mcp_subscriptions`].
+#[async_trait]
+pub trait McpSubscriptionStore: Send + Sync {
+    /// Subscribe `new.subscriber` to `new.uri`, and move every live
+    /// subscription of that subscriber to `new.expires_at`. `false`, with
+    /// nothing added, when the subscriber already watches `limit` other
+    /// resources. The subscriber's lapsed rows are cleared first, so they do
+    /// not count.
+    async fn subscribe_mcp_resource(
+        &self,
+        new: &crate::mcp_subscriptions::NewMcpSubscription,
+        limit: usize,
+    ) -> Result<bool, StoreError>;
+
+    /// Whether `subscriber` was watching `uri`.
+    async fn unsubscribe_mcp_resource(
+        &self,
+        subscriber: &str,
+        uri: &str,
+    ) -> Result<bool, StoreError>;
+
+    /// The live subscriptions, among `subscribers`, to any of `uris` that an
+    /// update in `workspace_id` may reach: those taken in that workspace, and
+    /// an auth-disabled caller's, which belong to none.
+    async fn mcp_resource_watchers(
+        &self,
+        workspace_id: WorkspaceId,
+        uris: &[String],
+        subscribers: &[String],
+        now: DateTime<Utc>,
+    ) -> Result<Vec<crate::mcp_subscriptions::McpSubscriptionWatch>, StoreError>;
+
+    /// Move the live subscriptions of `subscribers` to `expires_at`: they
+    /// have an open listener. A subscription already lapsed stays lapsed.
+    async fn extend_mcp_resource_subscriptions(
+        &self,
+        subscribers: &[String],
+        now: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+    ) -> Result<u64, StoreError>;
+
+    /// Delete every subscription lapsed by `now`.
+    async fn reap_mcp_resource_subscriptions(&self, now: DateTime<Utc>) -> Result<u64, StoreError>;
+}
+
 #[async_trait]
 pub trait OAuthCodeStore: Send + Sync {
     /// Persist a one-time OAuth authorization code. The plaintext code is never
@@ -3135,6 +3181,7 @@ pub trait Store:
     + AppStore
     + OAuthCodeStore
     + IdempotencyStore
+    + McpSubscriptionStore
     + ReindexStore
     + TokenStore
     + ShareTicketStore
@@ -3194,7 +3241,7 @@ impl<
             + AppStore
             + OAuthCodeStore
             + IdempotencyStore
-            + IdempotencyStore
+            + McpSubscriptionStore
             + ReindexStore
             + TokenStore
             + ShareTicketStore

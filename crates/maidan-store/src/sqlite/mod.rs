@@ -37,6 +37,7 @@ mod inbox;
 mod land_gate;
 mod legal_hold;
 mod mail_outbox;
+mod mcp_subscriptions;
 mod member_emails;
 mod member_freezes;
 mod member_last_seen;
@@ -2554,6 +2555,48 @@ impl AppStore for SqliteStore {
         id: AppInstallationId,
     ) -> Result<AppInstallation, StoreError> {
         apps::revoke_installation(&self.pool, id).await
+    }
+}
+
+#[async_trait]
+impl McpSubscriptionStore for SqliteStore {
+    async fn subscribe_mcp_resource(
+        &self,
+        new: &crate::mcp_subscriptions::NewMcpSubscription,
+        limit: usize,
+    ) -> Result<bool, StoreError> {
+        mcp_subscriptions::subscribe(&self.pool, new, limit).await
+    }
+
+    async fn unsubscribe_mcp_resource(
+        &self,
+        subscriber: &str,
+        uri: &str,
+    ) -> Result<bool, StoreError> {
+        mcp_subscriptions::unsubscribe(&self.pool, subscriber, uri).await
+    }
+
+    async fn mcp_resource_watchers(
+        &self,
+        workspace_id: WorkspaceId,
+        uris: &[String],
+        subscribers: &[String],
+        now: DateTime<Utc>,
+    ) -> Result<Vec<crate::mcp_subscriptions::McpSubscriptionWatch>, StoreError> {
+        mcp_subscriptions::watchers(&self.pool, workspace_id, uris, subscribers, now).await
+    }
+
+    async fn extend_mcp_resource_subscriptions(
+        &self,
+        subscribers: &[String],
+        now: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+    ) -> Result<u64, StoreError> {
+        mcp_subscriptions::extend(&self.pool, subscribers, now, expires_at).await
+    }
+
+    async fn reap_mcp_resource_subscriptions(&self, now: DateTime<Utc>) -> Result<u64, StoreError> {
+        mcp_subscriptions::reap(&self.pool, now).await
     }
 }
 

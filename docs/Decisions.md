@@ -234,9 +234,17 @@ subscriber and only that subscriber's listeners forward it. Every resource
 update carries the workspace it happened in (across replicas too), and each
 delivery re-checks the subscriber's access to the resource; losing access ends
 the subscription. A session's subscriptions end with it; a stateless caller's
-end after the session TTL with no open listener; one subscriber may watch at
-most 1024 resources. A streamable session is open only to the caller that
-opened it.
+end after the session TTL with no open listener on any replica; one
+subscriber may watch at most 1024 resources. A streamable session is open only
+to the caller that opened it. A stateless caller's subscriptions are kept in
+the database (`maidan_mcp_resource_subscriptions`, keyed by the caller's full
+principal and scoped to its workspace), so its subscribe and its listener may
+land on different replicas: on each update the replica holding the listener
+looks up that caller's subscriptions for the update's workspace and delivers.
+A replica with an open stateless listener extends that caller's subscriptions
+several times per TTL; when the listener closes or its replica dies, nothing
+extends them and they lapse. Session subscriptions stay in the process that
+holds the session.
 
 **Alternative.** Keep one set per workspace (the first fix) and filter at the
 listener by workspace; or require a server-minted listener id on every
@@ -249,11 +257,15 @@ every workspace that uploaded the same bytes. A listener id would add a handle
 the stateless revisions do not define; the credential is already the stateless
 caller's identity.
 
-**To revisit:** stateless subscriptions live in the replica that took them, so
-a client must subscribe and listen on the same replica (it fails closed: an
-update is missed, never misdelivered). `2026-07-28` `subscriptions/listen`
-replaces `resources/subscribe` and makes the listen request carry its own
-subscriptions, which removes that constraint.
+A table, not a NOTIFY announcement of each subscribe: an announcement reaches
+only the replicas running at that moment, so a replica that starts later, or
+the one a client reconnects to after its replica died, would not know it. A
+row every replica reads survives both. Delivery costs one indexed lookup per
+update batch on a replica with a stateless listener open, and none elsewhere.
+
+**To revisit:** `2026-07-28` `subscriptions/listen` replaces
+`resources/subscribe` and makes the listen request carry its own subscriptions,
+which would make the stored set unnecessary.
 
 ### Resource notifications ride a dedicated NOTIFY channel (`v102.0.0`)
 
