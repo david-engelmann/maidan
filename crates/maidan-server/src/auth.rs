@@ -16,7 +16,7 @@ use maidan_types::{AuditScope, NewAuditEvent};
 
 use crate::error::ApiError;
 use crate::federation::PeerContext;
-use crate::session::load_session;
+use crate::session::{check_request_origin, load_session, SessionContext};
 use crate::state::AppState;
 
 const TEST_MEMBER_HEADER: &str = "maidan-test-member-id";
@@ -153,34 +153,24 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         .and_then(parse_bearer);
 
     let Some(secret) = bearer else {
-        record_authentication_denial(req.uri().path());
-        return ApiError::Unauthorized.into_response();
+        // A page that exchanged its token for a session sends no bearer.
+        let session = token_session(&state, req.uri().path(), req.method(), req.headers()).await;
+        return match session {
+            Ok((session, ctx)) => {
+                req.extensions_mut().insert(session);
+                run_authorized(&state, req, next, ctx).await
+            }
+            Err(err) => {
+                if matches!(err, ApiError::Unauthorized) {
+                    record_authentication_denial(req.uri().path());
+                }
+                err.into_response()
+            }
+        };
     };
 
     match resolve_bearer(state.store.as_ref(), secret).await {
-        Ok(ctx) => {
-            let workspace_id = ctx.workspace_id;
-            let method = req.method().clone();
-            let path = req.uri().path().to_owned();
-            req.extensions_mut().insert(ctx.clone());
-            let response = run_as(&state, req, next).await;
-            if !path.starts_with("/mcp") {
-                let outcome = if matches!(response.status().as_u16(), 401 | 403 | 404) {
-                    AuthorizationOutcome::Denied
-                } else {
-                    AuthorizationOutcome::Allowed
-                };
-                record_delegated_authorization(
-                    state.store.as_ref(),
-                    &ctx,
-                    AuthorizationSurface::Rest,
-                    &format!("{method} {path}"),
-                    outcome,
-                )
-                .await;
-            }
-            tag_room(response, workspace_id)
-        }
+        Ok(ctx) => run_authorized(&state, req, next, ctx).await,
         Err(_) => match resolve_peer_bearer(state.store.as_ref(), secret).await {
             Ok(peer) => {
                 let workspace_id = peer.workspace_id;
@@ -193,6 +183,57 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             }
         },
     }
+}
+
+/// Run a request on the bearer tree as `ctx`, recording a delegated caller's
+/// decision.
+async fn run_authorized(
+    state: &AppState,
+    mut req: Request,
+    next: Next,
+    ctx: AuthContext,
+) -> Response {
+    let workspace_id = ctx.workspace_id;
+    let method = req.method().clone();
+    let path = req.uri().path().to_owned();
+    req.extensions_mut().insert(ctx.clone());
+    let response = run_as(state, req, next).await;
+    if !path.starts_with("/mcp") {
+        let outcome = if matches!(response.status().as_u16(), 401 | 403 | 404) {
+            AuthorizationOutcome::Denied
+        } else {
+            AuthorizationOutcome::Allowed
+        };
+        record_delegated_authorization(
+            state.store.as_ref(),
+            &ctx,
+            AuthorizationSurface::Rest,
+            &format!("{method} {path}"),
+            outcome,
+        )
+        .await;
+    }
+    tag_room(response, workspace_id)
+}
+
+/// The session a bearer-tree request without a bearer rides on. Only a session
+/// made from a token reaches this tree, with that token's authority: the bearer
+/// routes accept exactly what the token's bearer would. An OIDC session's fixed
+/// capabilities were sized for the `/ui/api` routes and stay there, and MCP is
+/// an agent protocol, bearer only.
+async fn token_session(
+    state: &AppState,
+    path: &str,
+    method: &Method,
+    headers: &axum::http::HeaderMap,
+) -> Result<(SessionContext, AuthContext), ApiError> {
+    if path.starts_with("/mcp") {
+        return Err(ApiError::Unauthorized);
+    }
+    let session = load_session(state, headers).await?;
+    let ctx = session.token.clone().ok_or(ApiError::Unauthorized)?;
+    check_request_origin(method, headers)?;
+    Ok((session, ctx))
 }
 
 fn record_authentication_denial(path: &str) {
@@ -230,86 +271,69 @@ pub fn bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
         .and_then(parse_bearer)
 }
 
+/// What an OIDC session may do on the `/ui/api` read routes.
+pub const OIDC_READ_CAPABILITIES: &[&str] = &[WORKSPACE_READ, EVENT_SUBSCRIBE, SEARCH_QUERY];
+
+/// What an OIDC session may do on the `/ui/api` write routes.
+const OIDC_WRITE_CAPABILITIES: &[&str] = &[
+    WORKSPACE_READ,
+    WORKSPACE_WRITE,
+    MESSAGE_POST,
+    EVENT_SUBSCRIBE,
+    SEARCH_QUERY,
+];
+
 /// Accept bearer token or valid `maidan_session` cookie (for UI / operator routes).
 pub async fn session_or_bearer_middleware(
     State(state): State<AppState>,
-    mut req: Request,
+    req: Request,
     next: Next,
 ) -> Response {
-    if state.auth_disabled {
-        let auth = auth_disabled_context(&state, req.headers()).await;
-        req.extensions_mut().insert(auth);
-        return run_as(&state, req, next).await;
-    }
-
-    if let Some(secret) = bearer_from_headers(req.headers()) {
-        if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
-            let workspace_id = ctx.workspace_id;
-            req.extensions_mut().insert(ctx);
-            return tag_room(run_as(&state, req, next).await, workspace_id);
-        }
-    }
-
-    match load_session(&state, req.headers()).await {
-        Ok(session) => {
-            let ctx = AuthContext::from_session(
-                session.member_id,
-                session.workspace_id,
-                vec![
-                    WORKSPACE_READ.into(),
-                    EVENT_SUBSCRIBE.into(),
-                    SEARCH_QUERY.into(),
-                ],
-            );
-            let workspace_id = session.workspace_id;
-            req.extensions_mut().insert(session);
-            req.extensions_mut().insert(ctx);
-            tag_room(run_as(&state, req, next).await, workspace_id)
-        }
-        Err(err) => {
-            record_authentication_denial(req.uri().path());
-            err.into_response()
-        }
-    }
+    session_or_bearer(&state, req, next, OIDC_READ_CAPABILITIES).await
 }
 
 /// Browser session or bearer for `/ui/api` writes (channel browser).
 pub async fn ui_session_or_bearer_middleware(
     State(state): State<AppState>,
-    mut req: Request,
+    req: Request,
     next: Next,
 ) -> Response {
+    session_or_bearer(&state, req, next, OIDC_WRITE_CAPABILITIES).await
+}
+
+/// A bearer, else a session: a token's session carries that token's authority,
+/// an OIDC session `oidc_capabilities`. An unsafe request on a session must
+/// come from this origin.
+async fn session_or_bearer(
+    state: &AppState,
+    mut req: Request,
+    next: Next,
+    oidc_capabilities: &[&str],
+) -> Response {
     if state.auth_disabled {
-        let auth = auth_disabled_context(&state, req.headers()).await;
+        let auth = auth_disabled_context(state, req.headers()).await;
         req.extensions_mut().insert(auth);
-        return run_as(&state, req, next).await;
+        return run_as(state, req, next).await;
     }
 
     if let Some(secret) = bearer_from_headers(req.headers()) {
         if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
             let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(ctx);
-            return tag_room(run_as(&state, req, next).await, workspace_id);
+            return tag_room(run_as(state, req, next).await, workspace_id);
         }
     }
 
-    match load_session(&state, req.headers()).await {
+    match load_session(state, req.headers()).await {
         Ok(session) => {
-            let ctx = AuthContext::from_session(
-                session.member_id,
-                session.workspace_id,
-                vec![
-                    WORKSPACE_READ.into(),
-                    WORKSPACE_WRITE.into(),
-                    MESSAGE_POST.into(),
-                    EVENT_SUBSCRIBE.into(),
-                    SEARCH_QUERY.into(),
-                ],
-            );
-            let workspace_id = session.workspace_id;
+            if let Err(err) = check_request_origin(req.method(), req.headers()) {
+                return err.into_response();
+            }
+            let ctx = session.auth_context(oidc_capabilities);
+            let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(session);
             req.extensions_mut().insert(ctx);
-            tag_room(run_as(&state, req, next).await, workspace_id)
+            tag_room(run_as(state, req, next).await, workspace_id)
         }
         Err(err) => {
             record_authentication_denial(req.uri().path());

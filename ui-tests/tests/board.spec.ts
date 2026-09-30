@@ -97,9 +97,10 @@ test("the Live bar stays collapsed until connected, and the raw feed is opt-in",
   await expect(feed).toContainText("[ack]");
 });
 
-// A browser that already holds a working token opens straight onto its last
-// board: the connection inputs collapse into an identity pill, and Live
-// connects on its own.
+// A browser where an older page stored the token opens straight onto its last
+// board: the token is exchanged for a session once and removed, the
+// connection inputs collapse into an identity pill, and Live connects on its
+// own.
 test("a remembered token opens the last board, signed in and live", async ({ page }) => {
   await page.addInitScript(
     ([ws, tok, ch]) => {
@@ -118,7 +119,8 @@ test("a remembered token opens the last board, signed in and live", async ({ pag
 
   await page.click("#conn-edit");
   await expect(page.locator("#conn-fields")).toBeVisible();
-  await expect(page.locator("#token")).toHaveValue(fx.live_token);
+  await expect(page.locator("#token")).toHaveValue("");
+  expect(await page.evaluate(() => localStorage.getItem("maidan_token"))).toBeNull();
 });
 
 // A token the server refuses to subscribe says why, instead of hanging on

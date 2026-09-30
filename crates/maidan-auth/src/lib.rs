@@ -41,5 +41,5 @@ pub use peer_secret::{
     decrypt_peer_secret_rotating, encrypt_peer_secret, encryption_key_from_env,
     init_decrypt_fallback_keys, PeerSecretError,
 };
-pub use resolve::{resolve_bearer, resolve_peer_bearer};
+pub use resolve::{resolve_bearer, resolve_peer_bearer, resolve_token_id};
 pub use token::{hash_secret, ShareTicketSecret, TokenSecret};

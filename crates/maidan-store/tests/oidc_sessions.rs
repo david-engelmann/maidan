@@ -119,7 +119,7 @@ async fn session_create_get_and_delete() {
         .create_session(NewMaidanSession {
             workspace_id,
             member_id,
-            csrf_secret: "csrf".to_string(),
+            api_token_id: None,
             expires_at: Utc::now() + Duration::hours(1),
         })
         .await

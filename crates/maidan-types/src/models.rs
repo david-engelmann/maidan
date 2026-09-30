@@ -2615,7 +2615,10 @@ pub struct MaidanSession {
     pub id: SessionId,
     pub workspace_id: WorkspaceId,
     pub member_id: MemberId,
-    pub csrf_secret: String,
+    /// The token a `POST /auth/session/from-token` session was made from. Each
+    /// request re-resolves it, so the session holds that token's authority and
+    /// ends with it. `None` for an OIDC session.
+    pub api_token_id: Option<ApiTokenId>,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }
@@ -2624,7 +2627,7 @@ pub struct MaidanSession {
 pub struct NewMaidanSession {
     pub workspace_id: WorkspaceId,
     pub member_id: MemberId,
-    pub csrf_secret: String,
+    pub api_token_id: Option<ApiTokenId>,
     pub expires_at: DateTime<Utc>,
 }
 

@@ -1005,8 +1005,8 @@ fn ui_js_first_run_offers_only_the_sign_in_paths_the_server_has() {
         "the first-run card holds the inputs and the sign-in button"
     );
     assert!(
-        first_run.contains("keeps it until you sign out"),
-        "the card says the browser keeps the token"
+        first_run.contains("exchanges it for a session and does not keep the token"),
+        "the card says the browser does not keep the token"
     );
     let s = script(HTML);
     assert!(

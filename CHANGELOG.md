@@ -864,6 +864,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   another's notification mail. The frame may now name only the member the
   token or session belongs to; any other closes the socket with 1008.
 
+### The `/ui` stops keeping bearer tokens
+
+- **Added:** `POST /auth/session/from-token` exchanges the request's bearer for
+  the `HttpOnly; SameSite=Lax` `maidan_session` cookie. The session keeps the
+  token's id and every request on it resolves the token again, so it has that
+  token's capabilities, workspace and grant (an OIDC session has a fixed five)
+  and it ends when the token is revoked, rotated or expires or its grant is
+  withdrawn. It reaches the `/ui/api` routes and every bearer route but MCP.
+  Creating it writes a `session.from_token` audit row in the same transaction
+  (D-A). OIDC login keeps writing `session.create`, and sign-out writes
+  `session.delete`, the same way. It needs `workspace:read`, a bearer (a
+  session cannot make another), and `MAIDAN_SESSION_SECRET`, which now signs
+  sessions without OIDC too.
+- **Changed:** the `/ui` exchanges a pasted token and empties the field;
+  nothing in `localStorage` holds it, and one an older page stored there is
+  exchanged once and removed. Sign out ends the session.
+- **Fixed (security):** an unsafe request on a session, or a session
+  WebSocket, from another origin is refused (`403`, or close `1008`):
+  `Sec-Fetch-Site` decides when present, else `Origin` must name this host; a
+  request with neither is not another origin's page and is served.
+- **Fixed:** `POST /auth/logout` answered `307`, so the browser re-sent the POST
+  to `/ui/` and got a `405`; it now answers `303`. It works without OIDC, and a
+  token's session is not sent to the identity provider.
+- **Removed:** the `csrf_secret` session column, which nothing read (migration
+  0129).
+
 ### One claim for the whole workspace
 
 - **Added:** `POST /workspaces/{wid}/threads/claim-next` and the MCP tool

@@ -244,7 +244,7 @@ async fn mock_oidc_login_sets_session_cookie_and_logout_clears_it() {
         .send()
         .await
         .unwrap();
-    assert_eq!(logout.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(logout.status(), StatusCode::SEE_OTHER);
     let cleared = logout
         .headers()
         .get_all(reqwest::header::SET_COOKIE)

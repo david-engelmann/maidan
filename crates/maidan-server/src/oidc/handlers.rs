@@ -195,7 +195,7 @@ pub async fn callback(
             NewMaidanSession {
                 workspace_id: pending.workspace_id,
                 member_id,
-                csrf_secret: random_token(),
+                api_token_id: None,
                 expires_at: Utc::now() + Duration::seconds(oidc.settings.session_ttl_secs as i64),
             },
             Box::new(move |session| NewAuditEvent {
@@ -239,19 +239,26 @@ pub async fn callback(
     Ok(response)
 }
 
+/// End the browser session, whether OIDC or a token's, and clear its cookie.
+/// Only an OIDC session goes on to the identity provider's end-session page;
+/// a token's session was never signed in there.
 pub async fn logout(
     State(state): State<AppState>,
     headers_in: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let oidc = state
-        .oidc
-        .as_ref()
-        .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
+    let settings = state
+        .browser_sessions()
+        .ok_or_else(|| ApiError::Forbidden("browser sessions are not configured".into()))?;
 
     // Ending a session is recorded in its own transaction (D-A). A session
     // already gone has nothing to end; any other failure leaves it valid, so
     // the caller is told rather than shown a sign-out that did not happen.
-    if let Some(session_id) = parse_session_cookie(&headers_in, oidc.session_secret.as_ref()) {
+    // A token's session was never signed in at the identity provider.
+    let mut from_token = false;
+    if let Some(session_id) = parse_session_cookie(&headers_in, &settings.secret) {
+        if let Ok(session) = state.store.get_session(session_id).await {
+            from_token = session.api_token_id.is_some();
+        }
         let ended = state
             .store
             .delete_session_audited(
@@ -273,24 +280,36 @@ pub async fn logout(
     }
 
     let mut headers = HeaderMap::new();
-    clear_session_cookie(&mut headers, oidc.settings.cookie_secure)
+    clear_session_cookie(&mut headers, settings.cookie_secure)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let location =
-        if let (Some(end), Some(client_id)) = (&oidc.end_session_url, &oidc.logout_client_id) {
-            let mut logout = LogoutRequest::from(end.clone()).set_client_id(client_id.clone());
-            if let Some(uri) = &oidc.settings.post_logout_redirect_uri {
-                let redirect = PostLogoutRedirectUrl::new(uri.clone()).map_err(|e| {
-                    ApiError::Internal(format!("invalid post-logout redirect URI: {e}"))
-                })?;
-                logout = logout.set_post_logout_redirect_uri(redirect);
-            }
-            logout.http_get_url().to_string()
-        } else {
-            "/ui/".to_string()
-        };
+    let idp_logout = state
+        .oidc
+        .as_ref()
+        .filter(|_| !from_token)
+        .and_then(|oidc| {
+            Some((
+                oidc.end_session_url.as_ref()?,
+                oidc.logout_client_id.as_ref()?,
+                oidc,
+            ))
+        });
+    let location = if let Some((end, client_id, oidc)) = idp_logout {
+        let mut logout = LogoutRequest::from(end.clone()).set_client_id(client_id.clone());
+        if let Some(uri) = &oidc.settings.post_logout_redirect_uri {
+            let redirect = PostLogoutRedirectUrl::new(uri.clone()).map_err(|e| {
+                ApiError::Internal(format!("invalid post-logout redirect URI: {e}"))
+            })?;
+            logout = logout.set_post_logout_redirect_uri(redirect);
+        }
+        logout.http_get_url().to_string()
+    } else {
+        "/ui/".to_string()
+    };
 
-    let mut response = Redirect::temporary(&location).into_response();
+    // 303, not 307: the form POST that signed out must become a GET of the
+    // page, and a 307 made the browser POST to `/ui/` (a 405).
+    let mut response = Redirect::to(&location).into_response();
     response.headers_mut().extend(headers);
     Ok(response)
 }

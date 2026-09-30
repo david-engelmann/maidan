@@ -1491,4 +1491,7 @@ pub struct SessionResponse {
     pub member_id: MemberId,
     pub workspace_id: WorkspaceId,
     pub expires_at: DateTime<Utc>,
+    /// The token a session made by `POST /auth/session/from-token` holds the
+    /// authority of; `null` for an OIDC session.
+    pub token_id: Option<ApiTokenId>,
 }

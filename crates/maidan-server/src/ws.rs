@@ -28,7 +28,7 @@ use axum::{
 };
 use futures::StreamExt;
 use maidan_auth::{
-    capability::{EVENT_SUBSCRIBE, SEARCH_QUERY, WORKSPACE_READ},
+    capability::EVENT_SUBSCRIBE,
     resolve_bearer,
     subscribe::{resolve_subscribe, SubscribeFrame, SubscribeRefusal},
     AuthContext,
@@ -495,15 +495,14 @@ async fn read_subscribe(
             .await
             .map_err(|_| (1008u16, "invalid or expired token".to_string()))?
     } else if let Ok(session) = load_session(state, headers).await {
-        AuthContext::from_session(
-            session.member_id,
-            session.workspace_id,
-            vec![
-                WORKSPACE_READ.into(),
-                EVENT_SUBSCRIBE.into(),
-                SEARCH_QUERY.into(),
-            ],
-        )
+        // The handshake is a GET, but another origin could read this stream.
+        crate::session::refuse_cross_origin(headers).map_err(|_| {
+            (
+                1008u16,
+                "a cross-origin socket cannot use a browser session".to_string(),
+            )
+        })?;
+        session.auth_context(crate::auth::OIDC_READ_CAPABILITIES)
     } else {
         return Err((
             1008u16,

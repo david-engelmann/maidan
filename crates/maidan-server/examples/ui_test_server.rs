@@ -476,6 +476,12 @@ async fn main() {
     );
     // The approval-gate `request_state` HMAC + subscribe-resume are secret-keyed.
     state.subscribe_resume_secret = Some(Arc::from(&b"ui-test-subscribe-resume-secret-32b"[..]));
+    // A pasted token is exchanged for a browser session, as in production.
+    state.sessions = Some(maidan_server::session::SessionSettings {
+        secret: Arc::from(&b"ui-test-session-secret-at-least-32-bytes"[..]),
+        ttl_secs: 3600,
+        cookie_secure: false,
+    });
 
     let fixtures = serde_json::json!({
         "base_url": format!("http://127.0.0.1:{port}"),

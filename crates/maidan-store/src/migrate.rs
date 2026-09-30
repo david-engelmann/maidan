@@ -188,6 +188,8 @@ const POSTGRES_UP_V126: &str =
 const POSTGRES_UP_V127: &str = include_str!("../../../migrations/postgres/0127_scim_groups.sql");
 const POSTGRES_UP_V128: &str =
     include_str!("../../../migrations/postgres/0128_artifact_filename.sql");
+const POSTGRES_UP_V129: &str =
+    include_str!("../../../migrations/postgres/0129_session_from_token.sql");
 const POSTGRES_UP_V131: &str =
     include_str!("../../../migrations/postgres/0131_a2a_task_threads.sql");
 const POSTGRES_UP_V132: &str =
@@ -346,6 +348,7 @@ const SQLITE_UP_V126: &str =
     include_str!("../../../migrations/sqlite/0126_mcp_resource_subscriptions.sql");
 const SQLITE_UP_V127: &str = include_str!("../../../migrations/sqlite/0127_scim_groups.sql");
 const SQLITE_UP_V128: &str = include_str!("../../../migrations/sqlite/0128_artifact_filename.sql");
+const SQLITE_UP_V129: &str = include_str!("../../../migrations/sqlite/0129_session_from_token.sql");
 const SQLITE_UP_V131: &str = include_str!("../../../migrations/sqlite/0131_a2a_task_threads.sql");
 const SQLITE_UP_V132: &str =
     include_str!("../../../migrations/sqlite/0132_thread_budget_wall_charge.sql");
@@ -537,9 +540,9 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 127, POSTGRES_UP_V127).await?;
     // 123–127 are other lanes.
     apply_postgres(pool, 128, POSTGRES_UP_V128).await?;
-    // 127–130 belong to other lanes.
+    apply_postgres(pool, 129, POSTGRES_UP_V129).await?;
+    // 130 belongs to another lane.
     apply_postgres(pool, 131, POSTGRES_UP_V131).await?;
-    // 127–131 belong to other lanes.
     apply_postgres(pool, 132, POSTGRES_UP_V132).await?;
     // 133 belongs to another lane.
     apply_postgres(pool, 134, POSTGRES_UP_V134).await?;
@@ -685,6 +688,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 126, SQLITE_UP_V126).await?;
     apply_sqlite(pool, 127, SQLITE_UP_V127).await?;
     apply_sqlite(pool, 128, SQLITE_UP_V128).await?;
+    apply_sqlite(pool, 129, SQLITE_UP_V129).await?;
     apply_sqlite(pool, 131, SQLITE_UP_V131).await?;
     apply_sqlite(pool, 132, SQLITE_UP_V132).await?;
     // 133 belongs to another lane.

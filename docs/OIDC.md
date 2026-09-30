@@ -120,7 +120,9 @@ New migration (Postgres + SQLite for dev parity on identity table only):
 Optional `maidan_sessions` for server-side session rows:
 
 ```sql
--- id, member_id, workspace_id, expires_at, csrf_secret, created_at
+-- id, member_id, workspace_id, api_token_id, expires_at, created_at
+-- (api_token_id: set for a session made from a token; csrf_secret was never
+-- read and was dropped in migration 0129)
 ```
 
 **Member linking rules:**

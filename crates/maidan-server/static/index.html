@@ -669,7 +669,7 @@
                 <label>Token <input id="token" type="password" autocomplete="off" title="This browser keeps the token until you sign out" /></label>
               </div>
             </div>
-            <p class="first-run-note">A token comes from <code>maidan init</code> on the server, or from an admin in Tokens. This browser keeps it until you sign out, so use your own device.</p>
+            <p class="first-run-note">A token comes from <code>maidan init</code> on the server, or from an admin in Tokens. This browser exchanges it for a session and does not keep the token, so use your own device.</p>
             <div class="row" id="first-run-oidc" hidden><button id="login" type="button" class="primary">Sign in with your identity provider</button> <span>or paste a token</span></div>
           </section>
           <div id="board-head">
@@ -1205,11 +1205,13 @@
       const wsResumeKey = "maidan_ws_resume";
       const baseInput = document.getElementById("base");
       baseInput.value = window.location.origin;
-      document.getElementById("token").value = localStorage.getItem(tokenKey) || "";
       document.getElementById("workspace").value = localStorage.getItem(wsKey) || "";
 
       let sessionMemberId = null;
       let oidcLoginPath = null;
+      // The session cookie was made from a pasted token (it holds that token's
+      // authority), as opposed to an OIDC sign-in.
+      let tokenSession = false;
       let bearerMemberId = null;
       let wsSocket = null;
       let wsAfterId = 0;
@@ -1239,19 +1241,58 @@
       function wid() {
         return document.getElementById("workspace").value.trim();
       }
-      function token() {
+      // A token in the field is there only until the server has exchanged it
+      // for a session cookie that no script on the page can read.
+      function pastedToken() {
         return document.getElementById("token").value.trim();
       }
+      // Whether the page acts with a token's authority: one just pasted, or the
+      // session made from it.
+      function token() {
+        return Boolean(pastedToken()) || tokenSession;
+      }
       function persist() {
-        localStorage.setItem(tokenKey, token());
+        localStorage.removeItem(tokenKey);
         localStorage.setItem(wsKey, wid());
       }
       function headers(json) {
         const h = { Accept: "application/json" };
         if (json) h["Content-Type"] = "application/json";
-        const t = token();
+        const t = pastedToken();
         if (t) h["Authorization"] = "Bearer " + t;
         return h;
+      }
+      // Trade a token for an HttpOnly session with its authority, and drop it
+      // from the page. A server with no session key (404) cannot hold one, so
+      // the token stays in this tab only, never in storage.
+      async function exchangeToken(secret) {
+        let res;
+        try {
+          res = await fetch(`${base()}/auth/session/from-token`, {
+            method: "POST",
+            headers: { Accept: "application/json", Authorization: "Bearer " + secret },
+            credentials: "include",
+          });
+        } catch (e) {
+          return { ok: false, error: unreachable(e) };
+        }
+        if (res.status === 404) {
+          document.getElementById("token").value = secret;
+          return { ok: true };
+        }
+        if (!res.ok) {
+          document.getElementById("token").value = "";
+          return {
+            ok: false,
+            error:
+              res.status === 401
+                ? "That token was not accepted: check it was copied whole and has not expired or been revoked, or mint a new one in Tokens."
+                : await responseError(res, "Could not sign in with that token"),
+          };
+        }
+        document.getElementById("token").value = "";
+        tokenSession = true;
+        return { ok: true };
       }
       // Tell the user what to fix without stopping the page. The same message
       // again refreshes the one on screen rather than stacking a copy.
@@ -4573,11 +4614,13 @@
           if (!res.ok) {
             el.hidden = true;
             sessionMemberId = null;
+            tokenSession = false;
             document.getElementById("mint").hidden = true;
             return null;
           }
           const body = await res.json();
           sessionMemberId = body.member_id;
+          tokenSession = Boolean(body.token_id);
           el.hidden = false;
           el.textContent = `Signed in · ${body.member_id}`;
           el.className = "ok";
@@ -4585,7 +4628,7 @@
           if (!document.getElementById("token-member").value) {
             document.getElementById("token-member").value = body.member_id;
           }
-          document.getElementById("mint").hidden = false;
+          document.getElementById("mint").hidden = tokenSession;
           return body;
         } catch (e) {
           el.textContent = String(e);
@@ -4925,7 +4968,7 @@
         }
         persist();
         const frame = { filter: buildWsFilter() };
-        const t = token();
+        const t = pastedToken();
         if (t) frame.token = t;
         if (wsResumeToken) {
           frame.resume_token = wsResumeToken;
@@ -5070,12 +5113,14 @@
         window.location.href =
           `${base()}${oidcLoginPath}?workspace_id=${encodeURIComponent(wid())}&return_to=/ui/`;
       };
-      // Signing out forgets the token too: the first-run card promises the
-      // browser keeps it only until then.
+      // Signing out ends the session on the server, whichever kind it is; the
+      // token it was made from stays valid until revoked. A token kept only in
+      // this tab (no session) is forgotten here.
       document.getElementById("logout").onclick = () => {
         localStorage.removeItem(tokenKey);
         localStorage.removeItem(wsResumeKey);
         document.getElementById("token").value = "";
+        tokenSession = false;
         if (!sessionMemberId) {
           window.location.reload();
           return;
@@ -5108,8 +5153,8 @@
         banner.scrollIntoView({ block: "nearest" });
         document.getElementById("copy-secret").focus();
       }
-      // Rotating the token this page runs on swaps it in place, so the page
-      // keeps working and the live socket reconnects on the new secret.
+      // Rotating the token this page runs on ends the session made from it, so
+      // the successor is exchanged before the live socket reconnects.
       async function rotateToken(id) {
         const res = await fetch(`${base()}/tokens/${encodeURIComponent(id)}/rotate`, {
           method: "POST",
@@ -5121,9 +5166,13 @@
         }
         const rotated = await res.json();
         if (id === currentTokenId) {
-          document.getElementById("token").value = rotated.secret;
-          persist();
           currentTokenId = rotated.id;
+          const exchanged = await exchangeToken(rotated.secret);
+          if (!exchanged.ok) {
+            document.getElementById("token").value = rotated.secret;
+            showError(exchanged.error);
+          }
+          persist();
           if (wsSocket) {
             disconnectWs();
             connectWs();
@@ -5394,7 +5443,7 @@
         if (blob.name) params.set("filename", blob.name);
         const res = await fetch(`${base()}/artifacts?${params}`, {
           method: "POST",
-          headers: { Authorization: "Bearer " + token(), Accept: "application/json" },
+          headers: headers(),
           body: blob,
         });
         const body = await res.text();
@@ -5742,16 +5791,27 @@
         setOut(body ? JSON.parse(body) : { revoked: id });
       };
 
-      // Pasting a token signs in: check it against /me, then load the channels
-      // and what waits on you, or say in words why it was not accepted.
+      // Pasting a token signs in: exchange it for a session, check it against
+      // /me, then load the channels and what waits on you, or say in words why
+      // it was not accepted.
       document.getElementById("token").addEventListener("change", async () => {
         persist();
         const status = document.getElementById("session-status");
-        if (!token()) {
+        const secret = pastedToken();
+        if (!secret) {
           bearerMemberId = null;
           showConnection(false);
           return;
         }
+        const exchanged = await exchangeToken(secret);
+        if (!exchanged.ok) {
+          bearerMemberId = null;
+          status.hidden = false;
+          status.className = "err";
+          status.textContent = exchanged.error;
+          return;
+        }
+        await refreshSession();
         let res = null;
         try {
           res = await fetch(`${base()}/me`, { headers: headers() });
@@ -5823,6 +5883,13 @@
       async function start() {
         setAttention(0);
         await loadServerAuth();
+        // An older page kept the token in localStorage: exchange it once and
+        // remove it.
+        const stored = localStorage.getItem(tokenKey);
+        if (stored) {
+          localStorage.removeItem(tokenKey);
+          await exchangeToken(stored);
+        }
         await refreshSession();
         await refreshBearerIdentity();
         await loadChannels();

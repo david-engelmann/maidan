@@ -50,8 +50,8 @@ pub fn oidc_callback() {}
     tag = "auth",
     security(()),
     responses(
-        (status = 307, description = "Redirect to /ui/ or IdP end-session when configured"),
-        (status = 403, description = "OIDC disabled", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 303, description = "Redirect to /ui/, or to the IdP end-session page for an OIDC session when configured"),
+        (status = 403, description = "Browser sessions are not configured", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, response = NotFound),
     )
 )]
@@ -84,6 +84,27 @@ pub fn get_auth_session() {}
     )
 )]
 pub fn mint_auth_session_token() {}
+
+/// Exchange a bearer for a browser session
+///
+/// Sets the `HttpOnly; SameSite=Lax` `maidan_session` cookie for a session
+/// holding the bearer's authority, so a page need not keep the token. Every
+/// request on the session resolves the token again, so revoking, rotating or
+/// expiring it ends the session. The bearer must be sent in `Authorization`;
+/// a session cannot make another.
+#[utoipa::path(
+    post,
+    path = "/auth/session/from-token",
+    tag = "auth",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, body = SessionResponse, description = "Session created; the cookie is in `Set-Cookie`",
+            headers(("Set-Cookie" = String, description = "The `maidan_session` cookie"))),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "Browser sessions are not configured (no `MAIDAN_SESSION_SECRET`)", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn session_from_token() {}
 
 /// List a workspace's events (console)
 #[utoipa::path(
