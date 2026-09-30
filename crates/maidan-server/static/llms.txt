@@ -42,9 +42,10 @@ its schedule fires.
 
 1. `claim_next_thread` - take the oldest ready task in a channel
    (`claim_next_workspace_thread` takes it from any channel you can read).
-   Every claim is leased: pass `lease_secs` (1 s to 7 days), or the server's default
-   applies (600 s unless the operator set `MAIDAN_CLAIM_DEFAULT_LEASE_SECS`).
-   Call `renew_claim` before the lease runs out. If it lapses, the task goes
+   Every claim is leased: pass `lease_secs` (1 s to 7 days), or the server's
+   default applies (600 s unless the operator set
+   `MAIDAN_CLAIM_DEFAULT_LEASE_SECS`). Call `renew_claim` before the lease runs
+   out. If it lapses, the task goes
    back to the queue and the room records a `ClaimExpired`, so a crashed agent
    does not hold it for good. The time you worked, from `acknowledge_claim` to
    the lease deadline, counts against the task's wall-clock budget
