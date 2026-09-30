@@ -109,15 +109,44 @@ inert (an `OTLP_ENDPOINT` that is set is reported to stderr at startup and
 otherwise ignored). Leave the feature on (the default) to keep OTLP traces +
 metrics push available.
 
-**SCIM 2.0 provisioning.** An IdP (Okta / Azure AD /
-…) can provision and deprovision workspace members via SCIM 2.0 at `/scim/v2/`
-(`ServiceProviderConfig` + `Users` create / read / list-with-`userName eq`-filter /
-replace / patch / delete). Point the IdP's SCIM connector at
-`https://<host>/scim/v2` with a `token:admin` bearer token (scoped to the target
-workspace). A SCIM `id` is the Maidan member id and `userName` the member handle;
-deactivation (`active=false`) and delete revoke the member's API tokens. No env
-config — the endpoint is always available, gated on `token:admin`. Not yet
-supported (P3 scope): Groups, userName/displayName rename, and complex filters.
+**SCIM 2.0 provisioning.** An IdP (Okta / Entra ID /
+…) can provision and deprovision workspace members via SCIM 2.0 at `/scim/v2/`:
+`ServiceProviderConfig`, `Users` (create / read / list with the `userName eq`
+filter / replace / patch / delete) and `Groups` (create / read / list / replace /
+patch / delete). Point the IdP's SCIM connector at `https://<host>/scim/v2` with
+a `token:admin` bearer token; everything it does is confined to that token's
+workspace. No env config: the endpoint is always available, gated on
+`token:admin`. Every change writes its audit row (`scim.user.*`,
+`scim.group.*`, and one `token.revoke` per revoked token) in its own
+transaction, so a change that cannot be recorded does not happen and the IdP
+retries it.
+
+- **Users.** A SCIM `id` is the Maidan member id and `userName` the member
+  handle. Changing `userName`, by PUT (Okta) or by PATCH with
+  `"path": "userName"` or a pathless value object (Entra ID), renames the
+  member: the id stays, so tokens, messages, claims and group memberships stay
+  with it, and every surface that shows the handle shows the new one. A
+  `userName` another member of the workspace holds is `409` with
+  `scimType: uniqueness`. Deactivation (`active=false`, also Entra ID's string
+  `"False"`) and delete revoke the member's API tokens; delete also removes the
+  user from every group. `displayName` is set at creation and not changed
+  afterwards.
+- **Groups.** A group is the IdP's named set of users it provisioned into the
+  workspace. It records membership and grants nothing by itself: no channel
+  access and no capability follow from it. Members must be SCIM users of the
+  same workspace; any other id (another workspace's member, an agent, an
+  unknown id) is `400` with `scimType: invalidValue`. PATCH accepts `add`,
+  `remove` and `replace` of `members` in both the Okta form (`remove` with the
+  filter path `members[value eq "<id>"]`) and the Entra ID form (path
+  `members` with a value array, capitalized `op`), `remove` of `members` with
+  no value empties the group, and `replace` of `displayName` and `externalId`
+  with a path or a pathless value object. The list filters on `displayName eq`
+  (not case-sensitive), `externalId eq` or `id eq`, pages with `startIndex` and
+  `count` (at most 200), and honours `excludedAttributes=members`; any other
+  filter is `400` with `scimType: invalidFilter`.
+- **Not supported:** `Bulk`, sorting, ETags, `Schemas` and `ResourceTypes`,
+  nested groups, compound (`and`/`or`) filters, and filters on `Users` other
+  than `userName eq`.
 
 ### Database tuning (`v107.0.0`)
 

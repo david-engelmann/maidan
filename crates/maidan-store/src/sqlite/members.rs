@@ -111,6 +111,27 @@ pub async fn list(pool: &SqlitePool, workspace_id: WorkspaceId) -> Result<Vec<Me
     rows.iter().map(row_to_member).collect()
 }
 
+/// Change a member's handle. `false` when the workspace has no such member; a
+/// handle another member of the workspace holds is a [`StoreError::Conflict`].
+pub(crate) async fn rename_on(
+    conn: &mut sqlx::SqliteConnection,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    handle: &str,
+) -> Result<bool, StoreError> {
+    let done = sqlx::query(
+        "UPDATE maidan_members SET handle = ?, updated_at = ? WHERE id = ? AND workspace_id = ?",
+    )
+    .bind(handle)
+    .bind(Utc::now())
+    .bind(member_id.0)
+    .bind(workspace_id.0)
+    .execute(&mut *conn)
+    .await
+    .map_err(map_member_err)?;
+    Ok(done.rows_affected() > 0)
+}
+
 fn map_member_err(err: sqlx::Error) -> StoreError {
     if let sqlx::Error::Database(ref db) = err {
         if db.is_unique_violation() {

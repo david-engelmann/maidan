@@ -1,5 +1,5 @@
-//! D-A for SCIM provisioning. Creating a user, changing whether it is active,
-//! and deleting it each commit in one transaction with their records — the
+//! D-A for SCIM provisioning. Creating a user, renaming it, changing whether
+//! it is active, and deleting it each commit in one transaction with their records — the
 //! member and its SCIM link together, and a deprovision with the revocation of
 //! every live token the member holds. A deprovision that cannot finish fails,
 //! so the identity provider retries it, rather than reporting success with
@@ -30,12 +30,15 @@ pub async fn provision(
     Ok(provisioned)
 }
 
-/// `None` when the member has no SCIM link. Deactivating revokes the member's
-/// live tokens in the same transaction.
-pub async fn set_active(
+/// `None` when the workspace has no such SCIM user. A rename changes the
+/// member's handle and nothing else: the id, and everything attributed to it,
+/// stay. Deactivating revokes the member's live tokens in the same
+/// transaction.
+pub async fn update_user(
     pool: &PgPool,
     workspace_id: WorkspaceId,
     member_id: MemberId,
+    user_name: Option<&str>,
     external_id: Option<&str>,
     active: bool,
     event: NewAuditEvent,
@@ -44,6 +47,13 @@ pub async fn set_active(
     let Some(scim) = scim_users::update_on(&mut tx, member_id, external_id, active).await? else {
         return Ok(None);
     };
+    if scim.workspace_id != workspace_id {
+        // Dropping the transaction undoes the update above.
+        return Ok(None);
+    }
+    if let Some(handle) = user_name {
+        members::rename_on(&mut tx, workspace_id, member_id, handle).await?;
+    }
     if !active {
         revoke_member_tokens(&mut tx, workspace_id, member_id).await?;
     }

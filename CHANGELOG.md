@@ -306,6 +306,41 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   current rows. Approval-gate answers were already final: the first answer
   wins.
 
+### SCIM Groups and `userName` renames
+
+- **Added:** SCIM 2.0 `Groups` at `/scim/v2/Groups`: create, read, list,
+  replace, patch and delete (RFC 7643 §4.2, RFC 7644 §3), gated on
+  `token:admin` and confined to the token's workspace. The list filters on
+  `displayName eq` (not case-sensitive), `externalId eq` or `id eq`, pages
+  with `startIndex` and `count`, and honours `excludedAttributes=members`; an
+  unsupported filter is `400 invalidFilter` rather than the whole list. PATCH
+  takes `add`, `remove` and `replace` of `members` in Okta's shape (a
+  `members[value eq "…"]` path) and Entra ID's (path `members` with a value
+  array, capitalized `op`), and `replace` of `displayName` and `externalId`.
+  A group records the IdP's membership and grants nothing. Its members must
+  be SCIM users of the same workspace: another workspace's member, an agent
+  or an unknown id is `400 invalidValue`, the same answer for each, and the
+  membership row's foreign keys on `(id, workspace_id)` refuse a
+  cross-workspace row even from a query that skips the check. Deprovisioning
+  a user removes it from every group. Migration 0127 (`maidan_scim_groups`,
+  `maidan_scim_group_members`), both backends.
+- **Added:** a SCIM `userName` change renames the member, by PUT (Okta) or
+  PATCH with `"path": "userName"` (Entra ID) or a pathless value object. The
+  member id stays, so its tokens, messages and group memberships stay with
+  it, and the new handle shows wherever handles are read. A `userName`
+  another member of the workspace holds is `409` with `scimType: uniqueness`
+  and changes nothing. Before, PUT and PATCH ignored `userName`.
+- **Fixed:** PATCH of a user accepts `active` as the string `"False"` or
+  `"True"`, which Entra ID sends by default. Before, Entra ID's deactivation
+  was ignored and the user's tokens stayed live.
+- **Changed:** every SCIM write, the rename and group writes included,
+  records its audit row in the change's own transaction (D-A); user updates
+  now name the acting token's member. The duplicate-`userName` `409` on
+  create carries `scimType: uniqueness`. Store: `scim_set_active_audited` is
+  now `scim_update_user_audited`, which takes the new `userName`. Tests:
+  `scim_groups` and `scim_audit_tx` (SQLite and Postgres), `scim_e2e`
+  (two tenants, Okta and Entra ID request shapes).
+
 ### Idempotency keys on writes (server half)
 
 - **Added:** writes (POST/PUT/PATCH/DELETE) from an authenticated,

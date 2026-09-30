@@ -1,10 +1,11 @@
 //! SCIM 2.0 user provisioning. A minimal RFC 7643/7644 endpoint so an IdP (Okta
-//! / Azure AD / …) can provision and deprovision Maidan members:
+//! / Entra ID / …) can provision and deprovision Maidan members:
 //! `ServiceProviderConfig` + `/Users` create / read / list (with the `userName
-//! eq` filter) / replace / patch-active / delete. A SCIM User maps to a member
-//! (`userName` = handle, `id` = member id); the `maidan_scim_users` link tracks
-//! `externalId` + `active`. Deactivation (`active=false`) and delete revoke the
-//! member's API tokens.
+//! eq` filter) / replace / patch / delete, and `/Groups` ([`crate::scim_groups`]).
+//! A SCIM User maps to a member (`userName` = handle, `id` = member id); the
+//! `maidan_scim_users` link tracks `externalId` + `active`. Changing `userName`
+//! renames the member: the id stays, so everything attributed to it stays.
+//! Deactivation (`active=false`) and delete revoke the member's API tokens.
 //!
 //! Scoped to the caller's workspace and gated on `token:admin`. These routes
 //! are intentionally outside the OpenAPI doc + capability-map (like `/mcp`) —
@@ -22,13 +23,13 @@ use serde_json::{json, Value};
 use crate::state::AppState;
 
 const USER_SCHEMA: &str = "urn:ietf:params:scim:schemas:core:2.0:User";
-const LIST_SCHEMA: &str = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
+pub(crate) const LIST_SCHEMA: &str = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
 const ERROR_SCHEMA: &str = "urn:ietf:params:scim:api:messages:2.0:Error";
-const PATCH_SCHEMA: &str = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
+pub(crate) const PATCH_SCHEMA: &str = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
 const SPC_SCHEMA: &str = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig";
 
 /// A SCIM JSON response with the `application/scim+json` content type.
-fn scim_response(status: StatusCode, value: Value) -> Response {
+pub(crate) fn scim_response(status: StatusCode, value: Value) -> Response {
     let body = serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string());
     (
         status,
@@ -39,12 +40,26 @@ fn scim_response(status: StatusCode, value: Value) -> Response {
 }
 
 /// A SCIM error envelope (RFC 7644 §3.12).
-fn scim_error(status: StatusCode, detail: &str) -> Response {
+pub(crate) fn scim_error(status: StatusCode, detail: &str) -> Response {
     scim_response(
         status,
         json!({
             "schemas": [ERROR_SCHEMA],
             "status": status.as_u16().to_string(),
+            "detail": detail,
+        }),
+    )
+}
+
+/// A SCIM error with its `scimType` (RFC 7644 §3.12, table 9), which an IdP
+/// reads to tell a taken `userName` (`uniqueness`) from a bad request.
+pub(crate) fn scim_error_typed(status: StatusCode, scim_type: &str, detail: &str) -> Response {
+    scim_response(
+        status,
+        json!({
+            "schemas": [ERROR_SCHEMA],
+            "status": status.as_u16().to_string(),
+            "scimType": scim_type,
             "detail": detail,
         }),
     )
@@ -87,7 +102,7 @@ where
 
 /// Require `token:admin` (bypass callers pass). Returns `Some(<403 error>)` when
 /// the caller is not authorized, `None` when it may proceed.
-fn require_admin(auth: &AuthContext) -> Option<Response> {
+pub(crate) fn require_admin(auth: &AuthContext) -> Option<Response> {
     if auth.bypass || auth.has_capability(TOKEN_ADMIN) {
         None
     } else {
@@ -162,6 +177,64 @@ impl ScimUserInput {
             .or_else(|| self.emails.first())
             .and_then(|e| e.value.clone())
             .filter(|s| !s.trim().is_empty())
+    }
+}
+
+fn user_name_taken() -> Response {
+    scim_error_typed(
+        StatusCode::CONFLICT,
+        "uniqueness",
+        "a user with this userName already exists",
+    )
+}
+
+/// A SCIM error not yet rendered, so a parser can return it in a `Result`
+/// without carrying a whole `Response`.
+#[derive(Debug)]
+pub(crate) struct ScimFault {
+    status: StatusCode,
+    scim_type: &'static str,
+    detail: String,
+}
+
+impl ScimFault {
+    pub(crate) fn new(status: StatusCode, scim_type: &'static str, detail: &str) -> Self {
+        Self {
+            status,
+            scim_type,
+            detail: detail.to_string(),
+        }
+    }
+
+    pub(crate) fn invalid_value(detail: &str) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, "invalidValue", detail)
+    }
+}
+
+impl IntoResponse for ScimFault {
+    fn into_response(self) -> Response {
+        scim_error_typed(self.status, self.scim_type, &self.detail)
+    }
+}
+
+/// A `userName` from a request: trimmed, and refused when empty.
+fn user_name_from(value: &str) -> Result<String, ScimFault> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        Err(ScimFault::invalid_value("userName must not be empty"))
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+/// A SCIM boolean. Entra ID sends `"True"` and `"False"` as strings unless
+/// the app opts into its RFC-compliant mode, so both spellings are accepted.
+fn scim_bool(value: &Value) -> Option<bool> {
+    match value {
+        Value::Bool(b) => Some(*b),
+        Value::String(s) if s.eq_ignore_ascii_case("true") => Some(true),
+        Value::String(s) if s.eq_ignore_ascii_case("false") => Some(false),
+        _ => None,
     }
 }
 
@@ -266,10 +339,7 @@ pub async fn create_user(
         .await
         .is_ok()
     {
-        return scim_error(
-            StatusCode::CONFLICT,
-            "a user with this userName already exists",
-        );
+        return user_name_taken();
     }
     // The member and its SCIM link are created together, with their record: a
     // failure leaves neither, so the provider's retry does not meet a member
@@ -378,28 +448,50 @@ pub async fn list_users(
 /// Parse a SCIM `userName eq "value"` filter from the raw query string. Returns
 /// the target userName, or `None` for any other/absent filter (→ list all).
 fn parse_username_filter(raw_query: &str) -> Option<String> {
-    let filter = raw_query
-        .split('&')
-        .find_map(|kv| kv.strip_prefix("filter="))?;
-    // Query strings encode spaces as `%20` or `+` (form-urlencoded); normalize the
-    // literal `+` to a space before percent-decoding (a real `+` arrives as `%2B`).
-    let form_normalized = filter.replace('+', " ");
-    let decoded = urlencoding::decode(&form_normalized).ok()?;
-    let trimmed = decoded.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    let rest = lower.strip_prefix("username eq ")?;
-    // Take the same byte range from the original to preserve value case.
-    let value = trimmed[trimmed.len() - rest.len()..].trim();
-    let value = value.trim_matches('"');
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
+    let filter = query_param(raw_query, "filter")?;
+    let (attribute, value) = parse_eq_filter(&filter)?;
+    (attribute == "username").then_some(value)
 }
 
-/// `PUT /scim/v2/Users/:id` — replace: applies `active` + `externalId` (member
-/// handle/displayName are immutable in this P3; a rename is a follow-up).
+/// A decoded query parameter. Query strings encode spaces as `%20` or `+`
+/// (form-urlencoded); the literal `+` becomes a space before percent-decoding
+/// (a real `+` arrives as `%2B`).
+pub(crate) fn query_param(raw_query: &str, name: &str) -> Option<String> {
+    let raw = raw_query.split('&').find_map(|kv| {
+        let (key, value) = kv.split_once('=')?;
+        key.eq_ignore_ascii_case(name).then_some(value)
+    })?;
+    let form_normalized = raw.replace('+', " ");
+    urlencoding::decode(&form_normalized)
+        .ok()
+        .map(|decoded| decoded.into_owned())
+}
+
+/// Parse `attribute eq "value"` (RFC 7644 §3.4.2.2) into the attribute,
+/// lowercased, and the value, case kept. Anything else, including a compound
+/// `and`/`or` filter, is `None`.
+pub(crate) fn parse_eq_filter(filter: &str) -> Option<(String, String)> {
+    let trimmed = filter.trim();
+    let (attribute, rest) = trimmed.split_once(char::is_whitespace)?;
+    let rest = rest.trim_start();
+    let (operator, value) = rest.split_once(char::is_whitespace)?;
+    if !operator.eq_ignore_ascii_case("eq") {
+        return None;
+    }
+    let value = value.trim();
+    let value = value
+        .strip_prefix('"')
+        .and_then(|v| v.strip_suffix('"'))
+        .unwrap_or(value);
+    if value.is_empty() || value.contains('"') {
+        return None;
+    }
+    Some((attribute.to_ascii_lowercase(), value.to_string()))
+}
+
+/// `PUT /scim/v2/Users/:id` — replace: applies `userName` (a rename), `active`
+/// and `externalId`. Okta renames a user this way. `displayName` is not
+/// changed after creation.
 pub async fn replace_user(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -410,44 +502,53 @@ pub async fn replace_user(
         return resp;
     }
     let member_id = maidan_types::MemberId(id);
-    if load_resource(&state, auth.workspace_id, member_id)
-        .await
-        .is_none()
-    {
+    let Some(current) = load_resource(&state, auth.workspace_id, member_id).await else {
         return scim_error(StatusCode::NOT_FOUND, "no such user");
-    }
+    };
     let input: ScimUserInput = match serde_json::from_str(&body) {
         Ok(v) => v,
         Err(e) => return scim_error(StatusCode::BAD_REQUEST, &format!("invalid SCIM User: {e}")),
     };
+    let user_name = match input.user_name.as_deref().map(user_name_from) {
+        Some(Ok(name)) => Some(name),
+        Some(Err(fault)) => return fault.into_response(),
+        None => None,
+    };
     apply_update(
         &state,
-        auth.workspace_id,
+        &auth,
+        &current,
         member_id,
-        input.external_id.as_deref(),
-        input.active,
+        UserUpdate {
+            user_name,
+            external_id: input.external_id,
+            active: input.active,
+        },
     )
     .await
 }
 
 #[derive(Deserialize)]
-struct ScimPatchOp {
+pub(crate) struct ScimPatchOp {
     #[serde(rename = "Operations", default)]
-    operations: Vec<ScimPatchOperation>,
+    pub(crate) operations: Vec<ScimPatchOperation>,
 }
 
 #[derive(Deserialize)]
-struct ScimPatchOperation {
+pub(crate) struct ScimPatchOperation {
     #[serde(default)]
-    op: String,
+    pub(crate) op: String,
     #[serde(default)]
-    path: Option<String>,
+    pub(crate) path: Option<String>,
     #[serde(default)]
-    value: Value,
+    pub(crate) value: Value,
 }
 
-/// `PATCH /scim/v2/Users/:id` — the deactivation path: `replace` of `active`
-/// (and `externalId`). Other paths are accepted-and-ignored (P3).
+/// `PATCH /scim/v2/Users/:id` — `replace`/`add` of `userName` (a rename),
+/// `active` and `externalId`, in either form an IdP sends: a `path` with a
+/// value (Entra ID: `{"op":"Replace","path":"userName","value":"x"}`), or no
+/// path and an object of attributes (Okta: `{"op":"replace","value":
+/// {"active":false}}`). Other paths are accepted and ignored.
 pub async fn patch_user(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -466,59 +567,78 @@ pub async fn patch_user(
         Err(e) => return scim_error(StatusCode::BAD_REQUEST, &format!("invalid PatchOp: {e}")),
     };
     let _ = PATCH_SCHEMA; // documented schema for the request envelope
-    let mut active = current["active"].as_bool().unwrap_or(true);
-    let mut external_id = current["externalId"].as_str().map(|s| s.to_string());
+    let mut update = UserUpdate {
+        user_name: None,
+        active: current["active"].as_bool().unwrap_or(true),
+        external_id: current["externalId"].as_str().map(|s| s.to_string()),
+    };
     for op in &patch.operations {
         if !op.op.eq_ignore_ascii_case("replace") && !op.op.eq_ignore_ascii_case("add") {
             continue;
         }
-        match op.path.as_deref() {
-            Some(p) if p.eq_ignore_ascii_case("active") => {
-                if let Some(v) = op.value.as_bool() {
-                    active = v;
+        let pairs: Vec<(&str, &Value)> = match op.path.as_deref() {
+            Some(path) => vec![(path, &op.value)],
+            None => op
+                .value
+                .as_object()
+                .map(|attrs| attrs.iter().map(|(k, v)| (k.as_str(), v)).collect())
+                .unwrap_or_default(),
+        };
+        for (path, value) in pairs {
+            if path.eq_ignore_ascii_case("active") {
+                if let Some(v) = scim_bool(value) {
+                    update.active = v;
+                }
+            } else if path.eq_ignore_ascii_case("externalId") {
+                update.external_id = value.as_str().map(|s| s.to_string());
+            } else if path.eq_ignore_ascii_case("userName") {
+                let Some(name) = value.as_str() else {
+                    return scim_error_typed(
+                        StatusCode::BAD_REQUEST,
+                        "invalidValue",
+                        "userName must be a string",
+                    );
+                };
+                match user_name_from(name) {
+                    Ok(name) => update.user_name = Some(name),
+                    Err(fault) => return fault.into_response(),
                 }
             }
-            Some(p) if p.eq_ignore_ascii_case("externalId") => {
-                external_id = op.value.as_str().map(|s| s.to_string());
-            }
-            // A pathless replace carries an object of attributes.
-            None => {
-                if let Some(v) = op.value.get("active").and_then(|v| v.as_bool()) {
-                    active = v;
-                }
-                if let Some(v) = op.value.get("externalId").and_then(|v| v.as_str()) {
-                    external_id = Some(v.to_string());
-                }
-            }
-            _ => {}
         }
     }
-    apply_update(
-        &state,
-        auth.workspace_id,
-        member_id,
-        external_id.as_deref(),
-        active,
-    )
-    .await
+    apply_update(&state, &auth, &current, member_id, update).await
 }
 
-/// Apply an `active` + `externalId` update to a member's SCIM link, revoking the
-/// member's tokens when deactivating.
+/// What a PUT or PATCH sets on a SCIM user.
+struct UserUpdate {
+    /// `None` keeps the current `userName`.
+    user_name: Option<String>,
+    external_id: Option<String>,
+    active: bool,
+}
+
+/// Apply a user update: a rename, `active` and `externalId`, revoking the
+/// member's tokens when deactivating. `current` is the resource before it.
 async fn apply_update(
     state: &AppState,
-    workspace_id: WorkspaceId,
+    auth: &AuthContext,
+    current: &Value,
     member_id: maidan_types::MemberId,
-    external_id: Option<&str>,
-    active: bool,
+    update: UserUpdate,
 ) -> Response {
-    // Deactivating revokes the member's tokens in the same transaction. If any
-    // of it fails the provider sees a 500 and retries, instead of a 200 with
-    // tokens still live.
+    let previous = current["userName"].as_str().unwrap_or_default();
+    let rename = update.user_name.filter(|name| name != previous);
+    let mut metadata = json!({ "active": update.active });
+    if let Some(name) = &rename {
+        metadata["userName"] = json!({ "from": previous, "to": name });
+    }
+    // The rename, the link and any token revocation commit together, with
+    // their record. If any of it fails the provider sees an error and
+    // retries, instead of a 200 with tokens still live.
     let event = maidan_types::NewAuditEvent {
-        scope: maidan_types::AuditScope::Workspace(workspace_id),
-        actor_id: None,
-        action: if active {
+        scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
+        actor_id: Some(auth.actor_id),
+        action: if update.active {
             "scim.user.update"
         } else {
             "scim.user.deactivate"
@@ -526,15 +646,23 @@ async fn apply_update(
         .into(),
         target_kind: Some("member".into()),
         target_id: Some(member_id.0),
-        metadata: json!({ "active": active }),
+        metadata,
     };
     match state
         .store
-        .scim_set_active_audited(workspace_id, member_id, external_id, active, event)
+        .scim_update_user_audited(
+            auth.workspace_id,
+            member_id,
+            rename.as_deref(),
+            update.external_id.as_deref(),
+            update.active,
+            event,
+        )
         .await
     {
         Ok(Some(_)) => {}
         Ok(None) => return scim_error(StatusCode::NOT_FOUND, "no such user"),
+        Err(maidan_store::StoreError::Conflict(_)) => return user_name_taken(),
         Err(err) => {
             return scim_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -542,7 +670,7 @@ async fn apply_update(
             )
         }
     }
-    match load_resource(state, workspace_id, member_id).await {
+    match load_resource(state, auth.workspace_id, member_id).await {
         Some(resource) => scim_response(StatusCode::OK, resource),
         None => scim_error(StatusCode::NOT_FOUND, "no such user"),
     }
