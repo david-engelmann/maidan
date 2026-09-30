@@ -24,6 +24,8 @@ export interface Fixtures {
   board_done_thread_id: string;
   /** The operator with thread:transition, to approve and close. */
   review_token: string;
+  /** The operator with token:admin, to mint throwaway tokens a spec may rotate. */
+  admin_token: string;
   /** The `desk` channel: three tasks in review naming the operator as reviewer. */
   desk_channel_id: string;
   desk_approve_thread_id: string;

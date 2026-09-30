@@ -254,6 +254,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   mark past those ids, so the missed events were never delivered. The mark
   now only moves past events that were delivered.
 
+### `/ui` rotates tokens, and says what a token is
+
+- **Added:** the Session tab rotates the token the page runs on, swapping the
+  new secret into the page so it keeps working and the live socket reconnects
+  on it; the Tokens tab rotates any token by id (`token:admin`). Both show the
+  new secret once, through `POST /tokens/{id}/rotate`.
+- **Added:** `GET /me` returns `token_id`, the token the request used (null on
+  a session), so a client can rotate its own secret.
+- **Fixed:** the Session tab said a bearer token "acts as any member
+  (orchestrator)". Since delegated authority (Cluster 411) a token acts as
+  exactly one member; it now says so, and names a delegated token as one.
+
 ### SDK 0.2: retries with idempotency keys, and auto-paging
 
 - **Added (all four SDKs, 0.2.0):** every write sends a fresh

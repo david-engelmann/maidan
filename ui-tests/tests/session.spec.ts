@@ -14,8 +14,8 @@ test("the Session tab renders the capability card from the real grant", async ({
   await page.fill("#token", fx.token);
   await page.click('.tabs button[data-tab="session"]');
 
-  // Identity: a bearer acts as any member (the orchestrator model).
-  await expect(page.locator("#session-credential")).toContainText("bearer");
+  // Identity: a token acts as exactly one member.
+  await expect(page.locator("#session-credential")).toHaveText("bearer token — acts as this member");
   await expect(page.locator("#session-member")).toHaveText(fx.member_id);
 
   // "Can" holds exactly the four granted capabilities.

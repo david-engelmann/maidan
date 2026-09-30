@@ -24,6 +24,7 @@ pub async fn get_me(Extension(auth): Extension<AuthContext>) -> ApiResult<Json<W
         workspace_id: auth.workspace_id.0,
         capabilities: auth.capabilities().to_vec(),
         is_bearer: auth.token_id.is_some(),
+        token_id: auth.token_id.map(|id| id.0),
         known_capabilities: maidan_auth::capability::all(),
         capability_sets: maidan_auth::held_sets(auth.capabilities()),
     }))
