@@ -194,6 +194,7 @@ pub async fn snapshot_thread_context(
                 sha256: sha.to_string(),
                 size_bytes,
                 mime_type: Some("application/json".to_string()),
+                filename: None,
                 kind: ArtifactKind::ContextSnapshot,
                 uploaded_by,
             },

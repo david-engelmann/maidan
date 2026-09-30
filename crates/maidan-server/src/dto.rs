@@ -1044,6 +1044,9 @@ pub struct UnlinkGithubQuery {
 pub struct UploadArtifactQuery {
     pub kind: ArtifactKind,
     pub mime_type: Option<String>,
+    /// Display name. A path keeps only its last segment; control and
+    /// bidirectional-control characters are refused.
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -1084,6 +1087,8 @@ pub struct CompleteMultipartArtifact {
     pub parts: Vec<MultipartPartInput>,
     pub kind: ArtifactKind,
     pub mime_type: Option<String>,
+    /// Display name; see `UploadArtifactQuery::filename`.
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

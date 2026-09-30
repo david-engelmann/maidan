@@ -1007,3 +1007,75 @@ fn ui_js_first_run_offers_only_the_sign_in_paths_the_server_has() {
         "Sign out forgets the token"
     );
 }
+
+/// The source of `function NAME(` up to its closing brace at the same indent.
+fn function_body<'a>(js: &'a str, name: &str) -> &'a str {
+    let start = js
+        .find(&format!("function {name}("))
+        .unwrap_or_else(|| panic!("function {name}"));
+    let end = js[start..]
+        .find("\n      }\n")
+        .unwrap_or_else(|| panic!("end of {name}"));
+    &js[start..start + end]
+}
+
+/// An attachment shows its name and, for a raster image, the image. The name
+/// is hostile data from another member, so it is only ever text; the bytes
+/// come through `fetch` with the viewer's credentials, so no token is ever in
+/// a URL; and an SVG, which can carry script, is never drawn from a blob URL
+/// that would run it in this origin.
+#[test]
+fn ui_js_previews_attachments_as_text_names_and_fetched_images() {
+    let js = script(HTML);
+    assert!(
+        js.contains(
+            r#"const INLINE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);"#
+        ),
+        "the inline allowlist is the server's, without SVG"
+    );
+
+    let card = function_body(js, "artifactCard");
+    assert!(
+        !card.contains("innerHTML"),
+        "the card builds nodes, not markup"
+    );
+    assert!(
+        card.contains("name.textContent = `📎 ${filename"),
+        "the filename is set as text"
+    );
+    assert!(
+        card.contains("meta.filename") && card.contains("artifactMeta(sha)"),
+        "the name comes from the workspace's metadata, not the message"
+    );
+    assert!(
+        card.contains("img.src = artifactObjectUrl("),
+        "an image loads from a fetched blob, never a URL carrying credentials"
+    );
+    assert!(
+        card.contains("INLINE_IMAGE_TYPES.has(type)"),
+        "only allowlisted types become images"
+    );
+
+    let blob = function_body(js, "artifactBlob");
+    assert!(
+        blob.contains("headers: { ...headers()") && blob.contains(r#"credentials: "include""#),
+        "bytes ride the bearer header or the session cookie"
+    );
+    assert!(
+        blob.contains("new Blob([await res.arrayBuffer()], { type })"),
+        "the blob's type is the one the page chose"
+    );
+    for leak in ["?token=", "&token=", "access_token=", "token()}`"] {
+        assert!(!js.contains(leak), "a token in a URL: {leak}");
+    }
+
+    let upload = function_body(js, "uploadArtifact");
+    assert!(
+        upload.contains(r#"params.set("filename", blob.name)"#),
+        "an upload sends the file's name"
+    );
+    assert!(
+        !js.contains("sha.slice(0, 16)") && !js.contains("Attached artifact"),
+        "the SHA-prefix link and message are gone"
+    );
+}

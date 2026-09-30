@@ -66,6 +66,7 @@ async fn sqlite_upsert_artifact_roundtrips_all_kinds() {
                 sha256: sha.clone(),
                 size_bytes: i as i64 + 1,
                 mime_type: None,
+                filename: None,
                 kind,
                 uploaded_by: None,
             })

@@ -339,6 +339,43 @@ that have no `channel_id`.
 
 **Forward-compat:** [contracts/event-kinds.json](../contracts/event-kinds.json) lists kinds emitted today; ignore unknown `kind` strings on the wire. Maintainers keep the producer surfaces and executable evidence exhaustive in [contracts/event-surface-disposition.json](../contracts/event-surface-disposition.json); `rest_only`, `mcp_only`, and `internal_only` are intentional classifications, not an implication that every event needs two public writers.
 
+
+### Attaching files (artifacts)
+
+Upload raw bytes with `POST /artifacts?kind=attachment&mime_type=image/png&filename=diagram.png`
+(`artifact:upload`). The server stores them by SHA-256 and dedupes across
+workspaces; `kind`, `mime_type` and `filename` are what *your* workspace said
+about them, and another workspace holding the same bytes never sees them.
+`filename` is a display name: a path keeps only its last segment
+(`../../x.png` becomes `x.png`), and a name with a control or
+bidirectional-control character, or longer than 255 characters, is a `400`.
+Cite an upload from a message with `metadata: {"artifacts": ["<sha256>"]}`;
+the `/ui/` shows the card from your workspace's metadata, not from the message.
+
+`GET /artifacts/{sha}` (`workspace:read`) returns the bytes with headers the
+server decides from the stored metadata, never from the bytes or the request:
+
+| Header | Value |
+|---|---|
+| `Content-Type` | The stored type's `type/subtype`, lowercased; `application/octet-stream` when none was stored or it is not a media type |
+| `Content-Disposition` | `inline` for `image/png`, `image/jpeg`, `image/gif` and `image/webp`; `attachment` for everything else. With a stored name, `filename="…"` (ASCII, other characters replaced by `_`) and `filename*=UTF-8''…` (the exact name, percent-encoded) |
+| `X-Content-Type-Options` | `nosniff` |
+| `Content-Security-Policy` | `default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox` |
+| `Cache-Control` | `private` |
+| `X-Artifact-Kind` | The stored kind |
+
+SVG is an `attachment`: it can carry script, and the `/ui/` draws images
+from `blob:` URLs, which run in the page's origin without this CSP. `GET
+/artifacts/{sha}/meta` returns the metadata as JSON. `GET /share/artifacts/{sha}`
+and the console's `GET /ui/api/artifacts/{sha}` serve the same headers.
+
+A tombstoned artifact is a `404` on all of these, and `NotFound` from MCP
+`get_artifact_metadata` and `resources/read` of `maidan://artifacts/{sha}`,
+the same answer as for a sha the workspace never held. `DELETE
+/artifacts/{sha}` (`token:admin`) removes only the caller's workspace's copy:
+it is a `404` there at once, and another workspace that uploaded the same
+bytes keeps reading them.
+
 ---
 
 ## Capability strings
@@ -611,7 +648,7 @@ The read-only consumer surface is:
 | `GET /share/manifest` | Ticket expiry/owner, the one channel, and metadata for the explicit artifact allowlist |
 | `GET /share/threads?limit=50&cursor=…` | Live threads in that channel, oldest first; `next_cursor` continues the page |
 | `GET /share/threads/{thread_id}/messages?limit=50&cursor=…` | Live messages in a shared-channel thread, oldest first |
-| `GET /share/artifacts/{sha256}` | Bytes only when that SHA is on this still-active ticket |
+| `GET /share/artifacts/{sha256}` | Bytes only when that SHA is on this still-active ticket, with the headers in [Attaching files](#attaching-files-artifacts) |
 
 Page limits clamp to 1–100. Thread results omit internal assignment, lease, and
 fencing fields. Consumer responses set `Cache-Control: no-store`,
@@ -1467,7 +1504,7 @@ browser's `localStorage` until **Sign out**, which forgets it (and ends the
 session, if there is one); once connected, the inputs fold into the header
 behind **Change**.
 
-Panels include channels, live WS tail, search, tokens, artifacts, and admin surfaces. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
+Panels include channels, live WS tail, search, tokens, artifacts, and admin surfaces. A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The console fetches the bytes with the viewer's bearer header or session cookie, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 
 ---
 

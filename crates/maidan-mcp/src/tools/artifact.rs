@@ -130,6 +130,7 @@ pub(super) async fn complete_artifact_multipart(
                 sha256: sha.to_string(),
                 size_bytes: bytes.len() as i64,
                 mime_type: a.mime_type,
+                filename: None,
                 kind: a.kind,
                 uploaded_by: (!auth.bypass).then_some(auth.member_id),
             },
@@ -187,6 +188,7 @@ pub(super) async fn upload_artifact(
                 sha256: sha.to_string(),
                 size_bytes: bytes.len() as i64,
                 mime_type: a.mime_type,
+                filename: None,
                 kind: a.kind,
                 uploaded_by: (!auth.bypass).then_some(auth.member_id),
             },
@@ -231,5 +233,9 @@ pub(super) async fn get_artifact_metadata(
             .get_artifact_for_workspace(auth.workspace_id, &a.sha256)
             .await?
     };
+    // A tombstoned artifact is absent, as on every REST read.
+    if artifact.tombstoned_at.is_some() {
+        return Err(McpError::NotFound);
+    }
     Ok(content_json(&artifact))
 }

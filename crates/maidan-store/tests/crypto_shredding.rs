@@ -519,6 +519,7 @@ async fn a_shared_artifact_goes_with_its_last_reference(db: Db) {
                     sha256: sha.clone(),
                     size_bytes: 4,
                     mime_type: Some("text/plain".into()),
+                    filename: None,
                     kind: ArtifactKind::Attachment,
                     uploaded_by: Some(who),
                 },
@@ -658,6 +659,7 @@ fn upload(sha: &str, by: MemberId) -> NewArtifact {
         sha256: sha.into(),
         size_bytes: 4,
         mime_type: None,
+        filename: None,
         kind: ArtifactKind::Attachment,
         uploaded_by: Some(by),
     }

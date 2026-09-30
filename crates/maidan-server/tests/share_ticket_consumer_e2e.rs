@@ -291,6 +291,18 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
         .await
         .unwrap();
     assert_eq!(allowed.status(), StatusCode::OK);
+    // Another organization's reader gets the same guarded headers as a member.
+    let header = |name: &str| {
+        allowed
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned)
+    };
+    assert_eq!(header("content-type").as_deref(), Some("text/plain"));
+    assert_eq!(header("x-content-type-options").as_deref(), Some("nosniff"));
+    assert_eq!(header("content-disposition").as_deref(), Some("attachment"));
+    assert!(header("content-security-policy").is_some_and(|csp| csp.contains("sandbox")));
     assert_eq!(allowed.bytes().await.unwrap().as_ref(), b"allowed bytes");
     let denied = client
         .get(format!("{base}/share/artifacts/{denied_sha}"))

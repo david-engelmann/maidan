@@ -4,12 +4,7 @@
 
 use std::sync::Arc;
 
-use axum::{
-    extract::State,
-    http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
-    Extension, Json,
-};
+use axum::{extract::State, http::StatusCode, response::Response, Extension, Json};
 use maidan_artifacts::{ArtifactStore, CompletedPart, MultipartUpload, S3Store, Sha256};
 use maidan_auth::{
     capability::{ARTIFACT_UPLOAD, TOKEN_ADMIN, WORKSPACE_READ},
@@ -18,6 +13,7 @@ use maidan_auth::{
 use maidan_types::*;
 
 use super::{cap, ApiResult};
+use crate::artifact_response::upload_filename;
 use crate::dto::*;
 use crate::error::ApiError;
 use crate::extract::{ApiBytes, ApiJson, ApiPath, ApiQuery};
@@ -84,6 +80,7 @@ pub async fn complete_multipart_artifact(
     ApiJson(body): ApiJson<CompleteMultipartArtifact>,
 ) -> ApiResult<(StatusCode, Json<Artifact>)> {
     cap(&auth, ARTIFACT_UPLOAD)?;
+    let filename = upload_filename(body.filename)?;
     let upload = multipart_upload(&upload_id, &body.object_key);
     let parts: Vec<CompletedPart> = body
         .parts
@@ -107,6 +104,7 @@ pub async fn complete_multipart_artifact(
                 sha256: sha.to_string(),
                 size_bytes: bytes.len() as i64,
                 mime_type: body.mime_type,
+                filename,
                 kind: body.kind,
                 uploaded_by: (!auth.bypass).then_some(auth.member_id),
             },
@@ -142,6 +140,7 @@ pub async fn upload_artifact(
     if body.is_empty() {
         return Err(ApiError::BadRequest("empty artifact body".into()));
     }
+    let filename = upload_filename(q.filename)?;
     let sha = state.artifacts.put(body.clone()).await?;
     // Upsert + the per-workspace ref (so only the uploader's workspace can
     // fetch the deduped blob) + the ArtifactUpserted event commit atomically;
@@ -154,6 +153,7 @@ pub async fn upload_artifact(
                 sha256: sha.to_string(),
                 size_bytes: body.len() as i64,
                 mime_type: q.mime_type,
+                filename,
                 kind: q.kind,
                 uploaded_by: (!auth.bypass).then_some(auth.member_id),
             },
@@ -194,16 +194,7 @@ pub async fn get_artifact(
     ensure_artifact_ref(&state, &auth, &sha_hex).await?;
     let meta = artifact_as_seen_by(&state, &auth, &sha_hex).await?;
     let bytes = state.artifacts.get(&sha).await?;
-    let mut headers = HeaderMap::new();
-    if let Some(mime) = meta.mime_type {
-        if let Ok(value) = mime.parse() {
-            headers.insert(header::CONTENT_TYPE, value);
-        }
-    }
-    if let Ok(kind) = meta.kind.as_str().parse() {
-        headers.insert(header::HeaderName::from_static("x-artifact-kind"), kind);
-    }
-    Ok((headers, bytes).into_response())
+    Ok(crate::artifact_response::artifact_response(&meta, bytes))
 }
 
 pub async fn get_artifact_metadata(
@@ -257,18 +248,23 @@ pub async fn erase_artifact(
 
 /// The artifact with the caller's workspace's own metadata. The shared row's
 /// `uploaded_by` is whoever uploaded the bytes first, possibly in another
-/// tenant.
+/// tenant. A tombstoned artifact is `NotFound`, as on the share route and in
+/// thread context: neither its bytes nor its metadata are served.
 async fn artifact_as_seen_by(
     state: &AppState,
     auth: &AuthContext,
     sha_hex: &str,
 ) -> ApiResult<Artifact> {
-    Ok(if auth.bypass {
+    let artifact = if auth.bypass {
         state.store.get_artifact_by_sha(sha_hex).await?
     } else {
         state
             .store
             .get_artifact_for_workspace(auth.workspace_id, sha_hex)
             .await?
-    })
+    };
+    if artifact.tombstoned_at.is_some() {
+        return Err(ApiError::NotFound);
+    }
+    Ok(artifact)
 }

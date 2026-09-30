@@ -112,6 +112,7 @@ async fn thread_context_includes_messages_refs_artifacts_and_fsm() {
             sha256: sha.to_hex(),
             size_bytes: payload.len() as i64,
             mime_type: Some("text/plain".into()),
+            filename: None,
             kind: maidan_types::ArtifactKind::Attachment,
             uploaded_by: Some(member.id),
         })

@@ -4,7 +4,8 @@ import { fixtures } from "./_fixtures";
 const fx = fixtures();
 
 // Wave 4 #49: a file pasted into the composer becomes an artifact attached to
-// the selected thread, named by the server; pasted text stays text.
+// the selected thread, stored by its sha; the file's name is kept only as a
+// display name, without its path. Pasted text stays text.
 test("pasting a file into the composer attaches it to the thread", async ({ page }) => {
   await page.goto("/ui/");
   await page.fill("#workspace", fx.workspace_id);
@@ -26,10 +27,12 @@ test("pasting a file into the composer attaches it to the thread", async ({ page
   const artifact = await res.json();
   expect(artifact.kind).toBe("screenshot");
   expect(artifact.sha256).toMatch(/^[0-9a-f]{64}$/);
-  // The client's filename appears nowhere in what the server returned.
-  expect(JSON.stringify(artifact)).not.toContain("evil");
+  // The name is a name: the path the client sent is gone.
+  expect(artifact.filename).toBe("evil.png");
+  expect(JSON.stringify(artifact)).not.toContain("etc");
 
-  await expect(page.locator(".artifact-card").filter({ hasText: "📎" }).first()).toBeVisible();
+  const card = page.locator(`.artifact-card[data-sha="${artifact.sha256}"]`).first();
+  await expect(card.locator(".artifact-name")).toHaveText("📎 evil.png");
   await expect(page.locator("#compose-body")).toHaveValue("");
 });
 

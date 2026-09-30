@@ -296,7 +296,7 @@ pub fn list_shared_messages() {}
     params(("sha" = String, Path, description = "Allowlisted artifact SHA-256")),
     security(("shareTicketAuth" = [])),
     responses(
-        (status = 200, description = "Artifact bytes"),
+        (status = 200, description = "Artifact bytes, with the same headers as `GET /artifacts/{sha}`"),
         (status = 404, description = "Artifact not allowlisted", body = ProblemDetails, content_type = "application/problem+json"),
     ))]
 pub fn download_shared_artifact() {}
@@ -2505,11 +2505,22 @@ pub fn answer_approval_gate() {}
 pub fn upload_artifact() {}
 
 /// Download an artifact
+///
+/// `Content-Type` is the type this workspace stored at upload
+/// (`application/octet-stream` when none, or not a media type), never
+/// sniffed. PNG, JPEG, GIF and WebP are `inline`; every other type, SVG
+/// included, is an `attachment`. Always `nosniff` and a sandboxing CSP.
 #[utoipa::path(get, path = "/artifacts/{sha}", tag = "artifacts",
     params(("sha" = String, Path, description = "SHA-256 hex")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, description = "Raw bytes", content_type = "application/octet-stream"),
+        (status = 200, description = "Raw bytes", content_type = "application/octet-stream",
+            headers(
+                ("Content-Disposition" = String, description = "`inline` for png/jpeg/gif/webp, else `attachment`; with `filename` and `filename*` when the upload named it"),
+                ("X-Content-Type-Options" = String, description = "Always `nosniff`"),
+                ("Content-Security-Policy" = String, description = "`default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox`"),
+                ("X-Artifact-Kind" = String, description = "The artifact's kind"),
+            )),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),

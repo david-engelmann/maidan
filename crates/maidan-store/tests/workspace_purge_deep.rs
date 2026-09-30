@@ -84,6 +84,7 @@ async fn seed_workspace(
             sha256: "aa".repeat(32),
             size_bytes: 4,
             mime_type: Some("text/plain".into()),
+            filename: None,
             kind: ArtifactKind::Attachment,
             uploaded_by: Some(alice.id),
         })

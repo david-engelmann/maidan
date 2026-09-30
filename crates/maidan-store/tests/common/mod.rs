@@ -194,6 +194,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
             sha256: "abcd1234".repeat(8),
             size_bytes: 42,
             mime_type: Some("image/png".to_string()),
+            filename: None,
             kind: ArtifactKind::Screenshot,
             uploaded_by: Some(alice.id),
         })
@@ -204,6 +205,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
             sha256: artifact.sha256.clone(),
             size_bytes: 42,
             mime_type: None,
+            filename: None,
             kind: ArtifactKind::Screenshot,
             uploaded_by: None,
         })

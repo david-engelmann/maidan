@@ -1,6 +1,8 @@
 //! Artifacts are content-addressed + deduped across workspaces, so this proves
 //! a caller in workspace B cannot fetch a blob workspace A uploaded just by
-//! knowing its SHA — the `maidan_artifact_refs` per-tenant access gate.
+//! knowing its SHA — the `maidan_artifact_refs` per-tenant access gate — and
+//! that no read serves a tombstoned artifact, while one workspace erasing its
+//! copy leaves another's intact.
 
 use std::{
     net::SocketAddr,
@@ -22,6 +24,7 @@ struct Ctx {
     _server: tokio::task::JoinHandle<()>,
     client: reqwest::Client,
     store: Arc<dyn Store>,
+    pool: sqlx::SqlitePool,
     _dir: tempfile::TempDir,
 }
 impl Ctx {
@@ -42,7 +45,8 @@ async fn spawn() -> Ctx {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
@@ -70,11 +74,12 @@ async fn spawn() -> Ctx {
             .build()
             .unwrap(),
         store,
+        pool,
         _dir: dir,
     }
 }
 
-/// A workspace + a token that can upload + read artifacts.
+/// A workspace + a token that can upload, read and erase artifacts.
 async fn workspace_with_token(ctx: &Ctx, name: &str) -> (WorkspaceId, String) {
     let ws = ctx
         .store
@@ -102,6 +107,7 @@ async fn workspace_with_token(ctx: &Ctx, name: &str) -> (WorkspaceId, String) {
             capabilities: vec![
                 capability::WORKSPACE_READ.into(),
                 capability::ARTIFACT_UPLOAD.into(),
+                capability::TOKEN_ADMIN.into(),
             ],
             expires_at: None,
         })
@@ -188,4 +194,99 @@ async fn a_workspace_cannot_fetch_another_tenants_artifact_by_sha() {
         StatusCode::OK,
         "B may read the blob it also uploaded"
     );
+}
+
+async fn upload(ctx: &Ctx, token: &str, body: &'static [u8]) -> String {
+    let resp = ctx
+        .client
+        .post(format!("{}/artifacts?kind=attachment", ctx.base()))
+        .header("Authorization", bearer(token))
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let created: Value = resp.json().await.unwrap();
+    created["sha256"].as_str().unwrap().to_string()
+}
+
+/// Every read of one sha: the bytes, the metadata, and the console's route.
+async fn read_statuses(ctx: &Ctx, token: &str, sha: &str) -> Vec<StatusCode> {
+    let mut out = Vec::new();
+    for path in [
+        format!("/artifacts/{sha}"),
+        format!("/artifacts/{sha}/meta"),
+        format!("/ui/api/artifacts/{sha}"),
+    ] {
+        let resp = ctx
+            .client
+            .get(format!("{}{path}", ctx.base()))
+            .header("Authorization", bearer(token))
+            .send()
+            .await
+            .unwrap();
+        out.push(resp.status());
+    }
+    out
+}
+
+#[tokio::test]
+async fn a_tombstoned_artifact_is_served_by_no_read() {
+    let ctx = spawn().await;
+    let (_wa, tok) = workspace_with_token(&ctx, "acme").await;
+    let sha = upload(&ctx, &tok, b"withdrawn bytes").await;
+    assert_eq!(read_statuses(&ctx, &tok, &sha).await, [StatusCode::OK; 3]);
+
+    // Nothing in the API writes an artifact tombstone yet; the column is the
+    // contract every reader honours (the share route, thread context).
+    sqlx::query("UPDATE maidan_artifacts SET tombstoned_at = ? WHERE sha256 = ?")
+        .bind(chrono::Utc::now())
+        .bind(&sha)
+        .execute(&ctx.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        read_statuses(&ctx, &tok, &sha).await,
+        [StatusCode::NOT_FOUND; 3],
+        "the same 404 the share route gives a tombstoned artifact"
+    );
+}
+
+#[tokio::test]
+async fn one_workspace_erasing_its_copy_leaves_anothers_readable() {
+    let ctx = spawn().await;
+    let (_wa, tok_a) = workspace_with_token(&ctx, "acme").await;
+    let (_wb, tok_b) = workspace_with_token(&ctx, "other").await;
+    let sha = upload(&ctx, &tok_a, b"bytes both tenants hold").await;
+    assert_eq!(upload(&ctx, &tok_b, b"bytes both tenants hold").await, sha);
+
+    let erased = ctx
+        .client
+        .delete(format!("{}/artifacts/{sha}", ctx.base()))
+        .header("Authorization", bearer(&tok_a))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(erased.status(), StatusCode::OK);
+
+    assert_eq!(
+        read_statuses(&ctx, &tok_a, &sha).await,
+        [StatusCode::NOT_FOUND; 3]
+    );
+    assert_eq!(
+        read_statuses(&ctx, &tok_b, &sha).await,
+        [StatusCode::OK; 3],
+        "A's erase must not hide the bytes from B's own reference"
+    );
+    let bytes = ctx
+        .client
+        .get(format!("{}/artifacts/{sha}", ctx.base()))
+        .header("Authorization", bearer(&tok_b))
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), b"bytes both tenants hold");
 }

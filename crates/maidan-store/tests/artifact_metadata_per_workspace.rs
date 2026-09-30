@@ -2,7 +2,8 @@
 //! about them is its own. Before, the shared row kept the first uploader's
 //! `uploaded_by` and the latest uploader's `kind`, so a second tenant uploading
 //! the same bytes read back the first tenant's member id and changed what the
-//! first tenant saw. On both backends.
+//! first tenant saw. A filename is the same kind of thing: each workspace sees
+//! the name it uploaded under, never another tenant's. On both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{ArtifactKind, MemberKind, NewArtifact, NewMember, NewWorkspace, WorkspaceId};
@@ -30,27 +31,39 @@ async fn run_suite(store: &dyn Store) {
     let (ws_b, bob) = tenant(store, "bravo").await;
     let (ws_c, _) = tenant(store, "charlie").await;
     let sha = "a".repeat(64);
-    let upload = |kind, mime: &str, by| NewArtifact {
+    let upload = |kind, mime: &str, name: Option<&str>, by| NewArtifact {
         sha256: sha.clone(),
         size_bytes: 3,
         mime_type: Some(mime.into()),
+        filename: name.map(Into::into),
         kind,
         uploaded_by: Some(by),
     };
 
     let (as_a, _) = store
         .upsert_artifact_with_event(
-            upload(ArtifactKind::Transcript, "text/plain", alice),
+            upload(
+                ArtifactKind::Transcript,
+                "text/plain",
+                Some("alpha-merger-plan.txt"),
+                alice,
+            ),
             Some(ws_a),
         )
         .await
         .unwrap();
     assert_eq!(as_a.uploaded_by, Some(alice));
+    assert_eq!(as_a.filename.as_deref(), Some("alpha-merger-plan.txt"));
 
     // The same bytes from another tenant.
     let (as_b, _) = store
         .upsert_artifact_with_event(
-            upload(ArtifactKind::Screenshot, "image/png", bob),
+            upload(
+                ArtifactKind::Screenshot,
+                "image/png",
+                Some("bravo.png"),
+                bob,
+            ),
             Some(ws_b),
         )
         .await
@@ -58,6 +71,7 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(as_b.uploaded_by, Some(bob), "B must not read A's member id");
     assert_eq!(as_b.kind, ArtifactKind::Screenshot);
     assert_eq!(as_b.mime_type.as_deref(), Some("image/png"));
+    assert_eq!(as_b.filename.as_deref(), Some("bravo.png"));
 
     let seen_by_a = store.get_artifact_for_workspace(ws_a, &sha).await.unwrap();
     assert_eq!(seen_by_a.uploaded_by, Some(alice));
@@ -67,6 +81,25 @@ async fn run_suite(store: &dyn Store) {
         "B's upload changed A's view"
     );
     assert_eq!(seen_by_a.mime_type.as_deref(), Some("text/plain"));
+    assert_eq!(
+        seen_by_a.filename.as_deref(),
+        Some("alpha-merger-plan.txt"),
+        "B's upload renamed A's file"
+    );
+    assert_eq!(
+        store.get_artifact_by_sha(&sha).await.unwrap().filename,
+        None,
+        "a scoped upload's name stays off the shared row"
+    );
+    // A re-upload without a name keeps the one the workspace gave it.
+    let (again, _) = store
+        .upsert_artifact_with_event(
+            upload(ArtifactKind::Transcript, "text/plain", None, alice),
+            Some(ws_a),
+        )
+        .await
+        .unwrap();
+    assert_eq!(again.filename.as_deref(), Some("alpha-merger-plan.txt"));
     let seen_by_b = store.get_artifact_for_workspace(ws_b, &sha).await.unwrap();
     assert_eq!(seen_by_b.uploaded_by, Some(bob));
     assert_eq!(
@@ -88,6 +121,7 @@ async fn run_suite(store: &dyn Store) {
                 sha256: unscoped.clone(),
                 size_bytes: 1,
                 mime_type: None,
+                filename: Some("unscoped.bin".into()),
                 kind: ArtifactKind::Attachment,
                 uploaded_by: None,
             },
@@ -95,20 +129,22 @@ async fn run_suite(store: &dyn Store) {
         )
         .await
         .unwrap();
-    assert_eq!(
-        store
-            .get_artifact_for_workspace(ws_c, &unscoped)
-            .await
-            .unwrap()
-            .kind,
-        ArtifactKind::Attachment
-    );
+    let unscoped_seen = store
+        .get_artifact_for_workspace(ws_c, &unscoped)
+        .await
+        .unwrap();
+    assert_eq!(unscoped_seen.kind, ArtifactKind::Attachment);
+    assert_eq!(unscoped_seen.filename.as_deref(), Some("unscoped.bin"));
 
     // A bare access grant carries no metadata of its own: it falls back to the
     // shared row for what the bytes are, never for who uploaded them.
     store.record_artifact_ref(ws_c, &sha).await.unwrap();
     let seen_by_c = store.get_artifact_for_workspace(ws_c, &sha).await.unwrap();
     assert_eq!(seen_by_c.uploaded_by, None);
+    assert_eq!(
+        seen_by_c.filename, None,
+        "C must not read A's or B's filename"
+    );
     assert_eq!(seen_by_c.kind, ArtifactKind::Transcript);
 }
 

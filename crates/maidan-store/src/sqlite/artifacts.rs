@@ -11,22 +11,26 @@ use crate::sqlite::events;
 
 /// The shared row is content: what the bytes are, never what one workspace
 /// said about them. A conflict leaves it as the first upload wrote it; each
-/// workspace's own `kind`, `mime_type` and `uploaded_by` live on its ref.
-const UPSERT_SQL: &str =
-    "INSERT INTO maidan_artifacts (id, sha256, size_bytes, mime_type, kind, uploaded_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+/// workspace's own `kind`, `mime_type`, `filename` and `uploaded_by` live on
+/// its ref.
+const UPSERT_SQL: &str = "INSERT INTO maidan_artifacts
+         (id, sha256, size_bytes, mime_type, filename, kind, uploaded_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (sha256) DO UPDATE
          SET sha256 = excluded.sha256
-     RETURNING id, sha256, size_bytes, mime_type, kind, uploaded_by, created_at, tombstoned_at";
+     RETURNING id, sha256, size_bytes, mime_type, filename, kind, uploaded_by, created_at,
+               tombstoned_at";
 
 /// An artifact as one workspace sees it: shared content, that workspace's own
 /// metadata. A ref written without metadata (older rows, bare access grants)
 /// falls back to the shared row for `kind` and `mime_type` — never for
-/// `uploaded_by`, which on the shared row may name another tenant's member.
+/// `uploaded_by` or `filename`, which on the shared row may be another
+/// tenant's.
 /// An artifact no workspace holds a ref to was uploaded unscoped (bypass, auth
 /// disabled); there is no tenant to protect, and it reads as the shared row.
 const WORKSPACE_VIEW_SQL: &str = "SELECT a.id, a.sha256, a.size_bytes,
             CASE WHEN r.kind IS NULL THEN a.mime_type ELSE r.mime_type END AS mime_type,
+            CASE WHEN r.workspace_id IS NULL THEN a.filename ELSE r.filename END AS filename,
             COALESCE(r.kind, a.kind) AS kind,
             CASE WHEN r.workspace_id IS NULL THEN a.uploaded_by ELSE r.uploaded_by END
                 AS uploaded_by,
@@ -78,6 +82,7 @@ pub async fn upsert(pool: &SqlitePool, new: NewArtifact) -> Result<Artifact, Sto
         .bind(&new.sha256)
         .bind(new.size_bytes)
         .bind(new.mime_type.as_deref())
+        .bind(new.filename.as_deref())
         .bind(new.kind.as_str())
         .bind(new.uploaded_by.map(|m| m.0))
         .bind(now)
@@ -150,6 +155,8 @@ pub async fn upsert_with_event(
         .bind(&new.sha256)
         .bind(new.size_bytes)
         .bind(new.mime_type.as_deref())
+        // A scoped upload's name is that workspace's, and stays on its ref.
+        .bind(new.filename.as_deref().filter(|_| ref_workspace.is_none()))
         .bind(new.kind.as_str())
         .bind(new.uploaded_by.map(|m| m.0))
         .bind(now)
@@ -176,7 +183,8 @@ pub async fn upsert_with_event(
 
 pub async fn get_by_sha(pool: &SqlitePool, sha256: &str) -> Result<Artifact, StoreError> {
     let row = sqlx::query(
-        "SELECT id, sha256, size_bytes, mime_type, kind, uploaded_by, created_at, tombstoned_at
+        "SELECT id, sha256, size_bytes, mime_type, filename, kind, uploaded_by, created_at,
+                tombstoned_at
          FROM maidan_artifacts WHERE sha256 = ?",
     )
     .bind(sha256)
@@ -209,17 +217,19 @@ async fn record_ref_in_tx(
     // See the Postgres twin: the workspace's latest upload sets its kind.
     sqlx::query(
         "INSERT INTO maidan_artifact_refs
-             (workspace_id, sha256, kind, mime_type, uploaded_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+             (workspace_id, sha256, kind, mime_type, filename, uploaded_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (workspace_id, sha256) DO UPDATE
              SET kind = excluded.kind,
                  mime_type = COALESCE(excluded.mime_type, maidan_artifact_refs.mime_type),
+                 filename = COALESCE(excluded.filename, maidan_artifact_refs.filename),
                  uploaded_by = COALESCE(maidan_artifact_refs.uploaded_by, excluded.uploaded_by)",
     )
     .bind(workspace_id.0)
     .bind(&new.sha256)
     .bind(new.kind.as_str())
     .bind(new.mime_type.as_deref())
+    .bind(new.filename.as_deref())
     .bind(new.uploaded_by.map(|m| m.0))
     .bind(Utc::now())
     .execute(&mut **tx)
@@ -267,6 +277,7 @@ fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> Result<Artifact, StoreError
         sha256: row.get("sha256"),
         size_bytes: row.get("size_bytes"),
         mime_type: row.get("mime_type"),
+        filename: row.get("filename"),
         kind,
         uploaded_by: row.get::<Option<Uuid>, _>("uploaded_by").map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),

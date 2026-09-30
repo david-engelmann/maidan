@@ -83,6 +83,7 @@ async fn run_suite(store: &dyn Store) {
                 sha256: sha.clone(),
                 size_bytes: 1,
                 mime_type: Some("application/octet-stream".into()),
+                filename: None,
                 kind: ArtifactKind::Attachment,
                 uploaded_by: Some(uploader),
             })
