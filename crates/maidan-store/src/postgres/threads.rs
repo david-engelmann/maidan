@@ -104,7 +104,7 @@ pub async fn assign(
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
-         WHERE id = $2 AND tombstoned_at IS NULL
+         WHERE id = $2 AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = $1 AND c.id = maidan_threads.channel_id)
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(assignee_id.0)
@@ -140,7 +140,7 @@ pub async fn assign_with_event(
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
-         WHERE id = $2 AND tombstoned_at IS NULL
+         WHERE id = $2 AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = $1 AND c.id = maidan_threads.channel_id)
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(assignee_id.0)
@@ -215,6 +215,7 @@ pub async fn set_owner(
     let row = sqlx::query(
         "UPDATE maidan_threads SET owner_id = $1, updated_at = NOW()
          WHERE id = $2 AND tombstoned_at IS NULL
+           AND ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = $1 AND c.id = maidan_threads.channel_id))
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(owner_id.map(|o| o.0))

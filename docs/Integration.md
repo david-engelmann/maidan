@@ -825,6 +825,10 @@ Three rules for using them safely:
   `https://maidan.dev/problems/overloaded`), so a retry after the delay is safe
   even for a write. `/ws/subscribe` answers the same way at its connection
   ceiling. `/health*` and `/metrics` are never refused.
+- **A member id you send must name a member of the workspace.** Setting a
+  thread's owner or assignee, recording a mention and opening a DM answer
+  `404` (MCP: not found) when the id names no member or a member of another
+  workspace, and write nothing.
 - **`500` names itself.** Any failure, including a server bug, answers with a
   problem body and an `X-Request-Id` header; quote the id when reporting it.
   The body never carries the internal cause.

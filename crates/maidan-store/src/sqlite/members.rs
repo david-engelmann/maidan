@@ -70,6 +70,24 @@ pub async fn create_with_event(
     Ok((member, stored))
 }
 
+/// `NotFound` unless `member_id` names a member of `workspace_id`. A request
+/// naming a member is refused the same way whether the id names no member or
+/// another workspace's: left to the foreign key, the first answered 500 and
+/// the second was accepted.
+pub(crate) async fn ensure_in_workspace(
+    conn: &mut sqlx::SqliteConnection,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<(), StoreError> {
+    sqlx::query("SELECT 1 FROM maidan_members WHERE id = ? AND workspace_id = ?")
+        .bind(member_id.0)
+        .bind(workspace_id.0)
+        .fetch_optional(conn)
+        .await?
+        .map(|_| ())
+        .ok_or(StoreError::NotFound)
+}
+
 pub async fn get(pool: &SqlitePool, id: MemberId) -> Result<Member, StoreError> {
     let row = sqlx::query(
         "SELECT id, workspace_id, handle, display_name, kind, created_at, updated_at, tombstoned_at

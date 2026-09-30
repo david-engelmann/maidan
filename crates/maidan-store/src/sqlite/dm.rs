@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::dm::{dm_conversation_id, ordered_members};
 use crate::error::StoreError;
-use crate::sqlite::{channels, threads};
+use crate::sqlite::{channels, members, threads};
 
 pub async fn ensure_dm_channel(
     pool: &SqlitePool,
@@ -88,6 +88,11 @@ pub async fn open(
     member_a: MemberId,
     member_b: MemberId,
 ) -> Result<DmConversation, StoreError> {
+    let mut conn = pool.acquire().await?;
+    for member in [member_a, member_b] {
+        members::ensure_in_workspace(&mut conn, workspace_id, member).await?;
+    }
+    drop(conn);
     if let Some(existing) = get_by_members(pool, workspace_id, member_a, member_b).await? {
         return Ok(existing);
     }
