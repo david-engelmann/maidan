@@ -784,6 +784,40 @@ arrives or the timeout lapses. Three rules for using them safely:
   problem body and an `X-Request-Id` header; quote the id when reporting it.
   The body never carries the internal cause.
 
+### Problem types
+
+Every REST failure is an RFC 9457 `application/problem+json` body with
+`type`, `title`, `status` and `detail`. Branch on `type`, not on `detail`,
+which is prose. Each type is `https://maidan.dev/problems/` plus:
+
+| `type` | Status | Meaning |
+|---|---|---|
+| `bad-request` | 400 | The body, query or path did not parse, or a value is invalid |
+| `unauthorized` | 401 | Missing or invalid bearer token |
+| `invalid-signature` | 401 | A webhook ingress signature does not verify |
+| `forbidden` | 403 | A missing capability or channel access; do not retry |
+| `not-found` | 404 | No such resource |
+| `method-not-allowed` | 405 | The route does not take this method; see `Allow` |
+| `conflict` | 409 | The resource's state refuses the change |
+| `idempotency-key-in-flight` | 409 | The first request with this `Idempotency-Key` is still running; retry shortly |
+| `cursor-too-old` | 409 | The cursor is behind the retained log: `must_refetch` is true and `snapshot` names what to fetch. Never clamp |
+| `event-log-broken` | 409 | The hash-chained event log failed verification; the server fails closed |
+| `payload-too-large` | 413 | The body is over the limit |
+| `unsupported-media-type` | 415 | The body's content type is not accepted |
+| `idempotency-key-reused` | 422 | The key was used for a different request; use a new key |
+| `rate-limited` | 429 | Over the rate limit; wait `Retry-After` |
+| `internal` | 500 | A server failure; quote `X-Request-Id` |
+| `bad-gateway` | 502 | An upstream the request depends on failed |
+| `overloaded` | 503 | Refused without running; wait `Retry-After` |
+
+The SDKs under `sdk/` raise one error per row (for example `NotFoundError`
+in TypeScript and Python, `*maidan.NotFoundError` in Go,
+`MaidanError::NotFound` in Rust), each carrying the status, `type`,
+`title`, `detail` and the body as sent. A type added after the SDK was
+published arrives as its unknown-problem error. The SDKs return typed
+models for every response they wrap; see
+[Client Contract](Client%20Contract.md) §2 and §4.
+
 ### Installed apps (OAuth-style)
 
 Register app → install → `POST .../oauth/authorize` → `POST /oauth/app/token` for app-scoped bearer. See OpenAPI `apps` and `oauth` tags.

@@ -6,7 +6,7 @@ use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use maidan::{retry_delay, Client};
+use maidan::{retry_delay, Client, MaidanError, StoredEvent};
 use serde_json::{json, Value};
 
 enum Reply {
@@ -82,11 +82,32 @@ fn ok(code: u16, body: Value) -> Reply {
     Reply::Status(code, body, vec![])
 }
 
+const TS: &str = "2026-09-29T00:00:00Z";
+
+fn message(id: &str) -> Value {
+    json!({"id": id, "thread_id": "t1", "author_id": "m", "body": "hi", "posted_at": TS})
+}
+
+fn channel(id: &str) -> Value {
+    json!({"id": id, "workspace_id": "w", "name": "n", "private": false, "created_at": TS, "updated_at": TS})
+}
+
+fn thread(id: &str) -> Value {
+    json!({"id": id, "channel_id": "ch", "state": "open", "created_at": TS, "updated_at": TS})
+}
+
+fn event(id: i64) -> Value {
+    json!({
+        "$type": "maidan.event.message_posted/1", "id": id, "lsn": id, "kind": "message_posted",
+        "payload": {}, "occurred_at": TS, "prev_hash": "p", "content_hash": "c"
+    })
+}
+
 #[test]
 fn a_write_retries_a_lost_response_with_the_same_key() {
-    let (base, seen) = serve(vec![Reply::Hangup, ok(201, json!({"id": "m1"}))]);
+    let (base, seen) = serve(vec![Reply::Hangup, ok(201, message("m1"))]);
     let (c, _) = client(&base);
-    assert_eq!(c.messages().post("t1", "hi").unwrap()["id"], "m1");
+    assert_eq!(c.messages().post("t1", "hi").unwrap().id, "m1");
     let seen = seen.lock().unwrap().clone();
     assert_eq!(seen.len(), 2);
     assert!(seen[0].key.is_some());
@@ -96,8 +117,8 @@ fn a_write_retries_a_lost_response_with_the_same_key() {
 #[test]
 fn each_write_gets_its_own_key_and_reads_get_none() {
     let (base, seen) = serve(vec![
-        ok(201, json!({})),
-        ok(201, json!({})),
+        ok(201, message("a")),
+        ok(201, message("b")),
         ok(200, json!([])),
     ]);
     let (c, _) = client(&base);
@@ -118,7 +139,7 @@ fn rate_limit_then_server_errors_are_retried_a_bounded_number_of_times() {
     ]);
     let (c, sleeps) = client(&base);
     let err = c.channels().list("w").unwrap_err();
-    assert_eq!(err.status, 503);
+    assert_eq!(err.status(), 503);
     assert_eq!(seen.lock().unwrap().len(), 3);
     let sleeps = sleeps.lock().unwrap().clone();
     assert_eq!(sleeps[0], Duration::from_secs(3));
@@ -132,10 +153,10 @@ fn a_409_in_flight_is_retried_and_a_plain_409_is_not() {
             409,
             json!({"type": "https://maidan.dev/problems/idempotency-key-in-flight"}),
         ),
-        ok(201, json!({"id": "c"})),
+        ok(201, channel("c")),
     ]);
     let (c, _) = client(&base);
-    assert_eq!(c.channels().create("w", "n", false).unwrap()["id"], "c");
+    assert_eq!(c.channels().create("w", "n", false).unwrap().id, "c");
     assert_eq!(seen.lock().unwrap().len(), 2);
 
     let (base, seen) = serve(vec![ok(
@@ -143,10 +164,10 @@ fn a_409_in_flight_is_retried_and_a_plain_409_is_not() {
         json!({"type": "https://maidan.dev/problems/conflict"}),
     )]);
     let (c, _) = client(&base);
-    assert_eq!(
-        c.channels().create("w", "n", false).unwrap_err().status,
-        409
-    );
+    assert!(matches!(
+        c.channels().create("w", "n", false).unwrap_err(),
+        MaidanError::Conflict(_)
+    ));
     assert_eq!(seen.lock().unwrap().len(), 1);
 }
 
@@ -154,12 +175,12 @@ fn a_409_in_flight_is_retried_and_a_plain_409_is_not() {
 fn a_403_is_not_retried_and_zero_retries_turns_them_off() {
     let (base, seen) = serve(vec![ok(403, json!({}))]);
     let (c, _) = client(&base);
-    assert_eq!(c.channels().list("w").unwrap_err().status, 403);
+    assert_eq!(c.channels().list("w").unwrap_err().status(), 403);
     assert_eq!(seen.lock().unwrap().len(), 1);
     let (base, seen) = serve(vec![ok(503, json!({}))]);
     let (c, _) = client(&base);
     let c = c.with_max_retries(0);
-    assert_eq!(c.channels().list("w").unwrap_err().status, 503);
+    assert_eq!(c.channels().list("w").unwrap_err().status(), 503);
     assert_eq!(seen.lock().unwrap().len(), 1);
 }
 
@@ -174,14 +195,14 @@ fn retry_delay_is_capped_exponential_with_jitter() {
 #[test]
 fn threads_list_all_pages_by_cursor() {
     let (base, seen) = serve(vec![
-        ok(200, json!([{"id": "a"}, {"id": "b"}])),
-        ok(200, json!([{"id": "c"}])),
+        ok(200, json!([thread("a"), thread("b")])),
+        ok(200, json!([thread("c")])),
     ]);
     let (c, _) = client(&base);
     let ids: Vec<String> = c
         .threads()
         .list_all("ch", 2)
-        .map(|t| t.unwrap()["id"].as_str().unwrap().to_string())
+        .map(|t| t.unwrap().id)
         .collect();
     assert_eq!(ids, ["a", "b", "c"]);
     let seen = seen.lock().unwrap().clone();
@@ -192,11 +213,11 @@ fn threads_list_all_pages_by_cursor() {
 #[test]
 fn list_events_all_pages_by_after_id() {
     let (base, seen) = serve(vec![
-        ok(200, json!([{"id": 1}, {"id": 2}])),
-        ok(200, json!([{"id": 3}])),
+        ok(200, json!([event(1), event(2)])),
+        ok(200, json!([event(3)])),
     ]);
     let (c, _) = client(&base);
-    let events: Vec<Value> = c
+    let events: Vec<StoredEvent> = c
         .list_events_all("w", &[("limit", "2")])
         .collect::<Result<_, _>>()
         .unwrap();

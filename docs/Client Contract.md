@@ -1,6 +1,7 @@
 > **Status (2026-09-29):** the four SDKs implement this contract and are published at
 > 0.1.0 (TypeScript, Python, Go, Rust; see [`sdk/README.md`](../sdk/README.md)).
-> 0.2 adds a retry with an `Idempotency-Key` per write and auto-paging. Where this page
+> 0.2 adds a retry with an `Idempotency-Key` per write and auto-paging; typed responses and
+> an error per problem type (§2) followed in the tree, not yet tagged. Where this page
 > and a running server's `GET /openapi.json` disagree, the server wins.
 # Client Contract — frozen SDK surface (v1)
 
@@ -162,8 +163,13 @@ call them; it uses WS so a bot does not need an MCP host.
 
 ## 2. Errors and retries
 
-Map non-2xx to a single error type that includes HTTP status and
-the JSON body the server already returns. Honor `Retry-After` on
+Map non-2xx to the error for its RFC 9457 problem `type`: a base
+error carrying the status, `type`, `title`, `detail` and the problem
+body as sent, and one subclass (TS, Python), wrapper type (Go,
+matched with `errors.As`) or enum variant (Rust) per type the server
+documents (the table in [Integration](Integration.md#problem-types)).
+A type the client does not know, or a body that is not a problem, is
+the unknown-problem error, never a crash. Honor `Retry-After` on
 429 (Cluster 172), and on 503, which the server answers when it sheds load. Treat 409 as conflict (`errors.Is` in Go later;
 Python/TS/Rust should still distinguish it). A 409 with
 `must_refetch: true` / `type: cursor-too-old` is
@@ -223,7 +229,8 @@ Not `token:admin`. `artifact:upload` only if the cookbook uploads.
 | `max_retries` | 0.2. Retry budget (default 2): TS `{ maxRetries }`, Python `max_retries=`, Go `Client.MaxRetries`, Rust `.with_max_retries(n)` |
 | `new_idempotency_key()` / `retry_delay(...)` | 0.2. Exported so callers can reuse the policy |
 | Typed IDs | Thread id is not a channel id at the type level |
-| Unknown fields | Ignore on REST JSON and WS envelopes |
+| Typed responses | Each method in §1 returns the model for its OpenAPI response schema (`Thread`, `ClaimedThread`, `Message`, `ThreadContext`, `StoredEvent`, …). WS event frames stay JSON objects: their shape follows `kind` |
+| Unknown fields | Ignore on REST JSON and WS envelopes. A member a model does not declare must not fail the response (Python and Rust keep it in `extra`); a string enum accepts values it does not list |
 
 ---
 

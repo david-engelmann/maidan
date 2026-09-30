@@ -10,7 +10,7 @@ npm install maidan
 ```
 
 ```js
-import { Client } from "maidan";
+import { Client, NotFoundError } from "maidan";
 
 const client = new Client("http://127.0.0.1:8080", process.env.MAIDAN_TOKEN);
 
@@ -25,6 +25,14 @@ if (claim) {
   await client.renewClaim(claim.id, claim.claim_lease_id, 300);
 }
 
+// Errors are classes, one per problem type.
+try {
+  await client.threads.get(threadId);
+} catch (err) {
+  if (err instanceof NotFoundError) console.log("gone:", err.detail);
+  else throw err;
+}
+
 // React to work instead of polling.
 const sub = await client.subscribe({ workspace_id: wid, kinds: ["message_posted"] }, (e) => {
   console.log("event", e.kind, e.thread_id);
@@ -37,9 +45,18 @@ const ready = await client.waitForReady(wid); // event or null on timeout
 
 - Constructor: `new Client(baseUrl?, token?, options?)` — defaults from `MAIDAN_URL` /
   `MAIDAN_TOKEN`; explicit args win. `client.mcpUrl` is `{baseUrl}/mcp/streamable`.
-- Errors throw `MaidanError` (`.status`, `.body`, `.retryAfter` on 429, `.isConflict` /
-  `.isCursorTooOld` / `.isForbidden` / `.isRateLimited`).
-- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `maxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads.listAll(cid)` and `workspaces.eventsAll(wid)` are async iterators over every page.
+- Errors throw a `MaidanError` subclass named by the server's RFC 9457 problem `type`:
+  `NotFoundError`, `ConflictError`, `ForbiddenError`, `CursorTooOldError` (with `.snapshot`),
+  `OverloadedError` and the rest, one per type the server documents (`PROBLEM_TYPES` maps
+  each URI to its class). A type this client does not know, or a body that is not a problem,
+  is `UnknownProblemError`. Every error carries `.status`, `.type`, `.title`, `.detail`,
+  `.problem` (the body as sent) and `.retryAfter` (on 429 and 503), plus `.isConflict` /
+  `.isCursorTooOld` / `.isForbidden` / `.isRateLimited`.
+- Responses are typed in `index.d.ts` (`Thread`, `ClaimedThread`, `Message`, `ThreadContext`,
+  `StoredEvent`, …), from the server's OpenAPI schemas and checked against a live server by
+  `test.mjs`. At runtime they are the server's JSON, so members added to the server later
+  are still there; string enums (`ThreadState`, …) accept values this client does not list.
+- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `maxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads.listAll(cid)` and `workspaces.eventsAll(wid)` are async iterators over every page. Typed responses and the error classes are new since 0.1.
 - Surface (frozen v1): `workspaces.{create,get,import}`, `channels.{list,create}`,
   `threads.{create,get,context,transition,setResult,getResult}`, `claimNextThread`,
   `renewClaim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,

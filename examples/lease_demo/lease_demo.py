@@ -33,11 +33,6 @@ WORKSPACE = os.environ.get("MAIDAN_WORKSPACE")
 HERE = pathlib.Path(__file__).resolve().parent
 
 
-def thread_id(claim):
-    """`claim_next_thread` returns a Thread object or None."""
-    return claim.get("id") if isinstance(claim, dict) else None
-
-
 def post(path: str, body: dict, token: str):
     """Call a lifecycle route that is outside the deliberately small SDK v1 surface."""
     headers = {"content-type": "application/json"}
@@ -77,21 +72,21 @@ def main() -> int:
 
     # --- setup: two member-bound workers, one channel, two open tasks ---
     assert WORKSPACE, "MAIDAN_WORKSPACE is required"
-    planner = admin.members.create(WORKSPACE, "planner")["id"]
-    reviewer = admin.members.create(WORKSPACE, "reviewer")["id"]
+    planner = admin.members.create(WORKSPACE, "planner").id
+    reviewer = admin.members.create(WORKSPACE, "reviewer").id
     worker_caps = ["workspace:read", "thread:transition"]
-    planner_token = admin.tokens.mint(WORKSPACE, planner, worker_caps)["secret"]
-    reviewer_token = admin.tokens.mint(WORKSPACE, reviewer, worker_caps)["secret"]
+    planner_token = admin.tokens.mint(WORKSPACE, planner, worker_caps).secret
+    reviewer_token = admin.tokens.mint(WORKSPACE, reviewer, worker_caps).secret
     planner_client = Client(BASE, planner_token)
-    channel = admin.channels.create(WORKSPACE, "coordination")["id"]
+    channel = admin.channels.create(WORKSPACE, "coordination").id
     admin.threads.create(channel, "task-1: audit the login flow")
     admin.threads.create(channel, "task-2: benchmark the search path")
 
     # --- the race: Python worker A and TypeScript worker B claim the same queue ---
     claim_a = planner_client.claim_next_thread(channel, {"lease_secs": 120})
-    claim_a_id = thread_id(claim_a)
-    assert claim_a_id, "python worker should claim an open task"
-    lease_a = claim_a.get("claim_lease_id")
+    assert claim_a, "python worker should claim an open task"
+    claim_a_id = claim_a.id
+    lease_a = claim_a.claim_lease_id
     assert lease_a, "python claim must include its fencing token"
     print(f"[python worker]     claimed thread: {claim_a_id}")
 
@@ -122,7 +117,7 @@ def main() -> int:
         )
         assert usage.get("stopped") is False, f"unexpected budget stop: {usage}"
         renewed = planner_client.renew_claim(claim_a_id, lease_a, 300)
-        assert renewed.get("assignment_expires_at"), "renew must preserve a finite lease"
+        assert renewed.assignment_expires_at, "renew must preserve a finite lease"
         print("[python worker]     acknowledged, reported usage, renewed")
 
         # The TypeScript worker runs the same lifecycle, checks that a third

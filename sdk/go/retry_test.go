@@ -4,6 +4,7 @@ package maidan
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,7 +63,7 @@ func fakeServer(t *testing.T, answers []answer) (*Client, *[]recorded, *[]time.D
 func TestWriteRetriesLostResponseWithSameKey(t *testing.T) {
 	c, calls, _ := fakeServer(t, []answer{{hangup: true}, {status: 201, body: M{"id": "m1"}}})
 	m, err := c.Messages.Post("t1", "hi")
-	if err != nil || m["id"] != "m1" {
+	if err != nil || m.ID != "m1" {
 		t.Fatalf("%v %v", m, err)
 	}
 	if len(*calls) != 2 || (*calls)[0].key == "" || (*calls)[0].key != (*calls)[1].key {
@@ -89,7 +90,7 @@ func TestRateLimitAndServerErrorsBoundedRetries(t *testing.T) {
 	})
 	_, err := c.Channels.List("w")
 	var apiErr *APIError
-	if err == nil || !asAPIError(err, &apiErr) || apiErr.Status != 503 {
+	if !errors.As(err, &apiErr) || apiErr.Status != 503 {
 		t.Fatalf("err %v", err)
 	}
 	if len(*calls) != 3 {
@@ -101,20 +102,12 @@ func TestRateLimitAndServerErrorsBoundedRetries(t *testing.T) {
 	}
 }
 
-func asAPIError(err error, target **APIError) bool {
-	e, ok := err.(*APIError)
-	if ok {
-		*target = e
-	}
-	return ok
-}
-
 func TestInFlight409RetriedPlain409Not(t *testing.T) {
 	c, calls, _ := fakeServer(t, []answer{
 		{status: 409, body: M{"type": inFlightType}},
 		{status: 201, body: M{"id": "c"}},
 	})
-	if ch, err := c.Channels.Create("w", "n", false); err != nil || ch["id"] != "c" || len(*calls) != 2 {
+	if ch, err := c.Channels.Create("w", "n", false); err != nil || ch.ID != "c" || len(*calls) != 2 {
 		t.Fatalf("%v %v %d", ch, err, len(*calls))
 	}
 	c, calls, _ = fakeServer(t, []answer{{status: 409, body: M{"type": "https://maidan.dev/problems/conflict"}}})
@@ -154,7 +147,7 @@ func TestThreadsListAllPagesByCursor(t *testing.T) {
 		{status: 200, body: []M{{"id": "c"}}},
 	})
 	var ids []string
-	if err := c.Threads.ListAll("ch", 2, func(m M) error { ids = append(ids, m["id"].(string)); return nil }); err != nil {
+	if err := c.Threads.ListAll("ch", 2, func(th Thread) error { ids = append(ids, th.ID); return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(ids, ",") != "a,b,c" {
@@ -171,7 +164,7 @@ func TestListEventsAllPagesByAfterID(t *testing.T) {
 		{status: 200, body: []M{{"id": 3}}},
 	})
 	n := 0
-	if err := c.Workspaces.ListEventsAll("w", map[string][]string{"limit": {"2"}}, func(M) error { n++; return nil }); err != nil {
+	if err := c.Workspaces.ListEventsAll("w", map[string][]string{"limit": {"2"}}, func(StoredEvent) error { n++; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if n != 3 || !strings.Contains((*calls)[1].url, "after_id=2") {

@@ -1,12 +1,62 @@
 // Black-box tests against the authenticated server from scripts/sdk-test.sh.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Client, MaidanError, eventType, parseRoomLsn } from "./index.js";
+import { readFileSync } from "node:fs";
+import {
+  BadRequestError,
+  Client,
+  ConflictError,
+  ForbiddenError,
+  MaidanError,
+  NotFoundError,
+  UnauthorizedError,
+  eventType,
+  parseRoomLsn,
+} from "./index.js";
 
 const BASE = process.env.MAIDAN_URL || "http://127.0.0.1:8080";
 const TOKEN = process.env.MAIDAN_TOKEN || "";
 const WORKSPACE = process.env.MAIDAN_WORKSPACE || "";
 const client = new Client(BASE, TOKEN);
+
+// The response models live only in index.d.ts, so that file is what these tests
+// hold the live server to: every member a response carries must be declared on
+// its interface, and every required member must be present.
+const MODELS = (() => {
+  const src = readFileSync(new URL("./index.d.ts", import.meta.url), "utf8");
+  const out = {};
+  for (const m of src.matchAll(/export interface (\w+)(?: extends (\w+))? \{([\s\S]*?)\n\}/g)) {
+    const fields = {};
+    for (const line of m[3].split("\n")) {
+      const f = line.match(/^ {2}([$\w]+)(\?)?:/);
+      if (f) fields[f[1]] = !f[2];
+    }
+    out[m[1]] = { base: m[2], fields };
+  }
+  return out;
+})();
+
+function assertShape(value, model) {
+  assert.ok(value && typeof value === "object", `${model}: expected an object, got ${value}`);
+  const fields = {};
+  for (let name = model; name; name = MODELS[name].base) {
+    assert.ok(MODELS[name], `no interface ${name} in index.d.ts`);
+    Object.assign(fields, MODELS[name].fields);
+  }
+  for (const key of Object.keys(value)) {
+    assert.ok(key in fields, `the server sent ${model}.${key}, which index.d.ts does not declare`);
+  }
+  for (const [key, required] of Object.entries(fields)) {
+    if (required) assert.ok(key in value, `${model}.${key} is required but the server omitted it`);
+  }
+  return value;
+}
+
+const eachShape = (rows, model) => {
+  assert.ok(Array.isArray(rows), `${model}[]: expected an array`);
+  rows.forEach((row) => assertShape(row, model));
+  return rows;
+};
 
 test("parseRoomLsn accepts decimal and rejects WAL", () => {
   assert.equal(parseRoomLsn("42"), 42);
@@ -148,4 +198,87 @@ test("threads.listAll walks every page of a channel", async () => {
   const seen = [];
   for await (const t of client.threads.listAll(channel.id, { pageSize: 2 })) seen.push(t.id);
   assert.deepEqual(seen.sort(), made.sort());
+});
+
+test("every documented operation returns its declared model", async () => {
+  const { channel, thread } = await seed();
+  const me = await (await fetch(`${BASE}/me`, { headers: { authorization: `Bearer ${TOKEN}` } })).json();
+
+  assertShape(await client.workspaces.get(WORKSPACE), "Workspace");
+  eachShape(await client.members.list(WORKSPACE), "Member");
+  assertShape(channel, "Channel");
+  eachShape(await client.channels.list(WORKSPACE), "Channel");
+  assertShape(thread, "Thread");
+  assertShape(await client.threads.get(thread.id), "Thread");
+  eachShape(await client.threads.list(channel.id), "Thread");
+
+  const msg = assertShape(await client.messages.post(thread.id, "typed"), "Message");
+  eachShape(await client.messages.list(thread.id), "Message");
+
+  const art = assertShape(await client.artifacts.upload("typed bytes", "attachment"), "Artifact");
+  assertShape(await client.artifacts.meta(art.sha256), "Artifact");
+  assert.equal(new TextDecoder().decode(await client.artifacts.get(art.sha256)), "typed bytes");
+
+  const claim = assertShape(await client.claimNextThread(channel.id, { lease_secs: 60 }), "ClaimedThread");
+  assertShape(claim.pin, "StrongRef");
+  assertShape(await client.renewClaim(claim.id, claim.claim_lease_id, 120), "Thread");
+
+  const result = assertShape(await client.threads.setResult(thread.id, { ok: true }), "ThreadResult");
+  assert.deepEqual(result.result, { ok: true });
+  assert.equal(result.produced_by, me.member_id);
+  assertShape(await client.threads.getResult(thread.id), "ThreadResult");
+  const reviewed = assertShape(await client.threads.transition(thread.id, { action: "start_review" }), "Thread");
+  assert.equal(reviewed.state, "in_review");
+
+  const ctx = assertShape(await client.threads.context(thread.id), "ThreadContext");
+  assertShape(ctx.thread, "Thread");
+  eachShape(ctx.messages, "Message");
+  eachShape(ctx.message_edits, "MessageEditView");
+  eachShape(ctx.references, "Reference");
+  eachShape(ctx.artifacts, "Artifact");
+  assertShape(ctx.fsm, "ThreadFsmContext");
+  assert.ok(ctx.fsm.transitions.length > 0, "the start_review transition is in the pack");
+  eachShape(ctx.fsm.transitions, "ThreadTransition");
+  assert.ok(ctx.messages.some((m) => m.id === msg.id));
+
+  const events = eachShape(await client.workspaces.events(WORKSPACE, { limit: 50 }), "StoredEvent");
+  assert.ok(events.length > 0);
+  for await (const e of client.workspaces.eventsAll(WORKSPACE, { limit: 25 })) assertShape(e, "StoredEvent");
+
+  const member = assertShape(await client.members.create(WORKSPACE, `typed-${crypto.randomUUID()}`), "Member");
+  const minted = assertShape(await client.tokens.mint(WORKSPACE, member.id, ["workspace:read"]), "MintedToken");
+  minted.quotas.forEach((q) => assertShape(q, "TokenQuota"));
+  eachShape(await client.tokens.list(WORKSPACE, member.id), "TokenSummary");
+
+  const exported = await (
+    await fetch(`${BASE}/workspaces/${WORKSPACE}/export`, { headers: { authorization: `Bearer ${TOKEN}` } })
+  ).json();
+  const imported = assertShape(await client.workspaces.import(exported, "new"), "ImportResult");
+  assert.equal(imported.mode, "new");
+  assert.notEqual(imported.workspace_id, WORKSPACE, "mode=new remaps ids");
+});
+
+test("the server's problem types arrive as their error classes", async () => {
+  const { thread } = await seed();
+  const expectError = async (call, Cls, status, type) => {
+    await assert.rejects(call, (err) => {
+      assert.ok(err instanceof Cls, `expected ${Cls.name}, got ${err && err.name}`);
+      assert.ok(err instanceof MaidanError);
+      assert.equal(err.status, status);
+      assert.equal(err.type, `https://maidan.dev/problems/${type}`);
+      assert.equal(err.problem.type, err.type, "the raw problem is kept");
+      assert.equal(typeof err.title, "string");
+      assert.equal(typeof err.detail, "string");
+      return true;
+    });
+  };
+  await expectError(() => client.threads.get("00000000-0000-0000-0000-000000000000"), NotFoundError, 404, "not-found");
+  await expectError(() => new Client(BASE, "maid_not_a_token").workspaces.get(WORKSPACE), UnauthorizedError, 401, "unauthorized");
+  await expectError(() => client.threads.transition(thread.id, { action: "fly" }), BadRequestError, 400, "bad-request");
+  // Bootstrap creates only the first workspace; `maidan init` already made it.
+  await expectError(() => client.workspaces.create("second"), ForbiddenError, 403, "forbidden");
+  const exported = await (
+    await fetch(`${BASE}/workspaces/${WORKSPACE}/export`, { headers: { authorization: `Bearer ${TOKEN}` } })
+  ).json();
+  await expectError(() => client.workspaces.import(exported, "restore"), ConflictError, 409, "conflict");
 });

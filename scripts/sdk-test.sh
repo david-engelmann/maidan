@@ -28,9 +28,13 @@ workspace_id="$(awk '/^[[:space:]]*workspace:/ { gsub(/[()]/, "", $3); print $3 
 test -n "${admin_token}"
 test -n "${workspace_id}"
 
+# A per-run signing key, so the suites can export a workspace and import it
+# back (`workspaces.import`).
+export_key="$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
+
 echo "=== booting (SQLite, authenticated) ==="
 DATABASE_URL="${sdk_db}" MAIDAN_SESSION_SECRET="sdk-test-session-secret-change-me-0123456789" \
-  MAIDAN_BOOTSTRAP=1 MAIDAN_RATE_LIMIT_MAX=0 \
+  MAIDAN_EXPORT_SIGNING_KEY="${export_key}" MAIDAN_BOOTSTRAP=1 MAIDAN_RATE_LIMIT_MAX=0 \
   MAIDAN_BIND="127.0.0.1:${port}" ./target/debug/maidan-server &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$sdk_tmp"' EXIT

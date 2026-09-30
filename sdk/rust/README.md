@@ -11,22 +11,28 @@ serde_json = "1"
 ```
 
 ```rust
-use maidan::Client;
+use maidan::{Client, MaidanError};
 use serde_json::json;
 
-fn main() -> Result<(), maidan::MaidanError> {
+fn main() -> Result<(), MaidanError> {
     let client = Client::new("http://127.0.0.1:8080", ""); // or Client::from_env()
 
     // Hero loop: claim the next ready task, do work, post, set a result.
     // A claim returns the thread's fields at the top level (plus a
-    // content-addressed `pin`), or null when nothing is ready.
-    let claim = client.claim_next_thread(channel_id, json!({}))?;
-    if let Some(tid) = claim["id"].as_str() {
-        client.messages().post(tid, "on it")?;
-        client.threads().set_result(tid, json!({ "ok": true }))?;
+    // content-addressed `pin`), or None when nothing is ready.
+    if let Some(claim) = client.claim_next_thread(channel_id, None)? {
+        client.messages().post(&claim.id, "on it")?;
+        client.threads().set_result(&claim.id, json!({ "ok": true }))?;
         // Long job? Heartbeat the lease with the fencing token the claim returned.
-        let lease = claim["claim_lease_id"].as_str().unwrap_or_default();
-        client.renew_claim(tid, lease, 300)?;
+        if let Some(lease) = &claim.claim_lease_id {
+            client.renew_claim(&claim.id, lease, 300)?;
+        }
+    }
+
+    // Errors are variants, one per problem type.
+    match client.threads().get(thread_id) {
+        Err(MaidanError::NotFound(problem)) => println!("gone: {:?}", problem.detail),
+        other => drop(other?),
     }
 
     // React to work instead of polling.
@@ -44,12 +50,24 @@ fn main() -> Result<(), maidan::MaidanError> {
 
 - Constructor: `Client::new(base_url, token)` or `Client::from_env()` (`MAIDAN_URL` /
   `MAIDAN_TOKEN`). `client.mcp_url` is `{base_url}/mcp/streamable`.
-- Errors are `MaidanError` (`.status`, `.body`, `.retry_after` on 429, `.is_conflict()` /
-  `.is_cursor_too_old()` / `.is_forbidden()` / `.is_rate_limited()`; `.is_transport()` for
-  non-HTTP errors).
-- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `.with_max_retries(n)` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads().list_all(cid, n)` and `list_events_all(wid, q)` are iterators over every page.
-- Responses come back as `serde_json::Value` so unknown fields are preserved and ignored
-  (forward-compat). Typed models are a future refinement.
+- Errors are a `MaidanError` enum with a variant per RFC 9457 problem `type` the server
+  documents (`NotFound`, `Conflict`, `Forbidden`, `CursorTooOld`, `Overloaded`, …; see
+  `PROBLEM_TYPES`), `Unknown` for a type this crate does not know or a body that is not a
+  problem, `Transport` when there was no HTTP answer and `Decode` when a 2xx body did not fit
+  its model. Each HTTP variant holds a `Problem` (`status`, `problem_type`, `title`, `detail`,
+  `raw` as sent, `retry_after` on 429 and 503, `snapshot()`); `.status()`, `.problem()`,
+  `.is_conflict()` / `.is_cursor_too_old()` / `.is_forbidden()` / `.is_rate_limited()` /
+  `.is_transport()` work on any error.
+- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `.with_max_retries(n)` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads().list_all(cid, n)` and `list_events_all(wid, q)` are iterators over every page. Typed responses and the error enum are new since 0.1.
+- Responses are serde structs in `maidan::models` (re-exported at the root: `Thread`,
+  `ClaimedThread`, `Message`, `ThreadContext`, `StoredEvent`, …), from the server's OpenAPI
+  schemas and checked against a live server by `tests/black_box.rs`. Members the server adds
+  later land in each model's `extra` map (`unknown_members()` lists them); string enums
+  (`ThreadState`, …) have an `Other(String)` variant for values this crate does not know.
+  JSON the producer chose (`ThreadResult::result`, `StoredEvent::payload`) stays
+  `serde_json::Value`, and so do event frames from `subscribe`, whose shape follows `kind`.
+- `threads().transition(id, action)` takes the action string; `claim_next_thread(cid,
+  lease_secs)` takes an optional lease length.
 - Surface (frozen v1): `workspaces().{create,get,import}`, `channels().{list,create}`,
   `threads().{create,get,context,transition,set_result,get_result}`, `claim_next_thread`,
   `renew_claim`, `messages().{list,post}`, `artifacts().{upload,get,meta}`, `subscribe`,

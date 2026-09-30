@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::Message;
 
-use crate::{Client, MaidanError, Result};
+use crate::{Client, MaidanError, Result, StoredEvent};
 
 /// A live subscription handle. Dropping it (or calling [`Subscription::close`])
 /// stops the reader thread and closes the socket.
@@ -144,8 +144,8 @@ impl Client {
     }
 
     /// HTTP backfill `GET /workspaces/{id}/events` for the projector shape, then
-    /// cut over to WebSocket at the last seen id. A 409 `must_refetch` is
-    /// returned as [`MaidanError::is_cursor_too_old`] — never clamped.
+    /// cut over to WebSocket at the last seen id. A pruned cursor is returned as
+    /// [`MaidanError::CursorTooOld`] — never clamped.
     ///
     /// Each backfill row is normalized to the live frame shape (`log_id` +
     /// flattened payload) before `on_event`.
@@ -165,17 +165,12 @@ impl Client {
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.as_str()))
                 .collect();
-            let page = self.list_events(&spec.workspace_id, &refs)?;
-            let rows = page
-                .as_array()
-                .ok_or_else(|| MaidanError::transport("list_events: expected a JSON array"))?;
+            let rows = self.list_events(&spec.workspace_id, &refs)?;
             if rows.is_empty() {
                 break;
             }
-            for row in rows {
-                if let Some(id) = stored_id(row) {
-                    after = after.max(id);
-                }
+            for row in &rows {
+                after = after.max(row.id);
                 on_event(normalize_stored(row));
             }
             if (rows.len() as i64) < limit {
@@ -285,31 +280,24 @@ fn is_cursor_too_old_frame(v: &Value) -> bool {
     v.get("type").and_then(Value::as_str) == Some("cursor_too_old")
 }
 
-fn stored_id(row: &Value) -> Option<i64> {
-    row.get("id")
-        .and_then(Value::as_i64)
-        .or_else(|| row.get("log_id").and_then(Value::as_i64))
-}
-
 /// HTTP `StoredEvent` (`id` + nested `payload`) → live bus shape (`log_id` + flat event).
-fn normalize_stored(row: &Value) -> Value {
-    let mut out = match row.get("payload") {
-        Some(p) if p.is_object() => p.clone(),
-        _ => row.clone(),
+fn normalize_stored(row: &StoredEvent) -> Value {
+    let mut obj = match &row.payload {
+        Value::Object(p) => p.clone(),
+        _ => serde_json::Map::new(),
     };
-    if let Some(obj) = out.as_object_mut() {
-        if let Some(id) = stored_id(row) {
-            obj.insert("log_id".into(), json!(id));
-        }
-        for key in ["kind", "workspace_id", "channel_id", "thread_id"] {
-            if !obj.contains_key(key) {
-                if let Some(v) = row.get(key) {
-                    obj.insert(key.to_string(), v.clone());
-                }
-            }
+    obj.insert("log_id".into(), json!(row.id));
+    obj.entry("kind").or_insert_with(|| json!(row.kind));
+    for (key, value) in [
+        ("workspace_id", &row.workspace_id),
+        ("channel_id", &row.channel_id),
+        ("thread_id", &row.thread_id),
+    ] {
+        if let Some(v) = value {
+            obj.entry(key).or_insert_with(|| json!(v));
         }
     }
-    out
+    Value::Object(obj)
 }
 
 fn follow_query(spec: &Follow, after_id: i64, limit: i64) -> Vec<(String, String)> {
@@ -367,16 +355,23 @@ mod tests {
 
     #[test]
     fn normalize_stored_promotes_id_and_flattens_payload() {
-        let row = json!({
+        let row: StoredEvent = serde_json::from_value(json!({
+            "$type": "maidan.event.message_posted/1",
             "id": 42,
+            "lsn": 42,
             "kind": "message_posted",
             "workspace_id": "ws",
-            "payload": { "kind": "message_posted", "body": "hi", "workspace_id": "ws" }
-        });
+            "payload": { "body": "hi" },
+            "occurred_at": "2026-09-29T00:00:00Z",
+            "prev_hash": "p",
+            "content_hash": "c"
+        }))
+        .unwrap();
         let live = normalize_stored(&row);
         assert_eq!(live["log_id"], 42);
         assert_eq!(live["kind"], "message_posted");
         assert_eq!(live["body"], "hi");
+        assert_eq!(live["workspace_id"], "ws");
     }
 
     #[test]

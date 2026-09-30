@@ -20,17 +20,36 @@ import urllib.request
 import random
 import time
 import uuid
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Callable, Iterator, List, Optional
+
+from .errors import PROBLEM_BASE, MaidanError, problem_error
+from .models import (
+    Artifact,
+    Channel,
+    ClaimedThread,
+    ImportResult,
+    Member,
+    Message,
+    MintedToken,
+    StoredEvent,
+    Thread,
+    ThreadContext,
+    ThreadResult,
+    TokenSummary,
+    Workspace,
+    from_list,
+)
 
 __version__ = "0.2.0"
 
 __all__ = [
     "Client",
-    "MaidanError",
     "Subscription",
     "__version__",
     "event_type",
+    "new_idempotency_key",
     "parse_room_lsn",
+    "retry_delay",
 ]
 
 
@@ -59,7 +78,7 @@ def event_type(kind: str) -> str:
 
 _WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
-_IN_FLIGHT_TYPE = "https://maidan.dev/problems/idempotency-key-in-flight"
+_IN_FLIGHT_TYPE = f"{PROBLEM_BASE}idempotency-key-in-flight"
 
 
 def new_idempotency_key() -> str:
@@ -93,42 +112,6 @@ def _retryable(status: int, raw: bytes) -> bool:
     return isinstance(body, dict) and body.get("type") == _IN_FLIGHT_TYPE
 
 
-class MaidanError(Exception):
-    """A failed request. Carries the HTTP status and the server's parsed body."""
-
-    def __init__(self, status: int, body: Any, message: Optional[str] = None):
-        super().__init__(message or f"Maidan request failed: HTTP {status}")
-        self.status = status
-        self.body = body
-        # Seconds from ``Retry-After`` on a 429 (server rate limit, Cluster 172).
-        self.retry_after: Optional[float] = None
-
-    @property
-    def is_conflict(self) -> bool:  # 409
-        return self.status == 409
-
-    @property
-    def is_cursor_too_old(self) -> bool:
-        """409 + must_refetch / cursor-too-old — fail loud, never clamp."""
-        if self.status != 409:
-            return False
-        body = self.body if isinstance(self.body, dict) else {}
-        if body.get("must_refetch") is True:
-            return True
-        return body.get("type") in (
-            "https://maidan.dev/problems/cursor-too-old",
-            "cursor_too_old",
-        )
-
-    @property
-    def is_forbidden(self) -> bool:  # 403 (missing capability / channel access)
-        return self.status == 403
-
-    @property
-    def is_rate_limited(self) -> bool:  # 429
-        return self.status == 429
-
-
 class Subscription:
     """A live subscription handle. Call :meth:`close` to stop it."""
 
@@ -143,28 +126,30 @@ class _Workspaces:
     def __init__(self, c: "Client"):
         self._c = c
 
-    def create(self, name: str) -> Any:
-        return self._c._req("POST", "/workspaces", {"name": name})
+    def create(self, name: str) -> Workspace:
+        return Workspace.from_dict(self._c._req("POST", "/workspaces", {"name": name}))
 
-    def get(self, workspace_id: str) -> Any:
-        return self._c._req("GET", f"/workspaces/{workspace_id}")
+    def get(self, workspace_id: str) -> Workspace:
+        return Workspace.from_dict(self._c._req("GET", f"/workspaces/{workspace_id}"))
 
-    def import_(self, bundle: Any, mode: Optional[str] = None) -> Any:
-        """Admin-only (``token:admin``). ``import`` is reserved, hence the underscore."""
+    def import_(self, bundle: Any, mode: Optional[str] = None) -> ImportResult:
+        """Admin-only (``token:admin``). ``bundle`` is a signed
+        ``maidan.workspace.export/1`` envelope; ``mode`` is ``new`` (the default)
+        or ``restore``. ``import`` is reserved, hence the underscore."""
         path = "/workspaces/import" + (f"?mode={mode}" if mode else "")
-        return self._c._req("POST", path, bundle)
+        return ImportResult.from_dict(self._c._req("POST", path, bundle))
 
 
 class _Channels:
     def __init__(self, c: "Client"):
         self._c = c
 
-    def list(self, workspace_id: str) -> Any:
-        return self._c._req("GET", f"/workspaces/{workspace_id}/channels")
+    def list(self, workspace_id: str) -> List[Channel]:
+        return from_list(Channel, self._c._req("GET", f"/workspaces/{workspace_id}/channels"))
 
-    def create(self, workspace_id: str, name: str, private: bool = False) -> Any:
-        return self._c._req(
-            "POST", f"/workspaces/{workspace_id}/channels", {"name": name, "private": private}
+    def create(self, workspace_id: str, name: str, private: bool = False) -> Channel:
+        return Channel.from_dict(
+            self._c._req("POST", f"/workspaces/{workspace_id}/channels", {"name": name, "private": private})
         )
 
 
@@ -180,14 +165,14 @@ class _Members:
     def __init__(self, c: "Client"):
         self._c = c
 
-    def create(self, workspace_id: str, handle: str, kind: str = "agent", display_name: Optional[str] = None) -> Any:
+    def create(self, workspace_id: str, handle: str, kind: str = "agent", display_name: Optional[str] = None) -> Member:
         body: dict = {"handle": handle, "kind": kind}
         if display_name is not None:
             body["display_name"] = display_name
-        return self._c._req("POST", f"/workspaces/{workspace_id}/members", body)
+        return Member.from_dict(self._c._req("POST", f"/workspaces/{workspace_id}/members", body))
 
-    def list(self, workspace_id: str) -> Any:
-        return self._c._req("GET", f"/workspaces/{workspace_id}/members")
+    def list(self, workspace_id: str) -> List[Member]:
+        return from_list(Member, self._c._req("GET", f"/workspaces/{workspace_id}/members"))
 
 
 class _Tokens:
@@ -210,7 +195,7 @@ class _Tokens:
         label: Optional[str] = None,
         capability_set: Optional[str] = None,
         expires_at: Optional[str] = None,
-    ) -> Any:
+    ) -> MintedToken:
         """POST /workspaces/{wid}/members/{mid}/tokens.
 
         Pass ``capabilities`` to grant exactly those, or ``capability_set``
@@ -225,77 +210,78 @@ class _Tokens:
             body["capability_set"] = capability_set
         if expires_at is not None:
             body["expires_at"] = expires_at
-        return self._c._req("POST", f"/workspaces/{workspace_id}/members/{member_id}/tokens", body)
+        return MintedToken.from_dict(
+            self._c._req("POST", f"/workspaces/{workspace_id}/members/{member_id}/tokens", body)
+        )
 
-    def list(self, workspace_id: str, member_id: str) -> Any:
-        return self._c._req("GET", f"/workspaces/{workspace_id}/members/{member_id}/tokens")
+    def list(self, workspace_id: str, member_id: str) -> List[TokenSummary]:
+        return from_list(TokenSummary, self._c._req("GET", f"/workspaces/{workspace_id}/members/{member_id}/tokens"))
 
 
 class _Threads:
     def __init__(self, c: "Client"):
         self._c = c
 
-    def create(self, channel_id: str, title: str) -> Any:
-        return self._c._req("POST", f"/channels/{channel_id}/threads", {"title": title})
+    def create(self, channel_id: str, title: str) -> Thread:
+        return Thread.from_dict(self._c._req("POST", f"/channels/{channel_id}/threads", {"title": title}))
 
-    def get(self, thread_id: str) -> Any:
-        return self._c._req("GET", f"/threads/{thread_id}")
+    def get(self, thread_id: str) -> Thread:
+        return Thread.from_dict(self._c._req("GET", f"/threads/{thread_id}"))
 
-    def list(self, channel_id: str, query: Optional[dict] = None) -> Any:
+    def list(self, channel_id: str, query: Optional[dict] = None) -> List[Thread]:
         """GET /channels/{cid}/threads — one page (``limit``, ``cursor`` = last thread id)."""
-        return self._c._req("GET", f"/channels/{channel_id}/threads{_qs(query)}")
+        return from_list(Thread, self._c._req("GET", f"/channels/{channel_id}/threads{_qs(query)}"))
 
-    def list_all(self, channel_id: str, page_size: int = 100) -> Iterator[dict]:
+    def list_all(self, channel_id: str, page_size: int = 100) -> Iterator[Thread]:
         """Every live thread in the channel, fetching ``page_size`` per request."""
         cursor: Optional[str] = None
         while True:
             query: dict = {"limit": page_size}
             if cursor:
                 query["cursor"] = cursor
-            page = self.list(channel_id, query) or []
+            page = self.list(channel_id, query)
             yield from page
             if len(page) < page_size:
                 return
-            cursor = page[-1]["id"]
+            cursor = page[-1].id
 
-    def context(self, thread_id: str, query: Optional[dict] = None) -> Any:
-        return self._c._req("GET", f"/threads/{thread_id}/context{_qs(query)}")
+    def context(self, thread_id: str, query: Optional[dict] = None) -> ThreadContext:
+        return ThreadContext.from_dict(self._c._req("GET", f"/threads/{thread_id}/context{_qs(query)}"))
 
-    def transition(self, thread_id: str, body: Any) -> Any:
-        return self._c._req("POST", f"/threads/{thread_id}", body)
+    def transition(self, thread_id: str, body: Any) -> Thread:
+        """POST /threads/{id}. ``body["action"]``: ``start_review``, ``close`` or ``archive``."""
+        return Thread.from_dict(self._c._req("POST", f"/threads/{thread_id}", body))
 
-    def set_result(self, thread_id: str, result: Any) -> Any:
-        return self._c._req("PUT", f"/threads/{thread_id}/result", {"result": result})
+    def set_result(self, thread_id: str, result: Any) -> ThreadResult:
+        return ThreadResult.from_dict(self._c._req("PUT", f"/threads/{thread_id}/result", {"result": result}))
 
-    def get_result(self, thread_id: str) -> Any:
-        return self._c._req("GET", f"/threads/{thread_id}/result")
+    def get_result(self, thread_id: str) -> ThreadResult:
+        return ThreadResult.from_dict(self._c._req("GET", f"/threads/{thread_id}/result"))
 
 
 class _Messages:
     def __init__(self, c: "Client"):
         self._c = c
 
-    def list(self, thread_id: str, query: Optional[dict] = None) -> Any:
-        return self._c._req("GET", f"/threads/{thread_id}/messages{_qs(query)}")
+    def list(self, thread_id: str, query: Optional[dict] = None) -> List[Message]:
+        return from_list(Message, self._c._req("GET", f"/threads/{thread_id}/messages{_qs(query)}"))
 
-    def post(self, thread_id: str, body: str) -> Any:
-        return self._c._req(
-            "POST", f"/threads/{thread_id}/messages", {"body": body}
-        )
+    def post(self, thread_id: str, body: str) -> Message:
+        return Message.from_dict(self._c._req("POST", f"/threads/{thread_id}/messages", {"body": body}))
 
 
 class _Artifacts:
     def __init__(self, c: "Client"):
         self._c = c
 
-    def upload(self, data: bytes, kind: str) -> Any:
-        return self._c._req_raw("POST", f"/artifacts?kind={urllib.parse.quote(kind)}", data)
+    def upload(self, data: bytes, kind: str) -> Artifact:
+        return Artifact.from_dict(self._c._req_raw("POST", f"/artifacts?kind={urllib.parse.quote(kind)}", data))
 
     def get(self, sha: str) -> bytes:
         return self._c._req_raw("GET", f"/artifacts/{sha}")
 
-    def meta(self, sha: str) -> Any:
-        return self._c._req("GET", f"/artifacts/{sha}/meta")
+    def meta(self, sha: str) -> Artifact:
+        return Artifact.from_dict(self._c._req("GET", f"/artifacts/{sha}/meta"))
 
 
 class Client:
@@ -336,34 +322,33 @@ class Client:
         self.artifacts = _Artifacts(self)
 
     # --- hero methods ---
-    def claim_next_thread(self, channel_id: str, body: Optional[dict] = None) -> Any:
+    def claim_next_thread(self, channel_id: str, body: Optional[dict] = None) -> Optional[ClaimedThread]:
         """POST /channels/{cid}/threads/claim-next — readiness/skill/lease-aware.
 
-        Returns the claimed thread with its fields at the TOP level (plus a
-        content-addressed ``pin``), or ``None`` when nothing is claimable. There
-        is no nested ``thread`` key: ``claim["id"]``, not ``claim["thread"]["id"]``.
+        Returns the claimed thread (plus a content-addressed ``pin``), or ``None``
+        when nothing is claimable. ``body`` may set ``lease_secs``.
         """
-        return self._req("POST", f"/channels/{channel_id}/threads/claim-next", body or {})
+        raw = self._req("POST", f"/channels/{channel_id}/threads/claim-next", body or {})
+        return None if raw is None else ClaimedThread.from_dict(raw)
 
     def renew_claim(
         self,
         thread_id: str,
         claim_lease_id: str,
         lease_secs: int = 300,
-    ) -> Any:
+    ) -> Thread:
         """POST /threads/{id}/claim/renew — holder-only lease heartbeat.
 
         ``claim_lease_id`` is the fencing token the claim handed back
-        (``claim["claim_lease_id"]``). Presenting it is what stops a stale holder
+        (``claim.claim_lease_id``). Presenting it is what stops a stale holder
         from extending a lease the next owner has already taken over.
         """
-        return self._req(
-            "POST",
-            f"/threads/{thread_id}/claim/renew",
-            {
-                "claim_lease_id": claim_lease_id,
-                "lease_secs": lease_secs,
-            },
+        return Thread.from_dict(
+            self._req(
+                "POST",
+                f"/threads/{thread_id}/claim/renew",
+                {"claim_lease_id": claim_lease_id, "lease_secs": lease_secs},
+            )
         )
 
     def _capture_room_lsn(self, headers: Any) -> None:
@@ -442,8 +427,8 @@ class Client:
             parsed = json.loads(text) if text else None
         except ValueError:
             parsed = text
-        err = MaidanError(status, parsed)
-        if status == 429 and headers is not None:
+        err = problem_error(status, parsed)
+        if headers is not None:
             ra = headers.get("retry-after")
             if ra:
                 try:
@@ -453,21 +438,19 @@ class Client:
         raise err
 
     # --- WebSocket subscribe ---
-    def list_events(self, workspace_id: str, query: Optional[dict] = None) -> Any:
+    def list_events(self, workspace_id: str, query: Optional[dict] = None) -> List[StoredEvent]:
         """GET /workspaces/{id}/events — projector-shaped HTTP backfill."""
-        return self._req("GET", f"/workspaces/{workspace_id}/events{_qs(query)}")
+        return from_list(StoredEvent, self._req("GET", f"/workspaces/{workspace_id}/events{_qs(query)}"))
 
-    def list_events_all(self, workspace_id: str, query: Optional[dict] = None) -> Iterator[dict]:
+    def list_events_all(self, workspace_id: str, query: Optional[dict] = None) -> Iterator[StoredEvent]:
         """Every event after ``query['after_id']``, ``query['limit']`` (default 100) per page."""
         query = dict(query or {})
         limit = int(query.get("limit") or 100)
         after = int(query.get("after_id") or 0)
         while True:
-            page = self.list_events(workspace_id, {**query, "after_id": after, "limit": limit}) or []
+            page = self.list_events(workspace_id, {**query, "after_id": after, "limit": limit})
             for row in page:
-                rid = row.get("id", row.get("log_id")) if isinstance(row, dict) else None
-                if isinstance(rid, int):
-                    after = max(after, rid)
+                after = max(after, row.id)
                 yield row
             if len(page) < limit:
                 return
@@ -528,8 +511,8 @@ class Client:
         page_limit: int = 100,
         on_error: Optional[Callable[[Exception], None]] = None,
     ) -> Subscription:
-        """HTTP backfill then WS cutover. A 409 must_refetch raises
-        :attr:`MaidanError.is_cursor_too_old` — never clamped.
+        """HTTP backfill then WS cutover. A pruned cursor raises
+        :class:`CursorTooOldError` — never clamped.
         """
         after = after_id
         limit = page_limit if page_limit > 0 else 100
@@ -543,13 +526,11 @@ class Client:
                 q["types"] = ",".join(types)
             if consumer_id:
                 q["consumer_id"] = consumer_id
-            page = self.list_events(workspace_id, q) or []
+            page = self.list_events(workspace_id, q)
             if not page:
                 break
             for row in page:
-                rid = row.get("id") if isinstance(row, dict) else None
-                if isinstance(rid, int):
-                    after = max(after, rid)
+                after = max(after, row.id)
                 on_event(_normalize_stored(row))
             if len(page) < limit:
                 break
@@ -596,18 +577,14 @@ class Client:
         return self._wait_for_kind(f, "thread_ready", timeout)
 
 
-def _normalize_stored(row: Any) -> dict:
+def _normalize_stored(row: StoredEvent) -> dict:
     """HTTP StoredEvent (`id` + nested payload) → live bus shape (`log_id` + flat)."""
-    if not isinstance(row, dict):
-        return {"raw": row}
-    payload = row.get("payload")
-    out = dict(payload) if isinstance(payload, dict) else dict(row)
-    rid = row.get("id", row.get("log_id"))
-    if rid is not None:
-        out["log_id"] = rid
+    out = dict(row.payload) if isinstance(row.payload, dict) else {}
+    out["log_id"] = row.id
     for key in ("kind", "workspace_id", "channel_id", "thread_id"):
-        if key not in out and key in row:
-            out[key] = row[key]
+        value = getattr(row, key)
+        if key not in out and value is not None:
+            out[key] = value
     return out
 
 
