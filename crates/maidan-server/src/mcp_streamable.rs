@@ -139,7 +139,7 @@ async fn open_new_streamable_session(
 
     // Listen before handling, so an update the first request causes is not
     // missed. The session's notifications ride its own stream until it closes.
-    let mut listener = state.mcp.listen(auth, session.clone());
+    let mut listener = state.mcp.listen(auth, session.clone()).await;
     let response = state.mcp.handle_in(request, auth, &session).await;
     push_response(state, &session_id, &response).await?;
 
@@ -269,6 +269,7 @@ pub async fn stream_get(
     let notifications = state
         .mcp
         .listen(&auth, session)
+        .await
         .into_stream()
         .filter_map(|notification| {
             serde_json::to_string(&notification)

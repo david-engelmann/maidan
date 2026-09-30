@@ -111,6 +111,7 @@ pub mod group_dm;
 pub mod idempotency;
 pub mod lag_resume;
 pub mod log_snapshot;
+pub mod mcp_subscriptions;
 pub mod migrate;
 pub mod outbox;
 pub mod postgres;
@@ -131,6 +132,7 @@ pub use error::StoreError;
 pub use idempotency::{IdempotencyReservation, NewIdempotencyKey, StoredResponse};
 pub use lag_resume::{resume_from_log, LAG_RESUME_BATCH};
 pub use log_snapshot::{build_log_snapshot, catch_up_since, CATCH_UP_LIMIT};
+pub use mcp_subscriptions::{McpSubscriptionWatch, NewMcpSubscription};
 pub use migrate::{run_postgres_migrations, run_sqlite_migrations};
 pub use outbox::OutboxBackend;
 pub use postgres::outbox::{OutboxRow, QuarantinedOutboxRow};
@@ -174,11 +176,12 @@ pub use workspace_export::build_workspace_export;
 pub use store::{
     A2aStore, AppStore, ArtifactMetaStore, AssignmentStore, AutomationStore, ChannelStore,
     DelegationGrantStore, DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore,
-    GlossaryStore, IdempotencyStore, IntegrityStore, MailStore, MemberStore, MentionInboxStore,
-    MessageStore, MetaStore, NotificationStore, OAuthCodeStore, PeerStore, PresenceDigestStore,
-    ProjectorLinkStore, ReferenceStore, ReindexStore, SessionStore, ShareTicketStore, SkillStore,
-    SlashCommandStore, SocialStore, TaskScheduleStore, ThreadDepStore, ThreadLineageStore,
-    ThreadResultStore, ThreadStore, TokenStore, UsageLedgerStore, WebhookStore, WorkspaceStore,
+    GlossaryStore, IdempotencyStore, IntegrityStore, MailStore, McpSubscriptionStore, MemberStore,
+    MentionInboxStore, MessageStore, MetaStore, NotificationStore, OAuthCodeStore, PeerStore,
+    PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, SessionStore,
+    ShareTicketStore, SkillStore, SlashCommandStore, SocialStore, TaskScheduleStore,
+    ThreadDepStore, ThreadLineageStore, ThreadResultStore, ThreadStore, TokenStore,
+    UsageLedgerStore, WebhookStore, WorkspaceStore,
 };
 
 /// Everything a store caller usually wants in one import.

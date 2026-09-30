@@ -1,13 +1,15 @@
 //! MCP dispatcher. Takes JSON-RPC requests and returns responses.
 //! Transport-agnostic; `maidan-server` wraps it behind `POST /mcp`.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use maidan_artifacts::ArtifactStore;
 use maidan_auth::AuthContext;
 use maidan_bus::{EventBus, ResourceNotifier, ResourceUpdate};
 use maidan_search::{EmbeddingProvider, Search};
-use maidan_store::Store;
+use maidan_store::{NewMcpSubscription, Store};
 use maidan_types::{BusEnvelope, Event, MemberId, OccupancyPresence, StoredEvent, WorkspaceId};
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
@@ -151,6 +153,15 @@ impl McpServer {
             presence_reader: Arc::new(std::sync::RwLock::new(None)),
             claim_leases: crate::claim_lease::ClaimLeasePolicy::from_env(),
         }
+    }
+
+    /// How long a subscription outlives its last listener (the server reads
+    /// it from `MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS`). Set before anything
+    /// subscribes or listens.
+    #[must_use]
+    pub fn with_resource_subscription_idle_ttl(mut self, ttl: std::time::Duration) -> Self {
+        self.subscriptions = Arc::new(ResourceSubscriptions::new(ttl));
+        self
     }
 
     /// Replace the claim-lease policy (tests and embedders; the server reads
@@ -320,21 +331,73 @@ impl McpServer {
         open.len()
     }
 
-    /// How many resources are watched, summed over subscribers.
+    /// How many resources this process's sessions (streamable and stdio)
+    /// watch, summed over subscribers. Stateless subscriptions are in the
+    /// store, shared by every replica, and not counted here.
     pub fn resource_subscription_count(&self) -> usize {
         self.subscriptions.len()
     }
 
     /// Open a notification stream for `auth` in `session`. It yields only the
     /// `notifications/resources/updated` for what this caller subscribed to in
-    /// this session, and keeps those subscriptions alive while it is open.
-    pub fn listen(&self, auth: &AuthContext, session: McpSession) -> NotificationListener {
-        NotificationListener::open(
+    /// this session, and keeps those subscriptions alive while it is open. A
+    /// stateless caller's stream may be open on any replica, whichever one
+    /// took its subscriptions.
+    pub async fn listen(&self, auth: &AuthContext, session: McpSession) -> NotificationListener {
+        let subscriber = Subscriber::new(auth, session);
+        let listener = NotificationListener::open(
             self.notification_tx.subscribe(),
-            Subscriber::new(auth, session),
+            subscriber.clone(),
             auth,
             self.subscriptions.clone(),
-        )
+        );
+        // Opening a listener is activity: a subscription taken long before it
+        // must not lapse before the next upkeep pass notices the listener.
+        if subscriber.session == McpSession::Stateless {
+            self.extend_stateless_subscriptions(vec![subscriber.principal.key()])
+                .await;
+        }
+        listener
+    }
+
+    fn stateless_expiry(&self, now: DateTime<Utc>) -> DateTime<Utc> {
+        chrono::Duration::from_std(self.subscriptions.idle_ttl())
+            .ok()
+            .and_then(|ttl| now.checked_add_signed(ttl))
+            .unwrap_or(DateTime::<Utc>::MAX_UTC)
+    }
+
+    async fn extend_stateless_subscriptions(&self, subscribers: Vec<String>) {
+        if subscribers.is_empty() {
+            return;
+        }
+        let now = Utc::now();
+        if let Err(err) = self
+            .store
+            .extend_mcp_resource_subscriptions(&subscribers, now, self.stateless_expiry(now))
+            .await
+        {
+            tracing::warn!(error = %err, "mcp subscription upkeep: extending failed");
+        }
+    }
+
+    /// Keep the stateless subscriptions of every caller listening in this
+    /// process from lapsing, and delete everyone's that have. A caller whose
+    /// listener closed, or whose replica died, is no longer extended by
+    /// anyone, so its subscriptions go once the idle TTL passes.
+    pub async fn keep_stateless_subscriptions(&self) {
+        let mut listening: Vec<String> = self
+            .subscriptions
+            .stateless_listeners()
+            .into_iter()
+            .map(|(subscriber, _)| subscriber.principal.key())
+            .collect();
+        listening.sort();
+        listening.dedup();
+        self.extend_stateless_subscriptions(listening).await;
+        if let Err(err) = self.store.reap_mcp_resource_subscriptions(Utc::now()).await {
+            tracing::warn!(error = %err, "mcp subscription upkeep: reaping failed");
+        }
     }
 
     /// Invoke a tool by name (used by slash-command dispatch and tests).
@@ -671,15 +734,37 @@ impl McpServer {
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
         resources::validate_uri(uri)?;
         self.authorize_resource(uri, auth).await?;
-        self.reap_streamable_sessions().await;
-        self.subscriptions
-            .subscribe(Subscriber::new(auth, session.clone()), auth, uri)
-            .map_err(|SubscriptionLimit| {
-                McpError::InvalidParams(format!(
-                    "already subscribed to {MAX_SUBSCRIPTIONS_PER_SUBSCRIBER} resources; \
-                     unsubscribe from one first"
-                ))
-            })?;
+        let at_limit = || {
+            McpError::InvalidParams(format!(
+                "already subscribed to {MAX_SUBSCRIPTIONS_PER_SUBSCRIBER} resources; \
+                 unsubscribe from one first"
+            ))
+        };
+        let subscriber = Subscriber::new(auth, session.clone());
+        if subscriber.session == McpSession::Stateless {
+            let caller = (!auth.bypass).then_some(auth);
+            let subscribed = self
+                .store
+                .subscribe_mcp_resource(
+                    &NewMcpSubscription {
+                        subscriber: subscriber.principal.key(),
+                        workspace_id: caller.map(|a| a.workspace_id),
+                        member_id: caller.map(|a| a.member_id),
+                        uri: uri.to_string(),
+                        expires_at: self.stateless_expiry(Utc::now()),
+                    },
+                    MAX_SUBSCRIPTIONS_PER_SUBSCRIBER,
+                )
+                .await?;
+            if !subscribed {
+                return Err(at_limit());
+            }
+        } else {
+            self.reap_streamable_sessions().await;
+            self.subscriptions
+                .subscribe(subscriber, auth, uri)
+                .map_err(|SubscriptionLimit| at_limit())?;
+        }
         Ok(json!({
             "ok": true,
             "uri": uri
@@ -705,9 +790,14 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
         resources::validate_uri(uri)?;
-        let removed = self
-            .subscriptions
-            .unsubscribe(&Subscriber::new(auth, session.clone()), uri);
+        let subscriber = Subscriber::new(auth, session.clone());
+        let removed = if subscriber.session == McpSession::Stateless {
+            self.store
+                .unsubscribe_mcp_resource(&subscriber.principal.key(), uri)
+                .await?
+        } else {
+            self.subscriptions.unsubscribe(&subscriber, uri)
+        };
         Ok(json!({
             "ok": true,
             "uri": uri,
@@ -758,41 +848,131 @@ impl McpServer {
     /// subscribed to its URI, from the workspace the change happened in, and
     /// can still read the resource. A subscriber that has lost access loses
     /// the subscription; a store error withholds this delivery only.
+    ///
+    /// Session subscriptions are this process's own. Stateless ones are
+    /// shared, so every replica looks up those of the stateless callers
+    /// listening to it, wherever they subscribed.
     pub(crate) async fn deliver_resource_updates(&self, updates: &[ResourceUpdate]) {
         for update in updates {
             for (subscriber, auth) in self.subscriptions.watchers(&update.uri) {
                 if !auth.bypass && auth.workspace_id != update.workspace_id {
                     continue;
                 }
-                match self.authorize_resource(&update.uri, &auth).await {
-                    Ok(()) => {
-                        let _ = self.notification_tx.send(AddressedNotification {
-                            subscriber: Arc::new(subscriber),
-                            notification: JsonRpcNotification::new(
-                                NOTIFY_RESOURCE_UPDATED,
-                                json!({ "uri": update.uri }),
-                            ),
-                        });
-                    }
-                    Err(McpError::Internal(err)) => {
+                if !self.address(subscriber.clone(), &auth, &update.uri).await {
+                    self.subscriptions.unsubscribe(&subscriber, &update.uri);
+                }
+            }
+        }
+        self.deliver_to_stateless_listeners(updates).await;
+    }
+
+    async fn deliver_to_stateless_listeners(&self, updates: &[ResourceUpdate]) {
+        let listening: HashMap<String, (Subscriber, AuthContext)> = self
+            .subscriptions
+            .stateless_listeners()
+            .into_iter()
+            .map(|(subscriber, auth)| (subscriber.principal.key(), (subscriber, auth)))
+            .collect();
+        if listening.is_empty() {
+            return;
+        }
+        let keys: Vec<String> = listening.keys().cloned().collect();
+        let mut by_workspace: HashMap<WorkspaceId, Vec<String>> = HashMap::new();
+        for update in updates {
+            by_workspace
+                .entry(update.workspace_id)
+                .or_default()
+                .push(update.uri.clone());
+        }
+        for (workspace_id, uris) in by_workspace {
+            let watches = match self
+                .store
+                .mcp_resource_watchers(workspace_id, &uris, &keys, Utc::now())
+                .await
+            {
+                Ok(watches) => watches,
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        "mcp resource notifications withheld: subscription lookup failed"
+                    );
+                    continue;
+                }
+            };
+            for watch in watches {
+                let Some((subscriber, auth)) = listening.get(&watch.subscriber) else {
+                    continue;
+                };
+                if !auth.bypass && auth.workspace_id != workspace_id {
+                    continue;
+                }
+                if !self.address(subscriber.clone(), auth, &watch.uri).await {
+                    if let Err(err) = self
+                        .store
+                        .unsubscribe_mcp_resource(&watch.subscriber, &watch.uri)
+                        .await
+                    {
                         tracing::warn!(
                             error = %err,
-                            uri = %update.uri,
-                            "mcp resource notification withheld: access re-check failed"
+                            uri = %watch.uri,
+                            "mcp subscription outlived its access: removing it failed"
                         );
-                    }
-                    Err(_) => {
-                        self.subscriptions.unsubscribe(&subscriber, &update.uri);
                     }
                 }
             }
         }
     }
 
+    /// Send `uri`'s update to `subscriber` if it can still read the resource.
+    /// `false` when it cannot, and so should lose the subscription.
+    async fn address(&self, subscriber: Subscriber, auth: &AuthContext, uri: &str) -> bool {
+        match self.authorize_resource(uri, auth).await {
+            Ok(()) => {
+                let _ = self.notification_tx.send(AddressedNotification {
+                    subscriber: Arc::new(subscriber),
+                    notification: JsonRpcNotification::new(
+                        NOTIFY_RESOURCE_UPDATED,
+                        json!({ "uri": uri }),
+                    ),
+                });
+                true
+            }
+            Err(McpError::Internal(err)) => {
+                tracing::warn!(
+                    error = %err,
+                    uri = %uri,
+                    "mcp resource notification withheld: access re-check failed"
+                );
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
     /// Spawn the loop delivering cross-replica resource updates to this
-    /// process's subscribers. No-op when no [`ResourceNotifier`] is wired.
-    /// Call once at startup after wrapping the server in an `Arc`.
+    /// process's subscribers, and the upkeep keeping its stateless listeners'
+    /// subscriptions from lapsing. Without a [`ResourceNotifier`] only the
+    /// upkeep runs. Call once at startup after wrapping the server in an
+    /// `Arc`.
     pub fn spawn_resource_notify_listener(self: &Arc<Self>) {
+        // Several passes per TTL, so a listener's subscriptions are extended
+        // well before they would lapse.
+        let every = (self.subscriptions.idle_ttl() / 4).clamp(
+            std::time::Duration::from_millis(100),
+            std::time::Duration::from_secs(60),
+        );
+        let upkeep = Arc::downgrade(self);
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(every);
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tick.tick().await;
+                let Some(server) = upkeep.upgrade() else {
+                    break;
+                };
+                server.keep_stateless_subscriptions().await;
+            }
+        });
         let Some(notifier) = self.resource_notifier.clone() else {
             return;
         };
@@ -7977,7 +8157,7 @@ mod tests {
         let member = server.store.get_member(member_id).await.unwrap();
         let auth = member_auth(member_id, member.workspace_id);
         let uri = format!("maidan://threads/{}", thread_id.0);
-        let mut listener = server.listen(&auth, McpSession::Stdio);
+        let mut listener = server.listen(&auth, McpSession::Stdio).await;
 
         let subscribe = subscribe_in(&server, &auth, &McpSession::Stdio, &uri).await;
         assert!(subscribe.error.is_none());
@@ -7995,7 +8175,7 @@ mod tests {
         let member = server.store.get_member(member_id).await.unwrap();
         let auth = member_auth(member_id, member.workspace_id);
         let uri = format!("maidan://threads/{}", thread_id.0);
-        let mut listener = server.listen(&auth, McpSession::Stdio);
+        let mut listener = server.listen(&auth, McpSession::Stdio).await;
 
         subscribe_in(&server, &auth, &McpSession::Stdio, &uri).await;
         let unsubscribe = server
@@ -8052,9 +8232,9 @@ mod tests {
             .is_none());
 
         let bypass = AuthContext::bypass();
-        let mut listen_a = server.listen(&auth_a, McpSession::Stateless);
-        let mut listen_b = server.listen(&auth_b, McpSession::Stateless);
-        let mut listen_bypass = server.listen(&bypass, McpSession::Stateless);
+        let mut listen_a = server.listen(&auth_a, McpSession::Stateless).await;
+        let mut listen_b = server.listen(&auth_b, McpSession::Stateless).await;
+        let mut listen_bypass = server.listen(&bypass, McpSession::Stateless).await;
         assert!(
             subscribe_in(&server, &auth_a, &McpSession::Stateless, &uri_a)
                 .await
@@ -8094,9 +8274,9 @@ mod tests {
             .open("alice-session".into(), Principal::of(&auth_alice))
             .await;
 
-        let mut alice_stateless = server.listen(&auth_alice, McpSession::Stateless);
-        let mut alice_in_session = server.listen(&auth_alice, alice_session.clone());
-        let mut bob_stateless = server.listen(&auth_bob, McpSession::Stateless);
+        let mut alice_stateless = server.listen(&auth_alice, McpSession::Stateless).await;
+        let mut alice_in_session = server.listen(&auth_alice, alice_session.clone()).await;
+        let mut bob_stateless = server.listen(&auth_bob, McpSession::Stateless).await;
         assert!(subscribe_in(&server, &auth_alice, &alice_session, &uri)
             .await
             .error
@@ -8163,9 +8343,9 @@ mod tests {
         let auth_carol = member_auth(carol, ws);
         let uri = format!("maidan://threads/{}", thread.id.0);
 
-        let mut alice_listener = server.listen(&auth_alice, McpSession::Stateless);
-        let mut bob_listener = server.listen(&auth_bob, McpSession::Stateless);
-        let mut carol_listener = server.listen(&auth_carol, McpSession::Stateless);
+        let mut alice_listener = server.listen(&auth_alice, McpSession::Stateless).await;
+        let mut bob_listener = server.listen(&auth_bob, McpSession::Stateless).await;
+        let mut carol_listener = server.listen(&auth_carol, McpSession::Stateless).await;
         let refused = subscribe_in(&server, &auth_carol, &McpSession::Stateless, &uri).await;
         assert!(refused.error.is_some(), "a non-member subscribed");
         for auth in [&auth_alice, &auth_bob] {
@@ -8190,9 +8370,18 @@ mod tests {
             bob_listener.drain().is_empty(),
             "a member removed from the channel still heard about it"
         );
+        let keys: Vec<String> = [&auth_alice, &auth_bob]
+            .iter()
+            .map(|auth| Principal::of(auth).key())
+            .collect();
+        let left = server
+            .store
+            .mcp_resource_watchers(ws, std::slice::from_ref(&uri), &keys, chrono::Utc::now())
+            .await
+            .unwrap();
         assert_eq!(
-            server.resource_subscription_count(),
-            1,
+            left.iter().map(|w| &w.subscriber).collect::<Vec<_>>(),
+            vec![&keys[0]],
             "the removed member's subscription outlived his access"
         );
     }
@@ -8234,8 +8423,8 @@ mod tests {
         let uri = format!("maidan://artifacts/{sha}");
         let auth_a = member_auth(member_a, ws_a);
         let auth_b = member_auth(member_b, ws_b);
-        let mut listen_a = server.listen(&auth_a, McpSession::Stateless);
-        let mut listen_b = server.listen(&auth_b, McpSession::Stateless);
+        let mut listen_a = server.listen(&auth_a, McpSession::Stateless).await;
+        let mut listen_b = server.listen(&auth_b, McpSession::Stateless).await;
         for auth in [&auth_a, &auth_b] {
             assert!(subscribe_in(&server, auth, &McpSession::Stateless, &uri)
                 .await
@@ -8298,7 +8487,7 @@ mod tests {
 
         let auth = AuthContext::bypass();
         let uri = format!("maidan://threads/{}", thread_id.0);
-        let mut listener = server.listen(&auth, McpSession::Stateless);
+        let mut listener = server.listen(&auth, McpSession::Stateless).await;
         subscribe_in(&server, &auth, &McpSession::Stateless, &uri).await;
         server
             .publish_resource_uris(vec![ResourceUpdate::new(
@@ -8314,5 +8503,202 @@ mod tests {
             .expect("notification channel closed");
         assert_eq!(got.method, NOTIFY_RESOURCE_UPDATED);
         assert_eq!(got.params["uri"], uri);
+    }
+
+    /// Another replica over the same store, fanned out to over `notifier`.
+    fn replica(
+        server: &McpServer,
+        notifier: &Arc<maidan_bus::InMemoryResourceNotifier>,
+        idle_ttl: std::time::Duration,
+    ) -> Arc<McpServer> {
+        let replica = Arc::new(
+            McpServer::new(
+                server.store.clone(),
+                server.artifacts.clone(),
+                server.search.clone(),
+                server.embedding_provider.clone(),
+            )
+            .with_resource_subscription_idle_ttl(idle_ttl)
+            .with_resource_notifier(notifier.clone()),
+        );
+        replica.spawn_resource_notify_listener();
+        replica
+    }
+
+    async fn next_uri(listener: &mut NotificationListener, within_ms: u64) -> Option<String> {
+        tokio::time::timeout(std::time::Duration::from_millis(within_ms), listener.recv())
+            .await
+            .ok()
+            .flatten()
+            .map(|n| n.params["uri"].as_str().unwrap_or_default().to_string())
+    }
+
+    /// A stateless caller has no session to pin it to a replica, so behind a
+    /// load balancer its subscribe and its listener land wherever they land.
+    /// The subscription was held by the replica that took it, and a listener
+    /// on any other replica heard nothing.
+    #[tokio::test]
+    async fn a_stateless_subscription_taken_on_one_replica_is_delivered_by_another() {
+        let (server, thread_id, member_id) = mk_server().await;
+        let ws = server
+            .store
+            .get_member(member_id)
+            .await
+            .unwrap()
+            .workspace_id;
+        let notifier = Arc::new(maidan_bus::InMemoryResourceNotifier::new());
+        let hour = std::time::Duration::from_secs(3600);
+        let a = replica(&server, &notifier, hour);
+        let b = replica(&server, &notifier, hour);
+        let alice = member_auth(member_id, ws);
+        let uri = format!("maidan://threads/{}", thread_id.0);
+
+        let mut on_b = b.listen(&alice, McpSession::Stateless).await;
+        let mut on_a = a.listen(&alice, McpSession::Stateless).await;
+        assert!(subscribe_in(&a, &alice, &McpSession::Stateless, &uri)
+            .await
+            .error
+            .is_none());
+        post(&a, &alice, thread_id).await;
+        assert_eq!(next_uri(&mut on_b, 2000).await, Some(uri.clone()));
+        assert_eq!(
+            next_uri(&mut on_a, 2000).await,
+            Some(uri.clone()),
+            "the replica that took it delivers it too"
+        );
+        assert_eq!(next_uri(&mut on_b, 300).await, None, "delivered twice");
+
+        // Unsubscribing on B ends the subscription A took.
+        let unsub = b
+            .handle(
+                request(3, "resources/unsubscribe", json!({ "uri": uri })),
+                &alice,
+            )
+            .await;
+        assert_eq!(unsub.result.unwrap()["removed"], true);
+        post(&a, &alice, thread_id).await;
+        assert_eq!(next_uri(&mut on_b, 300).await, None);
+        assert_eq!(next_uri(&mut on_a, 100).await, None);
+    }
+
+    /// Across replicas an update still reaches only the workspace it
+    /// happened in: two tenants watching the same content-addressed artifact,
+    /// each subscribed on one replica and listening on the other.
+    #[tokio::test]
+    async fn a_stateless_subscription_on_another_replica_hears_only_its_own_workspace() {
+        let (server, _thread, member_a) = mk_server().await;
+        let ws_a = server
+            .store
+            .get_member(member_a)
+            .await
+            .unwrap()
+            .workspace_id;
+        let ws_b = server
+            .store
+            .create_workspace(NewWorkspace { name: "b".into() })
+            .await
+            .unwrap()
+            .id;
+        let member_b = add_member(&server, ws_b, "bob").await;
+        let sha = "c".repeat(64);
+        server
+            .store
+            .upsert_artifact(NewArtifact {
+                sha256: sha.clone(),
+                size_bytes: 1,
+                mime_type: None,
+                kind: ArtifactKind::Attachment,
+                uploaded_by: None,
+            })
+            .await
+            .unwrap();
+        for ws in [ws_a, ws_b] {
+            server.store.record_artifact_ref(ws, &sha).await.unwrap();
+        }
+        let uri = format!("maidan://artifacts/{sha}");
+        let notifier = Arc::new(maidan_bus::InMemoryResourceNotifier::new());
+        let hour = std::time::Duration::from_secs(3600);
+        let one = replica(&server, &notifier, hour);
+        let two = replica(&server, &notifier, hour);
+        let auth_a = member_auth(member_a, ws_a);
+        let auth_b = member_auth(member_b, ws_b);
+
+        let mut a_on_two = two.listen(&auth_a, McpSession::Stateless).await;
+        let mut b_on_one = one.listen(&auth_b, McpSession::Stateless).await;
+        let mut b_on_two = two.listen(&auth_b, McpSession::Stateless).await;
+        for (on, auth) in [(&one, &auth_a), (&two, &auth_b)] {
+            assert!(subscribe_in(on, auth, &McpSession::Stateless, &uri)
+                .await
+                .error
+                .is_none());
+        }
+
+        one.publish_resource_uris(vec![ResourceUpdate::new(ws_a, uri.clone())])
+            .await;
+        assert_eq!(next_uri(&mut a_on_two, 2000).await, Some(uri.clone()));
+        assert_eq!(
+            next_uri(&mut b_on_one, 300).await,
+            None,
+            "another workspace heard about this workspace's upload"
+        );
+        assert_eq!(next_uri(&mut b_on_two, 100).await, None);
+
+        two.publish_resource_uris(vec![ResourceUpdate::new(ws_b, uri.clone())])
+            .await;
+        assert_eq!(next_uri(&mut b_on_one, 2000).await, Some(uri.clone()));
+        assert_eq!(next_uri(&mut b_on_two, 2000).await, Some(uri.clone()));
+        assert_eq!(next_uri(&mut a_on_two, 300).await, None);
+    }
+
+    /// A listener on any replica keeps a stateless subscription alive past
+    /// the idle TTL. Once no replica listens (the listener closed, or its
+    /// replica died and stopped extending it), it lapses and is reaped, and a
+    /// later listener does not bring it back.
+    #[tokio::test]
+    async fn a_stateless_subscription_lives_while_any_replica_listens_then_lapses() {
+        let (server, thread_id, member_id) = mk_server().await;
+        let ws = server
+            .store
+            .get_member(member_id)
+            .await
+            .unwrap()
+            .workspace_id;
+        let notifier = Arc::new(maidan_bus::InMemoryResourceNotifier::new());
+        let ttl = std::time::Duration::from_millis(300);
+        let a = replica(&server, &notifier, ttl);
+        let b = replica(&server, &notifier, ttl);
+        let alice = member_auth(member_id, ws);
+        let uri = format!("maidan://threads/{}", thread_id.0);
+
+        let mut on_b = b.listen(&alice, McpSession::Stateless).await;
+        assert!(subscribe_in(&a, &alice, &McpSession::Stateless, &uri)
+            .await
+            .error
+            .is_none());
+        tokio::time::sleep(ttl * 4).await;
+        post(&a, &alice, thread_id).await;
+        assert_eq!(
+            next_uri(&mut on_b, 2000).await,
+            Some(uri.clone()),
+            "B's listener did not keep the subscription alive"
+        );
+
+        drop(on_b);
+        drop(b);
+        tokio::time::sleep(ttl * 4).await;
+        let key = Principal::of(&alice).key();
+        let far = chrono::Utc::now() - chrono::Duration::hours(1);
+        assert!(
+            server
+                .store
+                .mcp_resource_watchers(ws, std::slice::from_ref(&uri), &[key], far)
+                .await
+                .unwrap()
+                .is_empty(),
+            "the lapsed subscription was not reaped"
+        );
+        let mut on_a = a.listen(&alice, McpSession::Stateless).await;
+        post(&a, &alice, thread_id).await;
+        assert_eq!(next_uri(&mut on_a, 300).await, None);
     }
 }

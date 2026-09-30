@@ -316,8 +316,12 @@ MCP resource subscription notifications use **`GET /mcp/notifications`** (SSE JS
 lines) with **`POST /mcp`** for `resources/subscribe` / `tools/call` — requires
 `workspace:read` (same as resource read). Distinct from `/mcp/stream` workspace events.
 A listener receives only what its own credential subscribed to, for resources it can
-still read. Subscriptions are held by the replica that took them, so behind a load
-balancer route a client's subscribe and its listener to the same replica.
+still read. Behind a load balancer no affinity is needed: a stateless client's
+subscriptions are kept in the database (`maidan_mcp_resource_subscriptions`), and the
+replica holding its listener delivers them over the Postgres NOTIFY path. They lapse
+once no replica has had a listener open for the caller for
+`MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS` (default 3600). A `2024-11-05` session's
+subscriptions stay in the replica holding the session.
 
 **Semantic search:** Postgres uses `pgvector`; SQLite uses stored 1024-dim embeddings
 with cosine ranking (dev parity, no HNSW index on SQLite).

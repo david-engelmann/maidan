@@ -33,6 +33,7 @@ pub async fn stream(
     let notification_stream = state
         .mcp
         .listen(&auth, McpSession::Stateless)
+        .await
         .into_stream()
         .filter_map(|notification| {
             serde_json::to_string(&notification)

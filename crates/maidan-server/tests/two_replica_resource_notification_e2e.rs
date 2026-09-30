@@ -154,8 +154,8 @@ async fn resource_update_on_one_replica_reaches_subscriber_on_another() {
         .await
         .unwrap();
     let other = AuthContext::from_session(other_member.id, other_ws.id, read);
-    let mut sse_a = replica_a.listen(&auth, McpSession::Stateless);
-    let mut sse_other = replica_a.listen(&other, McpSession::Stateless);
+    let mut sse_a = replica_a.listen(&auth, McpSession::Stateless).await;
+    let mut sse_other = replica_a.listen(&other, McpSession::Stateless).await;
     let sub = replica_a.handle(subscribe_request(&uri), &auth).await;
     assert!(sub.error.is_none(), "subscribe failed: {sub:?}");
 

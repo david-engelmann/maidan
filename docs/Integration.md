@@ -661,6 +661,12 @@ no `Mcp-Session-Id`. Optional SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers
 without parsing the body; when present they must agree with the body, or the request is a `400`.
 Live-wait rides `GET /mcp/stream` / WS / the `wait_for_*` tools.
 
+`resources/subscribe` on a stateless request is heard on your own `GET /mcp/notifications` (or
+`GET /mcp/streamable` without a session id), on any replica: the subscription is kept in the
+database under your credential, so behind a load balancer the subscribe and the listener need not
+reach the same replica. It lasts while you have a listener open somewhere, and lapses
+`MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS` (default 3600) after the last one closes.
+
 Send the header. `initialize` negotiates `2026-07-28` when a client states no preference, but the
 streamable POST reads the *header* to decide how to answer — so a request that omits it and accepts
 `text/event-stream` gets the older session behaviour below.

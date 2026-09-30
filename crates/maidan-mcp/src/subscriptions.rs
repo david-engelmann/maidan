@@ -11,9 +11,15 @@
 //! member of the same workspace watched. Keying by subscriber is what makes a
 //! subscription private to whoever made it.
 //!
-//! Nothing here outlives its session: a streamable session's subscriptions go
-//! when the session is closed or expires, and a stateless or stdio caller's
-//! go once it has had no open listener for the idle TTL.
+//! What this module holds lives in one process: a streamable session's
+//! subscriptions go when the session is closed or expires, and a stdio
+//! caller's go once it has had no open listener for the idle TTL. A stateless
+//! caller's subscriptions are not held here. It has no session, so its
+//! subscribe and its listener may reach different replicas; the server keeps
+//! them in the store ([`maidan_store::McpSubscriptionStore`]) under the
+//! caller's [`Principal::key`], and this module only tracks which stateless
+//! callers have a listener open in this process, so that this process can
+//! deliver to them and keep their subscriptions from lapsing.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -35,7 +41,8 @@ pub enum McpSession {
     /// Stateless HTTP (`POST /mcp`, and `POST /mcp/streamable` from
     /// `2025-03-26` on). There is no protocol session, so the caller's
     /// credential is its session: what it subscribes to arrives on its own
-    /// `GET /mcp/notifications` or `GET /mcp/streamable` listener.
+    /// `GET /mcp/notifications` or `GET /mcp/streamable` listener, on
+    /// whichever replica that listener is open.
     Stateless,
     /// A `2024-11-05` streamable session, by `Mcp-Session-Id`.
     Streamable(String),
@@ -60,6 +67,34 @@ pub enum Principal {
 }
 
 impl Principal {
+    /// This principal spelled as one string, the key its stateless
+    /// subscriptions are stored under. Every field is part of it: two
+    /// credentials of one member are two subscribers.
+    pub fn key(&self) -> String {
+        fn part<T: std::fmt::Display>(id: Option<T>) -> String {
+            id.map_or_else(|| "-".to_string(), |id| id.to_string())
+        }
+        match self {
+            Self::Bypass => "bypass".to_string(),
+            Self::Caller {
+                workspace_id,
+                member_id,
+                actor_id,
+                token_id,
+                app_installation_id,
+                delegation_grant_id,
+            } => format!(
+                "{}/{}/{}/{}/{}/{}",
+                workspace_id.0,
+                member_id.0,
+                actor_id.0,
+                part(token_id.map(|t| t.0)),
+                part(app_installation_id.map(|a| a.0)),
+                part(delegation_grant_id.map(|g| g.0)),
+            ),
+        }
+    }
+
     pub fn of(auth: &AuthContext) -> Self {
         if auth.bypass {
             return Self::Bypass;
@@ -155,7 +190,8 @@ impl Inner {
     }
 }
 
-/// Every subscription this process holds.
+/// Every session-bound subscription this process holds, and every listener
+/// open in it.
 pub struct ResourceSubscriptions {
     inner: Mutex<Inner>,
     idle_ttl: Duration,
@@ -238,8 +274,27 @@ impl ResourceSubscriptions {
             .subscribers
             .entry(subscriber.clone())
             .or_insert_with(|| Entry::new(auth));
+        entry.auth = auth.clone();
         entry.listeners += 1;
         entry.idle_since = None;
+    }
+
+    /// The stateless subscribers with a listener open in this process, each
+    /// with the context to re-check its access under.
+    pub(crate) fn stateless_listeners(&self) -> Vec<(Subscriber, AuthContext)> {
+        self.lock()
+            .subscribers
+            .iter()
+            .filter(|(subscriber, entry)| {
+                subscriber.session == McpSession::Stateless && entry.listeners > 0
+            })
+            .map(|(subscriber, entry)| (subscriber.clone(), entry.auth.clone()))
+            .collect()
+    }
+
+    /// How long a subscription outlives its last listener.
+    pub(crate) fn idle_ttl(&self) -> Duration {
+        self.idle_ttl
     }
 
     fn listener_closed(&self, subscriber: &Subscriber) {
@@ -390,16 +445,16 @@ mod tests {
         let ws = WorkspaceId(uuid::Uuid::new_v4());
         let alice = caller(ws, MemberId(uuid::Uuid::new_v4()));
         let bob = caller(ws, MemberId(uuid::Uuid::new_v4()));
-        let alice_here = Subscriber::new(&alice, McpSession::Stateless);
+        let alice_here = Subscriber::new(&alice, McpSession::Stdio);
         subs.subscribe(alice_here.clone(), &alice, URI).unwrap();
 
         let watchers: Vec<Subscriber> = subs.watchers(URI).into_iter().map(|(s, _)| s).collect();
         assert_eq!(watchers, vec![alice_here.clone()]);
-        assert!(!watchers.contains(&Subscriber::new(&bob, McpSession::Stateless)));
+        assert!(!watchers.contains(&Subscriber::new(&bob, McpSession::Stdio)));
         assert!(!watchers.contains(&Subscriber::new(&alice, McpSession::Streamable("s".into()))));
 
         // Bob unsubscribing what he never subscribed to leaves Alice's alone.
-        assert!(!subs.unsubscribe(&Subscriber::new(&bob, McpSession::Stateless), URI));
+        assert!(!subs.unsubscribe(&Subscriber::new(&bob, McpSession::Stdio), URI));
         assert_eq!(subs.len(), 1);
         assert!(subs.unsubscribe(&alice_here, URI));
         assert!(subs.is_empty());
@@ -412,7 +467,7 @@ mod tests {
             WorkspaceId(uuid::Uuid::new_v4()),
             MemberId(uuid::Uuid::new_v4()),
         );
-        let me = Subscriber::new(&auth, McpSession::Stateless);
+        let me = Subscriber::new(&auth, McpSession::Stdio);
         for i in 0..MAX_SUBSCRIPTIONS_PER_SUBSCRIBER {
             subs.subscribe(me.clone(), &auth, &format!("maidan://threads/{i}"))
                 .unwrap();
@@ -446,13 +501,13 @@ mod tests {
     }
 
     #[test]
-    fn a_stateless_subscription_lasts_while_listened_to_then_idles_out() {
+    fn a_stdio_subscription_lasts_while_listened_to_then_idles_out() {
         let subs = Arc::new(ResourceSubscriptions::new(Duration::ZERO));
         let auth = caller(
             WorkspaceId(uuid::Uuid::new_v4()),
             MemberId(uuid::Uuid::new_v4()),
         );
-        let me = Subscriber::new(&auth, McpSession::Stateless);
+        let me = Subscriber::new(&auth, McpSession::Stdio);
         let (tx, _) = broadcast::channel(4);
         let listener = NotificationListener::open(tx.subscribe(), me.clone(), &auth, subs.clone());
         subs.subscribe(me, &auth, URI).unwrap();
@@ -460,5 +515,49 @@ mod tests {
         assert_eq!(subs.reap(&none), 1, "an open listener keeps it");
         drop(listener);
         assert_eq!(subs.reap(&none), 0, "idle past the TTL, it goes");
+    }
+
+    #[test]
+    fn a_principal_key_tells_every_credential_apart() {
+        let ws = WorkspaceId(uuid::Uuid::new_v4());
+        let member = MemberId(uuid::Uuid::new_v4());
+        let auth = caller(ws, member);
+        let one = Principal::of(&auth).key();
+        assert_eq!(one, Principal::of(&auth.clone()).key());
+        // `caller` mints a new token each time.
+        let other_token = Principal::of(&caller(ws, member)).key();
+        let other_workspace =
+            Principal::of(&caller(WorkspaceId(uuid::Uuid::new_v4()), member)).key();
+        assert_ne!(one, other_token);
+        assert_ne!(one, other_workspace);
+        assert!(one.starts_with(&format!("{}/{}/", ws.0, member.0)));
+        assert_eq!(Principal::of(&AuthContext::bypass()).key(), "bypass");
+    }
+
+    #[test]
+    fn only_open_stateless_listeners_are_listed() {
+        let subs = Arc::new(ResourceSubscriptions::new(Duration::from_secs(60)));
+        let auth = caller(
+            WorkspaceId(uuid::Uuid::new_v4()),
+            MemberId(uuid::Uuid::new_v4()),
+        );
+        let (tx, _) = broadcast::channel(4);
+        let stateless = Subscriber::new(&auth, McpSession::Stateless);
+        let listener =
+            NotificationListener::open(tx.subscribe(), stateless.clone(), &auth, subs.clone());
+        let _stdio = NotificationListener::open(
+            tx.subscribe(),
+            Subscriber::new(&auth, McpSession::Stdio),
+            &auth,
+            subs.clone(),
+        );
+        let listed: Vec<Subscriber> = subs
+            .stateless_listeners()
+            .into_iter()
+            .map(|(s, _)| s)
+            .collect();
+        assert_eq!(listed, vec![stateless]);
+        drop(listener);
+        assert!(subs.stateless_listeners().is_empty());
     }
 }
