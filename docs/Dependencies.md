@@ -93,4 +93,5 @@ The migration is `cargo fix --edition` + the clippy fixes + a full e2e run.
 ## See also
 
 - [`deny.toml`](../deny.toml) — the enforced policy.
+- [Conventions](Conventions.md), "Dependencies" — recording a `cargo vet` audit or exemption when a dependency changes.
 - [Production.md](Production.md), [Operations.md](Operations.md).

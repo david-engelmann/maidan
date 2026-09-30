@@ -19,6 +19,7 @@ full forms are what CI runs.
 | **Format** | `cargo fmt --all` | `cargo fmt --all --check` |
 | **Run** | `MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server` | — |
 | **Smoke** | — | `make smoke` (Docker; brings the stack up and waits on its health checks) |
+| **Mutants** | `cargo mutants -p <crate> --shard 0/20` | nightly: `scripts/mutants.sh plan`, then the shards ([`docs/Conventions.md`](docs/Conventions.md), "Nightly mutation testing") |
 | **Fuzz** | `cd fuzz && cargo +nightly fuzz run <target> -- -max_total_time=60` | nightly: five minutes per target (`cargo +nightly fuzz list`) |
 | **Docs site** | — | `mdbook-mermaid install book && bash book/sync-docs.sh && mdbook build book && ./scripts/check-docs-presentation.sh` |
 
@@ -45,6 +46,7 @@ suite takes several minutes: run it in the background, don't sleep and poll.
 bash scripts/check-agent-contract.sh     # golden JSON under contracts/
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the README agree on the release
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/)
+cargo vet --locked                       # every crate in Cargo.lock audited or exempted (supply-chain/)
 ```
 
 The docs build (the `mdbook` job) needs mdbook 0.4.40, mdbook-linkcheck 0.7.7
@@ -68,7 +70,7 @@ change.
   `promtool (alert rules)` and `otlp smoke`. A code PR runs all eight; a
   docs-only PR skips the heavy jobs, which then report as passed. Other jobs
   (coverage, `mdbook`, the A2A TCK, the MCP Inspector, SDK interop, the PITR
-  drill, `ui tests (playwright)`, `loom`, `tla`, the OSV scan) are not required.
+  drill, `ui tests (playwright)`, `loom`, `tla`, the OSV scan, `cargo vet`) are not required.
 
 ## Current state (2026-09-29)
 
@@ -241,6 +243,11 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 - **Two strings in this file are read by CI:** `Workspace with 14 member
   crates.` (`docs_numbers_contract`) and the `latest` release line
   (`check-release-records.sh`). Keep them when editing.
+- **A dependency bump or a new crate needs `cargo vet`.** Every crate in the
+  root `Cargo.lock` must be audited or exempted in `supply-chain/`, or the
+  `cargo vet (root lockfile)` job goes red. Run `cargo vet`, then certify or
+  exempt what it lists, and commit `supply-chain/` with the lockfile
+  ([`docs/Conventions.md`](docs/Conventions.md), "Dependencies").
 - **Splitting a large source file into a module directory** can break the
   `bootstrap compile-time strip` job (imports unused under
   `--no-default-features`) and `check-agent-contract.sh` (it greps paths).
