@@ -159,6 +159,10 @@ async fn a_panicking_handler_answers_a_500_problem_and_the_server_keeps_serving(
     let resp = client
         .get(format!("{base}/workspaces/{}/search", ws.id.0))
         .query(&[("q", "anything"), ("mode", "semantic")])
+        // CI runs with RUST_BACKTRACE=1, and the panic hook symbolizes the
+        // backtrace before the 500 goes out, which can outlast the client's
+        // 5 s on a loaded runner. This asserts an answer, not its latency.
+        .timeout(Duration::from_secs(60))
         .send()
         .await
         .expect("a panic must be answered, not a dropped connection");
