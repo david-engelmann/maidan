@@ -690,9 +690,9 @@ Charts under `helm/maidan` (server) and `helm/maidan-stack` (optional Postgres +
 
 | Values file | Use |
 |-------------|-----|
-| `values.yaml` | Dev defaults |
-| `values-prod.yaml` | HPA + ingress (manual TLS secret) |
-| `values-cert-manager.yaml` | Ingress + `cert-manager.io/cluster-issuer` annotation |
+| `values.yaml` | Dev defaults (`maidan-server:dev`, a development `DATABASE_URL`) |
+| `values-prod.yaml` | The release image, production refusals, HPA + ingress (manual TLS secret) |
+| `values-cert-manager.yaml` | Ingress + `cert-manager.io/cluster-issuer` annotation; layer on `values-prod.yaml` |
 | `values-profile-otel.yaml` | JSON logs + OTLP traces/metrics (`OTLP_ENDPOINT`, `OTLP_METRICS=1`) |
 | `values-profile-redis.yaml` | `MAIDAN_RATE_LIMIT_REDIS_URL` (multi-replica quotas) |
 | `values-profile-s3.yaml` | S3-compatible `ARTIFACT_BACKEND` |
@@ -700,11 +700,28 @@ Charts under `helm/maidan` (server) and `helm/maidan-stack` (optional Postgres +
 
 Layer profiles as needed; see `helm/maidan/PROFILES.md` for example `helm upgrade` commands (`v88.0.0`).
 
-**cert-manager:** install [cert-manager](https://cert-manager.io/) and a `ClusterIssuer`, then:
+**Production refusals.** `values-prod.yaml` sets `production: true`, and the chart then
+refuses to render: a development image (`image.repository: maidan-server`, or a tag of
+`dev`, `latest` or empty without `image.digest`); and, unless `existingSecret` names a
+Secret holding `DATABASE_URL` and `MAIDAN_CONTENT_KEK`, an unset `secrets.DATABASE_URL`,
+the development default `postgres://maidan:maidan@postgres:5432/maidan`, or any empty
+`secrets` value. A value holding the placeholder `CHANGE_ME` fails every render. Each
+refusal names the value to set. `maidan-stack/values-prod.yaml` sets the same flag
+(`maidan.production`) and pins the same release.
+
+**cert-manager:** install [cert-manager](https://cert-manager.io/) and a `ClusterIssuer`,
+create the `maidan-secrets` Secret (`DATABASE_URL`, `MAIDAN_CONTENT_KEK`), then:
 
 ```bash
-helm install maidan ./helm/maidan -f ./helm/maidan/values-cert-manager.yaml -n maidan --create-namespace
+helm install maidan ./helm/maidan \
+  -f ./helm/maidan/values-prod.yaml \
+  -f ./helm/maidan/values-cert-manager.yaml \
+  --set existingSecret=maidan-secrets \
+  -n maidan --create-namespace
 ```
+
+`values-cert-manager.yaml` alone refuses to render: `values-prod.yaml` is what names the
+release image.
 
 **CI validation:** `./scripts/helm-template-smoke.sh` and `./scripts/helm-install-kind-smoke.sh` (kind + Docker).
 
@@ -714,7 +731,11 @@ then informational. Find a release's digest with
 `docker buildx imagetools inspect ghcr.io/david-engelmann/maidan-server:<tag>`,
 and verify its signature first (README, "Prebuilt image").
 
-Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix). For the umbrella chart, substitute `RELEASE-postgresql` / `RELEASE-minio` hostnames in `maidan-stack/values-prod.yaml` with your Helm release name.
+Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix), or better, put it in the
+`existingSecret`. For the umbrella chart, `S3_ENDPOINT` names the release's MinIO Service
+itself; `DATABASE_URL` (`postgres://maidan:<password>@<release>-postgresql:5432/maidan`) and
+`S3_SECRET_ACCESS_KEY` are yours to set, and the render refuses until they are (see
+`helm/maidan/README.md`, "Umbrella stack").
 
 ## Horizontal scaling (`v105.0.0`)
 
