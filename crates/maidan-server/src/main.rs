@@ -95,11 +95,34 @@ async fn main() -> anyhow::Result<()> {
         Invocation::Serve => {}
     }
 
+    // A misspelt variable would otherwise configure nothing and say nothing.
+    let unknown_env = maidan_server::env_registry::unknown_vars(
+        std::env::vars_os().map(|(name, _)| name.to_string_lossy().into_owned()),
+        std::env::var_os("KUBERNETES_SERVICE_HOST").is_some(),
+    );
+    let allow_unknown_env =
+        std::env::var(maidan_server::env_registry::ALLOW_UNKNOWN_ENV).as_deref() == Ok("1");
+    if !unknown_env.is_empty() && !allow_unknown_env {
+        anyhow::bail!(
+            "unknown environment variable(s): {}. Fix the name, or set {}=1 to start anyway.",
+            maidan_server::env_registry::describe(&unknown_env),
+            maidan_server::env_registry::ALLOW_UNKNOWN_ENV,
+        );
+    }
+
     let config = Config::from_env().context("load config from env")?;
 
     let mut obs_config = maidan_observability::Config::from_env();
     obs_config.log_filter = config.log_filter.clone();
     let obs_guard = maidan_observability::init(obs_config).context("init observability")?;
+
+    if !unknown_env.is_empty() {
+        tracing::warn!(
+            unknown = %maidan_server::env_registry::describe(&unknown_env),
+            "starting with unknown MAIDAN_* environment variables ({}=1)",
+            maidan_server::env_registry::ALLOW_UNKNOWN_ENV,
+        );
+    }
 
     tracing::info!(
         version = version(),

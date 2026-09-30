@@ -211,7 +211,13 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   OpenAPI path (`openapi_well_formed` fails on an undeclared path parameter or
   a dangling `$ref`), and, for a POST, PUT or PATCH, a body clause in
   `http_capability_matrix_e2e.rs`, or the extractor's 400 hides the 403.
-  `tenant_isolation_e2e` then probes it with another tenant's token.
+  `tenant_isolation_e2e` then probes it with another tenant's token, and pins
+  the total `.route(` count in `app.rs`: bump the number, and if the route is a
+  live stream, add a probe in `stream_probes`.
+- **A new `MAIDAN_*` variable** goes in `SERVER_ENV` (the server reads it) or
+  `TOLERATED_ENV` (a script, SDK, test or build arg does) in
+  `crates/maidan-server/src/env_registry.rs`, or boot refuses it as unknown.
+  `env_registry_contract` checks every name the repo mentions.
 - **utoipa 4:** an `IntoParams` struct publishes its fields as *path*
   parameters unless it says `#[into_params(parameter_in = Query)]`; every type
   a schema names must be listed in `components(schemas(...))`; a field written
