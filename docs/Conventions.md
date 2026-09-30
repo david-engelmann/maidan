@@ -91,6 +91,7 @@ non-required job, and a skipped required job reports as passed.
 | `mcp inspector (report-only)` | the official MCP Inspector against the server | no |
 | `sdk interop (report-only)` | the four SDKs against a live server | no |
 | `pitr drill` | point-in-time recovery to a chosen moment | no |
+| `sqlite backup drill` | a SQLite snapshot taken mid-write, restored over a killed server's files | no |
 | `replica routing (LSN)` | read-your-writes across a streaming replica | no |
 | `ui tests (playwright)` | the `/ui` specs in a headless browser | no |
 

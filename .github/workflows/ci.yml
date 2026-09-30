@@ -566,6 +566,23 @@ jobs:
       - name: point-in-time recovery drill
         run: bash scripts/pitr-drill.sh maidan-postgres:ci
 
+  sqlite-backup-drill:
+    # The SQLite half of backup and restore: a VACUUM INTO snapshot taken while
+    # a writer runs, restored over a killed server's database and an orphaned
+    # -wal. Evidence for the SQLite procedure in docs/Production.md. Not
+    # required.
+    name: sqlite backup drill
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: install sqlite3
+        run: command -v sqlite3 || (sudo apt-get update && sudo apt-get install -y sqlite3)
+      - name: SQLite backup and restore drill
+        run: bash scripts/sqlite-backup-drill.sh
+
   alert-rules:
     # Executes the SLO recording/alert PromQL with promtool — lints expressions
     # and templates (`check rules`) and runs the unit tests (`test rules`). The

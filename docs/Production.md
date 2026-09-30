@@ -801,17 +801,18 @@ Maidan's durable state is two things, and the backup story follows the same spli
 
 | What | Store | Backed up by |
 |------|-------|--------------|
-| System of record — every workspace, member, channel, thread, message, event log, audit trail, token, follow/pref/schedule | **Postgres** (`DATABASE_URL`) | `pg_dump -Fc` |
+| System of record — every workspace, member, channel, thread, message, event log, audit trail, token, follow/pref/schedule | **Postgres** or **SQLite** (`DATABASE_URL`) | `pg_dump -Fc`; SQLite `VACUUM INTO` |
 | Content-addressed artifact blobs (immutable, deduped) | `localfs` root **or** an object store (`ARTIFACT_BACKEND=s3`) | a tar of the localfs root; for S3 the bucket itself is the durable copy |
 
 Two operator scripts implement it:
 
-- **`scripts/backup.sh [BACKUP_DIR]`** — `pg_dump` (custom format) plus, for
+- **`scripts/backup.sh [BACKUP_DIR]`** — `pg_dump` (custom format), or for
+  SQLite a `VACUUM INTO` snapshot (below), plus, for
   `localfs`, a `tar` of `ARTIFACT_LOCALFS_ROOT`; writes a `MANIFEST.txt`. For
   `s3`, the bucket is the durable copy — enable **bucket versioning** and/or
   cross-region replication there rather than copying blobs into the backup.
 - **`scripts/restore.sh <backup-dir> [--force]`** — `pg_restore` into the target
-  `DATABASE_URL` (+ untar artifacts). It **refuses a non-empty target** unless
+  `DATABASE_URL`, or for SQLite the snapshot put in place of the file (+ untar artifacts). It **refuses a non-empty target** unless
   `--force`, so a restore can't silently clobber a live database; `--force` restores
   with `--clean --if-exists`.
 
@@ -835,6 +836,35 @@ store + indexer + the `LISTEN` bus) → scale out. Because artifacts are
 content-addressed, a message referencing a blob that predates the artifact backup is
 still consistent after restore; a blob written *after* the last artifact archive is
 the only thing a stale artifact backup can miss.
+
+### SQLite
+
+Do not copy a live SQLite file. In WAL mode (which Maidan sets) recent writes
+sit in `maidan.db-wal` until a checkpoint, so a copy of the file alone misses
+them, and a copy taken during a write can catch a torn page.
+
+**Back up** with the server running: `DATABASE_URL=sqlite:///data/maidan.db
+scripts/backup.sh` runs `VACUUM INTO`, which writes a consistent, compacted
+snapshot (`maidan.sqlite`) from one read transaction, waiting out a write in
+progress, and checks it with `PRAGMA integrity_check`. It needs the `sqlite3`
+CLI. Take it on a schedule; the RPO is the interval, as for `pg_dump`.
+
+**Restore** with the server stopped: `DATABASE_URL=sqlite:///data/maidan.db
+scripts/restore.sh <backup-dir> --force` checks the snapshot, puts it in place
+of the file, and deletes the old `-wal` and `-shm`. Deleting them is not
+housekeeping: a `-wal` left from a server that was killed (or beside a file
+someone removed) is replayed over whatever file has that name the next time it
+is opened, and the restored database comes back as the old one, or corrupt.
+Without `--force` it refuses a target that already has tables. Start the server,
+confirm `/health/ready`, and it migrates forward if the snapshot is older than
+the binary.
+
+**The drill.** `scripts/sqlite-backup-drill.sh` takes a snapshot while a writer
+is inserting, then restores it over a killed server's database and over an
+orphaned `-wal`, and fails unless exactly the snapshot's rows come back.
+`sqlite_backup` (a store test) shows a snapshot of a migrated Maidan database
+passes `integrity_check` and `foreign_key_check` and opens and migrates as it
+stands. CI runs the drill as `sqlite backup drill`.
 
 ### Point-in-time recovery
 
