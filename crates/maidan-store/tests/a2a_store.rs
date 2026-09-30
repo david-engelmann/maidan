@@ -33,6 +33,7 @@ fn write<'a>(
         workspace_id,
         task_id,
         context_id: Some(context_id),
+        thread_id: None,
         state,
         status_at,
         task_json: serde_json::json!({"id": task_id, "contextId": context_id, "status": {"state": state}}),
@@ -144,28 +145,24 @@ async fn run_suite(store: &dyn Store) {
         .expect("after");
     assert_eq!(ids(&after), vec!["t2", "t1"], "at or after");
 
-    // Counts group by context and honour the filters.
-    let mut counts = store
-        .count_a2a_tasks_by_context(ws.id, all(0))
-        .await
-        .expect("count");
-    counts.sort();
+    // Counts honour the filters.
     assert_eq!(
-        counts,
-        vec![(Some("c1".to_string()), 2), (Some("c2".to_string()), 1)]
+        store.count_a2a_tasks(ws.id, all(0)).await.expect("count"),
+        3
     );
     let completed = store
-        .count_a2a_tasks_by_context(
+        .count_a2a_tasks(
             ws.id,
             A2aTaskQuery {
                 state: Some("TASK_STATE_COMPLETED"),
+                context_id: Some("c1"),
                 updated_since: Some(Utc.with_ymd_and_hms(2026, 9, 28, 12, 0, 0).unwrap()),
                 ..Default::default()
             },
         )
         .await
         .expect("count filtered");
-    assert_eq!(completed, vec![(Some("c1".to_string()), 2)]);
+    assert_eq!(completed, 2);
 
     // A status change moves the task to the head of the list.
     store
@@ -349,6 +346,96 @@ async fn run_suite(store: &dyn Store) {
         .expect("delete again"));
 }
 
+/// Rows written before migration 0131 have no thread; seed such rows, run
+/// the migration's backfill with `backfill`, and check each gets the thread
+/// the server used to resolve on read.
+async fn check_thread_backfill<F, Fut>(store: &dyn Store, backfill: F)
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "legacy".into(),
+        })
+        .await
+        .expect("workspace");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "legacy".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel");
+    let mut threads = Vec::new();
+    for _ in 0..3 {
+        threads.push(
+            store
+                .create_thread(NewThread {
+                    channel_id: channel.id,
+                    parent_thread_id: None,
+                    title: None,
+                })
+                .await
+                .expect("thread")
+                .id,
+        );
+    }
+    let (recorded, bound, named) = (threads[0], threads[1], threads[2]);
+    store
+        .bind_a2a_context(ws.id, "conv-1", bound)
+        .await
+        .expect("bind");
+    let named_context = named.0.to_string();
+    let cases = [
+        ("recorded", "conv-1", Some(recorded), Some(recorded)),
+        ("bound", "conv-1", None, Some(bound)),
+        ("named", named_context.as_str(), None, Some(named)),
+        ("unnamed", "ctx-x", None, None),
+    ];
+    for (id, context, metadata, _) in &cases {
+        let mut task_json = serde_json::json!({"id": id, "contextId": context, "status": {"state": "TASK_STATE_COMPLETED"}});
+        if let Some(thread) = metadata {
+            task_json["metadata"] = serde_json::json!({"maidan": {"threadId": thread.0}});
+        }
+        store
+            .upsert_a2a_task(A2aTaskWrite {
+                task_json,
+                ..write(ws.id, id, context, "TASK_STATE_COMPLETED", 0)
+            })
+            .await
+            .expect("legacy row");
+    }
+    backfill().await;
+    for (id, _, _, expected) in cases {
+        let row = store.get_a2a_task(id).await.expect("get").expect("row");
+        assert_eq!(row.thread_id, expected, "{id}");
+    }
+}
+
+/// The backfill statement of migration 0131, without the `ALTER` that
+/// added the column the store already has.
+fn backfill_sql(migration: &str) -> &str {
+    &migration[migration.find("UPDATE").expect("an UPDATE")..]
+}
+
+#[tokio::test]
+async fn existing_tasks_take_the_thread_they_resolved_to_sqlite() {
+    let store = sqlite().await;
+    let pool = store.pool().clone();
+    check_thread_backfill(&store, || async move {
+        sqlx::raw_sql(backfill_sql(include_str!(
+            "../../../migrations/sqlite/0131_a2a_task_threads.sql"
+        )))
+        .execute(&pool)
+        .await
+        .expect("backfill");
+    })
+    .await;
+}
+
 #[tokio::test]
 async fn a2a_persistence_sqlite() {
     run_suite(&sqlite().await).await;
@@ -384,5 +471,15 @@ async fn a2a_persistence_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    run_suite(&PostgresStore::for_tests(pool)).await;
+    let store = PostgresStore::for_tests(pool.clone());
+    run_suite(&store).await;
+    check_thread_backfill(&store, || async move {
+        sqlx::raw_sql(backfill_sql(include_str!(
+            "../../../migrations/postgres/0131_a2a_task_threads.sql"
+        )))
+        .execute(&pool)
+        .await
+        .expect("backfill");
+    })
+    .await;
 }

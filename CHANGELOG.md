@@ -858,6 +858,40 @@ and everything merged through #1077.
   deletes outside any transaction, and gives up on a delete after 30 s. Only
   an upload of the same bytes waits for it.
 
+### SQLite backups are snapshots, and a restore cannot bring back the old database
+
+- **Added:** `scripts/backup.sh` and `scripts/restore.sh` take a SQLite
+  `DATABASE_URL`. A backup is a `VACUUM INTO` snapshot, taken with the server
+  running and checked with `PRAGMA integrity_check`; before, the scripts were
+  Postgres-only and Production documented no SQLite backup at all, which left
+  copying the file, and that misses whatever is still in the `-wal`.
+- **Added:** a restore puts the snapshot in place of the file and deletes the
+  old `-wal` and `-shm`. A `-wal` left by a killed server, or beside a file
+  someone removed, would otherwise be replayed over the restored file the next
+  time it is opened. It refuses a target that has tables unless `--force`, as
+  the Postgres restore does.
+- **Added:** `scripts/sqlite-backup-drill.sh`, run in CI as `sqlite backup
+  drill` (not required), and the store test `sqlite_backup`.
+
+### A2A `ListTasks` decides access in the query
+
+- **Fixed:** `ListTasks` fetched a page of tasks at a time and dropped those
+  on threads the caller could not read, then fetched again, so a caller
+  behind many hidden tasks paid a store query per page-sized batch of them
+  (with a page of one, 200 hidden tasks cost about 100 more queries) and
+  `totalSize` resolved the thread of every context in the workspace. The
+  thread-read rule (workspace, then DM or group-DM participation, then
+  private-channel membership) is now a SQL condition in the task and
+  pending-gate queries on both backends, so a page is `pageSize` readable
+  tasks or the last of them, and a call runs the same queries however much
+  the caller cannot see. `maidan-store/tests/thread_access.rs` checks the
+  condition against `maidan_auth::can_access_thread` for every kind of
+  thread.
+- **Changed:** each stored A2A task records the thread its access follows
+  (migration 0131 fills it for existing tasks from what the server resolved
+  on read), and `GetTask` reads it too, so listing and fetching one task
+  apply the same rule.
+
 ### A2A lists page all the way through
 
 - **Fixed:** `ListTasks` listed pending approval gates from one scan of the

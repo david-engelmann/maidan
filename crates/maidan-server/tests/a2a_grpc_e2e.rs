@@ -66,6 +66,7 @@ async fn a2a_grpc_get_and_list_tasks() {
             workspace_id: ws.id,
             task_id: "task-1",
             context_id: Some("ctx-1"),
+            thread_id: None,
             state: "TASK_STATE_WORKING",
             status_at: chrono::Utc::now(),
             task_json: task,

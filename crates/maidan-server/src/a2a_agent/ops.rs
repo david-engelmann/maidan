@@ -2,7 +2,6 @@
 //! and answers the typed result or an [`A2aError`]; the JSON-RPC, HTTP+JSON
 //! and gRPC bindings only translate.
 
-use std::collections::HashMap;
 use std::time::Duration;
 
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -94,6 +93,7 @@ fn history_length(requested: Option<i32>) -> Result<Option<usize>, A2aError> {
 pub(super) enum Found {
     Task {
         workspace_id: WorkspaceId,
+        thread_id: Option<ThreadId>,
         task: Task,
     },
     Gate(ApprovalGate),
@@ -110,13 +110,14 @@ pub(super) async fn find(
         let task: Task = serde_json::from_value(row.task_json).map_err(internal)?;
         auth.ensure_workspace(row.workspace_id)
             .map_err(|e| hidden(task_id, e))?;
-        if let Some(thread_id) = task_thread(state, row.workspace_id, &task).await? {
+        if let Some(thread_id) = row.thread_id {
             maidan_auth::ensure_thread_access(state.store.as_ref(), auth, thread_id)
                 .await
                 .map_err(|e| hidden(task_id, e))?;
         }
         return Ok(Found::Task {
             workspace_id: row.workspace_id,
+            thread_id: row.thread_id,
             task,
         });
     }
@@ -141,50 +142,13 @@ pub(super) async fn find(
     Ok(Found::Gate(gate))
 }
 
-/// The Maidan thread behind a task: `metadata.maidan.threadId`, else the
-/// thread its context names.
-async fn task_thread(
-    state: &AppState,
-    workspace_id: WorkspaceId,
-    task: &Task,
-) -> Result<Option<ThreadId>, A2aError> {
-    let recorded = task
-        .metadata
-        .as_ref()
-        .and_then(|m| m.pointer("/maidan/threadId"))
-        .and_then(Value::as_str)
-        .and_then(|s| Uuid::parse_str(s).ok());
-    if let Some(id) = recorded {
-        return Ok(Some(ThreadId(id)));
-    }
-    match &task.context_id {
-        Some(context_id) => context_thread(state, workspace_id, context_id).await,
-        None => Ok(None),
-    }
-}
-
-/// The thread a context names: a bound client context, else a thread id.
-async fn context_thread(
-    state: &AppState,
-    workspace_id: WorkspaceId,
-    context_id: &str,
-) -> Result<Option<ThreadId>, A2aError> {
-    if let Some(thread) = state
-        .store
-        .get_a2a_context_thread(workspace_id, context_id)
-        .await
-        .map_err(store)?
-    {
-        return Ok(Some(thread));
-    }
-    Ok(Uuid::parse_str(context_id).ok().map(ThreadId))
-}
-
 /// Persist a task. The row holds no words: history and status messages are
-/// dropped and rendered from the message log on read.
+/// dropped and rendered from the message log on read. `thread_id` is the
+/// thread whose readers may see it.
 pub(super) async fn save(
     state: &AppState,
     workspace_id: WorkspaceId,
+    thread_id: Option<ThreadId>,
     task: &Task,
     status_at: DateTime<Utc>,
 ) -> Result<(), A2aError> {
@@ -199,6 +163,7 @@ pub(super) async fn save(
             workspace_id,
             task_id: &task.id,
             context_id: task.context_id.as_deref(),
+            thread_id,
             state: &task.status.state,
             status_at,
             task_json,
@@ -404,7 +369,14 @@ pub(crate) async fn send_message(
             "maidan": { "messageId": posted.id.0, "threadId": scope.thread_id.0 }
         })),
     };
-    save(state, scope.workspace_id, &task, status_at).await?;
+    save(
+        state,
+        scope.workspace_id,
+        Some(scope.thread_id),
+        &task,
+        status_at,
+    )
+    .await?;
     if let Some(config) = push {
         push::attach(state, &task.id, config).await?;
     }
@@ -696,8 +668,12 @@ pub(crate) async fn cancel_task(
     req: CancelTaskRequest,
 ) -> Result<Task, A2aError> {
     require(auth, MESSAGE_POST)?;
-    let (workspace_id, mut task) = match find(state, auth, &req.id).await? {
-        Found::Task { workspace_id, task } => (workspace_id, task),
+    let (workspace_id, thread_id, mut task) = match find(state, auth, &req.id).await? {
+        Found::Task {
+            workspace_id,
+            thread_id,
+            task,
+        } => (workspace_id, thread_id, task),
         Found::Gate(_) => {
             return Err(A2aError::new(
                 A2aErrorKind::TaskNotCancelable,
@@ -719,7 +695,7 @@ pub(crate) async fn cancel_task(
         message: None,
         timestamp: Some(timestamp(status_at)),
     };
-    save(state, workspace_id, &task, status_at).await?;
+    save(state, workspace_id, thread_id, &task, status_at).await?;
     push::notify(state, &task);
     render(state, task, None).await
 }
@@ -806,51 +782,79 @@ async fn wait_unless_closed<T>(tx: &tokio::sync::mpsc::Sender<T>, period: Durati
 
 // ===== ListTasks =====
 
-/// One row of a `ListTasks` page before rendering.
+/// One row of a `ListTasks` page before rendering. `None` is a stored task
+/// whose JSON no longer parses: it keeps its place, so paging past it is
+/// exact, and is left out of the page.
 enum Entry {
-    Stored(Task),
+    Stored(Option<Task>),
     Gate(Task),
 }
 
-/// Per-thread read access, memoized for one listing.
-struct Access<'a> {
-    state: &'a AppState,
-    auth: &'a AuthContext,
-    threads: HashMap<ThreadId, bool>,
-}
-
-impl<'a> Access<'a> {
-    fn new(state: &'a AppState, auth: &'a AuthContext) -> Self {
-        Self {
-            state,
-            auth,
-            threads: HashMap::new(),
+/// The smallest canonical UUID string at or after `s`, or `None` when every
+/// one sorts before it. Gate ids are canonical UUIDs, so a gate id sorts
+/// before a cursor id `s` exactly when it sorts before this; the store can
+/// then compare ids as UUIDs whatever a task's id looks like.
+fn uuid_ceiling(s: &str) -> Option<Uuid> {
+    const LEN: usize = 36;
+    fn allowed(i: usize) -> &'static [u8] {
+        if matches!(i, 8 | 13 | 18 | 23) {
+            b"-"
+        } else {
+            b"0123456789abcdef"
         }
     }
-
-    async fn thread(&mut self, thread_id: Option<ThreadId>) -> Result<bool, A2aError> {
-        let Some(thread_id) = thread_id else {
-            return Ok(true);
-        };
-        if let Some(allowed) = self.threads.get(&thread_id) {
-            return Ok(*allowed);
+    fn complete(mut out: Vec<u8>) -> Option<Uuid> {
+        while out.len() < LEN {
+            out.push(allowed(out.len())[0]);
         }
-        let allowed =
-            match maidan_auth::can_access_thread(self.state.store.as_ref(), self.auth, thread_id)
-                .await
-            {
-                Ok(allowed) => allowed,
-                Err(AuthError::Store(StoreError::NotFound)) => false,
-                Err(err) => return Err(denied(err)),
-            };
-        self.threads.insert(thread_id, allowed);
-        Ok(allowed)
+        Uuid::parse_str(std::str::from_utf8(&out).ok()?).ok()
+    }
+    // The next canonical string after the prefix `out`.
+    fn bump(mut out: Vec<u8>) -> Option<Uuid> {
+        while let Some(c) = out.pop() {
+            if let Some(&next) = allowed(out.len()).iter().find(|&&a| a > c) {
+                out.push(next);
+                return complete(out);
+            }
+        }
+        None
+    }
+    let s = s.as_bytes();
+    let mut out = Vec::with_capacity(LEN);
+    for i in 0..LEN {
+        let Some(&c) = s.get(i) else {
+            return complete(out);
+        };
+        let set = allowed(i);
+        if set.contains(&c) {
+            out.push(c);
+        } else if let Some(&next) = set.iter().find(|&&a| a > c) {
+            out.push(next);
+            return complete(out);
+        } else {
+            return bump(out);
+        }
+    }
+    if s.len() == LEN {
+        complete(out)
+    } else {
+        bump(out)
+    }
+}
+
+/// The gate keyset position after the `ListTasks` cursor `(at, id)`.
+fn gate_before((at, id): &(DateTime<Utc>, String)) -> (DateTime<Utc>, Option<ApprovalGateId>) {
+    match uuid_ceiling(id) {
+        Some(ceiling) => (*at, Some(ApprovalGateId(ceiling))),
+        None => (*at + chrono::Duration::milliseconds(1), None),
     }
 }
 
 /// `ListTasks`: the caller's readable tasks in its workspace, newest status
 /// first, with pending approval gates merged in as `input-required` tasks.
-/// Keyset-paged: `nextPageToken` encodes the last task's position.
+/// Keyset-paged: `nextPageToken` encodes the last task's position. Access is
+/// decided in the store's queries, so a page holds `pageSize` tasks unless it
+/// is the last, and its cost does not depend on what the caller cannot read.
 pub(crate) async fn list_tasks(
     state: &AppState,
     auth: &AuthContext,
@@ -888,55 +892,49 @@ pub(crate) async fn list_tasks(
     };
     let context_id = req.context_id.as_deref().filter(|c| !c.is_empty());
     let workspace_id = auth.workspace_id;
-    let filter = || A2aTaskQuery {
+    let readable_by = (!auth.bypass).then_some(auth.member_id);
+    // One more than a page, to know whether another page follows.
+    let want = i64::from(page_size) + 1;
+
+    let task_filter = || A2aTaskQuery {
         context_id,
         state: status,
         updated_since: since,
         before: None,
         limit: 0,
+        readable_by,
     };
-    let mut access = Access::new(state, auth);
-    let want = page_size as usize + 1;
-
-    // Stored tasks, fetched in batches until a page (plus one, to know
-    // whether another page follows) of readable ones is in hand.
     let mut entries: Vec<(DateTime<Utc>, String, Entry)> = Vec::new();
-    let mut before = cursor.clone();
-    loop {
-        let rows = state
-            .store
-            .list_a2a_tasks(
-                workspace_id,
-                A2aTaskQuery {
-                    before: before.as_ref().map(|(at, id)| (*at, id.as_str())),
-                    limit: want as i64,
-                    ..filter()
-                },
-            )
-            .await
-            .map_err(store)?;
-        let exhausted = rows.len() < want;
-        for row in rows {
-            before = Some((row.updated_at, row.id.clone()));
-            let task: Task = match serde_json::from_value(row.task_json) {
-                Ok(task) => task,
-                Err(err) => {
-                    tracing::warn!(task_id = row.id, error = %err, "a2a list: unreadable task");
-                    continue;
-                }
-            };
-            let thread = task_thread(state, workspace_id, &task).await?;
-            if access.thread(thread).await? {
-                entries.push((to_millis(row.updated_at), row.id, Entry::Stored(task)));
+    for row in state
+        .store
+        .list_a2a_tasks(
+            workspace_id,
+            A2aTaskQuery {
+                before: cursor.as_ref().map(|(at, id)| (*at, id.as_str())),
+                limit: want,
+                ..task_filter()
+            },
+        )
+        .await
+        .map_err(store)?
+    {
+        let task = match serde_json::from_value(row.task_json) {
+            Ok(task) => Some(task),
+            Err(err) => {
+                tracing::warn!(task_id = row.id, error = %err, "a2a list: unreadable task");
+                None
             }
-        }
-        if exhausted || entries.len() >= want {
-            break;
-        }
+        };
+        entries.push((to_millis(row.updated_at), row.id, Entry::Stored(task)));
     }
+    let mut total_size = state
+        .store
+        .count_a2a_tasks(workspace_id, task_filter())
+        .await
+        .map_err(store)?;
 
-    // Pending gates, fetched the same way. A gate's context is its thread,
-    // so a context that is not a thread id matches no gate.
+    // Pending gates. A gate's context is its thread, so a context that is
+    // not a thread id matches no gate.
     let gate_thread = match context_id {
         None => Some(None),
         Some(context) => Uuid::parse_str(context)
@@ -944,65 +942,37 @@ pub(crate) async fn list_tasks(
             .filter(|id| id.to_string() == context)
             .map(|id| Some(ThreadId(id))),
     };
-    let gate_filter = |thread_id| PendingGateQuery {
-        thread_id,
-        created_since: since,
-        before: None,
-        limit: 0,
-    };
-    let mut gates_total = 0;
     if let Some(thread_id) =
         gate_thread.filter(|_| status.is_none_or(|s| s == TASK_STATE_INPUT_REQUIRED))
     {
-        // Gates in the cursor's millisecond sort on either side of it by id,
-        // so the first batch starts after that millisecond and the cursor
-        // itself decides.
-        let mut before = cursor
-            .as_ref()
-            .map(|(at, _)| (*at + chrono::Duration::milliseconds(1), None));
-        let mut gates_listed = 0;
-        loop {
-            let gates = state
-                .store
-                .page_pending_approval_gates(
-                    workspace_id,
-                    PendingGateQuery {
-                        before,
-                        limit: want as i64,
-                        ..gate_filter(thread_id)
-                    },
-                )
-                .await
-                .map_err(store)?;
-            let exhausted = gates.len() < want;
-            for gate in gates {
-                before = Some((gate.created_at, Some(gate.id)));
-                let at = to_millis(gate.created_at);
-                let id = gate.id.0.to_string();
-                if cursor
-                    .as_ref()
-                    .is_some_and(|(c_at, c_id)| (at, id.as_str()) >= (*c_at, c_id.as_str()))
-                    || !access.thread(gate.thread_id).await?
-                {
-                    continue;
-                }
-                gates_listed += 1;
-                entries.push((at, id, Entry::Gate(gate_as_task(&gate))));
-            }
-            if exhausted || gates_listed >= want {
-                break;
-            }
-        }
-        for (thread, count) in state
+        let gate_filter = || PendingGateQuery {
+            thread_id,
+            created_since: since,
+            before: None,
+            limit: 0,
+            readable_by,
+        };
+        for gate in state
             .store
-            .count_pending_approval_gates_by_thread(workspace_id, gate_filter(thread_id))
+            .page_pending_approval_gates(
+                workspace_id,
+                PendingGateQuery {
+                    before: cursor.as_ref().map(gate_before),
+                    limit: want,
+                    ..gate_filter()
+                },
+            )
             .await
             .map_err(store)?
         {
-            if access.thread(thread).await? {
-                gates_total += count;
-            }
+            let at = to_millis(gate.created_at);
+            entries.push((at, gate.id.0.to_string(), Entry::Gate(gate_as_task(&gate))));
         }
+        total_size += state
+            .store
+            .count_pending_approval_gates(workspace_id, gate_filter())
+            .await
+            .map_err(store)?;
     }
 
     entries.sort_by(|a, b| (b.0, &b.1).cmp(&(a.0, &a.1)));
@@ -1016,26 +986,11 @@ pub(crate) async fn list_tasks(
         String::new()
     };
 
-    let mut total_size: i64 = gates_total;
-    for (context, count) in state
-        .store
-        .count_a2a_tasks_by_context(workspace_id, filter())
-        .await
-        .map_err(store)?
-    {
-        let thread = match context {
-            Some(context) => context_thread(state, workspace_id, &context).await?,
-            None => None,
-        };
-        if access.thread(thread).await? {
-            total_size += count;
-        }
-    }
-
     let mut tasks = Vec::with_capacity(entries.len());
     for (_, _, entry) in entries {
         let mut task = match entry {
-            Entry::Stored(task) => render(state, task, history_length).await?,
+            Entry::Stored(Some(task)) => render(state, task, history_length).await?,
+            Entry::Stored(None) => continue,
             Entry::Gate(task) => task,
         };
         task.artifacts = (req.include_artifacts == Some(true)).then(Vec::new);
@@ -1064,6 +1019,47 @@ mod tests {
         )
         .await;
         assert_eq!(waited, Ok(false));
+    }
+
+    #[test]
+    fn a_gate_sorts_before_a_cursor_exactly_when_it_sorts_before_its_ceiling() {
+        let canonical = "0192f0c2-8b1e-7c3d-9a4b-5e6f7a8b9c0d";
+        assert_eq!(uuid_ceiling(canonical).unwrap().to_string(), canonical);
+        let gates = [
+            "00000000-0000-0000-0000-000000000000",
+            "0192f0c2-8b1e-7c3d-9a4b-5e6f7a8b9c0c",
+            canonical,
+            "0192f0c2-8b1e-7c3d-9a4b-5e6f7a8b9c0e",
+            "a0000000-0000-0000-0000-000000000000",
+            "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        ];
+        for cursor in [
+            canonical,
+            "",
+            "0",
+            "0192",
+            "0192-task",
+            "0192f0c2-8b1e-7c3d-9a4b-5e6f7a8b9c0d-and-more",
+            "0192F0C2-8B1E-7C3D-9A4B-5E6F7A8B9C0D",
+            "t0",
+            "task-1",
+            "ffffffff-ffff-ffff-ffff-ffffffffffff",
+            "ffffffff-ffff-ffff-ffff-ffffffffffff0",
+            "g",
+            "caf\u{e9}",
+        ] {
+            let ceiling = uuid_ceiling(cursor);
+            for gate in gates {
+                let before_ceiling = ceiling.is_none_or(|c| gate < c.to_string().as_str());
+                assert_eq!(
+                    gate < cursor,
+                    before_ceiling,
+                    "gate {gate}, cursor {cursor:?}"
+                );
+            }
+        }
+        assert_eq!(uuid_ceiling("g"), None);
+        assert_eq!(uuid_ceiling("ffffffff-ffff-ffff-ffff-ffffffffffff0"), None);
     }
 
     #[test]

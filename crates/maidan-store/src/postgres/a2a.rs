@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ThreadId, WorkspaceId};
+use maidan_types::{ThreadId, WorkspaceId, DM_CHANNEL_NAME};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite};
 use crate::error::StoreError;
+use crate::thread_access::readable_row;
 
 pub async fn upsert_push_config(
     pool: &PgPool,
@@ -37,12 +38,13 @@ pub async fn get_push_config(
     Ok(row.map(|r| r.0))
 }
 
-type TaskRow = (String, Uuid, DateTime<Utc>, serde_json::Value);
+type TaskRow = (String, Uuid, Option<Uuid>, DateTime<Utc>, serde_json::Value);
 
-fn task_row((id, workspace_id, updated_at, task_json): TaskRow) -> A2aTaskRow {
+fn task_row((id, workspace_id, thread_id, updated_at, task_json): TaskRow) -> A2aTaskRow {
     A2aTaskRow {
         id,
         workspace_id: WorkspaceId(workspace_id),
+        thread_id: thread_id.map(ThreadId),
         updated_at,
         task_json,
     }
@@ -50,10 +52,12 @@ fn task_row((id, workspace_id, updated_at, task_json): TaskRow) -> A2aTaskRow {
 
 pub async fn upsert_task(pool: &PgPool, task: A2aTaskWrite<'_>) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_a2a_tasks (id, workspace_id, context_id, state, task_json, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        "INSERT INTO maidan_a2a_tasks
+            (id, workspace_id, context_id, thread_id, state, task_json, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (id) DO UPDATE SET
             context_id = EXCLUDED.context_id,
+            thread_id = EXCLUDED.thread_id,
             state = EXCLUDED.state,
             task_json = EXCLUDED.task_json,
             updated_at = EXCLUDED.updated_at",
@@ -61,6 +65,7 @@ pub async fn upsert_task(pool: &PgPool, task: A2aTaskWrite<'_>) -> Result<(), St
     .bind(task.task_id)
     .bind(task.workspace_id.0)
     .bind(task.context_id)
+    .bind(task.thread_id.map(|t| t.0))
     .bind(task.state)
     .bind(task.task_json)
     .bind(task.status_at)
@@ -71,12 +76,27 @@ pub async fn upsert_task(pool: &PgPool, task: A2aTaskWrite<'_>) -> Result<(), St
 
 pub async fn get_task(pool: &PgPool, task_id: &str) -> Result<Option<A2aTaskRow>, StoreError> {
     let row: Option<TaskRow> = sqlx::query_as(
-        "SELECT id, workspace_id, updated_at, task_json FROM maidan_a2a_tasks WHERE id = $1",
+        "SELECT id, workspace_id, thread_id, updated_at, task_json
+         FROM maidan_a2a_tasks WHERE id = $1",
     )
     .bind(task_id)
     .fetch_optional(pool)
     .await?;
     Ok(row.map(task_row))
+}
+
+/// The filters `list_tasks` and `count_tasks` share: `$1` workspace, `$2`
+/// context, `$3` state, `$4` updated since, `$5` reader, `$6` the DM channel
+/// name.
+fn task_filters() -> String {
+    let readable = readable_row("maidan_a2a_tasks.thread_id", "$1", "$5::uuid", "$6");
+    format!(
+        "workspace_id = $1
+           AND ($2::text IS NULL OR context_id = $2)
+           AND ($3::text IS NULL OR state = $3)
+           AND ($4::timestamptz IS NULL OR updated_at >= $4)
+           AND {readable}"
+    )
 }
 
 pub async fn list_tasks(
@@ -88,19 +108,20 @@ pub async fn list_tasks(
         Some((at, id)) => (Some(at), Some(id)),
         None => (None, None),
     };
-    let rows: Vec<TaskRow> = sqlx::query_as(
-        "SELECT id, workspace_id, updated_at, task_json FROM maidan_a2a_tasks
-         WHERE workspace_id = $1
-           AND ($2::text IS NULL OR context_id = $2)
-           AND ($3::text IS NULL OR state = $3)
-           AND ($4::timestamptz IS NULL OR updated_at >= $4)
-           AND ($5::timestamptz IS NULL OR (updated_at, id) < ($5, $6::text))
-         ORDER BY updated_at DESC, id DESC LIMIT $7",
-    )
+    let rows: Vec<TaskRow> = sqlx::query_as(&format!(
+        "SELECT id, workspace_id, thread_id, updated_at, task_json
+         FROM maidan_a2a_tasks
+         WHERE {}
+           AND ($7::timestamptz IS NULL OR (updated_at, id) < ($7, $8::text))
+         ORDER BY updated_at DESC, id DESC LIMIT $9",
+        task_filters()
+    ))
     .bind(workspace_id.0)
     .bind(query.context_id)
     .bind(query.state)
     .bind(query.updated_since)
+    .bind(query.readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
     .bind(before_at)
     .bind(before_id)
     .bind(query.limit)
@@ -109,24 +130,22 @@ pub async fn list_tasks(
     Ok(rows.into_iter().map(task_row).collect())
 }
 
-pub async fn count_tasks_by_context(
+pub async fn count_tasks(
     pool: &PgPool,
     workspace_id: WorkspaceId,
     query: A2aTaskQuery<'_>,
-) -> Result<Vec<(Option<String>, i64)>, StoreError> {
-    Ok(sqlx::query_as(
-        "SELECT context_id, COUNT(*) FROM maidan_a2a_tasks
-         WHERE workspace_id = $1
-           AND ($2::text IS NULL OR context_id = $2)
-           AND ($3::text IS NULL OR state = $3)
-           AND ($4::timestamptz IS NULL OR updated_at >= $4)
-         GROUP BY context_id",
-    )
+) -> Result<i64, StoreError> {
+    Ok(sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM maidan_a2a_tasks WHERE {}",
+        task_filters()
+    ))
     .bind(workspace_id.0)
     .bind(query.context_id)
     .bind(query.state)
     .bind(query.updated_since)
-    .fetch_all(pool)
+    .bind(query.readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
+    .fetch_one(pool)
     .await?)
 }
 

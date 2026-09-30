@@ -3,8 +3,6 @@
 //! compare-and-set on `pending` (a double-answer is a no-op). Both backends. No
 //! routes/tool yet — the zero-blast-radius foundation.
 
-use std::collections::HashMap;
-
 use chrono::Timelike;
 use maidan_store::{prelude::*, run_sqlite_migrations, PendingGateQuery};
 use maidan_types::{
@@ -353,16 +351,13 @@ async fn run_paging_suite(store: &dyn Store) {
         .collect();
     assert_eq!(ids(&recent), ids(&expected));
 
-    let counts: HashMap<_, _> = store
-        .count_pending_approval_gates_by_thread(ws.id, PendingGateQuery::default())
+    let counted = store
+        .count_pending_approval_gates(ws.id, PendingGateQuery::default())
         .await
-        .expect("count")
-        .into_iter()
-        .collect();
-    let expected = HashMap::from([(None, 1), (Some(threads[0]), 3), (Some(threads[1]), 2)]);
-    assert_eq!(counts, expected);
-    let counted: i64 = store
-        .count_pending_approval_gates_by_thread(
+        .expect("count");
+    assert_eq!(counted, 6);
+    let counted = store
+        .count_pending_approval_gates(
             ws.id,
             PendingGateQuery {
                 thread_id: Some(threads[1]),
@@ -371,10 +366,7 @@ async fn run_paging_suite(store: &dyn Store) {
             },
         )
         .await
-        .expect("count filtered")
-        .into_iter()
-        .map(|(_, n)| n)
-        .sum();
+        .expect("count filtered");
     let expected = newest_first
         .iter()
         .filter(|g| g.thread_id == Some(threads[1]) && g.created_at >= since)

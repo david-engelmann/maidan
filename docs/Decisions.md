@@ -497,9 +497,11 @@ checks it, over JSON-RPC (`/a2a/v1/rpc`) and HTTP+JSON (`/a2a/v1/...`):
   and AIP-193 bodies with the matching HTTP status on the REST binding,
   which answers `application/json`. A task the caller cannot read is
   `TaskNotFoundError`, never a hint that it exists.
-- **Listing** pages by an opaque `(updated_at, id)` cursor; `totalSize` is
-  exact after the channel-RBAC filter, and `statusTimestampAfter` is
-  inclusive, as the proto says.
+- **Listing** pages by an opaque `(updated_at, id)` cursor. Thread access is
+  decided in the store query, so a page is `pageSize` tasks the caller can
+  read unless it is the last, `totalSize` counts only those, and what a call
+  costs does not depend on what the caller cannot read.
+  `statusTimestampAfter` is inclusive, as the proto says.
 
 **Alternative.** Keep the Maidan subset (`metadata.maidan.threadId` and
 `authorId`, `application/a2a+json`, no version check) and document the

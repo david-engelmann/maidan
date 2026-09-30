@@ -464,12 +464,12 @@ pub trait ApprovalGateStore: Send + Sync {
         query: PendingGateQuery,
     ) -> Result<Vec<ApprovalGate>, StoreError>;
     /// How many pending gates match `query` (its `before` and `limit` are
-    /// ignored), per thread; `None` counts the gates attached to no thread.
-    async fn count_pending_approval_gates_by_thread(
+    /// ignored), `readable_by` included.
+    async fn count_pending_approval_gates(
         &self,
         workspace_id: WorkspaceId,
         query: PendingGateQuery,
-    ) -> Result<Vec<(Option<ThreadId>, i64)>, StoreError>;
+    ) -> Result<i64, StoreError>;
     async fn resolve_approval_gate(
         &self,
         id: ApprovalGateId,
@@ -3001,20 +3001,20 @@ pub trait A2aStore: Send + Sync {
     async fn upsert_a2a_task(&self, task: A2aTaskWrite<'_>) -> Result<(), StoreError>;
     async fn get_a2a_task(&self, task_id: &str) -> Result<Option<A2aTaskRow>, StoreError>;
     /// A workspace's tasks matching `query`, newest status first (ties by id
-    /// descending), at most `query.limit`.
+    /// descending), at most `query.limit`. `readable_by` filters in the
+    /// query, so a page is `limit` readable tasks or the last of them.
     async fn list_a2a_tasks(
         &self,
         workspace_id: WorkspaceId,
         query: A2aTaskQuery<'_>,
     ) -> Result<Vec<A2aTaskRow>, StoreError>;
-    /// How many of a workspace's tasks match `query`'s filters, per
-    /// `context_id` (`before` and `limit` are ignored). Grouped so a caller
-    /// can drop the contexts it may not read without loading every row.
-    async fn count_a2a_tasks_by_context(
+    /// How many of a workspace's tasks match `query`'s filters,
+    /// `readable_by` included (`before` and `limit` are ignored).
+    async fn count_a2a_tasks(
         &self,
         workspace_id: WorkspaceId,
         query: A2aTaskQuery<'_>,
-    ) -> Result<Vec<(Option<String>, i64)>, StoreError>;
+    ) -> Result<i64, StoreError>;
 
     /// The thread a client-chosen A2A `contextId` names in a workspace.
     async fn get_a2a_context_thread(

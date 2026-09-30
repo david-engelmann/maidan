@@ -188,6 +188,8 @@ const POSTGRES_UP_V126: &str =
 const POSTGRES_UP_V127: &str = include_str!("../../../migrations/postgres/0127_scim_groups.sql");
 const POSTGRES_UP_V128: &str =
     include_str!("../../../migrations/postgres/0128_artifact_filename.sql");
+const POSTGRES_UP_V131: &str =
+    include_str!("../../../migrations/postgres/0131_a2a_task_threads.sql");
 const POSTGRES_UP_V132: &str =
     include_str!("../../../migrations/postgres/0132_thread_budget_wall_charge.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
@@ -342,6 +344,7 @@ const SQLITE_UP_V126: &str =
     include_str!("../../../migrations/sqlite/0126_mcp_resource_subscriptions.sql");
 const SQLITE_UP_V127: &str = include_str!("../../../migrations/sqlite/0127_scim_groups.sql");
 const SQLITE_UP_V128: &str = include_str!("../../../migrations/sqlite/0128_artifact_filename.sql");
+const SQLITE_UP_V131: &str = include_str!("../../../migrations/sqlite/0131_a2a_task_threads.sql");
 const SQLITE_UP_V132: &str =
     include_str!("../../../migrations/sqlite/0132_thread_budget_wall_charge.sql");
 
@@ -531,6 +534,8 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 127, POSTGRES_UP_V127).await?;
     // 123–127 are other lanes.
     apply_postgres(pool, 128, POSTGRES_UP_V128).await?;
+    // 127–130 belong to other lanes.
+    apply_postgres(pool, 131, POSTGRES_UP_V131).await?;
     // 127–131 belong to other lanes.
     apply_postgres(pool, 132, POSTGRES_UP_V132).await?;
     Ok(())
@@ -675,6 +680,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 126, SQLITE_UP_V126).await?;
     apply_sqlite(pool, 127, SQLITE_UP_V127).await?;
     apply_sqlite(pool, 128, SQLITE_UP_V128).await?;
+    apply_sqlite(pool, 131, SQLITE_UP_V131).await?;
     apply_sqlite(pool, 132, SQLITE_UP_V132).await?;
     Ok(())
 }

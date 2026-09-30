@@ -183,13 +183,47 @@ impl H {
 
     /// Send `text` (into `context`, if given) and return the task.
     async fn send(&self, text: &str, context: Option<&str>) -> Value {
+        self.send_as(&self.token, text, context).await
+    }
+
+    async fn send_as(&self, token: &str, text: &str, context: Option<&str>) -> Value {
         let mut msg = message(text);
         if let Some(context) = context {
             msg["contextId"] = json!(context);
         }
-        let resp = self.rpc("SendMessage", json!({ "message": msg })).await;
+        let resp = self
+            .rpc_as(token, "SendMessage", json!({ "message": msg }))
+            .await;
         assert!(resp.get("error").is_none(), "SendMessage failed: {resp}");
         resp["result"]["task"].clone()
+    }
+
+    /// Every page of `ListTasks` as `token`, `pageSize` at a time: each
+    /// page's task ids and its `totalSize`.
+    async fn pages_as(&self, token: &str, page_size: i32) -> Vec<(Vec<String>, i64)> {
+        let mut pages = Vec::new();
+        let mut page_token = String::new();
+        loop {
+            let resp = self
+                .rpc_as(
+                    token,
+                    "ListTasks",
+                    json!({ "pageSize": page_size, "pageToken": page_token }),
+                )
+                .await;
+            let result = &resp["result"];
+            let ids = result["tasks"]
+                .as_array()
+                .unwrap_or_else(|| panic!("ListTasks failed: {resp}"))
+                .iter()
+                .map(|t| t["id"].as_str().unwrap().to_string())
+                .collect();
+            pages.push((ids, result["totalSize"].as_i64().unwrap()));
+            page_token = result["nextPageToken"].as_str().unwrap().to_string();
+            if page_token.is_empty() {
+                return pages;
+            }
+        }
     }
 
     async fn rest(
@@ -242,6 +276,7 @@ impl H {
                 workspace_id: self.ws,
                 task_id: &id,
                 context_id: Some(&context.0.to_string()),
+                thread_id: Some(context),
                 state: "TASK_STATE_WORKING",
                 status_at: at,
                 task_json: json!({
@@ -1292,6 +1327,130 @@ async fn list_tasks_pages_through_every_pending_gate() {
         .collect();
     let visible: Vec<_> = ids.iter().filter(|id| !private.contains(*id)).collect();
     assert_eq!(first.iter().collect::<Vec<_>>(), visible[..5]);
+}
+
+fn task_id(task: &Value) -> String {
+    task["id"].as_str().unwrap().to_string()
+}
+
+/// A caller who can read a few of many tasks gets pages full of its own and
+/// an end right after the last: access is decided in the query, so hidden
+/// tasks neither shorten a page nor move the end. A private channel's tasks
+/// and a DM's never reach a non-member, and each visible task comes once.
+#[tokio::test]
+async fn list_tasks_pages_are_full_of_what_the_caller_can_read() {
+    let h = spawn().await;
+    let insider = member(h.store.as_ref(), h.ws, "insider").await;
+    let insider_token = mint(h.store.as_ref(), h.ws, insider, ALL_CAPS).await;
+    let secret = channel(h.store.as_ref(), h.ws, "secret", true).await;
+    h.store
+        .add_channel_member(secret, insider, maidan_types::ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    let hidden = thread(h.store.as_ref(), secret).await;
+    let third = member(h.store.as_ref(), h.ws, "third").await;
+    let dm = h
+        .store
+        .open_dm_conversation(h.ws, insider, third)
+        .await
+        .unwrap()
+        .thread_id;
+    let general = channel(h.store.as_ref(), h.ws, "general", false).await;
+    let open = thread(h.store.as_ref(), general).await;
+
+    // Ten readable tasks (five sent, five gates) among fifty the caller
+    // cannot read: tasks in the private channel and the DM, and gates there.
+    let mut visible = HashSet::new();
+    let mut invisible = HashSet::new();
+    for i in 0..60 {
+        match i % 12 {
+            0 => visible.insert(task_id(&h.send("mine", None).await)),
+            6 => visible.insert(h.gate(open).await),
+            1 | 7 => invisible.insert(h.gate(hidden).await),
+            n if n % 2 == 0 => invisible.insert(task_id(
+                &h.send_as(&insider_token, "dm", Some(&dm.0.to_string()))
+                    .await,
+            )),
+            _ => invisible.insert(task_id(
+                &h.send_as(&insider_token, "secret", Some(&hidden.0.to_string()))
+                    .await,
+            )),
+        };
+    }
+    assert_eq!((visible.len(), invisible.len()), (10, 50));
+
+    let pages = h.pages_as(&h.token, 3).await;
+    let sizes: Vec<usize> = pages.iter().map(|(ids, _)| ids.len()).collect();
+    assert_eq!(sizes, [3, 3, 3, 1], "full pages, then the end");
+    assert!(pages.iter().all(|(_, total)| *total == 10), "{pages:?}");
+    let listed: Vec<String> = pages.into_iter().flat_map(|(ids, _)| ids).collect();
+    assert_eq!(listed.len(), 10, "nothing listed twice");
+    assert_eq!(listed.into_iter().collect::<HashSet<_>>(), visible);
+
+    // An exact page count ends on a full page, with no empty one after it.
+    let pages = h.pages_as(&h.token, 5).await;
+    let sizes: Vec<usize> = pages.iter().map(|(ids, _)| ids.len()).collect();
+    assert_eq!(sizes, [5, 5]);
+
+    // The insider reads all of it.
+    let pages = h.pages_as(&insider_token, 100).await;
+    assert_eq!(pages.len(), 1);
+    assert_eq!(pages[0].1, 60);
+    let all: HashSet<String> = pages[0].0.iter().cloned().collect();
+    assert_eq!(all, &visible | &invisible);
+}
+
+/// Two workspaces on one server: each lists, pages and counts its own tasks
+/// and gates, and never the other's.
+#[tokio::test]
+async fn list_tasks_never_crosses_tenants() {
+    let h = spawn().await;
+    let general = channel(h.store.as_ref(), h.ws, "general", false).await;
+    let open = thread(h.store.as_ref(), general).await;
+    let other = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap()
+        .id;
+    let them = member(h.store.as_ref(), other, "them").await;
+    let their_token = mint(h.store.as_ref(), other, them, ALL_CAPS).await;
+    let their_general = channel(h.store.as_ref(), other, "general", false).await;
+    let their_open = thread(h.store.as_ref(), their_general).await;
+
+    let mut mine = HashSet::new();
+    let mut theirs = HashSet::new();
+    for _ in 0..3 {
+        mine.insert(task_id(&h.send("mine", None).await));
+        theirs.insert(task_id(&h.send_as(&their_token, "theirs", None).await));
+    }
+    mine.insert(h.gate(open).await);
+    let their_gate = h
+        .store
+        .create_approval_gate(&NewApprovalGate {
+            workspace_id: other,
+            thread_id: Some(their_open),
+            requested_by: them,
+            prompt: "Deploy?".into(),
+            schema: None,
+        })
+        .await
+        .unwrap();
+    theirs.insert(their_gate.id.0.to_string());
+
+    for (token, own) in [(&h.token, &mine), (&their_token, &theirs)] {
+        let pages = h.pages_as(token, 3).await;
+        assert!(pages.iter().all(|(_, total)| *total == 4), "{pages:?}");
+        let listed: Vec<String> = pages.into_iter().flat_map(|(ids, _)| ids).collect();
+        assert_eq!(listed.len(), 4);
+        assert_eq!(&listed.into_iter().collect::<HashSet<_>>(), own);
+    }
+    for id in &theirs {
+        let got = h.rpc("GetTask", json!({ "id": id })).await;
+        assert_eq!(error_code(&got), -32001, "{got}");
+    }
 }
 
 #[tokio::test]

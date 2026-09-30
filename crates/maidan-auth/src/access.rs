@@ -123,6 +123,10 @@ pub struct ThreadScope {
 /// workspace isolation, then DM-conversation participation for a `__dm__`
 /// thread or `channel_members` for a private channel. `bypass` skips the checks
 /// but still returns the scope (the handler needs the location regardless).
+///
+/// Listings that filter in the query use the store's SQL form of this rule
+/// (`maidan-store/src/thread_access.rs`); a change here changes it too, and
+/// `maidan-store/tests/thread_access.rs` fails until they agree.
 pub async fn authorize_thread(
     store: &dyn Store,
     auth: &AuthContext,

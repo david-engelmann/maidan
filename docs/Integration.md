@@ -808,7 +808,9 @@ request is 0.3 and refused with `VersionNotSupportedError`.
 - A task you cannot read is `TaskNotFoundError`. `ListTasks` pages with
   `nextPageToken` and an exact `totalSize`; every pending approval gate the
   caller can read is listed as an `input-required` task, however many there
-  are.
+  are. Tasks you cannot read are left out by the query itself: every page but
+  the last holds exactly `pageSize` tasks, and an empty `nextPageToken` means
+  there are no more you can read.
 
 A message's `metadata.maidan.citations` is an optional list of
 `{uri, content_hash}` strong refs (`sha256:<hex>`). Citations persist on
