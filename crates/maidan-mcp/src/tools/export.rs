@@ -87,6 +87,7 @@ pub(super) async fn export_workspace(
     server
         .store
         .append_audit(maidan_types::NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(workspace_id),
             actor_id: Some(auth.actor_id),
             action: "workspace.export".into(),
             target_kind: Some("workspace".into()),
@@ -185,6 +186,7 @@ pub(super) async fn import_workspace(
             &to_write,
             replace_existing,
             maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "workspace.import".into(),
                 target_kind: Some("workspace".into()),

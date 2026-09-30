@@ -54,6 +54,7 @@ pub(super) async fn resolve_secret(
     server
         .store
         .append_audit(maidan_types::NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
             actor_id: Some(auth.actor_id),
             action: "secret.resolve".into(),
             target_kind: Some("secret".into()),

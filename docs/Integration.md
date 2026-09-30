@@ -463,6 +463,16 @@ Attribution is part of the hashed payload, so it is covered by the event chain:
 something. Audit rows carry the same three fields as `actor_id`, `subject_id`
 and `grant_id`.
 
+Every audit row also carries the `workspace_id` it belongs to, stamped when it
+is written. `GET /workspaces/{wid}/audit` returns exactly the rows stamped with
+`wid`, whoever or whatever wrote them: rows with no actor (an app token minted
+by the OAuth code exchange, a SCIM deprovision's token revokes, a result
+delivery attempt by the egress worker) are in their workspace's view, and a row
+a member of `wid` wrote about another workspace is in that workspace's view,
+not this one. A row with `workspace_id: null` is instance-level (an
+instance-wide reindex, or an old row whose workspace could not be worked out
+when the column was added) and appears only in `GET /operator/audit`.
+
 The displayed author of a message stays the member it was posted for — a message
 an orchestrator posts for an agent is the agent's message. Attribution is what
 records that the orchestrator wrote it.

@@ -140,6 +140,7 @@ pub async fn revoke_app_installation(
         .revoke_app_installation_audited(
             installation_id,
             Box::new(move |installation| NewAuditEvent {
+                scope: AuditScope::Workspace(installation.workspace_id),
                 actor_id: Some(actor),
                 action: "app_installation.revoke".into(),
                 target_kind: Some("app_installation".into()),
@@ -198,6 +199,7 @@ pub async fn mint_app_token(
                 expires_at: body.expires_at,
             },
             Box::new(move |record| NewAuditEvent {
+                scope: AuditScope::Workspace(record.workspace_id),
                 actor_id: Some(actor),
                 action: "app_token.mint".into(),
                 target_kind: Some("api_token".into()),

@@ -16,7 +16,7 @@
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{capability::TOKEN_ADMIN, AuthContext};
 use maidan_types::{
-    AllowedEgressTarget, EgressTargetId, NewAuditEvent, NewEgressTarget, WorkspaceId,
+    AllowedEgressTarget, AuditScope, EgressTargetId, NewAuditEvent, NewEgressTarget, WorkspaceId,
 };
 
 use super::{cap, ensure_workspace, ApiResult};
@@ -59,6 +59,7 @@ fn egress_target_allowed_event(
     target: &AllowedEgressTarget,
 ) -> NewAuditEvent {
     NewAuditEvent {
+        scope: AuditScope::Workspace(target.workspace_id),
         actor_id: Some(actor),
         action: "egress_target.allow".into(),
         target_kind: Some("egress_target".into()),
@@ -102,6 +103,7 @@ pub async fn revoke_egress_target(
             workspace_id,
             EgressTargetId(tid),
             NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "egress_target.revoke".into(),
                 target_kind: Some("egress_target".into()),

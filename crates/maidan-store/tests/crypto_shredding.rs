@@ -498,6 +498,7 @@ async fn workspace_purge_destroys_its_content_keys(db: Db) {
 
 fn erase_audit(erasure: &ArtifactErasure) -> NewAuditEvent {
     NewAuditEvent {
+        scope: AuditScope::Workspace(erasure.workspace_id),
         actor_id: None,
         action: "artifact.erase".into(),
         target_kind: Some("workspace".into()),

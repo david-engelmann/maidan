@@ -268,7 +268,7 @@ Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 | `GET /metrics`    | Prometheus text (HTTP counters, subscribe replay, indexer age, bus listener). |
 | `DELETE /messages/:id/purge` | Hard-delete a **tombstoned** message (GDPR erasure); requires `token:admin`. |
 | `POST /workspaces/:id/purge` | Deep workspace erasure (`v28.0.0`): tombstone+purge all messages, remove embeddings/references, revoke API tokens, delete event log; returns counts JSON. Requires `token:admin`. |
-| `GET /workspaces/:id/audit` | Workspace-scoped audit trail (`workspace:read`). |
+| `GET /workspaces/:id/audit` | Workspace-scoped audit trail (`workspace:read`): the rows stamped with that workspace. |
 
 Import into Swagger UI, Redoc, or your client generator. The document
 version tracks the server release (`info.version`).
@@ -996,8 +996,8 @@ While a workspace has any hold:
 
 - workspace purge and erase, message purge, artifact erase, and an import that
   replaces the workspace are refused (409), inside the destroying transaction;
-- its event-log rows are exempt from retention pruning, and audit pruning is
-  frozen;
+- its event-log rows and its audit rows are exempt from retention pruning.
+  Other workspaces' rows, and instance-level audit rows, still prune;
 - **a withdrawn message keeps its words.** When a member (or a moderator)
   tombstones a message, it disappears for everyone exactly as it would unheld,
   but its last body and every earlier version are kept. Nothing in the product
@@ -1027,8 +1027,19 @@ counts what it deleted in `maidan_retention_pruned_total{table}`.
 | Variable | What it prunes | What it never prunes |
 |---|---|---|
 | `MAIDAN_RETENTION_EVENTS_DAYS` | Event-log rows older than the cutoff | Anything above the lowest at-least-once delivery cursor still advancing, so a lagging consumer loses nothing undelivered; a held workspace's events |
-| `MAIDAN_RETENTION_AUDIT_DAYS` | Audit rows older than the cutoff | Anything, while any legal hold stands (audit rows are not workspace-tagged) |
+| `MAIDAN_RETENTION_AUDIT_DAYS` | Audit rows older than the cutoff, including instance-level rows (no `workspace_id`) | A held workspace's audit rows |
 | `MAIDAN_RETENTION_DELIVERIES_DAYS` | Finished delivery rows: delivered or quarantined webhook and automation deliveries, published transactional-outbox rows, delivered projector and result egress, delivered notification mail, and dead-lettered agent runs | Pending or retrying rows, whatever their age; egress and mail **dead letters**, which leave when an operator requeues them (`MaidanEgressDeadLettered` and `MaidanMailDeadLettered` fire while any exist); a held workspace's egress, mail and agent runs |
+
+Audit rows belong to the workspace stamped on them when they were written. On
+upgrade, migration 0123 backfilled older rows from what they reference: a
+`workspace` target, `metadata.workspace_id`, the target's own row (token,
+member, channel, thread, message, share ticket, grant, egress target, app
+installation, result delivery, reindex job, hold), then the actor's or
+subject's membership. A row none of those resolved (its members and target
+since erased) has no workspace: it is instance-level, shown only in
+`GET /operator/audit`, and pruned under the instance cutoff whatever holds
+stand. Count them with
+`SELECT count(*) FROM maidan_audit WHERE workspace_id IS NULL`.
 
 A delivered egress row goes with its dedup key, so the same source event
 could be queued again only if the router replayed an event older than the

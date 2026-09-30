@@ -19,6 +19,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 
 fn event(action: &str) -> NewAuditEvent {
     NewAuditEvent {
+        scope: maidan_types::AuditScope::Instance,
         actor_id: None,
         action: action.into(),
         target_kind: None,

@@ -413,7 +413,7 @@ pub async fn replay_thread_delivery(
         Some(maidan_store::ResultDeliveryReplay::Skipped(row))
         | Some(maidan_store::ResultDeliveryReplay::Enqueued(row)) => {
             let actor_id = (!auth.bypass).then_some(auth.member_id);
-            crate::result_delivery::audit_replay(&state, actor_id, &row).await;
+            crate::result_delivery::audit_replay(&state, ctx.workspace_id, actor_id, &row).await;
             Ok(Json(row))
         }
     }

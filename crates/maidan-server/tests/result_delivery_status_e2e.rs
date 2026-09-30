@@ -309,6 +309,15 @@ async fn list_replay_and_audit_over_http() {
             && e.actor_id.is_none()),
         "the worker send is audited, actor_id None: {audit:?}"
     );
+    let view = h
+        .store
+        .list_audit_for_workspace(h.workspace_id, 20)
+        .await
+        .unwrap();
+    assert!(
+        view.iter().any(|e| e.action == "result_delivery.attempt"),
+        "an attempt with no actor is still in its workspace's audit view: {view:?}"
+    );
 
     let (code, body) = replay(&h, did).await;
     assert_eq!(code, StatusCode::OK);

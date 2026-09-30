@@ -175,6 +175,35 @@ async fn oauth_authorize_then_exchange_is_single_use() {
         .expect("app bearer resolves");
     assert!(ctx.app_installation_id.is_some());
 
+    // The exchange is unauthenticated, so its mint row has no actor. It is in
+    // the workspace's audit view all the same, and in no other workspace's.
+    let minted = |rows: &[maidan_types::AuditEvent]| {
+        rows.iter().any(|row| {
+            row.action == "app_token.mint"
+                && row.actor_id.is_none()
+                && row.target_id == Some(ctx.token_id.expect("a bearer").0)
+        })
+    };
+    let own = h
+        .store
+        .list_audit_for_workspace(ctx.workspace_id, 50)
+        .await
+        .unwrap();
+    assert!(minted(&own), "the mint is in its workspace's view: {own:?}");
+    let other = h
+        .store
+        .create_workspace(maidan_types::NewWorkspace {
+            name: "oauth-other".into(),
+        })
+        .await
+        .unwrap();
+    let theirs = h
+        .store
+        .list_audit_for_workspace(other.id, 50)
+        .await
+        .unwrap();
+    assert!(!minted(&theirs), "and in no other workspace's");
+
     // A second exchange of the same code is rejected (single-use, store-enforced).
     let replay = client
         .post(format!("http://{}/oauth/app/token", h.addr))

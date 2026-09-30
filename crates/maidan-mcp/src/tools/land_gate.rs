@@ -82,10 +82,12 @@ pub(super) async fn clear_land_gate(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let workspace_id = super::thread_workspace(store.as_ref(), ThreadId(a.thread_id)).await?;
     let cleared = store
         .clear_land_gate_audited(
             ThreadId(a.thread_id),
             maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "land_gate.clear".into(),
                 target_kind: Some("thread".into()),

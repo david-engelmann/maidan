@@ -7,8 +7,8 @@ use chrono::{DateTime, Utc};
 use maidan_auth::{capability, hash_secret, AuthContext, TokenSecret};
 use maidan_store::Store;
 use maidan_types::{
-    DelegationGrantId, MemberId, NewApiToken, NewAuditEvent, NewDelegationGrant, RoomCard, RoomUri,
-    WorkspaceId,
+    AuditScope, DelegationGrantId, MemberId, NewApiToken, NewAuditEvent, NewDelegationGrant,
+    RoomCard, RoomUri, WorkspaceId,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -134,6 +134,7 @@ pub(super) async fn rotate_token(
             token_id,
             &hash_secret(secret.as_str()),
             Box::new(move |successor| NewAuditEvent {
+                scope: AuditScope::Workspace(successor.workspace_id),
                 actor_id: Some(actor),
                 action: "token.rotate".into(),
                 target_kind: Some("api_token".into()),
@@ -195,6 +196,7 @@ pub(super) async fn attenuate_token(
         (auth.actor_id, auth.token_id, inherited_quotas.len());
     let audit: maidan_store::AuditFor<maidan_types::ApiToken> =
         Box::new(move |record| NewAuditEvent {
+            scope: AuditScope::Workspace(record.workspace_id),
             actor_id: Some(actor),
             action: "token.mint".into(),
             target_kind: Some("api_token".into()),
@@ -315,6 +317,7 @@ pub(super) async fn delegate_token(
             auth.member_id,
             auth.token_id,
             Box::new(move |record| NewAuditEvent {
+                scope: AuditScope::Workspace(record.workspace_id),
                 actor_id: Some(actor),
                 action: "token.delegate".into(),
                 target_kind: Some("api_token".into()),
@@ -405,6 +408,7 @@ pub(super) async fn create_delegation_grant(
                 expires_at: a.expires_at,
             },
             Box::new(move |grant| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "delegation_grant.create".into(),
                 target_kind: Some("delegation_grant".into()),
@@ -468,6 +472,7 @@ pub(super) async fn revoke_delegation_grant(
             workspace_id,
             grant_id,
             NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "delegation_grant.revoke".into(),
                 target_kind: Some("delegation_grant".into()),
@@ -789,6 +794,7 @@ pub(super) async fn set_delegation_policy(
             workspace_id,
             a.max_grant_days,
             Box::new(move |policy| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "delegation_policy.set".into(),
                 target_kind: Some("workspace".into()),

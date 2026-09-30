@@ -638,6 +638,7 @@ async fn audit_result_attempt(
     crate::audit::record(
         state,
         maidan_types::NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(entry.workspace_id),
             actor_id: None,
             action: "result_delivery.attempt".into(),
             target_kind: Some("result_delivery".into()),

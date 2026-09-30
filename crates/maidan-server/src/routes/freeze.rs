@@ -33,7 +33,9 @@ pub async fn freeze_member(
 ) -> ApiResult<Json<FreezeResult>> {
     cap(&auth, TOKEN_ADMIN)?;
     let member_id = MemberId(id);
-    authorize_member(&state, &auth, member_id).await?;
+    let workspace_id = authorize_member(&state, &auth, member_id)
+        .await?
+        .workspace_id;
     let reason = body
         .reason
         .as_deref()
@@ -47,6 +49,7 @@ pub async fn freeze_member(
             auth.member_id,
             reason,
             Box::new(move |(freeze, released)| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "member.freeze".into(),
                 target_kind: Some("member".into()),
@@ -66,13 +69,14 @@ pub async fn unfreeze_member(
 ) -> ApiResult<StatusCode> {
     cap(&auth, TOKEN_ADMIN)?;
     let member_id = MemberId(id);
-    authorize_member(&state, &auth, member_id).await?;
+    let member = authorize_member(&state, &auth, member_id).await?;
     let stored = state
         .store
         .unfreeze_member_audited(
             member_id,
             auth.member_id,
             NewAuditEvent {
+                scope: AuditScope::Workspace(member.workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "member.unfreeze".into(),
                 target_kind: Some("member".into()),

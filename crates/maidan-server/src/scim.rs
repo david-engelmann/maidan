@@ -287,6 +287,7 @@ pub async fn create_user(
             input.external_id.as_deref(),
             input.active,
             Box::new(move |(member, _)| maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(member.workspace_id),
                 actor_id: Some(actor),
                 action: "scim.user.create".into(),
                 target_kind: Some("member".into()),
@@ -515,6 +516,7 @@ async fn apply_update(
     // of it fails the provider sees a 500 and retries, instead of a 200 with
     // tokens still live.
     let event = maidan_types::NewAuditEvent {
+        scope: maidan_types::AuditScope::Workspace(workspace_id),
         actor_id: None,
         action: if active {
             "scim.user.update"
@@ -569,6 +571,7 @@ pub async fn delete_user(
         }
     }
     let event = maidan_types::NewAuditEvent {
+        scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
         actor_id: Some(auth.actor_id),
         action: "scim.user.delete".into(),
         target_kind: Some("member".into()),

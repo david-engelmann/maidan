@@ -66,6 +66,7 @@ pub async fn create_secret(
                 created_by: auth.member_id,
             },
             Box::new(move |secret| NewAuditEvent {
+                scope: AuditScope::Workspace(secret.workspace_id),
                 actor_id: Some(actor),
                 action: "secret.create".into(),
                 target_kind: Some("secret".into()),
@@ -111,6 +112,7 @@ pub async fn resolve_secret(
     state
         .store
         .append_audit(NewAuditEvent {
+            scope: AuditScope::Workspace(workspace_id),
             actor_id: Some(auth.actor_id),
             action: "secret.resolve".into(),
             target_kind: Some("secret".into()),
@@ -135,6 +137,7 @@ pub async fn delete_secret(
             workspace_id,
             &name,
             NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "secret.delete".into(),
                 target_kind: Some("secret".into()),

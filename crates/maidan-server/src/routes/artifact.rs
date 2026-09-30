@@ -236,6 +236,7 @@ pub async fn erase_artifact(
             auth.workspace_id,
             &sha.to_hex(),
             Box::new(move |erasure| NewAuditEvent {
+                scope: AuditScope::Workspace(erasure.workspace_id),
                 actor_id: Some(actor),
                 action: "artifact.erase".into(),
                 target_kind: Some("workspace".into()),

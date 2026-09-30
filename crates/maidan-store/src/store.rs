@@ -2182,6 +2182,8 @@ pub trait ArtifactMetaStore: Send + Sync {
 pub trait EventStore: Send + Sync {
     async fn append_audit(&self, new: NewAuditEvent) -> Result<AuditEvent, StoreError>;
     async fn list_audit(&self, limit: i64) -> Result<Vec<AuditEvent>, StoreError>;
+    /// The rows stamped with `workspace_id` when they were written, newest
+    /// first. Instance-level rows appear only in [`EventStore::list_audit`].
     async fn list_audit_for_workspace(
         &self,
         workspace_id: WorkspaceId,
@@ -2749,7 +2751,9 @@ pub trait DeliveryCursorStore: Send + Sync {
         limit: i64,
     ) -> Result<u64, StoreError>;
 
-    /// Delete up to `limit` oldest audit rows with `occurred_at < cutoff`.
+    /// Delete up to `limit` oldest audit rows with `occurred_at < cutoff`. A
+    /// workspace under legal hold keeps its own rows; instance-level rows
+    /// (no workspace) are never under a hold.
     async fn prune_audit(
         &self,
         cutoff: chrono::DateTime<chrono::Utc>,

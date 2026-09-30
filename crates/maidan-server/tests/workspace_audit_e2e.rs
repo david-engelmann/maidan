@@ -75,8 +75,40 @@ async fn list_workspace_audit_requires_read_and_returns_scoped_rows() {
         .unwrap();
     store
         .append_audit(NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(ws.id),
             actor_id: Some(alice.id),
             action: "operator.action".into(),
+            target_kind: None,
+            target_id: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+    // Two rows the old actor-membership view got wrong: one with no actor,
+    // which it left out, and one alice wrote about another workspace, which it
+    // showed here.
+    store
+        .append_audit(NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(ws.id),
+            actor_id: None,
+            action: "app_token.mint".into(),
+            target_kind: Some("api_token".into()),
+            target_id: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+    let elsewhere = store
+        .create_workspace(NewWorkspace {
+            name: "elsewhere".into(),
+        })
+        .await
+        .unwrap();
+    store
+        .append_audit(NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(elsewhere.id),
+            actor_id: Some(alice.id),
+            action: "elsewhere.action".into(),
             target_kind: None,
             target_id: None,
             metadata: serde_json::json!({}),
@@ -113,8 +145,14 @@ async fn list_workspace_audit_requires_read_and_returns_scoped_rows() {
         .unwrap();
     assert_eq!(ok.status(), StatusCode::OK);
     let body: Vec<serde_json::Value> = ok.json().await.unwrap();
-    assert_eq!(body.len(), 1);
-    assert_eq!(body[0]["action"], "operator.action");
+    let actions: Vec<&str> = body
+        .iter()
+        .filter_map(|row| row["action"].as_str())
+        .collect();
+    assert_eq!(actions, ["app_token.mint", "operator.action"]);
+    assert!(body
+        .iter()
+        .all(|row| row["workspace_id"] == ws.id.0.to_string()));
 
     server.abort();
 }

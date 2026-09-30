@@ -14,7 +14,7 @@ use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability::AUDIT_READ_GLOBAL, hash_secret, TokenSecret};
 use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewApiToken, NewAuditEvent, NewMember, NewWorkspace};
+use maidan_types::{AuditScope, MemberKind, NewApiToken, NewAuditEvent, NewMember, NewWorkspace};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -88,6 +88,7 @@ async fn operator_audit_returns_all_events_with_capability() {
     for action in ["audit.one", "audit.two"] {
         store
             .append_audit(NewAuditEvent {
+                scope: AuditScope::Workspace(ws.id),
                 actor_id: Some(member.id),
                 action: action.into(),
                 target_kind: None,

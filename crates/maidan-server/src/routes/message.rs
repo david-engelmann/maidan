@@ -372,6 +372,7 @@ pub async fn purge_message(
         .purge_message_audited(
             MessageId(id),
             NewAuditEvent {
+                scope: AuditScope::Workspace(chain.workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "message.purge".into(),
                 target_kind: Some("message".into()),

@@ -1045,6 +1045,17 @@ pub async fn dispatch(
     }
 }
 
+/// The workspace a thread belongs to, which an audit row about it is stamped
+/// with. The pre-dispatch gate has already held it to the caller's workspace;
+/// under bypass it can be any.
+pub(super) async fn thread_workspace(
+    store: &dyn maidan_store::Store,
+    thread_id: maidan_types::ThreadId,
+) -> Result<maidan_types::WorkspaceId, McpError> {
+    let thread = store.get_thread(thread_id).await?;
+    Ok(store.get_channel(thread.channel_id).await?.workspace_id)
+}
+
 /// Wrap a JSON payload in MCP's `content[]` envelope. The MCP spec
 /// requires tool results to be an array of content parts; for now we
 /// always return a single `text` part with the JSON-stringified value.

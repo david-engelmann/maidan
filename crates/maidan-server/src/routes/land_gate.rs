@@ -105,12 +105,13 @@ pub async fn clear_land_gate(
 ) -> ApiResult<StatusCode> {
     cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
-    maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    let scope = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     let cleared = state
         .store
         .clear_land_gate_audited(
             thread_id,
             NewAuditEvent {
+                scope: AuditScope::Workspace(scope.workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "land_gate.clear".into(),
                 target_kind: Some("thread".into()),

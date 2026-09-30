@@ -93,6 +93,7 @@ async fn ui_v4_admin_shell_and_session_audit_api() {
         .unwrap();
     store
         .append_audit(NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(ws.id),
             actor_id: Some(alice.id),
             action: "operator.test".into(),
             target_kind: None,

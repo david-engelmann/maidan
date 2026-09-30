@@ -170,6 +170,7 @@ pub async fn exchange_app_code(
                 expires_at: None,
             },
             Box::new(move |record| maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(record.workspace_id),
                 actor_id: None,
                 action: "app_token.mint".into(),
                 target_kind: Some("api_token".into()),

@@ -73,6 +73,7 @@ pub async fn export_workspace(
     state
         .store
         .append_audit(NewAuditEvent {
+            scope: AuditScope::Workspace(workspace_id),
             actor_id: Some(auth.actor_id),
             action: "workspace.export".into(),
             target_kind: Some("workspace".into()),
@@ -174,6 +175,7 @@ pub async fn import_workspace(
             &to_write,
             replace_existing,
             NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "workspace.import".into(),
                 target_kind: Some("workspace".into()),
@@ -433,6 +435,7 @@ pub async fn set_delegation_policy(
             workspace_id,
             body.max_grant_days,
             Box::new(move |policy| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "delegation_policy.set".into(),
                 target_kind: Some("workspace".into()),
@@ -538,6 +541,7 @@ pub async fn replay_quarantined_outbox(
     state
         .store
         .append_audit(NewAuditEvent {
+            scope: AuditScope::Workspace(workspace_id),
             actor_id,
             action: "outbox.replay".into(),
             target_kind: Some("outbox".into()),
@@ -664,6 +668,7 @@ pub async fn purge_workspace(
         .purge_workspace_messages_audited(
             workspace_id,
             Box::new(move |result| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "workspace.purge".into(),
                 target_kind: Some("workspace".into()),
@@ -751,6 +756,7 @@ pub async fn erase_workspace(
         .erase_workspace_audited(
             workspace_id,
             Box::new(move |result| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "workspace.erase".into(),
                 target_kind: Some("workspace".into()),
@@ -792,6 +798,7 @@ pub async fn place_legal_hold(
             reason,
             Some(auth.member_id),
             Box::new(move |hold| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "legal_hold.place".into(),
                 target_kind: Some("legal_hold".into()),
@@ -823,6 +830,7 @@ pub async fn lift_legal_hold(
             workspace_id,
             LegalHoldId(hold_id),
             NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "legal_hold.lift".into(),
                 target_kind: Some("legal_hold".into()),
@@ -872,6 +880,7 @@ pub async fn get_preserved_messages(
         .read_preserved_messages_audited(
             workspace_id,
             NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "legal_hold.preserved_read".into(),
                 target_kind: Some("workspace".into()),

@@ -51,13 +51,14 @@ pub(super) async fn set_review_requirement(
         )
         .is_ok();
     let actor = auth.actor_id;
+    let workspace_id = super::thread_workspace(store.as_ref(), thread_id).await?;
     let (_, req) = store
         .set_review_requirement_audited(
             thread_id,
             a.required_count,
             allow_lower,
             Box::new(move |(from, req)| {
-                let mut event = review_requirement_event(actor, *from, req);
+                let mut event = review_requirement_event(workspace_id, actor, *from, req);
                 event.metadata["surface"] = json!("mcp");
                 event
             }),
@@ -69,11 +70,13 @@ pub(super) async fn set_review_requirement(
 /// The record of a review-requirement write, as REST writes it: a lowering is
 /// the waiver and keeps its own action.
 fn review_requirement_event(
+    workspace_id: maidan_types::WorkspaceId,
     actor: MemberId,
     from: i64,
     req: &maidan_types::ThreadReviewRequirement,
 ) -> maidan_types::NewAuditEvent {
     maidan_types::NewAuditEvent {
+        scope: maidan_types::AuditScope::Workspace(workspace_id),
         actor_id: Some(actor),
         action: if req.required_count < from {
             "review_requirement.lower"

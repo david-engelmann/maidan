@@ -60,11 +60,13 @@ pub(super) async fn add_member_skill(
         }
     }
     if is_governance_skill(&a.skill) {
+        let workspace_id = store.get_member(MemberId(a.member_id)).await?.workspace_id;
         store
             .grant_governance_skill_audited(
                 MemberId(a.member_id),
                 a.skill.trim(),
                 maidan_types::NewAuditEvent {
+                    scope: AuditScope::Workspace(workspace_id),
                     actor_id: Some(auth.actor_id),
                     action: "member_skill.grant_governance".into(),
                     target_kind: Some("member".into()),

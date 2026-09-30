@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Utc};
 use maidan_auth::{hash_secret, AuthContext, ShareTicketSecret};
-use maidan_types::{ChannelId, NewAuditEvent, NewShareTicket, ShareTicketId};
+use maidan_types::{AuditScope, ChannelId, NewAuditEvent, NewShareTicket, ShareTicketId};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -47,6 +47,7 @@ pub(super) async fn create_share_ticket(
                 artifact_shas: a.artifact_shas,
             },
             Box::new(move |ticket| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "share_ticket.create".into(),
                 target_kind: Some("share_ticket".into()),
@@ -102,6 +103,7 @@ pub(super) async fn revoke_share_ticket(
             auth.workspace_id,
             ticket_id,
             NewAuditEvent {
+                scope: AuditScope::Workspace(auth.workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "share_ticket.revoke".into(),
                 target_kind: Some("share_ticket".into()),

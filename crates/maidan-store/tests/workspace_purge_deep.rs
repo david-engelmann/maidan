@@ -144,7 +144,7 @@ async fn deep_purge_removes_messages_embeddings_references_tokens_and_events() {
 }
 
 #[tokio::test]
-async fn list_audit_for_workspace_scopes_to_workspace_actors_and_targets() {
+async fn list_audit_for_workspace_returns_the_rows_stamped_with_it() {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -178,6 +178,7 @@ async fn list_audit_for_workspace_scopes_to_workspace_actors_and_targets() {
         .unwrap();
     store
         .append_audit(NewAuditEvent {
+            scope: AuditScope::Workspace(alice.workspace_id),
             actor_id: Some(alice.id),
             action: "test.a".into(),
             target_kind: None,
@@ -188,6 +189,7 @@ async fn list_audit_for_workspace_scopes_to_workspace_actors_and_targets() {
         .unwrap();
     store
         .append_audit(NewAuditEvent {
+            scope: AuditScope::Workspace(ws_a.id),
             actor_id: None,
             action: "workspace.purge".into(),
             target_kind: Some("workspace".into()),
@@ -198,6 +200,7 @@ async fn list_audit_for_workspace_scopes_to_workspace_actors_and_targets() {
         .unwrap();
     store
         .append_audit(NewAuditEvent {
+            scope: AuditScope::Workspace(ws_b.id),
             actor_id: None,
             action: "other".into(),
             target_kind: Some("workspace".into()),

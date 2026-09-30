@@ -48,6 +48,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("child");
 
     let audit = |t: &maidan_types::ApiToken| NewAuditEvent {
+        scope: maidan_types::AuditScope::Workspace(t.workspace_id),
         actor_id: None,
         action: "token.rotate".into(),
         target_kind: Some("api_token".into()),

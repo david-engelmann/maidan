@@ -1274,8 +1274,8 @@ pub struct ThreadPriority {
     pub set_at: DateTime<Utc>,
 }
 
-/// A legal hold on a workspace. While held, the workspace's event-log rows are
-/// exempt from retention pruning, audit pruning is frozen, workspace
+/// A legal hold on a workspace. While held, the workspace's event-log and audit
+/// rows are exempt from retention pruning, workspace
 /// purge/erase is refused, and a message withdrawn (tombstoned) keeps its words
 /// and earlier versions in [`PreservedMessage`] — evidence is preserved for
 /// litigation. A workspace may be held for several matters at once, one hold
@@ -2390,6 +2390,11 @@ pub struct AuditEvent {
     pub target_kind: Option<String>,
     pub target_id: Option<uuid::Uuid>,
     pub metadata: serde_json::Value,
+    /// The workspace the row belongs to: the one whose audit view shows it and
+    /// whose legal hold keeps it. `None` is an instance-level row, shown only in
+    /// the operator audit and pruned under instance policy.
+    #[serde(default)]
+    pub workspace_id: Option<WorkspaceId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2576,8 +2581,35 @@ pub struct NewOidcPendingAuth {
     pub expires_at: DateTime<Utc>,
 }
 
+/// Which workspace an audit row belongs to. It has no default on purpose: the
+/// row's workspace decides who sees it and which legal hold keeps it, so every
+/// writer states it rather than inheriting a guess.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditScope {
+    Workspace(WorkspaceId),
+    /// Not any one workspace's: an instance-wide operation, or one whose
+    /// workspace is not known when it is recorded.
+    Instance,
+}
+
+impl AuditScope {
+    pub fn workspace_id(self) -> Option<WorkspaceId> {
+        match self {
+            AuditScope::Workspace(ws) => Some(ws),
+            AuditScope::Instance => None,
+        }
+    }
+}
+
+impl From<WorkspaceId> for AuditScope {
+    fn from(ws: WorkspaceId) -> Self {
+        AuditScope::Workspace(ws)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct NewAuditEvent {
+    pub scope: AuditScope,
     pub actor_id: Option<MemberId>,
     pub action: String,
     pub target_kind: Option<String>,
