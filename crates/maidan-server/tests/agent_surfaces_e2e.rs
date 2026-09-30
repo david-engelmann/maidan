@@ -67,6 +67,13 @@ async fn well_known_and_workspace_context_respond() {
     let body: serde_json::Value = well.json().await.unwrap();
     assert!(body.get("mcp").is_some());
     assert!(body.get("agent_card").is_some());
+    // A first-run screen offers only the sign-in paths this server has.
+    assert_eq!(body["auth"]["bearer"], true);
+    assert_eq!(
+        body["auth"]["oidc"], false,
+        "this harness configures no OIDC"
+    );
+    assert!(body["auth"].get("oidc_login").is_none());
 
     let card = client
         .get(format!("{base}/.well-known/agent-card.json"))

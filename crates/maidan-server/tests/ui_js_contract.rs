@@ -969,3 +969,41 @@ fn ui_js_draws_a_channels_threads_once_on_the_board() {
         "a new task is created from the board"
     );
 }
+
+/// A blank page connects from a first-run card, not from paste fields in the
+/// header, and offers an identity provider only when the server's discovery
+/// document says it has one.
+#[test]
+fn ui_js_first_run_offers_only_the_sign_in_paths_the_server_has() {
+    let header = HTML
+        .split("<header>")
+        .nth(1)
+        .and_then(|rest| rest.split("</header>").next())
+        .expect("the header");
+    assert!(
+        !header.contains("id=\"conn-fields\"") && !header.contains("id=\"login\""),
+        "the header starts without the connection inputs"
+    );
+    let first_run = HTML
+        .split("id=\"first-run\"")
+        .nth(1)
+        .and_then(|rest| rest.split("</section>").next())
+        .expect("the first-run card");
+    assert!(
+        first_run.contains("id=\"conn-fields\"") && first_run.contains("id=\"login\""),
+        "the first-run card holds the inputs and the sign-in button"
+    );
+    assert!(
+        first_run.contains("keeps it until you sign out"),
+        "the card says the browser keeps the token"
+    );
+    let s = script(HTML);
+    assert!(
+        s.contains("/.well-known/maidan.json") && s.contains("oidcLoginPath"),
+        "the identity-provider button follows the discovery document"
+    );
+    assert!(
+        s.contains("localStorage.removeItem(tokenKey)"),
+        "Sign out forgets the token"
+    );
+}

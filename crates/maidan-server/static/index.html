@@ -269,6 +269,13 @@
       }
       #identity-pill[hidden] { display: none; }
       #identity-pill .ws-name { color: var(--muted); }
+      #first-run { margin-bottom: 1rem; border-style: solid; }
+      #first-run[hidden] { display: none; }
+      #first-run #conn-fields { margin-bottom: 0.8rem; }
+      #first-run label { display: grid; gap: 0.2rem; color: var(--muted); font-size: 0.75rem; }
+      #first-run input { min-width: 14rem; font-size: 0.85rem; }
+      #first-run .first-run-note { font-size: 0.8rem; }
+      #first-run-oidc[hidden] { display: none; }
       #session-status { font-size: 0.8rem; }
       #session-status[hidden] { display: none; }
       #shell { grid-template-columns: 15.5rem 1fr; min-height: calc(100vh - 3.5rem); }
@@ -524,16 +531,10 @@
         <span id="identity-ws" class="ws-name"></span>
         <button id="conn-edit" type="button" class="ghost" title="Change API base, workspace or token">Change</button>
       </span>
-      <div id="conn-fields">
-        <label>API base <input id="base" /></label>
-        <label>Workspace <input id="workspace" /></label>
-        <label>Token <input id="token" type="password" /></label>
-      </div>
       <button id="palette-open" type="button" class="ghost" title="Jump to a task or channel, or run an action">Search or jump… <span class="kbd mod-k">⌘K</span></button>
       <button id="connect-open" type="button" class="ghost" data-open-connect>Connect an agent</button>
-      <button id="login" type="button">OIDC</button>
       <button id="mint" type="button" hidden>Mint admin</button>
-      <button id="logout" type="button" hidden>Out</button>
+      <button id="logout" type="button" hidden>Sign out</button>
     </header>
     <p id="session-status" class="muted" style="margin: 0.25rem 1rem">Checking session…</p>
     <div id="mint-banner" role="status" style="margin: 0 1rem">
@@ -622,6 +623,19 @@
           <ul id="needs-you-list" aria-live="polite"></ul>
         </section>
         <section id="board-panel" aria-labelledby="board-title">
+          <section class="onboard" id="first-run" aria-labelledby="first-run-title">
+            <h3 id="first-run-title">Connect this browser</h3>
+            <p>Say which server and workspace, then sign in. Once you are in, these fields fold into the header, behind Change.</p>
+            <div id="first-run-fields">
+              <div id="conn-fields">
+                <label>API base <input id="base" /></label>
+                <label>Workspace <input id="workspace" /></label>
+                <label>Token <input id="token" type="password" autocomplete="off" title="This browser keeps the token until you sign out" /></label>
+              </div>
+            </div>
+            <p class="first-run-note">A token comes from <code>maidan init</code> on the server, or from an admin in Tokens. This browser keeps it until you sign out, so use your own device.</p>
+            <div class="row" id="first-run-oidc" hidden><button id="login" type="button" class="primary">Sign in with your identity provider</button> <span>or paste a token</span></div>
+          </section>
           <div id="board-head">
             <h2 id="board-title">Board</h2>
             <div id="board-summary" aria-live="polite"></div>
@@ -635,7 +649,7 @@
             <h3>One board for your agents and you</h3>
             <p>Agents claim tasks, report results and hand them to review. You watch the board move and approve what they hand you.</p>
             <ol>
-              <li><b>You:</b> sign in above with OIDC or a token, then pick a channel.</li>
+              <li><b>You:</b> connect this browser, then pick a channel.</li>
               <li><b>Your agents:</b> connect over MCP and take work with <code>claim_next_thread</code>.</li>
             </ol>
             <div class="row"><button type="button" class="primary" data-open-connect>Connect an agent</button> <span>or press <span class="kbd mod-k">⌘K</span> to jump anywhere</span></div>
@@ -1152,6 +1166,7 @@
       document.getElementById("workspace").value = localStorage.getItem(wsKey) || "";
 
       let sessionMemberId = null;
+      let oidcLoginPath = null;
       let bearerMemberId = null;
       let wsSocket = null;
       let wsAfterId = 0;
@@ -4281,23 +4296,20 @@
         try {
           const res = await fetch(`${base()}/auth/session`, { credentials: "include" });
           if (!res.ok) {
-            el.textContent = "Not signed in — use OIDC or paste a bearer token for WS live tail.";
+            el.hidden = true;
             sessionMemberId = null;
-            document.getElementById("login").hidden = false;
-            document.getElementById("logout").hidden = true;
             document.getElementById("mint").hidden = true;
             return null;
           }
           const body = await res.json();
           sessionMemberId = body.member_id;
+          el.hidden = false;
           el.textContent = `Signed in · ${body.member_id}`;
           el.className = "ok";
           if (!wid()) document.getElementById("workspace").value = body.workspace_id;
           if (!document.getElementById("token-member").value) {
             document.getElementById("token-member").value = body.member_id;
           }
-          document.getElementById("login").hidden = true;
-          document.getElementById("logout").hidden = false;
           document.getElementById("mint").hidden = false;
           return body;
         } catch (e) {
@@ -4633,13 +4645,39 @@
         };
       }
 
+      // The discovery document says which sign-in paths this server has, so the
+      // first-run card never offers an identity provider that is not there.
+      async function loadServerAuth() {
+        oidcLoginPath = null;
+        try {
+          const res = await fetch(`${base()}/.well-known/maidan.json`);
+          if (res.ok) {
+            const auth = (await res.json()).auth;
+            if (auth && auth.oidc && auth.oidc_login) oidcLoginPath = auth.oidc_login;
+          }
+        } catch (_e) {
+          /* no discovery document: a token is the only path offered */
+        }
+        document.getElementById("first-run-oidc").hidden = !oidcLoginPath;
+      }
+      baseInput.addEventListener("change", loadServerAuth);
       document.getElementById("login").onclick = () => {
-        if (!wid()) return showError("Enter workspace ID first.");
+        if (!oidcLoginPath) return;
+        if (!wid()) return showError("Enter the workspace ID first.");
         persist();
         window.location.href =
-          `${base()}/auth/oidc/login?workspace_id=${encodeURIComponent(wid())}&return_to=/ui/`;
+          `${base()}${oidcLoginPath}?workspace_id=${encodeURIComponent(wid())}&return_to=/ui/`;
       };
+      // Signing out forgets the token too: the first-run card promises the
+      // browser keeps it only until then.
       document.getElementById("logout").onclick = () => {
+        localStorage.removeItem(tokenKey);
+        localStorage.removeItem(wsResumeKey);
+        document.getElementById("token").value = "";
+        if (!sessionMemberId) {
+          window.location.reload();
+          return;
+        }
         const form = document.createElement("form");
         form.method = "POST";
         form.action = `${base()}/auth/logout`;
@@ -5241,6 +5279,7 @@
         const status = document.getElementById("session-status");
         if (!token()) {
           bearerMemberId = null;
+          showConnection(false);
           return;
         }
         let res = null;
@@ -5275,13 +5314,21 @@
       document.getElementById("live-toggle").onclick = () => toggleLiveFeed();
       document.getElementById("conn-edit").onclick = () => showConnection(true);
 
-      // Connection chrome. A browser that already holds a working credential
-      // (stored token or a signed-in session) collapses the three inputs into
-      // one "who am I, where am I" pill; "Change" brings them back.
+      // Connection chrome. Until this browser holds a working credential (a
+      // stored token or a signed-in session) the three inputs sit in the
+      // board's first-run card; after, they fold into one "who am I, where am
+      // I" pill in the header, and "Change" opens them there. The inputs move
+      // rather than being copied, so there is one value of each.
       function showConnection(editing) {
-        document.getElementById("conn-fields").hidden = !editing;
-        document.getElementById("identity-pill").hidden = editing;
-        if (!sessionMemberId) document.getElementById("login").hidden = !editing;
+        const connected = !!authorId();
+        const fields = document.getElementById("conn-fields");
+        const pill = document.getElementById("identity-pill");
+        if (connected) pill.after(fields);
+        else document.getElementById("first-run-fields").append(fields);
+        document.getElementById("first-run").hidden = connected;
+        fields.hidden = connected && !editing;
+        pill.hidden = !connected || editing;
+        document.getElementById("logout").hidden = !connected;
       }
       async function renderIdentity(memberId) {
         const who = document.getElementById("identity-who");
@@ -5302,19 +5349,23 @@
 
       async function start() {
         setAttention(0);
-        const hadStored = !!(localStorage.getItem(tokenKey) && localStorage.getItem(wsKey));
+        await loadServerAuth();
         await refreshSession();
-        const identity = await refreshBearerIdentity();
+        await refreshBearerIdentity();
         await loadChannels();
         const me = authorId();
-        if (me && (hadStored || sessionMemberId)) {
+        if (me) {
           await renderIdentity(me);
-          if (identity || sessionMemberId) {
-            showConnection(false);
-            connectWs();
-            loadNeedsYou();
-          }
+          connectWs();
+          loadNeedsYou();
+        } else if (token()) {
+          const status = document.getElementById("session-status");
+          status.hidden = false;
+          status.className = "err";
+          status.textContent =
+            "The token saved in this browser did not sign in: it may have expired or been revoked. Paste a new one, or sign in another way.";
         }
+        showConnection(false);
       }
       start();
     </script>

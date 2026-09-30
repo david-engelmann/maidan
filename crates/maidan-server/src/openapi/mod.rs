@@ -14,7 +14,7 @@ use utoipa::{Modify, OpenApi};
 
 use crate::dto::*;
 use crate::error::ProblemDetails;
-use crate::federation::{IngestSummary, WellKnownA2a, WellKnownMaidan};
+use crate::federation::{IngestSummary, WellKnownA2a, WellKnownAuth, WellKnownMaidan};
 use crate::health::{HealthResponse, SubsystemStatus};
 use crate::land_gate_advisor::{
     LandGateAdvice, LandGateAdviceRequest, LandGateAdviceThresholds, LandGateAdviceUsage,
@@ -894,6 +894,7 @@ fn requires_credential(op: &Operation) -> bool {
         MintFsmHookResponse,
         WellKnownMaidan,
         WellKnownA2a,
+        WellKnownAuth,
         IngestSummary,
         SessionResponse,
     )),

@@ -228,6 +228,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   new task is added from the board header, and the badge legend sits under the
   board. The sidebar lists channels.
 
+### A blank `/ui` walks you to a connected board
+
+- **Added:** a browser with no working credential opens on a first-run card
+  on the board: API base, workspace and token, where a token comes from
+  (`maidan init`, or an admin), and that this browser keeps it until you sign
+  out. "Sign in with your identity provider" appears only when the server has
+  one, which `/.well-known/maidan.json` now says in a new `auth` block
+  (`bearer`, `oidc`, and `oidc_login` when OIDC is on). Once a token or session
+  works, the inputs fold into the header behind Change, as before.
+- **Changed:** "Out" is now "Sign out", it is offered to a token as well as to
+  a session, and it forgets the stored token; before, a pasted token stayed in
+  `localStorage` with no way to remove it but clearing the field. A saved token
+  the server no longer accepts says so instead of leaving the page half signed
+  in.
+
 ### NOTIFY floor simulation
 
 - **Added:** a seeded deterministic simulation of the Postgres listener's
