@@ -8,16 +8,21 @@
 //! well-vetted synchronous stack ([`ureq`] for REST over rustls, [`tungstenite`] for
 //! the WebSocket). That's the one place the four SDKs diverge from "stdlib only".
 //!
+//! Responses are the typed models in [`models`] (re-exported at the root), and
+//! a failure is the [`MaidanError`] variant its RFC 9457 problem `type` names.
+//!
 //! ```no_run
-//! use maidan::Client;
+//! use maidan::{Client, MaidanError};
 //! use serde_json::json;
-//! # fn main() -> Result<(), maidan::MaidanError> {
+//! # fn main() -> Result<(), MaidanError> {
 //! let client = Client::new("http://127.0.0.1:8080", "");
-//! let res = client.claim_next_thread("channel-id", json!({}))?;
-//! if !res.is_null() {
-//!     let tid = res["id"].as_str().unwrap();
-//!     client.messages().post(tid, "on it")?;
-//!     client.threads().set_result(tid, json!({"ok": true}))?;
+//! if let Some(claim) = client.claim_next_thread("channel-id", None)? {
+//!     client.messages().post(&claim.id, "on it")?;
+//!     client.threads().set_result(&claim.id, json!({"ok": true}))?;
+//! }
+//! match client.threads().get("no-such-thread") {
+//!     Err(MaidanError::NotFound(problem)) => eprintln!("gone: {:?}", problem.detail),
+//!     other => drop(other),
 //! }
 //! # Ok(())
 //! # }
@@ -30,9 +35,14 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
+mod error;
+pub mod models;
 mod subscribe;
+pub use error::{MaidanError, Problem, PROBLEM_BASE, PROBLEM_TYPES};
+pub use models::*;
 pub use subscribe::{Follow, Subscription};
 
 /// The client version, tracked independently of the server.
@@ -59,56 +69,6 @@ pub fn event_type(kind: &str) -> String {
 
 /// A convenient result alias.
 pub type Result<T> = std::result::Result<T, MaidanError>;
-
-/// A failed request. Carries the HTTP status and the server's parsed body.
-/// `status == 0` denotes a transport/non-HTTP error.
-#[derive(Debug, Clone)]
-pub struct MaidanError {
-    pub status: u16,
-    pub body: Option<Value>,
-    /// Seconds from `Retry-After` on a 429 (server rate limit).
-    pub retry_after: Option<f64>,
-    pub message: String,
-}
-
-impl MaidanError {
-    fn transport(msg: impl Into<String>) -> Self {
-        Self {
-            status: 0,
-            body: None,
-            retry_after: None,
-            message: msg.into(),
-        }
-    }
-    /// A 409.
-    pub fn is_conflict(&self) -> bool {
-        self.status == 409
-    }
-    /// A 409 `must_refetch` / `cursor-too-old` — fail loud, never clamp the cursor.
-    pub fn is_cursor_too_old(&self) -> bool {
-        cursor_too_old_body(self.status, self.body.as_ref())
-    }
-    /// A 403 (missing capability / channel access — not retryable).
-    pub fn is_forbidden(&self) -> bool {
-        self.status == 403
-    }
-    /// A 429 (server rate limit).
-    pub fn is_rate_limited(&self) -> bool {
-        self.status == 429
-    }
-    /// A transport/non-HTTP error (no status).
-    pub fn is_transport(&self) -> bool {
-        self.status == 0
-    }
-}
-
-impl std::fmt::Display for MaidanError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for MaidanError {}
 
 const IN_FLIGHT_TYPE: &str = "https://maidan.dev/problems/idempotency-key-in-flight";
 
@@ -263,8 +223,12 @@ impl Client {
     /// `GET /workspaces/{id}/events` — projector-shaped HTTP backfill.
     /// Query keys: `after_id`, `limit`, `channel_id`, `thread_id`, `types`,
     /// `consumer_id`. A pruned-gap cursor is 409 [`MaidanError::is_cursor_too_old`].
-    pub fn list_events(&self, workspace_id: &str, query: &[(&str, &str)]) -> Result<Value> {
-        self.send(
+    pub fn list_events(
+        &self,
+        workspace_id: &str,
+        query: &[(&str, &str)],
+    ) -> Result<Vec<StoredEvent>> {
+        self.send_as(
             "GET",
             &format!("/workspaces/{workspace_id}/events{}", qs(query)),
             None,
@@ -295,10 +259,19 @@ impl Client {
         Artifacts { c: self }
     }
 
-    /// The hero: readiness/skill/lease-aware claim of the next thread in a channel.
-    /// Returns `Value::Null` when nothing is claimable.
-    pub fn claim_next_thread(&self, channel_id: &str, body: Value) -> Result<Value> {
-        self.send(
+    /// The hero: readiness/skill/lease-aware claim of the next thread in a
+    /// channel, with an optional lease length in seconds. `Ok(None)` when
+    /// nothing is claimable.
+    pub fn claim_next_thread(
+        &self,
+        channel_id: &str,
+        lease_secs: Option<i64>,
+    ) -> Result<Option<ClaimedThread>> {
+        let body = match lease_secs {
+            Some(secs) => json!({ "lease_secs": secs }),
+            None => json!({}),
+        };
+        self.send_as(
             "POST",
             &format!("/channels/{channel_id}/threads/claim-next"),
             Some(&body),
@@ -311,8 +284,8 @@ impl Client {
         thread_id: &str,
         claim_lease_id: &str,
         lease_secs: i64,
-    ) -> Result<Value> {
-        self.send(
+    ) -> Result<Thread> {
+        self.send_as(
             "POST",
             &format!("/threads/{thread_id}/claim/renew"),
             Some(&json!({
@@ -375,23 +348,30 @@ impl Client {
         }
     }
 
-    fn json_answer(answer: Answer) -> Result<Value> {
+    fn decode<T: DeserializeOwned>(answer: Answer) -> Result<T> {
         if answer.status >= 400 {
             return Err(api_error(answer));
         }
-        if answer.status == 204 || answer.raw.is_empty() {
-            return Ok(Value::Null);
-        }
-        serde_json::from_slice(&answer.raw).map_err(|e| MaidanError::transport(e.to_string()))
+        let raw: &[u8] = if answer.status == 204 || answer.raw.is_empty() {
+            b"null"
+        } else {
+            &answer.raw
+        };
+        serde_json::from_slice(raw).map_err(|e| MaidanError::Decode(e.to_string()))
     }
 
-    fn send(&self, method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
+    fn send_as<T: DeserializeOwned>(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<T> {
         let payload = body.map_or(Payload::None, Payload::Json);
-        Self::json_answer(self.exchange(method, path, payload)?)
+        Self::decode(self.exchange(method, path, payload)?)
     }
 
-    fn send_bytes(&self, path: &str, data: &[u8]) -> Result<Value> {
-        Self::json_answer(self.exchange("POST", path, Payload::Bytes(data))?)
+    fn send_bytes<T: DeserializeOwned>(&self, path: &str, data: &[u8]) -> Result<T> {
+        Self::decode(self.exchange("POST", path, Payload::Bytes(data))?)
     }
 
     fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
@@ -408,7 +388,7 @@ impl Client {
         &'a self,
         workspace_id: &'a str,
         query: &[(&str, &str)],
-    ) -> impl Iterator<Item = Result<Value>> + 'a {
+    ) -> impl Iterator<Item = Result<StoredEvent>> + 'a {
         let owned: Vec<(String, String)> = query
             .iter()
             .filter(|(k, _)| *k != "after_id" && *k != "limit")
@@ -429,11 +409,9 @@ impl Client {
                 .collect();
             q.push(("after_id", &after_s));
             q.push(("limit", &limit_s));
-            let page = page_of(self.list_events(workspace_id, &q)?);
-            for row in &page {
-                if let Some(id) = row.get("id").and_then(Value::as_i64) {
-                    after = after.max(id);
-                }
+            let page = self.list_events(workspace_id, &q)?;
+            if let Some(last) = page.iter().map(|row| row.id).max() {
+                after = after.max(last);
             }
             let done = page.len() < limit;
             Ok((page, done))
@@ -445,43 +423,20 @@ impl Client {
     }
 }
 
-pub(crate) fn cursor_too_old_body(status: u16, body: Option<&Value>) -> bool {
-    if status != 409 {
-        return false;
-    }
-    let Some(body) = body else {
-        return false;
-    };
-    if body.get("must_refetch").and_then(Value::as_bool) == Some(true) {
-        return true;
-    }
-    matches!(
-        body.get("type").and_then(Value::as_str),
-        Some("https://maidan.dev/problems/cursor-too-old" | "cursor_too_old")
-    )
-}
-
 fn unit() -> f64 {
     (random_u64() >> 11) as f64 / (1u64 << 53) as f64
-}
-
-fn page_of(v: Value) -> Vec<Value> {
-    match v {
-        Value::Array(rows) => rows,
-        _ => Vec::new(),
-    }
 }
 
 /// An iterator over items fetched a page at a time by `fetch`, which returns
 /// the page and whether it was the last. An error ends the iteration after
 /// it is yielded.
-struct Pager<F> {
+struct Pager<T, F> {
     fetch: F,
-    buf: std::collections::VecDeque<Value>,
+    buf: std::collections::VecDeque<T>,
     done: bool,
 }
 
-impl<F> Pager<F> {
+impl<T, F> Pager<T, F> {
     fn new(fetch: F) -> Self {
         Self {
             fetch,
@@ -491,8 +446,8 @@ impl<F> Pager<F> {
     }
 }
 
-impl<F: FnMut() -> Result<(Vec<Value>, bool)>> Iterator for Pager<F> {
-    type Item = Result<Value>;
+impl<T, F: FnMut() -> Result<(Vec<T>, bool)>> Iterator for Pager<T, F> {
+    type Item = Result<T>;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(v) = self.buf.pop_front() {
@@ -516,19 +471,10 @@ impl<F: FnMut() -> Result<(Vec<Value>, bool)>> Iterator for Pager<F> {
 }
 
 fn api_error(answer: Answer) -> MaidanError {
-    let code = answer.status;
-    let retry_after = if code == 429 {
-        answer.retry_after.and_then(|s| s.parse::<f64>().ok())
-    } else {
-        None
-    };
-    let body = serde_json::from_slice::<Value>(&answer.raw).ok();
-    MaidanError {
-        status: code,
-        body,
-        retry_after,
-        message: format!("maidan: request failed: HTTP {code}"),
-    }
+    let retry_after = answer
+        .retry_after
+        .and_then(|s| s.trim().parse::<f64>().ok());
+    MaidanError::from_response(answer.status, &answer.raw, retry_after)
 }
 
 fn qs(query: &[(&str, &str)]) -> String {
@@ -567,20 +513,22 @@ pub struct Workspaces<'a> {
     c: &'a Client,
 }
 impl Workspaces<'_> {
-    pub fn create(&self, name: &str) -> Result<Value> {
+    pub fn create(&self, name: &str) -> Result<Workspace> {
         self.c
-            .send("POST", "/workspaces", Some(&json!({ "name": name })))
+            .send_as("POST", "/workspaces", Some(&json!({ "name": name })))
     }
-    pub fn get(&self, id: &str) -> Result<Value> {
-        self.c.send("GET", &format!("/workspaces/{id}"), None)
+    pub fn get(&self, id: &str) -> Result<Workspace> {
+        self.c.send_as("GET", &format!("/workspaces/{id}"), None)
     }
-    /// Admin-only (`token:admin`). `mode` is e.g. `Some("restore")`.
-    pub fn import(&self, bundle: &Value, mode: Option<&str>) -> Result<Value> {
+    /// Admin-only (`token:admin`). `bundle` is a signed
+    /// `maidan.workspace.export/1` envelope; `mode` `None` is the server's
+    /// default ([`ImportMode::New`]).
+    pub fn import(&self, bundle: &Value, mode: Option<ImportMode>) -> Result<ImportResult> {
         let path = match mode {
-            Some(m) => format!("/workspaces/import?mode={}", encode(m)),
+            Some(m) => format!("/workspaces/import?mode={}", encode(m.as_str())),
             None => "/workspaces/import".to_string(),
         };
-        self.c.send("POST", &path, Some(bundle))
+        self.c.send_as("POST", &path, Some(bundle))
     }
 }
 
@@ -591,28 +539,27 @@ pub struct Members<'a> {
 }
 
 impl Members<'_> {
-    /// `kind` is `"agent"` or `"human"`.
     pub fn create(
         &self,
         workspace_id: &str,
         handle: &str,
-        kind: &str,
+        kind: MemberKind,
         display_name: Option<&str>,
-    ) -> Result<Value> {
+    ) -> Result<Member> {
         let mut body = json!({ "handle": handle, "kind": kind });
         if let Some(name) = display_name {
             body["display_name"] = json!(name);
         }
-        self.c.send(
+        self.c.send_as(
             "POST",
             &format!("/workspaces/{workspace_id}/members"),
             Some(&body),
         )
     }
 
-    pub fn list(&self, workspace_id: &str) -> Result<Value> {
+    pub fn list(&self, workspace_id: &str) -> Result<Vec<Member>> {
         self.c
-            .send("GET", &format!("/workspaces/{workspace_id}/members"), None)
+            .send_as("GET", &format!("/workspaces/{workspace_id}/members"), None)
     }
 }
 
@@ -641,7 +588,7 @@ impl Tokens<'_> {
         member_id: &str,
         capabilities: &[&str],
         opts: &MintOptions<'_>,
-    ) -> Result<Value> {
+    ) -> Result<MintedToken> {
         let mut body = json!({ "capabilities": capabilities });
         if let Some(label) = opts.label {
             body["label"] = json!(label);
@@ -652,7 +599,7 @@ impl Tokens<'_> {
         if let Some(expires) = opts.expires_at {
             body["expires_at"] = json!(expires);
         }
-        self.c.send(
+        self.c.send_as(
             "POST",
             &format!("/workspaces/{workspace_id}/members/{member_id}/tokens"),
             Some(&body),
@@ -660,8 +607,8 @@ impl Tokens<'_> {
     }
 
     /// Token metadata only — never a secret.
-    pub fn list(&self, workspace_id: &str, member_id: &str) -> Result<Value> {
-        self.c.send(
+    pub fn list(&self, workspace_id: &str, member_id: &str) -> Result<Vec<TokenSummary>> {
+        self.c.send_as(
             "GET",
             &format!("/workspaces/{workspace_id}/members/{member_id}/tokens"),
             None,
@@ -675,12 +622,12 @@ pub struct Channels<'a> {
     c: &'a Client,
 }
 impl Channels<'_> {
-    pub fn list(&self, workspace_id: &str) -> Result<Value> {
+    pub fn list(&self, workspace_id: &str) -> Result<Vec<Channel>> {
         self.c
-            .send("GET", &format!("/workspaces/{workspace_id}/channels"), None)
+            .send_as("GET", &format!("/workspaces/{workspace_id}/channels"), None)
     }
-    pub fn create(&self, workspace_id: &str, name: &str, private: bool) -> Result<Value> {
-        self.c.send(
+    pub fn create(&self, workspace_id: &str, name: &str, private: bool) -> Result<Channel> {
+        self.c.send_as(
             "POST",
             &format!("/workspaces/{workspace_id}/channels"),
             Some(&json!({ "name": name, "private": private })),
@@ -694,19 +641,19 @@ pub struct Threads<'a> {
     c: &'a Client,
 }
 impl Threads<'_> {
-    pub fn create(&self, channel_id: &str, title: &str) -> Result<Value> {
-        self.c.send(
+    pub fn create(&self, channel_id: &str, title: &str) -> Result<Thread> {
+        self.c.send_as(
             "POST",
             &format!("/channels/{channel_id}/threads"),
             Some(&json!({ "title": title })),
         )
     }
-    pub fn get(&self, id: &str) -> Result<Value> {
-        self.c.send("GET", &format!("/threads/{id}"), None)
+    pub fn get(&self, id: &str) -> Result<Thread> {
+        self.c.send_as("GET", &format!("/threads/{id}"), None)
     }
     /// `GET /channels/{cid}/threads` — one page (`limit`, `cursor` = last thread id).
-    pub fn list(&self, channel_id: &str, query: &[(&str, &str)]) -> Result<Value> {
-        self.c.send(
+    pub fn list(&self, channel_id: &str, query: &[(&str, &str)]) -> Result<Vec<Thread>> {
+        self.c.send_as(
             "GET",
             &format!("/channels/{channel_id}/threads{}", qs(query)),
             None,
@@ -718,7 +665,7 @@ impl Threads<'_> {
         &self,
         channel_id: &str,
         page_size: usize,
-    ) -> impl Iterator<Item = Result<Value>> + '_ {
+    ) -> impl Iterator<Item = Result<Thread>> + '_ {
         let page_size = if page_size == 0 { 100 } else { page_size };
         let channel_id = channel_id.to_string();
         let c = self.c;
@@ -729,32 +676,34 @@ impl Threads<'_> {
             if let Some(cur) = &cursor {
                 q.push(("cursor", cur.as_str()));
             }
-            let page = page_of(c.threads().list(&channel_id, &q)?);
-            cursor = page
-                .last()
-                .and_then(|t| t.get("id"))
-                .and_then(Value::as_str)
-                .map(str::to_string);
+            let page = c.threads().list(&channel_id, &q)?;
+            cursor = page.last().map(|t| t.id.clone());
             let done = page.len() < page_size;
             Ok((page, done))
         })
     }
-    pub fn context(&self, id: &str, query: &[(&str, &str)]) -> Result<Value> {
+    pub fn context(&self, id: &str, query: &[(&str, &str)]) -> Result<ThreadContext> {
         self.c
-            .send("GET", &format!("/threads/{id}/context{}", qs(query)), None)
+            .send_as("GET", &format!("/threads/{id}/context{}", qs(query)), None)
     }
-    pub fn transition(&self, id: &str, body: Value) -> Result<Value> {
-        self.c.send("POST", &format!("/threads/{id}"), Some(&body))
+    /// Move the thread's FSM: `action` is `start_review`, `close` or `archive`.
+    pub fn transition(&self, id: &str, action: &str) -> Result<Thread> {
+        self.c.send_as(
+            "POST",
+            &format!("/threads/{id}"),
+            Some(&json!({ "action": action })),
+        )
     }
-    pub fn set_result(&self, id: &str, result: Value) -> Result<Value> {
-        self.c.send(
+    pub fn set_result(&self, id: &str, result: Value) -> Result<ThreadResult> {
+        self.c.send_as(
             "PUT",
             &format!("/threads/{id}/result"),
             Some(&json!({ "result": result })),
         )
     }
-    pub fn get_result(&self, id: &str) -> Result<Value> {
-        self.c.send("GET", &format!("/threads/{id}/result"), None)
+    pub fn get_result(&self, id: &str) -> Result<ThreadResult> {
+        self.c
+            .send_as("GET", &format!("/threads/{id}/result"), None)
     }
 }
 
@@ -764,15 +713,15 @@ pub struct Messages<'a> {
     c: &'a Client,
 }
 impl Messages<'_> {
-    pub fn list(&self, thread_id: &str, query: &[(&str, &str)]) -> Result<Value> {
-        self.c.send(
+    pub fn list(&self, thread_id: &str, query: &[(&str, &str)]) -> Result<Vec<Message>> {
+        self.c.send_as(
             "GET",
             &format!("/threads/{thread_id}/messages{}", qs(query)),
             None,
         )
     }
-    pub fn post(&self, thread_id: &str, body: &str) -> Result<Value> {
-        self.c.send(
+    pub fn post(&self, thread_id: &str, body: &str) -> Result<Message> {
+        self.c.send_as(
             "POST",
             &format!("/threads/{thread_id}/messages"),
             Some(&json!({ "body": body })),
@@ -786,15 +735,16 @@ pub struct Artifacts<'a> {
     c: &'a Client,
 }
 impl Artifacts<'_> {
-    pub fn upload(&self, data: &[u8], kind: &str) -> Result<Value> {
+    pub fn upload(&self, data: &[u8], kind: ArtifactKind) -> Result<Artifact> {
         self.c
-            .send_bytes(&format!("/artifacts?kind={}", encode(kind)), data)
+            .send_bytes(&format!("/artifacts?kind={}", encode(kind.as_str())), data)
     }
     pub fn get(&self, sha: &str) -> Result<Vec<u8>> {
         self.c.get_bytes(&format!("/artifacts/{sha}"))
     }
-    pub fn meta(&self, sha: &str) -> Result<Value> {
-        self.c.send("GET", &format!("/artifacts/{sha}/meta"), None)
+    pub fn meta(&self, sha: &str) -> Result<Artifact> {
+        self.c
+            .send_as("GET", &format!("/artifacts/{sha}/meta"), None)
     }
 }
 
@@ -803,12 +753,7 @@ mod tests {
     use super::*;
 
     fn err(status: u16, body: Value) -> MaidanError {
-        MaidanError {
-            status,
-            body: Some(body),
-            retry_after: None,
-            message: "test".into(),
-        }
+        MaidanError::from_response(status, body.to_string().as_bytes(), None)
     }
 
     #[test]
@@ -817,11 +762,16 @@ mod tests {
             409,
             json!({
                 "type": "https://maidan.dev/problems/cursor-too-old",
-                "must_refetch": true
+                "must_refetch": true,
+                "snapshot": "/workspaces/w/snapshot"
             }),
         );
         assert!(too_old.is_conflict());
         assert!(too_old.is_cursor_too_old());
+        let MaidanError::CursorTooOld(problem) = &too_old else {
+            panic!("expected CursorTooOld, got {too_old:?}");
+        };
+        assert_eq!(problem.snapshot(), Some("/workspaces/w/snapshot"));
 
         let by_type_only = err(
             409,

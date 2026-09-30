@@ -47,48 +47,11 @@ func EventType(kind string) string {
 	return "maidan.event." + kind + "/1"
 }
 
-// M is a decoded JSON object. Responses are returned as M (or []M) so unknown
-// fields are preserved and ignored (forward-compat), per the contract.
+// M is a JSON object: a request body, a subscribe filter, or an event frame.
 type M = map[string]any
 
 // Event is a bus event frame delivered to a Subscribe callback.
 type Event = map[string]any
-
-// APIError is a failed request: it carries the HTTP status and the parsed body.
-type APIError struct {
-	Status     int
-	Body       any
-	RetryAfter float64 // seconds, from Retry-After on a 429
-}
-
-func (e *APIError) Error() string {
-	return fmt.Sprintf("maidan: request failed: HTTP %d", e.Status)
-}
-
-// IsConflict reports a 409.
-func (e *APIError) IsConflict() bool { return e.Status == 409 }
-
-// IsCursorTooOld reports a 409 must_refetch / cursor-too-old — fail loud, never clamp.
-func (e *APIError) IsCursorTooOld() bool {
-	if e.Status != 409 {
-		return false
-	}
-	m, ok := e.Body.(map[string]any)
-	if !ok {
-		return false
-	}
-	if v, ok := m["must_refetch"].(bool); ok && v {
-		return true
-	}
-	t, _ := m["type"].(string)
-	return t == "https://maidan.dev/problems/cursor-too-old" || t == "cursor_too_old"
-}
-
-// IsForbidden reports a 403 (missing capability / channel access — not retryable).
-func (e *APIError) IsForbidden() bool { return e.Status == 403 }
-
-// IsRateLimited reports a 429 (server rate limit).
-func (e *APIError) IsRateLimited() bool { return e.Status == 429 }
 
 // Client is a Maidan v1 client over REST + WebSocket.
 type Client struct {
@@ -150,7 +113,7 @@ func New(baseURL, token string) *Client {
 	return c
 }
 
-const inFlightType = "https://maidan.dev/problems/idempotency-key-in-flight"
+const inFlightType = ProblemBase + "idempotency-key-in-flight"
 
 // NewIdempotencyKey returns a fresh Idempotency-Key (a random UUID): one per
 // logical write, reused by its retries.
@@ -291,60 +254,31 @@ func (c *Client) captureRoomLSN(h http.Header) {
 	}
 }
 
-func apiError(resp *http.Response, raw []byte) *APIError {
-	var parsed any
-	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &parsed); err != nil {
-			parsed = string(raw)
-		}
-	}
-	e := &APIError{Status: resp.StatusCode, Body: parsed}
-	if resp.StatusCode == http.StatusTooManyRequests {
-		if ra := resp.Header.Get("Retry-After"); ra != "" {
-			if f, err := strconv.ParseFloat(ra, 64); err == nil {
-				e.RetryAfter = f
-			}
-		}
-	}
-	return e
-}
+// decodeJSON decodes a response body. The black-box tests swap in a decoder
+// that refuses members a model does not declare, which is how they prove the
+// models match what the live server returns.
+var decodeJSON = json.Unmarshal
 
-func decodeObj(raw json.RawMessage) (M, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	var m M
-	if err := json.Unmarshal(raw, &m); err != nil {
+// call sends a JSON request and decodes the answer into a T; nil when the
+// server answered 204, an empty body, or JSON null (claim-next with no work).
+func call[T any](c *Client, method, path string, body any) (*T, error) {
+	raw, err := c.do(method, path, body)
+	if err != nil || raw == nil || string(bytes.TrimSpace(raw)) == "null" {
 		return nil, err
 	}
-	return m, nil
+	var v T
+	if err := decodeJSON(raw, &v); err != nil {
+		return nil, fmt.Errorf("maidan: decoding %s %s: %w", method, path, err)
+	}
+	return &v, nil
 }
 
-func decodeArr(raw json.RawMessage) ([]M, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	var a []M
-	if err := json.Unmarshal(raw, &a); err != nil {
+func callList[T any](c *Client, path string) ([]T, error) {
+	rows, err := call[[]T](c, http.MethodGet, path, nil)
+	if err != nil || rows == nil {
 		return nil, err
 	}
-	return a, nil
-}
-
-func (c *Client) getObj(path string) (M, error) {
-	raw, err := c.do(http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeObj(raw)
-}
-
-func (c *Client) postObj(path string, body any) (M, error) {
-	raw, err := c.do(http.MethodPost, path, body)
-	if err != nil {
-		return nil, err
-	}
-	return decodeObj(raw)
+	return *rows, nil
 }
 
 // --- Workspaces ---
@@ -354,24 +288,21 @@ func (c *Client) postObj(path string, body any) (M, error) {
 // it off and provisions through `maidan init` plus TokensService.
 type MembersService struct{ c *Client }
 
-// Create adds a member. kind is "agent" or "human"; displayName may be empty.
-func (s *MembersService) Create(workspaceID, handle, kind, displayName string) (M, error) {
+// Create adds a member. kind is MemberAgent (the default when empty) or
+// MemberHuman; displayName may be empty.
+func (s *MembersService) Create(workspaceID, handle string, kind MemberKind, displayName string) (*Member, error) {
 	if kind == "" {
-		kind = "agent"
+		kind = MemberAgent
 	}
 	body := M{"handle": handle, "kind": kind}
 	if displayName != "" {
 		body["display_name"] = displayName
 	}
-	return s.c.postObj("/workspaces/"+workspaceID+"/members", body)
+	return call[Member](s.c, http.MethodPost, "/workspaces/"+workspaceID+"/members", body)
 }
 
-func (s *MembersService) List(workspaceID string) ([]M, error) {
-	raw, err := s.c.do(http.MethodGet, "/workspaces/"+workspaceID+"/members", nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeArr(raw)
+func (s *MembersService) List(workspaceID string) ([]Member, error) {
+	return callList[Member](s.c, "/workspaces/"+workspaceID+"/members")
 }
 
 // MintOptions are the optional fields of a token mint. CapabilitySet is a named
@@ -388,7 +319,7 @@ type MintOptions struct {
 type TokensService struct{ c *Client }
 
 // Mint returns the secret ONCE, in the response; it is never retrievable again.
-func (s *TokensService) Mint(workspaceID, memberID string, capabilities []string, opts *MintOptions) (M, error) {
+func (s *TokensService) Mint(workspaceID, memberID string, capabilities []string, opts *MintOptions) (*MintedToken, error) {
 	if capabilities == nil {
 		capabilities = []string{}
 	}
@@ -404,39 +335,31 @@ func (s *TokensService) Mint(workspaceID, memberID string, capabilities []string
 			body["expires_at"] = opts.ExpiresAt
 		}
 	}
-	return s.c.postObj("/workspaces/"+workspaceID+"/members/"+memberID+"/tokens", body)
+	return call[MintedToken](s.c, http.MethodPost, "/workspaces/"+workspaceID+"/members/"+memberID+"/tokens", body)
 }
 
 // List returns token metadata only — never a secret.
-func (s *TokensService) List(workspaceID, memberID string) ([]M, error) {
-	raw, err := s.c.do(http.MethodGet, "/workspaces/"+workspaceID+"/members/"+memberID+"/tokens", nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeArr(raw)
+func (s *TokensService) List(workspaceID, memberID string) ([]TokenSummary, error) {
+	return callList[TokenSummary](s.c, "/workspaces/"+workspaceID+"/members/"+memberID+"/tokens")
 }
 
 type WorkspacesService struct{ c *Client }
 
-func (s *WorkspacesService) Create(name string) (M, error) {
-	return s.c.postObj("/workspaces", M{"name": name})
+func (s *WorkspacesService) Create(name string) (*Workspace, error) {
+	return call[Workspace](s.c, http.MethodPost, "/workspaces", M{"name": name})
 }
-func (s *WorkspacesService) Get(id string) (M, error) {
-	return s.c.getObj("/workspaces/" + id)
+func (s *WorkspacesService) Get(id string) (*Workspace, error) {
+	return call[Workspace](s.c, http.MethodGet, "/workspaces/"+id, nil)
 }
 
 // ListEvents is GET /workspaces/{id}/events — projector-shaped HTTP backfill.
-func (s *WorkspacesService) ListEvents(id string, query url.Values) ([]M, error) {
-	raw, err := s.c.do(http.MethodGet, "/workspaces/"+id+"/events"+qs(query), nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeArr(raw)
+func (s *WorkspacesService) ListEvents(id string, query url.Values) ([]StoredEvent, error) {
+	return callList[StoredEvent](s.c, "/workspaces/"+id+"/events"+qs(query))
 }
 
 // ListEventsAll calls fn for every event after query's after_id, fetching
 // query's limit (default 100) per page. It stops at the first error fn returns.
-func (s *WorkspacesService) ListEventsAll(id string, query url.Values, fn func(M) error) error {
+func (s *WorkspacesService) ListEventsAll(id string, query url.Values, fn func(StoredEvent) error) error {
 	q := url.Values{}
 	for k, v := range query {
 		q[k] = append([]string(nil), v...)
@@ -454,8 +377,8 @@ func (s *WorkspacesService) ListEventsAll(id string, query url.Values, fn func(M
 			return err
 		}
 		for _, row := range page {
-			if f, ok := row["id"].(float64); ok && int64(f) > after {
-				after = int64(f)
+			if row.ID > after {
+				after = row.ID
 			}
 			if err := fn(row); err != nil {
 				return err
@@ -467,51 +390,46 @@ func (s *WorkspacesService) ListEventsAll(id string, query url.Values, fn func(M
 	}
 }
 
-// Import is admin-only (token:admin). mode "" uses the default (new).
-func (s *WorkspacesService) Import(bundle any, mode string) (M, error) {
+// Import is admin-only (token:admin). bundle is a signed
+// maidan.workspace.export/1 envelope; mode "" uses the default (ImportNew).
+func (s *WorkspacesService) Import(bundle any, mode ImportMode) (*ImportResult, error) {
 	path := "/workspaces/import"
 	if mode != "" {
-		path += "?mode=" + url.QueryEscape(mode)
+		path += "?mode=" + url.QueryEscape(string(mode))
 	}
-	return s.c.postObj(path, bundle)
+	return call[ImportResult](s.c, http.MethodPost, path, bundle)
 }
 
 // --- Channels ---
 
 type ChannelsService struct{ c *Client }
 
-func (s *ChannelsService) List(workspaceID string) ([]M, error) {
-	raw, err := s.c.do(http.MethodGet, "/workspaces/"+workspaceID+"/channels", nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeArr(raw)
+func (s *ChannelsService) List(workspaceID string) ([]Channel, error) {
+	return callList[Channel](s.c, "/workspaces/"+workspaceID+"/channels")
 }
-func (s *ChannelsService) Create(workspaceID, name string, private bool) (M, error) {
-	return s.c.postObj("/workspaces/"+workspaceID+"/channels", M{"name": name, "private": private})
+func (s *ChannelsService) Create(workspaceID, name string, private bool) (*Channel, error) {
+	return call[Channel](s.c, http.MethodPost, "/workspaces/"+workspaceID+"/channels", M{"name": name, "private": private})
 }
 
 // --- Threads ---
 
 type ThreadsService struct{ c *Client }
 
-func (s *ThreadsService) Create(channelID, title string) (M, error) {
-	return s.c.postObj("/channels/"+channelID+"/threads", M{"title": title})
+func (s *ThreadsService) Create(channelID, title string) (*Thread, error) {
+	return call[Thread](s.c, http.MethodPost, "/channels/"+channelID+"/threads", M{"title": title})
 }
-func (s *ThreadsService) Get(id string) (M, error) { return s.c.getObj("/threads/" + id) }
+func (s *ThreadsService) Get(id string) (*Thread, error) {
+	return call[Thread](s.c, http.MethodGet, "/threads/"+id, nil)
+}
 
 // List is GET /channels/{cid}/threads — one page (limit, cursor = last thread id).
-func (s *ThreadsService) List(channelID string, query url.Values) ([]M, error) {
-	raw, err := s.c.do(http.MethodGet, "/channels/"+channelID+"/threads"+qs(query), nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeArr(raw)
+func (s *ThreadsService) List(channelID string, query url.Values) ([]Thread, error) {
+	return callList[Thread](s.c, "/channels/"+channelID+"/threads"+qs(query))
 }
 
 // ListAll calls fn for every live thread in the channel, fetching pageSize
 // (default 100) per request. It stops at the first error fn returns.
-func (s *ThreadsService) ListAll(channelID string, pageSize int, fn func(M) error) error {
+func (s *ThreadsService) ListAll(channelID string, pageSize int, fn func(Thread) error) error {
 	if pageSize <= 0 {
 		pageSize = 100
 	}
@@ -533,38 +451,43 @@ func (s *ThreadsService) ListAll(channelID string, pageSize int, fn func(M) erro
 		if len(page) < pageSize {
 			return nil
 		}
-		cursor, _ = page[len(page)-1]["id"].(string)
+		cursor = page[len(page)-1].ID
 	}
 }
-func (s *ThreadsService) Context(id string, query url.Values) (M, error) {
-	return s.c.getObj("/threads/" + id + "/context" + qs(query))
+func (s *ThreadsService) Context(id string, query url.Values) (*ThreadContext, error) {
+	return call[ThreadContext](s.c, http.MethodGet, "/threads/"+id+"/context"+qs(query), nil)
 }
-func (s *ThreadsService) Transition(id string, body any) (M, error) {
-	return s.c.postObj("/threads/"+id, body)
+
+// Transition moves the thread's FSM. action is "start_review", "close" or "archive".
+func (s *ThreadsService) Transition(id, action string) (*Thread, error) {
+	return call[Thread](s.c, http.MethodPost, "/threads/"+id, M{"action": action})
 }
-func (s *ThreadsService) SetResult(id string, result any) (M, error) {
-	raw, err := s.c.do(http.MethodPut, "/threads/"+id+"/result", M{"result": result})
-	if err != nil {
-		return nil, err
-	}
-	return decodeObj(raw)
+func (s *ThreadsService) SetResult(id string, result any) (*ThreadResult, error) {
+	return call[ThreadResult](s.c, http.MethodPut, "/threads/"+id+"/result", M{"result": result})
 }
-func (s *ThreadsService) GetResult(id string) (M, error) {
-	return s.c.getObj("/threads/" + id + "/result")
+func (s *ThreadsService) GetResult(id string) (*ThreadResult, error) {
+	return call[ThreadResult](s.c, http.MethodGet, "/threads/"+id+"/result", nil)
+}
+
+// ClaimOptions are the optional fields of a claim. LeaseSecs 0 takes the
+// server's default lease.
+type ClaimOptions struct {
+	LeaseSecs int64
 }
 
 // ClaimNextThread is the hero: readiness/skill/lease-aware claim. Returns nil, nil
 // when nothing is claimable.
-func (c *Client) ClaimNextThread(channelID string, body M) (M, error) {
-	if body == nil {
-		body = M{}
+func (c *Client) ClaimNextThread(channelID string, opts *ClaimOptions) (*ClaimedThread, error) {
+	body := M{}
+	if opts != nil && opts.LeaseSecs > 0 {
+		body["lease_secs"] = opts.LeaseSecs
 	}
-	return c.postObj("/channels/"+channelID+"/threads/claim-next", body)
+	return call[ClaimedThread](c, http.MethodPost, "/channels/"+channelID+"/threads/claim-next", body)
 }
 
 // RenewClaim is the holder-only lease heartbeat.
-func (c *Client) RenewClaim(threadID, claimLeaseID string, leaseSecs int64) (M, error) {
-	return c.postObj("/threads/"+threadID+"/claim/renew", M{
+func (c *Client) RenewClaim(threadID, claimLeaseID string, leaseSecs int64) (*Thread, error) {
+	return call[Thread](c, http.MethodPost, "/threads/"+threadID+"/claim/renew", M{
 		"claim_lease_id": claimLeaseID,
 		"lease_secs":     leaseSecs,
 	})
@@ -574,34 +497,35 @@ func (c *Client) RenewClaim(threadID, claimLeaseID string, leaseSecs int64) (M, 
 
 type MessagesService struct{ c *Client }
 
-func (s *MessagesService) List(threadID string, query url.Values) ([]M, error) {
-	raw, err := s.c.do(http.MethodGet, "/threads/"+threadID+"/messages"+qs(query), nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeArr(raw)
+func (s *MessagesService) List(threadID string, query url.Values) ([]Message, error) {
+	return callList[Message](s.c, "/threads/"+threadID+"/messages"+qs(query))
 }
-func (s *MessagesService) Post(threadID, body string) (M, error) {
-	return s.c.postObj("/threads/"+threadID+"/messages", M{"body": body})
+func (s *MessagesService) Post(threadID, body string) (*Message, error) {
+	return call[Message](s.c, http.MethodPost, "/threads/"+threadID+"/messages", M{"body": body})
 }
 
 // --- Artifacts ---
 
 type ArtifactsService struct{ c *Client }
 
-func (s *ArtifactsService) Upload(data []byte, kind string) (M, error) {
-	_, raw, err := s.c.doRaw(http.MethodPost, "/artifacts?kind="+url.QueryEscape(kind), data)
-	if err != nil {
+func (s *ArtifactsService) Upload(data []byte, kind ArtifactKind) (*Artifact, error) {
+	path := "/artifacts?kind=" + url.QueryEscape(string(kind))
+	_, raw, err := s.c.doRaw(http.MethodPost, path, data)
+	if err != nil || raw == nil {
 		return nil, err
 	}
-	return decodeObj(raw)
+	var a Artifact
+	if err := decodeJSON(raw, &a); err != nil {
+		return nil, fmt.Errorf("maidan: decoding POST %s: %w", path, err)
+	}
+	return &a, nil
 }
 func (s *ArtifactsService) Get(sha string) ([]byte, error) {
 	b, _, err := s.c.doRaw(http.MethodGet, "/artifacts/"+sha, nil)
 	return b, err
 }
-func (s *ArtifactsService) Meta(sha string) (M, error) {
-	return s.c.getObj("/artifacts/" + sha + "/meta")
+func (s *ArtifactsService) Meta(sha string) (*Artifact, error) {
+	return call[Artifact](s.c, http.MethodGet, "/artifacts/"+sha+"/meta", nil)
 }
 
 func qs(query url.Values) string {

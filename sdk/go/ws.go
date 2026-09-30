@@ -131,7 +131,7 @@ type Follow struct {
 }
 
 // FollowLog pages GET /workspaces/{id}/events then cuts over to SubscribeFrom.
-// A 409 must_refetch is returned as-is (*APIError.IsCursorTooOld) — never clamped.
+// A pruned cursor is returned as a *CursorTooOldError — never clamped.
 func (c *Client) FollowLog(spec Follow, onEvent func(Event), onError func(error)) (*Subscription, error) {
 	limit := spec.PageLimit
 	if limit <= 0 {
@@ -162,8 +162,8 @@ func (c *Client) FollowLog(spec Follow, onEvent func(Event), onError func(error)
 			break
 		}
 		for _, row := range page {
-			if id, ok := storedID(row); ok && id > after {
-				after = id
+			if row.ID > after {
+				after = row.ID
 			}
 			onEvent(normalizeStored(row))
 		}
@@ -184,41 +184,26 @@ func (c *Client) FollowLog(spec Follow, onEvent func(Event), onError func(error)
 	return c.SubscribeFrom(f, after, spec.ConsumerID, onEvent, onError)
 }
 
-func storedID(row M) (int64, bool) {
-	for _, key := range []string{"id", "log_id"} {
-		switch v := row[key].(type) {
-		case float64:
-			return int64(v), true
-		case int64:
-			return v, true
-		case json.Number:
-			n, err := v.Int64()
-			return n, err == nil
-		}
-	}
-	return 0, false
-}
-
-func normalizeStored(row M) Event {
+// normalizeStored turns an HTTP StoredEvent (id + nested payload) into the
+// live bus shape (log_id + flat), so FollowLog delivers one shape throughout.
+func normalizeStored(row StoredEvent) Event {
 	out := M{}
-	if payload, ok := row["payload"].(map[string]any); ok {
-		for k, v := range payload {
-			out[k] = v
-		}
-	} else {
-		for k, v := range row {
-			out[k] = v
+	_ = json.Unmarshal(row.Payload, &out)
+	if out == nil {
+		out = M{}
+	}
+	out["log_id"] = row.ID
+	for key, v := range map[string]*string{
+		"workspace_id": row.WorkspaceID,
+		"channel_id":   row.ChannelID,
+		"thread_id":    row.ThreadID,
+	} {
+		if _, exists := out[key]; !exists && v != nil {
+			out[key] = *v
 		}
 	}
-	if id, ok := storedID(row); ok {
-		out["log_id"] = id
-	}
-	for _, key := range []string{"kind", "workspace_id", "channel_id", "thread_id"} {
-		if _, exists := out[key]; !exists {
-			if v, ok := row[key]; ok {
-				out[key] = v
-			}
-		}
+	if _, exists := out["kind"]; !exists {
+		out["kind"] = row.Kind
 	}
 	return out
 }
@@ -329,7 +314,7 @@ func wsDial(baseURL, path string) (net.Conn, *bufio.Reader, error) {
 	}
 	if !strings.Contains(status, "101") {
 		_ = conn.Close()
-		return nil, nil, &APIError{Status: 0, Body: strings.TrimSpace(status)}
+		return nil, nil, &APIError{Status: 0, Detail: strings.TrimSpace(status)}
 	}
 	for { // drain headers to the blank line
 		line, err := br.ReadString('\n')

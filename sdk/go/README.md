@@ -13,6 +13,7 @@ go get github.com/david-engelmann/maidan/sdk/go@latest
 package main
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -27,11 +28,18 @@ func main() {
 	// content-addressed "pin"), or nil when nothing is ready.
 	claim, _ := c.ClaimNextThread(channelID, nil)
 	if claim != nil {
-		tid := claim["id"].(string)
-		c.Messages.Post(tid, "on it")
-		c.Threads.SetResult(tid, maidan.M{"ok": true})
+		c.Messages.Post(claim.ID, "on it")
+		c.Threads.SetResult(claim.ID, maidan.M{"ok": true})
 		// Long job? Heartbeat the lease with the fencing token the claim returned.
-		c.RenewClaim(tid, claim["claim_lease_id"].(string), 300)
+		c.RenewClaim(claim.ID, *claim.ClaimLeaseID, 300)
+	}
+
+	// Errors are types, one per problem type.
+	if _, err := c.Threads.Get(threadID); err != nil {
+		var nf *maidan.NotFoundError
+		if errors.As(err, &nf) {
+			fmt.Println("gone:", nf.Detail)
+		}
 	}
 
 	// React to work instead of polling.
@@ -47,12 +55,23 @@ func main() {
 
 - Constructor: `maidan.New(baseURL, token string)` — empty args fall back to `MAIDAN_URL` /
   `MAIDAN_TOKEN`. `c.MCPURL` is `{baseURL}/mcp/streamable`.
-- Errors are `*maidan.APIError` (`.Status`, `.Body`, `.RetryAfter` on 429, `.IsConflict()` /
-  `.IsCursorTooOld()` / `.IsForbidden()` / `.IsRateLimited()`); use `errors.As`.
-- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `Client.MaxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `Threads.ListAll` and `Workspaces.ListEventsAll` call a func for every item across pages.
-- Object responses come back as `maidan.M` (`map[string]any`) and lists as `[]maidan.M`, so
-  unknown fields are preserved and ignored (forward-compat). Typed models are a future
-  refinement.
+- Errors are one type per RFC 9457 problem `type` the server documents: `*NotFoundError`,
+  `*ConflictError`, `*ForbiddenError`, `*CursorTooOldError` (with `.Snapshot()`),
+  `*OverloadedError` and the rest (`ProblemTypes` maps each URI). A type this client does
+  not know, or a body that is not a problem, is `*UnknownProblemError`. Each wraps an
+  `*APIError` (`.Status`, `.Type`, `.Title`, `.Detail`, `.Problem` as sent, `.RetryAfter` on
+  429 and 503, `.IsConflict()` / `.IsCursorTooOld()` / `.IsForbidden()` / `.IsRateLimited()`),
+  so `errors.As` matches either the specific type or `*APIError`.
+- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `Client.MaxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `Threads.ListAll` and `Workspaces.ListEventsAll` call a func for every item across pages. Typed responses and the error types are new since 0.1.
+- Responses are structs (`*Thread`, `*ClaimedThread`, `[]Message`, `*ThreadContext`,
+  `[]StoredEvent`, …) from the server's OpenAPI schemas; the black-box tests decode every
+  operation against a live server with unknown fields refused, which proves the structs
+  match. Normal decoding ignores fields added to the server later, and string enums
+  (`ThreadState`, …) accept values the constants do not list. JSON the producer chose
+  (`ThreadResult.Result`, `StoredEvent.Payload`) stays `json.RawMessage`. Event frames from
+  `Subscribe` stay `maidan.Event` maps, since their shape follows `kind`.
+- `Threads.Transition(id, action)` takes the action string; `ClaimNextThread(cid, opts)`
+  takes `*ClaimOptions` (`LeaseSecs`).
 - Surface (frozen v1): `Workspaces.{Create,Get,Import}`, `Channels.{List,Create}`,
   `Threads.{Create,Get,Context,Transition,SetResult,GetResult}`, `ClaimNextThread`,
   `RenewClaim`, `Messages.{List,Post}`, `Artifacts.{Upload,Get,Meta}`, `Subscribe`,

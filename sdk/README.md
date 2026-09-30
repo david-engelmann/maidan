@@ -34,5 +34,9 @@ OpenAPI. Rust must not depend on `maidan-server`.
 Clients capture `Maidan-Room-LSN` as `last_room_lsn` (Cluster 390). Since
 Cluster 398.8 that value is **the caller's workspace head**, not the instance's,
 so it is comparable to a `log_id` the client has actually seen.
-Next: typed response models (0.2) generated from `contracts/lexicon/`.
+Typed responses and an error type per RFC 9457 problem `type` are in the tree
+too (not yet tagged): each SDK's models follow the server's OpenAPI schemas,
+and its black-box suite (`scripts/sdk-test.sh <lang>`) fails when a live
+response carries a member its model does not declare. The packages still say
+0.2.0; the version these ship under is the maintainer's call.
 Do not bump the package version for the header capture.

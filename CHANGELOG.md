@@ -419,6 +419,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Removed:** `maidan_a2a::Outbound::new()` and its `Default`, which built an
   unguarded client; `Outbound::new` now takes the egress-guarded client.
 
+### SDKs: typed responses and an error per problem type
+
+- **Changed:** the four SDKs return typed models for every operation they
+  wrap, from the server's OpenAPI schemas: TypeScript interfaces in
+  `index.d.ts`, Python dataclasses in `maidan.models`, Go structs and Rust
+  serde structs. Before, every call returned generic JSON. A member the
+  server adds later does not fail a response (Python and Rust keep it in
+  `extra`), and a string enum accepts values it does not list. WebSocket
+  event frames stay JSON objects, since their shape follows `kind`.
+- **Changed:** a failed call raises the error for its RFC 9457 problem
+  `type`: a class per type in TypeScript and Python (`NotFoundError`,
+  `CursorTooOldError`, …), a type per problem wrapping `*APIError` in Go, a
+  `MaidanError` variant in Rust. Each carries the status, `type`, `title`,
+  `detail` and the body as sent; an unknown type or a body that is not a
+  problem is the unknown-problem error. `MaidanError.body` is gone
+  (`.problem` in TypeScript and Python, `.Problem` in Go, `Problem::raw` in
+  Rust), and `Retry-After` is kept on a 503 as well as a 429.
+- **Changed:** Go `Threads.Transition` takes the action string and
+  `ClaimNextThread` takes `*ClaimOptions`; Rust `threads().transition` takes
+  the action and `claim_next_thread` an optional lease length and returns
+  `Option<ClaimedThread>`.
+- **Added:** each SDK's black-box suite (`scripts/sdk-test.sh <lang>`) runs
+  every wrapped operation against a live server and fails when a response
+  carries a member its model does not declare or lacks one it requires, and
+  checks that 400, 401, 403, 404 and 409 arrive as their error types.
+  `docs/Integration.md` lists the server's problem types. Package versions are
+  unchanged; see Open Work for when to publish.
+
 ### Loom models
 
 - **Added:** loom models of the sharded bus and the presence hub, behind a

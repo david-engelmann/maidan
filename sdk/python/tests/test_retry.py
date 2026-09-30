@@ -10,6 +10,32 @@ import pytest
 from maidan import Client, MaidanError, retry_delay
 
 IN_FLIGHT = "https://maidan.dev/problems/idempotency-key-in-flight"
+TS = "2026-09-29T00:00:00Z"
+
+
+def message(id_):
+    return {"id": id_, "thread_id": "t1", "author_id": "m", "body": "hi", "posted_at": TS}
+
+
+def channel(id_):
+    return {"id": id_, "workspace_id": "w", "name": "n", "private": False, "created_at": TS, "updated_at": TS}
+
+
+def thread(id_):
+    return {"id": id_, "channel_id": "ch", "state": "open", "created_at": TS, "updated_at": TS}
+
+
+def event(id_):
+    return {
+        "$type": "maidan.event.message_posted/1",
+        "id": id_,
+        "lsn": id_,
+        "kind": "message_posted",
+        "payload": {},
+        "occurred_at": TS,
+        "prev_hash": "p",
+        "content_hash": "c",
+    }
 
 
 class _Resp:
@@ -58,14 +84,14 @@ def key(req):
 
 
 def test_write_retries_lost_response_with_same_key():
-    c, calls, _ = fake([urllib.error.URLError("reset"), (201, {"id": "m1"})])
-    assert c.messages.post("t1", "hi")["id"] == "m1"
+    c, calls, _ = fake([urllib.error.URLError("reset"), (201, message("m1"))])
+    assert c.messages.post("t1", "hi").id == "m1"
     assert len(calls) == 2
     assert key(calls[0]) and key(calls[0]) == key(calls[1])
 
 
 def test_each_write_gets_its_own_key_and_reads_none():
-    c, calls, _ = fake([(201, {}), (201, {}), (200, [])])
+    c, calls, _ = fake([(201, message("a")), (201, message("b")), (200, [])])
     c.messages.post("t1", "a")
     c.messages.post("t1", "b")
     c.channels.list("w")
@@ -84,8 +110,8 @@ def test_429_retry_after_then_5xx_backoff_then_give_up():
 
 
 def test_in_flight_409_retried_plain_409_not():
-    c, calls, _ = fake([(409, {"type": IN_FLIGHT}), (201, {"id": "c"})])
-    assert c.channels.create("w", "n")["id"] == "c"
+    c, calls, _ = fake([(409, {"type": IN_FLIGHT}), (201, channel("c"))])
+    assert c.channels.create("w", "n").id == "c"
     assert len(calls) == 2
     c, calls, _ = fake([(409, {"type": "https://maidan.dev/problems/conflict"})])
     with pytest.raises(MaidanError):
@@ -112,13 +138,13 @@ def test_retry_delay():
 
 
 def test_threads_list_all_pages_by_cursor():
-    c, calls, _ = fake([(200, [{"id": "a"}, {"id": "b"}]), (200, [{"id": "c"}])])
-    assert [t["id"] for t in c.threads.list_all("ch", page_size=2)] == ["a", "b", "c"]
+    c, calls, _ = fake([(200, [thread("a"), thread("b")]), (200, [thread("c")])])
+    assert [t.id for t in c.threads.list_all("ch", page_size=2)] == ["a", "b", "c"]
     assert calls[0].full_url.endswith("/channels/ch/threads?limit=2")
     assert calls[1].full_url.endswith("limit=2&cursor=b")
 
 
 def test_list_events_all_pages_by_after_id():
-    c, calls, _ = fake([(200, [{"id": 1}, {"id": 2}]), (200, [{"id": 3}])])
-    assert [e["id"] for e in c.list_events_all("w", {"limit": 2})] == [1, 2, 3]
+    c, calls, _ = fake([(200, [event(1), event(2)]), (200, [event(3)])])
+    assert [e.id for e in c.list_events_all("w", {"limit": 2})] == [1, 2, 3]
     assert "after_id=2" in calls[1].full_url

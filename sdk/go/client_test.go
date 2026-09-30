@@ -2,10 +2,12 @@
 package maidan
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -32,29 +34,31 @@ func TestParseRoomLSN(t *testing.T) {
 
 func TestIsCursorTooOld(t *testing.T) {
 	tooOld := &APIError{
-		Status: 409,
-		Body:   M{"type": "https://maidan.dev/problems/cursor-too-old", "must_refetch": true},
+		Status:  409,
+		Type:    ProblemBase + "cursor-too-old",
+		Problem: M{"type": ProblemBase + "cursor-too-old", "must_refetch": true},
 	}
 	if !tooOld.IsConflict() || !tooOld.IsCursorTooOld() {
 		t.Fatal("expected 409 must_refetch to be cursor-too-old")
 	}
-	plain := &APIError{Status: 409, Body: M{"type": "https://maidan.dev/problems/conflict"}}
+	plain := &APIError{Status: 409, Type: ProblemBase + "conflict"}
 	if !plain.IsConflict() || plain.IsCursorTooOld() {
 		t.Fatal("plain 409 must not be cursor-too-old")
 	}
-	if (&APIError{Status: 500, Body: M{"must_refetch": true}}).IsCursorTooOld() {
+	if (&APIError{Status: 500, Problem: M{"must_refetch": true}}).IsCursorTooOld() {
 		t.Fatal("must_refetch on a non-409 is not cursor-too-old")
 	}
 }
 
 func TestNormalizeStoredPromotesID(t *testing.T) {
-	live := normalizeStored(M{
-		"id":           float64(42),
-		"kind":         "message_posted",
-		"workspace_id": "ws",
-		"payload":      M{"kind": "message_posted", "body": "hi"},
+	ws := "ws"
+	live := normalizeStored(StoredEvent{
+		ID:          42,
+		Kind:        "message_posted",
+		WorkspaceID: &ws,
+		Payload:     json.RawMessage(`{"kind":"message_posted","body":"hi"}`),
 	})
-	if live["log_id"] != int64(42) || live["body"] != "hi" {
+	if live["log_id"] != int64(42) || live["body"] != "hi" || live["workspace_id"] != "ws" {
 		t.Fatalf("normalize = %#v", live)
 	}
 }
@@ -70,57 +74,85 @@ func testClient(t *testing.T) *Client {
 
 var seedID atomic.Uint64
 
+// unique names a seeded resource so reruns against one server do not collide.
+func unique(prefix string) string {
+	return fmt.Sprintf("%s-%d-%d", prefix, time.Now().UnixNano(), seedID.Add(1))
+}
+
 // seed creates an isolated queue in the token's bootstrap workspace.
-func seed(t *testing.T, c *Client) (ws, member, channel, thread M) {
+func seed(t *testing.T, c *Client) (wid, memberID string, channel *Channel, thread *Thread) {
 	t.Helper()
-	wid := os.Getenv("MAIDAN_WORKSPACE")
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/me", nil)
-	if err != nil {
+	wid = os.Getenv("MAIDAN_WORKSPACE")
+	var me struct {
+		MemberID string `json:"member_id"`
+	}
+	getJSON(t, c, "/me", &me)
+	memberID = me.MemberID
+	var err error
+	if channel, err = c.Channels.Create(wid, unique("go-sdk"), false); err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("MAIDAN_TOKEN"))
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var me M
-	if err := json.NewDecoder(resp.Body).Decode(&me); err != nil {
-		t.Fatal(err)
-	}
-	ws = M{"id": wid}
-	member = M{"id": me["member_id"]}
-	name := fmt.Sprintf("go-sdk-%d", seedID.Add(1))
-	if channel, err = c.Channels.Create(wid, name, false); err != nil {
-		t.Fatal(err)
-	}
-	if thread, err = c.Threads.Create(channel["id"].(string), "kickoff"); err != nil {
+	if thread, err = c.Threads.Create(channel.ID, "kickoff"); err != nil {
 		t.Fatal(err)
 	}
 	return
 }
 
-func TestHeroLoopPostListContext(t *testing.T) {
-	c := testClient(t)
-	_, _, _, thread := seed(t, c)
-	if _, err := c.Messages.Post(thread["id"].(string), "hello from the go sdk"); err != nil {
-		t.Fatal(err)
-	}
-	msgs, err := c.Messages.List(thread["id"].(string), nil)
+func getJSON(t *testing.T, c *Client, path string, v any) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, c.BaseURL+path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// strictDecoding makes every response decode refuse members its model does
+// not declare, for the rest of the test. The models tolerate them otherwise
+// (forward compatibility), so this is what proves they match the live server.
+func strictDecoding(t *testing.T) {
+	prev := decodeJSON
+	decodeJSON = func(raw []byte, v any) error {
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		return dec.Decode(v)
+	}
+	t.Cleanup(func() { decodeJSON = prev })
+}
+
+// must unwraps a call's result; a failed call panics, which fails the test
+// with the error and its stack.
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+func TestHeroLoopPostListContext(t *testing.T) {
+	c := testClient(t)
+	_, _, _, thread := seed(t, c)
+	must(c.Messages.Post(thread.ID, "hello from the go sdk"))
+	msgs := must(c.Messages.List(thread.ID, nil))
 	found := false
 	for _, m := range msgs {
-		if m["body"] == "hello from the go sdk" {
+		if m.Body == "hello from the go sdk" {
 			found = true
 		}
 	}
 	if !found {
 		t.Fatal("posted message not listed")
 	}
-	if _, err := c.Threads.Context(thread["id"].(string), nil); err != nil {
-		t.Fatal(err)
+	if ctx := must(c.Threads.Context(thread.ID, nil)); ctx.Thread.ID != thread.ID {
+		t.Fatalf("context is for %s", ctx.Thread.ID)
 	}
 }
 
@@ -128,80 +160,53 @@ func TestGetResultUnsetIs404(t *testing.T) {
 	// Exercise the result route and client error path before a result exists.
 	c := testClient(t)
 	_, _, _, thread := seed(t, c)
-	_, err := c.Threads.GetResult(thread["id"].(string))
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.Status != 404 {
-		t.Fatalf("expected 404 APIError, got %v", err)
+	_, err := c.Threads.GetResult(thread.ID)
+	var nf *NotFoundError
+	if !errors.As(err, &nf) || nf.Status != 404 {
+		t.Fatalf("expected a 404 NotFoundError, got %v", err)
 	}
 }
 
 func TestClaimReturnsTheThreadFlattenedNotNested(t *testing.T) {
-	// The seeded thread is ready, so this claims it. The shape assertions are the
-	// point: a nested "thread" key would make every README snippet a silent no-op.
+	// The seeded thread is ready, so this claims it. Strict decoding is the
+	// shape assertion: a nested "thread" key would fail it.
 	c := testClient(t)
-	_, member, channel, thread := seed(t, c)
-	claim, err := c.ClaimNextThread(channel["id"].(string), M{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	strictDecoding(t)
+	_, memberID, channel, thread := seed(t, c)
+	claim := must(c.ClaimNextThread(channel.ID, nil))
 	if claim == nil {
 		t.Fatal("a freshly seeded ready thread should be claimable")
 	}
-	if _, nested := claim["thread"]; nested {
-		t.Fatal("thread fields are flattened, not nested under \"thread\"")
+	if claim.ID != thread.ID {
+		t.Fatalf("claimed %v, seeded %v", claim.ID, thread.ID)
 	}
-	if claim["id"] != thread["id"] {
-		t.Fatalf("claimed %v, seeded %v", claim["id"], thread["id"])
+	if claim.AssigneeID == nil || *claim.AssigneeID != memberID {
+		t.Fatalf("assignee %v, member %v", claim.AssigneeID, memberID)
 	}
-	if claim["assignee_id"] != member["id"] {
-		t.Fatalf("assignee %v, member %v", claim["assignee_id"], member["id"])
-	}
-	if claim["claim_lease_id"] == nil {
+	if claim.ClaimLeaseID == nil {
 		t.Fatal("no claim_lease_id — the fencing token RenewClaim needs")
 	}
-	pin, ok := claim["pin"].(M)
-	if !ok || pin["uri"] == nil || pin["content_hash"] == nil {
-		t.Fatalf("expected a content-addressed pin, got %v", claim["pin"])
+	if claim.Pin.URI == "" || claim.Pin.ContentHash == "" {
+		t.Fatalf("expected a content-addressed pin, got %+v", claim.Pin)
 	}
 }
 
 func TestRenewClaimExtendsTheLeaseWithTheFencingToken(t *testing.T) {
 	c := testClient(t)
 	_, _, channel, _ := seed(t, c)
-	claim, err := c.ClaimNextThread(
-		channel["id"].(string),
-		M{"lease_secs": 60},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	renewed, err := c.RenewClaim(
-		claim["id"].(string),
-		claim["claim_lease_id"].(string),
-		600,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if renewed["assignment_expires_at"].(string) <= claim["assignment_expires_at"].(string) {
-		t.Fatalf("lease not extended: %v -> %v",
-			claim["assignment_expires_at"], renewed["assignment_expires_at"])
+	claim := must(c.ClaimNextThread(channel.ID, &ClaimOptions{LeaseSecs: 60}))
+	renewed := must(c.RenewClaim(claim.ID, *claim.ClaimLeaseID, 600))
+	if !renewed.AssignmentExpiresAt.After(*claim.AssignmentExpiresAt) {
+		t.Fatalf("lease not extended: %v -> %v", claim.AssignmentExpiresAt, renewed.AssignmentExpiresAt)
 	}
 }
 
 func TestClaimNextReturnsNilOnceDrained(t *testing.T) {
 	c := testClient(t)
 	_, _, channel, _ := seed(t, c)
-	body := M{}
-	if _, err := c.ClaimNextThread(channel["id"].(string), body); err != nil {
-		t.Fatal(err)
-	}
-	drained, err := c.ClaimNextThread(channel["id"].(string), body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if drained != nil {
-		t.Fatalf("expected nil on an empty queue, got %v", drained)
+	must(c.ClaimNextThread(channel.ID, nil))
+	if drained := must(c.ClaimNextThread(channel.ID, nil)); drained != nil {
+		t.Fatalf("expected nil on an empty queue, got %+v", drained)
 	}
 }
 
@@ -216,10 +221,10 @@ func TestErrorsSurfaceStatus(t *testing.T) {
 
 func TestSubscribeDeliversAMessage(t *testing.T) {
 	c := testClient(t)
-	ws, _, _, thread := seed(t, c)
+	wid, _, _, thread := seed(t, c)
 	got := make(chan Event, 1)
-	sub, err := c.Subscribe(M{"workspace_id": ws["id"], "kinds": []string{"message_posted"}}, func(e Event) {
-		if e["thread_id"] == thread["id"] {
+	sub, err := c.Subscribe(M{"workspace_id": wid, "kinds": []string{"message_posted"}}, func(e Event) {
+		if e["thread_id"] == thread.ID {
 			select {
 			case got <- e:
 			default:
@@ -232,9 +237,7 @@ func TestSubscribeDeliversAMessage(t *testing.T) {
 	defer sub.Close()
 
 	time.Sleep(200 * time.Millisecond) // let the subscription attach
-	if _, err := c.Messages.Post(thread["id"].(string), "ws ping"); err != nil {
-		t.Fatal(err)
-	}
+	must(c.Messages.Post(thread.ID, "ws ping"))
 	select {
 	case e := <-got:
 		if e["kind"] != "message_posted" {
@@ -246,26 +249,18 @@ func TestSubscribeDeliversAMessage(t *testing.T) {
 }
 
 func TestProvisioningSeedsAMemberAndMintsAScopedToken(t *testing.T) {
-	// The first thing an integrator does after `maidan init`. Both calls were
-	// reachable only through the private transport before.
+	// The first thing an integrator does after `maidan init`.
 	c := testClient(t)
 	wid := os.Getenv("MAIDAN_WORKSPACE")
-	handle := fmt.Sprintf("provisioned-%d", seedID.Add(1))
+	handle := unique("provisioned")
 
-	member, err := c.Members.Create(wid, handle, "agent", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if member["handle"] != handle || member["kind"] != "agent" {
-		t.Fatalf("unexpected member %v", member)
-	}
-	members, err := c.Members.List(wid)
-	if err != nil {
-		t.Fatal(err)
+	member := must(c.Members.Create(wid, handle, MemberAgent, ""))
+	if member.Handle != handle || member.Kind != MemberAgent {
+		t.Fatalf("unexpected member %+v", member)
 	}
 	found := false
-	for _, m := range members {
-		if m["id"] == member["id"] {
+	for _, m := range must(c.Members.List(wid)) {
+		if m.ID == member.ID {
 			found = true
 		}
 	}
@@ -273,42 +268,29 @@ func TestProvisioningSeedsAMemberAndMintsAScopedToken(t *testing.T) {
 		t.Fatal("created member not listed")
 	}
 
-	minted, err := c.Tokens.Mint(wid, member["id"].(string), []string{"workspace:read"},
-		&MintOptions{Label: "scoped worker"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if minted["secret"] == nil || minted["secret"] == "" {
+	minted := must(c.Tokens.Mint(wid, member.ID, []string{"workspace:read"}, &MintOptions{Label: "scoped worker"}))
+	if minted.Secret == "" {
 		t.Fatal("the secret is returned once, in the mint response")
 	}
-
-	listed, err := c.Tokens.List(wid, member["id"].(string))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tok := range listed {
-		if _, leaked := tok["secret"]; leaked {
-			t.Fatal("listing must never return a secret")
-		}
+	// Strict decoding refuses a "secret" member, so a leak fails the list.
+	strictDecoding(t)
+	listed := must(c.Tokens.List(wid, member.ID))
+	if len(listed) != 1 || listed[0].ID != minted.ID || listed[0].Label == nil || *listed[0].Label != "scoped worker" {
+		t.Fatalf("listed %+v", listed)
 	}
 }
 
 func TestThreadsListAllWalksEveryPage(t *testing.T) {
 	c := testClient(t)
 	_, _, channel, thread := seed(t, c)
-	cid := channel["id"].(string)
-	made := map[string]bool{thread["id"].(string): true}
+	made := map[string]bool{thread.ID: true}
 	for i := 0; i < 4; i++ {
-		th, err := c.Threads.Create(cid, fmt.Sprintf("t%d", i))
-		if err != nil {
-			t.Fatal(err)
-		}
-		made[th["id"].(string)] = true
+		made[must(c.Threads.Create(channel.ID, fmt.Sprintf("t%d", i))).ID] = true
 	}
 	seen := 0
-	err := c.Threads.ListAll(cid, 2, func(m M) error {
-		if !made[m["id"].(string)] {
-			return fmt.Errorf("unexpected thread %v", m["id"])
+	err := c.Threads.ListAll(channel.ID, 2, func(th Thread) error {
+		if !made[th.ID] {
+			return fmt.Errorf("unexpected thread %v", th.ID)
 		}
 		seen++
 		return nil
@@ -316,4 +298,116 @@ func TestThreadsListAllWalksEveryPage(t *testing.T) {
 	if err != nil || seen != len(made) {
 		t.Fatalf("seen %d of %d: %v", seen, len(made), err)
 	}
+}
+
+func TestEveryDocumentedOperationReturnsItsDeclaredModel(t *testing.T) {
+	c := testClient(t)
+	strictDecoding(t)
+	wid, memberID, channel, thread := seed(t, c)
+
+	if ws := must(c.Workspaces.Get(wid)); ws.ID != wid || ws.CreatedAt.IsZero() {
+		t.Fatalf("workspace %+v", ws)
+	}
+	if len(must(c.Members.List(wid))) == 0 {
+		t.Fatal("no members")
+	}
+	if len(must(c.Channels.List(wid))) == 0 {
+		t.Fatal("no channels")
+	}
+	if th := must(c.Threads.Get(thread.ID)); th.State != ThreadOpen || th.ChannelID != channel.ID {
+		t.Fatalf("thread %+v", th)
+	}
+	if len(must(c.Threads.List(channel.ID, nil))) != 1 {
+		t.Fatal("expected the seeded thread")
+	}
+
+	msg := must(c.Messages.Post(thread.ID, "typed"))
+	if msg.AuthorID != memberID || msg.PostedAt.IsZero() {
+		t.Fatalf("message %+v", msg)
+	}
+	must(c.Messages.List(thread.ID, nil))
+
+	art := must(c.Artifacts.Upload([]byte("typed bytes"), ArtifactAttachment))
+	if art.SizeBytes != int64(len("typed bytes")) || art.Kind != ArtifactAttachment {
+		t.Fatalf("artifact %+v", art)
+	}
+	must(c.Artifacts.Meta(art.SHA256))
+	if b := must(c.Artifacts.Get(art.SHA256)); string(b) != "typed bytes" {
+		t.Fatalf("artifact bytes %q", b)
+	}
+
+	claim := must(c.ClaimNextThread(channel.ID, &ClaimOptions{LeaseSecs: 60}))
+	must(c.RenewClaim(claim.ID, *claim.ClaimLeaseID, 120))
+
+	res := must(c.Threads.SetResult(thread.ID, M{"ok": true}))
+	var payload struct{ OK bool }
+	if err := json.Unmarshal(res.Result, &payload); err != nil || !payload.OK || res.ProducedBy != memberID {
+		t.Fatalf("result %+v %v", res, err)
+	}
+	must(c.Threads.GetResult(thread.ID))
+	if th := must(c.Threads.Transition(thread.ID, "start_review")); th.State != ThreadInReview {
+		t.Fatalf("state %s", th.State)
+	}
+
+	ctx := must(c.Threads.Context(thread.ID, nil))
+	if len(ctx.Fsm.Transitions) == 0 || len(ctx.Messages) == 0 {
+		t.Fatalf("context %+v", ctx)
+	}
+
+	events := must(c.Workspaces.ListEvents(wid, url.Values{"limit": {"50"}}))
+	if len(events) == 0 || events[0].Type != EventType(events[0].Kind) {
+		t.Fatalf("events %+v", events)
+	}
+	if err := c.Workspaces.ListEventsAll(wid, url.Values{"limit": {"25"}}, func(StoredEvent) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	fresh := must(c.Members.Create(wid, unique("typed"), "", ""))
+	must(c.Tokens.Mint(wid, fresh.ID, []string{"workspace:read"}, nil))
+	must(c.Tokens.List(wid, fresh.ID))
+
+	var bundle json.RawMessage
+	getJSON(t, c, "/workspaces/"+wid+"/export", &bundle)
+	imported := must(c.Workspaces.Import(bundle, ImportNew))
+	if imported.Mode != ImportNew || imported.WorkspaceID == wid {
+		t.Fatalf("import %+v", imported)
+	}
+}
+
+func TestTheServersProblemTypesArriveAsTheirErrorTypes(t *testing.T) {
+	c := testClient(t)
+	wid, _, _, thread := seed(t, c)
+	var bundle json.RawMessage
+	getJSON(t, c, "/workspaces/"+wid+"/export", &bundle)
+	check := func(name string, err error, target any, status int, typ string) {
+		t.Helper()
+		if !errors.As(err, target) {
+			t.Fatalf("%s: expected %T, got %T %v", name, target, err, err)
+		}
+		var api *APIError
+		if !errors.As(err, &api) {
+			t.Fatalf("%s: not an *APIError", name)
+		}
+		if api.Status != status || api.Type != ProblemBase+typ || api.Problem["type"] != api.Type || api.Title == "" || api.Detail == "" {
+			t.Fatalf("%s: %+v", name, api)
+		}
+	}
+	var (
+		nf  *NotFoundError
+		un  *UnauthorizedError
+		br  *BadRequestError
+		fb  *ForbiddenError
+		cfl *ConflictError
+	)
+	_, err := c.Threads.Get("00000000-0000-0000-0000-000000000000")
+	check("not found", err, &nf, 404, "not-found")
+	_, err = New(c.BaseURL, "maid_not_a_token").Workspaces.Get(wid)
+	check("bad token", err, &un, 401, "unauthorized")
+	_, err = c.Threads.Transition(thread.ID, "fly")
+	check("bad action", err, &br, 400, "bad-request")
+	// Bootstrap creates only the first workspace; `maidan init` already made it.
+	_, err = c.Workspaces.Create("second")
+	check("second workspace", err, &fb, 403, "forbidden")
+	_, err = c.Workspaces.Import(bundle, ImportRestore)
+	check("restore over itself", err, &cfl, 409, "conflict")
 }

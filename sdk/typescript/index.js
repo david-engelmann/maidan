@@ -3,13 +3,28 @@
 // browser / Node 22+, or inject one via `options.WebSocket`). See docs/Client
 // Contract.md for the frozen surface.
 
+/** The URI prefix of every problem `type` the server emits (RFC 9457). */
+export const PROBLEM_BASE = "https://maidan.dev/problems/";
+
+/**
+ * A failed request. `type`, `title` and `detail` come from the server's RFC 9457
+ * problem body; `problem` is that body as sent, unknown members included. A body
+ * that is not a problem (a proxy's HTML page, say) leaves `type` unset and puts
+ * its text in `detail`. Each problem type has its own subclass; a type this
+ * client does not know is an {@link UnknownProblemError}.
+ */
 export class MaidanError extends Error {
-  constructor(status, body, message) {
-    super(message || `Maidan request failed: HTTP ${status}`);
-    this.name = "MaidanError";
+  constructor(status, problem, message) {
+    const p = problem && typeof problem === "object" ? problem : undefined;
+    const detail = p ? stringOr(p.detail) : typeof problem === "string" ? problem : undefined;
+    super(message || `Maidan request failed: HTTP ${status}${detail ? `: ${detail}` : ""}`);
+    this.name = new.target.name;
     this.status = status;
-    this.body = body;
-    // Retry-After (seconds) surfaced on 429 (server rate limit, Cluster 172).
+    this.type = p ? stringOr(p.type) : undefined;
+    this.title = p ? stringOr(p.title) : undefined;
+    this.detail = detail;
+    this.problem = p;
+    // Seconds from Retry-After, sent on 429 (rate limit) and 503 (overloaded).
     this.retryAfter = undefined;
   }
   get isConflict() {
@@ -18,11 +33,8 @@ export class MaidanError extends Error {
   /** 409 + must_refetch / cursor-too-old — fail loud, never clamp. */
   get isCursorTooOld() {
     if (this.status !== 409) return false;
-    const body = this.body && typeof this.body === "object" ? this.body : {};
-    if (body.must_refetch === true) return true;
-    return (
-      body.type === "https://maidan.dev/problems/cursor-too-old" || body.type === "cursor_too_old"
-    );
+    if (this.problem && this.problem.must_refetch === true) return true;
+    return this.type === `${PROBLEM_BASE}cursor-too-old` || this.type === "cursor_too_old";
   }
   get isForbidden() {
     return this.status === 403;
@@ -30,6 +42,65 @@ export class MaidanError extends Error {
   get isRateLimited() {
     return this.status === 429;
   }
+}
+
+export class NotFoundError extends MaidanError {}
+export class MethodNotAllowedError extends MaidanError {}
+export class ConflictError extends MaidanError {}
+export class BadRequestError extends MaidanError {}
+export class UnauthorizedError extends MaidanError {}
+export class InvalidSignatureError extends MaidanError {}
+export class ForbiddenError extends MaidanError {}
+export class PayloadTooLargeError extends MaidanError {}
+export class UnsupportedMediaTypeError extends MaidanError {}
+export class RateLimitedError extends MaidanError {}
+export class BadGatewayError extends MaidanError {}
+export class InternalError extends MaidanError {}
+export class OverloadedError extends MaidanError {}
+export class IdempotencyKeyReusedError extends MaidanError {}
+/** A retry arrived while the first request with its key still runs; retry shortly. */
+export class IdempotencyKeyInFlightError extends MaidanError {}
+/** The cursor is behind the retained log: refetch from `snapshot`, never clamp. */
+export class CursorTooOldError extends MaidanError {
+  get snapshot() {
+    return this.problem ? stringOr(this.problem.snapshot) : undefined;
+  }
+}
+/** The hash-chained event log failed verification; the server fails closed. */
+export class EventLogBrokenError extends MaidanError {}
+/** A problem `type` this client does not know, or a body that is not a problem. */
+export class UnknownProblemError extends MaidanError {}
+
+/** Problem `type` URI → error class, one per type the server documents. */
+export const PROBLEM_TYPES = Object.freeze({
+  [`${PROBLEM_BASE}not-found`]: NotFoundError,
+  [`${PROBLEM_BASE}method-not-allowed`]: MethodNotAllowedError,
+  [`${PROBLEM_BASE}conflict`]: ConflictError,
+  [`${PROBLEM_BASE}bad-request`]: BadRequestError,
+  [`${PROBLEM_BASE}unauthorized`]: UnauthorizedError,
+  [`${PROBLEM_BASE}invalid-signature`]: InvalidSignatureError,
+  [`${PROBLEM_BASE}forbidden`]: ForbiddenError,
+  [`${PROBLEM_BASE}payload-too-large`]: PayloadTooLargeError,
+  [`${PROBLEM_BASE}unsupported-media-type`]: UnsupportedMediaTypeError,
+  [`${PROBLEM_BASE}rate-limited`]: RateLimitedError,
+  [`${PROBLEM_BASE}bad-gateway`]: BadGatewayError,
+  [`${PROBLEM_BASE}internal`]: InternalError,
+  [`${PROBLEM_BASE}overloaded`]: OverloadedError,
+  [`${PROBLEM_BASE}idempotency-key-reused`]: IdempotencyKeyReusedError,
+  [`${PROBLEM_BASE}idempotency-key-in-flight`]: IdempotencyKeyInFlightError,
+  [`${PROBLEM_BASE}cursor-too-old`]: CursorTooOldError,
+  [`${PROBLEM_BASE}event-log-broken`]: EventLogBrokenError,
+});
+
+/** The error for a failed response: the subclass its problem `type` names. */
+export function problemError(status, body) {
+  const type = body && typeof body === "object" ? body.type : undefined;
+  const Cls = (typeof type === "string" && Object.hasOwn(PROBLEM_TYPES, type) && PROBLEM_TYPES[type]) || UnknownProblemError;
+  return new Cls(status, body);
+}
+
+function stringOr(v) {
+  return typeof v === "string" ? v : undefined;
 }
 
 function envDefault(key) {
@@ -54,7 +125,7 @@ export function eventType(kind) {
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const RETRY_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
-const IN_FLIGHT_TYPE = "https://maidan.dev/problems/idempotency-key-in-flight";
+const IN_FLIGHT_TYPE = `${PROBLEM_BASE}idempotency-key-in-flight`;
 
 /** A fresh `Idempotency-Key`: one per logical write, reused by its retries. */
 export function newIdempotencyKey() {
@@ -266,11 +337,9 @@ export class Client {
     } catch {
       parsed = text;
     }
-    const err = new MaidanError(resp.status, parsed);
-    if (resp.status === 429) {
-      const ra = resp.headers.get("retry-after");
-      if (ra) err.retryAfter = Number(ra);
-    }
+    const err = problemError(resp.status, parsed);
+    const ra = resp.headers.get("retry-after");
+    if (ra && Number.isFinite(Number(ra))) err.retryAfter = Number(ra);
     throw err;
   }
 
