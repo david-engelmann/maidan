@@ -1008,6 +1008,26 @@ fn ui_js_first_run_offers_only_the_sign_in_paths_the_server_has() {
     );
 }
 
+/// A token acts as exactly one member (Cluster 411), so the Session tab must
+/// not say a bearer acts as any member, and it rotates the token it runs on
+/// through `POST /tokens/{id}/rotate`, the id coming from `/me`.
+#[test]
+fn ui_js_says_what_a_token_is_and_rotates_it() {
+    assert!(
+        !HTML.contains("acts as any member"),
+        "the pre-411 impersonation wording is gone"
+    );
+    let s = script(HTML);
+    assert!(
+        s.contains("/rotate`") && s.contains("me.token_id"),
+        "rotation uses the rotate route and the token id /me returns"
+    );
+    assert!(
+        HTML.contains("id=\"rotate-own-token\"") && HTML.contains("id=\"rotate-token\""),
+        "the Session tab and the Tokens tab both offer rotation"
+    );
+}
+
 /// The source of `function NAME(` up to its closing brace at the same indent.
 fn function_body<'a>(js: &'a str, name: &str) -> &'a str {
     let start = js

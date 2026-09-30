@@ -12,14 +12,21 @@ use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
+use maidan_types::{
+    ApiTokenId, MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId,
+};
 use reqwest::StatusCode;
 use serde_json::Value;
 use sqlx::sqlite::SqlitePoolOptions;
 
-async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId, caps: Vec<String>) -> String {
+async fn mint(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    member: MemberId,
+    caps: Vec<String>,
+) -> (ApiTokenId, String) {
     let secret = TokenSecret::generate();
-    store
+    let token = store
         .create_api_token(NewApiToken {
             workspace_id: ws,
             member_id: member,
@@ -31,7 +38,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId, caps: Vec<St
         })
         .await
         .unwrap();
-    secret.as_str().to_string()
+    (token.id, secret.as_str().to_string())
 }
 
 #[tokio::test]
@@ -65,7 +72,7 @@ async fn get_me_reflects_the_callers_identity() {
         })
         .await
         .unwrap();
-    let tok = mint(
+    let (token_id, tok) = mint(
         store.as_ref(),
         ws.id,
         member.id,
@@ -108,6 +115,8 @@ async fn get_me_reflects_the_callers_identity() {
     assert_eq!(me["member_id"], member.id.0.to_string());
     assert_eq!(me["workspace_id"], ws.id.0.to_string());
     assert_eq!(me["is_bearer"], true);
+    // The token's own id, so a client can rotate its secret.
+    assert_eq!(me["token_id"], token_id.0.to_string());
     let caps: Vec<String> = me["capabilities"]
         .as_array()
         .unwrap()

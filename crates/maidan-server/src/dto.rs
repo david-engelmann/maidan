@@ -990,6 +990,9 @@ pub struct WhoAmI {
     pub workspace_id: uuid::Uuid,
     pub capabilities: Vec<String>,
     pub is_bearer: bool,
+    /// The bearer token this request used, null on a session: the id a client
+    /// passes to `POST /tokens/{id}/rotate` to rotate its own secret.
+    pub token_id: Option<uuid::Uuid>,
     pub known_capabilities: Vec<String>,
     /// Named sets whose full expansion the caller currently holds.
     pub capability_sets: Vec<String>,

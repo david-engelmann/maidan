@@ -558,7 +558,9 @@ Delegated requests are additionally recorded whether allowed or refused, as
 recorded in full rather than sampled, because their volume is bounded by a grant
 you issued and can revoke. `GET /me` and MCP `whoami` return
 `actor_id`, `member_id` (the subject) and `delegation_grant_id`, so a client can
-check what authority it is actually holding.
+check what authority it is actually holding. `GET /me` also returns `token_id`,
+the token the request used (null on a browser session), which is the id a
+client rotates its own secret with.
 
 A borrowed token can be narrowed further with `POST /tokens/attenuate`, and the
 narrower token is still borrowed — it carries the same grant and names the same
@@ -584,7 +586,9 @@ keeps the same member, capabilities, expiry and quotas, and tokens derived from
 the old one keep working under it; the old secret stops working at once. A
 holder rotates its own token without `token:admin`; rotating anyone else's
 takes `token:admin` in its workspace. A delegated token is not rotated
-(`409`): exchange its grant again.
+(`409`): exchange its grant again. In `/ui`, the Session tab rotates the token
+the page runs on (swapping the new secret in, so the page keeps working) and
+the Tokens tab rotates any token by id.
 
 Stable room URIs are `maidan://{workspace_id}/channels/{channel_id}/threads/{thread_id}/messages/{message_id}`
 with an optional `#sha256:<hex>` fragment. The authority is always the

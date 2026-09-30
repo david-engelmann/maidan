@@ -135,6 +135,8 @@
         border-radius: 0.25rem;
       }
       #mint-banner code { word-break: break-all; }
+      #session-rotate { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin: 0.5rem 0; }
+      #session-rotate[hidden] { display: none; }
       /* Session chrome — the label text carries the meaning; colour only reinforces (WCAG 1.4.1). */
       .chrome-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; padding: 0.05rem 0.3rem; border-radius: 0.6rem; margin-right: 0.4rem; border: 1px solid transparent; vertical-align: middle; }
       .chrome-running { background: #dcfce7; color: #166534; border-color: #86efac; }
@@ -541,7 +543,7 @@
     </header>
     <p id="session-status" class="muted" style="margin: 0.25rem 1rem">Checking session…</p>
     <div id="mint-banner" role="status" style="margin: 0 1rem">
-      <strong>Admin token (once)</strong>
+      <strong id="mint-title">Admin token (once)</strong>
       <code id="mint-secret"></code>
       <button id="copy-secret" type="button">Copy</button>
     </div>
@@ -779,6 +781,10 @@
           <dt>Workspace</dt><dd id="session-workspace">—</dd>
           <dt>Credential</dt><dd id="session-credential">—</dd>
         </dl>
+        <div id="session-rotate" class="row" hidden>
+          <button id="rotate-own-token" type="button">Rotate this token</button>
+          <span class="muted">A new secret for the same member, capabilities and expiry. The old one stops working at once, so an agent that uses it needs the new one.</span>
+        </div>
         <div class="cap-card">
           <section class="cap-col" aria-labelledby="cap-can-heading">
             <h3 id="cap-can-heading" class="cap-can-h">
@@ -1148,8 +1154,9 @@
         </p>
         <p id="attenuation-warning" class="err" role="alert" hidden></p>
         <button id="mint-member-token" type="button">Mint token</button>
-        <label>Token ID to revoke <input id="token-revoke-id" /></label>
+        <label>Token ID <input id="token-revoke-id" /></label>
         <button id="revoke-token" type="button">Revoke token</button>
+        <button id="rotate-token" type="button" title="A new secret for the same authority; the old one stops working">Rotate token</button>
         <button id="list-member-tokens" type="button">List tokens</button>
         <div id="token-list" class="muted" style="margin-top: 0.5rem"></div>
         <h3 style="margin-top: 1rem; font-size: 0.95rem">Installed apps (read-only)</h3>
@@ -3902,6 +3909,7 @@
       // The caller's own capabilities — the attenuation ceiling for minting.
       // Cached from /me so the mint pre-flight can flag a widening request.
       let myCapabilities = null;
+      let currentTokenId = null;
 
       async function loadAttenuationCeiling() {
         const span = document.getElementById("attenuation-ceiling");
@@ -3934,11 +3942,17 @@
 
       function renderSession(me) {
         myCapabilities = me.capabilities || [];
+        currentTokenId = me.token_id || null;
         document.getElementById("session-member").textContent = me.member_id;
         document.getElementById("session-workspace").textContent = me.workspace_id;
-        document.getElementById("session-credential").textContent = me.is_bearer
-          ? "bearer token — acts as any member (orchestrator)"
-          : "signed-in session — pinned to this member";
+        // A token acts as exactly one member; acting for another is a
+        // delegation grant, which the token then names.
+        document.getElementById("session-credential").textContent = !me.is_bearer
+          ? "signed-in session — pinned to this member"
+          : me.delegation_grant_id
+            ? "delegated token — works as this member under a grant"
+            : "bearer token — acts as this member";
+        document.getElementById("session-rotate").hidden = !(currentTokenId && token());
         const granted = new Set(me.capabilities || []);
         const known = me.known_capabilities || [];
         const can = [...granted].sort();
@@ -4815,9 +4829,51 @@
         const parsed = JSON.parse(body);
         document.getElementById("token").value = parsed.secret;
         persist();
-        document.getElementById("mint-banner").style.display = "block";
-        document.getElementById("mint-secret").textContent = parsed.secret;
+        showSecretOnce("Admin token (once)", parsed.secret);
         setStatus("Admin token minted", "ok");
+      };
+      // A secret is shown once, where the page shows every new secret.
+      function showSecretOnce(title, secret) {
+        document.getElementById("mint-title").textContent = title;
+        document.getElementById("mint-secret").textContent = secret;
+        const banner = document.getElementById("mint-banner");
+        banner.style.display = "block";
+        banner.scrollIntoView({ block: "nearest" });
+        document.getElementById("copy-secret").focus();
+      }
+      // Rotating the token this page runs on swaps it in place, so the page
+      // keeps working and the live socket reconnects on the new secret.
+      async function rotateToken(id) {
+        const res = await fetch(`${base()}/tokens/${encodeURIComponent(id)}/rotate`, {
+          method: "POST",
+          headers: headers(),
+        });
+        if (!res.ok) {
+          showError(await responseError(res, "Could not rotate that token"));
+          return;
+        }
+        const rotated = await res.json();
+        if (id === currentTokenId) {
+          document.getElementById("token").value = rotated.secret;
+          persist();
+          currentTokenId = rotated.id;
+          if (wsSocket) {
+            disconnectWs();
+            connectWs();
+          }
+        }
+        showSecretOnce("New token (shown once) — the old one no longer works", rotated.secret);
+        setStatus("Token rotated", "ok");
+        setOut({ rotated: id, id: rotated.id });
+      }
+      document.getElementById("rotate-own-token").onclick = () => {
+        if (currentTokenId) rotateToken(currentTokenId);
+      };
+      document.getElementById("rotate-token").onclick = () => {
+        if (!requireTokenForWrite()) return;
+        const id = document.getElementById("token-revoke-id").value.trim();
+        if (!id) return showError("Token ID required");
+        rotateToken(id);
       };
       document.getElementById("copy-secret").onclick = () => {
         const s = document.getElementById("mint-secret").textContent;

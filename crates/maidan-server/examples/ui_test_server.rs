@@ -402,6 +402,25 @@ async fn main() {
         .await
         .expect("live token");
 
+    // An admin who mints throwaway tokens: a spec that rotates a token must
+    // not rotate one another spec (or its own retry) depends on.
+    let admin_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: hash_secret(admin_secret.as_str()),
+            label: Some("ui-test-admin".into()),
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::TOKEN_ADMIN.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .expect("admin token");
+
     // The operator as a reviewer: approving and closing are thread
     // transitions.
     let review_secret = TokenSecret::generate();
@@ -459,6 +478,7 @@ async fn main() {
         "board_review_thread_id": review_thread.id.0.to_string(),
         "board_done_thread_id": done_thread.id.0.to_string(),
         "review_token": review_secret.as_str(),
+        "admin_token": admin_secret.as_str(),
         "desk_channel_id": desk.id.0.to_string(),
         "desk_approve_thread_id": desk_threads[0].id.0.to_string(),
         "desk_send_back_thread_id": desk_threads[1].id.0.to_string(),
