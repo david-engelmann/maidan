@@ -54,7 +54,10 @@ async fn ui_v3_collab_shell_and_session_api_reads() {
         .await
         .unwrap();
     assert!(html.contains(r#"data-ui-version="8""#));
-    assert!(html.contains(r#"id="thread-list""#));
+    assert!(
+        html.contains(r#"id="board""#),
+        "the board is the thread surface"
+    );
     assert!(html.contains(r#"id="collab-panel""#));
     assert!(html.contains("create-channel"));
     assert!(html.contains("upload-artifact"));
