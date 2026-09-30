@@ -4294,9 +4294,9 @@
         document.getElementById("connect-dialog").close();
         openTool("tokens");
       };
-      // The worker preset is the server's named set (maidan.agent.worker):
+      // The worker preset is the named set on the server (maidan.agent.worker):
       // claim, post, and transition. The browser token is never written into
-      // a snippet or replaced by the agent's secret.
+      // a snippet or replaced by the agent secret.
       const WORKER_PRESET = "maidan.agent.worker";
       document.getElementById("cx-create-agent").onclick = async () => {
         const button = document.getElementById("cx-create-agent");
@@ -4313,7 +4313,7 @@
         const handle = document.getElementById("cx-handle").value.trim();
         const display = document.getElementById("cx-name").value.trim();
         if (!handle) {
-          status.textContent = "A handle is required. It is the member's name on the board.";
+          status.textContent = "A handle is required. It is the name shown for that member on the board.";
           return;
         }
         // One submission at a time. The one-time secret stays until a new
