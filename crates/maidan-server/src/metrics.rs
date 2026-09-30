@@ -205,6 +205,10 @@ pub fn init() {
             "Lapsed claim leases the claim reaper returned to the queue (each with a ClaimExpired)"
         );
         describe_counter!(
+            "maidan_claims_unacknowledged_total",
+            "Leased claims reported as never acknowledged (each with a ClaimUnacknowledged)"
+        );
+        describe_counter!(
             "maidan_wait_timed_out_total",
             "Thread wait timers fired by the wait sweeper, by escalation policy (notify/park)"
         );

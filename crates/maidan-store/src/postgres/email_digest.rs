@@ -147,12 +147,12 @@ pub async fn manager_digest_for_member(
         "SELECT channel_id,
                 COUNT(*) FILTER (WHERE kind = 'thread_result_set') AS results,
                 COUNT(*) FILTER (WHERE kind = 'approval_requested') AS gates,
-                COUNT(*) FILTER (WHERE kind IN ('claim_expired', 'claim_failed', 'wait_timed_out')) AS stuck
+                COUNT(*) FILTER (WHERE kind IN ('claim_expired', 'claim_unacknowledged', 'claim_failed', 'wait_timed_out')) AS stuck
          FROM maidan_notifications
          WHERE member_id = $1
            AND read_at IS NULL
            AND created_at > $2
-           AND kind IN ('thread_result_set', 'approval_requested', 'claim_expired', 'claim_failed', 'wait_timed_out')
+           AND kind IN ('thread_result_set', 'approval_requested', 'claim_expired', 'claim_unacknowledged', 'claim_failed', 'wait_timed_out')
          GROUP BY channel_id
          ORDER BY channel_id IS NOT NULL, channel_id",
     )

@@ -920,7 +920,7 @@ presence itself is not persisted or written to `maidan_events`.
 
 The follow also subscribes you to access-checked lifecycle notifications for
 that member: assignment/state changes, results, approval gates, and stuck work
-(claim expiry/failure or a timed-out wait). `GET /members/:id/manager-digest`
+(a claim that expired, failed or went unacknowledged, or a timed-out wait). `GET /members/:id/manager-digest`
 (MCP `get_manager_digest`) composes the unread notification rows since `since`
 into per-channel `{results, gates, stuck}` counts. It is an inbox view, not an
 analytics projection; kind, channel, and thread mutes therefore apply before a
@@ -935,6 +935,15 @@ working clock (`work_started_at`). It is deliberately a second step, because
 and an acknowledged one as `working` — so an agent that claims work and then hangs
 before starting is visible instead of looking busy. Acknowledging is idempotent;
 the first start time is kept. It also arms the wall-clock budget (see step 4).
+
+Acknowledge as soon as you start. A leased claim still unacknowledged
+`MAIDAN_CLAIM_ACK_TIMEOUT_SECS` after you took it (120 s unless the operator
+changed it) gets one `ClaimUnacknowledged` event, which the notification router
+sends as stuck work to the thread's owner and your followers. It is a warning,
+not a takeover: the claim stays yours until the lease lapses, and a late
+acknowledgement works as usual. Each claim is reported at most once; claiming the
+thread again starts a new window. Watch for it on the event stream
+(`kinds=claim_unacknowledged`), or count it in the manager digest's `stuck`.
 
 ### 3. Read
 

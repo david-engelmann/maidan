@@ -4,7 +4,9 @@
 //! channel, with nobody calling `claim_next`, and publishes the `ClaimExpired`
 //! for the holder on the bus — on SQLite and on Postgres. Over REST a
 //! `claim-next` that names no lease gets the server default, and a lease or
-//! renewal outside 1 s..7 days is a 400 problem.
+//! renewal outside 1 s..7 days is a 400 problem. A leased claim nobody
+//! acknowledged gets one `ClaimUnacknowledged` on the bus, and the thread's
+//! owner is notified of the stuck work.
 
 mod common;
 
@@ -19,7 +21,7 @@ use futures::StreamExt;
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_bus::{BusItem, EventBus, InMemoryBus};
-use maidan_server::{claim_reaper, router, AppState, FederationRuntime};
+use maidan_server::{claim_reaper, notification_router, router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ChannelId, Event, EventFilter, EventKind, MemberId, MemberKind, NewApiToken, NewChannel,
@@ -194,6 +196,119 @@ async fn reaper_frees_a_lapsed_lease_postgres() {
     let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
     reaper_frees_a_lapsed_lease_and_publishes_claim_expired(store, search).await;
+}
+
+/// A leased claim its holder never acknowledged is reported once, with the
+/// claim left alone, and the owner hears about it; an acknowledged claim is
+/// not reported.
+async fn reaper_reports_an_unacknowledged_claim_once(
+    store: Arc<dyn Store>,
+    search: Arc<dyn maidan_search::Search>,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let state = AppState::for_tests(
+        store.clone(),
+        Arc::new(LocalFsStore::new(dir.path())),
+        bus.clone(),
+        search,
+    );
+    let r = room(store.as_ref()).await;
+    let owner = store
+        .create_member(NewMember {
+            workspace_id: r.workspace,
+            handle: "owner".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    new_thread(store.as_ref(), r.channel, "silent").await;
+    new_thread(store.as_ref(), r.channel, "working").await;
+    let silent = store
+        .claim_next_thread(r.channel, r.holder, Some(3600))
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .set_thread_owner(silent.id, Some(owner.id))
+        .await
+        .unwrap();
+    let working = store
+        .claim_next_thread(r.channel, r.holder, Some(3600))
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .acknowledge_claim(working.id, r.holder, working.claim_lease_id.unwrap())
+        .await
+        .unwrap();
+
+    let mut stream = bus
+        .subscribe(EventFilter {
+            workspace_id: Some(r.workspace),
+            kinds: Some(HashSet::from([EventKind::ClaimUnacknowledged])),
+            ..EventFilter::default()
+        })
+        .await
+        .unwrap();
+
+    // A zero window: every claim taken so far is past it.
+    assert_eq!(
+        claim_reaper::report_unacknowledged_once(&state, Duration::ZERO).await,
+        1
+    );
+    let (log_id, event) = match tokio::time::timeout(Duration::from_secs(2), stream.next()).await {
+        Ok(Some(BusItem::Event(env))) => (env.log_id, env.event),
+        other => panic!("no ClaimUnacknowledged on the bus: {other:?}"),
+    };
+    match &event {
+        Event::ClaimUnacknowledged {
+            thread_id,
+            member_id,
+            claimed_at,
+            ..
+        } => {
+            assert_eq!(*thread_id, silent.id);
+            assert_eq!(*member_id, r.holder);
+            assert!(*claimed_at <= chrono::Utc::now());
+        }
+        other => panic!("expected ClaimUnacknowledged, got {other:?}"),
+    }
+    let kept = store.get_thread(silent.id).await.unwrap();
+    assert_eq!(kept.assignee_id, Some(r.holder), "the claim is left alone");
+    assert_eq!(kept.claim_lease_id, silent.claim_lease_id);
+
+    // Reported once.
+    assert_eq!(
+        claim_reaper::report_unacknowledged_once(&state, Duration::ZERO).await,
+        0
+    );
+
+    // The owner is told the work is stuck.
+    notification_router::route_event(&state, log_id, &event)
+        .await
+        .unwrap();
+    let notes = store.list_notifications(owner.id, false, 10).await.unwrap();
+    assert_eq!(notes.len(), 1, "the owner is notified");
+    assert_eq!(notes[0].kind, EventKind::ClaimUnacknowledged);
+    assert_eq!(notes[0].thread_id, Some(silent.id));
+}
+
+#[tokio::test]
+async fn reaper_reports_an_unacknowledged_claim_once_sqlite() {
+    let (store, search) = sqlite().await;
+    reaper_reports_an_unacknowledged_claim_once(store, search).await;
+}
+
+#[tokio::test]
+async fn reaper_reports_an_unacknowledged_claim_once_postgres() {
+    let Some((_container, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
+    reaper_reports_an_unacknowledged_claim_once(store, search).await;
 }
 
 struct Http {

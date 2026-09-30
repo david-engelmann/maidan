@@ -1574,7 +1574,7 @@ Extend a claimed thread's lease (heartbeat). Only the current assignee holding t
 
 ### `acknowledge_claim`
 
-Acknowledge a claimed thread and start its working clock (work_started_at): the current holder signals it has begun work, distinct from just holding the claim. Only the assignee holding the matching fencing token may acknowledge; idempotent (the first start time is kept).
+Acknowledge a claimed thread and start its working clock (work_started_at): the current holder signals it has begun work, distinct from just holding the claim. Acknowledge as soon as you start: a leased claim left unacknowledged past the server's window (MAIDAN_CLAIM_ACK_TIMEOUT_SECS, 120 s) is reported to its owner with a claim_unacknowledged event. Only the assignee holding the matching fencing token may acknowledge; idempotent (the first start time is kept).
 
 **Capability:** `thread:transition`
 

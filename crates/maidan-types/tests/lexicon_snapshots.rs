@@ -205,6 +205,15 @@ fn sample_event(kind: EventKind) -> Event {
             member_id,
             thread: thread(),
         },
+        EventKind::ClaimUnacknowledged => Event::ClaimUnacknowledged {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            claimed_at: occurred_at - chrono::Duration::seconds(120),
+            thread: thread(),
+        },
         EventKind::ClaimFailed => Event::ClaimFailed {
             occurred_at,
             workspace_id,
@@ -442,6 +451,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ApprovalRequested
             | EventKind::BlockedResolved
             | EventKind::ClaimExpired
+            | EventKind::ClaimUnacknowledged
             | EventKind::ClaimFailed
             | EventKind::UsageReported
             | EventKind::ThreadLanded

@@ -171,11 +171,12 @@ const POSTGRES_UP_V117: &str =
     include_str!("../../../migrations/postgres/0117_artifact_reap_leases.sql");
 const POSTGRES_UP_V118: &str =
     include_str!("../../../migrations/postgres/0118_idempotency_keys.sql");
-const POSTGRES_UP_V121: &str =
-    include_str!("../../../migrations/postgres/0121_decision_history.sql");
-
 const POSTGRES_UP_V119: &str =
     include_str!("../../../migrations/postgres/0119_claim_lease_deadline_index.sql");
+const POSTGRES_UP_V120: &str =
+    include_str!("../../../migrations/postgres/0120_claim_acknowledgement_window.sql");
+const POSTGRES_UP_V121: &str =
+    include_str!("../../../migrations/postgres/0121_decision_history.sql");
 
 const POSTGRES_UP_V122: &str = include_str!("../../../migrations/postgres/0122_trace_context.sql");
 const POSTGRES_UP_V126: &str =
@@ -319,10 +320,11 @@ const SQLITE_UP_V116: &str =
 const SQLITE_UP_V117: &str =
     include_str!("../../../migrations/sqlite/0117_artifact_reap_leases.sql");
 const SQLITE_UP_V118: &str = include_str!("../../../migrations/sqlite/0118_idempotency_keys.sql");
-const SQLITE_UP_V121: &str = include_str!("../../../migrations/sqlite/0121_decision_history.sql");
-
 const SQLITE_UP_V119: &str =
     include_str!("../../../migrations/sqlite/0119_claim_lease_deadline_index.sql");
+const SQLITE_UP_V120: &str =
+    include_str!("../../../migrations/sqlite/0120_claim_acknowledgement_window.sql");
+const SQLITE_UP_V121: &str = include_str!("../../../migrations/sqlite/0121_decision_history.sql");
 
 const SQLITE_UP_V122: &str = include_str!("../../../migrations/sqlite/0122_trace_context.sql");
 const SQLITE_UP_V126: &str =
@@ -503,11 +505,8 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 117, POSTGRES_UP_V117).await?;
     apply_postgres(pool, 118, POSTGRES_UP_V118).await?;
     apply_postgres(pool, 119, POSTGRES_UP_V119).await?;
+    apply_postgres(pool, 120, POSTGRES_UP_V120).await?;
     apply_postgres(pool, 121, POSTGRES_UP_V121).await?;
-
-    // 118–121 are other lanes (idempotency, eager reclaim, claim
-    // acknowledgement, decision history). This one is 122 so those can land
-    // in between without renumbering.
     apply_postgres(pool, 122, POSTGRES_UP_V122).await?;
     // 123–125 belong to other lanes.
     apply_postgres(pool, 126, POSTGRES_UP_V126).await?;
@@ -645,9 +644,8 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 117, SQLITE_UP_V117).await?;
     apply_sqlite(pool, 118, SQLITE_UP_V118).await?;
     apply_sqlite(pool, 119, SQLITE_UP_V119).await?;
+    apply_sqlite(pool, 120, SQLITE_UP_V120).await?;
     apply_sqlite(pool, 121, SQLITE_UP_V121).await?;
-
-    // See the Postgres twin: 118–121 belong to other lanes.
     apply_sqlite(pool, 122, SQLITE_UP_V122).await?;
     apply_sqlite(pool, 126, SQLITE_UP_V126).await?;
     Ok(())

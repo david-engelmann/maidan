@@ -787,6 +787,19 @@ and everything merged through #1077.
 - **Fixed:** on Postgres, two concurrent transitions of one thread could both
   act on the state they read; a transition now locks the thread row.
 
+### A claim nobody acknowledges is reported
+
+- **Added:** the `ClaimUnacknowledged` event. A leased claim still
+  unacknowledged `MAIDAN_CLAIM_ACK_TIMEOUT_SECS` after it was taken (default
+  120 s, `0` off) gets one, from the claim reaper's tick, naming the holder
+  and `claimed_at`. The claim is left alone. The notification router sends it
+  to the owner and the holder's followers as stuck work, and the manager
+  digest counts it under `stuck`. Not federatable. Counter
+  `maidan_claims_unacknowledged_total`. Migration `0120` adds
+  `maidan_threads.claimed_at` and `unacknowledged_lease_id`.
+- **Changed:** `contracts/event-kinds.json` is checked against
+  `EventKind::ALL`, so a new kind cannot be left out of it.
+
 ### The OpenAPI document
 
 - **Fixed:** `GET /openapi.json` referenced 57 schemas it never defined (263

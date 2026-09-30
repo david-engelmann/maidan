@@ -160,6 +160,7 @@ async fn run_suite(store: &dyn Store) {
         (106, EventKind::ThreadResultSet, Some(channel_b.id)),
         (107, EventKind::ApprovalRequested, None),
         (108, EventKind::MentionRecorded, Some(channel_a.id)),
+        (110, EventKind::ClaimUnacknowledged, Some(channel_a.id)),
     ] {
         store
             .create_notification(NewNotification {
@@ -214,7 +215,7 @@ async fn run_suite(store: &dyn Store) {
         .iter()
         .find(|row| row.channel_id == Some(channel_a.id))
         .unwrap();
-    assert_eq!((alpha.results, alpha.gates, alpha.stuck), (2, 1, 3));
+    assert_eq!((alpha.results, alpha.gates, alpha.stuck), (2, 1, 4));
     let beta = digest
         .channels
         .iter()
