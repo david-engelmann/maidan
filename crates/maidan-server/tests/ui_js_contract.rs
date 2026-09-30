@@ -1129,3 +1129,40 @@ fn ui_js_shows_a_refused_close_and_leads_with_the_latest_review() {
         "Needs you puts the latest review first when more than one is waiting"
     );
 }
+
+/// The first screen is the board. Live controls sit in a closed menu, a
+/// refused subscribe is a status line, an empty Needs you queue is one
+/// sentence, and a decision row has a single filled button.
+#[test]
+fn ui_js_keeps_the_first_screen_quiet() {
+    assert!(
+        HTML.contains("id=\"live-more\"") && HTML.contains("id=\"needs-you-quiet\""),
+        "the live menu and the empty-queue line exist"
+    );
+    assert!(
+        !HTML.contains("class=\"primary\">Connect WS"),
+        "connecting the socket is not the page's primary button"
+    );
+    assert!(
+        !HTML.contains("Connect to update the board"),
+        "the live hint no longer leads the first screen"
+    );
+    assert!(
+        HTML.contains("Nothing is waiting on you."),
+        "an empty queue is one sentence"
+    );
+    let js = script(HTML);
+    assert!(
+        js.contains("document.getElementById(\"needs-you-head\").hidden = empty;"),
+        "the card head is hidden when nothing is waiting"
+    );
+    assert!(
+        js.contains("changes.className = \"ghost\"")
+            && js.contains("[\"decline\", \"Decline\", \"ghost\"]"),
+        "the second action on a decision row is not a filled button"
+    );
+    assert!(
+        js.contains("el.title = text || \"\";"),
+        "a long refusal stays available without becoming a banner"
+    );
+}

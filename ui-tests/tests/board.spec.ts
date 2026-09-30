@@ -90,6 +90,8 @@ test("the Live bar stays collapsed until connected, and the raw feed is opt-in",
   await expect(page.locator("#ws-status")).toHaveText("connected");
   await expect(page.locator("#live-panel")).toHaveClass(/connected/);
   await expect(feed).toBeHidden();
+  // Raw events live in the Live menu, not on the first screen.
+  await page.locator("#live-more summary").click();
   await page.click("#live-toggle");
   await expect(feed).toBeVisible();
   await expect(feed).toContainText("[ack]");
