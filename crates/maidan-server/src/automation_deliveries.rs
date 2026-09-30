@@ -6,7 +6,7 @@ use maidan_auth::{
     AuthContext,
 };
 use maidan_store::AutomationDeliveryFilter;
-use maidan_types::{AutomationDelivery, NewAuditEvent, WorkspaceId};
+use maidan_types::{AuditScope, AutomationDelivery, NewAuditEvent, WorkspaceId};
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -106,6 +106,7 @@ pub async fn replay_automation_delivery(
     state
         .store
         .append_audit(NewAuditEvent {
+            scope: AuditScope::Workspace(workspace_id),
             actor_id,
             action: "automation_delivery.replay".into(),
             target_kind: Some("automation_delivery".into()),

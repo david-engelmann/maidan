@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::Utc;
 use maidan_auth::{capability, hash_secret, TokenSecret, TOKEN_ADMIN};
-use maidan_types::{NewApiToken, NewAuditEvent};
+use maidan_types::{AuditScope, NewApiToken, NewAuditEvent};
 
 use crate::dto::{MintApiTokenResponse, SessionResponse};
 use crate::error::ApiError;
@@ -48,6 +48,7 @@ pub async fn mint_first_admin_token(
                 expires_at: None,
             },
             Box::new(move |record| NewAuditEvent {
+                scope: AuditScope::Workspace(record.workspace_id),
                 actor_id: Some(actor),
                 action: "token.mint".into(),
                 target_kind: Some("api_token".into()),

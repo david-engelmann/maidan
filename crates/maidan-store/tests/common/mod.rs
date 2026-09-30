@@ -219,6 +219,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
 
     let audit = store
         .append_audit(NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(alice.workspace_id),
             actor_id: Some(alice.id),
             action: "post_message".to_string(),
             target_kind: Some("message".to_string()),

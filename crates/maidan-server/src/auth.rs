@@ -12,7 +12,7 @@ use maidan_auth::{
     AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,
 };
 
-use maidan_types::NewAuditEvent;
+use maidan_types::{AuditScope, NewAuditEvent};
 
 use crate::error::ApiError;
 use crate::federation::PeerContext;
@@ -96,6 +96,7 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
             crate::audit::record(
                 state,
                 NewAuditEvent {
+                    scope: AuditScope::Workspace(auth.workspace_id),
                     actor_id: Some(auth.actor_id),
                     action: MUTATION_ACTION.into(),
                     target_kind: Some("workspace".into()),

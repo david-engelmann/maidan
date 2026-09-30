@@ -81,6 +81,7 @@ pub(super) async fn replay_result_delivery_tool(
     };
     if let Err(err) = store
         .append_audit(NewAuditEvent {
+            scope: AuditScope::Workspace(workspace_id),
             actor_id: (!auth.bypass).then_some(auth.member_id),
             action: "result_delivery.replay".into(),
             target_kind: Some("result_delivery".into()),

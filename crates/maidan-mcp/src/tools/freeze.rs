@@ -7,29 +7,27 @@ use std::sync::Arc;
 
 use maidan_auth::AuthContext;
 use maidan_store::Store;
-use maidan_types::MemberId;
+use maidan_types::{AuditScope, MemberId, WorkspaceId};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::content_json;
 use crate::error::McpError;
 
-/// Verify the target member is in the caller's workspace (bypass exempt).
+/// Verify the target member is in the caller's workspace (bypass exempt), and
+/// return the member's workspace.
 async fn ensure_same_workspace(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
     member_id: MemberId,
-) -> Result<(), McpError> {
-    if auth.bypass {
-        return Ok(());
-    }
+) -> Result<WorkspaceId, McpError> {
     let member = store.get_member(member_id).await?;
-    if member.workspace_id != auth.workspace_id {
+    if !auth.bypass && member.workspace_id != auth.workspace_id {
         return Err(McpError::InvalidParams(
             "member is not in the caller's workspace".into(),
         ));
     }
-    Ok(())
+    Ok(member.workspace_id)
 }
 
 #[derive(Deserialize)]
@@ -50,7 +48,7 @@ pub(super) async fn freeze_member(
     let store = &server.store;
     let a: FreezeArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
-    ensure_same_workspace(store, auth, member_id).await?;
+    let workspace_id = ensure_same_workspace(store, auth, member_id).await?;
     let reason = a.reason.as_deref().map(str::trim).filter(|r| !r.is_empty());
     let actor = auth.actor_id;
     let (freeze, released, stored) = store
@@ -59,6 +57,7 @@ pub(super) async fn freeze_member(
             auth.member_id,
             reason,
             Box::new(move |(freeze, released)| maidan_types::NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "member.freeze".into(),
                 target_kind: Some("member".into()),
@@ -87,12 +86,13 @@ pub(super) async fn unfreeze_member(
     let store = &server.store;
     let a: UnfreezeArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
-    ensure_same_workspace(store, auth, member_id).await?;
+    let workspace_id = ensure_same_workspace(store, auth, member_id).await?;
     let stored = store
         .unfreeze_member_audited(
             member_id,
             auth.member_id,
             maidan_types::NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "member.unfreeze".into(),
                 target_kind: Some("member".into()),

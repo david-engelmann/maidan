@@ -6,7 +6,7 @@
 //! tokens still live.
 
 use chrono::Utc;
-use maidan_types::{Member, MemberId, NewAuditEvent, NewMember, ScimUser, WorkspaceId};
+use maidan_types::{AuditScope, Member, MemberId, NewAuditEvent, NewMember, ScimUser, WorkspaceId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -90,6 +90,7 @@ async fn revoke_member_tokens(
         audit::append_counted(
             &mut *conn,
             NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: None,
                 action: "token.revoke".into(),
                 target_kind: Some("api_token".into()),

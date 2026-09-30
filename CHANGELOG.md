@@ -401,6 +401,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   workspace's egress, mail and agent runs, as it does its events.
 - **Docs:** Production.md has a Retention section for all five knobs.
 
+### Every audit row belongs to a workspace
+
+- **Fixed:** audit rows carried no workspace. `GET /workspaces/{wid}/audit`
+  guessed from the actor's membership, so rows with no actor (app tokens
+  minted by the OAuth code exchange, a SCIM deprovision's token revokes,
+  result-delivery attempts) were in no workspace's view, and a row a member
+  wrote about another workspace showed in the member's own. Retention could
+  not tell whose a row was, so any legal hold froze audit pruning for the whole
+  instance.
+- **Changed:** `maidan_audit.workspace_id` (migration 0123, both backends) is
+  stamped at write. `NewAuditEvent` has a required `scope`
+  (`AuditScope::Workspace(id)` or `AuditScope::Instance`, no default), so a
+  writer cannot leave it out. The workspace view reads the column, and a hold
+  keeps only its own workspace's audit rows; instance-level rows prune under
+  the instance cutoff. `AuditEvent` carries `workspace_id`.
+- Existing rows are backfilled from what they reference (a workspace target,
+  `metadata.workspace_id`, the target's row, then the actor's or subject's
+  membership). A row none of those resolves stays instance-level, visible only
+  in `GET /operator/audit`.
+- **Docs:** Production.md (legal holds, retention, the backfill) and
+  Integration.md (the audit view).
+
 ### TLA+ specs
 
 - **Added:** TLA+ specs of the claim state machine and of the hash-chained

@@ -9,7 +9,7 @@ use maidan_auth::{
     capability::{OPERATOR_GLOBAL, TOKEN_ADMIN, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_types::{NewAuditEvent, ReindexJob, ReindexJobStatus, WorkspaceId};
+use maidan_types::{AuditScope, NewAuditEvent, ReindexJob, ReindexJobStatus, WorkspaceId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -99,6 +99,7 @@ pub async fn start_reindex_embeddings(
         }
         let _ = store
             .append_audit(NewAuditEvent {
+                scope: workspace_id.map_or(AuditScope::Instance, AuditScope::Workspace),
                 actor_id,
                 action: "embeddings.reindex".into(),
                 target_kind: Some("reindex_job".into()),

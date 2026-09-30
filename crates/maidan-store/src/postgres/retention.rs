@@ -52,13 +52,14 @@ pub async fn prune_audit(
     limit: i64,
 ) -> Result<u64, StoreError> {
     let res = sqlx::query(
-        // Maidan_audit is not workspace-tagged, so a legal hold freezes audit
-        // pruning entirely while any hold is active.
+        // A hold keeps its own workspace's rows, as with events. Instance-level
+        // rows (NULL workspace_id) belong to no tenant's hold and still prune.
         "DELETE FROM maidan_audit
          WHERE id IN (
              SELECT id FROM maidan_audit
              WHERE occurred_at < $1
-               AND NOT EXISTS (SELECT 1 FROM maidan_legal_holds)
+               AND (workspace_id IS NULL
+                    OR workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds))
              ORDER BY id ASC
              LIMIT $2
          )",

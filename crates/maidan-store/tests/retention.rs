@@ -106,6 +106,7 @@ async fn run_retention_suite(store: &dyn Store) {
     let future = chrono::Utc::now() + chrono::Duration::days(1);
     store
         .append_audit(NewAuditEvent {
+            scope: maidan_types::AuditScope::Instance,
             actor_id: None,
             action: "test.action".into(),
             target_kind: None,

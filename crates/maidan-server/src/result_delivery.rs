@@ -417,12 +417,14 @@ pub fn prepare_inline_review(waiter: &WaiterResult) -> Option<PreparedInlineRevi
 /// Best-effort audit of an operator replay. Never fails the replay itself.
 pub async fn audit_replay(
     state: &AppState,
+    workspace_id: maidan_types::WorkspaceId,
     actor_id: Option<maidan_types::MemberId>,
     row: &ResultDelivery,
 ) {
     crate::audit::record(
         state,
         maidan_types::NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(workspace_id),
             actor_id,
             action: "result_delivery.replay".into(),
             target_kind: Some("result_delivery".into()),

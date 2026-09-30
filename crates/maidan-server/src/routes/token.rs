@@ -81,6 +81,7 @@ pub async fn mint_api_token(
                 expires_at: body.expires_at,
             },
             Box::new(move |record| NewAuditEvent {
+                scope: AuditScope::Workspace(record.workspace_id),
                 actor_id: Some(actor),
                 action: "token.mint".into(),
                 target_kind: Some("api_token".into()),
@@ -169,6 +170,7 @@ pub async fn revoke_api_token(
         .revoke_api_token_audited(
             token_id,
             Box::new(move |revoked| NewAuditEvent {
+                scope: AuditScope::Workspace(revoked.workspace_id),
                 actor_id: Some(actor),
                 action: "token.revoke".into(),
                 target_kind: Some("api_token".into()),
@@ -210,6 +212,7 @@ pub async fn rotate_api_token(
             token_id,
             &hash_secret(secret.as_str()),
             Box::new(move |successor| NewAuditEvent {
+                scope: AuditScope::Workspace(successor.workspace_id),
                 actor_id: Some(actor),
                 action: "token.rotate".into(),
                 target_kind: Some("api_token".into()),
@@ -306,6 +309,7 @@ pub async fn attenuate_api_token(
     let parent_token_id = auth.token_id;
     let quota_count = inherited_quotas.len();
     let audit: maidan_store::AuditFor<ApiToken> = Box::new(move |record| NewAuditEvent {
+        scope: AuditScope::Workspace(record.workspace_id),
         actor_id: Some(actor),
         action: "token.mint".into(),
         target_kind: Some("api_token".into()),
@@ -423,6 +427,7 @@ pub async fn delegate_api_token(
             auth.member_id,
             auth.token_id,
             Box::new(move |record| NewAuditEvent {
+                scope: AuditScope::Workspace(record.workspace_id),
                 actor_id: Some(actor),
                 action: "token.delegate".into(),
                 target_kind: Some("api_token".into()),
@@ -510,6 +515,7 @@ pub async fn create_delegation_grant(
                 expires_at: body.expires_at,
             },
             Box::new(move |grant| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "delegation_grant.create".into(),
                 target_kind: Some("delegation_grant".into()),
@@ -560,6 +566,7 @@ pub async fn revoke_delegation_grant(
             workspace_id,
             grant_id,
             NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "delegation_grant.revoke".into(),
                 target_kind: Some("delegation_grant".into()),

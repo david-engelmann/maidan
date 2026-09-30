@@ -179,6 +179,8 @@ const POSTGRES_UP_V121: &str =
     include_str!("../../../migrations/postgres/0121_decision_history.sql");
 
 const POSTGRES_UP_V122: &str = include_str!("../../../migrations/postgres/0122_trace_context.sql");
+const POSTGRES_UP_V123: &str =
+    include_str!("../../../migrations/postgres/0123_audit_workspace.sql");
 const POSTGRES_UP_V126: &str =
     include_str!("../../../migrations/postgres/0126_mcp_resource_subscriptions.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
@@ -327,6 +329,7 @@ const SQLITE_UP_V120: &str =
 const SQLITE_UP_V121: &str = include_str!("../../../migrations/sqlite/0121_decision_history.sql");
 
 const SQLITE_UP_V122: &str = include_str!("../../../migrations/sqlite/0122_trace_context.sql");
+const SQLITE_UP_V123: &str = include_str!("../../../migrations/sqlite/0123_audit_workspace.sql");
 const SQLITE_UP_V126: &str =
     include_str!("../../../migrations/sqlite/0126_mcp_resource_subscriptions.sql");
 
@@ -508,6 +511,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 120, POSTGRES_UP_V120).await?;
     apply_postgres(pool, 121, POSTGRES_UP_V121).await?;
     apply_postgres(pool, 122, POSTGRES_UP_V122).await?;
+    apply_postgres(pool, 123, POSTGRES_UP_V123).await?;
     // 123–125 belong to other lanes.
     apply_postgres(pool, 126, POSTGRES_UP_V126).await?;
     Ok(())
@@ -647,6 +651,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 120, SQLITE_UP_V120).await?;
     apply_sqlite(pool, 121, SQLITE_UP_V121).await?;
     apply_sqlite(pool, 122, SQLITE_UP_V122).await?;
+    apply_sqlite(pool, 123, SQLITE_UP_V123).await?;
     apply_sqlite(pool, 126, SQLITE_UP_V126).await?;
     Ok(())
 }

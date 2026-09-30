@@ -44,6 +44,7 @@ pub async fn create_channel(
                 auth.member_id,
                 ChannelMemberRole::Admin,
                 Box::new(move |m| NewAuditEvent {
+                    scope: AuditScope::Workspace(workspace_id),
                     actor_id: Some(actor),
                     action: "channel_member.add".into(),
                     target_kind: Some("channel".into()),
@@ -244,6 +245,7 @@ pub async fn add_channel_member(
             member.id,
             role,
             Box::new(move |m| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
                 action: "channel_member.add".into(),
                 target_kind: Some("channel".into()),
@@ -284,6 +286,7 @@ pub async fn remove_channel_member(
             channel.id,
             MemberId(mid),
             NewAuditEvent {
+                scope: AuditScope::Workspace(channel.workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "channel_member.remove".into(),
                 target_kind: Some("channel".into()),

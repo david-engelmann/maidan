@@ -47,6 +47,7 @@ pub async fn add_member_skill(
                 member.id,
                 body.skill.trim(),
                 NewAuditEvent {
+                    scope: AuditScope::Workspace(member.workspace_id),
                     actor_id: Some(auth.actor_id),
                     action: "member_skill.grant_governance".into(),
                     target_kind: Some("member".into()),

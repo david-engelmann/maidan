@@ -569,6 +569,7 @@ impl McpServer {
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect();
             let event = maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "mutation".into(),
                 target_kind: Some("workspace".into()),

@@ -5,7 +5,8 @@
 use maidan_store::attribution::with_attribution;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    Attribution, DelegationGrantId, MemberKind, NewAuditEvent, NewChannel, NewMember, NewWorkspace,
+    Attribution, AuditScope, DelegationGrantId, MemberKind, NewAuditEvent, NewChannel, NewMember,
+    NewWorkspace,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -77,6 +78,7 @@ async fn run_suite(store: &dyn Store) {
     assert!(store.verify_event_chain(ws.id).await.unwrap().ok);
 
     let audit = |actor| NewAuditEvent {
+        scope: AuditScope::Workspace(ws.id),
         actor_id: actor,
         action: "test.action".into(),
         target_kind: Some("workspace".into()),

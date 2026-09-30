@@ -33,7 +33,9 @@ pub async fn set_review_requirement(
 ) -> ApiResult<Json<ThreadReviewRequirement>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    let workspace_id = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id)
+        .await?
+        .workspace_id;
     if body.required_count < 0 {
         return Err(ApiError::BadRequest("required_count must be >= 0".into()));
     }
@@ -58,7 +60,7 @@ pub async fn set_review_requirement(
             thread_id,
             body.required_count,
             allow_lower,
-            Box::new(move |(from, req)| review_requirement_event(actor, *from, req)),
+            Box::new(move |(from, req)| review_requirement_event(workspace_id, actor, *from, req)),
         )
         .await?;
     Ok(Json(req))
@@ -67,11 +69,13 @@ pub async fn set_review_requirement(
 /// The record of a review-requirement write. A lowering is the waiver and keeps
 /// its own action; a raise or an unchanged count is recorded as a set.
 fn review_requirement_event(
+    workspace_id: WorkspaceId,
     actor: MemberId,
     from: i64,
     req: &ThreadReviewRequirement,
 ) -> NewAuditEvent {
     NewAuditEvent {
+        scope: AuditScope::Workspace(workspace_id),
         actor_id: Some(actor),
         action: if req.required_count < from {
             "review_requirement.lower"
@@ -110,12 +114,13 @@ pub async fn clear_review_requirement(
 ) -> ApiResult<StatusCode> {
     cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
-    maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    let scope = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     let cleared = state
         .store
         .clear_review_requirement_audited(
             thread_id,
             NewAuditEvent {
+                scope: AuditScope::Workspace(scope.workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "review_requirement.clear".into(),
                 target_kind: Some("thread".into()),
@@ -162,13 +167,14 @@ pub async fn remove_reviewer(
     // concurrent removes could each see a survivor and still empty it together.
     cap(&auth, CHANNEL_ADMIN)?;
     let thread_id = ThreadId(id);
-    maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    let scope = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     let removed = state
         .store
         .remove_reviewer_audited(
             thread_id,
             MemberId(member_id),
             NewAuditEvent {
+                scope: AuditScope::Workspace(scope.workspace_id),
                 actor_id: Some(auth.actor_id),
                 action: "reviewer.remove".into(),
                 target_kind: Some("thread".into()),

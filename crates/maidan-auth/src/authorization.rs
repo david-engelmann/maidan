@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use maidan_store::Store;
-use maidan_types::{MemberId, NewAuditEvent, WorkspaceId};
+use maidan_types::{AuditScope, MemberId, NewAuditEvent, WorkspaceId};
 use metrics::counter;
 use uuid::Uuid;
 
@@ -158,6 +158,7 @@ pub async fn record_delegated_authorization(
         return;
     };
     let event = NewAuditEvent {
+        scope: AuditScope::Workspace(auth.workspace_id),
         actor_id: Some(auth.actor_id),
         action: "authorization.decision".into(),
         target_kind: Some("workspace".into()),
