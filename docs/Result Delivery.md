@@ -486,7 +486,10 @@ All three are now carried.
      self-reported clock is the same trust hole as a self-reported cost, and
      Maidan already holds the authoritative one. `max_wall_secs` is measured
      against the thread's **working clock** (`work_started_at`), so
-     elapsed time is the room's own measurement.
+     elapsed time is the room's own measurement. A claim whose lease lapses
+     is charged the time it worked (acknowledgement to deadline) when the
+     reaper frees it, so the bound also stops a hung agent that never
+     reports ([Integration](Integration.md), step 4).
    - **To arm the wall dimension, acknowledge the claim.** `work_started_at` is
      `NULL` until the holder calls `acknowledge_claim {thread_id,
      claim_lease_id}` (REST `POST /threads/:id/claim/acknowledge`). The holder

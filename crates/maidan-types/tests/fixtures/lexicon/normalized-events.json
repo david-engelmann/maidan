@@ -411,7 +411,8 @@
       "updated_at": "2023-11-14T22:13:20Z",
       "used_tokens": 130,
       "used_turns": 1,
-      "used_usd_micros": 2
+      "used_usd_micros": 2,
+      "used_wall_secs": 0
     },
     "channel_id": "00000000-0000-0000-0000-000000000003",
     "kind": "usage_reported",

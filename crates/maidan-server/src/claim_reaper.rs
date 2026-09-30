@@ -9,8 +9,16 @@
 //! token, and publishes the `ClaimExpired` the store appended in the same
 //! transaction, which the notification router turns into a stuck-work notice.
 //!
-//! `claim_next` still reclaims a lease that lapsed between ticks; a lease is
-//! reported once either way, because whichever takes it clears the holder.
+//! The same transaction charges the time the claim worked, from its
+//! acknowledgement to its lease deadline, to the thread's wall budget: a hung
+//! agent never calls `report_usage`, so without the charge `max_wall_secs`
+//! never bound it and the thread went round the queue forever. A claim that
+//! leaves its thread over budget ends the way a report over budget ends it,
+//! with `ClaimFailed` and a DLQ entry in place of `ClaimExpired`.
+//!
+//! `claim_next` still reclaims a lease that lapsed between ticks, and charges
+//! it the same way; a lease is reported and charged once either way, because
+//! whichever takes it clears the holder.
 //!
 //! The same tick reports claims their holder never acknowledged: a leased
 //! claim still unacknowledged `MAIDAN_CLAIM_ACK_TIMEOUT_SECS` (120 s; `0`
@@ -71,7 +79,8 @@ fn config_from_raw(tick: Option<String>, ack_timeout: Option<String>) -> Option<
 }
 
 /// Reap every lease that lapsed before now, up to [`MAX_PER_TICK`], and
-/// publish each `ClaimExpired`. Returns how many were reaped.
+/// publish each `ClaimExpired` (or `ClaimFailed`, for a claim that ran its
+/// thread out of budget). Returns how many were reaped.
 pub async fn sweep_once(state: &AppState) -> usize {
     let now = chrono::Utc::now();
     let mut reaped = 0;

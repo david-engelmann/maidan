@@ -1652,8 +1652,10 @@ pub trait AssignmentStore: Send + Sync {
     /// Claim the next thread, appending its events atomically **iff** a thread
     /// was claimed. The returned events are the reclaim's
     /// `ThreadAssignmentChanged`, preceded by a `ClaimExpired` when the claim
-    /// took over an expired lease (the previous holder's claim lapsed). Empty
-    /// vec when nothing was claimed.
+    /// took over an expired lease (the previous holder's claim lapsed), or a
+    /// `ClaimFailed` when charging that claim's worked time put the thread
+    /// over budget (see [`reap_expired_claims`](Self::reap_expired_claims)).
+    /// Empty vec when nothing was claimed.
     async fn claim_next_thread_with_event(
         &self,
         channel_id: ChannelId,
@@ -1667,7 +1669,12 @@ pub trait AssignmentStore: Send + Sync {
     /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event).
     /// Only open, live threads are reaped, the ones `claim_next` could take.
     /// The holder, lease, fencing token and working clock are cleared, so the
-    /// dead holder's token is fenced from then on. Concurrent reapers take
+    /// dead holder's token is fenced from then on. In the same transaction the
+    /// time each claim worked (acknowledgement to deadline; nothing if never
+    /// acknowledged) is charged to its thread's `used_wall_secs`, and a claim
+    /// that leaves its thread over budget gets `ClaimFailed` and a DLQ entry,
+    /// as a usage report would, instead of `ClaimExpired`. The reclaim inside
+    /// `claim_next` charges the same way. Concurrent reapers take
     /// distinct threads (`FOR UPDATE SKIP LOCKED` on Postgres; SQLite
     /// serializes writers). Returns the appended events, oldest deadline
     /// first.

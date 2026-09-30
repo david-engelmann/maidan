@@ -258,6 +258,7 @@ fn sample_event(kind: EventKind) -> Event {
                 used_tokens: 130,
                 used_usd_micros: 2,
                 used_turns: 1,
+                used_wall_secs: 0,
                 created_at: occurred_at,
                 updated_at: occurred_at,
             },
