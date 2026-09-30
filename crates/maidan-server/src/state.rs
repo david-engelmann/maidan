@@ -137,10 +137,11 @@ pub struct AppState {
     pub request_limit: crate::load_shed::RequestLimit,
     /// Optional Redis backend for global and per-token rate limits.
     pub rate_limit_redis: Option<redis::aio::ConnectionManager>,
-    /// Apply a built-in global per-client rate limit when
-    /// `MAIDAN_RATE_LIMIT_MAX` is unset. The server bootstrap turns this on so
-    /// a deployment that configures nothing still has a DoS floor; an explicit
-    /// `MAIDAN_RATE_LIMIT_MAX` (including `0` to disable) always overrides.
+    /// Apply the built-in per-client and per-workspace rate limits when
+    /// `MAIDAN_RATE_LIMIT_MAX` or `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` is unset.
+    /// The server bootstrap turns this on so a deployment that configures
+    /// nothing still has a DoS floor and tenant fairness; an explicit value
+    /// (including `0` to disable) always overrides.
     /// Left `false` in [`AppState::new`] so tests are unaffected unless they
     /// opt in.
     pub rate_limit_default_on: bool,

@@ -509,6 +509,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the order members last took hold of a thread, seeded from the order they
   first held it with the current holder last.
 
+### Per-workspace fairness by default
+
+- **Changed:** the per-workspace rate limit is on by default at 6000 requests
+  per 60 s for one workspace across all its tokens, the way the per-client
+  limit is on at 1200. Before, `MAIDAN_WORKSPACE_RATE_LIMIT_MAX` was off unless
+  set, so one tenant's loop could take a shared instance. 6000 is five clients
+  at the per-client ceiling, so a busy workspace's agents meet their own
+  limits first. An explicit value wins and `0` turns it off, as for the global
+  limit.
+
 ### Delivery retention covers every delivery table
 
 - **Fixed:** `MAIDAN_RETENTION_DELIVERIES_DAYS` pruned only webhook and
