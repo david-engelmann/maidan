@@ -63,7 +63,9 @@ pub fn auth_disabled_from_env() -> bool {
 /// rule each handler must remember is one the next handler forgets. So if a
 /// mutating request succeeds and nothing inside it wrote an attributed record,
 /// this writes one: the operation, its concrete path, and who acted for whom.
-/// MCP is exempt here because it records per tool call, below.
+/// MCP and A2A are exempt here because one endpoint serves many methods, some
+/// of them reads, and a JSON-RPC error still answers 200: each records per
+/// call instead (`McpServer::tools_call`, `a2a_agent::recorded`).
 async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
     let Some(auth) = req.extensions().get::<AuthContext>().cloned() else {
         return next.run(req).await;
@@ -89,7 +91,7 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
         && mutating
         && !recorded
         && response.status().is_success()
-        && !path.starts_with("/mcp")
+        && !records_per_call(&path)
     {
         maidan_store::attribution::with_attribution(
             attribution,
@@ -113,6 +115,12 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
         .await;
     }
     response
+}
+
+/// Surfaces that record each call they dispatch, so the request layer does not
+/// record the request.
+fn records_per_call(path: &str) -> bool {
+    path.starts_with("/mcp") || path.starts_with("/a2a/")
 }
 
 /// The audit action of a change that did not record itself.

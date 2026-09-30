@@ -5,7 +5,7 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use maidan_auth::TOKEN_ADMIN;
-use maidan_types::{NewMaidanSession, NewOidcPendingAuth, WorkspaceId};
+use maidan_types::{AuditScope, NewAuditEvent, NewMaidanSession, NewOidcPendingAuth, WorkspaceId};
 use openidconnect::{
     core::CoreAuthenticationFlow, AuthorizationCode, IssuerUrl, LogoutRequest, Nonce,
     PkceCodeChallenge, PkceCodeVerifier, PostLogoutRedirectUrl, Scope, TokenResponse,
@@ -18,6 +18,11 @@ use crate::extract::ApiQuery;
 use crate::oidc::member::{resolve_member_for_login, touch_identity};
 use crate::session::{clear_session_cookie, parse_session_cookie, set_session_cookie};
 use crate::state::AppState;
+
+/// The audit action of signing in.
+pub const SESSION_CREATE: &str = "session.create";
+/// The audit action of signing out.
+pub const SESSION_DELETE: &str = "session.delete";
 
 fn random_token() -> String {
     let mut bytes = [0u8; 32];
@@ -160,7 +165,7 @@ pub async fn callback(
         (oidc.settings.issuer.clone(), sub, email, email_verified)
     };
 
-    let member_id = resolve_member_for_login(
+    let (member_id, how) = resolve_member_for_login(
         state.store.as_ref(),
         pending.workspace_id,
         &issuer,
@@ -182,14 +187,31 @@ pub async fn callback(
     )
     .await?;
 
+    // A session is a credential: signing in is recorded in the session's own
+    // transaction (D-A), with the member as actor.
     let session = state
         .store
-        .create_session(NewMaidanSession {
-            workspace_id: pending.workspace_id,
-            member_id,
-            csrf_secret: random_token(),
-            expires_at: Utc::now() + Duration::seconds(oidc.settings.session_ttl_secs as i64),
-        })
+        .create_session_audited(
+            NewMaidanSession {
+                workspace_id: pending.workspace_id,
+                member_id,
+                csrf_secret: random_token(),
+                expires_at: Utc::now() + Duration::seconds(oidc.settings.session_ttl_secs as i64),
+            },
+            Box::new(move |session| NewAuditEvent {
+                scope: AuditScope::Workspace(session.workspace_id),
+                actor_id: Some(session.member_id),
+                action: SESSION_CREATE.into(),
+                target_kind: Some("member".into()),
+                target_id: Some(session.member_id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": session.workspace_id.0,
+                    "issuer": issuer,
+                    "member": how.as_str(),
+                    "expires_at": session.expires_at,
+                }),
+            }),
+        )
         .await?;
 
     let mut headers = HeaderMap::new();
@@ -226,8 +248,28 @@ pub async fn logout(
         .as_ref()
         .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
 
+    // Ending a session is recorded in its own transaction (D-A). A session
+    // already gone has nothing to end; any other failure leaves it valid, so
+    // the caller is told rather than shown a sign-out that did not happen.
     if let Some(session_id) = parse_session_cookie(&headers_in, oidc.session_secret.as_ref()) {
-        let _ = state.store.delete_session(session_id).await;
+        let ended = state
+            .store
+            .delete_session_audited(
+                session_id,
+                Box::new(|session| NewAuditEvent {
+                    scope: AuditScope::Workspace(session.workspace_id),
+                    actor_id: Some(session.member_id),
+                    action: SESSION_DELETE.into(),
+                    target_kind: Some("member".into()),
+                    target_id: Some(session.member_id.0),
+                    metadata: serde_json::json!({ "workspace_id": session.workspace_id.0 }),
+                }),
+            )
+            .await;
+        match ended {
+            Ok(_) | Err(maidan_store::StoreError::NotFound) => {}
+            Err(err) => return Err(err.into()),
+        }
     }
 
     let mut headers = HeaderMap::new();

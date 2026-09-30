@@ -3,15 +3,15 @@
 //!
 //! A trigger makes every audit insert fail. Each audited change must then fail
 //! and leave the state as it was: no token, grant or ticket created, none
-//! revoked, the grant ceiling unchanged. The audit row is inside the change's
+//! revoked, the grant ceiling unchanged, no session begun or ended. The audit row is inside the change's
 //! transaction, so they commit or roll back together.
 
 use chrono::{Duration, Utc};
 use maidan_auth::hash_secret;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewApiToken, NewAuditEvent, NewChannel, NewDelegationGrant, NewMember,
-    NewShareTicket, NewWorkspace,
+    MemberKind, NewApiToken, NewAuditEvent, NewChannel, NewDelegationGrant, NewMaidanSession,
+    NewMember, NewShareTicket, NewWorkspace,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -113,6 +113,32 @@ where
         .set_delegation_policy_audited(ws.id, Some(30), audit_for("policy.set"))
         .await
         .unwrap();
+    let session = |secret: &str| NewMaidanSession {
+        workspace_id: ws.id,
+        member_id: member.id,
+        csrf_secret: secret.into(),
+        expires_at: Utc::now() + Duration::hours(1),
+    };
+    let live_session = store
+        .create_session_audited(session("live"), audit_for("session.create"))
+        .await
+        .unwrap();
+    let ended = store
+        .create_session_audited(session("ended"), audit_for("session.create"))
+        .await
+        .unwrap();
+    store
+        .delete_session_audited(ended.id, audit_for("session.delete"))
+        .await
+        .unwrap();
+    assert!(store.get_session(ended.id).await.is_err());
+    // Ending a session that is already gone records nothing.
+    assert!(matches!(
+        store
+            .delete_session_audited(ended.id, audit_for("session.delete.missing"))
+            .await,
+        Err(StoreError::NotFound)
+    ));
     let recorded: Vec<String> = store
         .list_audit(10)
         .await
@@ -120,7 +146,14 @@ where
         .into_iter()
         .map(|row| row.action)
         .collect();
-    for action in ["token.mint", "grant.create", "ticket.create", "policy.set"] {
+    for action in [
+        "token.mint",
+        "grant.create",
+        "ticket.create",
+        "policy.set",
+        "session.create",
+        "session.delete",
+    ] {
         assert!(recorded.iter().any(|a| a == action), "{action} unrecorded");
     }
     // A revoke that finds no live ticket changes nothing and records nothing.
@@ -132,12 +165,15 @@ where
         )
         .await
         .unwrap());
-    assert!(!store
-        .list_audit(10)
-        .await
-        .unwrap()
-        .iter()
-        .any(|row| row.action == "ticket.revoke.missing"));
+    assert!(
+        !store
+            .list_audit(10)
+            .await
+            .unwrap()
+            .iter()
+            .any(|row| row.action == "ticket.revoke.missing"
+                || row.action == "session.delete.missing")
+    );
 
     break_audit().await;
 
@@ -226,6 +262,19 @@ where
             .max_grant_days,
         30,
         "an unrecorded ceiling change must not take effect"
+    );
+
+    assert!(store
+        .create_session_audited(session("unrecorded"), audit_for("session.create"))
+        .await
+        .is_err());
+    assert!(store
+        .delete_session_audited(live_session.id, audit_for("session.delete"))
+        .await
+        .is_err());
+    assert!(
+        store.get_session(live_session.id).await.is_ok(),
+        "an unrecorded sign-out must leave the session live"
     );
 }
 

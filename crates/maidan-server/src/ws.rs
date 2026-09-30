@@ -61,6 +61,8 @@ struct SubscribeRequest {
     member_id: Option<MemberId>,
     at_least_once: bool,
     lean: bool,
+    /// Who the socket acts as, from its credential; `None` when auth is off.
+    attribution: Option<maidan_types::Attribution>,
 }
 
 /// Fail-loud subscribe rejection. A too-old cursor sends a JSON frame
@@ -184,13 +186,20 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
             return;
         }
     };
+    // The socket outlives the upgrade request and is authenticated by its first
+    // frame, so no request layer scoped it: what it writes (the last-seen
+    // stamp, delivery cursors) is the subscriber's, scoped here.
+    let attribution = request.attribution;
+    maidan_store::attribution::with_attribution(attribution, serve(socket, state, request)).await
+}
 
+async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest) {
     let (tx, mut rx) = mpsc::channel::<WsMessage>(SEND_QUEUE);
 
     let text_tx = {
         let ws_tx = tx.clone();
         let (text_tx, mut text_rx) = mpsc::channel::<String>(SEND_QUEUE);
-        tokio::spawn(async move {
+        maidan_store::attribution::spawn(async move {
             while let Some(payload) = text_rx.recv().await {
                 if ws_tx.send(WsMessage::Text(payload.into())).await.is_err() {
                     break;
@@ -288,7 +297,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
         })
         .flatten();
     let bus_task = if let Some((workspace_id, consumer_id)) = reconcile {
-        tokio::spawn(async move {
+        maidan_store::attribution::spawn(async move {
             event_stream::reconcile_deliver(
                 subscriber,
                 bus_tx,
@@ -305,7 +314,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
         })
     } else {
         let watermark = Arc::new(std::sync::atomic::AtomicI64::new(high_water));
-        tokio::spawn(async move {
+        maidan_store::attribution::spawn(async move {
             event_stream::forward_bus_items(
                 subscriber,
                 bus_tx,
@@ -329,7 +338,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
             // spawned so a store hiccup never blocks the connect.
             {
                 let store = state.store.clone();
-                tokio::spawn(async move {
+                maidan_store::attribution::spawn(async move {
                     if let Err(err) = store.touch_member_last_seen(member_id).await {
                         tracing::warn!(error = %err, "presence last-seen touch failed");
                     }
@@ -340,7 +349,7 @@ async fn run(mut socket: WebSocket, state: AppState, headers: HeaderMap) {
             let _ = text_tx.send(snapshot).await;
             let ephemeral_tx = text_tx.clone();
             let hub = state.presence.clone();
-            tokio::spawn(async move {
+            maidan_store::attribution::spawn(async move {
                 loop {
                     let frame = match ephemeral_rx.recv().await {
                         Ok(msg) => msg,
@@ -564,6 +573,7 @@ async fn read_subscribe(
         member_id,
         at_least_once,
         lean: sub.lean,
+        attribution: ctx.attribution(),
     })
 }
 

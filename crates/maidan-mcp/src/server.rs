@@ -963,7 +963,9 @@ impl McpServer {
             std::time::Duration::from_secs(60),
         );
         let upkeep = Arc::downgrade(self);
-        tokio::spawn(async move {
+        // Started at boot, so it carries no request's scope; spawned the same
+        // way as the delivery loop below so the attribution contract holds.
+        maidan_store::attribution::spawn(async move {
             let mut tick = tokio::time::interval(every);
             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
@@ -979,7 +981,7 @@ impl McpServer {
         };
         let mut rx = notifier.subscribe();
         let server = Arc::clone(self);
-        tokio::spawn(async move {
+        maidan_store::attribution::spawn(async move {
             loop {
                 match rx.recv().await {
                     Ok(updates) => server.deliver_resource_updates(&updates).await,

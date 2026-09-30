@@ -106,7 +106,7 @@ pub async fn stream(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let store = state.store.clone();
-    tokio::spawn(async move {
+    maidan_store::attribution::spawn(async move {
         let mut high_water = after_id;
         if after_id > 0 {
             match replay_agui(store.as_ref(), &auth, &filter, after_id, &sse_tx).await {

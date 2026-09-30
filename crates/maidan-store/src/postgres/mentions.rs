@@ -4,7 +4,7 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
-use crate::postgres::events;
+use crate::postgres::{events, members};
 
 pub async fn record(
     pool: &PgPool,
@@ -31,6 +31,9 @@ pub async fn record_with_event(
     member_id: MemberId,
 ) -> Result<StoredEvent, StoreError> {
     let mut tx = pool.begin().await?;
+    let (workspace_id, _channel_id, thread_id) =
+        events::message_scope_in_tx(&mut tx, message_id).await?;
+    members::ensure_in_workspace(&mut tx, workspace_id, member_id).await?;
     sqlx::query(
         "INSERT INTO maidan_mentions (message_id, member_id)
          VALUES ($1, $2)
@@ -40,8 +43,6 @@ pub async fn record_with_event(
     .bind(member_id.0)
     .execute(&mut *tx)
     .await?;
-    let (workspace_id, _channel_id, thread_id) =
-        events::message_scope_in_tx(&mut tx, message_id).await?;
     let event = Event::MentionRecorded {
         occurred_at: Utc::now(),
         workspace_id,

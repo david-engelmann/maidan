@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
     time::Duration,
@@ -24,7 +24,10 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use reqwest::Method;
 use serde_json::{json, Value};
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::{
+    sqlite::{SqlitePool, SqlitePoolOptions},
+    Row,
+};
 use uuid::Uuid;
 
 pub const SECRET_BODY: &str = "tenant-b-secret-body-7f3a";
@@ -170,13 +173,13 @@ pub struct Victim {
 }
 
 impl Victim {
-    fn id(&self, segment: &str) -> Option<&str> {
+    pub fn id(&self, segment: &str) -> Option<&str> {
         self.ids.get(segment).map(String::as_str)
     }
 
     /// The victim's id for a field or parameter name in a request, so a body
     /// that names a thread or member names the victim's.
-    fn id_for_name(&self, name: &str) -> Option<&str> {
+    pub fn id_for_name(&self, name: &str) -> Option<&str> {
         let n = name.to_ascii_lowercase();
         let seg = if n.contains("workspace") {
             "workspaces"
@@ -754,6 +757,68 @@ async fn seed_by_hand(h: &Harness, victim: &mut Victim, members: &[MemberId]) {
         )
         .await;
     let _ = thread;
+}
+
+/// Every row of every table, as text, per table.
+pub async fn snapshot(pool: &sqlx::SqlitePool) -> BTreeMap<String, Vec<String>> {
+    let tables: Vec<String> = sqlx::query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' \
+         AND name NOT LIKE 'sqlite_%' AND name != 'maidan_audit'",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap()
+    .into_iter()
+    .map(|r| r.get::<String, _>("name"))
+    .collect();
+    let mut out = BTreeMap::new();
+    for table in tables {
+        let columns: Vec<String> = sqlx::query(&format!("PRAGMA table_info(\"{table}\")"))
+            .fetch_all(pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|r| r.get::<String, _>("name"))
+            .collect();
+        let row = columns
+            .iter()
+            .map(|c| format!("quote(\"{c}\")"))
+            .collect::<Vec<_>>()
+            .join(" || '|' || ");
+        let mut rows: Vec<String> = sqlx::query(&format!("SELECT {row} AS r FROM \"{table}\""))
+            .fetch_all(pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|r| r.get::<String, _>("r"))
+            .collect();
+        rows.sort();
+        out.insert(table, rows);
+    }
+    out
+}
+
+/// The tables `after` differs from `before` in, with a changed row of each.
+pub fn changed_tables(
+    before: &BTreeMap<String, Vec<String>>,
+    after: &BTreeMap<String, Vec<String>>,
+) -> Vec<String> {
+    after
+        .iter()
+        .filter_map(|(table, rows)| {
+            let old = before.get(table).cloned().unwrap_or_default();
+            (rows != &old).then(|| {
+                let old: BTreeSet<_> = old.iter().collect();
+                let new: BTreeSet<_> = rows.iter().collect();
+                let sample = new
+                    .symmetric_difference(&old)
+                    .next()
+                    .map(|r| r.chars().take(120).collect::<String>())
+                    .unwrap_or_default();
+                format!("{table} ({sample})")
+            })
+        })
+        .collect()
 }
 
 /// The `id` of a created resource, or the response that refused it.

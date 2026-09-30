@@ -100,7 +100,7 @@ pub async fn stream(
     let (sse_tx, sse_rx) = mpsc::channel(256);
     let (text_tx, mut text_rx) = mpsc::channel::<String>(256);
 
-    tokio::spawn(async move {
+    maidan_store::attribution::spawn(async move {
         while let Some(payload) = text_rx.recv().await {
             if sse_tx
                 .send(Ok(Event::default().data(payload)))
@@ -173,7 +173,7 @@ pub async fn stream(
     if let Some((workspace_id, consumer_id)) = reconcile {
         let stability = state.delivery_stability;
         let interval = state.delivery_reconcile_interval;
-        tokio::spawn(async move {
+        maidan_store::attribution::spawn(async move {
             event_stream::reconcile_deliver(
                 subscriber,
                 text_tx,
@@ -190,7 +190,7 @@ pub async fn stream(
         });
     } else {
         let watermark = Arc::new(AtomicI64::new(high_water));
-        tokio::spawn(async move {
+        maidan_store::attribution::spawn(async move {
             event_stream::forward_bus_items(
                 subscriber,
                 text_tx,

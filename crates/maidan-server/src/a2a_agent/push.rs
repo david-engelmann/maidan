@@ -254,7 +254,7 @@ pub(super) fn notify(state: &AppState, task: &Task) {
     let mut task = task.clone();
     task.history = None;
     let trace = maidan_store::trace::current();
-    tokio::spawn(async move {
+    maidan_store::attribution::spawn(async move {
         let trace = trace;
         maidan_store::trace::maybe_scope(trace.clone(), async move {
         let configs = match state.store.list_a2a_task_push_configs(&task.id).await {
@@ -282,7 +282,7 @@ pub(super) fn notify(state: &AppState, task: &Task) {
             let payload = payload.clone();
             let task_id = task.id.clone();
             let trace = trace.clone();
-            tokio::spawn(async move {
+            maidan_store::attribution::spawn(async move {
                 maidan_store::trace::maybe_scope(
                     trace,
                     deliver_a2a_push(&config.url, &payload, &task_id, &headers),

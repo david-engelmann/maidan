@@ -27,7 +27,7 @@ pub async fn load_session(
         .await
         .map_err(|_| ApiError::Unauthorized)?;
     if session.expires_at < Utc::now() {
-        let _ = state.store.delete_session(session.id).await;
+        let _ = state.store.delete_expired_session(session.id).await;
         return Err(ApiError::Unauthorized);
     }
     Ok(SessionContext {

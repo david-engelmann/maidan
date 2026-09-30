@@ -14,7 +14,7 @@ use futures::{Stream, StreamExt};
 use maidan_a2a::{
     A2aError, A2aErrorKind, CancelTaskRequest, DeleteTaskPushNotificationConfigRequest,
     GetTaskPushNotificationConfigRequest, GetTaskRequest, ListTaskPushNotificationConfigsRequest,
-    ListTasksRequest, SendMessageRequest, SendMessageResponse, StreamResponse,
+    ListTasksRequest, Method, SendMessageRequest, SendMessageResponse, StreamResponse,
     SubscribeToTaskRequest, TaskPushNotificationConfig,
 };
 use maidan_auth::AuthContext;
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::error::internal;
-use super::{card, ops, push, version};
+use super::{card, ops, push, recorded, version};
 use crate::state::AppState;
 
 /// A request the binding could not read, as an AIP-193 body with the
@@ -120,14 +120,26 @@ pub async fn rest_message(
     versioned!(headers, uri);
     match method.as_str() {
         ":send" => reply(
-            ops::send_message(&state, &auth, req)
-                .await
-                .map(SendMessageResponse::Task),
+            recorded(
+                &state,
+                &auth,
+                "rest",
+                Method::SendMessage,
+                ops::send_message(&state, &auth, req),
+            )
+            .await
+            .map(SendMessageResponse::Task),
         ),
         ":stream" => stream(
-            ops::send_streaming_message(&state, &auth, req)
-                .await
-                .map(futures::stream::iter),
+            recorded(
+                &state,
+                &auth,
+                "rest",
+                Method::SendStreamingMessage,
+                ops::send_streaming_message(&state, &auth, req),
+            )
+            .await
+            .map(futures::stream::iter),
         ),
         other => error(&A2aError::new(
             A2aErrorKind::MethodNotFound,
@@ -184,7 +196,16 @@ pub async fn rest_list_tasks(
 ) -> Response {
     versioned!(headers, uri);
     match query.request() {
-        Ok(req) => reply(ops::list_tasks(&state, &auth, req).await),
+        Ok(req) => reply(
+            recorded(
+                &state,
+                &auth,
+                "rest",
+                Method::ListTasks,
+                ops::list_tasks(&state, &auth, req),
+            )
+            .await,
+        ),
         Err(err) => error(&err),
     }
 }
@@ -223,24 +244,25 @@ pub async fn rest_task_get(
     versioned!(headers, uri);
     match split(&segment) {
         (id, None) => match int("historyLength", query.history_length.as_deref()) {
-            Ok(history_length) => reply(
-                ops::get_task(
-                    &state,
-                    &auth,
-                    GetTaskRequest {
-                        id: id.to_string(),
-                        history_length,
-                    },
-                )
-                .await,
-            ),
+            Ok(history_length) => {
+                let req = GetTaskRequest {
+                    id: id.to_string(),
+                    history_length,
+                };
+                let call = ops::get_task(&state, &auth, req);
+                reply(recorded(&state, &auth, "rest", Method::GetTask, call).await)
+            }
             Err(err) => error(&err),
         },
-        (id, Some("subscribe")) => stream(
-            ops::subscribe(&state, &auth, SubscribeToTaskRequest { id: id.to_string() }).await,
-        ),
+        (id, Some("subscribe")) => subscribe(&state, &auth, id).await,
         (_, Some(method)) => unknown_method(method),
     }
+}
+
+/// `SubscribeToTask`, served on both `GET` and `POST /tasks/{id}:subscribe`.
+async fn subscribe(state: &AppState, auth: &AuthContext, id: &str) -> Response {
+    let call = ops::subscribe(state, auth, SubscribeToTaskRequest { id: id.to_string() });
+    stream(recorded(state, auth, "rest", Method::SubscribeToTask, call).await)
 }
 
 /// `POST /tasks/{id}:cancel` and `POST /tasks/{id}:subscribe`
@@ -253,20 +275,15 @@ pub async fn rest_task_post(
 ) -> Response {
     versioned!(headers, uri);
     match split(&segment) {
-        (id, Some("cancel")) => reply(
-            ops::cancel_task(
-                &state,
-                &auth,
-                CancelTaskRequest {
-                    id: id.to_string(),
-                    metadata: None,
-                },
-            )
-            .await,
-        ),
-        (id, Some("subscribe")) => stream(
-            ops::subscribe(&state, &auth, SubscribeToTaskRequest { id: id.to_string() }).await,
-        ),
+        (id, Some("cancel")) => {
+            let req = CancelTaskRequest {
+                id: id.to_string(),
+                metadata: None,
+            };
+            let call = ops::cancel_task(&state, &auth, req);
+            reply(recorded(&state, &auth, "rest", Method::CancelTask, call).await)
+        }
+        (id, Some("subscribe")) => subscribe(&state, &auth, id).await,
         (_, Some(method)) => unknown_method(method),
         (_, None) => error(&A2aError::new(
             A2aErrorKind::MethodNotFound,
@@ -301,7 +318,11 @@ pub async fn rest_create_push_config(
     }
     fields.insert("taskId".into(), Value::String(task_id));
     match serde_json::from_value::<TaskPushNotificationConfig>(body) {
-        Ok(config) => reply(push::create(&state, &auth, config).await),
+        Ok(config) => {
+            let call = push::create(&state, &auth, config);
+            let method = Method::CreatePushNotificationConfig;
+            reply(recorded(&state, &auth, "rest", method, call).await)
+        }
         Err(err) => error(&A2aError::invalid_params(format!(
             "invalid push notification config: {err}"
         ))),
@@ -327,7 +348,9 @@ pub async fn rest_list_push_configs(
         page_size,
         page_token: query.page_token,
     };
-    reply(push::list(&state, &auth, req).await)
+    let call = push::list(&state, &auth, req);
+    let method = Method::ListPushNotificationConfigs;
+    reply(recorded(&state, &auth, "rest", method, call).await)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -347,7 +370,9 @@ pub async fn rest_get_push_config(
 ) -> Response {
     versioned!(headers, uri);
     let req = GetTaskPushNotificationConfigRequest { task_id, id };
-    reply(push::get(&state, &auth, req).await)
+    let call = push::get(&state, &auth, req);
+    let method = Method::GetPushNotificationConfig;
+    reply(recorded(&state, &auth, "rest", method, call).await)
 }
 
 /// `DELETE /tasks/{id}/pushNotificationConfigs/{configId}`
@@ -360,8 +385,10 @@ pub async fn rest_delete_push_config(
 ) -> Response {
     versioned!(headers, uri);
     let req = DeleteTaskPushNotificationConfigRequest { task_id, id };
+    let call = push::delete(&state, &auth, req);
+    let method = Method::DeletePushNotificationConfig;
     reply(
-        push::delete(&state, &auth, req)
+        recorded(&state, &auth, "rest", method, call)
             .await
             .map(|()| serde_json::json!({})),
     )
@@ -375,7 +402,8 @@ pub async fn rest_extended_agent_card(
     uri: Uri,
 ) -> Response {
     versioned!(headers, uri);
-    reply(card::extended(&state, &auth))
+    let call = std::future::ready(card::extended(&state, &auth));
+    reply(recorded(&state, &auth, "rest", Method::GetExtendedAgentCard, call).await)
 }
 
 #[cfg(test)]

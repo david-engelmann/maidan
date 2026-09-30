@@ -83,7 +83,7 @@ pub async fn get_session(
 ) -> Result<Json<SessionResponse>, ApiError> {
     let session = state.store.get_session(ctx.session_id).await?;
     if session.expires_at < Utc::now() {
-        let _ = state.store.delete_session(session.id).await;
+        let _ = state.store.delete_expired_session(session.id).await;
         return Err(ApiError::Unauthorized);
     }
     Ok(Json(SessionResponse {

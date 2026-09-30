@@ -1078,6 +1078,28 @@ pub trait SessionStore: Send + Sync {
     async fn create_session(&self, new: NewMaidanSession) -> Result<MaidanSession, StoreError>;
     async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError>;
     async fn delete_session(&self, id: SessionId) -> Result<(), StoreError>;
+
+    // D-A: a browser session is a credential, so signing in and signing out
+    // write their audit row in the session write's transaction. Request
+    // handlers use these; `authority_changes_are_audited_in_their_transaction`
+    // fails if one calls the unaudited form above.
+
+    /// [`Self::create_session`] with its audit row in the same transaction.
+    async fn create_session_audited(
+        &self,
+        new: NewMaidanSession,
+        audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<MaidanSession, StoreError>;
+    /// Delete a session with its audit row in the same transaction, returning
+    /// what was deleted. `NotFound`, with nothing written, if it is gone.
+    async fn delete_session_audited(
+        &self,
+        id: SessionId,
+        audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<MaidanSession, StoreError>;
+    /// Delete a session if, and only if, it has expired: housekeeping for a
+    /// credential that already grants nothing, so it is not audited.
+    async fn delete_expired_session(&self, id: SessionId) -> Result<(), StoreError>;
 }
 
 #[async_trait]
@@ -1121,6 +1143,7 @@ pub trait ChannelStore: Send + Sync {
 
 #[async_trait]
 pub trait DmStore: Send + Sync {
+    /// `NotFound` unless both members belong to `workspace_id`.
     async fn open_dm_conversation(
         &self,
         workspace_id: WorkspaceId,
@@ -1561,7 +1584,8 @@ pub trait SpawnBudgetStore: Send + Sync {
 pub trait AssignmentStore: Send + Sync {
     /// Set a thread's assignee unconditionally (assign / handoff). The
     /// assignment has no lease: an earlier holder's deadline is cleared.
-    /// `NotFound` if the thread doesn't exist.
+    /// `NotFound` if the thread doesn't exist or the assignee is not a member
+    /// of its workspace.
     async fn assign_thread(
         &self,
         thread_id: ThreadId,
@@ -1569,7 +1593,7 @@ pub trait AssignmentStore: Send + Sync {
     ) -> Result<Thread, StoreError>;
     /// Set (or clear, with `None`) a thread's durable owner — the accountable
     /// party, distinct from the assignee/claimer. `NotFound` if the thread is
-    /// absent or tombstoned. Orthogonal to assignment; does not touch the claim
+    /// absent or tombstoned, or the owner is not a member of its workspace. Orthogonal to assignment; does not touch the claim
     /// lease or working clock.
     async fn set_thread_owner(
         &self,
@@ -1585,7 +1609,8 @@ pub trait AssignmentStore: Send + Sync {
         title: Option<String>,
     ) -> Result<Thread, StoreError>;
     /// Assign a thread and append its `ThreadAssignmentChanged` event
-    /// atomically. Captures the previous assignee in the same tx.
+    /// atomically. Captures the previous assignee in the same tx. `NotFound`
+    /// if the assignee is not a member of the thread's workspace.
     async fn assign_thread_with_event(
         &self,
         thread_id: ThreadId,
@@ -1997,7 +2022,8 @@ pub trait MentionInboxStore: Send + Sync {
         member_id: MemberId,
     ) -> Result<(), StoreError>;
     /// Record a mention and append its `MentionRecorded` event atomically.
-    /// `member_id` is the mentioned party.
+    /// `member_id` is the mentioned party; `NotFound` unless it is a member of
+    /// the message's workspace.
     async fn record_mention_with_event(
         &self,
         message_id: MessageId,

@@ -751,7 +751,7 @@ pub(crate) async fn subscribe(
     let initial = render(state, task, None).await?;
     let (tx, rx) = tokio::sync::mpsc::channel(16);
     let state = state.clone();
-    tokio::spawn(async move {
+    maidan_store::attribution::spawn(async move {
         let mut last = initial.status.state.clone();
         let task_id = initial.id.clone();
         if tx.send(StreamResponse::Task(initial)).await.is_err() {

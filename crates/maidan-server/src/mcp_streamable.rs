@@ -146,7 +146,7 @@ async fn open_new_streamable_session(
     let registry_bg = registry.clone();
     let session_bg = session_id.clone();
     let owner = Principal::of(auth);
-    tokio::spawn(async move {
+    maidan_store::attribution::spawn(async move {
         // A closed or expired session gets no more notifications, so it is
         // noticed by checking, not by a failed push that never comes.
         let mut liveness = tokio::time::interval(SESSION_LIVENESS_CHECK);

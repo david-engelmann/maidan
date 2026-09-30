@@ -23,6 +23,7 @@ struct Harness {
     server: tokio::task::JoinHandle<()>,
     client: reqwest::Client,
     workspace_id: WorkspaceId,
+    store: Arc<dyn Store>,
     _dir: tempfile::TempDir,
 }
 
@@ -86,7 +87,7 @@ async fn spawn_with_settings(settings: OidcSettings) -> Harness {
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
     let mut state = AppState::new(
-        store,
+        store.clone(),
         artifacts,
         bus,
         search,
@@ -120,6 +121,7 @@ async fn spawn_with_settings(settings: OidcSettings) -> Harness {
         server,
         client,
         workspace_id: workspace.id,
+        store,
         _dir: dir,
     }
 }
@@ -273,5 +275,114 @@ async fn mock_oidc_callback_redirects_with_auto_mint_hint_when_enabled() {
         "expected auto_mint hint, got {redirect}"
     );
 
+    h.shutdown().await;
+}
+
+impl Harness {
+    /// Sign in through the mock IdP and return the session cookie.
+    async fn sign_in(&self) -> String {
+        let base = self.base();
+        let login = self
+            .client
+            .get(format!(
+                "{base}/auth/oidc/login?workspace_id={}",
+                self.workspace_id.0
+            ))
+            .send()
+            .await
+            .unwrap();
+        let location = login.headers()[reqwest::header::LOCATION]
+            .to_str()
+            .unwrap()
+            .to_string();
+        let callback = self
+            .client
+            .get(format!("{base}{location}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(callback.status(), StatusCode::TEMPORARY_REDIRECT);
+        callback
+            .headers()
+            .get_all(reqwest::header::SET_COOKIE)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .find_map(|s| {
+                s.split(';')
+                    .next()
+                    .filter(|p| p.starts_with("maidan_session="))
+            })
+            .expect("session cookie")
+            .to_string()
+    }
+
+    async fn audit(&self, action: &str) -> Vec<maidan_types::AuditEvent> {
+        let mut rows = self
+            .store
+            .list_audit_for_workspace(self.workspace_id, 100)
+            .await
+            .unwrap();
+        rows.retain(|row| row.action == action);
+        rows
+    }
+}
+
+/// Signing in creates a credential and may provision a member; signing out
+/// ends one. Both went around the request layer and left no record. Each now
+/// writes its row in the session write's own transaction, naming the member.
+#[tokio::test]
+async fn signing_in_and_out_are_recorded_with_the_member_as_actor() {
+    let h = spawn().await;
+
+    let cookie = h.sign_in().await;
+    let created = h.audit(maidan_server::oidc::SESSION_CREATE).await;
+    assert_eq!(created.len(), 1, "{created:?}");
+    let member = created[0].actor_id.expect("the member is the actor");
+    assert_eq!(created[0].subject_id, Some(member));
+    assert_eq!(created[0].target_id, Some(member.0));
+    assert_eq!(created[0].metadata["member"], "provisioned");
+    assert_eq!(created[0].metadata["issuer"], "https://mock.idp.local");
+    assert_eq!(
+        h.store.get_member(member).await.unwrap().workspace_id,
+        h.workspace_id
+    );
+
+    // The same identity again finds its member, and says so.
+    let second = h.sign_in().await;
+    let created = h.audit(maidan_server::oidc::SESSION_CREATE).await;
+    assert_eq!(created.len(), 2);
+    assert!(created
+        .iter()
+        .any(|row| row.metadata["member"] == "existing" && row.actor_id == Some(member)));
+
+    let logout = |cookie: String| {
+        h.client
+            .post(format!("{}/auth/logout", h.base()))
+            .header(reqwest::header::COOKIE, cookie)
+            .send()
+    };
+    assert_eq!(
+        logout(cookie.clone()).await.unwrap().status(),
+        StatusCode::TEMPORARY_REDIRECT
+    );
+    let deleted = h.audit(maidan_server::oidc::SESSION_DELETE).await;
+    assert_eq!(deleted.len(), 1, "{deleted:?}");
+    assert_eq!(deleted[0].actor_id, Some(member));
+    let session = h
+        .client
+        .get(format!("{}/auth/session", h.base()))
+        .header(reqwest::header::COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(session.status(), StatusCode::UNAUTHORIZED);
+
+    // Signing out of a session already ended ends nothing and records nothing.
+    assert_eq!(
+        logout(cookie).await.unwrap().status(),
+        StatusCode::TEMPORARY_REDIRECT
+    );
+    assert_eq!(h.audit(maidan_server::oidc::SESSION_DELETE).await.len(), 1);
+    let _ = second;
     h.shutdown().await;
 }

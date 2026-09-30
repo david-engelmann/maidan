@@ -43,14 +43,14 @@ post-gate hardening (no new gate tag).
 Every successful authenticated change leaves an attributed record — who acted,
 and on whose behalf — and the privileged ones leave a named audit row.
 
-- **Privileged actions have named audit rows** — 40 action kinds: token and
-  app-token mint, delegation and revoke; delegation grants and policy; share
+- **Privileged actions have named audit rows** — 42 action kinds: token and
+  app-token mint, delegation and revoke; browser sign-in and sign-out; delegation grants and policy; share
   tickets; channel membership; member freeze; SCIM provisioning; secrets and
   egress targets; legal hold; message purge, workspace purge, erase, export and
   import; artifact erase; gate and review-requirement clears; delivery, outbox
   and automation replays; reindex. `audit_coverage_e2e` and `authority_audit_contract` exercise them.
-- **Authority changes fail closed.** Tokens, grants, share tickets, the grant
-  ceiling, purge, erase, import and legal hold write their audit row inside the
+- **Authority changes fail closed.** Tokens, grants, share tickets, browser
+  sessions, the grant ceiling, purge, erase, import and legal hold write their audit row inside the
   change's own transaction, so a failed audit write aborts the change
   (`authority_audit_contract`). Routine rows are best-effort: a failed write is
   counted in `maidan_audit_write_failures_total` and pages
@@ -61,7 +61,9 @@ and on whose behalf — and the privileged ones leave a named audit row.
   `contracts/http-operation-kinds.json` classifies it as a read
   (`http_operation_kinds_e2e` checks that each one writes nothing). Ordinary
   content — posts, edits, reactions — is recorded in the event log, which is
-  durable, ordered and replayable. MCP records per tool call.
+  durable, ordered and replayable. MCP records per tool call and A2A per method
+  on every binding, gRPC included, so a read or a refused call is not recorded
+  as a change (`a2a_operation_kinds_e2e`).
 - **Denials are counted, not stored**, with one exception. Anonymous and ordinary
   401/403s go to `maidan_authorization_decisions_total` and sampled logs, since an
   attacker-controlled request stream would otherwise be an unbounded write
