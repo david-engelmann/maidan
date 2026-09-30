@@ -55,6 +55,11 @@ the same PR.
   property tests with `proptest`; store behavior on both backends from one
   suite.
 - testcontainers (`pgvector/pgvector:pg17`) for Postgres integration tests.
+- Every HTTP operation is classified `reads` or `changes` in
+  [`contracts/http-operation-kinds.json`](../contracts/http-operation-kinds.json).
+  The method is the default: a GET reads, anything else changes. An operation
+  that breaks it (a GET that writes delivery bookkeeping, a POST that only
+  verifies) says why in `reason`.
 
 ## Secrets
 

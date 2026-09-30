@@ -57,9 +57,11 @@ and on whose behalf — and the privileged ones leave a named audit row.
   `MaidanAuditWriteFailures` on the first.
 - **Every other mutation is attributed.** A successful `POST`/`PUT`/`PATCH`/`DELETE`
   that wrote no attributed event or audit row of its own gets a generic
-  `mutation` row (operation, path, status). Ordinary content — posts, edits,
-  reactions — is recorded in the event log, which is durable, ordered and
-  replayable. MCP records per tool call.
+  `mutation` row (operation, path, status), unless
+  `contracts/http-operation-kinds.json` classifies it as a read
+  (`http_operation_kinds_e2e` checks that each one writes nothing). Ordinary
+  content — posts, edits, reactions — is recorded in the event log, which is
+  durable, ordered and replayable. MCP records per tool call.
 - **Denials are counted, not stored**, with one exception. Anonymous and ordinary
   401/403s go to `maidan_authorization_decisions_total` and sampled logs, since an
   attacker-controlled request stream would otherwise be an unbounded write

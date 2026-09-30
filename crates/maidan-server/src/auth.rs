@@ -78,10 +78,13 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
         .unwrap_or_else(|| path.clone());
     let (response, recorded) =
         maidan_store::attribution::with_attribution_tracked(attribution, next.run(req)).await;
+    let operation = format!("{method} {operation}");
     let mutating = matches!(
         method,
         Method::POST | Method::PUT | Method::PATCH | Method::DELETE
-    );
+    ) && READ_ONLY_OPERATIONS
+        .binary_search(&operation.as_str())
+        .is_err();
     if attribution.is_some()
         && mutating
         && !recorded
@@ -99,7 +102,7 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
                     target_id: Some(auth.workspace_id.0),
                     metadata: serde_json::json!({
                         "surface": "rest",
-                        "operation": format!("{method} {operation}"),
+                        "operation": operation,
                         "path": path,
                         "status": response.status().as_u16(),
                     }),
@@ -113,6 +116,19 @@ async fn run_as(state: &AppState, req: Request, next: Next) -> Response {
 
 /// The audit action of a change that did not record itself.
 pub const MUTATION_ACTION: &str = "mutation";
+
+/// Operations that change nothing although their method says they might, so
+/// the request layer writes no `mutation` row for them. Without this, verifying
+/// an export recorded a change that never happened. Listing an operation here
+/// is a claim that it writes nothing: getting it wrong loses a record, so it
+/// matches the non-GET `reads` in `contracts/http-operation-kinds.json`
+/// (`http_operation_kinds_contract`), and `http_operation_kinds_e2e` checks
+/// that each leaves the database as it found it. Sorted, for `binary_search`.
+pub const READ_ONLY_OPERATIONS: &[&str] = &[
+    "POST /threads/{id}/land-gate/advice",
+    "POST /workspaces/export/verify",
+    "POST /workspaces/{wid}/secrets/{name}/resolve",
+];
 
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
     if state.auth_disabled {

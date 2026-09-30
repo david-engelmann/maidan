@@ -219,6 +219,10 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `tenant_isolation_e2e` then probes it with another tenant's token, and pins
   the total `.route(` count in `app.rs`: bump the number, and if the route is a
   live stream, add a probe in `stream_probes`.
+- **A new route must be classified** `reads` or `changes` in
+  `contracts/http-operation-kinds.json`. A GET that writes or a POST that only
+  reads needs a `reason`, and a POST that only reads also goes in
+  `auth::READ_ONLY_OPERATIONS`, or the request layer records it as a change.
 - **A new `MAIDAN_*` variable** goes in `SERVER_ENV` (the server reads it) or
   `TOLERATED_ENV` (a script, SDK, test or build arg does) in
   `crates/maidan-server/src/env_registry.rs`, or boot refuses it as unknown.
