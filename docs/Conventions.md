@@ -97,6 +97,7 @@ non-required job, and a skipped required job reports as passed.
 | `sdk interop (report-only)` | the four SDKs against a live server | no |
 | `pitr drill` | point-in-time recovery to a chosen moment | no |
 | `open work` | Open Work's in-flight rows and stamp against history | no |
+| `changelog (released sections)` | a released CHANGELOG section gains no entries after its tag | no |
 | `sqlite backup drill` | a SQLite snapshot taken mid-write, restored over a killed server's files | no |
 | `replica routing (LSN)` | read-your-writes across a streaming replica | no |
 | `ui tests (playwright)` | the `/ui` specs in a headless browser | no |
