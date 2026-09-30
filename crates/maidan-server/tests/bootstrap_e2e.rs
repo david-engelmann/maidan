@@ -153,13 +153,23 @@ async fn demo_board_script_hits_the_server() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("demo.sqlite");
     let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
+    // One connection, and a busy timeout, matching the server: two agents
+    // claim at the same moment, and a multi-connection SQLite pool turns
+    // that into "database is locked" instead of waiting.
     let pool = SqlitePoolOptions::new()
-        .max_connections(8)
+        .max_connections(1)
+        .after_connect(|conn, _| {
+            Box::pin(async move {
+                sqlx::query("PRAGMA foreign_keys = ON")
+                    .execute(&mut *conn)
+                    .await?;
+                sqlx::query("PRAGMA busy_timeout = 5000")
+                    .execute(&mut *conn)
+                    .await?;
+                Ok(())
+            })
+        })
         .connect(&db_url)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
