@@ -1,0 +1,11 @@
+# cargo-mutants configuration (the nightly workflow and local runs).
+#
+# Every exclusion names why mutating that code tells us nothing about the code
+# the tests are there to check.
+exclude_globs = [
+  # The test harness, behind the `test-support` feature: the development
+  # keyring and the Docker check. Mutating `daemon_answers` to `false` turns
+  # every Postgres test into a skip, so the mutant is "missed" by design and
+  # says nothing about the store.
+  "crates/maidan-store/src/test_support.rs",
+]

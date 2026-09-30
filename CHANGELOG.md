@@ -727,6 +727,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `maidan-auth` (three shards) and `maidan-bus` (four) as well as the store
   and artifacts.
 
+### The nightly mutation run produces results
+
+- **Fixed:** the nightly mutation jobs had never tested a mutant. Every shard
+  passed `--output target/mutants` to cargo-mutants, which cannot create a
+  directory inside a `target/` a fresh checkout does not have, so each one
+  failed in its first seconds, and `continue-on-error` reported the night as
+  passed. The jobs now fail when cargo-mutants errors, when the unmutated tree
+  fails its tests, or when a shard runs out of time; missed mutants are listed
+  in the job summary and uploaded with the outcomes, as findings rather than
+  failures.
+- **Changed:** the store is mutated where it changed. Its 4,800 mutants cost
+  about four minutes each to build and test locally (41 sampled), so a whole
+  sweep is about 960 runner hours. A planning job now counts the mutants in
+  the store code changed since the previous night and runs them in shards of
+  20, up to 10 shards; a night that needs more says so and names the
+  manual run that covers the rest. artifacts runs as its own job. cargo-mutants
+  is pinned to 27.1.0.
+
 ### Fuzzing the parsers of untrusted input
 
 - **Added:** `fuzz/`, five cargo-fuzz targets run nightly for five minutes

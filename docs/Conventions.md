@@ -119,3 +119,49 @@ type ids, content keys, MCP and A2A JSON-RPC requests, A2A page tokens, the
 WebSocket subscribe frame). A new parser of untrusted input gets a target
 there, with seed inputs under `fuzz/seeds/<target>/` when it reads structured
 input.
+
+### Nightly mutation testing
+
+A mutant that survives the tests is a change to the code that no test notices.
+The nightly jobs report them; they are findings, not failures.
+
+- **auth, bus and artifacts** are mutated whole, auth in three shards and bus
+  in four (an auth mutant takes about 6 s locally, a bus mutant about 20 s).
+- **The store is mutated where it changed.** It has about 4,800 mutants, and a
+  viable one rebuilds and relinks the store's 137 test binaries and reruns
+  them. A local sample of 41 mutants (`cargo mutants --package maidan-store
+  --test-tool nextest --sharding round-robin --shard 0/120`, 16 cores,
+  2026-09-30) took 164 minutes: 32 viable, all caught, at 5 minutes each on
+  average and 14 at most, and 9 unviable at half a minute. That is 4 minutes a
+  mutant (3 for the first 20, before other builds loaded the machine). At
+  three times that on a four-core runner a whole sweep is about 960 runner
+  hours, so it does not run. Instead `scripts/mutants.sh plan` counts the
+  mutants in the store code changed since the last commit more than 25 hours
+  old (the nights overlap by an hour rather than leave a gap) and splits them
+  into shards of 20, which at the sampled rate take about four hours on a
+  runner (three at the unloaded rate), inside the step's 300 minutes.
+- **At most 10 store shards run**, assuming GitHub's 20 concurrent jobs for a
+  public repository on the free plan: with the eight other mutation jobs, the
+  benchmark and the fuzz job, the night fits the pool (the planning job ends
+  before the shards start). That is 200 mutants a night; in the week to
+  2026-09-30 one day's store changes produced up to about 390, so a busy day
+  overflows. The planning job then warns and names the manual run
+  (`store_base`, `store_first_shard`) that covers the rest; run it before
+  `main` moves, since the shards are cut from the diff to the head.
+- **A shard that does not finish fails.** Each cargo-mutants step has its own
+  time limit, shorter than the job's, so a shard cut off by it still reports:
+  `scripts/mutants.sh report` writes the counts and the missed and timed-out
+  mutants to the job summary, uploads `mutants.out/`, and fails the job if the
+  run was cut short, the unmutated tree failed its tests, or cargo-mutants
+  failed. There is no `continue-on-error`: until this was fixed every shard
+  failed in its first seconds (an `--output` directory that did not exist) and
+  the night reported success.
+- **Remeasure before resizing.** Run a round-robin shard of the store as above
+  and read the phase durations in `mutants.out/outcomes.json`; change
+  `STORE_MUTANTS_PER_SHARD` or `STORE_MAX_SHARDS` in `scripts/mutants.sh` and
+  this section together.
+- **Exclusions** live in `.cargo/mutants.toml`, each with its reason. The one
+  there is the store's test harness (`test_support.rs`): mutating the Docker
+  check to "no daemon" turns every Postgres test into a skip, so that mutant
+  survives by construction. Code is excluded only when mutating it cannot say
+  anything about the code the tests check; hard to test is not a reason.
