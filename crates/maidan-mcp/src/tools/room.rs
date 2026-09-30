@@ -112,6 +112,55 @@ struct AttenuateArgs {
 /// Also writes the `token.mint` audit row this path was missing entirely —
 /// minting a bearer is an audited mutation everywhere else, and the REST twin
 /// already recorded it.
+/// Replace the secret of the token the caller is using. The successor keeps
+/// its member, capabilities, quotas and derived tokens; the old secret stops
+/// working. Only a bearer token can be rotated: a session has no secret here,
+/// and a delegated token is exchanged again instead.
+pub(super) async fn rotate_token(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let _: RotateArgs = serde_json::from_value(args.clone())?;
+    let Some(token_id) = auth.token_id else {
+        return Err(McpError::InvalidParams(
+            "rotate_token rotates the bearer token of this call; there is none".into(),
+        ));
+    };
+    let secret = TokenSecret::generate();
+    let actor = auth.actor_id;
+    let rotated = store
+        .rotate_api_token_audited(
+            token_id,
+            &hash_secret(secret.as_str()),
+            Box::new(move |successor| NewAuditEvent {
+                actor_id: Some(actor),
+                action: "token.rotate".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(successor.id.0),
+                metadata: json!({
+                    "workspace_id": successor.workspace_id.0,
+                    "subject_member_id": successor.member_id.0,
+                    "replaces": token_id.0,
+                    "surface": "mcp",
+                }),
+            }),
+        )
+        .await?;
+    Ok(content_json(&json!({
+        "id": rotated.id.0,
+        "secret": secret.as_str(),
+        "workspace_id": rotated.workspace_id.0,
+        "member_id": rotated.member_id.0,
+        "capabilities": rotated.capabilities,
+        "expires_at": rotated.expires_at,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RotateArgs {}
+
 pub(super) async fn attenuate_token(
     store: &Arc<dyn Store>,
     auth: &AuthContext,

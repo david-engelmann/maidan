@@ -408,6 +408,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   another's notification mail. The frame may now name only the member the
   token or session belongs to; any other closes the socket with 1008.
 
+### Tokens rotate
+
+- **Added:** `POST /tokens/{id}/rotate` and MCP `rotate_token` replace a
+  token's secret. The successor keeps its member, capabilities, label, expiry,
+  app installation and quotas, and the tokens derived from the old one move
+  under it; the old secret stops working in the same transaction, with a
+  `token.rotate` audit row (D-A). A holder rotates its own token without
+  `token:admin`; anyone else needs `token:admin` in the token's workspace. A
+  delegated token is refused, since its grant is the way to a new one.
+
 ### A2A carries its credentials over TLS
 
 - **Changed:** an A2A push notification `url` must be `https` (plain `http` is

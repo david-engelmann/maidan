@@ -307,7 +307,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_capability_sets"
         | "get_room"
         | "parse_maidan_uri"
-        | "attenuate_token" => Ok(WORKSPACE_READ),
+        | "attenuate_token"
+        | "rotate_token" => Ok(WORKSPACE_READ),
         "delegate_token" => Ok(WORKSPACE_READ),
         "create_delegation_grant"
         | "list_delegation_grants"
@@ -999,6 +1000,7 @@ pub async fn dispatch(
         "get_room" => room::get_room(store, auth, args).await,
         "set_workspace_handle" => room::set_workspace_handle(store, auth, args).await,
         "attenuate_token" => room::attenuate_token(store, auth, args).await,
+        "rotate_token" => room::rotate_token(store, auth, args).await,
         "delegate_token" => room::delegate_token(store, auth, args).await,
         "create_delegation_grant" => room::create_delegation_grant(store, auth, args).await,
         "set_delegation_policy" => room::set_delegation_policy(store, auth, args).await,

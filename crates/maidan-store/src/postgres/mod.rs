@@ -2957,6 +2957,14 @@ impl TokenStore for PostgresStore {
     ) -> Result<ApiToken, StoreError> {
         tokens::revoke_audited(&self.pool, id, audit).await
     }
+    async fn rotate_api_token_audited(
+        &self,
+        id: ApiTokenId,
+        token_hash: &str,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError> {
+        tokens::rotate_audited(&self.pool, id, token_hash, audit).await
+    }
     async fn list_api_tokens_for_member(
         &self,
         workspace_id: WorkspaceId,

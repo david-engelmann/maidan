@@ -2644,6 +2644,18 @@ pub fn list_references() {}
     ))]
 pub fn revoke_api_token() {}
 
+/// Rotate an API token: a new secret for the same authority; the old one stops working
+#[utoipa::path(post, path = "/tokens/{id}/rotate", tag = "tokens",
+    params(("id" = Uuid, Path, description = "API token id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = MintApiTokenResponse, description = "The successor, with its secret shown once"),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn rotate_api_token() {}
+
 // --- federation ---
 
 /// Discover this server for federation

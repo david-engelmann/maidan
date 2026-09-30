@@ -551,6 +551,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::create_reference,
         paths::list_references,
         paths::revoke_api_token,
+        paths::rotate_api_token,
         paths::attenuate_api_token,
         paths::delegate_api_token,
         paths::list_capability_sets,

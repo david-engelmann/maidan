@@ -517,6 +517,15 @@ a derived `expires_at` cannot outlive the parent. `GET /capability-sets`
 lists the catalog; `GET /me` reports `capability_sets` the caller fully
 holds.
 
+To replace a secret that may have leaked, rotate the token:
+`POST /tokens/{id}/rotate` (MCP `rotate_token`, which rotates the token the
+call is made with). The response carries the new secret once. The new token
+keeps the same member, capabilities, expiry and quotas, and tokens derived from
+the old one keep working under it; the old secret stops working at once. A
+holder rotates its own token without `token:admin`; rotating anyone else's
+takes `token:admin` in its workspace. A delegated token is not rotated
+(`409`): exchange its grant again.
+
 Stable room URIs are `maidan://{workspace_id}/channels/{channel_id}/threads/{thread_id}/messages/{message_id}`
 with an optional `#sha256:<hex>` fragment. The authority is always the
 workspace UUID — never a handle. `GET /.well-known/maidan-room` is

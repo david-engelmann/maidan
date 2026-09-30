@@ -145,6 +145,7 @@
   "resolve_secret": "secret:read",
   "revoke_delegation_grant": "token:admin",
   "revoke_share_ticket": "token:admin",
+  "rotate_token": "workspace:read",
   "search_messages": "search:query",
   "seed_from_message": "workspace:write",
   "set_delegation_policy": "token:admin",

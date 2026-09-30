@@ -63,6 +63,15 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "rotate_token",
+            "description": "Replace the secret of the bearer token this call is made with. The new token keeps the same member, capabilities, expiry, quotas and derived tokens; the old secret stops working immediately. Returns the new secret once. Takes no arguments. A delegated token cannot be rotated; exchange its grant again.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }
+        }),
+        json!({
             "name": "delegate_token",
             "description": "Exchange a durable delegation grant for a short-lived token acting as its subject. The token defaults to 15 minutes, cannot exceed one hour or its grant/parent bearer, and is limited to the intersection of grant and delegate capabilities.",
             "inputSchema": {

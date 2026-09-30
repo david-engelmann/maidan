@@ -556,6 +556,7 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_reference).merge(get(routes::list_references)),
         )
         .route("/tokens/{id}", delete(routes::revoke_api_token))
+        .route("/tokens/{id}/rotate", post(routes::rotate_api_token))
         .route("/tokens/attenuate", post(routes::attenuate_api_token))
         .route("/tokens/delegate", post(routes::delegate_api_token))
         .route(

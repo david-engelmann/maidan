@@ -145,6 +145,7 @@
   "resolve_secret",
   "revoke_delegation_grant",
   "revoke_share_ticket",
+  "rotate_token",
   "search_messages",
   "seed_from_message",
   "set_delegation_policy",

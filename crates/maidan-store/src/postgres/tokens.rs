@@ -395,3 +395,74 @@ pub async fn revoke_audited(
     tx.commit().await?;
     Ok(token)
 }
+
+/// Replace a live token's secret: the successor takes the old token's member,
+/// capabilities, label, expiry, app installation, parent and quotas; tokens
+/// derived from the old one move under the successor, so they keep working;
+/// the old token is revoked. All of it, with `audit` for the successor, in one
+/// transaction. A delegated token is refused: it is short-lived by design, and
+/// a fresh exchange of its grant is the way to a new one.
+pub async fn rotate_audited(
+    pool: &PgPool,
+    id: ApiTokenId,
+    token_hash: &str,
+    audit: crate::AuditFor<ApiToken>,
+) -> Result<ApiToken, StoreError> {
+    let mut tx = pool.begin().await?;
+    let delegated: Option<(Option<Uuid>,)> = sqlx::query_as(
+        "SELECT delegation_grant_id FROM maidan_api_tokens
+         WHERE id = $1 AND revoked_at IS NULL FOR UPDATE",
+    )
+    .bind(id.0)
+    .fetch_optional(&mut *tx)
+    .await?;
+    match delegated {
+        None => return Err(StoreError::NotFound),
+        Some((Some(_),)) => {
+            return Err(StoreError::Conflict(
+                "a delegated token is not rotated; exchange its grant for a new one".into(),
+            ))
+        }
+        Some((None,)) => {}
+    }
+    let successor = Uuid::now_v7();
+    let row = sqlx::query(
+        "INSERT INTO maidan_api_tokens
+            (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
+             expires_at, parent_token_id)
+         SELECT $2, workspace_id, member_id, app_installation_id, $3, label, capabilities,
+                expires_at, parent_token_id
+         FROM maidan_api_tokens WHERE id = $1
+         RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
+                   created_at, expires_at, revoked_at, delegation_grant_id",
+    )
+    .bind(id.0)
+    .bind(successor)
+    .bind(token_hash)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map_token_err)?;
+    let token = row_to_token(&row)?;
+    sqlx::query(
+        "INSERT INTO maidan_token_quotas (token_id, capability, max_per_window, window_secs)
+         SELECT $2, capability, max_per_window, window_secs
+         FROM maidan_token_quotas WHERE token_id = $1",
+    )
+    .bind(id.0)
+    .bind(successor)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("UPDATE maidan_api_tokens SET parent_token_id = $2 WHERE parent_token_id = $1")
+        .bind(id.0)
+        .bind(successor)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE maidan_api_tokens SET revoked_at = $2 WHERE id = $1")
+        .bind(id.0)
+        .bind(Utc::now())
+        .execute(&mut *tx)
+        .await?;
+    audit_on_tx(&mut tx, audit, &token).await?;
+    tx.commit().await?;
+    Ok(token)
+}
