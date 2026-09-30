@@ -18,6 +18,7 @@ mod version;
 
 pub use card::{agent_card, A2aCardConfig, AgentCard};
 pub use jsonrpc::json_rpc;
+pub(crate) use jsonrpc::recorded;
 pub use rest::{
     rest_create_push_config, rest_delete_push_config, rest_extended_agent_card,
     rest_get_push_config, rest_list_push_configs, rest_list_tasks, rest_message, rest_task_get,

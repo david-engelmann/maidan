@@ -85,6 +85,101 @@ pub enum Operation {
     GetExtendedAgentCard,
 }
 
+impl Operation {
+    /// The method this operation is.
+    pub fn method(&self) -> Method {
+        match self {
+            Self::SendMessage(_) => Method::SendMessage,
+            Self::SendStreamingMessage(_) => Method::SendStreamingMessage,
+            Self::GetTask(_) => Method::GetTask,
+            Self::ListTasks(_) => Method::ListTasks,
+            Self::CancelTask(_) => Method::CancelTask,
+            Self::SubscribeToTask(_) => Method::SubscribeToTask,
+            Self::CreatePushNotificationConfig(_) => Method::CreatePushNotificationConfig,
+            Self::GetPushNotificationConfig(_) => Method::GetPushNotificationConfig,
+            Self::ListPushNotificationConfigs(_) => Method::ListPushNotificationConfigs,
+            Self::DeletePushNotificationConfig(_) => Method::DeletePushNotificationConfig,
+            Self::GetExtendedAgentCard => Method::GetExtendedAgentCard,
+        }
+    }
+}
+
+/// An A2A method, without its parameters: what every binding names when it
+/// records a call, since the REST and gRPC bindings never build an
+/// [`Operation`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Method {
+    SendMessage,
+    SendStreamingMessage,
+    GetTask,
+    ListTasks,
+    CancelTask,
+    SubscribeToTask,
+    CreatePushNotificationConfig,
+    GetPushNotificationConfig,
+    ListPushNotificationConfigs,
+    DeletePushNotificationConfig,
+    GetExtendedAgentCard,
+}
+
+impl Method {
+    /// Every method, for the tests that call each one.
+    pub const ALL: [Method; 11] = [
+        Method::SendMessage,
+        Method::SendStreamingMessage,
+        Method::GetTask,
+        Method::ListTasks,
+        Method::CancelTask,
+        Method::SubscribeToTask,
+        Method::CreatePushNotificationConfig,
+        Method::GetPushNotificationConfig,
+        Method::ListPushNotificationConfigs,
+        Method::DeletePushNotificationConfig,
+        Method::GetExtendedAgentCard,
+    ];
+
+    /// The method's name on the wire (§5.3).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::SendMessage => METHOD_SEND_MESSAGE,
+            Self::SendStreamingMessage => METHOD_SEND_STREAMING_MESSAGE,
+            Self::GetTask => METHOD_GET_TASK,
+            Self::ListTasks => METHOD_LIST_TASKS,
+            Self::CancelTask => METHOD_CANCEL_TASK,
+            Self::SubscribeToTask => METHOD_SUBSCRIBE_TO_TASK,
+            Self::CreatePushNotificationConfig => METHOD_CREATE_PUSH_NOTIFICATION_CONFIG,
+            Self::GetPushNotificationConfig => METHOD_GET_PUSH_NOTIFICATION_CONFIG,
+            Self::ListPushNotificationConfigs => METHOD_LIST_PUSH_NOTIFICATION_CONFIGS,
+            Self::DeletePushNotificationConfig => METHOD_DELETE_PUSH_NOTIFICATION_CONFIG,
+            Self::GetExtendedAgentCard => METHOD_GET_EXTENDED_AGENT_CARD,
+        }
+    }
+
+    /// Whether the method changes state. One endpoint serves every method and
+    /// a JSON-RPC error still answers HTTP 200, so the server records A2A calls
+    /// by this rather than by HTTP method: a method that changes and records
+    /// nothing itself gets a `mutation` audit row, a read gets none. No
+    /// wildcard, so a new method does not compile until it is classified, and
+    /// `a2a_operation_kinds_e2e` checks each answer against what the method
+    /// writes. Calling a read a change costs an extra row; calling a change a
+    /// read loses a record.
+    pub fn changes(self) -> bool {
+        match self {
+            Self::SendMessage
+            | Self::SendStreamingMessage
+            | Self::CancelTask
+            | Self::CreatePushNotificationConfig
+            | Self::DeletePushNotificationConfig => true,
+            Self::GetTask
+            | Self::ListTasks
+            | Self::SubscribeToTask
+            | Self::GetPushNotificationConfig
+            | Self::ListPushNotificationConfigs
+            | Self::GetExtendedAgentCard => false,
+        }
+    }
+}
+
 /// Decode `params` as the request type `method` takes. An unknown method is
 /// MethodNotFound, parameters of the wrong shape InvalidParams.
 pub fn parse_operation(method: &str, params: Value) -> Result<Operation, A2aError> {
@@ -128,6 +223,36 @@ fn decode<T: DeserializeOwned>(method: &str, params: Value) -> Result<T, A2aErro
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// `Method::ALL` is what the tests iterate, so every method the decoder
+    /// knows must be in it, and each must decode to itself.
+    #[test]
+    fn every_method_decodes_to_itself_and_is_listed_once() {
+        let names: Vec<&str> = Method::ALL.iter().map(|m| m.name()).collect();
+        let mut unique = names.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), names.len(), "a method is listed twice");
+        let params = |method: Method| match method {
+            Method::SendMessage | Method::SendStreamingMessage => json!({ "message": {
+                "messageId": "m", "role": "ROLE_USER", "parts": [{ "text": "x" }]
+            } }),
+            Method::GetTask | Method::CancelTask | Method::SubscribeToTask => json!({ "id": "t" }),
+            Method::CreatePushNotificationConfig => {
+                json!({ "taskId": "t", "url": "https://hooks.example/a2a" })
+            }
+            Method::GetPushNotificationConfig | Method::DeletePushNotificationConfig => {
+                json!({ "taskId": "t", "id": "c" })
+            }
+            Method::ListPushNotificationConfigs => json!({ "taskId": "t" }),
+            Method::ListTasks | Method::GetExtendedAgentCard => Value::Null,
+        };
+        for method in Method::ALL {
+            let operation = parse_operation(method.name(), params(method))
+                .unwrap_or_else(|e| panic!("{}: {e:?}", method.name()));
+            assert_eq!(operation.method(), method);
+        }
+    }
 
     fn rejected(body: Value) -> (JsonRpcId, A2aErrorKind) {
         let (id, err) = parse_envelope(body).expect_err("rejected");

@@ -199,13 +199,14 @@ flowchart LR
   delegation grant exchanged for a short-lived token that *is* that member, and
   every use is written durably with the delegate as actor, the member as subject,
   and the grant — refusals included. There is no standing act-as-any capability.
-  **Attribution** is set once per request, by the auth middleware and by MCP tool
-  dispatch, and read at the single point each backend appends an event, which
-  stores it inside the hashed payload. Audit rows take the same principal. The
-  scope also notes whether anything was recorded; a successful REST mutation or
-  MCP tool call that recorded nothing gets an attributed `mutation` audit row
-  from the layer that opened the scope, so completeness does not depend on each
-  handler remembering. Work outside a request records none. A workspace is a
+  **Attribution** is set once per request, by the auth middleware, by MCP tool
+  dispatch and by A2A method dispatch (the gRPC binding has no middleware), and
+  read at the single point each backend appends an event, which stores it inside
+  the hashed payload. Audit rows take the same principal. The scope also notes
+  whether anything was recorded; a successful REST mutation, MCP tool call or
+  A2A method that is not a read and recorded nothing gets an attributed
+  `mutation` audit row from the layer that opened the scope, so completeness
+  does not depend on each handler remembering. Work outside a request records none. A workspace is a
   **room**: `maidan://{workspace_id}/…` (optional `#sha256` fragment). A handle
   is a renameable alias; stored ids stay the UUID.
 - **Authorization evidence.** REST and MCP capability decisions emit one

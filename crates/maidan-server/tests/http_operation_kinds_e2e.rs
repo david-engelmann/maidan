@@ -32,11 +32,7 @@
 
 mod seeded_workspace;
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use maidan_auth::ExportSigningKey;
 use maidan_server::land_gate_advisor::{
@@ -47,10 +43,10 @@ use maidan_server::{auth::MUTATION_ACTION, AppState};
 use maidan_types::{LandColor, MemberId};
 use reqwest::Method;
 use seeded_workspace::{
-    example, fill, json_body_schema, query, seed_victim, spawn_with, Harness, Victim,
+    changed_tables, example, fill, json_body_schema, query, seed_victim, snapshot, spawn_with,
+    Harness, Victim,
 };
 use serde_json::{json, Value};
-use sqlx::Row;
 
 /// Advice from nowhere, so the advice route can succeed.
 struct FixedAdvisor;
@@ -147,68 +143,6 @@ fn kinds() -> BTreeMap<(String, String), String> {
     entries
         .into_iter()
         .map(|e| ((e.method, shape(&e.path)), e.kind))
-        .collect()
-}
-
-/// Every row of every table, as text, per table.
-async fn snapshot(pool: &sqlx::SqlitePool) -> BTreeMap<String, Vec<String>> {
-    let tables: Vec<String> = sqlx::query(
-        "SELECT name FROM sqlite_master WHERE type = 'table' \
-         AND name NOT LIKE 'sqlite_%' AND name != 'maidan_audit'",
-    )
-    .fetch_all(pool)
-    .await
-    .unwrap()
-    .into_iter()
-    .map(|r| r.get::<String, _>("name"))
-    .collect();
-    let mut out = BTreeMap::new();
-    for table in tables {
-        let columns: Vec<String> = sqlx::query(&format!("PRAGMA table_info(\"{table}\")"))
-            .fetch_all(pool)
-            .await
-            .unwrap()
-            .into_iter()
-            .map(|r| r.get::<String, _>("name"))
-            .collect();
-        let row = columns
-            .iter()
-            .map(|c| format!("quote(\"{c}\")"))
-            .collect::<Vec<_>>()
-            .join(" || '|' || ");
-        let mut rows: Vec<String> = sqlx::query(&format!("SELECT {row} AS r FROM \"{table}\""))
-            .fetch_all(pool)
-            .await
-            .unwrap()
-            .into_iter()
-            .map(|r| r.get::<String, _>("r"))
-            .collect();
-        rows.sort();
-        out.insert(table, rows);
-    }
-    out
-}
-
-/// The tables `after` differs from `before` in, with a changed row of each.
-fn changed_tables(
-    before: &BTreeMap<String, Vec<String>>,
-    after: &BTreeMap<String, Vec<String>>,
-) -> Vec<String> {
-    after
-        .iter()
-        .filter_map(|(table, rows)| {
-            let old = before.get(table).cloned().unwrap_or_default();
-            (rows != &old).then(|| {
-                let old: BTreeSet<_> = old.iter().collect();
-                let new: BTreeSet<_> = rows.iter().collect();
-                let sample = new
-                    .symmetric_difference(&old)
-                    .next()
-                    .map(|r| r.chars().take(120).collect::<String>())
-                    .unwrap_or_default();
-                format!("{table} ({sample})")
-            })
-        })
         .collect()
 }
 

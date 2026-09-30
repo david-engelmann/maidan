@@ -314,6 +314,19 @@ async fn a2a_grpc_serves_the_whole_service() {
         .collect();
     assert!(words.contains(&"hello over grpc"), "history: {words:?}");
 
+    // The gRPC server has no request layer, so the binding scopes each call
+    // as its caller: the message it posted is the caller's, not the system's.
+    let last = store.max_event_id().await.unwrap();
+    let mut attributed = false;
+    for id in 1..=last {
+        let event = store.get_stored_event(id).await.unwrap();
+        attributed |= event.attribution().is_some_and(|a| a.actor_id == member);
+    }
+    assert!(
+        attributed,
+        "SendMessage over gRPC wrote no event attributed to its caller"
+    );
+
     // A message with a part that has no content is the caller's error.
     let mut empty = text_message("x");
     empty.parts[0].content = None;
@@ -423,6 +436,27 @@ async fn a2a_grpc_serves_the_whole_service() {
         assert_eq!(created.id, id);
         assert_eq!(created.task_id, task.id);
     }
+    // A config writes no event, so the call is recorded under its method.
+    let recorded = store.list_audit(100).await.unwrap();
+    let created_rows = recorded
+        .iter()
+        .filter(|row| {
+            row.action == maidan_server::auth::MUTATION_ACTION
+                && row.actor_id == Some(member)
+                && row.metadata["binding"] == "grpc"
+                && row.metadata["operation"] == "CreateTaskPushNotificationConfig"
+        })
+        .count();
+    assert_eq!(created_rows, 2, "{recorded:?}");
+    assert!(
+        recorded
+            .iter()
+            .filter(|row| row.action == maidan_server::auth::MUTATION_ACTION)
+            .all(|row| maidan_a2a::Method::ALL
+                .iter()
+                .any(|m| m.changes() && row.metadata["operation"] == m.name())),
+        "a read over gRPC was recorded as a change: {recorded:?}"
+    );
     let got = client
         .get_task_push_notification_config(authed(
             GetTaskPushNotificationConfigRequest {

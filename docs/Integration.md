@@ -497,7 +497,11 @@ written for it by the request layer, with `action: "mutation"`:
 
 Over MCP, `operation` is `tools/call:<tool>` and `metadata.ids` holds the
 arguments whose names end in `_id` — only those, because other arguments can
-carry secrets. A change is recorded once: a request that wrote its own event or
+carry secrets. Over A2A, `surface` is `a2a`, `binding` is `jsonrpc`, `rest` or
+`grpc`, and `operation` is the A2A method (`CancelTask`); the reads
+(`GetTask`, `ListTasks`, `SubscribeToTask`, the push-config reads and the
+extended card) record nothing, and neither does a call that fails, although
+JSON-RPC answers its errors with HTTP 200. A change is recorded once: a request that wrote its own event or
 audit row gets no `mutation` row. Reads are not recorded, with two exceptions
 that take data out: a workspace export writes `workspace.export`, and resolving
 a secret writes `secret.resolve`. A POST that only reads (verifying an export,

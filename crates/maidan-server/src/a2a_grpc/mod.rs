@@ -146,6 +146,20 @@ where
     Box::pin(stream.map(|event| to_proto(&event)))
 }
 
+impl GrpcA2a {
+    /// Run `method` as the caller: the gRPC server has no request layer, so
+    /// this is where its writes take on the caller's attribution and a change
+    /// that recorded nothing gets its record.
+    async fn run<T>(
+        &self,
+        auth: &AuthContext,
+        method: maidan_a2a::Method,
+        call: impl std::future::Future<Output = Result<T, maidan_a2a::A2aError>>,
+    ) -> Result<T, maidan_a2a::A2aError> {
+        a2a_agent::recorded(&self.state, auth, "grpc", method, call).await
+    }
+}
+
 #[tonic::async_trait]
 impl A2aService for GrpcA2a {
     async fn send_message(
@@ -154,7 +168,12 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<pb::SendMessageResponse>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
-        let task = ops::send_message(&self.state, &auth, req)
+        let task = self
+            .run(
+                &auth,
+                maidan_a2a::Method::SendMessage,
+                ops::send_message(&self.state, &auth, req),
+            )
             .await
             .map_err(status)?;
         let reply = maidan_a2a::SendMessageResponse::Task(task);
@@ -169,7 +188,12 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<Self::SendStreamingMessageStream>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
-        let sent = ops::send_streaming_message(&self.state, &auth, req)
+        let sent = self
+            .run(
+                &auth,
+                maidan_a2a::Method::SendStreamingMessage,
+                ops::send_streaming_message(&self.state, &auth, req),
+            )
             .await
             .map_err(status)?;
         Ok(Response::new(events(futures::stream::iter(sent))))
@@ -181,7 +205,12 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<pb::Task>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
-        let found = ops::get_task(&self.state, &auth, req)
+        let found = self
+            .run(
+                &auth,
+                maidan_a2a::Method::GetTask,
+                ops::get_task(&self.state, &auth, req),
+            )
             .await
             .map_err(status)?;
         Ok(Response::new(to_proto(&found)?))
@@ -193,7 +222,12 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<pb::ListTasksResponse>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
-        let listed = ops::list_tasks(&self.state, &auth, req)
+        let listed = self
+            .run(
+                &auth,
+                maidan_a2a::Method::ListTasks,
+                ops::list_tasks(&self.state, &auth, req),
+            )
             .await
             .map_err(status)?;
         Ok(Response::new(to_proto(&listed)?))
@@ -205,7 +239,12 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<pb::Task>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
-        let canceled = ops::cancel_task(&self.state, &auth, req)
+        let canceled = self
+            .run(
+                &auth,
+                maidan_a2a::Method::CancelTask,
+                ops::cancel_task(&self.state, &auth, req),
+            )
             .await
             .map_err(status)?;
         Ok(Response::new(to_proto(&canceled)?))
@@ -219,7 +258,12 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<Self::SubscribeToTaskStream>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
-        let stream = ops::subscribe(&self.state, &auth, req)
+        let stream = self
+            .run(
+                &auth,
+                maidan_a2a::Method::SubscribeToTask,
+                ops::subscribe(&self.state, &auth, req),
+            )
             .await
             .map_err(status)?;
         Ok(Response::new(events(stream)))
@@ -231,7 +275,12 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<pb::TaskPushNotificationConfig>, Status> {
         let auth = caller(&self.state, &request).await?;
         let config = from_proto(request.get_ref())?;
-        let created = push::create(&self.state, &auth, config)
+        let created = self
+            .run(
+                &auth,
+                maidan_a2a::Method::CreatePushNotificationConfig,
+                push::create(&self.state, &auth, config),
+            )
             .await
             .map_err(status)?;
         Ok(Response::new(to_proto(&created)?))
@@ -243,7 +292,14 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<pb::TaskPushNotificationConfig>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
-        let config = push::get(&self.state, &auth, req).await.map_err(status)?;
+        let config = self
+            .run(
+                &auth,
+                maidan_a2a::Method::GetPushNotificationConfig,
+                push::get(&self.state, &auth, req),
+            )
+            .await
+            .map_err(status)?;
         Ok(Response::new(to_proto(&config)?))
     }
 
@@ -253,7 +309,14 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<pb::ListTaskPushNotificationConfigsResponse>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
-        let listed = push::list(&self.state, &auth, req).await.map_err(status)?;
+        let listed = self
+            .run(
+                &auth,
+                maidan_a2a::Method::ListPushNotificationConfigs,
+                push::list(&self.state, &auth, req),
+            )
+            .await
+            .map_err(status)?;
         Ok(Response::new(to_proto(&listed)?))
     }
 
@@ -262,7 +325,14 @@ impl A2aService for GrpcA2a {
         request: Request<pb::GetExtendedAgentCardRequest>,
     ) -> Result<Response<pb::AgentCard>, Status> {
         let auth = caller(&self.state, &request).await?;
-        let card = card::extended(&self.state, &auth).map_err(status)?;
+        let card = self
+            .run(
+                &auth,
+                maidan_a2a::Method::GetExtendedAgentCard,
+                std::future::ready(card::extended(&self.state, &auth)),
+            )
+            .await
+            .map_err(status)?;
         Ok(Response::new(to_proto(&card)?))
     }
 
@@ -272,9 +342,13 @@ impl A2aService for GrpcA2a {
     ) -> Result<Response<pbjson_types::Empty>, Status> {
         let auth = caller(&self.state, &request).await?;
         let req = from_proto(request.get_ref())?;
-        push::delete(&self.state, &auth, req)
-            .await
-            .map_err(status)?;
+        self.run(
+            &auth,
+            maidan_a2a::Method::DeletePushNotificationConfig,
+            push::delete(&self.state, &auth, req),
+        )
+        .await
+        .map_err(status)?;
         Ok(Response::new(pbjson_types::Empty::default()))
     }
 }
