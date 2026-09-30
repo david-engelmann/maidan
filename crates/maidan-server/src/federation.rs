@@ -890,6 +890,20 @@ pub struct WellKnownMaidan {
     pub a2a: WellKnownA2a,
     pub agent_card: String,
     pub capabilities: Vec<String>,
+    pub auth: WellKnownAuth,
+}
+
+/// How a client or a person can sign in, so a first-run screen offers only
+/// the ways that work on this server.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WellKnownAuth {
+    /// `Authorization: Bearer <token>` is always accepted.
+    pub bearer: bool,
+    /// Whether browser sign-in through OIDC is configured.
+    pub oidc: bool,
+    /// Where OIDC sign-in starts (with `?workspace_id=`), when it is configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oidc_login: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -899,7 +913,8 @@ pub struct WellKnownA2a {
     pub protocol_version: String,
 }
 
-pub async fn well_known() -> impl IntoResponse {
+pub async fn well_known(State(state): State<AppState>) -> impl IntoResponse {
+    let oidc = state.oidc.is_some();
     Json(WellKnownMaidan {
         name: "maidan".to_string(),
         version: crate::version().to_string(),
@@ -917,6 +932,11 @@ pub async fn well_known() -> impl IntoResponse {
         },
         agent_card: "/.well-known/agent-card.json".to_string(),
         capabilities: vec![FEDERATION_INGEST.to_string(), FEDERATION_ADMIN.to_string()],
+        auth: WellKnownAuth {
+            bearer: true,
+            oidc,
+            oidc_login: oidc.then(|| "/auth/oidc/login".to_string()),
+        },
     })
 }
 

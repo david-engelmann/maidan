@@ -1434,6 +1434,20 @@ without changing its id. Groups record the IdP's membership and grant nothing.
 [Production](Production.md) lists the supported operations and the Okta and
 Entra ID request shapes.
 
+A browser with no working credential opens on a first-run card: API base,
+workspace and token, and a "Sign in with your identity provider" button only
+when the server has one. The card reads that from the `auth` block of
+`GET /.well-known/maidan.json`:
+
+```json
+"auth": { "bearer": true, "oidc": true, "oidc_login": "/auth/oidc/login" }
+```
+
+`oidc_login` is present only when `oidc` is true. A pasted token is kept in the
+browser's `localStorage` until **Sign out**, which forgets it (and ends the
+session, if there is one); once connected, the inputs fold into the header
+behind **Change**.
+
 Panels include channels, live WS tail, search, tokens, artifacts, and admin surfaces. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 
 ---

@@ -130,6 +130,24 @@ async fn spawn() -> Harness {
     spawn_with_settings(mock_oidc_settings(false)).await
 }
 
+/// The discovery document tells a first-run screen that browser sign-in works
+/// here, and where it starts.
+#[tokio::test]
+async fn discovery_says_oidc_sign_in_is_available() {
+    let h = spawn().await;
+    let body: serde_json::Value = h
+        .client
+        .get(format!("{}/.well-known/maidan.json", h.base()))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["auth"]["oidc"], true);
+    assert_eq!(body["auth"]["oidc_login"], "/auth/oidc/login");
+}
+
 #[tokio::test]
 async fn mock_oidc_login_sets_session_cookie_and_logout_clears_it() {
     let h = spawn().await;
