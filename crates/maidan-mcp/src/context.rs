@@ -803,6 +803,7 @@ mod tests {
                 sha256: sha.clone(),
                 size_bytes: 5,
                 mime_type: Some("text/plain".into()),
+                filename: None,
                 kind: ArtifactKind::Attachment,
                 uploaded_by: Some(member.id),
             })

@@ -8922,6 +8922,7 @@ mod tests {
                 sha256: sha.clone(),
                 size_bytes: 1,
                 mime_type: None,
+                filename: None,
                 kind: ArtifactKind::Attachment,
                 uploaded_by: None,
             })

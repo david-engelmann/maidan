@@ -109,6 +109,7 @@ fn artifact() -> Artifact {
         sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
         size_bytes: 4,
         mime_type: Some("text/plain".into()),
+        filename: None,
         kind: ArtifactKind::Attachment,
         uploaded_by: Some(maidan_types::MemberId(id(2))),
         created_at: ts(),

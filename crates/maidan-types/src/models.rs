@@ -2427,6 +2427,12 @@ pub struct Artifact {
     pub sha256: String,
     pub size_bytes: i64,
     pub mime_type: Option<String>,
+    /// The name the caller's workspace uploaded the bytes under, for display
+    /// only: it never locates anything. Another workspace holding the same
+    /// bytes sees its own name, or none. Omitted when absent, so an event
+    /// written before the field existed serializes as it was written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
     pub kind: ArtifactKind,
     pub uploaded_by: Option<MemberId>,
     pub created_at: DateTime<Utc>,
@@ -2438,6 +2444,7 @@ pub struct NewArtifact {
     pub sha256: String,
     pub size_bytes: i64,
     pub mime_type: Option<String>,
+    pub filename: Option<String>,
     pub kind: ArtifactKind,
     pub uploaded_by: Option<MemberId>,
 }

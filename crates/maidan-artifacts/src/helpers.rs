@@ -12,6 +12,7 @@ fn new_meta(sha: &Sha256, kind: ArtifactKind, mime_type: &str, bytes: &Bytes) ->
         sha256: sha.to_string(),
         size_bytes: bytes.len() as i64,
         mime_type: Some(mime_type.to_string()),
+        filename: None,
         kind,
         uploaded_by: None,
     }

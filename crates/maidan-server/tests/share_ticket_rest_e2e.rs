@@ -107,6 +107,7 @@ async fn share_ticket_operator_lifecycle_is_scoped_and_secret_safe() {
             sha256: sha.clone(),
             size_bytes: 7,
             mime_type: Some("text/plain".into()),
+            filename: None,
             kind: ArtifactKind::Attachment,
             uploaded_by: Some(owner.id),
         })

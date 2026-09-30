@@ -72,6 +72,7 @@ async fn purge_workspace_deletes_uploaded_artifact_blob() {
             sha256: sha.to_hex(),
             size_bytes: 8,
             mime_type: Some("text/plain".into()),
+            filename: None,
             kind: ArtifactKind::Attachment,
             uploaded_by: Some(alice.id),
         })
@@ -189,6 +190,7 @@ async fn purging_one_workspace_never_destroys_another_workspaces_artifact() {
             sha256: sha.to_hex(),
             size_bytes: 12,
             mime_type: Some("text/plain".into()),
+            filename: None,
             kind: ArtifactKind::Attachment,
             uploaded_by: Some(first_member.id),
         })

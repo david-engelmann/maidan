@@ -11,6 +11,7 @@ pub mod agui_stream;
 pub mod app;
 pub mod app_oauth;
 pub mod apps;
+pub mod artifact_response;
 pub mod audit;
 pub mod auth;
 pub mod automation_deliveries;

@@ -4,7 +4,7 @@
 
 use axum::{
     extract::{Request, State},
-    http::{header, HeaderMap, HeaderValue},
+    http::{header, HeaderValue},
     middleware::Next,
     response::{IntoResponse, Response},
     Extension, Json,
@@ -284,16 +284,9 @@ pub async fn download_artifact(
         return Err(ApiError::NotFound);
     }
     let bytes = state.artifacts.get(&sha).await?;
-    let mut headers = HeaderMap::new();
-    if let Some(mime_type) = artifact.mime_type {
-        if let Ok(value) = mime_type.parse() {
-            headers.insert(header::CONTENT_TYPE, value);
-        }
-    }
-    if let Ok(kind) = artifact.kind.as_str().parse() {
-        headers.insert(header::HeaderName::from_static("x-artifact-kind"), kind);
-    }
-    Ok((headers, bytes).into_response())
+    Ok(crate::artifact_response::artifact_response(
+        &artifact, bytes,
+    ))
 }
 
 #[cfg(test)]

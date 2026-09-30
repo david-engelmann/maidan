@@ -310,6 +310,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** `/ws/subscribe` at its connection ceiling answers a `503`
   problem with `Retry-After` instead of plain text. The OpenAPI document
   lists `500` on every operation and `503` on every sheddable one.
+
+### Attachments show their name, and images render in the thread
+
+- **Added:** an upload may name its file (`filename` on `POST /artifacts` and
+  on multipart complete). The name is display metadata on the uploading
+  workspace's ref: a path keeps only its last segment, a control or
+  bidirectional-control character is a `400`, and a workspace holding the same
+  deduplicated bytes sees its own name or none, never another tenant's.
+  Migration 0128 (`filename` on `maidan_artifact_refs`, and on the shared row
+  only for an unscoped upload).
+- **Changed:** `GET /artifacts/{sha}` and `GET /share/artifacts/{sha}` serve
+  the stored type's `type/subtype` (else `application/octet-stream`) with
+  `X-Content-Type-Options: nosniff`, a sandboxing
+  `Content-Security-Policy`, `Cache-Control: private`, and
+  `Content-Disposition: inline` only for PNG, JPEG, GIF and WebP, `attachment`
+  for everything else, SVG included. The name goes in `filename*`
+  percent-encoded, so no character in it reaches the header's syntax.
+- **Changed:** the `/ui/` attachment card shows the filename, size and a
+  download, and draws PNG, JPEG, GIF and WebP images inline. It reads name and
+  type from the workspace's metadata, not the message, fetches the bytes
+  through the new `GET /ui/api/artifacts/{sha}` with the viewer's header or
+  cookie (never a token in a URL), and renders the name as text. A paste or
+  upload now posts "Attached diagram.png" instead of a SHA prefix.
+
 ### Decisions keep their history
 
 - **Added:** every review verdict and land-gate verdict is appended to a

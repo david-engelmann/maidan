@@ -994,6 +994,8 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/artifacts/{sha}/meta",
             get(routes::get_artifact_metadata),
         )
+        // The bytes, so a signed-in viewer's thread can show an image.
+        .route("/ui/api/artifacts/{sha}", get(routes::get_artifact))
         // Waiting-on-you inbox.
         .route(
             "/ui/api/members/{id}/waiting",
