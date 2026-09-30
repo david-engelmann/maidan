@@ -50,12 +50,21 @@ async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
         "start_review",
         "lease_secs",
         "renew_claim",
+        "acknowledge_claim",
+        "ClaimUnacknowledged",
+        "max_wall_secs",
         "release_claim",
         "get_waiting_inbox",
         "submit_review",
     ] {
         assert!(body.contains(needle), "llms.txt names {needle}");
     }
+    // Every claim_next_thread claim has been leased since #1095; an agent told
+    // otherwise skips the lease it must renew.
+    assert!(
+        !body.contains("never lapses"),
+        "llms.txt says a claim can go unleased"
+    );
 
     server.abort();
 }
@@ -65,6 +74,7 @@ async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
 const NOT_TOOLS: &[&str] = &[
     "lease_secs",
     "token_budget",
+    "max_wall_secs",
     "start_review",
     "approve",
     "request_changes",

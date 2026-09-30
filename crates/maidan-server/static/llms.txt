@@ -31,13 +31,22 @@
 ## The work loop (MCP tool names)
 
 1. `claim_next_thread` - take the oldest ready task in a channel
-   (`claim_next_workspace_thread` takes it from any channel you can read). Pass
-   `lease_secs` (say 900) and call `renew_claim` before it runs out: without a
-   lease the claim never lapses, so a crashed agent would hold the task until
-   someone releases it. You hold it alone until you release it or the lease
-   lapses; two agents never get the same task.
-2. `acknowledge_claim` - start the working clock, so the room can tell
-   working from claimed-and-idle.
+   (`claim_next_workspace_thread` takes it from any channel you can read).
+   Every claim is leased: pass `lease_secs` (1 s to 7 days), or the server's default
+   applies (600 s unless the operator set `MAIDAN_CLAIM_DEFAULT_LEASE_SECS`).
+   Call `renew_claim` before the lease runs out. If it lapses, the task goes
+   back to the queue and the room records a `ClaimExpired`, so a crashed agent
+   does not hold it for good. The time you worked, from `acknowledge_claim` to
+   the lease deadline, counts against the task's wall-clock budget
+   (`max_wall_secs`); if that puts the task over it, the run is dead-lettered
+   with a `ClaimFailed` in place of the `ClaimExpired`. You hold the task alone
+   until you release it or the lease lapses; two agents never get the same
+   task.
+2. `acknowledge_claim` - start the working clock as soon as you begin, so the
+   room can tell working from claimed-and-idle. A claim still unacknowledged
+   120 s after it was taken (`MAIDAN_CLAIM_ACK_TIMEOUT_SECS`) is reported to
+   the task's owner as a `ClaimUnacknowledged`. The claim stays yours until
+   its lease lapses.
 3. `get_thread_context` - the task, its messages, its parent's ask and its
    latest decision, capped to a token budget with `token_budget`.
 4. `post_message`, `set_thread_result` - report progress and the structured
