@@ -1112,3 +1112,20 @@ fn ui_js_opens_the_only_channel() {
         "a remembered channel still wins, and a channel already open is not reloaded"
     );
 }
+
+#[test]
+fn ui_js_shows_a_refused_close_and_leads_with_the_latest_review() {
+    let s = script(HTML);
+    let html = HTML;
+    assert!(
+        html.contains("id=\"board-refusal\"")
+            && s.contains("notice !== \"transition_refused\"")
+            && s.contains("Close refused"),
+        "the board shows a close the server refused"
+    );
+    assert!(
+        s.contains("String(b.since).localeCompare(String(a.since))")
+            && s.contains("The latest request is first."),
+        "Needs you puts the latest review first when more than one is waiting"
+    );
+}
