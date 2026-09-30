@@ -6,6 +6,12 @@
 //! on failure — rescheduled with exponential backoff, or dead-lettered once it
 //! has exhausted [`MAX_ATTEMPTS`].
 //!
+//! A retry the relay's [retry budget](crate::retry_budget) refuses is handed
+//! back unsent ([`Store::defer_mail`](maidan_store::Store)): due again a few
+//! seconds later, with the claim's attempt given back, so a relay that comes
+//! back after an outage takes its backlog at the budget's pace instead of all
+//! at once, and no entry is dead-lettered for waiting.
+//!
 //! Replaces the best-effort fire-and-forget send the notification router used
 //! to do inline: the router now only *enqueues*, so a transient SMTP failure is
 //! retried instead of dropped.
@@ -22,6 +28,7 @@
 
 use std::time::Duration;
 
+use crate::retry_budget::{deferred_until, Attempt};
 use crate::state::AppState;
 
 /// How far forward a claim leases a row (a send attempt should finish well within
@@ -74,6 +81,8 @@ pub struct MailSweepStats {
     pub sent: u32,
     pub retried: u32,
     pub dead: u32,
+    /// Retries the retry budget held back: rescheduled, not attempted.
+    pub deferred: u32,
 }
 
 /// Drain up to [`MAX_PER_TICK`] due entries, sending each. No-op without a
@@ -93,6 +102,19 @@ pub async fn sweep_once(state: &AppState) -> MailSweepStats {
                 break;
             }
         };
+        // The claim counted this try, so a first send has `attempts == 1`.
+        let attempt = Attempt::after(entry.attempts - 1);
+        if let Some(until) =
+            deferred_until(&state.retry_budget, "mail", &mail.relay_host(), attempt)
+        {
+            if let Err(err) = state.store.defer_mail(entry.id, until).await {
+                // The row stays leased with this claim counted: the one way a
+                // deferral can cost an attempt, and only when the store is failing.
+                tracing::warn!(error = %err, id = %entry.id, "mail worker: deferral failed");
+            }
+            stats.deferred += 1;
+            continue;
+        }
         match mail
             .send(&entry.to_address, &entry.subject, &entry.body)
             .await

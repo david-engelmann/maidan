@@ -538,6 +538,34 @@ registration fails delivery rather than being contacted.
 
 **Manual recovery (SQL):** `UPDATE maidan_automation_deliveries SET quarantined_at = NULL, attempts = 0, next_attempt_at = datetime('now') WHERE id = $id;` (SQLite) or equivalent `now()` on Postgres — prefer HTTP replay when auth is available.
 
+### Outbound timeouts and the retry budget
+
+Every outbound delivery (event webhooks, automation HTTP, Slack and GitHub
+projector and result egress) gives up after 5 s waiting to connect and 10 s in
+all, so a receiver that accepts the connection and never answers cannot hold
+up the workers. A failed delivery is retried on its worker's backoff: webhooks
+and automation wait `2^attempts` seconds (at most 256 s) up to their
+`*_MAX_ATTEMPTS`; mail and egress wait 30 s doubling to an hour, eight attempts.
+
+Backoff spaces one delivery's attempts, not a destination's. When a host that
+was down comes back, everything queued for it is due at once. So every worker
+in a process shares one **retry budget per destination host** (the webhook or
+automation URL's host, `slack.com`, the GitHub API host, the SMTP relay): a
+host takes at most 10 retries at once and 2 more a second after that. A first
+attempt is never held back and does not count. A retry the budget refuses is
+**deferred**, not failed: its next attempt moves 1 to 60 s forward, spaced so
+the backlog returns at about the budget's rate, and its attempt count stays as
+it was, so waiting never pushes a delivery toward the dead-letter queue. The
+limits are constants in `crates/maidan-server/src/retry_budget.rs`, not
+environment variables.
+
+The budget is in memory on each replica: with N replicas a recovering host can
+take N times the rate, and a restart starts every host's budget full.
+
+| Metric | Meaning |
+|--------|---------|
+| `maidan_egress_retry_deferred_total{worker}` | Retries the budget deferred, by worker (`webhook`, `automation`, `egress`, `mail`). A sustained rate means a destination is getting retries as fast as the budget allows; it is not a failure count. |
+
 ### Agent observability (`v76.0.0`)
 
 Scrape `GET /metrics` for agent-substrate health (see [Agent Integration](Agent%20Integration.md)). Gate e2e: `agent_substrate_gate_e2e.rs`.
@@ -662,6 +690,7 @@ drives the cross-replica REST paths.
 **Still pod-local (do not assume cross-replica):**
 
 - In-flight **MCP streamable sessions** and open WebSocket/SSE subscriptions live on the replica that holds the connection; a reconnect may land elsewhere and resumes from the durable cursor, not in-memory buffer.
+- The **outbound retry budget** (10 retries at once, then 2 a second, per destination host) is held per replica, so N replicas give a recovering host N budgets ([Outbound timeouts and the retry budget](#outbound-timeouts-and-the-retry-budget)).
 - A **running reindex job** executes on the replica that started it; only its *status* is durable and queryable from any replica. If that replica dies mid-run the row stays `Running` — re-issue the (idempotent) reindex.
 
 **Rolling updates / boot:** every replica runs migrations on boot, serialized by

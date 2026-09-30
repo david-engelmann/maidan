@@ -1152,6 +1152,9 @@ impl MailStore for PostgresStore {
     ) -> Result<(), StoreError> {
         mail_outbox::mark_failed(&self.pool, id, error, retry_at).await
     }
+    async fn defer_mail(&self, id: MailOutboxId, until: DateTime<Utc>) -> Result<(), StoreError> {
+        mail_outbox::defer(&self.pool, id, until).await
+    }
     async fn count_dead_mail(&self) -> Result<i64, StoreError> {
         mail_outbox::count_dead(&self.pool).await
     }
@@ -1196,6 +1199,13 @@ impl EgressStore for PostgresStore {
         retry_at: Option<DateTime<Utc>>,
     ) -> Result<(), StoreError> {
         egress_outbox::mark_failed(&self.pool, id, error, retry_at).await
+    }
+    async fn defer_egress(
+        &self,
+        id: EgressOutboxId,
+        until: DateTime<Utc>,
+    ) -> Result<(), StoreError> {
+        egress_outbox::defer(&self.pool, id, until).await
     }
     async fn count_dead_egress(&self) -> Result<i64, StoreError> {
         egress_outbox::count_dead(&self.pool).await
@@ -3334,6 +3344,14 @@ impl WebhookStore for PostgresStore {
         webhooks::record_delivery_attempt(&self.pool, delivery_id, error, next_attempt_at).await
     }
 
+    async fn defer_webhook_delivery(
+        &self,
+        delivery_id: i64,
+        next_attempt_at: DateTime<Utc>,
+    ) -> Result<(), StoreError> {
+        webhooks::defer_delivery(&self.pool, delivery_id, next_attempt_at).await
+    }
+
     async fn quarantine_webhook_delivery(&self, delivery_id: i64) -> Result<(), StoreError> {
         webhooks::quarantine_delivery(&self.pool, delivery_id).await
     }
@@ -3408,6 +3426,14 @@ impl AutomationStore for PostgresStore {
         next_attempt_at: DateTime<Utc>,
     ) -> Result<i32, StoreError> {
         automation_deliveries::record_attempt(&self.pool, delivery_id, error, next_attempt_at).await
+    }
+
+    async fn defer_automation_delivery(
+        &self,
+        delivery_id: i64,
+        next_attempt_at: DateTime<Utc>,
+    ) -> Result<(), StoreError> {
+        automation_deliveries::defer(&self.pool, delivery_id, next_attempt_at).await
     }
 
     async fn quarantine_automation_delivery(&self, delivery_id: i64) -> Result<(), StoreError> {

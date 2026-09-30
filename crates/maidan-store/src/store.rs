@@ -732,6 +732,10 @@ pub trait MailStore: Send + Sync {
         error: &str,
         retry_at: Option<DateTime<Utc>>,
     ) -> Result<(), StoreError>;
+    /// Hand a claimed entry back unsent, due again at `until`: the claim's
+    /// attempt is given back, because the retry budget held the send back and
+    /// nothing failed. A deferral never moves an entry toward the DLQ.
+    async fn defer_mail(&self, id: MailOutboxId, until: DateTime<Utc>) -> Result<(), StoreError>;
     async fn count_dead_mail(&self) -> Result<i64, StoreError>;
     /// Dead-lettered entries for the operator DLQ view, newest first.
     /// Dead-lettered mail for the operator DLQ. `scope` is the caller's
@@ -786,6 +790,14 @@ pub trait EgressStore: Send + Sync {
         id: EgressOutboxId,
         error: &str,
         retry_at: Option<DateTime<Utc>>,
+    ) -> Result<(), StoreError>;
+    /// Hand a claimed delivery back unsent, due again at `until`: the claim's
+    /// attempt is given back, because the retry budget held the post back and
+    /// nothing failed. A deferral never moves a delivery toward the DLQ.
+    async fn defer_egress(
+        &self,
+        id: EgressOutboxId,
+        until: DateTime<Utc>,
     ) -> Result<(), StoreError>;
     async fn count_dead_egress(&self) -> Result<i64, StoreError>;
     /// Dead-lettered deliveries for the operator DLQ view, newest first —
@@ -2737,6 +2749,14 @@ pub trait WebhookStore: Send + Sync {
         error: &str,
         next_attempt_at: DateTime<Utc>,
     ) -> Result<i32, StoreError>;
+    /// Move a pending delivery's next attempt to `next_attempt_at` without
+    /// recording an attempt or an error: the retry budget held it back, and it
+    /// did not fail.
+    async fn defer_webhook_delivery(
+        &self,
+        delivery_id: i64,
+        next_attempt_at: DateTime<Utc>,
+    ) -> Result<(), StoreError>;
     async fn quarantine_webhook_delivery(&self, delivery_id: i64) -> Result<(), StoreError>;
     async fn list_webhook_deliveries(
         &self,
@@ -2784,6 +2804,14 @@ pub trait AutomationStore: Send + Sync {
         error: &str,
         next_attempt_at: DateTime<Utc>,
     ) -> Result<i32, StoreError>;
+    /// Move a pending delivery's next attempt to `next_attempt_at` without
+    /// recording an attempt or an error: the retry budget held it back, and it
+    /// did not fail.
+    async fn defer_automation_delivery(
+        &self,
+        delivery_id: i64,
+        next_attempt_at: DateTime<Utc>,
+    ) -> Result<(), StoreError>;
     async fn quarantine_automation_delivery(&self, delivery_id: i64) -> Result<(), StoreError>;
     async fn replay_automation_delivery(
         &self,

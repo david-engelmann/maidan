@@ -193,6 +193,10 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 - **Don't use `tokio::sync::Notify::notify_waiters()`** between a producer and
   a poller: it wakes only current waiters. Poll instead (see
   `LoggingHandler::wait_for` in `crates/maidan-search/src/indexer.rs`).
+- **Outbound workers share a per-host retry budget** (`retry_budget.rs`: 10
+  retries at once, then 2 a second). A test that drives more retries than that
+  at one mock host in one pass sees them deferred, not sent; give it its own
+  `state.retry_budget` on a `ManualClock`.
 - **A fix is checked by breaking it.** Revert the fix, confirm its test fails,
   restore it. Delete any `.proptest-regressions` file a mutated run leaves.
 

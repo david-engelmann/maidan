@@ -128,6 +128,28 @@ pub async fn mark_failed(
     Ok(())
 }
 
+/// Hand a claimed entry back unsent: give back the claim's attempt and make it
+/// due at `until`. Only a `pending` row moves, so a row that was delivered or
+/// dead-lettered meanwhile is left alone.
+pub async fn defer(
+    pool: &SqlitePool,
+    id: MailOutboxId,
+    until: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    let now = Utc::now().to_rfc3339();
+    sqlx::query(
+        "UPDATE maidan_mail_outbox
+         SET attempts = MAX(attempts - 1, 0), next_attempt_at = ?, updated_at = ?
+         WHERE id = ? AND status = 'pending'",
+    )
+    .bind(until.to_rfc3339())
+    .bind(&now)
+    .bind(id.0)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn count_dead(pool: &SqlitePool) -> Result<i64, StoreError> {
     let row = sqlx::query("SELECT COUNT(*) AS c FROM maidan_mail_outbox WHERE status = 'dead'")
         .fetch_one(pool)

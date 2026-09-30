@@ -240,6 +240,24 @@ pub async fn record_delivery_attempt(
     Ok(row.get("attempts"))
 }
 
+/// Move a pending delivery's next attempt without counting one.
+pub async fn defer_delivery(
+    pool: &SqlitePool,
+    delivery_id: i64,
+    next_attempt_at: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "UPDATE maidan_webhook_deliveries
+         SET next_attempt_at = ?
+         WHERE id = ? AND delivered_at IS NULL AND quarantined_at IS NULL",
+    )
+    .bind(next_attempt_at.to_rfc3339())
+    .bind(delivery_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn quarantine_delivery(pool: &SqlitePool, delivery_id: i64) -> Result<(), StoreError> {
     let now = Utc::now().to_rfc3339();
     sqlx::query(
