@@ -1513,7 +1513,7 @@ A member's current live-claim count against the workspace WIP limit ({live_claim
 
 ### `claim_next_thread`
 
-Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.
+Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Tasks are created over REST (POST /channels/{cid}/threads) or by a person in the web UI.
 
 **Capability:** `thread:transition`
 

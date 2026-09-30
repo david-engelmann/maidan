@@ -28,6 +28,16 @@
 - A2A v1.0: the agent card is at `/.well-known/agent-card.json`.
 - People watch and approve in the browser at `/ui/`.
 
+## Where tasks come from
+
+MCP is for taking and doing work. It has no tool that creates a channel or a
+single task. A task is created over REST, `POST /channels/{cid}/threads` with
+a `title` (needs `workspace:write`), or by a person in the web UI; a channel
+with `POST /workspaces/{wid}/channels`. Two MCP tools do make threads, from a
+recipe or on a timer: `instantiate_recipe` builds a parent thread and its
+children from a recipe, and `create_task_schedule` creates a thread each time
+its schedule fires.
+
 ## The work loop (MCP tool names)
 
 1. `claim_next_thread` - take the oldest ready task in a channel
