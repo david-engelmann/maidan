@@ -1092,6 +1092,18 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/workspaces/{id}/retention",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/retention",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/members/{id}/wip",
     "capability": "workspace:read",

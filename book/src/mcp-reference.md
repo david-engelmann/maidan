@@ -1414,6 +1414,73 @@ This workspace's delegation policy: max_grant_days, the longest a delegation gra
 }
 ```
 
+### `set_retention_policy`
+
+Replace this workspace's own retention for its messages, events and finished deliveries, in days (1 to 3650 each). A workspace may keep rows for less time than the instance does, never longer: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.
+
+**Capability:** `token:admin`
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "deliveries_days": {
+      "anyOf": [
+        {
+          "maximum": 3650,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "days to keep finished deliveries; null/omit = as long as the instance"
+    },
+    "events_days": {
+      "anyOf": [
+        {
+          "maximum": 3650,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "days to keep event-log rows; null/omit = as long as the instance"
+    },
+    "messages_days": {
+      "anyOf": [
+        {
+          "maximum": 3650,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "days to keep messages; null/omit = as long as the instance (forever)"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `get_retention_policy`
+
+This workspace's retention: what it set (workspace), what the instance keeps (instance), and what is pruned in effect, the shorter of the two per kind (effective). Days per kind; null means not pruned.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {},
+  "type": "object"
+}
+```
+
 ### `get_wip_limit`
 
 This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).

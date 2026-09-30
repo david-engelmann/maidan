@@ -614,6 +614,24 @@ pub fn catalog() -> Vec<Value> {
             "inputSchema": {"type": "object", "properties": {}}
         }),
         json!({
+            "name": "set_retention_policy",
+            "description": "Replace this workspace's own retention for its messages, events and finished deliveries, in days (1 to 3650 each). A workspace may keep rows for less time than the instance does, never longer: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "messages_days": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 3650}, {"type": "null"}], "description": "days to keep messages; null/omit = as long as the instance (forever)"},
+                    "events_days": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 3650}, {"type": "null"}], "description": "days to keep event-log rows; null/omit = as long as the instance"},
+                    "deliveries_days": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 3650}, {"type": "null"}], "description": "days to keep finished deliveries; null/omit = as long as the instance"}
+                },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "get_retention_policy",
+            "description": "This workspace's retention: what it set (workspace), what the instance keeps (instance), and what is pruned in effect, the shorter of the two per kind (effective). Days per kind; null means not pruned.",
+            "inputSchema": {"type": "object", "properties": {}}
+        }),
+        json!({
             "name": "get_wip_limit",
             "description": "This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).",
             "inputSchema": {"type": "object", "properties": {}}

@@ -696,10 +696,12 @@ async fn main() -> anyhow::Result<()> {
             .set_export_verify_keys(state.export_verify_keys.clone());
     }
 
-    // Background data-retention sweeper: opt-in via `MAIDAN_RETENTION_*_DAYS`.
-    // Prunes the event log (floored at the durable delivery watermark), audit
-    // trail, and delivery tables past their age.
-    if let Some(retention_cfg) = maidan_server::retention::config_from_env() {
+    // Background data-retention sweeper. Prunes the event log (floored at the
+    // durable delivery watermark), audit trail and delivery tables past the
+    // instance's `MAIDAN_RETENTION_*_DAYS`, then each workspace's rows past its
+    // own, shorter policy. Nothing is pruned unless one of those is set.
+    {
+        let retention_cfg = maidan_server::retention::config_from_env();
         let retention_store = state.store.clone();
         tokio::spawn(async move {
             maidan_server::retention::run(retention_store, retention_cfg).await;

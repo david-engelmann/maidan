@@ -463,6 +463,69 @@ pub async fn get_delegation_policy(
     Ok(Json(state.store.get_delegation_policy(workspace_id).await?))
 }
 
+/// `PUT /workspaces/:wid/retention` — replace the workspace's own retention for
+/// its messages, events and finished deliveries, in days (1–3650 each; `null`
+/// or omitted keeps what the instance keeps; `{}` clears it). A value longer
+/// than the instance keeps that kind of row is refused (400). `token:admin`,
+/// like a legal hold: it decides what of the workspace's record survives.
+/// Audited in its own transaction (D-A).
+pub async fn set_retention_policy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<maidan_types::RetentionDays>,
+) -> ApiResult<Json<maidan_types::RetentionPolicy>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let actor = auth.actor_id;
+    let instance = state.mcp.instance_retention();
+    let days = state
+        .store
+        .set_retention_policy_audited(
+            workspace_id,
+            body,
+            instance,
+            Box::new(move |days| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: Some(actor),
+                action: "retention_policy.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({
+                    "messages_days": days.messages_days,
+                    "events_days": days.events_days,
+                    "deliveries_days": days.deliveries_days,
+                }),
+            }),
+        )
+        .await?;
+    Ok(Json(maidan_types::RetentionPolicy::new(
+        workspace_id,
+        days,
+        instance,
+    )))
+}
+
+/// `GET /workspaces/:wid/retention` — what the workspace set, what the
+/// instance keeps, and what is pruned in effect. `workspace:read`: members may
+/// know how long their words are kept.
+pub async fn get_retention_policy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<maidan_types::RetentionPolicy>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let days = state.store.get_retention_policy(workspace_id).await?;
+    Ok(Json(maidan_types::RetentionPolicy::new(
+        workspace_id,
+        days,
+        state.mcp.instance_retention(),
+    )))
+}
+
 /// `PUT /workspaces/:id/spawn-budget` — set the workspace's spawn budget: max
 /// direct child threads per parent, max thread nesting depth, max tool calls
 /// per thread. A full replace — an omitted or `null` axis is unlimited, so `{}`

@@ -819,3 +819,54 @@ pub(super) async fn get_delegation_policy(
         &store.get_delegation_policy(auth.workspace_id).await?,
     ))
 }
+
+/// Replace the caller's workspace retention, held to what the instance keeps.
+/// `token:admin`, like the REST twin.
+pub(super) async fn set_retention_policy(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let days: maidan_types::RetentionDays = serde_json::from_value(args.clone())?;
+    let (actor, workspace_id) = (auth.actor_id, auth.workspace_id);
+    let instance = server.instance_retention();
+    let days = server
+        .store
+        .set_retention_policy_audited(
+            workspace_id,
+            days,
+            instance,
+            Box::new(move |days| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: Some(actor),
+                action: "retention_policy.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: json!({
+                    "messages_days": days.messages_days,
+                    "events_days": days.events_days,
+                    "deliveries_days": days.deliveries_days,
+                }),
+            }),
+        )
+        .await?;
+    Ok(content_json(&maidan_types::RetentionPolicy::new(
+        workspace_id,
+        days,
+        instance,
+    )))
+}
+
+/// The caller's workspace retention. `workspace:read`.
+pub(super) async fn get_retention_policy(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    _args: &Value,
+) -> Result<Value, McpError> {
+    let days = server.store.get_retention_policy(auth.workspace_id).await?;
+    Ok(content_json(&maidan_types::RetentionPolicy::new(
+        auth.workspace_id,
+        days,
+        server.instance_retention(),
+    )))
+}

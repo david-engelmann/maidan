@@ -509,7 +509,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the order members last took hold of a thread, seeded from the order they
   first held it with the current holder last.
 
-### Per-workspace fairness by default
+### Per-workspace fairness by default, and per-workspace retention
 
 - **Changed:** the per-workspace rate limit is on by default at 6000 requests
   per 60 s for one workspace across all its tokens, the way the per-client
@@ -518,6 +518,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   at the per-client ceiling, so a busy workspace's agents meet their own
   limits first. An explicit value wins and `0` turns it off, as for the global
   limit.
+- **Added:** a workspace can set its own retention for its messages, events
+  and finished deliveries: `PUT /workspaces/{wid}/retention` or MCP
+  `set_retention_policy` (`token:admin`, audited in the change's
+  transaction), read with `GET` or `get_retention_policy` (`workspace:read`),
+  which report the workspace's days, the instance's and the shorter of the two
+  in effect. A workspace may keep rows for less time than the instance, never
+  longer: a value above the instance's `MAIDAN_RETENTION_*_DAYS` is refused
+  with 400. The sweeper now always runs and, after the instance sweep, prunes
+  each workspace past its own cutoff. Old messages are erased as a purge
+  erases them, with their embeddings, references and content keys; the
+  instance itself still never prunes messages. A workspace under legal hold
+  loses nothing, whatever its policy says. Audit rows have no workspace
+  setting.
+- Migration 0134 (both databases) adds `maidan_retention_policies`.
 
 ### Delivery retention covers every delivery table
 

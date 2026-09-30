@@ -160,6 +160,10 @@ pub fn router(state: AppState) -> Router {
             put(routes::set_delegation_policy).merge(get(routes::get_delegation_policy)),
         )
         .route(
+            "/workspaces/{id}/retention",
+            put(routes::set_retention_policy).merge(get(routes::get_retention_policy)),
+        )
+        .route(
             "/workspaces/{id}/spawn-budget",
             put(routes::set_spawn_budget).merge(get(routes::get_spawn_budget)),
         )

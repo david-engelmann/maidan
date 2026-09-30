@@ -699,6 +699,42 @@ and [Threat-Model.md](Threat-Model.md).
 
 ---
 
+### Workspace retention
+
+A workspace can keep its messages, events and finished deliveries for less time
+than the instance does. An administrator (`token:admin`) sets the days per kind
+with `PUT /workspaces/{wid}/retention` or MCP `set_retention_policy`:
+
+```http
+PUT /workspaces/{wid}/retention
+{"messages_days": 30, "events_days": 90, "deliveries_days": 7}
+```
+
+Each value is 1–3650 days; a kind left out or `null` is kept as long as the
+instance keeps it, and `{}` clears the policy. A value longer than the instance
+keeps that kind is refused with 400: the instance's retention is the ceiling,
+because its sweep prunes past its own cutoff whatever a workspace says. The
+change writes a `retention_policy.set` audit row in the same transaction.
+
+`GET /workspaces/{wid}/retention` or MCP `get_retention_policy`
+(`workspace:read`) returns what the workspace set (`workspace`), what the
+instance keeps (`instance`), and what is pruned in effect, the shorter of the
+two per kind (`effective`). `null` means not pruned.
+
+- **Messages** older than the cutoff are erased as a purge erases them: their
+  words, edits, reactions, pins, embeddings and references go, and their content
+  keys are destroyed, so the sealed copies in the event log can no longer be
+  opened. The threads stay. The instance never prunes messages, so a workspace
+  policy is the only way they are pruned.
+- **Events** older than the cutoff go, except any a durable consumer of this
+  workspace has not yet received.
+- **Deliveries** are the finished rows the instance's delivery retention prunes;
+  pending rows and dead letters stay.
+- **A legal hold outranks the policy.** While a workspace is held, none of its
+  rows is pruned, whatever its policy says.
+- Audit rows have no workspace setting: a tenant does not shorten the record of
+  what was done in it.
+
 ## Transports
 
 | Transport | Endpoint | Auth |

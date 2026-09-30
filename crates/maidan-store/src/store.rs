@@ -138,6 +138,28 @@ pub trait WorkspaceStore: Send + Sync {
         audit: crate::AuditFor<DelegationPolicy>,
     ) -> Result<DelegationPolicy, StoreError>;
 
+    /// The retention the workspace set for its messages, events and finished
+    /// deliveries; all `None` when it has set none.
+    async fn get_retention_policy(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<RetentionDays, StoreError>;
+    /// Replace the workspace's retention, with its audit row in the same
+    /// transaction (D-A). `InvalidInput` for a value outside
+    /// 1..=[`MAX_RETENTION_DAYS`] or longer than `instance` keeps that kind of
+    /// row; all `None` clears it. There is no unaudited form.
+    async fn set_retention_policy_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        days: RetentionDays,
+        instance: RetentionDays,
+        audit: crate::AuditFor<RetentionDays>,
+    ) -> Result<RetentionDays, StoreError>;
+    /// Every workspace that has set a retention, for the sweeper.
+    async fn list_retention_policies(
+        &self,
+    ) -> Result<Vec<(WorkspaceId, RetentionDays)>, StoreError>;
+
     /// Set or rename a workspace handle. The workspace id is unchanged. Invalid
     /// syntax is [`StoreError::InvalidInput`]; a handle owned by another
     /// workspace is [`StoreError::Conflict`].
@@ -2844,6 +2866,36 @@ pub trait DeliveryCursorStore: Send + Sync {
     /// held workspace's egress, mail or agent runs.
     async fn prune_deliveries(
         &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError>;
+
+    /// [`Self::prune_events`] for one workspace's own retention: up to `limit`
+    /// of its events older than `cutoff`, floored at its own consumers'
+    /// delivery cursors that advanced since `cutoff`. Nothing while the
+    /// workspace is held.
+    async fn prune_workspace_events(
+        &self,
+        workspace_id: WorkspaceId,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError>;
+
+    /// Erase up to `limit` of one workspace's messages posted before `cutoff`,
+    /// with their embeddings, references and content keys. Nothing while the
+    /// workspace is held.
+    async fn prune_workspace_messages(
+        &self,
+        workspace_id: WorkspaceId,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError>;
+
+    /// [`Self::prune_deliveries`] for one workspace's rows in every delivery
+    /// table. Nothing while the workspace is held.
+    async fn prune_workspace_deliveries(
+        &self,
+        workspace_id: WorkspaceId,
         cutoff: chrono::DateTime<chrono::Utc>,
         limit: i64,
     ) -> Result<u64, StoreError>;

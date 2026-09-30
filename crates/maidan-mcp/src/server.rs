@@ -124,6 +124,9 @@ pub struct McpServer {
     /// The lease a `claim_next_thread` claim gets when the caller names none
     /// (`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`). REST reads it from here too.
     claim_leases: crate::claim_lease::ClaimLeasePolicy,
+    /// What the instance keeps (`MAIDAN_RETENTION_*_DAYS`): the ceiling a
+    /// workspace's own retention is held to. REST reads it from here too.
+    instance_retention: maidan_types::RetentionDays,
 }
 
 impl McpServer {
@@ -152,6 +155,7 @@ impl McpServer {
             export_verify_keys: std::sync::OnceLock::new(),
             presence_reader: Arc::new(std::sync::RwLock::new(None)),
             claim_leases: crate::claim_lease::ClaimLeasePolicy::from_env(),
+            instance_retention: maidan_store::retention_policy::instance_retention_from_env(),
         }
     }
 
@@ -175,6 +179,19 @@ impl McpServer {
     /// The claim-lease policy both REST and MCP resolve leases with.
     pub fn claim_lease_policy(&self) -> crate::claim_lease::ClaimLeasePolicy {
         self.claim_leases
+    }
+
+    /// Replace what the instance keeps (tests and embedders; the server reads
+    /// it from the environment the retention sweeper reads).
+    #[must_use]
+    pub fn with_instance_retention(mut self, instance: maidan_types::RetentionDays) -> Self {
+        self.instance_retention = instance;
+        self
+    }
+
+    /// The ceiling both REST and MCP check a workspace's retention against.
+    pub fn instance_retention(&self) -> maidan_types::RetentionDays {
+        self.instance_retention
     }
 
     pub fn attach_presence_reader(&self, reader: Arc<dyn PresenceReader>) {
