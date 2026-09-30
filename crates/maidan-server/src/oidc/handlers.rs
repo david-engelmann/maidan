@@ -5,7 +5,7 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use maidan_auth::TOKEN_ADMIN;
-use maidan_types::{NewAuditEvent, NewMaidanSession, NewOidcPendingAuth, WorkspaceId};
+use maidan_types::{AuditScope, NewAuditEvent, NewMaidanSession, NewOidcPendingAuth, WorkspaceId};
 use openidconnect::{
     core::CoreAuthenticationFlow, AuthorizationCode, IssuerUrl, LogoutRequest, Nonce,
     PkceCodeChallenge, PkceCodeVerifier, PostLogoutRedirectUrl, Scope, TokenResponse,
@@ -199,6 +199,7 @@ pub async fn callback(
                 expires_at: Utc::now() + Duration::seconds(oidc.settings.session_ttl_secs as i64),
             },
             Box::new(move |session| NewAuditEvent {
+                scope: AuditScope::Workspace(session.workspace_id),
                 actor_id: Some(session.member_id),
                 action: SESSION_CREATE.into(),
                 target_kind: Some("member".into()),
@@ -256,6 +257,7 @@ pub async fn logout(
             .delete_session_audited(
                 session_id,
                 Box::new(|session| NewAuditEvent {
+                    scope: AuditScope::Workspace(session.workspace_id),
                     actor_id: Some(session.member_id),
                     action: SESSION_DELETE.into(),
                     target_kind: Some("member".into()),

@@ -163,6 +163,7 @@ pub(crate) async fn recorded<T, E>(
             crate::audit::record(
                 state,
                 maidan_types::NewAuditEvent {
+                    scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
                     actor_id: Some(auth.actor_id),
                     action: crate::auth::MUTATION_ACTION.into(),
                     target_kind: Some("workspace".into()),
