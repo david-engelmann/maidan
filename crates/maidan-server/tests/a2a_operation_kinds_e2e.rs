@@ -70,6 +70,7 @@ async fn world() -> World {
             workspace_id: ws,
             task_id: TASK,
             context_id: Some("ctx-kinds"),
+            thread_id: None,
             state: "TASK_STATE_WORKING",
             status_at: chrono::Utc::now(),
             task_json: json!({

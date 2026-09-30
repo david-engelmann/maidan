@@ -1,13 +1,14 @@
 use chrono::{DateTime, SecondsFormat, Utc};
 use maidan_types::{
     ApprovalGate, ApprovalGateId, ApprovalGateState, Event, MemberId, NewApprovalGate, StoredEvent,
-    ThreadId, WorkspaceId,
+    ThreadId, WorkspaceId, DM_CHANNEL_NAME,
 };
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
 use crate::a2a::PendingGateQuery;
 use crate::error::StoreError;
+use crate::thread_access::readable_row;
 
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
      content, resolved_by, requested_actor_id, resolved_actor_id, created_at, resolved_at";
@@ -121,6 +122,18 @@ pub async fn list_pending(
     rows.iter().map(row_to_gate).collect()
 }
 
+/// The filters `page_pending` and `count_pending` share: `?1` workspace,
+/// `?2` thread, `?3` created since, `?4` reader, `?5` the DM channel name.
+fn pending_filters() -> String {
+    let readable = readable_row("maidan_approval_gates.thread_id", "?1", "?4", "?5");
+    format!(
+        "workspace_id = ?1 AND state = 'pending'
+           AND (?2 IS NULL OR thread_id = ?2)
+           AND (?3 IS NULL OR created_at >= ?3)
+           AND {readable}"
+    )
+}
+
 /// A keyset page of the pending gates, newest first. See [`PendingGateQuery`].
 pub async fn page_pending(
     pool: &SqlitePool,
@@ -133,17 +146,18 @@ pub async fn page_pending(
     };
     let rows = sqlx::query(&format!(
         "SELECT {GATE_COLUMNS} FROM maidan_approval_gates
-         WHERE workspace_id = ?1 AND state = 'pending'
-           AND (?2 IS NULL OR thread_id = ?2)
-           AND (?3 IS NULL OR created_at >= ?3)
-           AND (?4 IS NULL OR created_at < ?4
-                OR (created_at = ?4 AND ?5 IS NOT NULL AND id < ?5))
+         WHERE {}
+           AND (?6 IS NULL OR created_at < ?6
+                OR (created_at = ?6 AND ?7 IS NOT NULL AND id < ?7))
          ORDER BY created_at DESC, id DESC
-         LIMIT ?6"
+         LIMIT ?8",
+        pending_filters()
     ))
     .bind(workspace_id.0)
     .bind(query.thread_id.map(|t| t.0))
     .bind(query.created_since.map(ts))
+    .bind(query.readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
     .bind(before_at)
     .bind(before_id)
     .bind(query.limit)
@@ -152,28 +166,23 @@ pub async fn page_pending(
     rows.iter().map(row_to_gate).collect()
 }
 
-/// Pending gates matching `query`'s filters, counted per thread.
-pub async fn count_pending_by_thread(
+/// How many pending gates match `query`'s filters.
+pub async fn count_pending(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
     query: PendingGateQuery,
-) -> Result<Vec<(Option<ThreadId>, i64)>, StoreError> {
-    let rows: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
-        "SELECT thread_id, COUNT(*) FROM maidan_approval_gates
-         WHERE workspace_id = ?1 AND state = 'pending'
-           AND (?2 IS NULL OR thread_id = ?2)
-           AND (?3 IS NULL OR created_at >= ?3)
-         GROUP BY thread_id",
-    )
+) -> Result<i64, StoreError> {
+    Ok(sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM maidan_approval_gates WHERE {}",
+        pending_filters()
+    ))
     .bind(workspace_id.0)
     .bind(query.thread_id.map(|t| t.0))
     .bind(query.created_since.map(ts))
-    .fetch_all(pool)
-    .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(thread, count)| (thread.map(ThreadId), count))
-        .collect())
+    .bind(query.readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
+    .fetch_one(pool)
+    .await?)
 }
 
 /// Resolve a `Pending` gate (compare-and-set on `pending` so a double-answer or a

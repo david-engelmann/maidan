@@ -1,10 +1,11 @@
 use chrono::{DateTime, SecondsFormat, Utc};
-use maidan_types::{ThreadId, WorkspaceId};
+use maidan_types::{ThreadId, WorkspaceId, DM_CHANNEL_NAME};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite};
 use crate::error::StoreError;
+use crate::thread_access::readable_row;
 
 pub async fn upsert_push_config(
     pool: &SqlitePool,
@@ -49,12 +50,15 @@ fn parse_ts(s: &str) -> Result<DateTime<Utc>, StoreError> {
         .map_err(|e| StoreError::InvalidInput(format!("bad timestamp: {e}")))
 }
 
-type TaskRow = (String, Uuid, String, String);
+type TaskRow = (String, Uuid, Option<Uuid>, String, String);
 
-fn task_row((id, workspace_id, updated_at, json): TaskRow) -> Result<A2aTaskRow, StoreError> {
+fn task_row(
+    (id, workspace_id, thread_id, updated_at, json): TaskRow,
+) -> Result<A2aTaskRow, StoreError> {
     Ok(A2aTaskRow {
         id,
         workspace_id: WorkspaceId(workspace_id),
+        thread_id: thread_id.map(ThreadId),
         updated_at: parse_ts(&updated_at)?,
         task_json: serde_json::from_str(&json)?,
     })
@@ -63,10 +67,12 @@ fn task_row((id, workspace_id, updated_at, json): TaskRow) -> Result<A2aTaskRow,
 pub async fn upsert_task(pool: &SqlitePool, task: A2aTaskWrite<'_>) -> Result<(), StoreError> {
     let json = serde_json::to_string(&task.task_json)?;
     sqlx::query(
-        "INSERT INTO maidan_a2a_tasks (id, workspace_id, context_id, state, task_json, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        "INSERT INTO maidan_a2a_tasks
+            (id, workspace_id, context_id, thread_id, state, task_json, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
             context_id = excluded.context_id,
+            thread_id = excluded.thread_id,
             state = excluded.state,
             task_json = excluded.task_json,
             updated_at = excluded.updated_at",
@@ -74,6 +80,7 @@ pub async fn upsert_task(pool: &SqlitePool, task: A2aTaskWrite<'_>) -> Result<()
     .bind(task.task_id)
     .bind(task.workspace_id.0)
     .bind(task.context_id)
+    .bind(task.thread_id.map(|t| t.0))
     .bind(task.state)
     .bind(json)
     .bind(ts(task.status_at))
@@ -84,12 +91,27 @@ pub async fn upsert_task(pool: &SqlitePool, task: A2aTaskWrite<'_>) -> Result<()
 
 pub async fn get_task(pool: &SqlitePool, task_id: &str) -> Result<Option<A2aTaskRow>, StoreError> {
     let row: Option<TaskRow> = sqlx::query_as(
-        "SELECT id, workspace_id, updated_at, task_json FROM maidan_a2a_tasks WHERE id = ?",
+        "SELECT id, workspace_id, thread_id, updated_at, task_json
+         FROM maidan_a2a_tasks WHERE id = ?",
     )
     .bind(task_id)
     .fetch_optional(pool)
     .await?;
     row.map(task_row).transpose()
+}
+
+/// The filters `list_tasks` and `count_tasks` share: `?1` workspace, `?2`
+/// context, `?3` state, `?4` updated since, `?5` reader, `?6` the DM channel
+/// name.
+fn task_filters() -> String {
+    let readable = readable_row("maidan_a2a_tasks.thread_id", "?1", "?5", "?6");
+    format!(
+        "workspace_id = ?1
+           AND (?2 IS NULL OR context_id = ?2)
+           AND (?3 IS NULL OR state = ?3)
+           AND (?4 IS NULL OR updated_at >= ?4)
+           AND {readable}"
+    )
 }
 
 pub async fn list_tasks(
@@ -101,19 +123,20 @@ pub async fn list_tasks(
         Some((at, id)) => (Some(ts(at)), Some(id)),
         None => (None, None),
     };
-    let rows: Vec<TaskRow> = sqlx::query_as(
-        "SELECT id, workspace_id, updated_at, task_json FROM maidan_a2a_tasks
-         WHERE workspace_id = ?1
-           AND (?2 IS NULL OR context_id = ?2)
-           AND (?3 IS NULL OR state = ?3)
-           AND (?4 IS NULL OR updated_at >= ?4)
-           AND (?5 IS NULL OR updated_at < ?5 OR (updated_at = ?5 AND id < ?6))
-         ORDER BY updated_at DESC, id DESC LIMIT ?7",
-    )
+    let rows: Vec<TaskRow> = sqlx::query_as(&format!(
+        "SELECT id, workspace_id, thread_id, updated_at, task_json
+         FROM maidan_a2a_tasks
+         WHERE {}
+           AND (?7 IS NULL OR updated_at < ?7 OR (updated_at = ?7 AND id < ?8))
+         ORDER BY updated_at DESC, id DESC LIMIT ?9",
+        task_filters()
+    ))
     .bind(workspace_id.0)
     .bind(query.context_id)
     .bind(query.state)
     .bind(query.updated_since.map(ts))
+    .bind(query.readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
     .bind(before_at)
     .bind(before_id)
     .bind(query.limit)
@@ -122,24 +145,22 @@ pub async fn list_tasks(
     rows.into_iter().map(task_row).collect()
 }
 
-pub async fn count_tasks_by_context(
+pub async fn count_tasks(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
     query: A2aTaskQuery<'_>,
-) -> Result<Vec<(Option<String>, i64)>, StoreError> {
-    Ok(sqlx::query_as(
-        "SELECT context_id, COUNT(*) FROM maidan_a2a_tasks
-         WHERE workspace_id = ?1
-           AND (?2 IS NULL OR context_id = ?2)
-           AND (?3 IS NULL OR state = ?3)
-           AND (?4 IS NULL OR updated_at >= ?4)
-         GROUP BY context_id",
-    )
+) -> Result<i64, StoreError> {
+    Ok(sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM maidan_a2a_tasks WHERE {}",
+        task_filters()
+    ))
     .bind(workspace_id.0)
     .bind(query.context_id)
     .bind(query.state)
     .bind(query.updated_since.map(ts))
-    .fetch_all(pool)
+    .bind(query.readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
+    .fetch_one(pool)
     .await?)
 }
 

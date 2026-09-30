@@ -873,6 +873,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** `contracts/event-kinds.json` is checked against
   `EventKind::ALL`, so a new kind cannot be left out of it.
 
+### A2A `ListTasks` decides access in the query
+
+- **Fixed:** `ListTasks` fetched a page of tasks at a time and dropped those
+  on threads the caller could not read, then fetched again, so a caller
+  behind many hidden tasks paid a store query per page-sized batch of them
+  (with a page of one, 200 hidden tasks cost about 100 more queries) and
+  `totalSize` resolved the thread of every context in the workspace. The
+  thread-read rule (workspace, then DM or group-DM participation, then
+  private-channel membership) is now a SQL condition in the task and
+  pending-gate queries on both backends, so a page is `pageSize` readable
+  tasks or the last of them, and a call runs the same queries however much
+  the caller cannot see. `maidan-store/tests/thread_access.rs` checks the
+  condition against `maidan_auth::can_access_thread` for every kind of
+  thread.
+- **Changed:** each stored A2A task records the thread its access follows
+  (migration 0131 fills it for existing tasks from what the server resolved
+  on read), and `GetTask` reads it too, so listing and fetching one task
+  apply the same rule.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

@@ -1,7 +1,7 @@
 //! A2A task, context and push notification config persistence types.
 
 use chrono::{DateTime, Utc};
-use maidan_types::{ApprovalGateId, ThreadId, WorkspaceId};
+use maidan_types::{ApprovalGateId, MemberId, ThreadId, WorkspaceId};
 
 /// One persisted A2A task. `task_json` is the protocol `Task` without any
 /// message words: history and status messages are rendered from the sealed
@@ -10,6 +10,9 @@ use maidan_types::{ApprovalGateId, ThreadId, WorkspaceId};
 pub struct A2aTaskRow {
     pub id: String,
     pub workspace_id: WorkspaceId,
+    /// The thread whose readers may see the task; `None` for a task on no
+    /// thread, which the whole workspace may see.
+    pub thread_id: Option<ThreadId>,
     /// The task's status timestamp; list order and cursors key on it.
     pub updated_at: DateTime<Utc>,
     pub task_json: serde_json::Value,
@@ -21,6 +24,8 @@ pub struct A2aTaskWrite<'a> {
     pub workspace_id: WorkspaceId,
     pub task_id: &'a str,
     pub context_id: Option<&'a str>,
+    /// The thread the task's context names; access to the task follows it.
+    pub thread_id: Option<ThreadId>,
     pub state: &'a str,
     pub status_at: DateTime<Utc>,
     pub task_json: serde_json::Value,
@@ -37,6 +42,10 @@ pub struct A2aTaskQuery<'a> {
     pub updated_since: Option<DateTime<Utc>>,
     pub before: Option<(DateTime<Utc>, &'a str)>,
     pub limit: i64,
+    /// Keep only the tasks this member may read: those on a thread it can
+    /// read, and those on no thread. `None` keeps every task, for a caller
+    /// that bypasses auth.
+    pub readable_by: Option<MemberId>,
 }
 
 /// A page of a workspace's pending approval gates in `ListTasks` order:
@@ -53,6 +62,9 @@ pub struct PendingGateQuery {
     /// the gate at `(at, id)`; `(at, None)` keeps those opened before `at`.
     pub before: Option<(DateTime<Utc>, Option<ApprovalGateId>)>,
     pub limit: i64,
+    /// Keep only the gates this member may read, as
+    /// [`A2aTaskQuery::readable_by`] does for tasks.
+    pub readable_by: Option<MemberId>,
 }
 
 /// A stored push notification config. Secrets are ciphertext sealed by the

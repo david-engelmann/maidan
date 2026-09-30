@@ -123,6 +123,7 @@ pub mod sqlite;
 pub mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+mod thread_access;
 pub mod trace;
 pub mod workspace_export;
 

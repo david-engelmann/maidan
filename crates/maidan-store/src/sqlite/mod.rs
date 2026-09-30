@@ -591,12 +591,12 @@ impl ApprovalGateStore for SqliteStore {
     ) -> Result<Vec<ApprovalGate>, StoreError> {
         approval_gates::page_pending(&self.pool, workspace_id, query).await
     }
-    async fn count_pending_approval_gates_by_thread(
+    async fn count_pending_approval_gates(
         &self,
         workspace_id: WorkspaceId,
         query: PendingGateQuery,
-    ) -> Result<Vec<(Option<ThreadId>, i64)>, StoreError> {
-        approval_gates::count_pending_by_thread(&self.pool, workspace_id, query).await
+    ) -> Result<i64, StoreError> {
+        approval_gates::count_pending(&self.pool, workspace_id, query).await
     }
     async fn resolve_approval_gate(
         &self,
@@ -3371,12 +3371,12 @@ impl A2aStore for SqliteStore {
         a2a::list_tasks(&self.pool, workspace_id, query).await
     }
 
-    async fn count_a2a_tasks_by_context(
+    async fn count_a2a_tasks(
         &self,
         workspace_id: WorkspaceId,
         query: A2aTaskQuery<'_>,
-    ) -> Result<Vec<(Option<String>, i64)>, StoreError> {
-        a2a::count_tasks_by_context(&self.pool, workspace_id, query).await
+    ) -> Result<i64, StoreError> {
+        a2a::count_tasks(&self.pool, workspace_id, query).await
     }
 
     async fn get_a2a_context_thread(
