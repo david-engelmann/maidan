@@ -1280,6 +1280,22 @@ and everything merged through #1077.
   instead of the rest of the file, so it now reads 1,693 lines it skipped
   before (all of `openapi/mod.rs`, the MCP tool dispatch). It found nothing.
 
+## [412.0.0] — 2026-09-28
+
+The first release since 410.0.0. **411.0.0 was never tagged; its delegated
+authority work (#996–#1008, below) ships in 412.0.0**, with Clusters 412–418
+and everything merged through #1077.
+
+### Deleting an artifact's bytes no longer blocks other writes
+
+- **Fixed:** reaping an orphaned artifact's bytes (after the last reference
+  is erased, or a workspace purge) held the database transaction for the
+  whole blob delete. On SQLite every other write waited on the blob store,
+  and failed after the busy timeout; on Postgres a pooled connection sat idle
+  in a transaction. The reap now takes a per-sha lease (migration 0117),
+  deletes outside any transaction, and gives up on a delete after 30 s. Only
+  an upload of the same bytes waits for it.
+
 ### A2A lists page all the way through
 
 - **Fixed:** `ListTasks` listed pending approval gates from one scan of the
