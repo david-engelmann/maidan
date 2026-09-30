@@ -1567,6 +1567,24 @@
   },
   {
     "method": "POST",
+    "path": "/workspaces/{wid}/secret-egress-hosts",
+    "capability": "secret:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/secret-egress-hosts",
+    "capability": "secret:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/secret-egress-hosts/{host}",
+    "capability": "secret:admin",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/members/{id}/freeze",
     "capability": "token:admin",
     "surface": "http"

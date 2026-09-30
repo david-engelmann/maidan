@@ -551,6 +551,17 @@ async fn main() -> anyhow::Result<()> {
     state.webhooks = maidan_server::WebhookRuntime::new(federation_encryption_key.clone());
     state.slash = maidan_server::SlashRuntime::new(federation_encryption_key.clone());
     state.fsm_hooks = maidan_server::FsmHookRuntime::new(federation_encryption_key);
+    // The instance ceiling on secret-egress hosts, set before any egress
+    // worker starts so no delivery is ever made without it.
+    if let Ok(raw) = std::env::var("MAIDAN_SECRET_EGRESS_ALLOWLIST") {
+        let ceiling = maidan_server::secret_broker::parse_allowlist(&raw);
+        for host in &ceiling {
+            if maidan_types::normalize_secret_egress_host(host).is_err() {
+                tracing::warn!(%host, "MAIDAN_SECRET_EGRESS_ALLOWLIST entry is not a bare hostname and will never match");
+            }
+        }
+        state.mcp.set_secret_egress_ceiling(ceiling);
+    }
     state.rate_limit_redis = maidan_server::rate_limit::connect_redis_from_env().await;
     // Default-on rate limits: a deployment that configures nothing still gets a
     // DoS floor per client and a fairness cap per workspace.

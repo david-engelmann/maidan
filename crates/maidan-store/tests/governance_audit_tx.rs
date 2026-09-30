@@ -2,8 +2,8 @@
 //! both backends.
 //!
 //! - With audit inserts broken, no freeze, unfreeze, requirement change,
-//!   reviewer removal, land-gate clear, governance grant, egress change or app
-//!   revoke happens.
+//!   reviewer removal, land-gate clear, governance grant, egress change, app
+//!   revoke or secret-egress host change happens.
 //! - A call that removes nothing records nothing.
 //! - A review requirement is not lowered by a caller that may not lower it,
 //!   decided inside the write.
@@ -13,7 +13,7 @@ use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{
     AppInstallation, ChannelMemberRole, EgressSurface, EventKind, MemberKind, NewApiToken, NewApp,
     NewAppInstallation, NewAuditEvent, NewChannel, NewEgressTarget, NewMember, NewSecret,
-    NewThread, NewWorkspace, REVIEW_SKILL,
+    NewSecretEgressHost, NewThread, NewWorkspace, REVIEW_SKILL,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -189,6 +189,17 @@ where
         .create_secret_audited(secret("kept"), audit_for("secret.create"))
         .await
         .unwrap();
+    let egress_host = |host: &str| NewSecretEgressHost {
+        workspace_id: ws.id,
+        host: host.into(),
+    };
+    store
+        .allow_secret_egress_host_audited(
+            egress_host("kept.example.com"),
+            audit_for("secret_egress_host.allow"),
+        )
+        .await
+        .unwrap();
     for action in [
         "req.raise",
         "req.lower",
@@ -196,6 +207,7 @@ where
         "freeze",
         "egress.allow",
         "secret.create",
+        "secret_egress_host.allow",
     ] {
         assert!(recorded(store, action).await, "{action} unrecorded");
     }
@@ -336,6 +348,28 @@ where
         .map(|s| s.name)
         .collect();
     assert_eq!(names, vec!["kept".to_string()]);
+    fails(
+        store
+            .allow_secret_egress_host_audited(egress_host("unrecorded.example.com"), audit_for("x"))
+            .await
+            .map(drop),
+        "secret-egress host allow",
+    );
+    fails(
+        store
+            .revoke_secret_egress_host_audited(ws.id, "kept.example.com", event("x"))
+            .await
+            .map(drop),
+        "secret-egress host revoke",
+    );
+    let hosts: Vec<String> = store
+        .list_secret_egress_hosts(ws.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|h| h.host)
+        .collect();
+    assert_eq!(hosts, vec!["kept.example.com".to_string()]);
 }
 
 #[tokio::test]

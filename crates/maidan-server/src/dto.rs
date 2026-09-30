@@ -183,6 +183,13 @@ pub struct CreateSecret {
     pub value: String,
 }
 
+/// Trust a host with the workspace's secret values: a lowercase hostname or
+/// IPv4 address, with no scheme, port or path.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AllowSecretEgressHost {
+    pub host: String,
+}
+
 /// Create a memory block. `label` is the block's within-workspace key; `value`
 /// defaults to empty, `read_only` to false. Creating an existing label returns
 /// the existing block (concurrent-safe).

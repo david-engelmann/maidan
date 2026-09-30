@@ -7,13 +7,14 @@
 use maidan_types::{
     AllowedEgressTarget, AppInstallation, AppInstallationId, ChannelId, ChannelMember,
     ChannelMemberRole, EgressTargetId, MemberFreeze, MemberId, NewAuditEvent, NewEgressTarget,
-    NewSecret, Secret, StoredEvent, ThreadId, ThreadReviewRequirement, WorkspaceId,
+    NewSecret, NewSecretEgressHost, Secret, SecretEgressHost, StoredEvent, ThreadId,
+    ThreadReviewRequirement, WorkspaceId,
 };
 use sqlx::SqlitePool;
 
 use super::{
     apps, audit, channel_members, egress_targets, land_gate, member_freezes, member_skills,
-    reviews, secrets,
+    reviews, secret_egress_hosts, secrets,
 };
 use crate::{error::StoreError, AuditFor};
 
@@ -192,4 +193,24 @@ pub async fn delete_secret(
 ) -> Result<bool, StoreError> {
     audited!(pool, |tx| secrets::delete_on(&mut tx, workspace_id, name).await?,
         deleted => deleted.then_some(event))
+}
+
+/// Trust a host with the workspace's secret values. The record names the host.
+pub async fn allow_secret_egress_host(
+    pool: &SqlitePool,
+    new: NewSecretEgressHost,
+    audit_for: AuditFor<SecretEgressHost>,
+) -> Result<SecretEgressHost, StoreError> {
+    audited!(pool, |tx| secret_egress_hosts::allow_on(&mut tx, new).await?,
+        host => Some(audit_for(&host)))
+}
+
+pub async fn revoke_secret_egress_host(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    host: &str,
+    event: NewAuditEvent,
+) -> Result<bool, StoreError> {
+    audited!(pool, |tx| secret_egress_hosts::revoke_on(&mut tx, workspace_id, host).await?,
+        revoked => revoked.then_some(event))
 }

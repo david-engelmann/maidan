@@ -40,6 +40,8 @@ const UNAUDITED: &[&str] = &[
     ".revoke_app_installation(",
     ".create_secret(",
     ".delete_secret(",
+    ".allow_secret_egress_host(",
+    ".revoke_secret_egress_host(",
     ".add_channel_member(",
     ".remove_channel_member(",
     ".create_scim_user(",

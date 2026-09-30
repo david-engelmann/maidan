@@ -932,6 +932,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `token:admin`; anyone else needs `token:admin` in the token's workspace. A
   delegated token is refused, since its grant is the way to a new one.
 
+### Secret references are substituted on every egress, per workspace
+
+- **Added:** `secret://` references are substituted on automation HTTP
+  (slash commands and FSM hooks, the first POST and each queued retry) and A2A
+  push notifications, as they already were on webhooks. Before, a slash command
+  or push to a trusted host carried the literal ref.
+- **Changed:** which hosts receive values is per workspace:
+  `GET`/`POST /workspaces/{wid}/secret-egress-hosts`,
+  `DELETE …/secret-egress-hosts/{host}` and MCP `list_`/`allow_`/
+  `revoke_secret_egress_host`, each audited in its own transaction (D-A).
+  Listing needs `secret:admin`; adding a host also needs `secret:read`, since
+  the host then receives the values. Values come only from the sending
+  workspace's secrets; any other host gets the literal ref.
+  `MAIDAN_SECRET_EGRESS_ALLOWLIST` is now an instance ceiling (unset: none;
+  empty: no host), not the allowlist, so a deployment that set it substitutes
+  nothing until its workspaces list their hosts. Migration 0130.
+- **Fixed:** a value with a quote or newline (a PEM key) was inserted raw and
+  broke the JSON body; it is now JSON-escaped.
+
 ### A2A carries its credentials over TLS
 
 - **Changed:** an A2A push notification `url` must be `https` (plain `http` is

@@ -2420,6 +2420,60 @@ Resolve a named secret to its value (the 'fetch at exec' path). The value is dec
 }
 ```
 
+### `list_secret_egress_hosts`
+
+List the hosts trusted with this workspace's secret values: on a webhook, automation HTTP or A2A push delivery to one of them, secret://<name> refs in the payload are replaced with the workspace's values; any other host gets the literal ref. Empty (the default) means no host gets a value. Requires secret:admin.
+
+**Capability:** `secret:admin`
+
+```json
+{
+  "properties": {},
+  "type": "object"
+}
+```
+
+### `allow_secret_egress_host`
+
+Trust a host with this workspace's secret values (idempotent). A listed host receives the value of every secret a payload bound for it names, so this needs secret:read as well as secret:admin. The host is a lowercase hostname or IPv4 address with no scheme, port, path or wildcard, and must be inside the instance ceiling when the operator set one. Audited.
+
+**Capability:** `secret:admin`
+
+```json
+{
+  "properties": {
+    "host": {
+      "description": "e.g. hooks.example.com",
+      "type": "string"
+    }
+  },
+  "required": [
+    "host"
+  ],
+  "type": "object"
+}
+```
+
+### `revoke_secret_egress_host`
+
+Stop trusting a host with this workspace's secret values; the next delivery to it carries the literal secret:// refs. Not found when the host was not listed. Requires secret:admin. Audited.
+
+**Capability:** `secret:admin`
+
+```json
+{
+  "properties": {
+    "host": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "host"
+  ],
+  "type": "object"
+}
+```
+
 ### `freeze_member`
 
 Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released, and emits member_frozen to the workspace (the reason included). The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.

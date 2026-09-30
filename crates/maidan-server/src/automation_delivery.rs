@@ -39,7 +39,16 @@ pub async fn deliver_pending(
 ) -> Result<(), String> {
     let (client, target) = crate::egress_http::client_for(&delivery.target_url).await?;
     let secret = resolve_secret(state, delivery).await?;
-    let signature = sign_payload(&secret, &delivery.payload);
+    // Substituted at send, so the queued row keeps the literal refs and the
+    // signature covers what the receiver gets.
+    let body = crate::secret_broker::substitute_for_egress(
+        state,
+        delivery.workspace_id,
+        &delivery.target_url,
+        &delivery.payload,
+    )
+    .await;
+    let signature = sign_payload(&secret, &body);
     let room_lsn =
         crate::room_lsn::current_for_room(state.store.as_ref(), delivery.workspace_id).await;
     let mut request = crate::trace_context::stamp(client.post(target))
@@ -50,11 +59,7 @@ pub async fn deliver_pending(
     if let Some(lsn) = room_lsn {
         request = request.header(ROOM_LSN_HEADER, lsn.to_string());
     }
-    let response = request
-        .body(delivery.payload.clone())
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    let response = request.body(body).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         Ok(())
     } else {

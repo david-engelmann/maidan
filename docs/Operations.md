@@ -67,7 +67,7 @@ MCP twins: `freeze_member` / `unfreeze_member` / `list_frozen_members` (also
 | `MAIDAN_ALLOW_INSECURE_NO_AUTH` (+ `AUTH_DISABLED`) | Auth is fail-closed: disabling it needs this explicit ack, and never in production. Leave unset in prod. |
 | `MAIDAN_RATE_LIMIT_MAX` | Per-client request ceiling (per bearer/IP over 60 s). Unset ⇒ a built-in 1200/60 s floor on the server binary; `0` disables. Lower it to throttle a spike. |
 | `MAIDAN_MAX_BODY_BYTES` | Max request body (default 2 MiB); oversized ⇒ `413`. |
-| `MAIDAN_SECRET_EGRESS_ALLOWLIST` | Comma-separated hosts the SecretBroker may substitute `secret://` refs for on webhook egress; a non-allowlisted host gets the literal ref. Empty ⇒ never substitute. |
+| `MAIDAN_SECRET_EGRESS_ALLOWLIST` | Instance ceiling on the hosts a workspace may trust with its secret values. Each workspace lists its own hosts (`/workspaces/:wid/secret-egress-hosts`, `secret:admin` + `secret:read`); set, a host outside this comma-separated list never receives a substituted value and cannot be added. Unset ⇒ no ceiling. Set empty ⇒ no host receives a value (the off switch). |
 | `FEDERATION_DISABLED` | Stops the outbound federation pull worker. Ingress (`POST /a2a/v1/events`) keeps serving; revoke the peer to stop it. |
 | `MAIDAN_DB_STATEMENT_TIMEOUT_MS` | Per-connection Postgres statement timeout (default 30 s) — caps a runaway query. |
 | `MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | Ends a connection idle inside an open transaction (default 60 s), so it cannot hold back vacuum. |

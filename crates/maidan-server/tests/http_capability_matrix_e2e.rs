@@ -209,6 +209,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
             .replace("{tid}", &f.workspace)
             .replace("{term}", "testterm")
             .replace("{name}", "capsecret")
+            .replace("{host}", "hooks.example.com")
             .replace("{slack_channel_id}", "CTEST")
             .replace("{did}", delivery_id);
     }
@@ -589,6 +590,9 @@ fn apply_route_defaults(
     }
     if path == "/workspaces/{wid}/secrets" && method == "POST" {
         return b.json(&json!({ "name": "capsecret", "value": "v" }));
+    }
+    if path == "/workspaces/{wid}/secret-egress-hosts" && method == "POST" {
+        return b.json(&json!({ "host": "hooks.example.com" }));
     }
     if path == "/workspaces/{wid}/share-tickets" && method == "POST" {
         return b.json(&json!({

@@ -848,6 +848,8 @@ request is 0.3 and refused with `VersionNotSupportedError`.
   `https`: a push carries the task and your notification credentials. A task holds at
   most 10 configs; an eleventh is `-32602` until you delete one (re-sending an
   existing `id` replaces it). Your receiver has 10 s to answer each push.
+  A `secret://` reference in the pushed task is substituted only for a host the
+  task's workspace lists (see [Secrets](#secrets-and-secret-references)).
 - A task you cannot read is `TaskNotFoundError`. `ListTasks` pages with
   `nextPageToken` and an exact `totalSize`; every pending approval gate the
   caller can read is listed as an `input-required` task, however many there
@@ -1505,6 +1507,49 @@ Content-Type: application/json
 
 {"member_id": "{mentioned_member_uuid}"}
 ```
+
+---
+
+## Secrets and `secret://` references
+
+A workspace stores named secrets (`POST /workspaces/{workspace_id}/secrets`,
+`secret:admin`); the value is encrypted at rest and never enters the event log.
+Put a `secret://<name>` reference in a message, a slash command's arguments or
+an A2A message instead of the value. A consumer holding `secret:read` resolves
+it at exec (`POST …/secrets/{name}/resolve`, MCP `resolve_secret`).
+
+Maidan also substitutes references on the way out, at send time, on every
+egress that carries a payload you shaped: event webhooks, slash-command and FSM
+hook HTTP deliveries (the first POST and every queued retry), and A2A push
+notifications. It does so **only for a host the sending workspace has listed**:
+
+```http
+POST /workspaces/{workspace_id}/secret-egress-hosts
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{"host": "hooks.example.com"}
+```
+
+- A listed host receives the value of every secret a payload bound for it
+  names, so adding one needs `secret:read` as well as `secret:admin`. List with
+  `GET …/secret-egress-hosts` and remove with `DELETE …/secret-egress-hosts/{host}`
+  (`secret:admin`); the MCP twins are `allow_secret_egress_host`,
+  `list_secret_egress_hosts` and `revoke_secret_egress_host`. Each change writes
+  a `secret_egress_host.allow` / `.revoke` audit row in its own transaction.
+- `host` is a lowercase hostname or IPv4 address, no scheme, port, path or
+  wildcard (`400` otherwise). It matches the delivery URL's host exactly:
+  `hooks.example.com` does not cover `api.hooks.example.com`.
+- Any other host gets the literal `secret://<name>`, never the value; so does a
+  reference to a secret the workspace does not hold. Values come only from the
+  sending workspace's own secrets.
+- The value is inserted JSON-escaped, so a secret containing quotes or newlines
+  (a PEM key) leaves the payload valid. HMAC signatures cover the body as sent.
+- Queued rows, the event log and audit rows keep the reference. A receiver that
+  echoes the value back (in a slash command's response, say) puts it into the
+  message's `metadata.slash_response`, which is logged; do not echo it.
+- An operator may set an instance ceiling (`MAIDAN_SECRET_EGRESS_ALLOWLIST`);
+  a host outside it is refused with `400` and never receives a value.
 
 ---
 

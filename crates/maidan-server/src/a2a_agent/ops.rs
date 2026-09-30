@@ -380,7 +380,7 @@ pub(crate) async fn send_message(
     if let Some(config) = push {
         push::attach(state, &task.id, config).await?;
     }
-    push::notify(state, &task);
+    push::notify(state, scope.workspace_id, &task);
     let mut rendered = task;
     let history = history_message(&posted, &rendered).into_iter().collect();
     rendered.history = cut(history, history_length);
@@ -696,7 +696,7 @@ pub(crate) async fn cancel_task(
         timestamp: Some(timestamp(status_at)),
     };
     save(state, workspace_id, thread_id, &task, status_at).await?;
-    push::notify(state, &task);
+    push::notify(state, workspace_id, &task);
     render(state, task, None).await
 }
 

@@ -1396,6 +1396,33 @@ pub trait SecretStore: Send + Sync {
         workspace_id: WorkspaceId,
         name: &str,
     ) -> Result<bool, StoreError>;
+
+    /// The hosts a workspace trusts with its secret values: the egress broker
+    /// substitutes a `secret://` ref only on a delivery to a host listed here
+    /// for the sending workspace, and an empty list substitutes nothing.
+    /// `allow_secret_egress_host` is idempotent and refuses a host that is not
+    /// a bare lowercase-able name (`normalize_secret_egress_host`);
+    /// `revoke_secret_egress_host` is scoped to the workspace. Both reads stay
+    /// on the primary: a revoked host must stop receiving values at once, and
+    /// a lagging replica would still report it listed.
+    async fn allow_secret_egress_host(
+        &self,
+        new: NewSecretEgressHost,
+    ) -> Result<SecretEgressHost, StoreError>;
+    async fn list_secret_egress_hosts(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SecretEgressHost>, StoreError>;
+    async fn revoke_secret_egress_host(
+        &self,
+        workspace_id: WorkspaceId,
+        host: &str,
+    ) -> Result<bool, StoreError>;
+    async fn is_secret_egress_host_allowed(
+        &self,
+        workspace_id: WorkspaceId,
+        host: &str,
+    ) -> Result<bool, StoreError>;
 }
 
 #[async_trait]
@@ -3161,6 +3188,19 @@ pub trait GovernanceAuditStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         name: &str,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// Trust a host with the workspace's secret values.
+    async fn allow_secret_egress_host_audited(
+        &self,
+        new: NewSecretEgressHost,
+        audit: crate::AuditFor<SecretEgressHost>,
+    ) -> Result<SecretEgressHost, StoreError>;
+    /// `true` when the host was listed; nothing is recorded otherwise.
+    async fn revoke_secret_egress_host_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        host: &str,
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError>;
     /// Create a SCIM user: the member and its link, together.

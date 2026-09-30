@@ -3,6 +3,13 @@
 //! AEAD-encrypted at rest with the keyring, which the route layer holds; it
 //! appears only in a create request and a resolve response, never in the event
 //! log. `secret:admin` writes; `secret:read` reads/resolves.
+//!
+//! The secret-egress allowlist is here too: the hosts the egress broker may
+//! substitute this workspace's secret values for. Adding a host needs
+//! `secret:read` as well as `secret:admin`, because a listed host receives the
+//! value of any secret a payload bound for it names; without that, a token
+//! that may rotate secrets but not read them could read them anyway by
+//! listing a host it controls.
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
@@ -147,6 +154,99 @@ pub async fn delete_secret(
         )
         .await?;
     if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+/// `POST /workspaces/:wid/secret-egress-hosts` — trust a host with the
+/// workspace's secret values. Idempotent. `400` for a host that is not a bare
+/// hostname, or one outside the instance ceiling (`MAIDAN_SECRET_EGRESS_ALLOWLIST`).
+pub async fn allow_secret_egress_host(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<AllowSecretEgressHost>,
+) -> ApiResult<(StatusCode, Json<SecretEgressHost>)> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, SECRET_ADMIN)?;
+    cap(&auth, SECRET_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let host = normalize_secret_egress_host(&body.host)
+        .map_err(|why| ApiError::BadRequest(why.to_string()))?;
+    if !within_secret_egress_ceiling(&host, state.mcp.secret_egress_ceiling()) {
+        return Err(ApiError::BadRequest(
+            "host is outside this instance's secret-egress ceiling (MAIDAN_SECRET_EGRESS_ALLOWLIST)"
+                .into(),
+        ));
+    }
+    let actor = auth.actor_id;
+    let entry = state
+        .store
+        .allow_secret_egress_host_audited(
+            NewSecretEgressHost { workspace_id, host },
+            Box::new(move |entry| NewAuditEvent {
+                scope: AuditScope::Workspace(entry.workspace_id),
+                actor_id: Some(actor),
+                action: "secret_egress_host.allow".into(),
+                target_kind: Some("secret_egress_host".into()),
+                target_id: None,
+                metadata: serde_json::json!({
+                    "workspace_id": entry.workspace_id.0,
+                    "host": entry.host,
+                }),
+            }),
+        )
+        .await?;
+    Ok((StatusCode::CREATED, Json(entry)))
+}
+
+/// `GET /workspaces/:wid/secret-egress-hosts` — the hosts trusted with the
+/// workspace's secret values. Empty is the default and means substitute
+/// nowhere. `secret:admin`: the list is policy, and names the hosts worth
+/// aiming a payload at.
+pub async fn list_secret_egress_hosts(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<Vec<SecretEgressHost>>> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, SECRET_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(
+        state.store.list_secret_egress_hosts(workspace_id).await?,
+    ))
+}
+
+/// `DELETE /workspaces/:wid/secret-egress-hosts/:host` — stop trusting a
+/// host. The next delivery to it carries the literal refs. `404` when the
+/// host was not listed.
+pub async fn revoke_secret_egress_host(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath((workspace_id, host)): ApiPath<(uuid::Uuid, String)>,
+) -> ApiResult<StatusCode> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, SECRET_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let host = host.to_ascii_lowercase();
+    let revoked = state
+        .store
+        .revoke_secret_egress_host_audited(
+            workspace_id,
+            &host,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: Some(auth.actor_id),
+                action: "secret_egress_host.revoke".into(),
+                target_kind: Some("secret_egress_host".into()),
+                target_id: None,
+                metadata: serde_json::json!({ "workspace_id": workspace_id.0, "host": host }),
+            },
+        )
+        .await?;
+    if revoked {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

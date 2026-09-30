@@ -7,8 +7,8 @@
 //! `dispatch`) and the shared [`content_json`] helper live here.
 
 use maidan_auth::capability::{
-    ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, SECRET_READ, TOKEN_ADMIN, WORKSPACE_READ,
-    WORKSPACE_WRITE,
+    ARTIFACT_UPLOAD, MESSAGE_POST, SEARCH_QUERY, SECRET_ADMIN, SECRET_READ, TOKEN_ADMIN,
+    WORKSPACE_READ, WORKSPACE_WRITE,
 };
 use maidan_auth::AuthContext;
 use serde_json::{json, Value};
@@ -149,6 +149,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_review_history",
     "list_reviews",
     "list_run_threads",
+    "list_secret_egress_hosts",
     "list_secrets",
     "list_share_tickets",
     "list_slack_channel_links",
@@ -353,6 +354,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "snapshot_thread_context" => Ok(ARTIFACT_UPLOAD),
         "search_messages" => Ok(SEARCH_QUERY),
         "list_secrets" | "resolve_secret" => Ok(SECRET_READ),
+        // `allow_secret_egress_host` also needs `secret:read`, checked in the tool.
+        "list_secret_egress_hosts" | "allow_secret_egress_host" | "revoke_secret_egress_host" => {
+            Ok(SECRET_ADMIN)
+        }
         "freeze_member"
         | "unfreeze_member"
         | "list_frozen_members"
@@ -909,6 +914,9 @@ pub async fn dispatch(
         "instantiate_recipe" => recipe::instantiate_recipe(server, auth, args).await,
         "list_secrets" => secret::list_secrets(store, auth, args).await,
         "resolve_secret" => secret::resolve_secret(server, auth, args).await,
+        "list_secret_egress_hosts" => secret::list_secret_egress_hosts(store, auth, args).await,
+        "allow_secret_egress_host" => secret::allow_secret_egress_host(server, auth, args).await,
+        "revoke_secret_egress_host" => secret::revoke_secret_egress_host(store, auth, args).await,
         "freeze_member" => freeze::freeze_member(server, auth, args).await,
         "unfreeze_member" => freeze::unfreeze_member(server, auth, args).await,
         "list_frozen_members" => freeze::list_frozen_members(store, auth, args).await,
