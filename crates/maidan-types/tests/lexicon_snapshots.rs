@@ -273,6 +273,17 @@ fn sample_event(kind: EventKind) -> Event {
             merge_commit_sha: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into()),
             title: Some("land".into()),
         },
+        EventKind::ReviewSubmitted => Event::ReviewSubmitted {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reviewer_id: member_id,
+            actor_id: None,
+            decision: maidan_types::ReviewDecision::RequestChanges,
+            sent_back: true,
+            worker_id: Some(maidan_types::MemberId(id(13))),
+        },
         EventKind::WaitTimedOut => Event::WaitTimedOut {
             occurred_at,
             workspace_id,
@@ -455,6 +466,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ClaimFailed
             | EventKind::UsageReported
             | EventKind::ThreadLanded
+            | EventKind::ReviewSubmitted
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped
             | EventKind::ThreadSpawnDenied

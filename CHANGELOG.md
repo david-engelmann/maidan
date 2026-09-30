@@ -432,6 +432,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `String` does not compile, and clippy refuses axum's own routing functions.
   This replaces a source scan of handler signatures.
 
+### Review-loop signals
+
+- **Added:** every review verdict appends a `ReviewSubmitted` event
+  (`maidan.event.review_submitted/1`) in the review's own transaction, with
+  the decision, the reviewer, the delegate that submitted it, whether it sent
+  the thread back, and the thread's last worker. A send-back logs it before
+  the `ThreadStateChanged`. Not federatable.
+- **Added:** a `request_changes` verdict writes a `review_submitted`
+  notification to the thread's last worker: the member who most recently
+  claimed or was assigned the thread, named even after they released it to
+  review. The reviewer, the delegate that submitted the verdict, a member of
+  another workspace and a worker who can no longer read the thread are not
+  told. Approvals notify nobody. Before, a reopened worker learned of a change
+  request only by polling.
+- **Fixed:** a review agent's critical finding was applied as a new verdict
+  each time the result was routed (the write path, then each replica's
+  router), so the review history held duplicates. A verdict already given on
+  the thread's current result is not given again.
+- Migration 0124 (both databases) adds `maidan_thread_workers.last_held_seq`,
+  the order members last took hold of a thread, seeded from the order they
+  first held it with the current holder last.
+
 ### Delivery retention covers every delivery table
 
 - **Fixed:** `MAIDAN_RETENTION_DELIVERIES_DAYS` pruned only webhook and

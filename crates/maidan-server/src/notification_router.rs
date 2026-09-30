@@ -15,15 +15,16 @@
 //! (`message_posted`) is the control for follow-noise. A `ThreadResultSet`
 //! additionally delegates to [`crate::result_delivery`], which arms one
 //! delivery row per `deliver_to` target, and to the critical→`request_changes`
-//! adapter (the close-gate).
+//! adapter (the close-gate). A change request (`ReviewSubmitted` with
+//! `request_changes`) reaches the thread's last worker.
 
 use std::collections::HashSet;
 use std::time::Duration;
 
 use maidan_bus::{BusItem, EventStream};
 use maidan_types::{
-    ChannelId, Event, EventFilter, EventKind, MemberId, MessageId, NewNotification, ThreadId,
-    WorkspaceId,
+    ChannelId, Event, EventFilter, EventKind, MemberId, MessageId, NewNotification, ReviewDecision,
+    ThreadId, WorkspaceId,
 };
 use tokio::sync::{mpsc, watch};
 use tokio_stream::StreamExt;
@@ -503,6 +504,42 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
                 .await?;
             }
         }
+        Event::ReviewSubmitted {
+            workspace_id,
+            channel_id,
+            thread_id,
+            reviewer_id,
+            actor_id,
+            decision: ReviewDecision::RequestChanges,
+            worker_id: Some(worker_id),
+            ..
+        } => {
+            // A change request goes to the thread's last worker: the member who
+            // most recently took hold of it, which the store resolved in the
+            // verdict's transaction. Not the live assignee, because a worker
+            // releases the claim when it hands the thread to review; and not
+            // whoever set the result, because a review agent's own result
+            // replaces the worker's. A verdict is never news to the member who
+            // gave it, nor to the delegate that gave it for them.
+            if worker_id == reviewer_id || Some(*worker_id) == *actor_id {
+                return Ok(());
+            }
+            if !member_can_read_thread(state, *workspace_id, *worker_id, *thread_id).await? {
+                return Ok(());
+            }
+            notify(
+                state,
+                *workspace_id,
+                *worker_id,
+                EventKind::ReviewSubmitted,
+                log_id,
+                Some(*channel_id),
+                Some(*thread_id),
+                None,
+                Some(*reviewer_id),
+            )
+            .await?;
+        }
         Event::ThreadResultSet {
             workspace_id,
             channel_id,
@@ -658,6 +695,26 @@ async fn add_accessible_member_followers(
         }
     }
     Ok(())
+}
+
+/// Whether `member_id` belongs to `workspace_id` and can read `thread_id` now.
+/// For a recipient the event names directly: the thread check alone takes the
+/// workspace from the event, so it would pass a member of another workspace.
+async fn member_can_read_thread(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    thread_id: ThreadId,
+) -> Result<bool, String> {
+    match state.store.get_member(member_id).await {
+        Ok(member) if member.workspace_id == workspace_id && member.tombstoned_at.is_none() => {}
+        Ok(_) | Err(maidan_store::StoreError::NotFound) => return Ok(false),
+        Err(err) => return Err(err.to_string()),
+    }
+    let auth = maidan_auth::AuthContext::from_session(member_id, workspace_id, vec![]);
+    maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Fan a `MessagePosted` out to its followers. The router is a serial bus

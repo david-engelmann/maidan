@@ -450,6 +450,30 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             reason,
             thread,
         },
+        // Non-federatable (a verdict given on this deployment) — never
+        // actually ingested/remapped, but the exhaustive match must classify
+        // it.
+        ReviewSubmitted {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            reviewer_id,
+            actor_id,
+            decision,
+            sent_back,
+            worker_id,
+        } => ReviewSubmitted {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reviewer_id,
+            actor_id,
+            decision,
+            sent_back,
+            worker_id,
+        },
         // Non-federatable (a locally-derived GitHub projector fact) — never
         // actually ingested/remapped, but the exhaustive match must classify
         // it.

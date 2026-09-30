@@ -273,6 +273,18 @@
       "src_kind": "message"
     }
   },
+  "maidan.event.review_submitted/1": {
+    "$type": "maidan.event.review_submitted/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "decision": "request_changes",
+    "kind": "review_submitted",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reviewer_id": "00000000-0000-0000-0000-000000000002",
+    "sent_back": true,
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "worker_id": "00000000-0000-0000-0000-00000000000d",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.schedule_skipped/1": {
     "$type": "maidan.event.schedule_skipped/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",

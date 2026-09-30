@@ -1461,18 +1461,19 @@ pub trait ReviewStore: Send + Sync {
         member_id: MemberId,
     ) -> Result<bool, StoreError>;
     async fn list_reviewers(&self, thread_id: ThreadId) -> Result<Vec<MemberId>, StoreError>;
-    /// Record `reviewer_id`'s review. A `request_changes` review that sends an
-    /// `in_review` thread back for rework (from its owner or a reviewer whose
-    /// approval would count) reopens it, dismisses the approvals given to the
-    /// version it replaces, and returns the `ThreadStateChanged` event it
-    /// appended, for the caller to publish.
+    /// Record `reviewer_id`'s review and append its `ReviewSubmitted` event, in
+    /// one transaction. A `request_changes` review that sends an `in_review`
+    /// thread back for rework (from its owner or a reviewer whose approval
+    /// would count) also reopens it, dismisses the approvals given to the
+    /// version it replaces, and appends a `ThreadStateChanged`. The caller
+    /// publishes both.
     async fn submit_review(
         &self,
         thread_id: ThreadId,
         reviewer_id: MemberId,
         decision: ReviewDecision,
         note: Option<&str>,
-    ) -> Result<(ThreadReview, Option<StoredEvent>), StoreError>;
+    ) -> Result<ReviewSubmission, StoreError>;
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
     /// Every review verdict on the thread, oldest first. `submit_review`
     /// appends one per submission, in its transaction; the history is never
@@ -1487,14 +1488,15 @@ pub trait ReviewStore: Send + Sync {
     /// finding **and** `reviewer_id` has declared the `review` skill, upsert a
     /// `request_changes` decision and, when the thread has no requirement yet,
     /// set `k = 1` so the close-gate refuses `closed` until a qualifying human
-    /// approve. `None` = nothing to apply (wrong shape, no critical, or
-    /// reviewer not review-skilled). An existing `k` is left alone.
+    /// approve. `None` = nothing to apply (wrong shape, no critical, reviewer
+    /// not review-skilled, or the reviewer's standing verdict already covers
+    /// the thread's stored result). An existing `k` is left alone.
     async fn apply_critical_review_decision(
         &self,
         thread_id: ThreadId,
         reviewer_id: MemberId,
         result: &serde_json::Value,
-    ) -> Result<Option<(ThreadReview, Option<StoredEvent>)>, StoreError>;
+    ) -> Result<Option<ReviewSubmission>, StoreError>;
 }
 
 #[async_trait]

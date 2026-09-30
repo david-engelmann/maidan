@@ -9,7 +9,7 @@ use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ChannelId, Event, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
-    ReviewDecision, Thread, ThreadState, WorkspaceId,
+    ReviewDecision, ReviewSubmission, Thread, ThreadState, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -100,7 +100,9 @@ async fn run_suite(store: &dyn Store) {
         .await
         .unwrap();
     assert_eq!(store.review_status(t.id).await.unwrap().approvals, 1);
-    let (review, reopened) = store
+    let ReviewSubmission {
+        review, reopened, ..
+    } = store
         .submit_review(
             t.id,
             reviewer,
@@ -179,52 +181,58 @@ async fn run_suite(store: &dyn Store) {
 
     // The implementer's own change request is recorded, not acted on.
     let (t, _) = in_review(store, ws, worker).await;
-    let (_, reopened) = store
+    let reopened = store
         .submit_review(t.id, worker, ReviewDecision::RequestChanges, None)
         .await
-        .unwrap();
+        .unwrap()
+        .reopened;
     assert!(reopened.is_none());
     assert_eq!(state(store, &t).await, ThreadState::InReview);
 
     // The owner may send it back, even with no requirement set.
     store.set_thread_owner(t.id, Some(owner)).await.unwrap();
-    let (_, reopened) = store
+    let reopened = store
         .submit_review(t.id, owner, ReviewDecision::RequestChanges, None)
         .await
-        .unwrap();
+        .unwrap()
+        .reopened;
     assert!(reopened.is_some());
     assert_eq!(state(store, &t).await, ThreadState::Open);
 
     // Nothing to send back on a thread that is not under review.
-    let (_, reopened) = store
+    let reopened = store
         .submit_review(t.id, reviewer, ReviewDecision::RequestChanges, None)
         .await
-        .unwrap();
+        .unwrap()
+        .reopened;
     assert!(reopened.is_none());
     assert_eq!(state(store, &t).await, ThreadState::Open);
 
     // With a named reviewer set, only its members (or the owner) send work back.
     let (t, _) = in_review(store, ws, worker).await;
     store.add_reviewer(t.id, reviewer).await.unwrap();
-    let (_, reopened) = store
+    let reopened = store
         .submit_review(t.id, outsider, ReviewDecision::RequestChanges, None)
         .await
-        .unwrap();
+        .unwrap()
+        .reopened;
     assert!(reopened.is_none(), "not a named reviewer");
     assert_eq!(state(store, &t).await, ThreadState::InReview);
-    let (_, reopened) = store
+    let reopened = store
         .submit_review(t.id, reviewer, ReviewDecision::RequestChanges, None)
         .await
-        .unwrap();
+        .unwrap()
+        .reopened;
     assert!(reopened.is_some(), "a named reviewer");
     assert_eq!(state(store, &t).await, ThreadState::Open);
 
     // An approval does not reopen anything.
     let (t, _) = in_review(store, ws, worker).await;
-    let (_, reopened) = store
+    let reopened = store
         .submit_review(t.id, reviewer, ReviewDecision::Approve, None)
         .await
-        .unwrap();
+        .unwrap()
+        .reopened;
     assert!(reopened.is_none());
     assert_eq!(state(store, &t).await, ThreadState::InReview);
 }

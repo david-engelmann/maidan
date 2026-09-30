@@ -28,6 +28,7 @@ fn event_kinds_match_contract_file() {
         EventKind::ClaimUnacknowledged,
         EventKind::UsageReported,
         EventKind::ThreadLanded,
+        EventKind::ReviewSubmitted,
         EventKind::WaitTimedOut,
         EventKind::ScheduleSkipped,
         EventKind::ThreadSpawnDenied,

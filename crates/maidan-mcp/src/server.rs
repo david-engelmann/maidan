@@ -7264,6 +7264,151 @@ mod tests {
         }
     }
 
+    /// Every `submit_review` verdict publishes `ReviewSubmitted`, naming the
+    /// reviewer and the thread's last worker; a change request that sends the
+    /// work back publishes it before the reopen.
+    #[tokio::test]
+    async fn submit_review_tool_publishes_review_submitted() {
+        use std::time::Duration;
+
+        use futures::StreamExt;
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_bus::{BusItem, InMemoryBus};
+        use maidan_fsm::ThreadAction;
+        use maidan_types::ReviewDecision;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "rv".into() })
+            .await
+            .unwrap();
+        let mut members = Vec::new();
+        for handle in ["worker", "reviewer"] {
+            members.push(
+                store
+                    .create_member(NewMember {
+                        workspace_id: ws.id,
+                        handle: handle.into(),
+                        display_name: None,
+                        kind: MemberKind::Agent,
+                    })
+                    .await
+                    .unwrap()
+                    .id,
+            );
+        }
+        let (worker, reviewer) = (members[0], members[1]);
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+            })
+            .await
+            .unwrap();
+        let claimed = store
+            .claim_next_thread(channel.id, worker, Some(60))
+            .await
+            .unwrap()
+            .unwrap();
+        store
+            .transition_thread(thread.id, worker, ThreadAction::StartReview)
+            .await
+            .unwrap();
+        store
+            .release_claim(thread.id, worker, claimed.claim_lease_id.unwrap())
+            .await
+            .unwrap();
+
+        let bus = Arc::new(InMemoryBus::new());
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(bus.clone());
+        let mut stream = bus
+            .subscribe(
+                EventFilter::thread(thread.id)
+                    .with_kinds([EventKind::ReviewSubmitted, EventKind::ThreadStateChanged]),
+            )
+            .await
+            .unwrap();
+        let rev = AuthContext::from_session(
+            reviewer,
+            ws.id,
+            vec![THREAD_TRANSITION.to_string(), WORKSPACE_READ.to_string()],
+        );
+        async fn next(stream: &mut maidan_bus::EventStream) -> Event {
+            match tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .expect("timeout waiting for a review event")
+                .expect("stream ended")
+            {
+                BusItem::Event(envelope) => envelope.event,
+                BusItem::Lagged { skipped } => panic!("lagged by {skipped}"),
+            }
+        }
+
+        for (decision, sent) in [("request_changes", true), ("approve", false)] {
+            server
+                .call_tool(
+                    &rev,
+                    "submit_review",
+                    &json!({ "thread_id": thread.id.0, "decision": decision }),
+                )
+                .await
+                .unwrap();
+            match next(&mut stream).await {
+                Event::ReviewSubmitted {
+                    thread_id,
+                    reviewer_id,
+                    decision: got,
+                    sent_back,
+                    worker_id,
+                    ..
+                } => {
+                    assert_eq!(thread_id, thread.id);
+                    assert_eq!(reviewer_id, reviewer);
+                    assert_eq!(got.as_str(), decision);
+                    assert_eq!(sent_back, sent);
+                    assert_eq!(worker_id, Some(worker));
+                }
+                other => panic!("expected ReviewSubmitted, got {other:?}"),
+            }
+            if sent {
+                assert!(
+                    matches!(next(&mut stream).await, Event::ThreadStateChanged { .. }),
+                    "the reopen follows the verdict"
+                );
+            }
+        }
+        assert_eq!(
+            store.list_review_history(thread.id).await.unwrap()[1].decision,
+            ReviewDecision::Approve
+        );
+    }
+
     #[tokio::test]
     async fn spawn_budget_tools_set_get_and_gate_the_spawn() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};

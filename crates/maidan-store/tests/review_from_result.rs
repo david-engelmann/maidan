@@ -99,7 +99,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("apply")
         .expect("critical + review-skilled writes a decision")
-        .0;
+        .review;
     assert_eq!(written.reviewer_id, reviewer.id);
     assert_eq!(written.decision, ReviewDecision::RequestChanges);
     assert_eq!(written.note.as_deref(), Some(CRITICAL_REVIEW_NOTE));
@@ -141,7 +141,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("re-apply")
         .expect("still writes")
-        .0;
+        .review;
     assert_eq!(again.decision, ReviewDecision::RequestChanges);
     assert_eq!(store.list_reviews(thread.id).await.unwrap().len(), 1);
 

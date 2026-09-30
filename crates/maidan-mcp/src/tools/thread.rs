@@ -1013,8 +1013,12 @@ pub(super) async fn set_thread_result(
         .apply_critical_review_decision(thread_id, auth.member_id, &a.result)
         .await
     {
-        Ok(Some((_, Some(reopened)))) => server.publish_stored(&reopened).await,
-        Ok(_) => {}
+        Ok(Some(submission)) => {
+            for stored in submission.events() {
+                server.publish_stored(stored).await;
+            }
+        }
+        Ok(None) => {}
         Err(err) => tracing::warn!(
             error = %err,
             %thread_id,

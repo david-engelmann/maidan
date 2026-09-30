@@ -172,6 +172,7 @@ pub enum EventKind {
     ClaimFailed,
     UsageReported,
     ThreadLanded,
+    ReviewSubmitted,
     WaitTimedOut,
     ScheduleSkipped,
     ThreadSpawnDenied,
@@ -210,6 +211,7 @@ impl EventKind {
             Self::ClaimFailed => "claim_failed",
             Self::UsageReported => "usage_reported",
             Self::ThreadLanded => "thread_landed",
+            Self::ReviewSubmitted => "review_submitted",
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
             Self::ThreadSpawnDenied => "thread_spawn_denied",
@@ -248,6 +250,7 @@ impl EventKind {
             "claim_failed" => Some(Self::ClaimFailed),
             "usage_reported" => Some(Self::UsageReported),
             "thread_landed" => Some(Self::ThreadLanded),
+            "review_submitted" => Some(Self::ReviewSubmitted),
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
             "thread_spawn_denied" => Some(Self::ThreadSpawnDenied),
@@ -311,6 +314,7 @@ impl EventKind {
         Self::ClaimFailed,
         Self::UsageReported,
         Self::ThreadLanded,
+        Self::ReviewSubmitted,
         Self::WaitTimedOut,
         Self::ScheduleSkipped,
         Self::ThreadSpawnDenied,
@@ -387,6 +391,10 @@ impl EventKind {
             // A "landed" fact is derived from *this* deployment's GitHub
             // projector webhook; a peer must not inject one for our threads.
             Self::ThreadLanded => false,
+            // A verdict is this deployment's governance record: the reviews
+            // table is what the close-gate reads, and a peer must not announce
+            // a verdict nobody gave here.
+            Self::ReviewSubmitted => false,
             // A wait timeout is fired by *this* deployment's sweeper (this
             // clock); a peer must not inject one.
             Self::WaitTimedOut => false,
@@ -589,6 +597,30 @@ pub enum Event {
         /// The PR title, when present.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<String>,
+    },
+    /// A reviewer gave a verdict on a thread. `submit_review` appends one for
+    /// every verdict, approve or request-changes, in the verdict's own
+    /// transaction, so a waiter reacts to a review instead of polling for it.
+    /// The note is not carried: it stays with the review history, which the
+    /// worker reads in the thread context. Local governance: not federatable.
+    ReviewSubmitted {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        /// The member the review is recorded under.
+        reviewer_id: MemberId,
+        /// The delegate that submitted it for `reviewer_id`, when one did.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        actor_id: Option<MemberId>,
+        decision: crate::ReviewDecision,
+        /// Whether this verdict sent the thread back to `open` for rework. A
+        /// change request that sends nothing back is still recorded.
+        sent_back: bool,
+        /// The member who last took hold of the thread when the verdict was
+        /// given: whose work was reviewed. `None` when nobody has held it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        worker_id: Option<MemberId>,
     },
     /// A thread's wait timer lapsed. Fired by *this* deployment's wait sweeper
     /// when a wait passed its deadline unsatisfied. The escalation `policy`
@@ -814,6 +846,7 @@ impl Event {
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
             Self::UsageReported { .. } => EventKind::UsageReported,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
+            Self::ReviewSubmitted { .. } => EventKind::ReviewSubmitted,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
             Self::ThreadSpawnDenied { .. } => EventKind::ThreadSpawnDenied,
@@ -852,6 +885,7 @@ impl Event {
             | Self::ClaimFailed { occurred_at, .. }
             | Self::UsageReported { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
+            | Self::ReviewSubmitted { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
             | Self::ThreadSpawnDenied { occurred_at, .. }
@@ -890,6 +924,7 @@ impl Event {
             | Self::ClaimFailed { workspace_id, .. }
             | Self::UsageReported { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
+            | Self::ReviewSubmitted { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
             | Self::ThreadSpawnDenied { workspace_id, .. }
@@ -924,6 +959,7 @@ impl Event {
             | Self::ClaimFailed { channel_id, .. }
             | Self::UsageReported { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
+            | Self::ReviewSubmitted { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
             | Self::ThreadSpawnDenied { channel_id, .. }
@@ -953,6 +989,7 @@ impl Event {
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
             Self::UsageReported { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
+            Self::ReviewSubmitted { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
             Self::ProjectorMisconfigured { thread_id, .. } => Some(*thread_id),
@@ -998,6 +1035,7 @@ impl Event {
             Self::MemberFrozen { member_id, .. } | Self::MemberUnfrozen { member_id, .. } => {
                 Some(*member_id)
             }
+            Self::ReviewSubmitted { reviewer_id, .. } => Some(*reviewer_id),
             Self::UsageReported { stamp, .. } => Some(stamp.reporter),
             Self::ThreadSpawnDenied { member_id, .. } => *member_id,
             Self::MentionRecorded { member_id, .. }
@@ -1341,6 +1379,7 @@ mod kind_tests {
                 | EventKind::ClaimFailed
                 | EventKind::UsageReported
                 | EventKind::ThreadLanded
+                | EventKind::ReviewSubmitted
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
                 | EventKind::ThreadSpawnDenied
@@ -1421,6 +1460,7 @@ mod kind_tests {
             EventKind::ClaimUnacknowledged,
             EventKind::ClaimFailed,
             EventKind::ThreadLanded,
+            EventKind::ReviewSubmitted,
             EventKind::WaitTimedOut,
             EventKind::ScheduleSkipped,
             EventKind::ThreadSpawnDenied,

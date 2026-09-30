@@ -20,6 +20,7 @@
   "reaction_added",
   "reaction_removed",
   "reference_added",
+  "review_submitted",
   "schedule_skipped",
   "thread_assignment_changed",
   "thread_created",

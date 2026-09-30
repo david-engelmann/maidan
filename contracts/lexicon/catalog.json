@@ -24,6 +24,7 @@
     "maidan.event.reaction_added/1",
     "maidan.event.reaction_removed/1",
     "maidan.event.reference_added/1",
+    "maidan.event.review_submitted/1",
     "maidan.event.schedule_skipped/1",
     "maidan.event.thread_assignment_changed/1",
     "maidan.event.thread_created/1",

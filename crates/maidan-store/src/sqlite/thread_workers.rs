@@ -16,7 +16,8 @@ use maidan_types::{MemberId, ThreadId};
 /// Record that `member_id` holds `thread_id`, on the caller's transaction.
 ///
 /// Idempotent — re-claiming keeps the first timestamp, because the question the
-/// gate asks is "ever", not "how often".
+/// gate asks is "ever", not "how often". It does move the member to the end
+/// of the thread's `last_held_seq` order.
 ///
 /// **On the caller's transaction on purpose.** A ledger row written outside the
 /// assignment's transaction could be lost while the assignment commits, and a
@@ -41,7 +42,36 @@ pub async fn record_in_tx(
         .execute(&mut **tx)
         .await?;
     }
+    // Only the member takes the next place: the delegate did the holding for
+    // it, and the one to tell about a change request is the member.
+    sqlx::query(
+        "UPDATE maidan_thread_workers SET last_held_seq = (
+             SELECT COALESCE(MAX(last_held_seq), 0) + 1 FROM maidan_thread_workers
+             WHERE thread_id = ?1)
+         WHERE thread_id = ?1 AND member_id = ?2",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
+}
+
+/// The member who most recently took hold of `thread_id`, on the caller's
+/// transaction. `None` when nobody has held it.
+pub async fn last_worker_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+) -> Result<Option<MemberId>, StoreError> {
+    let row = sqlx::query(
+        "SELECT member_id FROM maidan_thread_workers
+         WHERE thread_id = ?1 AND last_held_seq IS NOT NULL
+         ORDER BY last_held_seq DESC LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(row.map(|r| MemberId(r.get("member_id"))))
 }
 
 /// Has `member_id` ever held `thread_id`? The separation-of-duties question.
