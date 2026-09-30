@@ -10,14 +10,18 @@
 # members, channel and task text are demo data. Needs the same two values the
 # quickstart prints (`maidan init`), plus curl and jq:
 #
+#   ./scripts/demo-handoff.sh
+#
+# With MAIDAN_TOKEN and MAIDAN_WORKSPACE unset, the script runs `maidan init`
+# against DATABASE_URL and then creates the planner, the coder, and the human,
+# with tokens that can claim, post, transition, and review.
+#
 #   MAIDAN_TOKEN=<admin token> MAIDAN_WORKSPACE=<workspace id> ./scripts/demo-handoff.sh
 #
 # DEMO_PAUSE (seconds, default 0) spaces the steps out for a recording.
 set -euo pipefail
 
 BASE="${MAIDAN_URL:-http://127.0.0.1:8080}"
-ADMIN="${MAIDAN_TOKEN:?set MAIDAN_TOKEN (printed by maidan init)}"
-WS="${MAIDAN_WORKSPACE:?set MAIDAN_WORKSPACE (printed by maidan init)}"
 PAUSE="${DEMO_PAUSE:-0}"
 SUFFIX="${DEMO_SUFFIX:-}"
 
@@ -40,6 +44,24 @@ fi
 for cmd in curl jq; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "missing required command: $cmd" >&2; exit 1; }
 done
+
+if [[ -n "${MAIDAN_TOKEN:-}" && -n "${MAIDAN_WORKSPACE:-}" ]]; then
+  ADMIN="$MAIDAN_TOKEN"
+  WS="$MAIDAN_WORKSPACE"
+else
+  command -v maidan >/dev/null 2>&1 || { echo "set MAIDAN_TOKEN and MAIDAN_WORKSPACE, or install maidan so this script can create the workspace" >&2; exit 1; }
+  case "${DATABASE_URL:-}" in
+    ""|sqlite::memory:*) echo "set DATABASE_URL to the server's database (or pass MAIDAN_TOKEN and MAIDAN_WORKSPACE)" >&2; exit 1 ;;
+  esac
+  init_out=$(maidan init --workspace "${MAIDAN_WORKSPACE_NAME:-demo}" --admin-handle admin)
+  WS=$(sed -n 's/^  workspace: .* (\(.*\))$/\1/p' <<<"$init_out")
+  ADMIN=$(awk '/Admin bearer token/{show=1; next} show && $0 ~ /^[[:space:]]*$/ {next} show {gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit}' <<<"$init_out")
+  if [[ -z "$ADMIN" || -z "$WS" ]]; then
+    echo "could not read the workspace and admin token from maidan init" >&2
+    printf '%s\n' "$init_out" >&2
+    exit 1
+  fi
+fi
 
 if [ -t 1 ]; then B=$'\e[1m'; D=$'\e[90m'; G=$'\e[32m'; X=$'\e[31m'; C=$'\e[36m'; Y=$'\e[33m'; M=$'\e[35m'; R=$'\e[0m'
 else B=; D=; G=; X=; C=; Y=; M=; R=; fi
@@ -77,7 +99,7 @@ say()  { printf '  %s\n' "$*"; }
 member() { rest "$ADMIN" POST "/workspaces/$WS/members" "{\"handle\":\"$1$SUFFIX\",\"kind\":\"$2\"}" | jq -r .id; }
 token()  { rest "$ADMIN" POST "/workspaces/$WS/members/$1/tokens" "{\"capabilities\":$2}" | jq -r .secret; }
 agent_caps='["workspace:read","workspace:write","message:post","thread:transition"]'
-human_caps='["workspace:read","message:post","thread:transition"]'
+human_caps='["workspace:read","workspace:write","message:post","thread:transition","event:subscribe"]'
 planner=$(member planner agent); coder=$(member coder agent); david=$(member david human)
 PT=$(token "$planner" "$agent_caps"); CT=$(token "$coder" "$agent_caps"); HT=$(token "$david" "$human_caps")
 channel=$(rest "$ADMIN" POST "/workspaces/$WS/channels" "{\"name\":\"build$SUFFIX\"}" | jq -r .id)
@@ -128,5 +150,10 @@ say "${G}✓${R} approved · state=$(jq -r .state <<<"$closed")"
 
 step "$G" "log" "MCP verify_event_chain"
 chain=$(mcp "$ADMIN" verify_event_chain '{}')
-say "${G}✓${R} $(jq -r .checked <<<"$chain") events, $(jq -r .algorithm <<<"$chain") hash chain intact=$(jq -r .ok <<<"$chain")  head=$(jq -r '.head.content_hash[7:19]' <<<"$chain")…"
+ok=$(jq -r .ok <<<"$chain")
+say "${G}✓${R} $(jq -r .checked <<<"$chain") events, $(jq -r .algorithm <<<"$chain") hash chain intact=$ok  head=$(jq -r '.head.content_hash[7:19]' <<<"$chain")…"
+if [ "$ok" != "true" ]; then
+  echo "event chain did not verify: $chain" >&2
+  exit 1
+fi
 sleep "$PAUSE"
