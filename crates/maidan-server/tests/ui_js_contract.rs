@@ -1113,6 +1113,7 @@ fn ui_js_opens_the_only_channel() {
     );
 }
 
+#[test]
 fn ui_js_shows_a_refused_close_and_leads_with_the_latest_review() {
     let s = script(HTML);
     let html = HTML;
