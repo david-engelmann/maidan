@@ -25,11 +25,9 @@ Rows without a PR number are being built in a lane and get one when opened.
 |---|---|---|---|
 | #1127 | Rotate a token from the Session and Tokens tabs; `/me` returns `token_id`; the Session tab stops saying a token acts as any member | The rotation half of thread 2a | — |
 | #1142 | A pasted token is exchanged for the `HttpOnly` session, so no token stays in `localStorage`; unsafe session requests from another origin are refused; `csrf_secret` is dropped | Thread 2b; the `localStorage` risk | #1127 (reconcile with the session-audit methods #1136 added; rotation ends a session, so the Session tab re-exchanges the successor) |
-| #1135 | Attachments show their name and images render inline; artifact bytes carry their stored type, `nosniff` and a sandboxing CSP; no read serves a tombstoned artifact | Thread 4 | — |
 | #1137 | A2A `ListTasks` decides access in the store query, so the query count does not grow with hidden tasks | ListTasks pushdown | — |
 | #1140 | `secret://` references are substituted on automation and A2A push egress, against a per-workspace allowlist | Secret substitution on every egress path | — |
 | #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | The store delegation duplication | Everything above that adds a `Store` method |
-| (lane S) | `POST /workspaces/{wid}/threads/claim-next` and an MCP twin | Workspace-wide `claim_next` | — |
 | (lane T) | A foreign member is refused like an unknown one everywhere; `authority_audit_contract` scans past `#[cfg(test)]`; JSON-RPC `-32600` for a non-request; stdio stays silent on notifications | Lane findings, 2026-09-30 | — |
 | (lane U) | TCK numbers attributed to the right check; `llms.txt` lease and create-thread wording; enums on `transition_thread`; see-also on the wait tools; `waiting.spec.ts` asserts something | Thread 34–38, part of 50 | — |
 

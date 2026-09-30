@@ -100,6 +100,7 @@ pub(crate) fn abandoned_delete() -> BlobReap {
 pub const REVIEW_LOWER_REFUSAL: &str =
     "lowering a review requirement needs the channel:admin capability";
 pub mod automation_deliveries;
+mod claim_next;
 pub mod content_keyring;
 mod content_keys;
 mod delegation_grants;

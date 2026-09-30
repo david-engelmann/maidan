@@ -2,11 +2,12 @@ use chrono::{DateTime, Utc};
 use maidan_types::{
     ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimLeaseId, Event, MemberId, NewThread,
     QueueDepth, SpawnAxis, SpawnDenial, StoredEvent, Thread, ThreadClaimResult, ThreadId,
-    ThreadState, WorkspaceId,
+    ThreadState, WorkspaceId, DM_CHANNEL_NAME,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+use crate::claim_next::{self, ClaimScope, ClaimSql};
 use crate::sqlite::budget;
 use crate::sqlite::events;
 use crate::sqlite::thread_workers;
@@ -408,55 +409,34 @@ fn lapsed_claim(
     Some((holder, deadline, row.get("work_started_at")))
 }
 
-/// The thread `claim_next` would give `member_id` in `channel_id` at `now`,
-/// with the claim it still carries (see [`lapsed_claim`]). Shared by both
-/// `claim_next` variants so they take the same thread.
+/// The thread `claim_next` would give `member_id` in `scope` at `now`, with
+/// the claim it still carries (see [`lapsed_claim`]). Shared by both
+/// `claim_next` variants and both scopes so they take the same thread.
 async fn claim_next_candidate(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    channel_id: ChannelId,
+    scope: ClaimScope,
     member_id: MemberId,
     now: DateTime<Utc>,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, StoreError> {
-    Ok(sqlx::query(
-        "SELECT t.id, t.assignee_id, t.assignment_expires_at, t.work_started_at FROM maidan_threads t
-         LEFT JOIN maidan_thread_priorities p ON p.thread_id = t.id
-         WHERE t.channel_id = ? AND t.tombstoned_at IS NULL AND t.state = 'open'
-           AND (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_thread_dependencies d
-               JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-               WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived')
-           )
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_thread_required_skills trs
-               WHERE trs.thread_id = t.id
-                 AND NOT EXISTS (
-                     SELECT 1 FROM maidan_member_skills ms
-                     WHERE ms.member_id = ? AND ms.skill = trs.skill
-                 )
-           )
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_approval_gates g
-               WHERE g.thread_id = t.id AND g.state = 'pending'
-           )
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id
-           )
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id
-           )
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = ?
-           )
-         ORDER BY (COALESCE(p.priority, 0) + CAST((strftime('%s','now') - strftime('%s', t.created_at)) / 3600 AS INTEGER)) DESC, t.created_at ASC, t.id ASC
-         LIMIT 1",
-    )
-    .bind(channel_id.0)
-    .bind(now.to_rfc3339())
-    .bind(member_id.0)
-    .bind(member_id.0)
-    .fetch_optional(&mut **tx)
-    .await?)
+    let sql = claim_next::candidate_select(
+        scope,
+        "cand.id, cand.assignee_id, cand.assignment_expires_at, cand.work_started_at",
+        &ClaimSql {
+            member: "?1",
+            scope: "?2",
+            now: "?3",
+            dm_channel: "?4",
+            hours_waiting:
+                "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
+        },
+    );
+    Ok(sqlx::query(&sql)
+        .bind(member_id.0)
+        .bind(scope.id())
+        .bind(now.to_rfc3339())
+        .bind(DM_CHANNEL_NAME)
+        .fetch_optional(&mut **tx)
+        .await?)
 }
 
 /// Give `candidate` to `member_id` under a new fencing token. The caller
@@ -660,7 +640,9 @@ pub async fn claim_next(
     // race-free. The transaction exists so the worker record commits with the
     // claim.
     let mut tx = pool.begin().await?;
-    let Some(candidate) = claim_next_candidate(&mut tx, channel_id, member_id, now).await? else {
+    let Some(candidate) =
+        claim_next_candidate(&mut tx, ClaimScope::Channel(channel_id), member_id, now).await?
+    else {
         tx.commit().await?;
         return Ok(None);
     };
@@ -790,14 +772,14 @@ pub async fn channel_occupancy(
     })
 }
 
-/// Atomic claim-next + its `ThreadAssignmentChanged` event in one tx.
-/// Conditional: the event is appended **only** when a thread was claimed
-/// (`(Some(thread), Some(event))`); an empty channel yields `(None, None)`.
+/// Atomic claim-next in `scope` + its `ThreadAssignmentChanged` event in one
+/// tx. Conditional: the event is appended **only** when a thread was claimed
+/// (`(Some(thread), events)`); nothing to claim yields `(None, [])`.
 /// `previous_assignee_id` is `None` (behaviour-preserving — matches the old
-/// route; a lease-expiry reclaim does not surface the prior holder).
-pub async fn claim_next_with_event(
+/// route; a takeover of a lapsed lease reports the prior holder's end first).
+pub(crate) async fn claim_next_with_event(
     pool: &SqlitePool,
-    channel_id: ChannelId,
+    scope: ClaimScope,
     member_id: MemberId,
     lease_secs: Option<i64>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
@@ -807,7 +789,7 @@ pub async fn claim_next_with_event(
     // The candidate row keeps its pre-update claim, so a reclaim of an expired
     // lease can end the dead holder's claim (RETURNING would only give the
     // post-update row).
-    let Some(candidate) = claim_next_candidate(&mut tx, channel_id, member_id, now).await? else {
+    let Some(candidate) = claim_next_candidate(&mut tx, scope, member_id, now).await? else {
         tx.commit().await?;
         return Ok((None, Vec::new()));
     };

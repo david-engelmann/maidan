@@ -1089,23 +1089,54 @@ pub async fn claim_next_thread(
     if super::at_wip_limit(state.store.as_ref(), channel.workspace_id, member_id).await? {
         return Ok(Json(None));
     }
-    let (claimed, events) = state
+    let claimed = state
         .store
         .claim_next_thread_with_event(channel.id, member_id, Some(lease_secs))
         .await?;
-    // A reclaim may emit two events: ClaimExpired (dead holder) then the claim's
-    // ThreadAssignmentChanged. Publish in order.
+    publish_claim(&state, claimed).await.map(Json)
+}
+
+/// `POST /workspaces/:wid/threads/claim-next` — the channel route's claim
+/// across every channel of the workspace the caller may read, so an agent
+/// serving a whole workspace makes one call instead of one per channel. The
+/// store applies the read rule (a private channel's threads to its members, a
+/// DM's to its participants); the channel route's filters, order, lease and
+/// WIP limit all hold. `null` when nothing is claimable.
+pub async fn claim_next_workspace_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<ClaimNextThread>,
+) -> ApiResult<Json<Option<ClaimedThread>>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let lease_secs = state.mcp.claim_lease_policy().lease_for(body.lease_secs)?;
+    let workspace_id = WorkspaceId(wid);
+    ensure_workspace(&auth, workspace_id)?;
+    if super::at_wip_limit(state.store.as_ref(), workspace_id, auth.member_id).await? {
+        return Ok(Json(None));
+    }
+    let claimed = state
+        .store
+        .claim_next_workspace_thread_with_event(workspace_id, auth.member_id, Some(lease_secs))
+        .await?;
+    publish_claim(&state, claimed).await.map(Json)
+}
+
+/// Publish a `claim_next`'s events and shape its answer. A reclaim may emit two
+/// events: ClaimExpired (dead holder) then the claim's ThreadAssignmentChanged.
+/// Publish in order.
+async fn publish_claim(
+    state: &AppState,
+    (claimed, events): (Option<Thread>, Vec<StoredEvent>),
+) -> ApiResult<Option<ClaimedThread>> {
     for stored in &events {
-        super::publish_stored(&state, stored.clone()).await;
+        super::publish_stored(state, stored.clone()).await;
     }
-    match claimed {
-        None => Ok(Json(None)),
-        Some(thread) => {
-            let claimed =
-                claimed_thread(thread, &events).map_err(|e| ApiError::Internal(e.to_string()))?;
-            Ok(Json(Some(claimed)))
-        }
-    }
+    claimed
+        .map(|thread| {
+            claimed_thread(thread, &events).map_err(|e| ApiError::Internal(e.to_string()))
+        })
+        .transpose()
 }
 
 /// Extend a claimed thread's lease (heartbeat), for the current assignee only.

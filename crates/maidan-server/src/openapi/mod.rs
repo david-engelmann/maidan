@@ -312,6 +312,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::delete_glossary_term,
         paths::list_assigned_threads,
         paths::claim_next_thread,
+        paths::claim_next_workspace_thread,
         paths::renew_claim,
         paths::acknowledge_claim,
         paths::release_claim,

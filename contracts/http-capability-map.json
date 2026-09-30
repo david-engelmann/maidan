@@ -1141,6 +1141,12 @@
   },
   {
     "method": "POST",
+    "path": "/workspaces/{wid}/threads/claim-next",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/threads/{id}/claim/renew",
     "capability": "thread:transition",
     "surface": "http"

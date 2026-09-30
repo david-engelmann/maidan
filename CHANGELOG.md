@@ -793,6 +793,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   another's notification mail. The frame may now name only the member the
   token or session belongs to; any other closes the socket with 1008.
 
+### One claim for the whole workspace
+
+- **Added:** `POST /workspaces/{wid}/threads/claim-next` and the MCP tool
+  `claim_next_workspace_thread {workspace_id, lease_secs?}` hand out the next
+  ready thread across every channel the caller may read. Before, the only claim
+  was per channel, so an agent serving a workspace polled each channel in turn.
+  The filters, order (priority aged by wait, then oldest), lease, fencing token,
+  WIP limit and events are the channel route's: both routes build one query
+  (`maidan-store/src/claim_next.rs`), and the workspace one only drops the
+  channel predicate. A private channel's threads go to its members only, and a
+  DM's to its participants only.
+- **Fixed (security):** `POST /channels/{cid}/threads/claim-next` (and MCP
+  `claim_next_thread`) on the shared `__dm__` channel handed any member of the
+  workspace the oldest DM thread, whoever's DM it was: the channel check exempts
+  `__dm__`, and the claim applied no per-thread rule. The claim query now
+  applies the thread-read rule itself, on both routes, and reads the claimer's
+  workspace from its member row, so a scope naming another tenant finds
+  nothing.
+
 ### Tokens rotate
 
 - **Added:** `POST /tokens/{id}/rotate` and MCP `rotate_token` replace a

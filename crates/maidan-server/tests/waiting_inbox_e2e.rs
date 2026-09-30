@@ -161,6 +161,15 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
         })
         .await
         .unwrap();
+    // The agent works in the private channel; the reviewer does not.
+    store
+        .add_channel_member(
+            secret_ch.id,
+            agent.id,
+            maidan_types::ChannelMemberRole::Member,
+        )
+        .await
+        .unwrap();
     store
         .claim_next_thread(secret_ch.id, agent.id, Some(60))
         .await

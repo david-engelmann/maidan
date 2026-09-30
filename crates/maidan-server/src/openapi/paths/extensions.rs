@@ -461,6 +461,22 @@ pub fn list_assigned_threads() {}
 )]
 pub fn claim_next_thread() {}
 
+/// Claim the next ready thread anywhere in a workspace
+#[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/threads/claim-next",
+    tag = "threads",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = ClaimNextThread,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ClaimedThread, description = "The claimed thread plus a content-addressed pin, or null when no channel the caller may read has claimable work. The channel route's filters, order and lease apply; a private channel's threads go only to its members, a DM's only to its participants"),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn claim_next_workspace_thread() {}
+
 /// Renew a claim
 #[utoipa::path(
     post,

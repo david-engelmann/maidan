@@ -397,6 +397,7 @@
   {"method":"GET","path":"/workspaces/{wid}/snapshot","kind":"reads"},
   {"method":"GET","path":"/workspaces/{wid}/task-schedules","kind":"reads"},
   {"method":"POST","path":"/workspaces/{wid}/task-schedules","kind":"changes"},
+  {"method":"POST","path":"/workspaces/{wid}/threads/claim-next","kind":"changes"},
   {"method":"GET","path":"/workspaces/{wid}/webhooks","kind":"reads"},
   {"method":"POST","path":"/workspaces/{wid}/webhooks","kind":"changes"},
   {"method":"DELETE","path":"/workspaces/{wid}/webhooks/{whid}","kind":"changes"},

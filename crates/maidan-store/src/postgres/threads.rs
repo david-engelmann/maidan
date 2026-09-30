@@ -2,11 +2,12 @@ use chrono::{DateTime, Utc};
 use maidan_types::{
     ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimLeaseId, Event, MemberId, NewThread,
     QueueDepth, SpawnAxis, SpawnDenial, StoredEvent, Thread, ThreadClaimResult, ThreadId,
-    ThreadState, WorkspaceId,
+    ThreadState, WorkspaceId, DM_CHANNEL_NAME,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::claim_next::{self, ClaimScope, ClaimSql};
 use crate::error::StoreError;
 use crate::postgres::budget;
 use crate::postgres::events;
@@ -544,84 +545,89 @@ pub async fn list_review_requests(
     rows.iter().map(row_to_thread).collect()
 }
 
+/// A thread `claim_next` took, with the claim it took over when that claim's
+/// lease had lapsed (see [`lapsed_claim`]).
+type Claimed = (
+    Thread,
+    Option<(MemberId, DateTime<Utc>, Option<DateTime<Utc>>)>,
+);
+
+/// Claim the thread `claim_next` would give `member_id` in `scope`, on the
+/// caller's transaction. `FOR UPDATE SKIP LOCKED` is the canonical concurrent
+/// work-queue pattern: parallel claimers skip each other's locked candidate
+/// and each gets a distinct thread. Shared by both `claim_next` variants and
+/// both scopes so they take the same thread.
+async fn claim_next_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    scope: ClaimScope,
+    member_id: MemberId,
+    lease_secs: Option<i64>,
+) -> Result<Option<Claimed>, StoreError> {
+    let expires = lease_secs.map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
+    let candidate = claim_next::candidate_select(
+        scope,
+        "cand.id, cand.assignee_id AS prev_assignee,
+         cand.assignment_expires_at AS prev_deadline, cand.work_started_at AS prev_started",
+        &ClaimSql {
+            member: "$1",
+            scope: "$2",
+            dm_channel: "$5",
+            now: "NOW()",
+            hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
+        },
+    );
+    // The CTE captures the candidate's PRE-update claim (`prev_*`) so a
+    // takeover of a lapsed lease can end the dead holder's claim, charged.
+    let row = sqlx::query(&format!(
+        "WITH next AS ({candidate} FOR UPDATE OF cand SKIP LOCKED)
+         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
+         FROM next WHERE t.id = next.id
+         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, next.prev_assignee, next.prev_deadline, next.prev_started"
+    ))
+    .bind(member_id.0)
+    .bind(scope.id())
+    .bind(expires)
+    .bind(ClaimLeaseId::new().0)
+    .bind(DM_CHANNEL_NAME)
+    .fetch_optional(&mut **tx)
+    .await?;
+    row.map(|row| Ok((row_to_thread(&row)?, lapsed_claim(&row))))
+        .transpose()
+}
+
 /// Atomically claim the oldest unassigned live thread in `channel_id` for
-/// `member_id`. `FOR UPDATE SKIP LOCKED` is the canonical concurrent work-queue
-/// pattern: parallel claimers skip each other's locked candidate and each gets
-/// a distinct thread. `None` when there is no unassigned work.
+/// `member_id`. `None` when there is no unassigned work.
 pub async fn claim_next(
     pool: &PgPool,
     channel_id: ChannelId,
     member_id: MemberId,
     lease_secs: Option<i64>,
 ) -> Result<Option<Thread>, StoreError> {
-    let expires = lease_secs.map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
-    let lease = ClaimLeaseId::new();
     // Claimable = unassigned OR the lease has expired (dead-agent recovery).
-    // FOR UPDATE SKIP LOCKED keeps concurrent claimers distinct. The explicit
-    // transaction exists so the worker record commits with the claim — and it
-    // does not weaken SKIP LOCKED, which already ran inside an implicit
-    // transaction of its own.
+    // The explicit transaction exists so the worker record commits with the
+    // claim — and it does not weaken SKIP LOCKED, which already ran inside an
+    // implicit transaction of its own.
     let mut tx = pool.begin().await?;
-    let row = sqlx::query(
-        "WITH next AS (
-             SELECT c.id, c.assignee_id AS prev_assignee,
-                    c.assignment_expires_at AS prev_deadline, c.work_started_at AS prev_started
-             FROM maidan_threads c
-             LEFT JOIN maidan_thread_priorities p ON p.thread_id = c.id
-             WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL AND c.state = 'open'
-               AND (c.assignee_id IS NULL OR (c.assignment_expires_at IS NOT NULL AND c.assignment_expires_at < NOW()))
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_dependencies d
-                   JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                   WHERE d.thread_id = c.id AND dep.state NOT IN ('closed', 'archived')
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_required_skills trs
-                   WHERE trs.thread_id = c.id
-                     AND NOT EXISTS (
-                         SELECT 1 FROM maidan_member_skills ms
-                         WHERE ms.member_id = $1 AND ms.skill = trs.skill
-                     )
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_approval_gates g
-                   WHERE g.thread_id = c.id AND g.state = 'pending'
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = c.id
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = c.id
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = $1
-               )
-             ORDER BY (COALESCE(p.priority, 0) + FLOOR(EXTRACT(EPOCH FROM (NOW() - c.created_at)) / 3600)) DESC, c.created_at ASC, c.id ASC
-             LIMIT 1
-             FOR UPDATE OF c SKIP LOCKED
-         )
-         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
-         FROM next WHERE t.id = next.id
-         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, next.prev_assignee, next.prev_deadline, next.prev_started",
+    let Some((thread, lapsed)) = claim_next_in_tx(
+        &mut tx,
+        ClaimScope::Channel(channel_id),
+        member_id,
+        lease_secs,
     )
-    .bind(member_id.0)
-    .bind(channel_id.0)
-    .bind(expires)
-    .bind(lease.0)
-    .fetch_optional(&mut *tx)
-    .await?;
-    if let Some(row) = row.as_ref() {
-        let thread = row_to_thread(row)?;
-        thread_workers::record_in_tx(&mut tx, thread.id, member_id).await?;
-        // A takeover of a lapsed lease ends that claim here, charged as the
-        // reaper would charge it; this variant returns no events, but the log
-        // still records the end.
-        if let Some((holder, deadline, started)) = lapsed_claim(row) {
-            end_lapsed_claim_in_tx(&mut tx, &thread, holder, deadline, started).await?;
-        }
+    .await?
+    else {
+        tx.commit().await?;
+        return Ok(None);
+    };
+    thread_workers::record_in_tx(&mut tx, thread.id, member_id).await?;
+    // A takeover of a lapsed lease ends that claim here, charged as the reaper
+    // would charge it; this variant returns no events, but the log still
+    // records the end.
+    if let Some((holder, deadline, started)) = lapsed {
+        end_lapsed_claim_in_tx(&mut tx, &thread, holder, deadline, started).await?;
     }
     tx.commit().await?;
-    row.as_ref().map(row_to_thread).transpose()
+    Ok(Some(thread))
 }
 
 /// Task-queue depth for a channel — see the SQLite twin. Uses `NOW()` inline
@@ -729,88 +735,30 @@ pub async fn channel_occupancy(
     })
 }
 
-/// Atomic claim-next + its `ThreadAssignmentChanged` event in one tx.
-/// Conditional: the event is appended **only** when a thread was claimed; an
-/// empty channel yields `(None, None)`. `previous_assignee_id` is `None`
+/// Atomic claim-next in `scope` + its `ThreadAssignmentChanged` event in one
+/// tx. Conditional: the event is appended **only** when a thread was claimed;
+/// nothing to claim yields `(None, [])`. `previous_assignee_id` is `None`
 /// (behaviour-preserving — matches the old route).
-pub async fn claim_next_with_event(
+pub(crate) async fn claim_next_with_event(
     pool: &PgPool,
-    channel_id: ChannelId,
+    scope: ClaimScope,
     member_id: MemberId,
     lease_secs: Option<i64>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
-    let expires = lease_secs.map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
-    let lease = ClaimLeaseId::new();
-    // The CTE captures the candidate's PRE-update claim (`prev_*`) so a
-    // reclaim of an expired lease can end the dead holder's claim, charged.
-    let row = sqlx::query(
-        "WITH next AS (
-             SELECT c.id, c.assignee_id AS prev_assignee,
-                    c.assignment_expires_at AS prev_deadline, c.work_started_at AS prev_started
-             FROM maidan_threads c
-             LEFT JOIN maidan_thread_priorities p ON p.thread_id = c.id
-             WHERE c.channel_id = $2 AND c.tombstoned_at IS NULL AND c.state = 'open'
-               AND (c.assignee_id IS NULL OR (c.assignment_expires_at IS NOT NULL AND c.assignment_expires_at < NOW()))
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_dependencies d
-                   JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                   WHERE d.thread_id = c.id AND dep.state NOT IN ('closed', 'archived')
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_required_skills trs
-                   WHERE trs.thread_id = c.id
-                     AND NOT EXISTS (
-                         SELECT 1 FROM maidan_member_skills ms
-                         WHERE ms.member_id = $1 AND ms.skill = trs.skill
-                     )
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_approval_gates g
-                   WHERE g.thread_id = c.id AND g.state = 'pending'
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = c.id
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = c.id
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = $1
-               )
-             ORDER BY (COALESCE(p.priority, 0) + FLOOR(EXTRACT(EPOCH FROM (NOW() - c.created_at)) / 3600)) DESC, c.created_at ASC, c.id ASC
-             LIMIT 1
-             FOR UPDATE OF c SKIP LOCKED
-         )
-         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
-         FROM next WHERE t.id = next.id
-         RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, next.prev_assignee, next.prev_deadline, next.prev_started",
-    )
-    .bind(member_id.0)
-    .bind(channel_id.0)
-    .bind(expires)
-    .bind(lease.0)
-    .fetch_optional(&mut *tx)
-    .await?;
-    match row {
-        Some(row) => {
-            let thread = row_to_thread(&row)?;
-            let mut events = Vec::new();
-            // A reclaim of an expired lease: the previous holder's claim ended.
-            if let Some((holder, deadline, started)) = lapsed_claim(&row) {
-                events.push(
-                    end_lapsed_claim_in_tx(&mut tx, &thread, holder, deadline, started).await?,
-                );
-            }
-            events.push(append_assignment_event(&mut tx, &thread, member_id, None, None).await?);
-            tx.commit().await?;
-            Ok((Some(thread), events))
-        }
-        None => {
-            tx.commit().await?;
-            Ok((None, Vec::new()))
-        }
+    let Some((thread, lapsed)) = claim_next_in_tx(&mut tx, scope, member_id, lease_secs).await?
+    else {
+        tx.commit().await?;
+        return Ok((None, Vec::new()));
+    };
+    let mut events = Vec::new();
+    // A reclaim of an expired lease: the previous holder's claim ended.
+    if let Some((holder, deadline, started)) = lapsed {
+        events.push(end_lapsed_claim_in_tx(&mut tx, &thread, holder, deadline, started).await?);
     }
+    events.push(append_assignment_event(&mut tx, &thread, member_id, None, None).await?);
+    tx.commit().await?;
+    Ok((Some(thread), events))
 }
 
 /// Reap up to `limit` lapsed leases on open, live threads, charging each

@@ -924,7 +924,7 @@ speaks MCP.
 
 | Step | MCP tool | REST | Capability |
 |------|----------|------|------------|
-| 1. Take the next task | `claim_next_thread` | `POST /channels/:cid/threads/claim-next` | `thread:transition` |
+| 1. Take the next task | `claim_next_thread`, or `claim_next_workspace_thread` for the whole workspace | `POST /channels/:cid/threads/claim-next`, or `POST /workspaces/:wid/threads/claim-next` | `thread:transition` |
 | 2. Say you have started | `acknowledge_claim` | `POST /threads/:id/claim/acknowledge` | `thread:transition` |
 | 3. Read the task | `get_thread_context` | `GET /threads/:id/context` | `workspace:read` |
 | 4. Report what it cost | `report_usage` | `POST /threads/:id/usage` | `thread:transition` |
@@ -944,6 +944,18 @@ not the DAG-children-must-be-terminal skip), when the next task is parked as
 unclaimable or waiting on a human, and when your own member is frozen. Sleep and
 ask again.
 
+A waiter that serves a whole workspace rather than one channel calls
+`claim_next_workspace_thread {workspace_id, lease_secs?}` (REST
+`POST /workspaces/:wid/threads/claim-next`, body `{ "lease_secs"? }`) instead of
+polling each channel. It takes the next ready thread across every channel you may
+read, with the same filters, the same order (priority aged by wait, then oldest)
+and the same lease, fencing token, WIP limit and `null`. `workspace_id` is your
+own (`whoami`); another workspace's is refused (403 / Forbidden). Both claims
+hand you only threads you could read: a private channel's go to its members, and
+a DM or group DM thread to its participants. DM threads are claimable because a
+task asked in a DM is still a task, and its participants can already read it;
+nobody else is handed one, not even through the `__dm__` channel's own claim.
+
 An orchestrator parks a thread with `PUT /threads/:id/block` `{ "reason": "gate" }`
 (MCP `set_thread_block`). `GET` / `list` (`GET /channels/:cid/blocked`, MCP
 `list_blocked_threads`) read the row. `DELETE` (MCP `clear_thread_block`) clears
@@ -958,7 +970,7 @@ The thread you get back carries two fields worth keeping:
   is rejected instead of being allowed to write over its successor's work.
 - `assignment_expires_at` — when your lease runs out.
 
-**Every `claim_next_thread` claim is leased.** Leave `lease_secs` out and you get
+**Every `claim_next_thread` and `claim_next_workspace_thread` claim is leased.** Leave `lease_secs` out and you get
 the server's default (`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s unless the operator
 changed it); name one and it must be between 1 second and 7 days, or the call is
 refused (400 / InvalidParams) before anything is claimed. `renew_claim` is held to

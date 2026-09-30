@@ -103,6 +103,7 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 
 use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingGateQuery};
+use crate::claim_next::ClaimScope;
 use crate::error::StoreError;
 use crate::store::*;
 
@@ -1842,7 +1843,27 @@ impl AssignmentStore for SqliteStore {
         member_id: MemberId,
         lease_secs: Option<i64>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
-        threads::claim_next_with_event(&self.pool, channel_id, member_id, lease_secs).await
+        threads::claim_next_with_event(
+            &self.pool,
+            ClaimScope::Channel(channel_id),
+            member_id,
+            lease_secs,
+        )
+        .await
+    }
+    async fn claim_next_workspace_thread_with_event(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        lease_secs: Option<i64>,
+    ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
+        threads::claim_next_with_event(
+            &self.pool,
+            ClaimScope::Workspace(workspace_id),
+            member_id,
+            lease_secs,
+        )
+        .await
     }
     async fn reap_expired_claims(
         &self,
