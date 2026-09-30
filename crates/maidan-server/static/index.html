@@ -313,8 +313,17 @@
       #ws-status::before { content: ""; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #d4d4d8; margin-right: 0.35rem; vertical-align: 0.05rem; }
       #ws-status.connected::before { background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18); }
       #ws-status.error::before { background: var(--err); }
-      #live-panel .live-hint { color: var(--muted); font-size: 0.8rem; }
-      #live-panel.connected .live-hint { display: none; }
+      /* The live row is a status, not a control panel. Preset, reconnect and
+         the raw feed sit in a closed menu so they never lead the first screen.
+         A refusal stays on this one line (ellipsis); the full sentence is the
+         status title, not a banner. */
+      #ws-status { max-width: min(16rem, 42vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; color: var(--muted); }
+      #ws-status.error { color: var(--err); }
+      #live-more { position: relative; font-size: 0.78rem; color: var(--muted); }
+      #live-more summary { cursor: pointer; list-style: none; }
+      #live-more summary::-webkit-details-marker { display: none; }
+      #live-more[open] #live-more-body { position: absolute; z-index: 6; top: calc(100% + 0.35rem); right: 0; display: grid; gap: 0.4rem; min-width: 16rem; padding: 0.55rem 0.7rem; background: var(--panel); border: 1px solid var(--line); border-radius: 0.5rem; box-shadow: var(--shadow); }
+      #live-more-body label { margin: 0; display: flex; align-items: center; gap: 0.4rem; }
       #live-panel:not(.connected) .when-connected { display: none; }
       #live-panel.connected .when-disconnected { display: none; }
       #live-feed { flex: 1; background: #18181b; color: #e4e4e7; font-family: ui-monospace, monospace; padding: 0.75rem; overflow: auto; border-radius: 0.35rem; margin: 0.45rem 0 0; white-space: pre-wrap; word-break: break-word; max-height: 11rem; min-height: 5rem; font-size: 0.75rem; }
@@ -409,11 +418,14 @@
          page, with the buttons in the row (approve here, not in a tab). */
       #needs-you { margin: 0.9rem 1rem 0; background: var(--panel); border: 1px solid #f3d9a4; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
       #needs-you[hidden] { display: none; }
-      #needs-you.clear { border-color: var(--line); }
+      /* Empty is a line of type, not a card. The box returns only when a
+         decision is actually waiting. */
+      #needs-you.clear { background: transparent; border: none; box-shadow: none; margin: 0.35rem 1rem 0; overflow: visible; }
+      .ny-quiet { margin: 0; color: var(--muted); font-size: 0.8rem; }
+      .ny-quiet[hidden] { display: none; }
       .ny-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.9rem; background: #fffaf0; border-bottom: 1px solid #f6e3bd; }
-      #needs-you.clear .ny-head { background: var(--soft); border-bottom: none; }
+      .ny-head[hidden] { display: none; }
       .ny-head h2 { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: #9a3412; }
-      #needs-you.clear .ny-head h2 { color: var(--muted); }
       .ny-count { background: #ea580c; color: #fff; border-radius: 999px; font-size: 0.72rem; font-weight: 700; padding: 0 0.45rem; line-height: 1.35rem; min-width: 1.35rem; text-align: center; }
       .ny-count:empty { display: none; }
       .ny-hint { color: var(--muted); font-size: 0.8rem; }
@@ -523,7 +535,7 @@
         .ny-actions { grid-column: 1 / -1; justify-content: flex-start; }
         .ny-note, .ny-err { grid-column: 1 / -1; }
         #live-toolbar { flex-wrap: wrap; }
-        #live-panel .live-hint { display: none; }
+
         .mate { max-width: 100%; }
         #needs-you-title { white-space: nowrap; }
         .ny-head { flex-wrap: wrap; }
@@ -605,27 +617,31 @@
       <main id="main-content">
         <section id="live-panel" aria-label="Live updates">
           <div id="live-toolbar">
-            <strong>Live</strong>
             <span id="ws-status">disconnected</span>
-            <span class="live-hint">Connect to update the board as agents claim, report and hand off.</span>
-            <label class="when-disconnected">Preset
-              <select id="ws-preset">
-                <option value="workspace">Workspace (all)</option>
-                <option value="channel">Selected channel</option>
-                <option value="thread">Selected thread</option>
-                <option value="messages">Messages + mentions</option>
-              </select>
-            </label>
-            <label class="when-disconnected"><input id="ws-auto-reconnect" type="checkbox" checked /> Auto-reconnect</label>
-            <button id="ws-connect" type="button" class="primary">Connect WS</button>
-            <button id="ws-disconnect" type="button" hidden>Disconnect</button>
-            <button id="live-toggle" type="button" class="ghost when-connected" aria-controls="live-feed" aria-expanded="false">Raw events (<span id="live-count">0</span>)</button>
-            <button id="ws-clear" type="button" class="ghost when-connected">Clear</button>
+            <button id="ws-connect" type="button" class="ghost">Connect WS</button>
+            <details id="live-more">
+              <summary>Live</summary>
+              <div id="live-more-body">
+                <label class="when-disconnected">Preset
+                  <select id="ws-preset">
+                    <option value="workspace">Workspace (all)</option>
+                    <option value="channel">Selected channel</option>
+                    <option value="thread">Selected thread</option>
+                    <option value="messages">Messages + mentions</option>
+                  </select>
+                </label>
+                <label class="when-disconnected"><input id="ws-auto-reconnect" type="checkbox" checked /> Auto-reconnect</label>
+                <button id="ws-disconnect" type="button" class="ghost" hidden>Disconnect</button>
+                <button id="live-toggle" type="button" class="ghost when-connected" aria-controls="live-feed" aria-expanded="false">Raw events (<span id="live-count">0</span>)</button>
+                <button id="ws-clear" type="button" class="ghost when-connected">Clear</button>
+              </div>
+            </details>
           </div>
           <pre id="live-feed" hidden></pre>
         </section>
         <section id="needs-you" aria-labelledby="needs-you-title" hidden>
-          <div class="ny-head">
+          <p id="needs-you-quiet" class="ny-quiet" hidden>Nothing is waiting on you.</p>
+          <div class="ny-head" id="needs-you-head">
             <h2 id="needs-you-title">Needs you</h2>
             <span id="needs-you-count" class="ny-count" aria-label="items waiting on you"></span>
             <span id="needs-you-hint" class="ny-hint"></span>
@@ -693,7 +709,7 @@
           </label>
           <div class="row">
             <button id="post-message" type="button" class="primary">Post</button>
-            <button id="reload-messages" type="button">Reload messages</button>
+            <button id="reload-messages" type="button" class="ghost">Reload messages</button>
           </div>
           <details style="margin-top: 0.75rem">
             <summary>Edit message</summary>
@@ -1340,6 +1356,9 @@
         const el = document.getElementById("ws-status");
         el.textContent = text;
         el.className = cls || "";
+        // A refusal or a reconnect countdown can be a sentence. It stays on
+        // this line; the title has the rest, so it never becomes a banner.
+        el.title = text || "";
         document.getElementById("live-panel").classList.toggle("connected", cls === "connected");
       }
       function toggleLiveFeed(show) {
@@ -2207,12 +2226,11 @@
         list.replaceChildren();
         const n = needsYou.length;
         count.textContent = n ? String(n) : "";
-        box.classList.toggle("clear", n === 0);
         hint.textContent = n
           ? (n === 1
               ? "An agent is waiting on your decision."
               : "Agents are waiting on your decision. The latest request is first.")
-          : "Nothing is waiting on you. Reviews and approvals agents ask you for show up here.";
+          : "";
         setAttention(n);
         needsYou.forEach((item) => {
           const k = nyKey(item);
@@ -2220,7 +2238,14 @@
           keep.delete(k);
         });
         keep.forEach((li) => list.appendChild(li));
-        if (keep.size) box.classList.remove("clear");
+        // A queue with nothing in it is one quiet line. A row the human is
+        // still using (a change note, a Close task) keeps the box.
+        const empty = list.children.length === 0;
+        box.classList.toggle("clear", empty);
+        document.getElementById("needs-you-quiet").hidden = !empty;
+        document.getElementById("needs-you-head").hidden = empty;
+        if (empty) box.removeAttribute("aria-labelledby");
+        else box.setAttribute("aria-labelledby", "needs-you-title");
         renderTeam([...threadsById.values()]);
       }
       function nyKey(item) {
@@ -2267,6 +2292,7 @@
           approve.onclick = () => approveFromInbox(item, li);
           const changes = document.createElement("button");
           changes.type = "button";
+          changes.className = "ghost";
           changes.textContent = "Request changes";
           changes.onclick = () => askForChanges(item, li);
           actions.append(approve, changes);
@@ -2280,7 +2306,7 @@
             sub.appendChild(on);
           }
           sub.appendChild(when);
-          for (const [action, label, cls] of [["accept", "Approve", "primary"], ["decline", "Decline", ""]]) {
+          for (const [action, label, cls] of [["accept", "Approve", "primary"], ["decline", "Decline", "ghost"]]) {
             const b = document.createElement("button");
             b.type = "button";
             b.textContent = label;
@@ -2427,7 +2453,14 @@
         input.setAttribute("aria-label", "Change request note");
         const send = document.createElement("button");
         send.type = "button";
+        send.className = "primary";
         send.textContent = "Send back";
+        // The note is the row's decision now, so Approve stops being the
+        // filled button until the note is dismissed.
+        li.querySelectorAll(".ny-actions button.primary").forEach((b) => {
+          b.classList.remove("primary");
+          b.dataset.restorePrimary = "1";
+        });
         const go = async () => {
           if (send.disabled) return;
           send.disabled = true;
@@ -2442,7 +2475,10 @@
         send.onclick = go;
         input.onkeydown = (e) => {
           if (e.key === "Enter") go();
-          if (e.key === "Escape") row.remove();
+          if (e.key === "Escape") {
+            row.remove();
+            li.querySelectorAll("[data-restore-primary]").forEach((b) => b.classList.add("primary"));
+          }
         };
         row.append(input, send);
         li.appendChild(row);
