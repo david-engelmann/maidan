@@ -957,6 +957,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** `contracts/event-kinds.json` is checked against
   `EventKind::ALL`, so a new kind cannot be left out of it.
 
+### Open Work names what blocks a deploy, and is kept by one hand
+
+- **Changed:** Open Work opens with **Before anyone deploys**: every deploy
+  path runs `v412.0.0` (62 commits and a cross-tenant fix behind), the stack's
+  prod values pull the `dev` image, the charts render default credentials, and
+  the ARM64 page runs with auth off. Now lists every open PR with its owner and
+  its failing check; Next is re-ranked with the deploy fixes first and the
+  "first screen is the board" work merged into one row; rows cite file and line
+  on `main`. The Roadmap gains a "safe to deploy" horizon and says what landed.
+- **Changed:** feature PRs no longer edit Open Work or the Roadmap; the
+  coordinator reconciles them after merges. The `open work` CI job runs on
+  `main` and on a PR that edits Open Work, not on every PR.
+
 ### A2A `ListTasks` decides access in the query
 
 - **Fixed:** `ListTasks` fetched a page of tasks at a time and dropped those

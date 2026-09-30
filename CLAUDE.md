@@ -70,20 +70,55 @@ change.
   `promtool (alert rules)` and `otlp smoke`. A code PR runs all eight; a
   docs-only PR skips the heavy jobs, which then report as passed. Other jobs
   (coverage, `mdbook`, the A2A TCK, the MCP Inspector, SDK interop, the PITR
-  drill, `ui tests (playwright)`, `loom`, `tla`, the OSV scan, `cargo vet`) are not required.
+  drill, `ui tests (playwright)`, `loom`, `tla`, the OSV scan, `cargo vet`,
+  `open work`, `changelog (released sections)`, the SQLite backup drill) are
+  not required.
 
-## Current state (2026-09-29)
+## Current state (2026-09-30)
 
 - **Releases:** latest **`v412.0.0`**. Release tags are cut when the
   maintainer chooses, not per cluster, so some clusters were never tagged
   (v23–26, v78–100, v311, v350–401, v403, v411); their work ships in the next
-  tag. `main` is ahead of `v412.0.0`. Tagging is the maintainer's call.
-- **The forward plan is the ranked list at the top of
+  tag. `main` is well ahead of `v412.0.0`. Tagging is the maintainer's call.
+- **Do not point anyone at a deploy yet.** Every deploy path pins `v412.0.0`,
+  which predates the week's cross-tenant fixes. Open Work's **Before anyone
+  deploys** lists the blockers; the pin bump waits for the next tag, and
+  `scripts/check-deploy-pins.sh` (from #1156) says which lines to change.
+- **The forward plan is the ranked list in
   [`docs/Open Work.md`](docs/Open%20Work.md).** What shipped is in
   [`docs/Capabilities.md`](docs/Capabilities.md) and [`CHANGELOG.md`](CHANGELOG.md).
   Everything else in `docs/` that looks like a plan is history.
+- **Open Work and the Roadmap have one keeper.** A feature PR does not edit
+  them, not even its own row: put what belongs there in the PR body, and the
+  keeper reconciles after the merge. When each PR edited its own row, every PR
+  conflicted with every other.
 - **Decisions only the maintainer makes** are listed in Open Work under
   "Decisions pending the maintainer". Don't guess at them.
+
+Working beside other agents (several PRs are usually open at once):
+
+- **CHANGELOG:** put your entry at the end of `[Unreleased]`, immediately
+  before the first `## [N.0.0]` line, or before a heading you have checked is
+  above that line. An entry placed before a heading under a released version is
+  filed in that release; `scripts/check-changelog-released.sh` fails on it, and
+  on the same entry listed twice.
+- **Counters that two PRs can bump by the same line:** the `.route(` count
+  pinned in `tenant_isolation_e2e`, the MCP tool count in `docs/Protocols.md`,
+  `README.md` and `book/src/introduction.md`, and migration numbers. Git merges
+  two identical edits into one, so after a rebase recount (`grep -o '\.route('
+  crates/maidan-server/src/app.rs | wc -l`, which counts what the test counts)
+  rather than trusting the number, and take
+  the next free migration number on `main` plus the open PRs.
+- **Contracts new code must satisfy:** a route in
+  `contracts/http-operation-kinds.json`; a `MAIDAN_*` name in
+  `crates/maidan-server/src/env_registry.rs`; `NewAuditEvent` needs a
+  `scope: AuditScope`; a spawned task that writes uses
+  `maidan_store::attribution::spawn`; a member id from a request goes through
+  `Store::get_member_in(workspace, id)` (from #1152).
+- **Merging:** an admin squash only when all eight required checks passed on
+  the PR's exact head commit, merged with `gh pr merge --match-head-commit
+  <sha>`; `gh pr checks` and even `headRefOid` can show the previous commit for
+  a moment after a push.
 
 Lessons that cost real time, and that still apply:
 
@@ -98,6 +133,9 @@ Lessons that cost real time, and that still apply:
 - **Run the examples, not just the tests.** A recipe run found that
   `claim_next_thread` re-handed finished work (#1046) after every unit test had
   passed.
+- **A job that cannot fail reports nothing.** Until 2026-09-30 no nightly
+  mutation shard had tested a mutant and the nightly fuzz job failed every
+  night; `continue-on-error` showed both green (#1155).
 - **A required check red at the same step on consecutive `main` commits is a
   break, not a flake.** `docker compose smoke` was red from #973 to #1005 while
   about 30 PRs were admin-merged over it.

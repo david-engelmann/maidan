@@ -15,8 +15,8 @@ and the root `CHANGELOG.md`; how the project got here is in
   121–418 are post-gate hardening and product work.
 - **Standalone PRs.** Since Cluster 418, most work lands as a PR taken from the
   ranked Next list in Open Work. Each carries its own PR-level retro and a
-  `CHANGELOG.md` `[Unreleased]` entry, and the PR that changes an item's state
-  edits its Open Work row.
+  `CHANGELOG.md` `[Unreleased]` entry and names the Open Work row it closes;
+  the coordinator updates Open Work after the merge.
 - **Releases** are cut when the maintainer chooses, as a `vN.0.0` tag that runs
   `release.yml`. `scripts/check-release-records.sh` refuses a tag without its
   CHANGELOG section and Capabilities record. A retro does not imply a tag: work
@@ -43,26 +43,37 @@ flight and the ranked plan are the **Now** and **Next** sections of
 
 ## Horizons
 
-1. **Agents coordinate at workspace scale.** The SDKs return typed results and
-   errors (#1129) and stateless MCP subscriptions work across replicas (#1131).
-   In flight: a verdict reaches the worker as an event (#1132), a hung agent's
-   time is charged against its budget (#1139), and an agent pulls work from the
-   whole workspace rather than channel by channel.
-2. **Nothing is silently lost, and nothing grows without bound.** Mostly there:
-   retries share a per-host budget (#1122), every audit row belongs to a
-   workspace (#1134), and both backends have a tested backup path (#1126).
-   What remains is per-workspace retention and partitioning the append-only
-   tables.
-3. **Proof over tests.** The protocol decoders are fuzzed and the auth and bus
+0. **Safe to deploy.** Before anyone runs Maidan: every deploy path runs the
+   newest release (today they run `v412.0.0`, before the week's cross-tenant
+   fixes), no chart renders a default credential or the `dev` image, and a
+   contract keeps the pins from drifting again. This is the **Before anyone
+   deploys** section of Open Work, and it comes first.
+1. **Agents coordinate at workspace scale.** A verdict reaches the worker as an
+   event (#1132), a hung agent's time is charged against its budget (#1139),
+   the SDKs return typed results and errors (#1129), and stateless MCP
+   subscriptions work across replicas (#1131), and an agent can claim the next
+   ready thread anywhere in its workspace (#1145). Next: workspace-wide waits
+   and queue depth, and budget stops that keep a thread from being handed out.
+2. **Nothing is silently lost, and nothing grows without bound.** Retries share
+   a per-host budget (#1122), every audit row belongs to a workspace (#1134),
+   both backends have a tested backup path (#1126), and fairness and retention
+   are per workspace by default (#1153). Next: a legal hold that keeps a
+   workspace's deliveries, and partitioning the append-only tables.
+3. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus
    tests are mutation-checked (#1125), releases attest their SBOMs (#1119), and
    every HTTP operation is classified as reading or changing state (#1121).
-   What remains is Kani proofs, a store mutation job that finishes, and a named
-   regression test per Threat-Model row.
-4. **A web UI worth showing.** The board, first run, sign-out, token rotation
-   and attachments are landing now (#1118, #1123, #1127, #1135), and the token
-   leaves the browser's storage (#1142). Next come the UI improvement specs, a
-   split of the one-file page into typed modules with a CSP, and a set of
-   screenshots captured by a script.
+   The nightly store mutation job tests mutants (none had before #1155), and
+   `cargo vet` covers the root lockfile (#1155). Next: nightly jobs that show
+   their failures, Kani proofs, and a named regression test per Threat-Model
+   row.
+4. **A web UI worth showing.** The board is the one thread surface (#1118),
+   errors are inline (#1117), a blank page walks to a connected board (#1123),
+   attachments show their names and images (#1135), tokens rotate from the page
+   (#1127), Connect an agent finishes with a worker token (#1144), a refused
+   close shows on the board (#1147), and the first screen leads with the board
+   (#1151). In flight: the token leaving the browser's storage (#1142). Next:
+   the rest of the QA pass, a drawer that starts closed, typed modules with a
+   CSP, and screenshots captured by a script.
 5. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
    room itself staying open source.
