@@ -14,7 +14,11 @@
 //! which carries the scope into it (and is `tokio::spawn` outside a request).
 //! A `spawn_blocking` closure cannot await the store, so it is not counted.
 
-use std::path::{Path, PathBuf};
+mod source_scan;
+
+use std::path::Path;
+
+use source_scan::{rust_files, without_tests};
 
 /// Modules that never run inside a request, each with why.
 const BACKGROUND: &[(&str, &str)] = &[
@@ -42,92 +46,6 @@ const BACKGROUND: &[(&str, &str)] = &[
         "the hub's listener, heartbeat and publisher, started at boot; they write nothing to the store",
     ),
 ];
-
-fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            rust_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
-        }
-    }
-}
-
-/// The index just past the item that starts at `from`: its `;`, or the brace
-/// that closes its body. Skips string, raw string and char literals, so a `{`
-/// inside one does not count.
-fn end_of_item(src: &[u8], from: usize) -> usize {
-    let mut depth = 0usize;
-    let mut i = from;
-    while i < src.len() {
-        match src[i] {
-            b'"' => {
-                i += 1;
-                while i < src.len() && src[i] != b'"' {
-                    if src[i] == b'\\' {
-                        i += 1;
-                    }
-                    i += 1;
-                }
-            }
-            b'r' if src.get(i + 1).is_some_and(|b| *b == b'"' || *b == b'#') => {
-                let hashes = src[i + 1..].iter().take_while(|b| **b == b'#').count();
-                if src.get(i + 1 + hashes) == Some(&b'"') {
-                    let close: Vec<u8> = std::iter::once(b'"')
-                        .chain(std::iter::repeat_n(b'#', hashes))
-                        .collect();
-                    i += 2 + hashes;
-                    while i < src.len() && !src[i..].starts_with(&close) {
-                        i += 1;
-                    }
-                    i += close.len() - 1;
-                }
-            }
-            b'\'' if src.get(i + 1) == Some(&b'\\') && src.get(i + 3) == Some(&b'\'') => i += 3,
-            b'\'' if src.get(i + 2) == Some(&b'\'') => i += 2,
-            b';' if depth == 0 => return i + 1,
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return i + 1;
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    src.len()
-}
-
-/// `source` with every `#[cfg(test)]` item blanked out, line breaks kept so
-/// line numbers still match. Test code may spawn freely.
-fn without_tests(source: &str) -> String {
-    let mut out = source.as_bytes().to_vec();
-    let mut from = 0;
-    while let Some(found) = source[from..].find("#[cfg(test)]") {
-        let start = from + found;
-        let end = end_of_item(source.as_bytes(), start + "#[cfg(test)]".len());
-        for b in &mut out[start..end] {
-            if *b != b'\n' {
-                *b = b' ';
-            }
-        }
-        from = end;
-    }
-    String::from_utf8(out).unwrap()
-}
-
-#[test]
-fn blanking_test_items_keeps_the_code_after_them() {
-    let src = "fn a() {}\n#[cfg(test)]\nmod t { fn x() { let _ = \"}\"; let _ = '{'; let _ = '\\''; } }\nfn b() { tokio::spawn(x); }\n";
-    let kept = without_tests(src);
-    assert!(kept.contains("fn a()"));
-    assert!(!kept.contains("mod t"));
-    assert!(kept.contains("fn b() { tokio::spawn(x); }"));
-    assert_eq!(kept.lines().count(), src.lines().count());
-}
 
 #[test]
 fn request_serving_code_spawns_only_inside_its_attribution_scope() {
