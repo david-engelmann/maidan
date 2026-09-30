@@ -206,7 +206,9 @@ flowchart LR
   whether anything was recorded; a successful REST mutation, MCP tool call or
   A2A method that is not a read and recorded nothing gets an attributed
   `mutation` audit row from the layer that opened the scope, so completeness
-  does not depend on each handler remembering. Work outside a request records none. A workspace is a
+  does not depend on each handler remembering. A task a request spawns keeps
+  the scope (`attribution::spawn`); the WebSocket, whose first frame
+  authenticates it, opens its own. Work outside a request records none. A workspace is a
   **room**: `maidan://{workspace_id}/…` (optional `#sha256` fragment). A handle
   is a renameable alias; stored ids stay the UUID.
 - **Authorization evidence.** REST and MCP capability decisions emit one

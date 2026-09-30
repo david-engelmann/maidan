@@ -6,10 +6,11 @@
 //! server instead scopes each request once, and the append reads the scope.
 //!
 //! Absent a scope — scheduled sweeps, background workers, federation ingest —
-//! nothing is recorded, which is what "the system did this" looks like. That is
-//! safe because no request handler hands event writes to a spawned task: a
-//! spawned task would leave the scope, and its writes would silently read as
-//! the system's.
+//! nothing is recorded, which is what "the system did this" looks like. A task
+//! spawned with `tokio::spawn` leaves the scope, so its writes would silently
+//! read as the system's: code that serves a request spawns with [`spawn`],
+//! which carries the scope into the task, and `attribution_scope_contract`
+//! fails on a `tokio::spawn` anywhere but the background workers.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -69,6 +70,17 @@ where
         }
         None => (fut.await, false),
     }
+}
+
+/// Spawn `fut` as a task that keeps the current request's principal, so what
+/// it writes is the request's and not the system's. Outside a request it is
+/// `tokio::spawn`.
+pub fn spawn<F>(fut: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(with_attribution(current_attribution(), fut))
 }
 
 /// The principal of the current request, if one is in scope.
@@ -166,6 +178,22 @@ mod tests {
         })
         .await;
         assert!(recorded);
+    }
+
+    /// A task spawned from a request keeps its principal through [`spawn`],
+    /// and loses it through `tokio::spawn`.
+    #[tokio::test]
+    async fn a_task_spawned_through_spawn_keeps_the_requests_principal() {
+        let principal = someone();
+        let (carried, dropped) = with_attribution(principal, async {
+            let carried = spawn(async { current_attribution() }).await.unwrap();
+            let dropped = tokio::spawn(async { current_attribution() }).await.unwrap();
+            (carried, dropped)
+        })
+        .await;
+        assert_eq!(carried, principal);
+        assert_eq!(dropped, None);
+        assert_eq!(spawn(async { current_attribution() }).await.unwrap(), None);
     }
 
     /// A REST handler that dispatches an MCP tool opens a scope inside the

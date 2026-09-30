@@ -227,6 +227,10 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `TOLERATED_ENV` (a script, SDK, test or build arg does) in
   `crates/maidan-server/src/env_registry.rs`, or boot refuses it as unknown.
   `env_registry_contract` checks every name the repo mentions.
+- **Spawn with `maidan_store::attribution::spawn`**, not `tokio::spawn`, in
+  any server or MCP module that is not a background worker: a plain spawn
+  leaves the request's attribution scope and its writes read as nobody's.
+  `attribution_scope_contract` scans every module and names the exceptions.
 - **utoipa 4:** an `IntoParams` struct publishes its fields as *path*
   parameters unless it says `#[into_params(parameter_in = Query)]`; every type
   a schema names must be listed in `components(schemas(...))`; a field written

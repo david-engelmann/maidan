@@ -979,7 +979,7 @@ impl McpServer {
         };
         let mut rx = notifier.subscribe();
         let server = Arc::clone(self);
-        tokio::spawn(async move {
+        maidan_store::attribution::spawn(async move {
             loop {
                 match rx.recv().await {
                     Ok(updates) => server.deliver_resource_updates(&updates).await,
