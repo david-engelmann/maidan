@@ -1,8 +1,9 @@
 > **Status (2026-09-29):** the four SDKs implement this contract and are published at
 > 0.1.0 (TypeScript, Python, Go, Rust; see [`sdk/README.md`](../sdk/README.md)).
-> 0.2 adds a retry with an `Idempotency-Key` per write and auto-paging; typed responses and
-> an error per problem type (§2) followed in the tree, not yet tagged. Where this page
-> and a running server's `GET /openapi.json` disagree, the server wins.
+> 0.3.0 (0.2.0 was never tagged) adds a retry with an `Idempotency-Key` per write,
+> auto-paging, typed responses and an error per problem type (§2); it is in the tree, not
+> yet tagged. Where this page and a running server's `GET /openapi.json` disagree, the
+> server wins.
 # Client Contract — frozen SDK surface (v1)
 
 Pin this before writing Python / TypeScript / Rust 0.1. If this
@@ -70,7 +71,7 @@ Create body: `{ "name", "private": false }`.
 | SDK | HTTP | Capability | Notes |
 |-----|------|------------|-------|
 | `threads.list` | `GET /channels/{cid}/threads` | `workspace:read` | One page: `limit` (1–500, default 100), `cursor` = the last thread id of the previous page |
-| `threads.list_all` | same, page after page | `workspace:read` | **0.2.** Auto-paging: TS async iterator, Python generator, Go callback, Rust iterator; `page_size` per request |
+| `threads.list_all` | same, page after page | `workspace:read` | **0.3.0.** Auto-paging: TS async iterator, Python generator, Go callback, Rust iterator; `page_size` per request, at most 500 (the server's cap: a larger ask would come back short and end the walk early) |
 | `threads.create` | `POST /channels/{cid}/threads` | `workspace:write` | Body `{ "title" }` |
 | `threads.get` | `GET /threads/{id}` | `workspace:read` | |
 | `threads.context` | `GET /threads/{id}/context` | `workspace:read` | Paginated; used by `examples/rest_maidan.py` |
@@ -191,7 +192,7 @@ the first request is still running is 409
 "not now" 4xx (408, 409, 425, 429) or an SSE response is not kept, so a retry after one
 runs again. SCIM and A2A routes ignore the header. Keys last 24 hours.
 
-**SDK 0.2 retries and keys.** Every write sends a fresh
+**SDK 0.3.0 retries and keys.** Every write sends a fresh
 `Idempotency-Key` (a UUID) and reuses it on each retry of that call, so
 a retry after a lost response gets the first answer instead of writing
 twice. The client retries up to `max_retries` times (default 2; 0 turns
@@ -201,7 +202,7 @@ when sent (capped at 60s), else 0.5s·2^n capped at 8s with jitter. Any
 other 4xx, including a plain 409, is raised at once. Reads are retried
 the same way, without a key. The event backfill pages too:
 `workspaces.eventsAll` (TS) / `list_events_all` (Python, Rust) /
-`Workspaces.ListEventsAll` (Go), by `after_id`.
+`Workspaces.ListEventsAll` (Go), by `after_id`, at most 500 per page.
 
 ---
 
@@ -228,8 +229,8 @@ Not `token:admin`. `artifact:upload` only if the cookbook uploads.
 | `client.mcp_url` | `{base_url}/mcp/streamable`. String only. No MCP dependency |
 | `last_room_lsn` | Last seen `Maidan-Room-LSN` (decimal). Not a WAL token |
 | `event_type(kind)` | `maidan.event.{kind}/1` |
-| `max_retries` | 0.2. Retry budget (default 2): TS `{ maxRetries }`, Python `max_retries=`, Go `Client.MaxRetries`, Rust `.with_max_retries(n)` |
-| `new_idempotency_key()` / `retry_delay(...)` | 0.2. Exported so callers can reuse the policy |
+| `max_retries` | 0.3.0. Retry budget (default 2): TS `{ maxRetries }`, Python `max_retries=`, Go `Client.MaxRetries`, Rust `.with_max_retries(n)` |
+| `new_idempotency_key()` / `retry_delay(...)` | 0.3.0. Exported so callers can reuse the policy |
 | Typed IDs | Thread id is not a channel id at the type level |
 | Typed responses | Each method in §1 returns the model for its OpenAPI response schema (`Thread`, `ClaimedThread`, `Message`, `ThreadContext`, `StoredEvent`, …). WS event frames stay JSON objects: their shape follows `kind` |
 | Unknown fields | Ignore on REST JSON and WS envelopes. A member a model does not declare must not fail the response (Python and Rust keep it in `extra`); a string enum accepts values it does not list |

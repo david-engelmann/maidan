@@ -123,6 +123,19 @@ export function eventType(kind) {
   return `maidan.event.${kind}/1`;
 }
 
+/**
+ * The most rows the server returns for one page: it clamps a larger `limit` to
+ * this. The paging helpers ask for no more, because they stop at the first
+ * short page, and a clamped page would look like the last one.
+ */
+export const MAX_PAGE_SIZE = 500;
+
+/** The limit a paging helper asks for: `n`, 100 when not positive, at most MAX_PAGE_SIZE. */
+function pageSize(n) {
+  const v = Number(n);
+  return v > 0 ? Math.min(v, MAX_PAGE_SIZE) : 100;
+}
+
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const RETRY_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 const IN_FLIGHT_TYPE = `${PROBLEM_BASE}idempotency-key-in-flight`;
@@ -154,7 +167,8 @@ export class Client {
    * @param {{ fetch?: typeof fetch, WebSocket?: any, maxRetries?: number,
    *   sleep?: (ms: number) => Promise<void> }} [options] `maxRetries`
    *   (default 2; 0 turns retries off) bounds the retries of a request that
-   *   failed in transit or answered 408/429/5xx, or 409 in-flight for its key.
+   *   failed in transit or answered 408, 429, 500, 502, 503 or 504, or 409
+   *   in-flight for its key.
    */
   constructor(baseUrl, token, options = {}) {
     this.baseUrl = (baseUrl || envDefault("MAIDAN_URL") || "http://127.0.0.1:8080").replace(
@@ -178,7 +192,7 @@ export class Client {
       import: (bundle, mode) =>
         this._req("POST", `/workspaces/import${mode ? `?mode=${mode}` : ""}`, bundle),
       events: (id, query) => this._req("GET", `/workspaces/${id}/events${qs(query)}`),
-      /** Every event after `query.after_id`, page by page (`limit` per page). */
+      /** Every event after `query.after_id`, page by page (`limit` per page, at most MAX_PAGE_SIZE). */
       eventsAll: (id, query = {}) => this._eventsAll(id, query),
     };
     // Provisioning. `members.create` is the unauthenticated seed route, present
@@ -212,8 +226,8 @@ export class Client {
     };
     this.threads = {
       list: (cid, query) => this._req("GET", `/channels/${cid}/threads${qs(query)}`),
-      /** Every live thread in the channel, fetching `pageSize` per request. */
-      listAll: (cid, opts = {}) => this._threadsAll(cid, opts.pageSize || 100),
+      /** Every live thread in the channel, fetching `pageSize` (at most MAX_PAGE_SIZE) per request. */
+      listAll: (cid, opts = {}) => this._threadsAll(cid, pageSize(opts.pageSize)),
       create: (cid, title) => this._req("POST", `/channels/${cid}/threads`, { title }),
       get: (id) => this._req("GET", `/threads/${id}`),
       context: (id, query) => this._req("GET", `/threads/${id}/context${qs(query)}`),
@@ -257,7 +271,7 @@ export class Client {
   }
 
   async *_eventsAll(wid, query) {
-    const limit = query.limit > 0 ? query.limit : 100;
+    const limit = pageSize(query.limit);
     let after = query.after_id || 0;
     for (;;) {
       const page = (await this.workspaces.events(wid, { ...query, after_id: after, limit })) || [];
@@ -396,7 +410,7 @@ export class Client {
    * A 409 must_refetch throws MaidanError.isCursorTooOld — never clamped.
    */
   async follow(spec, onEvent, onError) {
-    const limit = spec.pageLimit > 0 ? spec.pageLimit : 100;
+    const limit = pageSize(spec.pageLimit);
     let after = spec.afterId || 0;
     for (;;) {
       const query = { after_id: after, limit };

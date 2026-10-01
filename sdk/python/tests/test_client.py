@@ -11,17 +11,28 @@ import pytest
 import dataclasses
 
 from maidan import (
+    Artifact,
     BadRequestError,
+    Channel,
     ClaimedThread,
     Client,
     ConflictError,
     ForbiddenError,
+    ImportResult,
     MaidanError,
+    Member,
+    Message,
+    MintedToken,
     Model,
     NotFoundError,
+    StoredEvent,
     StrongRef,
     Thread,
+    ThreadContext,
+    ThreadResult,
+    TokenSummary,
     UnauthorizedError,
+    Workspace,
 )
 
 BASE = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080")
@@ -162,66 +173,79 @@ def _export():
         return json.loads(resp.read())
 
 
-def assert_modeled(value, path="response"):
-    """Every member the server sent is declared on its model, all the way down.
+def assert_modeled(value, expected=None, path="response"):
+    """``value`` is the model the operation declares, and every member the
+    server sent is declared on its model, all the way down.
 
-    A model keeps undeclared members in ``extra`` (forward compatibility), so an
-    empty ``extra`` everywhere is the proof that the models match what the live
-    server returns. Required members are enforced by the dataclass itself."""
+    ``expected`` is a model class, or ``[cls]`` for a list of them. Without the
+    check, an operation that regressed to returning a plain dict would pass,
+    having no ``extra`` to inspect. Below the top level, fields recurse with no
+    expectation, so JSON the producer chose (``ThreadResult.result``) may be
+    anything. A model keeps undeclared members in ``extra`` (forward
+    compatibility), so an empty ``extra`` everywhere is the proof that the
+    models match what the live server returns. Required members are enforced
+    by the dataclass itself."""
+    if isinstance(expected, list):
+        assert isinstance(value, list), f"{path} is {type(value).__name__}, not a list"
+        for i, item in enumerate(value):
+            assert_modeled(item, expected[0], f"{path}[{i}]")
+        return value
+    if expected is not None:
+        assert isinstance(value, expected), f"{path} is {type(value).__name__}, not {expected.__name__}"
     if isinstance(value, list):
         for i, item in enumerate(value):
-            assert_modeled(item, f"{path}[{i}]")
+            assert_modeled(item, None, f"{path}[{i}]")
         return value
     if isinstance(value, Model):
         name = type(value).__name__
         assert value.extra == {}, f"{path} ({name}) got members its model does not declare: {sorted(value.extra)}"
         for f in dataclasses.fields(value):
             if f.name != "extra":
-                assert_modeled(getattr(value, f.name), f"{path}.{f.name}")
+                assert_modeled(getattr(value, f.name), None, f"{path}.{f.name}")
     return value
 
 
 def test_every_documented_operation_returns_its_declared_model():
     c, _ws, member, channel, thread = _seed()
-    assert_modeled(c.workspaces.get(WORKSPACE))
-    assert_modeled(c.members.list(WORKSPACE))
-    assert_modeled(channel)
-    assert_modeled(c.channels.list(WORKSPACE))
-    assert_modeled(thread)
-    assert_modeled(c.threads.get(thread.id))
-    assert_modeled(c.threads.list(channel.id))
+    assert_modeled(c.workspaces.get(WORKSPACE), Workspace)
+    assert_modeled(c.members.list(WORKSPACE), [Member])
+    assert_modeled(channel, Channel)
+    assert_modeled(c.channels.list(WORKSPACE), [Channel])
+    assert_modeled(thread, Thread)
+    assert_modeled(c.threads.get(thread.id), Thread)
+    assert_modeled(c.threads.list(channel.id), [Thread])
 
-    msg = assert_modeled(c.messages.post(thread.id, "typed"))
-    assert_modeled(c.messages.list(thread.id))
+    msg = assert_modeled(c.messages.post(thread.id, "typed"), Message)
+    assert_modeled(c.messages.list(thread.id), [Message])
 
-    art = assert_modeled(c.artifacts.upload(b"typed bytes", "attachment"))
+    art = assert_modeled(c.artifacts.upload(b"typed bytes", "attachment"), Artifact)
     assert art.size_bytes == len(b"typed bytes")
-    assert_modeled(c.artifacts.meta(art.sha256))
+    assert_modeled(c.artifacts.meta(art.sha256), Artifact)
     assert c.artifacts.get(art.sha256) == b"typed bytes"
 
-    claim = assert_modeled(c.claim_next_thread(channel.id, {"lease_secs": 60}))
-    assert_modeled(c.renew_claim(claim.id, claim.claim_lease_id, 120))
+    claim = assert_modeled(c.claim_next_thread(channel.id, {"lease_secs": 60}), ClaimedThread)
+    assert_modeled(c.renew_claim(claim.id, claim.claim_lease_id, 120), Thread)
 
-    result = assert_modeled(c.threads.set_result(thread.id, {"ok": True}))
+    result = assert_modeled(c.threads.set_result(thread.id, {"ok": True}), ThreadResult)
     assert result.result == {"ok": True}
     assert result.produced_by == member["id"]
-    assert_modeled(c.threads.get_result(thread.id))
-    reviewed = assert_modeled(c.threads.transition(thread.id, {"action": "start_review"}))
+    assert_modeled(c.threads.get_result(thread.id), ThreadResult)
+    reviewed = assert_modeled(c.threads.transition(thread.id, {"action": "start_review"}), Thread)
     assert reviewed.state == "in_review"
 
-    ctx = assert_modeled(c.threads.context(thread.id))
+    ctx = assert_modeled(c.threads.context(thread.id), ThreadContext)
     assert ctx.fsm.transitions, "the start_review transition is in the pack"
     assert any(m.id == msg.id for m in ctx.messages)
 
-    events = assert_modeled(c.list_events(WORKSPACE, {"limit": 50}))
+    events = assert_modeled(c.list_events(WORKSPACE, {"limit": 50}), [StoredEvent])
     assert events and all(e.type == f"maidan.event.{e.kind}/1" for e in events)
-    assert_modeled(list(c.list_events_all(WORKSPACE, {"limit": 25})))
+    assert_modeled(list(c.list_events_all(WORKSPACE, {"limit": 25})), [StoredEvent])
 
-    fresh = assert_modeled(c.members.create(WORKSPACE, f"typed-{uuid.uuid4().hex}"))
-    assert_modeled(c.tokens.mint(WORKSPACE, fresh.id, ["workspace:read"]))
-    assert_modeled(c.tokens.list(WORKSPACE, fresh.id))
+    fresh = assert_modeled(c.members.create(WORKSPACE, f"typed-{uuid.uuid4().hex}"), Member)
+    assert_modeled(c.tokens.mint(WORKSPACE, fresh.id, ["workspace:read"]), MintedToken)
+    assert_modeled(c.tokens.list(WORKSPACE, fresh.id), [TokenSummary])
 
-    imported = assert_modeled(c.workspaces.import_(_export(), "new"))
+    imported = assert_modeled(c.workspaces.import_(_export(), "new"), ImportResult)
     assert imported.mode == "new"
     assert imported.workspace_id != WORKSPACE, "mode=new remaps ids"
 

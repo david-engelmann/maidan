@@ -1091,6 +1091,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the claim-ending work in flight, and adds read-notification retention to the
   legal-hold item.
 
+### The SDKs page past 500 rows, and their READMEs install what they show
+
+- **Fixed:** the four SDKs' paging helpers (`threads` list-all, the event
+  backfill and `follow`) stopped at the first page shorter than the page size
+  they asked for, but the server clamps `limit` to 500, so a page size above
+  500 got a full page of 500, took it for the last, and stopped with rows
+  left. Each SDK now asks for at most `MAX_PAGE_SIZE` (500; Go
+  `MaxPageSize`), and a page size of 0 means 100 everywhere.
+- **Fixed:** each SDK README installed the registry's 0.1.0 while its example
+  used the 0.3.0 typed responses and error types, so the Go and Rust examples
+  did not compile against it and the Python and TypeScript ones failed on
+  importing `NotFoundError`. The READMEs say so and install
+  from the repository until 0.3.0 is published. They also name the retried
+  statuses (408, 429, 500, 502, 503, 504) instead of "5xx", and Client
+  Contract calls the unreleased surface 0.3.0.
+- **Changed:** the Python black-box test checks that each operation returns
+  the model it declares, not only that whatever came back has no undeclared
+  members: a plain dict passed before.
+
 ### The nightly jobs report their failures
 
 - **Fixed:** the nightly fuzz job had never run a target. cargo-fuzz passes

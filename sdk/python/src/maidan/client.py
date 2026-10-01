@@ -78,6 +78,18 @@ def event_type(kind: str) -> str:
 
 _WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+
+#: The most rows the server returns for one page: it clamps a larger ``limit``
+#: to this. The paging helpers ask for no more, because they stop at the first
+#: short page, and a clamped page would look like the last one.
+MAX_PAGE_SIZE = 500
+
+
+def _page_size(n: Any) -> int:
+    """The limit a paging helper asks for: ``n``, 100 when it is not positive,
+    never more than :data:`MAX_PAGE_SIZE`."""
+    n = int(n or 0)
+    return min(n, MAX_PAGE_SIZE) if n > 0 else 100
 _IN_FLIGHT_TYPE = f"{PROBLEM_BASE}idempotency-key-in-flight"
 
 
@@ -233,7 +245,9 @@ class _Threads:
         return from_list(Thread, self._c._req("GET", f"/channels/{channel_id}/threads{_qs(query)}"))
 
     def list_all(self, channel_id: str, page_size: int = 100) -> Iterator[Thread]:
-        """Every live thread in the channel, fetching ``page_size`` per request."""
+        """Every live thread in the channel, fetching ``page_size`` (at most
+        :data:`MAX_PAGE_SIZE`) per request."""
+        page_size = _page_size(page_size)
         cursor: Optional[str] = None
         while True:
             query: dict = {"limit": page_size}
@@ -443,9 +457,10 @@ class Client:
         return from_list(StoredEvent, self._req("GET", f"/workspaces/{workspace_id}/events{_qs(query)}"))
 
     def list_events_all(self, workspace_id: str, query: Optional[dict] = None) -> Iterator[StoredEvent]:
-        """Every event after ``query['after_id']``, ``query['limit']`` (default 100) per page."""
+        """Every event after ``query['after_id']``, ``query['limit']`` (default 100,
+        at most :data:`MAX_PAGE_SIZE`) per page."""
         query = dict(query or {})
-        limit = int(query.get("limit") or 100)
+        limit = _page_size(query.get("limit"))
         after = int(query.get("after_id") or 0)
         while True:
             page = self.list_events(workspace_id, {**query, "after_id": after, "limit": limit})
@@ -515,7 +530,7 @@ class Client:
         :class:`CursorTooOldError` — never clamped.
         """
         after = after_id
-        limit = page_limit if page_limit > 0 else 100
+        limit = _page_size(page_limit)
         while True:
             q: dict = {"after_id": after, "limit": limit}
             if channel_id:

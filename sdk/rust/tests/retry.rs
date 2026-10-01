@@ -6,7 +6,7 @@ use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use maidan::{retry_delay, Client, MaidanError, StoredEvent};
+use maidan::{retry_delay, Client, MaidanError, StoredEvent, MAX_PAGE_SIZE};
 use serde_json::{json, Value};
 
 enum Reply {
@@ -224,4 +224,38 @@ fn list_events_all_pages_by_after_id() {
     let n = events.len();
     assert_eq!(n, 3);
     assert!(seen.lock().unwrap()[1].target.contains("after_id=2"));
+}
+
+/// The server clamps `limit` to 500. A helper that asked for more would get a
+/// page of 500, read it as short, and stop with rows left.
+#[test]
+fn paging_helpers_ask_for_no_more_than_the_servers_page_size() {
+    let full: Vec<Value> = (0..MAX_PAGE_SIZE)
+        .map(|i| thread(&format!("t{i}")))
+        .collect();
+    let (base, seen) = serve(vec![ok(200, json!(full)), ok(200, json!([thread("last")]))]);
+    let (c, _) = client(&base);
+    let threads: Vec<_> = c
+        .threads()
+        .list_all("ch", 1000)
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(threads.len(), MAX_PAGE_SIZE + 1);
+    assert_eq!(
+        seen.lock().unwrap()[0].target,
+        "/channels/ch/threads?limit=500"
+    );
+
+    let full: Vec<Value> = (1..=MAX_PAGE_SIZE as i64).map(event).collect();
+    let (base, seen) = serve(vec![
+        ok(200, json!(full)),
+        ok(200, json!([event(MAX_PAGE_SIZE as i64 + 1)])),
+    ]);
+    let (c, _) = client(&base);
+    let events: Vec<StoredEvent> = c
+        .list_events_all("w", &[("limit", "1000")])
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(events.len(), MAX_PAGE_SIZE + 1);
+    assert!(seen.lock().unwrap()[0].target.contains("limit=500"));
 }

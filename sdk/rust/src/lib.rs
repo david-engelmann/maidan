@@ -72,6 +72,21 @@ pub type Result<T> = std::result::Result<T, MaidanError>;
 
 const IN_FLIGHT_TYPE: &str = "https://maidan.dev/problems/idempotency-key-in-flight";
 
+/// The most rows the server returns for one page: it clamps a larger `limit`
+/// to this. The paging helpers ask for no more, because they stop at the first
+/// short page, and a clamped page would look like the last one.
+pub const MAX_PAGE_SIZE: usize = 500;
+
+/// The limit a paging helper asks for: `n`, 100 when it is 0, never more than
+/// [`MAX_PAGE_SIZE`].
+pub(crate) fn page_size(n: usize) -> usize {
+    if n == 0 {
+        100
+    } else {
+        n.min(MAX_PAGE_SIZE)
+    }
+}
+
 /// 64 random bits from the std hasher's per-process random keys, mixed with
 /// the clock and a counter. Enough for a unique key and for jitter; not a
 /// secret.
@@ -382,8 +397,9 @@ impl Client {
         Ok(answer.raw)
     }
 
-    /// Every event after `after_id`, `limit` (default 100) per page, fetched
-    /// as the iterator is consumed. Other `query` keys pass through.
+    /// Every event after `after_id`, `limit` (default 100, at most
+    /// [`MAX_PAGE_SIZE`]) per page, fetched as the iterator is consumed. Other
+    /// `query` keys pass through.
     pub fn list_events_all<'a>(
         &'a self,
         workspace_id: &'a str,
@@ -395,10 +411,7 @@ impl Client {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
         let find = |key: &str| query.iter().find(|(k, _)| *k == key).map(|(_, v)| *v);
-        let limit: usize = find("limit")
-            .and_then(|v| v.parse().ok())
-            .filter(|n| *n > 0)
-            .unwrap_or(100);
+        let limit = page_size(find("limit").and_then(|v| v.parse().ok()).unwrap_or(0));
         let mut after: i64 = find("after_id").and_then(|v| v.parse().ok()).unwrap_or(0);
         Pager::new(move || {
             let limit_s = limit.to_string();
@@ -659,14 +672,14 @@ impl Threads<'_> {
             None,
         )
     }
-    /// Every live thread in the channel, `page_size` (0 = 100) per request,
-    /// fetched as the iterator is consumed.
+    /// Every live thread in the channel, `size` (0 = 100, at most
+    /// [`MAX_PAGE_SIZE`]) per request, fetched as the iterator is consumed.
     pub fn list_all(
         &self,
         channel_id: &str,
-        page_size: usize,
+        size: usize,
     ) -> impl Iterator<Item = Result<Thread>> + '_ {
-        let page_size = if page_size == 0 { 100 } else { page_size };
+        let page_size = page_size(size);
         let channel_id = channel_id.to_string();
         let c = self.c;
         let mut cursor: Option<String> = None;
@@ -788,6 +801,14 @@ mod tests {
 
         let refetch_wrong_status = err(500, json!({ "must_refetch": true }));
         assert!(!refetch_wrong_status.is_cursor_too_old());
+    }
+
+    #[test]
+    fn a_page_size_is_defaulted_and_capped_at_the_servers_limit() {
+        assert_eq!(page_size(0), 100);
+        assert_eq!(page_size(7), 7);
+        assert_eq!(page_size(MAX_PAGE_SIZE), MAX_PAGE_SIZE);
+        assert_eq!(page_size(MAX_PAGE_SIZE + 1), MAX_PAGE_SIZE);
     }
 
     #[test]

@@ -115,6 +115,20 @@ func New(baseURL, token string) *Client {
 
 const inFlightType = ProblemBase + "idempotency-key-in-flight"
 
+// MaxPageSize is the most rows the server returns for one page: it clamps a
+// larger limit to this. The paging helpers ask for no more, because they stop
+// at the first short page, and a clamped page would look like the last one.
+const MaxPageSize = 500
+
+// pageSize is the limit a paging helper asks for: n, or 100 when n is not
+// positive, and never more than MaxPageSize.
+func pageSize(n int) int {
+	if n <= 0 {
+		return 100
+	}
+	return min(n, MaxPageSize)
+}
+
 // NewIdempotencyKey returns a fresh Idempotency-Key (a random UUID): one per
 // logical write, reused by its retries.
 func NewIdempotencyKey() string {
@@ -358,16 +372,15 @@ func (s *WorkspacesService) ListEvents(id string, query url.Values) ([]StoredEve
 }
 
 // ListEventsAll calls fn for every event after query's after_id, fetching
-// query's limit (default 100) per page. It stops at the first error fn returns.
+// query's limit (default 100, at most MaxPageSize) per page. It stops at the
+// first error fn returns.
 func (s *WorkspacesService) ListEventsAll(id string, query url.Values, fn func(StoredEvent) error) error {
 	q := url.Values{}
 	for k, v := range query {
 		q[k] = append([]string(nil), v...)
 	}
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	if limit <= 0 {
-		limit = 100
-	}
+	n, _ := strconv.Atoi(q.Get("limit"))
+	limit := pageSize(n)
 	after, _ := strconv.ParseInt(q.Get("after_id"), 10, 64)
 	for {
 		q.Set("limit", strconv.Itoa(limit))
@@ -427,15 +440,14 @@ func (s *ThreadsService) List(channelID string, query url.Values) ([]Thread, err
 	return callList[Thread](s.c, "/channels/"+channelID+"/threads"+qs(query))
 }
 
-// ListAll calls fn for every live thread in the channel, fetching pageSize
-// (default 100) per request. It stops at the first error fn returns.
-func (s *ThreadsService) ListAll(channelID string, pageSize int, fn func(Thread) error) error {
-	if pageSize <= 0 {
-		pageSize = 100
-	}
+// ListAll calls fn for every live thread in the channel, fetching size
+// (default 100, at most MaxPageSize) per request. It stops at the first error
+// fn returns.
+func (s *ThreadsService) ListAll(channelID string, size int, fn func(Thread) error) error {
+	limit := pageSize(size)
 	cursor := ""
 	for {
-		q := url.Values{"limit": {strconv.Itoa(pageSize)}}
+		q := url.Values{"limit": {strconv.Itoa(limit)}}
 		if cursor != "" {
 			q.Set("cursor", cursor)
 		}
@@ -448,7 +460,7 @@ func (s *ThreadsService) ListAll(channelID string, pageSize int, fn func(Thread)
 				return err
 			}
 		}
-		if len(page) < pageSize {
+		if len(page) < limit {
 			return nil
 		}
 		cursor = page[len(page)-1].ID

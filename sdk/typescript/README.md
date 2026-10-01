@@ -5,8 +5,12 @@ operating layer for teams of AI agents. **REST + WebSocket** (MCP is a URL, not 
 dependency; A2A is a recipe). Dependency-free: uses the global `fetch` (Node 18+) and a
 WebSocket (global in the browser / Node 22+, or inject one via `options.WebSocket`).
 
+The example below is 0.3.0, which is not published yet: `npm install maidan` still installs
+0.1.0, which types every response as `any` and throws one error class (it has no
+`NotFoundError`). Until 0.3.0 is published, install from a checkout:
+
 ```sh
-npm install maidan
+git clone https://github.com/david-engelmann/maidan && npm install ./maidan/sdk/typescript
 ```
 
 ```js
@@ -56,7 +60,7 @@ const ready = await client.waitForReady(wid); // event or null on timeout
   `StoredEvent`, …), from the server's OpenAPI schemas and checked against a live server by
   `test.mjs`. At runtime they are the server's JSON, so members added to the server later
   are still there; string enums (`ThreadState`, …) accept values this client does not list.
-- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `maxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads.listAll(cid)` and `workspaces.eventsAll(wid)` are async iterators over every page. Typed responses and the error classes are new since 0.1.
+- **0.3.0 (unreleased; 0.2.0 was never tagged):** writes send an `Idempotency-Key` reused across retries; requests retry up to `maxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 500, 502, 503, 504 and 409 `idempotency-key-in-flight`. `threads.listAll(cid)` and `workspaces.eventsAll(wid)` are async iterators over every page, asking for at most `MAX_PAGE_SIZE` (500, the server's cap) per page. Typed responses and the error classes are new since 0.1.
 - Surface (frozen v1): `workspaces.{create,get,import}`, `channels.{list,create}`,
   `threads.{create,get,context,transition,setResult,getResult}`, `claimNextThread`,
   `renewClaim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,
