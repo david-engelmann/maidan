@@ -211,17 +211,19 @@ cosign verify "ghcr.io/david-engelmann/maidan-server:${MAIDAN_TAG}" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-The image's CycloneDX SBOM is attested to the same digest by the same workflow:
+That signature is all a tag up to and including v412.0.0 carries: those releases have no
+SBOM attestation, so `cosign verify-attestation` fails on them. From the first release after
+v412.0.0, the image's CycloneDX SBOM is also attested to the same digest by the same
+workflow. For such a tag:
 
 ```sh
-cosign verify-attestation --type cyclonedx "ghcr.io/david-engelmann/maidan-server:${MAIDAN_TAG}" \
+cosign verify-attestation --type cyclonedx "ghcr.io/david-engelmann/maidan-server:<tag>" \
   --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 Release binaries, the CLI and Postgres images, and the SBOMs verify the same way; see
-[SECURITY.md](SECURITY.md#verifying-a-release). Tags up to and including v412.0.0 have no
-SBOM attestation.
+[SECURITY.md](SECURITY.md#verifying-a-release).
 
 ### Build + test
 

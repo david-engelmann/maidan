@@ -160,6 +160,7 @@ non-required job, and a skipped required job reports as passed.
 | `pitr drill` | point-in-time recovery to a chosen moment | no |
 | `open work` | Open Work's in-flight rows and stamp against history | no |
 | `changelog (released sections)` | a released CHANGELOG section gains no entries after its tag | no |
+| `deploy pins` | every deploy pin and install command names the newest tagged release (`scripts/check-deploy-pins.sh` lists them) | no |
 | `sqlite backup drill` | a SQLite snapshot taken mid-write, restored over a killed server's files | no |
 | `replica routing (LSN)` | read-your-writes across a streaming replica | no |
 | `ui tests (playwright)` | the `/ui` specs in a headless browser | no |

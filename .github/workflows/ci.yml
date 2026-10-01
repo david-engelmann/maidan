@@ -630,6 +630,20 @@ jobs:
       - name: Released sections match their tags
         run: bash scripts/check-changelog-released.sh
 
+  deploy-pins:
+    # Every deploy path and install command pins the newest tagged CHANGELOG
+    # section (the script lists them). Red once a tag is cut, until the one PR
+    # that bumps every pin merges. Not required.
+    name: deploy pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Deploy pins match the newest tagged release
+        run: bash scripts/check-deploy-pins.sh
+
   sqlite-backup-drill:
     # The SQLite half of backup and restore: a VACUUM INTO snapshot taken while
     # a writer runs, restored over a killed server's database and an orphaned

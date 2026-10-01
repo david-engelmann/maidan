@@ -8,6 +8,10 @@ podSecurityContext:
   fsGroup: 65532
   runAsNonRoot: true
 
+# Set by the prod values files. A production render refuses the development
+# image below (`maidan-server:dev`) and needs a release tag or a digest.
+production: false
+
 image:
   repository: maidan-server
   tag: dev
@@ -58,6 +62,9 @@ config:
   ARTIFACT_LOCALFS_ROOT: "/data/artifacts"
   MAIDAN_SHUTDOWN_DRAIN_SECS: "10"
 
+# Development default. A production render (`production: true`) refuses it,
+# and any value holding the placeholder CHANGE_ME, with a message naming what to
+# set; prefer `existingSecret` there.
 secrets:
   DATABASE_URL: "postgres://maidan:maidan@postgres:5432/maidan"
 

@@ -234,16 +234,24 @@ healthy, authenticates `/me` with the one-time token, and confirms anonymous
 access is rejected. A source checkout or locally built image cannot satisfy
 that release gate.
 
-### HTTP bootstrap (alternative)
+### HTTP bootstrap (development only)
 
-When bearer auth is enabled, unauthenticated `POST /workspaces` and
-`POST /workspaces/:wid/members` require `MAIDAN_BOOTSTRAP=1` **and** an image built
-with the `bootstrap` Cargo feature. Only the **first** workspace may be created via
-bootstrap; a second `POST /workspaces` returns `403`. Typical seed (private network):
+`maidan init` above is how a deployment gets its first token, on a private network
+too. The published server image is built without the `bootstrap` Cargo feature, so
+the routes below do not exist in it.
 
-1. Set `MAIDAN_BOOTSTRAP=1`, `AUTH_DISABLED=1`, and `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` (the acknowledgement — `AUTH_DISABLED` alone now refuses to boot).
-2. Create workspace + member, mint admin token.
-3. Unset those flags, set `MAIDAN_ENV=production`, restart.
+A development build with the feature (`cargo run`, or
+`docker build --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 -f crates/maidan-server/Dockerfile .`)
+serves unauthenticated `POST /workspaces` and `POST /workspaces/:wid/members` when
+`MAIDAN_BOOTSTRAP=1` is set. Only the **first** workspace may be created that way; a
+second `POST /workspaces` returns `403`. Those routes mint no token, so a development
+seed over HTTP also runs without auth, which needs both variables:
+
+1. `AUTH_DISABLED=1` and `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` (the acknowledgement:
+   `AUTH_DISABLED` alone refuses to boot, and with `MAIDAN_ENV=production` it refuses
+   regardless), plus `MAIDAN_BOOTSTRAP=1`.
+2. Create the workspace and member, mint an admin token.
+3. Unset all three and restart with auth on.
 
 Integration tests use `AUTH_DISABLED=1` + `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` (bootstrap flag not required).
 
@@ -690,9 +698,9 @@ Charts under `helm/maidan` (server) and `helm/maidan-stack` (optional Postgres +
 
 | Values file | Use |
 |-------------|-----|
-| `values.yaml` | Dev defaults |
-| `values-prod.yaml` | HPA + ingress (manual TLS secret) |
-| `values-cert-manager.yaml` | Ingress + `cert-manager.io/cluster-issuer` annotation |
+| `values.yaml` | Dev defaults (`maidan-server:dev`, a development `DATABASE_URL`) |
+| `values-prod.yaml` | The release image, production refusals, HPA + ingress (manual TLS secret) |
+| `values-cert-manager.yaml` | Ingress + `cert-manager.io/cluster-issuer` annotation; layer on `values-prod.yaml` |
 | `values-profile-otel.yaml` | JSON logs + OTLP traces/metrics (`OTLP_ENDPOINT`, `OTLP_METRICS=1`) |
 | `values-profile-redis.yaml` | `MAIDAN_RATE_LIMIT_REDIS_URL` (multi-replica quotas) |
 | `values-profile-s3.yaml` | S3-compatible `ARTIFACT_BACKEND` |
@@ -700,11 +708,28 @@ Charts under `helm/maidan` (server) and `helm/maidan-stack` (optional Postgres +
 
 Layer profiles as needed; see `helm/maidan/PROFILES.md` for example `helm upgrade` commands (`v88.0.0`).
 
-**cert-manager:** install [cert-manager](https://cert-manager.io/) and a `ClusterIssuer`, then:
+**Production refusals.** `values-prod.yaml` sets `production: true`, and the chart then
+refuses to render: a development image (`image.repository: maidan-server`, or a tag of
+`dev`, `latest` or empty without `image.digest`); and, unless `existingSecret` names a
+Secret holding `DATABASE_URL` and `MAIDAN_CONTENT_KEK`, an unset `secrets.DATABASE_URL`,
+the development default `postgres://maidan:maidan@postgres:5432/maidan`, or any empty
+`secrets` value. `config` values, `image.tag` and `image.digest` holding `CHANGE_ME` fail every render. `secrets` and `contentKek` values holding `CHANGE_ME` fail when `existingSecret` is unset. Each
+refusal names the value to set. `maidan-stack/values-prod.yaml` sets the same flag
+(`maidan.production`) and pins the same release.
+
+**cert-manager:** install [cert-manager](https://cert-manager.io/) and a `ClusterIssuer`,
+create the `maidan-secrets` Secret (`DATABASE_URL`, `MAIDAN_CONTENT_KEK`), then:
 
 ```bash
-helm install maidan ./helm/maidan -f ./helm/maidan/values-cert-manager.yaml -n maidan --create-namespace
+helm install maidan ./helm/maidan \
+  -f ./helm/maidan/values-prod.yaml \
+  -f ./helm/maidan/values-cert-manager.yaml \
+  --set existingSecret=maidan-secrets \
+  -n maidan --create-namespace
 ```
+
+`values-cert-manager.yaml` alone refuses to render: `values-prod.yaml` is what names the
+release image.
 
 **CI validation:** `./scripts/helm-template-smoke.sh` and `./scripts/helm-install-kind-smoke.sh` (kind + Docker).
 
@@ -714,7 +739,15 @@ then informational. Find a release's digest with
 `docker buildx imagetools inspect ghcr.io/david-engelmann/maidan-server:<tag>`,
 and verify its signature first (README, "Prebuilt image").
 
-Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix). For the umbrella chart, substitute `RELEASE-postgresql` / `RELEASE-minio` hostnames in `maidan-stack/values-prod.yaml` with your Helm release name.
+Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix), or name an
+`existingSecret` that already holds it. Rendering does not check that Secret
+or its keys. For the umbrella chart, `S3_ENDPOINT` names the release's MinIO Service
+itself; `DATABASE_URL` (`postgres://maidan:<password>@<release>-postgresql:5432/maidan`) and
+`S3_SECRET_ACCESS_KEY` are yours to set. Without `maidan.existingSecret` the
+render refuses until those values are nonempty (see `helm/maidan/README.md`,
+"Umbrella stack"). With `maidan.existingSecret`, create that Secret with
+`DATABASE_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and
+`MAIDAN_CONTENT_KEK` before installation; the render does not verify them.
 
 ## Horizontal scaling (`v105.0.0`)
 

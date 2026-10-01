@@ -1,5 +1,11 @@
 replicaCount: 2
 
+# Turns on the chart's production refusals (templates/_helpers.tpl): no
+# development image, no untagged one, and, unless `existingSecret` names a
+# Secret holding DATABASE_URL and MAIDAN_CONTENT_KEK, no development or empty
+# `secrets` value.
+production: true
+
 # The base values.yaml ships `maidan-server:dev` for local kind installs, so a
 # production overlay has to name a real image or it deploys the dev tag from an
 # unqualified repository. Set `image.tag` to the release you intend to run —

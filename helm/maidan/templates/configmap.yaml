@@ -5,6 +5,7 @@ metadata:
   labels:
     {{- include "maidan.labels" . | nindent 4 }}
 data:
+  {{- /* Through tpl, so a value can name the release: the stack's S3_ENDPOINT. */}}
   {{- range $k, $v := .Values.config }}
-  {{ $k }}: {{ $v | quote }}
+  {{ $k }}: {{ tpl (toString $v) $ | quote }}
   {{- end }}

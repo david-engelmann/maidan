@@ -1,5 +1,9 @@
-# Production ingress with cert-manager.
+# Production ingress with cert-manager. Layer it on values-prod.yaml, which names
+# the release image:
+#   -f values-prod.yaml -f values-cert-manager.yaml
+# Alone it refuses to render rather than deploy the development image.
 # Requires cert-manager + a ClusterIssuer named below.
+production: true
 replicaCount: 2
 
 ingress:

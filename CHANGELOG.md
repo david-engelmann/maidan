@@ -957,6 +957,38 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** `contracts/event-kinds.json` is checked against
   `EventKind::ALL`, so a new kind cannot be left out of it.
 
+### Deploy files that name a real release and refuse placeholders
+
+- **Fixed:** `helm/maidan-stack/values-prod.yaml` named no image, so a stack
+  production install pulled `maidan-server:dev`. It now names
+  `ghcr.io/david-engelmann/maidan-server` at `v412.0.0` with `IfNotPresent`.
+- **Added:** the maidan chart's `production` value, set by `values-prod.yaml`,
+  `values-cert-manager.yaml` and the stack's prod values. A production render
+  refuses the local `maidan-server` repository, a `dev`, `latest` or empty tag
+  without a digest, and, without `existingSecret`, an unset or development
+  `DATABASE_URL` (`maidan:maidan@postgres`) or any empty `secrets` value.
+  `config`, `image.tag` and `image.digest` holding `CHANGE_ME` fail every
+  render; `secrets` and `contentKek` holding it fail when `existingSecret` is
+  unset. Each refusal names the value to set. Dev and CI values render as before.
+- **Changed:** the stack's prod values leave `DATABASE_URL` and
+  `S3_SECRET_ACCESS_KEY` for the operator instead of shipping `CHANGE_ME`, and
+  config values go through `tpl`, so `S3_ENDPOINT` names the release's MinIO
+  Service instead of a literal `RELEASE-minio`.
+- **Fixed:** the stack's vendored `charts/maidan-0.1.0.tgz` predated
+  `enableServiceLinks: false`, so stack installs still got service-link
+  variables. It is repackaged, and `helm-template-smoke.sh` fails when it
+  differs from `helm/maidan`.
+- **Fixed:** `k8s/overlays/prod` pinned `v0.0.1`, which does not exist; it pins
+  `v412.0.0`. The cert-manager install commands layer `values-prod.yaml`, the
+  README's `cosign verify-attestation` example no longer names a tag without an
+  attestation, and `docs/Production.md` makes `maidan init` the only production
+  seed, with the HTTP bootstrap labelled development only.
+- **Added:** `scripts/check-deploy-pins.sh`, run in CI as `deploy pins` (not
+  required): every deploy pin and install command must name the highest
+  CHANGELOG version whose tag is present, whatever the section order. It
+  checks `MAIDAN_VERSION` in the quickstart Dockerfile, not that file's
+  tarball SHA-256s.
+
 ### Open Work names what blocks a deploy, and is kept by one hand
 
 - **Changed:** Open Work opens with **Before anyone deploys**: the release

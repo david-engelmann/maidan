@@ -45,6 +45,7 @@ suite takes several minutes: run it in the background, don't sleep and poll.
 ```sh
 bash scripts/check-agent-contract.sh     # golden JSON under contracts/
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the README agree on the release
+bash scripts/check-deploy-pins.sh        # every deploy pin names the newest tagged release
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/)
 cargo vet --locked                       # every crate in Cargo.lock audited or exempted (supply-chain/)
 ```
@@ -292,6 +293,17 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `cargo vet (root lockfile)` job goes red. Run `cargo vet`, then certify or
   exempt what it lists, and commit `supply-chain/` with the lockfile
   ([`docs/Conventions.md`](docs/Conventions.md), "Dependencies").
+- **Cutting a release means bumping every deploy pin in one PR** (Helm prod
+  values for both charts, the quickstart compose file and Dockerfile's
+  `MAIDAN_VERSION`, the prod kustomize overlay, the install commands in the
+  README and `docs/Production.md`). The Dockerfile's tarball SHA-256s move
+  with that version, but `scripts/check-deploy-pins.sh` does not check them:
+  it checks `MAIDAN_VERSION` and the other pins it lists, and goes red (the
+  `deploy pins` job) while any differs from the newest tagged CHANGELOG
+  section. A change to `helm/maidan` also means repackaging
+  `helm/maidan-stack/charts/maidan-0.1.0.tgz`
+  (`helm package helm/maidan -d helm/maidan-stack/charts`), or the stack keeps
+  rendering the old chart; `helm-template-smoke.sh` fails while they differ.
 - **Splitting a large source file into a module directory** can break the
   `bootstrap compile-time strip` job (imports unused under
   `--no-default-features`) and `check-agent-contract.sh` (it greps paths).
