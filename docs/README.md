@@ -56,6 +56,7 @@ Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 |---|---|
 | [Open Work](Open%20Work.md) | What is in flight, what comes next (ranked), what waits on a decision |
 | [Roadmap](Roadmap.md) | How work ships, the gates, the horizons, what Maidan will not become |
+| [Context Economics](Context%20Economics.md) | How Maidan makes agents spend less on models: the research, the principles and Program C |
 | [Capabilities](Capabilities.md) | Every release and source record: what shipped, and whether it is tagged |
 | [Gates/maidan-scale-1.0](Gates/maidan-scale-1.0.md) | The scale gate's criteria and evidence |
 
