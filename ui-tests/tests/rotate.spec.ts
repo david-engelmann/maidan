@@ -39,8 +39,10 @@ test("the Session tab rotates the token this page runs on, and keeps working", a
   expect(fresh).not.toBe("");
   expect(fresh).not.toBe(old.secret);
   await page.click("#conn-edit");
-  await expect(page.locator("#token")).toHaveValue(fresh);
-  expect(await page.evaluate(() => localStorage.getItem("maidan_token"))).toBe(fresh);
+  // The successor is exchanged for a new session. The page does not keep it.
+  await expect(page.locator("#token")).toHaveValue("");
+  expect(await page.evaluate(() => localStorage.getItem("maidan_token"))).toBeNull();
+  expect(await page.evaluate(async () => (await fetch("/me")).status)).toBe(200);
 
   expect(await meStatus(request, old.secret), "the old secret stopped working").toBe(401);
   expect(await meStatus(request, fresh)).toBe(200);
@@ -61,7 +63,10 @@ test("an admin rotates another token from the Tokens tab without losing their ow
   await expect(page.locator("#mint-title")).toContainText("New token (shown once)");
   const fresh = (await page.locator("#mint-secret").textContent()) ?? "";
   expect(fresh).not.toBe(agent.secret);
-  expect(await page.evaluate(() => localStorage.getItem("maidan_token"))).toBe(fx.admin_token);
+  // Rotating someone else's token does not replace this browser's session,
+  // and the admin secret was never stored.
+  expect(await page.evaluate(() => localStorage.getItem("maidan_token"))).toBeNull();
+  expect(await page.evaluate(async () => (await fetch("/me")).status)).toBe(200);
   expect(await meStatus(request, agent.secret)).toBe(401);
   expect(await meStatus(request, fresh)).toBe(200);
 });
