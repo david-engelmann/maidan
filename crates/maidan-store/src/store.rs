@@ -1443,7 +1443,8 @@ pub trait SecretStore: Send + Sync {
 #[async_trait]
 pub trait MemberFreezeStore: Send + Sync {
     /// Member-freeze kill-switch. `freeze_member` records the freeze, drops
-    /// the member's active leases and appends `MemberFrozen` in one tx,
+    /// the member's active leases (charging each claim's worked wall time)
+    /// and appends `MemberFrozen` in one tx,
     /// returning the freeze, the number of threads released and the event to
     /// publish; `claim_next` refuses a frozen member. Re-freezing refreshes the
     /// record and appends another event.
@@ -3231,7 +3232,8 @@ pub trait GovernanceAuditStore: Send + Sync {
     ) -> Result<(Member, ScimUser), StoreError>;
     /// Update a SCIM user: rename it when `user_name` is given, and set its
     /// link's `external_id` and `active`. Deactivating revokes the member's
-    /// live tokens in the same transaction, each recorded. `None` when the
+    /// live tokens and releases their claims (charging each claim's worked
+    /// wall time) in the same transaction, each revocation recorded. `None` when the
     /// workspace has no such SCIM user; a `user_name` another member of the
     /// workspace holds is a [`StoreError::Conflict`].
     async fn scim_update_user_audited(

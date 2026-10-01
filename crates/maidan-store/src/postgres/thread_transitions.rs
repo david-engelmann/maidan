@@ -161,14 +161,26 @@ pub(crate) async fn transition_in_tx(
     .execute(&mut **tx)
     .await?;
 
+    // Closing (or archiving) ends the claim. Charge the time it worked, then
+    // clear it in the same write. A non-terminal transition leaves the claim.
+    let terminal = to_state.is_terminal();
+    if terminal {
+        super::threads::charge_open_claim_in_tx(tx, thread_id).await?;
+    }
     let row = sqlx::query(
-        "UPDATE maidan_threads SET state = $1, updated_at = $2
+        "UPDATE maidan_threads SET state = $1, updated_at = $2,
+            assignee_id = CASE WHEN $4::boolean THEN NULL ELSE assignee_id END,
+            assignment_expires_at = CASE WHEN $4::boolean THEN NULL ELSE assignment_expires_at END,
+            claim_lease_id = CASE WHEN $4::boolean THEN NULL ELSE claim_lease_id END,
+            claimed_at = CASE WHEN $4::boolean THEN NULL ELSE claimed_at END,
+            work_started_at = CASE WHEN $4::boolean THEN NULL ELSE work_started_at END
          WHERE id = $3
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(to_state.as_str())
     .bind(now)
     .bind(thread_id.0)
+    .bind(terminal)
     .fetch_one(&mut **tx)
     .await?;
 

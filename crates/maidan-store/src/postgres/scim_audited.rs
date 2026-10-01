@@ -32,8 +32,8 @@ pub async fn provision(
 
 /// `None` when the workspace has no such SCIM user. A rename changes the
 /// member's handle and nothing else: the id, and everything attributed to it,
-/// stay. Deactivating revokes the member's live tokens in the same
-/// transaction.
+/// stay. Deactivating revokes the member's live tokens and releases their
+/// claims, charging each claim's worked wall time, in the same transaction.
 pub async fn update_user(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -56,6 +56,9 @@ pub async fn update_user(
     }
     if !active {
         revoke_member_tokens(&mut tx, workspace_id, member_id).await?;
+        // Deactivation ends the member's claims. Charge the time each one
+        // worked, then release it, in this same transaction.
+        super::threads::release_member_claims_in_tx(&mut tx, member_id).await?;
     }
     audit::append_counted(&mut tx, event).await?;
     tx.commit().await?;

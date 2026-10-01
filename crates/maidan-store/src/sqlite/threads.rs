@@ -99,6 +99,117 @@ pub async fn list(pool: &SqlitePool, channel_id: ChannelId) -> Result<Vec<Thread
     rows.iter().map(row_to_thread).collect()
 }
 
+/// Seconds an acknowledged claim worked up to `ended`. `None` when the claim
+/// was never acknowledged: that charges nothing.
+fn worked_secs(started: Option<DateTime<Utc>>, ended: DateTime<Utc>) -> Option<i64> {
+    started.map(|start| (ended - start).num_seconds().max(0))
+}
+
+/// Charge the claim this thread still holds. SQLite stamps `work_started_at`
+/// from the host clock, so the end is that same clock. An unacknowledged
+/// claim is charged nothing. `NotFound` when the thread is gone.
+pub(crate) async fn charge_open_claim_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    let row = sqlx::query("SELECT work_started_at FROM maidan_threads WHERE id = ?")
+        .bind(thread_id.0)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+    let worked = worked_secs(row.get("work_started_at"), Utc::now());
+    budget::charge_wall_in_tx(tx, thread_id, worked).await?;
+    Ok(())
+}
+
+/// Release every live claim `member_id` holds, charging each acknowledged
+/// claim first. See the Postgres twin.
+pub(crate) async fn release_member_claims_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    member_id: MemberId,
+) -> Result<u64, StoreError> {
+    let ended = Utc::now();
+    let rows = sqlx::query(
+        "SELECT id, work_started_at FROM maidan_threads
+         WHERE assignee_id = ? AND tombstoned_at IS NULL
+           AND state NOT IN ('closed', 'archived')",
+    )
+    .bind(member_id.0)
+    .fetch_all(&mut **tx)
+    .await?;
+    for row in &rows {
+        let worked = worked_secs(row.get("work_started_at"), ended);
+        budget::charge_wall_in_tx(tx, ThreadId(row.get("id")), worked).await?;
+    }
+    let now = ended.to_rfc3339();
+    let released = sqlx::query(
+        "UPDATE maidan_threads
+         SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL,
+             claimed_at = NULL, work_started_at = NULL, updated_at = ?
+         WHERE assignee_id = ? AND tombstoned_at IS NULL
+           AND state NOT IN ('closed', 'archived')",
+    )
+    .bind(&now)
+    .bind(member_id.0)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+    Ok(released)
+}
+
+const CLEAR_CLAIM: &str = "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
+         WHERE id = ?
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id";
+
+async fn clear_assignee_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+) -> Result<Thread, StoreError> {
+    charge_open_claim_in_tx(tx, thread_id).await?;
+    let now = Utc::now().to_rfc3339();
+    let row = sqlx::query(CLEAR_CLAIM)
+        .bind(&now)
+        .bind(thread_id.0)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+    row_to_thread(&row)
+}
+
+async fn release_fenced_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+    lease_id: ClaimLeaseId,
+) -> Result<Thread, StoreError> {
+    let row = sqlx::query(
+        "SELECT work_started_at FROM maidan_threads
+         WHERE id = ? AND assignee_id = ? AND claim_lease_id = ? AND tombstoned_at IS NULL",
+    )
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(lease_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let worked = worked_secs(row.get("work_started_at"), Utc::now());
+    budget::charge_wall_in_tx(tx, thread_id, worked).await?;
+    let now = Utc::now().to_rfc3339();
+    let row = sqlx::query(
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
+         WHERE id = ? AND assignee_id = ? AND claim_lease_id = ? AND tombstoned_at IS NULL
+         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+    )
+    .bind(&now)
+    .bind(thread_id.0)
+    .bind(member_id.0)
+    .bind(lease_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    row_to_thread(&row)
+}
+
 /// Set the assignee unconditionally (assign / handoff). `NotFound` if absent or
 /// tombstoned.
 pub async fn assign(
@@ -111,6 +222,9 @@ pub async fn assign(
     // This variant emits no event, so it does not pass through
     // `append_assignment_event` where the other paths record.
     let mut tx = pool.begin().await?;
+    // A reassignment ends the claim it replaces. Charge it before the write
+    // clears the working clock; a free thread charges nothing.
+    charge_open_claim_in_tx(&mut tx, thread_id).await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = ? AND c.id = maidan_threads.channel_id)
@@ -248,6 +362,7 @@ pub async fn assign_with_event(
     .ok_or(StoreError::NotFound)?
     .get::<Option<Uuid>, _>("assignee_id")
     .map(MemberId);
+    charge_open_claim_in_tx(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
@@ -271,17 +386,10 @@ pub async fn assign_with_event(
 
 /// Clear the assignee. `NotFound` if absent.
 pub async fn unassign(pool: &SqlitePool, thread_id: ThreadId) -> Result<Thread, StoreError> {
-    let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
-         WHERE id = ?
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
-    )
-    .bind(Utc::now().to_rfc3339())
-    .bind(thread_id.0)
-    .fetch_optional(pool)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    row_to_thread(&row)
+    let mut tx = pool.begin().await?;
+    let thread = clear_assignee_in_tx(&mut tx, thread_id).await?;
+    tx.commit().await?;
+    Ok(thread)
 }
 
 /// Clear the assignee and append its `ThreadAssignmentChanged` event in one
@@ -299,17 +407,7 @@ pub async fn unassign_with_event(
         .ok_or(StoreError::NotFound)?
         .get::<Option<Uuid>, _>("assignee_id")
         .map(MemberId);
-    let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
-         WHERE id = ?
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
-    )
-    .bind(Utc::now().to_rfc3339())
-    .bind(thread_id.0)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    let thread = row_to_thread(&row)?;
+    let thread = clear_assignee_in_tx(&mut tx, thread_id).await?;
     let stored = append_assignment_event(&mut tx, &thread, actor_id, previous, None).await?;
     tx.commit().await?;
     Ok((thread, stored))
@@ -428,6 +526,7 @@ async fn claim_next_candidate(
             dm_channel: "?4",
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
+            lapsed_worked_secs: "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN MAX(0, CAST(strftime('%s', cand.assignment_expires_at) AS INTEGER) - CAST(strftime('%s', cand.work_started_at) AS INTEGER)) ELSE 0 END",
         },
     );
     Ok(sqlx::query(&sql)
@@ -994,19 +1093,10 @@ pub async fn release_claim(
     member_id: MemberId,
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
-    let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
-         WHERE id = ? AND assignee_id = ? AND claim_lease_id = ? AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
-    )
-    .bind(Utc::now().to_rfc3339())
-    .bind(thread_id.0)
-    .bind(member_id.0)
-    .bind(lease_id.0)
-    .fetch_optional(pool)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    row_to_thread(&row)
+    let mut tx = pool.begin().await?;
+    let thread = release_fenced_in_tx(&mut tx, thread_id, member_id, lease_id).await?;
+    tx.commit().await?;
+    Ok(thread)
 }
 
 /// Release a claim and append its `ThreadAssignmentChanged` event in one tx.
@@ -1018,19 +1108,7 @@ pub async fn release_claim_with_event(
     lease_id: ClaimLeaseId,
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
-    let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
-         WHERE id = ? AND assignee_id = ? AND claim_lease_id = ? AND tombstoned_at IS NULL
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
-    )
-    .bind(Utc::now().to_rfc3339())
-    .bind(thread_id.0)
-    .bind(member_id.0)
-    .bind(lease_id.0)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    let thread = row_to_thread(&row)?;
+    let thread = release_fenced_in_tx(&mut tx, thread_id, member_id, lease_id).await?;
     let stored =
         append_assignment_event(&mut tx, &thread, member_id, Some(member_id), None).await?;
     tx.commit().await?;
