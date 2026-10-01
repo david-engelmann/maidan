@@ -594,9 +594,19 @@
           <pre id="cx-prompt"></pre>
         </div>
         <p class="cx-note">Replace <code>REPLACE_WITH_MAIDAN_TOKEN</code> (or set <code>MAIDAN_TOKEN</code>) with a token minted for that agent. Keep your own token out of agent configs.</p>
+        <div class="cx-block" id="cx-create">
+          <h3>New agent</h3>
+          <p class="cx-note">Creates the member, then mints a token with the worker preset <code>maidan.agent.worker</code>. That token can claim work, post, and hand it to review. It is not your browser token, and the snippets keep a placeholder until you paste it.</p>
+          <label>Display name <input id="cx-name" placeholder="Coder" autocomplete="off" /></label>
+          <label>Handle <input id="cx-handle" placeholder="coder" autocomplete="off" /></label>
+          <div class="cx-links">
+            <button type="button" class="primary" id="cx-create-agent">Create member and mint token</button>
+            <button type="button" id="cx-mint">Tokens for an existing member</button>
+          </div>
+          <p id="cx-secret" class="cx-note" hidden></p>
+        </div>
         <div class="cx-links">
           <a class="button" id="cx-cursor" href="#">Add to Cursor</a>
-          <button type="button" id="cx-mint">Mint an agent token</button>
           <a class="button" id="cx-llms" href="/llms.txt" target="_blank" rel="noopener">llms.txt for agents</a>
           <span id="cx-status" class="cx-note" role="status"></span>
         </div>
@@ -1164,7 +1174,7 @@
         <label>Member <input id="token-member" /></label>
         <label>Label <input id="token-label" /></label>
         <label>Capabilities (comma-separated)
-          <input id="token-caps" value="workspace:read,workspace:write,message:post" />
+          <input id="token-caps" value="workspace:read,workspace:write,message:post,thread:transition" />
         </label>
         <p id="attenuation-note" class="muted">
           <strong>Attenuation:</strong> a minted token can only be a <em>subset</em>
@@ -4283,6 +4293,95 @@
       document.getElementById("cx-mint").onclick = () => {
         document.getElementById("connect-dialog").close();
         openTool("tokens");
+      };
+      // The worker preset is the named set on the server (maidan.agent.worker):
+      // claim, post, and transition. The browser token is never written into
+      // a snippet or replaced by the agent secret.
+      const WORKER_PRESET = "maidan.agent.worker";
+      document.getElementById("cx-create-agent").onclick = async () => {
+        const button = document.getElementById("cx-create-agent");
+        const status = document.getElementById("cx-status");
+        const secretBox = document.getElementById("cx-secret");
+        if (!requireTokenForWrite()) {
+          status.textContent = "Sign in with an admin token first (maidan init prints one).";
+          return;
+        }
+        if (!wid()) {
+          status.textContent = "Set a workspace first.";
+          return;
+        }
+        const handle = document.getElementById("cx-handle").value.trim();
+        const display = document.getElementById("cx-name").value.trim();
+        if (!handle) {
+          status.textContent = "A handle is required. It is the name shown for that member on the board.";
+          return;
+        }
+        // One submission at a time. The one-time secret stays until a new
+        // token is actually minted, so a failed retry does not erase it.
+        if (button.disabled) return;
+        button.disabled = true;
+        persist();
+        status.textContent = "Creating the member…";
+        try {
+        let res;
+        try {
+          res = await fetch(`${base()}/workspaces/${wid()}/members`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ handle, display_name: display || null, kind: "agent" }),
+          });
+        } catch (e) {
+          status.textContent = unreachable(e);
+          return;
+        }
+        if (!res.ok) {
+          status.textContent = await responseError(res, "Could not create the member");
+          return;
+        }
+        const member = await res.json();
+        status.textContent = "Minting a worker token…";
+        try {
+          res = await fetch(`${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ label: handle, capability_set: WORKER_PRESET, capabilities: [] }),
+          });
+        } catch (e) {
+          status.textContent = unreachable(e);
+          return;
+        }
+        if (!res.ok) {
+          status.textContent = await responseError(res, "Member created, but the token was not minted");
+          return;
+        }
+        const minted = await res.json();
+        secretBox.hidden = false;
+        secretBox.replaceChildren();
+        document.getElementById("token-member").value = member.id;
+        const caps = (minted.capabilities || []).join(", ");
+        const lead = document.createElement("span");
+        lead.textContent = `Token for ${display || handle} (shown once). It can claim, post, and transition. Paste it where the snippet says REPLACE_WITH_MAIDAN_TOKEN. `;
+        const code = document.createElement("code");
+        code.id = "cx-secret-value";
+        code.textContent = minted.secret;
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = "Copy token";
+        copy.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(minted.secret);
+            status.textContent = "Token copied. The snippets still show a placeholder.";
+          } catch (_e) {
+            status.textContent = "Copy was blocked by the browser; select the token instead.";
+          }
+        };
+        secretBox.append(lead, code, document.createTextNode(" "), copy);
+        if (caps) secretBox.append(document.createTextNode(" Capabilities: " + caps + "."));
+        status.textContent = `Member ${handle} created. The worker preset is ${WORKER_PRESET}.`;
+        loadMembers();
+        } finally {
+          button.disabled = false;
+        }
       };
       document.querySelectorAll("#connect-dialog [data-copy]").forEach((b) => {
         b.onclick = async () => {

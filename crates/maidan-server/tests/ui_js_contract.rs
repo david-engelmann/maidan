@@ -810,6 +810,17 @@ fn ui_js_has_a_command_palette_and_connect_an_agent() {
         html.contains("id=\"board-onboard\"") && s.contains("function emptyChannelHelp("),
         "the empty board and an empty channel explain how work arrives"
     );
+    assert!(
+        html.contains("id=\"cx-create-agent\"")
+            && s.contains("capability_set: WORKER_PRESET")
+            && s.contains("const WORKER_PRESET = \"maidan.agent.worker\"")
+            && html.contains("thread:transition"),
+        "Connect an agent creates a member and mints the worker preset, which can transition"
+    );
+    assert!(
+        !s.contains("document.getElementById(\"token\").value = minted.secret"),
+        "minting an agent does not replace the browser token"
+    );
 }
 
 #[test]
