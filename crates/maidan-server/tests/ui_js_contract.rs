@@ -1262,6 +1262,57 @@ fn ui_js_lanes_are_space_not_boxes() {
     );
 }
 
+/// State on a card is a word in the foot, not a pill. The legend is gone.
+/// The open thread uses the same word. "Review" and "Approval" are words,
+/// not a tinted chip.
+#[test]
+fn ui_js_state_is_a_word_not_a_pill() {
+    assert!(
+        !HTML.contains("legend-box")
+            && !HTML.contains("What the badges mean")
+            && !HTML.contains("chrome-badge"),
+        "the badge legend and the pill class are gone"
+    );
+    assert!(
+        HTML.contains(".card-foot { display: flex; align-items: center; gap: 0.4rem; font-size: 12px; font-weight: 400; color: #63636c; }"),
+        "the card foot is 12px muted type"
+    );
+    assert!(
+        HTML.contains("#thread-badge { font-size: 12px; font-weight: 400; color: #63636c; }"),
+        "the thread state is the same word, not a pill"
+    );
+    assert!(
+        HTML.contains(
+            ".ny-kind { font-size: 12px; font-weight: 400; color: #63636c; white-space: nowrap; }"
+        ) && !HTML.contains(".ny-kind.gate")
+            && !HTML.contains("#ffedd5"),
+        "Review and Approval are words, not a tinted chip"
+    );
+    let js = script(HTML);
+    let board = function_body(js, "renderBoard");
+    assert!(
+        !board.contains("chromeBadge(")
+            && board.contains("stateWord.textContent = chrome.label")
+            && board.contains("card.append(t, foot)"),
+        "renderBoard puts the sessionChrome label in the card foot and does not paint a badge"
+    );
+    assert!(
+        board.contains("card.setAttribute(\"aria-label\", `${title}: ${chrome.label}`)"),
+        "the card's accessible name uses the same state word"
+    );
+    let header = function_body(js, "renderThreadHeader");
+    assert!(
+        !header.contains("chromeBadge(")
+            && header.contains("badgeBox.textContent = sessionChrome(th, lastGates[tid]).label"),
+        "the thread header shows the state word"
+    );
+    let row = function_body(js, "needsYouRow");
+    assert!(
+        row.contains("kind.textContent = item.kind === \"open_gate\" ? \"Approval\" : \"Review\""),
+        "a needs-you row says Review or Approval"
+    );
+}
+
 /// QA items from #1141 that were still true on main: a dead server must not
 /// surface as `TypeError: Failed to fetch` or as a lost post, a 403 search
 /// must not dump problem JSON, Open DM selects the conversation and names the

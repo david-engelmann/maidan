@@ -137,15 +137,6 @@
       #mint-banner code { word-break: break-all; }
       #session-rotate { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin: 0.5rem 0; }
       #session-rotate[hidden] { display: none; }
-      /* Session chrome — the label text carries the meaning; colour only reinforces (WCAG 1.4.1). */
-      .chrome-badge { display: inline-block; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; padding: 0.05rem 0.3rem; border-radius: 0.6rem; margin-right: 0.4rem; border: 1px solid transparent; vertical-align: middle; }
-      .chrome-running { background: #dcfce7; color: #166534; border-color: #86efac; }
-      .chrome-idle { background: #f4f4f5; color: #52525b; border-color: #d4d4d8; }
-      .chrome-needs-input { background: #fef9c3; color: #854d0e; border-color: #fde047; }
-      .chrome-needs-approval { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
-      .chrome-done { background: #e0e7ff; color: #3730a3; border-color: #a5b4fc; }
-      .chrome-legend { list-style: none; margin: 0.5rem 0 0; padding: 0.5rem 0 0; border-top: 1px solid var(--border); font-size: 0.7rem; color: var(--muted); }
-      .chrome-legend li { display: flex; gap: 0.4rem; align-items: baseline; padding: 0.1rem 0; cursor: default; }
       #collab-panel {
         border-top: 1px solid var(--border);
         padding: 0.75rem;
@@ -296,13 +287,6 @@
       #channel-list li { padding: 0.35rem 0.55rem; font-size: 0.9rem; color: #3f3f46; }
       #channel-list li:hover { background: #f1efe9; }
       #channel-list li.selected { background: #e6efe8; color: var(--accent); font-weight: 600; }
-      .chrome-badge { font-size: 0.62rem; padding: 0.08rem 0.4rem; letter-spacing: 0.04em; white-space: nowrap; margin-right: 0; }
-      .chrome-open { background: #f4f4f5; color: #3f3f46; border-color: #d4d4d8; }
-      .chrome-claimed { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
-      .chrome-in-review { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
-      .legend-box { margin-top: 0.9rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
-      .legend-box summary { font-size: 0.72rem; color: var(--muted); cursor: pointer; }
-      .chrome-legend { font-size: 0.68rem; margin-top: 0.4rem; border-top: none; }
       main { background: var(--bg); }
       /* Live: a slim status bar until connected; the raw feed is opt-in. */
       #live-panel { display: flex; flex-direction: column; flex: none; min-height: 0; padding: 0.45rem 1rem; border-bottom: 1px solid var(--line); background: var(--panel); }
@@ -366,7 +350,8 @@
         .card.fresh { animation: none; border-color: #22c55e; }
       }
       .card-title { font-weight: 600; font-size: 0.86rem; line-height: 1.3; margin: 0.3rem 0 0.45rem; }
-      .card-foot { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: var(--muted); }
+      /* State is a word in the foot, not a pill. */
+      .card-foot { display: flex; align-items: center; gap: 0.4rem; font-size: 12px; font-weight: 400; color: #63636c; }
       .card-foot .when { margin-left: auto; white-space: nowrap; }
       .card-foot .unclaimed { font-style: italic; }
       /* People */
@@ -384,6 +369,8 @@
       /* Thread */
       #collab-panel { max-height: none; flex: 1; margin: 0.5rem 1rem 1rem; border: 1px solid var(--line); border-radius: var(--radius); padding: 0.9rem 1rem; box-shadow: var(--shadow); }
       #thread-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
+      #thread-badge { font-size: 12px; font-weight: 400; color: #63636c; }
+      #thread-badge:empty { display: none; }
       #thread-header .th-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
       #thread-context { font-size: 1rem; font-weight: 650; color: var(--ink); }
       #thread-context.muted { font-weight: 400; color: var(--muted); font-size: 0.9rem; }
@@ -434,8 +421,7 @@
       #needs-you-list:empty { display: none; }
       .ny-item { display: grid; grid-template-columns: auto 1fr auto; gap: 0.35rem 0.75rem; align-items: center; padding: 0.6rem 0.9rem; border-top: 1px solid var(--line); }
       .ny-item:first-child { border-top: none; }
-      .ny-kind { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.45rem; border-radius: 0.6rem; border: 1px solid #fdba74; background: #ffedd5; color: #9a3412; white-space: nowrap; }
-      .ny-kind.gate { border-color: #fde047; background: #fef9c3; color: #854d0e; }
+      .ny-kind { font-size: 12px; font-weight: 400; color: #63636c; white-space: nowrap; }
       .ny-main { min-width: 0; }
       .ny-title { font-weight: 650; font-size: 0.9rem; color: var(--ink); cursor: pointer; }
       .ny-title:hover { text-decoration: underline; }
@@ -473,9 +459,8 @@
       .mate-text b { font-weight: 650; color: var(--ink); font-size: 0.78rem; }
       .mate-text small { color: var(--muted); font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .mate[data-state="idle"] { background: var(--soft); box-shadow: none; }
-      .chrome-running::before { content: ""; display: inline-block; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: #16a34a; margin-right: 0.3rem; vertical-align: 0.05rem; animation: pip 1.6s ease-out infinite; }
       @media (prefers-reduced-motion: reduce) {
-        .mate[data-state="running"] .pip, .chrome-running::before { animation: none; }
+        .mate[data-state="running"] .pip { animation: none; }
       }
       /* Command palette and the Connect an agent sheet: native <dialog>s. */
       .kbd { display: inline-block; font: 600 0.68rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 0.3rem; padding: 0.15rem 0.3rem; background: #fff; }
@@ -687,18 +672,6 @@
             </ol>
             <div class="row"><button type="button" class="primary" data-open-connect>Connect an agent</button> <span>or press <span class="kbd mod-k">⌘K</span> to jump anywhere</span></div>
           </div></div>
-          <details class="legend-box">
-        <summary>What the badges mean</summary>
-        <ul class="chrome-legend" aria-label="Session-chrome legend">
-          <li><span class="chrome-badge chrome-open">open</span> unclaimed, free to take</li>
-          <li><span class="chrome-badge chrome-claimed">claimed</span> one holder, not started yet</li>
-          <li><span class="chrome-badge chrome-running">running</span> claimed &amp; working</li>
-          <li><span class="chrome-badge chrome-in-review">in review</span> result posted, awaiting review</li>
-          <li><span class="chrome-badge chrome-needs-input">needs-input</span> a gate wants structured input</li>
-          <li><span class="chrome-badge chrome-needs-approval">needs-approval</span> a gate wants a yes/no</li>
-          <li><span class="chrome-badge chrome-done">done</span> thread closed</li>
-        </ul>
-          </details>
         </section>
         <section id="collab-panel" hidden>
           <div id="thread-header">
@@ -1710,15 +1683,6 @@
         return { label: "open", cls: "chrome-open", hint: "unclaimed, free to take", column: "open" };
       }
 
-      function chromeBadge(chrome) {
-        const badge = document.createElement("span");
-        badge.className = `chrome-badge ${chrome.cls}`;
-        badge.textContent = chrome.label;
-        badge.title = chrome.hint;
-        badge.setAttribute("aria-label", `session state: ${chrome.label}`);
-        return badge;
-      }
-
       const BOARD_COLUMNS = [
         { key: "open", title: "Open" },
         { key: "working", title: "In progress" },
@@ -1864,6 +1828,10 @@
           t.textContent = title;
           const foot = document.createElement("div");
           foot.className = "card-foot";
+          const stateWord = document.createElement("span");
+          stateWord.className = "card-state";
+          stateWord.textContent = chrome.label;
+          foot.appendChild(stateWord);
           if (th.assignee_id) {
             foot.appendChild(personEl(th.assignee_id));
             if (chrome.column === "working") agents.add(th.assignee_id);
@@ -1880,7 +1848,7 @@
               ? leaseLeft(th.assignment_expires_at)
               : ago(th.updated_at);
           foot.appendChild(when);
-          card.append(chromeBadge(chrome), t, foot);
+          card.append(t, foot);
           const refused = refusals.get(th.id);
           if (refused) {
             const line = document.createElement("div");
@@ -2097,7 +2065,7 @@
         document.getElementById("thread-actions").replaceChildren();
         if (!th) return;
         const tid = th.id;
-        badgeBox.appendChild(chromeBadge(sessionChrome(th, lastGates[tid])));
+        badgeBox.textContent = sessionChrome(th, lastGates[tid]).label;
         const fact = (label, node) => {
           const f = document.createElement("span");
           f.className = "fact";
