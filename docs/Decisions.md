@@ -1915,3 +1915,44 @@ claim algorithms (Tier 3: outbox, mail outbox, messages, egress) was
 rejected: they are different concurrency models, not two copies.
 
 **To revisit.** Tier 2, once the migration stream slows down.
+
+### Maidan shapes and measures model spend; it never proxies model calls (2026-10-01)
+
+**Decision.** Maidan reduces what agents spend on models through the bytes it
+serves (stable, layered, content-addressed context; small, stable tool
+profiles), the timing of the work it releases (warm then fan out, claims
+inside the cache TTL, a batch lane), and the ledger it keeps (every cache tier,
+priced, per completed task). It does not call models, hold provider keys,
+proxy requests, or cache model responses. Nothing is shared across workspaces.
+
+**Alternatives.** An LLM gateway in front of agents' provider calls, or a
+semantic response cache.
+
+**Why this:** a gateway is a crowded business outside the room's job, and it
+would make Maidan hold every tenant's provider keys. Response caching returns
+stale or wrong answers on agentic traffic, by its own vendors' account. The
+savings a coordinator can make are the ones only it can see: who reads what,
+what is about to start, what is duplicated, and what a finished task cost.
+Sharing across tenants would open a timing side channel.
+
+**Status.** Program C in Open Work; the design is [Context
+Economics](Context%20Economics.md). Lanes CTX1 and CTX2 are building C1 and
+C2.
+
+**To revisit:** if a self-hosted deployment wants Maidan to emit routing
+headers on the agents' behalf (C11), which is still advice, not a proxy.
+
+### MCP caching hints and `server/discover` are implemented (2026-10-01)
+
+**Decision.** Maidan returns `ttlMs` and `cacheScope` on every cacheable MCP
+result and implements `server/discover`. This reverses the Cluster 303
+disposition that called them optional.
+
+**Why this:** the 2026-07-28 schema requires both fields on `DiscoverResult`,
+the resource, prompt and tool lists and `ReadResourceResult`
+(`schema/2026-07-28/schema.ts`, `CacheableResult`), and makes `server/discover`
+a MUST. Maidan advertises that protocol version. The official SDK clients
+cache by those hints, so they also decide how often a client re-fetches
+Maidan's 93 KB tool list.
+
+**Status.** Lane CTX2.
