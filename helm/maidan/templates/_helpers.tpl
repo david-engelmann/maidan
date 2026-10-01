@@ -29,6 +29,12 @@ The server image. A digest, when set, is the reference — immutable, so a
 re-pointed tag cannot change what runs. The tag is then informational only.
 */}}
 {{- define "maidan.image" -}}
+{{- if contains "CHANGE_ME" (toString .Values.image.digest) }}
+{{- fail "image.digest still holds the placeholder CHANGE_ME: set it to a real sha256 digest" }}
+{{- end }}
+{{- if contains "CHANGE_ME" (toString .Values.image.tag) }}
+{{- fail "image.tag still holds the placeholder CHANGE_ME: set it to a release tag" }}
+{{- end }}
 {{- if .Values.image.digest -}}
 {{- printf "%s@%s" .Values.image.repository .Values.image.digest -}}
 {{- else -}}
@@ -55,7 +61,9 @@ values files and left off by dev and CI, which still render the local
 `maidan-server:dev` image and the development DATABASE_URL. A production
 install otherwise inherits both from values.yaml without a word, which is how
 the stack's prod values shipped `maidan-server:dev`. A `CHANGE_ME` placeholder
-is refused in every render: it is never a working value.
+in `config`, and in `secrets` or a content KEK when no `existingSecret` is set,
+is refused: it is never a working value. `image.tag` and `image.digest` holding
+one are refused by `maidan.image`, including when `existingSecret` is set.
 */}}
 {{- define "maidan.validate" -}}
 {{- range $k, $v := .Values.config }}

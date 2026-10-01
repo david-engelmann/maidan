@@ -288,11 +288,13 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   exempt what it lists, and commit `supply-chain/` with the lockfile
   ([`docs/Conventions.md`](docs/Conventions.md), "Dependencies").
 - **Cutting a release means bumping every deploy pin in one PR** (Helm prod
-  values for both charts, the quickstart compose file and Dockerfile with its
-  tarball SHA-256s, the prod kustomize overlay, the install commands in the
-  README and `docs/Production.md`). `scripts/check-deploy-pins.sh` lists them
-  and goes red (the `deploy pins` job) while any differs from the newest
-  tagged CHANGELOG section. A change to `helm/maidan` also means repackaging
+  values for both charts, the quickstart compose file and Dockerfile's
+  `MAIDAN_VERSION`, the prod kustomize overlay, the install commands in the
+  README and `docs/Production.md`). The Dockerfile's tarball SHA-256s move
+  with that version, but `scripts/check-deploy-pins.sh` does not check them:
+  it checks `MAIDAN_VERSION` and the other pins it lists, and goes red (the
+  `deploy pins` job) while any differs from the newest tagged CHANGELOG
+  section. A change to `helm/maidan` also means repackaging
   `helm/maidan-stack/charts/maidan-0.1.0.tgz`
   (`helm package helm/maidan -d helm/maidan-stack/charts`), or the stack keeps
   rendering the old chart; `helm-template-smoke.sh` fails while they differ.

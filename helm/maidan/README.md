@@ -29,8 +29,9 @@ rather than deploy something that only works on a laptop:
   them out of values files and the release history. Setting them inline instead:
   `--set secrets.DATABASE_URL=… --set contentKek=…`.
 
-Any value holding the placeholder `CHANGE_ME` fails every render, dev included,
-with the name of the value to set.
+`config` values, and `image.tag` and `image.digest`, holding the placeholder
+`CHANGE_ME` fail every render, dev included. `secrets` and `contentKek` holding
+it fail when `existingSecret` is unset. Each refusal names the value to set.
 
 Production overlays (OTel, Redis quotas, S3) are documented in [PROFILES.md](PROFILES.md).
 

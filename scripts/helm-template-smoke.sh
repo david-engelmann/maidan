@@ -65,6 +65,12 @@ refuses "set image.tag to a release" \
   "${prod[@]}" --set image.tag= --set existingSecret=maidan-secrets
 refuses "image.tag \"dev\" is not a release" \
   "${prod[@]}" --set image.tag=dev --set existingSecret=maidan-secrets
+refuses "image.digest still holds the placeholder CHANGE_ME" \
+  "${prod[@]}" --set image.digest=CHANGE_ME --set existingSecret=maidan-secrets
+refuses "image.tag still holds the placeholder CHANGE_ME" \
+  "${prod[@]}" --set image.digest= --set image.tag=CHANGE_ME --set existingSecret=maidan-secrets
+refuses "image.tag still holds the placeholder CHANGE_ME" \
+  maidan "${chart}" --set image.tag=CHANGE_ME --set contentKek="${kek}"
 helm template "${prod[@]}" --set image.tag= \
   --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
   --set existingSecret=maidan-secrets | grep -q 'image: "ghcr.io/david-engelmann/maidan-server@sha256:0000' || {

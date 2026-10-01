@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Every deploy path and install command pins the newest release: the newest
-# `## [N.N.N]` CHANGELOG section whose `vN.N.N` tag exists. A section added by a
+# Every deploy path and install command pins the newest release: the highest
+# `## [N.N.N]` CHANGELOG version whose `vN.N.N` tag exists, whatever the section order. A section added by a
 # close PR before its tag is cut does not count, because a pin can only move
 # once the tag's images and tarballs exist. Red after a tag is cut, until the one
 # PR that bumps every pin below merges. Needs the tags (actions/checkout with
@@ -26,14 +26,32 @@ die() {
   exit 1
 }
 
-expected=""
+# Higher semver, compared numerically so section order cannot pick an older tag.
+version_gt() {
+  local IFS=.
+  local -a a=($1) b=($2)
+  local i
+  for i in 0 1 2; do
+    if (( 10#${a[i]:-0} > 10#${b[i]:-0} )); then
+      return 0
+    fi
+    if (( 10#${a[i]:-0} < 10#${b[i]:-0} )); then
+      return 1
+    fi
+  done
+  return 1
+}
+
+best=""
 while read -r version; do
   if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
-    expected="v${version}"
-    break
+    if [[ -z "$best" ]] || version_gt "$version" "$best"; then
+      best="$version"
+    fi
   fi
 done < <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-[[ -n "$expected" ]] || die "no CHANGELOG section has its tag here (fetch the tags: fetch-depth: 0)"
+[[ -n "$best" ]] || die "no CHANGELOG section has its tag here (fetch the tags: fetch-depth: 0)"
+expected="v${best}"
 
 failures=()
 checked=()

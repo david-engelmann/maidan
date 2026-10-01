@@ -713,7 +713,7 @@ refuses to render: a development image (`image.repository: maidan-server`, or a 
 `dev`, `latest` or empty without `image.digest`); and, unless `existingSecret` names a
 Secret holding `DATABASE_URL` and `MAIDAN_CONTENT_KEK`, an unset `secrets.DATABASE_URL`,
 the development default `postgres://maidan:maidan@postgres:5432/maidan`, or any empty
-`secrets` value. A value holding the placeholder `CHANGE_ME` fails every render. Each
+`secrets` value. `config` values, `image.tag` and `image.digest` holding `CHANGE_ME` fail every render. `secrets` and `contentKek` values holding `CHANGE_ME` fail when `existingSecret` is unset. Each
 refusal names the value to set. `maidan-stack/values-prod.yaml` sets the same flag
 (`maidan.production`) and pins the same release.
 
@@ -739,11 +739,15 @@ then informational. Find a release's digest with
 `docker buildx imagetools inspect ghcr.io/david-engelmann/maidan-server:<tag>`,
 and verify its signature first (README, "Prebuilt image").
 
-Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix), or better, put it in the
-`existingSecret`. For the umbrella chart, `S3_ENDPOINT` names the release's MinIO Service
+Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix), or name an
+`existingSecret` that already holds it. Rendering does not check that Secret
+or its keys. For the umbrella chart, `S3_ENDPOINT` names the release's MinIO Service
 itself; `DATABASE_URL` (`postgres://maidan:<password>@<release>-postgresql:5432/maidan`) and
-`S3_SECRET_ACCESS_KEY` are yours to set, and the render refuses until they are (see
-`helm/maidan/README.md`, "Umbrella stack").
+`S3_SECRET_ACCESS_KEY` are yours to set. Without `maidan.existingSecret` the
+render refuses until those values are nonempty (see `helm/maidan/README.md`,
+"Umbrella stack"). With `maidan.existingSecret`, create that Secret with
+`DATABASE_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and
+`MAIDAN_CONTENT_KEK` before installation; the render does not verify them.
 
 ## Horizontal scaling (`v105.0.0`)
 

@@ -38,8 +38,9 @@ helm upgrade --install maidan ./helm/maidan-stack -n maidan --create-namespace \
 ```
 
 `maidan-secrets` holds `DATABASE_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and
-`MAIDAN_CONTENT_KEK`; see the [chart README](README.md#umbrella-stack). The render refuses
-without them.
+`MAIDAN_CONTENT_KEK`; see the [chart README](README.md#umbrella-stack).
+Create the Secret with all four keys before installation. Rendering does not
+verify an existing Secret or its keys.
 
 **S3 artifacts on managed object storage:**
 
