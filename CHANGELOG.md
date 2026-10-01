@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### The local book build, and three doc corrections
+
+- **Docs:** the README's local book build runs the steps the docs workflow already runs, in the order they are required: `bash book/sync-docs.sh`, `mdbook-mermaid install book`, and `mdbook-linkcheck` on `PATH`, then `mdbook build book`. The from-source section says a member token cannot mint another member token, because `POST /workspaces/{wid}/members/{mid}/tokens` requires `token:admin`. Open Work's web-push row cites thread 49, not thread 23. The unreferenced `docs/assets/maidan-wordmark.svg` is removed.
+
 ### A blob reap releases its write lock before it returns
 
 - **Fixed:** a reap that finds the artifact still referenced returned while its

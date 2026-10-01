@@ -96,6 +96,8 @@ export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
 ./scripts/demo-handoff.sh                          # the recording above
 ```
 
+A member token cannot mint another member token, because `POST /workspaces/{wid}/members/{mid}/tokens` requires `token:admin`.
+
 `main` is ahead of the pinned release, so a HEAD build is not that release.
 Never label it with the release's tag.
 </details>
@@ -259,9 +261,16 @@ Docs are GitHub-native Markdown under [`docs/`](docs/). The
 
 ```sh
 cargo install mdbook --locked
+cargo install mdbook-mermaid --locked --version 0.14.1
+cargo install mdbook-linkcheck --locked --version 0.7.7
 cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md
-mdbook serve book               # http://127.0.0.1:3000
+bash book/sync-docs.sh
+mdbook-mermaid install book
+mdbook build book               # also runs the linkcheck renderer
 ```
+
+`mdbook-linkcheck` has to be on `PATH` before that build. `mdbook serve book`
+previews the same book at <http://127.0.0.1:3000>.
 
 ## Status & releases
 
