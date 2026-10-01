@@ -1893,4 +1893,4 @@ retention, since it is a billing record.
 **Why this:** read notifications are the one table that grows with every
 mention and has no reader after it is read.
 
-**Status.** Open Work Next, retention.
+**Status.** Being built in #1165.
