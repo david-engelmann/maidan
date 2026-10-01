@@ -45,6 +45,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   The blanker it shares with `attribution_scope_contract` reads Rust
   lexically: a `#[cfg(test)]` in a comment or string is not a marker, and a
   brace in a `/* */` comment or a `;` inside `[u8; 4]` does not end an item.
+  A test-only match arm, field or element ends at its own `,` or before the
+  bracket that encloses it, so the sibling after it is still scanned.
 
 ### `/ui` reports a failure in words
 

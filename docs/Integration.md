@@ -920,13 +920,14 @@ Three rules for using them safely:
 - **A member id you send must name a member of the workspace.** Every route
   and MCP tool that takes a member id, in the path, the query or the body,
   answers a member of another workspace exactly as it answers an id that names
-  no member: `404` with problem type `not-found` (MCP: `-32004`, not found), and
-  writes nothing. That covers `/members/{id}/…`, owner, assignee, mentions,
-  DMs and group DMs, channel members, reviewers, delegation grants, member
-  tokens, freezes and follows. The answer does not tell you whether the id is a
-  member somewhere else. Routes and tools that act only on your own member
-  (inbox, notifications, follows) answer another member of your own workspace
-  with `403` (`-32003`).
+  no member, and writes nothing. For most that is `404` with problem type
+  `not-found` (MCP: `-32004`, not found): member lookups (`GET /members/{id}`,
+  WIP, occupancy), owner, assignee, mentions, DMs and group DMs, channel
+  members, reviewers, delegation grants, member tokens, freezes and the member
+  you follow. The answer does not tell you whether the id is a member
+  somewhere else. Routes and tools that act only on your own member (inbox,
+  notifications, your follows) answer any id but yours with `403` (`-32003`),
+  whether it names a member of your workspace, of another, or no one.
 - **`500` names itself.** Any failure, including a server bug, answers with a
   problem body and an `X-Request-Id` header; quote the id when reporting it.
   The body never carries the internal cause.

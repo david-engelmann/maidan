@@ -154,11 +154,92 @@ fn find_in_code(src: &[u8], mut i: usize, needle: &[u8]) -> Option<usize> {
     None
 }
 
+/// Keywords that open an item. A `#[cfg(test)]` item ends at its `;` or the
+/// brace that closes its body, so a `,` in its generics or `where` clause is
+/// part of it. Anything else the attribute can sit on (a field, a variant, a
+/// match arm, an element) also ends at its own `,`.
+const ITEM_KEYWORDS: &[&[u8]] = &[
+    b"async",
+    b"const",
+    b"enum",
+    b"extern",
+    b"fn",
+    b"impl",
+    b"macro_rules",
+    b"mod",
+    b"static",
+    b"struct",
+    b"trait",
+    b"type",
+    b"union",
+    b"unsafe",
+    b"use",
+];
+
+/// The index just past the bracket group that opens at `open`.
+fn close_of(src: &[u8], open: usize) -> usize {
+    let mut depth = 0usize;
+    let mut i = open;
+    while i < src.len() {
+        let next = consume_non_code(src, i);
+        if next != i {
+            i = next;
+            continue;
+        }
+        match src[i] {
+            b'{' | b'(' | b'[' => depth += 1,
+            b'}' | b')' | b']' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    src.len()
+}
+
+/// Whether what follows the marker at `i` is an item, past whitespace,
+/// comments, more attributes and a visibility.
+fn starts_an_item(src: &[u8], mut i: usize) -> bool {
+    let word = |i: usize| {
+        let rest = src.get(i..).unwrap_or_default();
+        &rest[..rest
+            .iter()
+            .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
+            .count()]
+    };
+    loop {
+        let next = consume_non_code(src, i);
+        if next != i {
+            i = next;
+        } else if src.get(i).is_some_and(u8::is_ascii_whitespace) {
+            i += 1;
+        } else if src.get(i..).is_some_and(|rest| rest.starts_with(b"#[")) {
+            i = close_of(src, i + 1);
+        } else if word(i) == b"pub" {
+            i += 3;
+            while src.get(i).is_some_and(u8::is_ascii_whitespace) {
+                i += 1;
+            }
+            if src.get(i) == Some(&b'(') {
+                i = close_of(src, i);
+            }
+        } else {
+            return ITEM_KEYWORDS.contains(&word(i));
+        }
+    }
+}
+
 /// The index just past the item that starts at `from`: its `;`, or the brace
-/// that closes its body. Skips comments and string, raw string and char
-/// literals, so a `{` or `"` inside one does not count. A `;` inside brackets,
-/// as in `fn t(x: [u8; 2])`, is not the end of the item.
+/// that closes its body, or, for what is not an item, its `,`. Skips comments
+/// and string, raw string and char literals, so a `{` or `"` inside one does
+/// not count. A `;` inside brackets, as in `fn t(x: [u8; 2])`, is not the end,
+/// and a closing bracket the item did not open ends it before that bracket.
 fn end_of_item(src: &[u8], mut i: usize) -> usize {
+    let item = starts_an_item(src, i);
     let mut depth = 0usize;
     while i < src.len() {
         let next = consume_non_code(src, i);
@@ -168,10 +249,12 @@ fn end_of_item(src: &[u8], mut i: usize) -> usize {
         }
         match src[i] {
             b';' if depth == 0 => return i + 1,
+            b',' if depth == 0 && !item => return i + 1,
+            b'}' | b')' | b']' if depth == 0 => return i,
             b'{' | b'(' | b'[' => depth += 1,
-            b')' | b']' => depth = depth.saturating_sub(1),
+            b')' | b']' => depth -= 1,
             b'}' => {
-                depth = depth.saturating_sub(1);
+                depth -= 1;
                 if depth == 0 {
                     return i + 1;
                 }
@@ -253,4 +336,36 @@ fn a_semicolon_inside_brackets_does_not_end_a_test_item() {
     let kept = without_tests(src);
     assert!(!kept.contains("tokio::spawn"), "{kept}");
     assert!(kept.contains("fn b() {}"), "{kept}");
+}
+
+#[test]
+fn a_test_only_arm_field_or_element_ends_at_its_comma_or_the_enclosing_bracket() {
+    let src = "\
+match k {\n\
+    #[cfg(test)]\n\
+    K::T => test_only(),\n\
+    K::A => store.revoke(a),\n\
+}\n\
+S {\n\
+    #[cfg(test)]\n\
+    pub probe: Probe,\n\
+    live: store.revoke(b),\n\
+}\n\
+f(#[cfg(test)] t()).then(store.revoke(c));\n\
+";
+    let kept = without_tests(src);
+    assert!(!kept.contains("test_only"), "{kept}");
+    assert!(!kept.contains("probe"), "{kept}");
+    assert!(!kept.contains("t()"), "{kept}");
+    for live in ["store.revoke(a)", "store.revoke(b)", "store.revoke(c)"] {
+        assert!(kept.contains(live), "{live} was blanked: {kept}");
+    }
+}
+
+#[test]
+fn a_comma_in_a_test_items_generics_does_not_end_it() {
+    let src = "#[cfg(test)]\n#[allow(dead_code)]\npub(crate) fn t<A, B>(a: A, _: B) where A: Into<String>, B: Copy { tokio::spawn(a); }\nfn b() {}\n";
+    let kept = without_tests(src);
+    assert!(!kept.contains("tokio::spawn"), "{kept}");
+    assert_eq!(kept.trim_start(), "fn b() {}\n");
 }
