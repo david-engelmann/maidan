@@ -49,11 +49,12 @@ PRs do not edit.
 CodeRabbit reviews every PR (Decisions). Before a merge, every top-level
 review comment is fixed, or answered with the reason it does not apply,
 citing the code. The merge loop holds a PR while any comment has neither a
-reply nor CodeRabbit's "Addressed in commit" marker. To list them:
+reply nor CodeRabbit's "Addressed in commit" marker. To list them (every page:
+the endpoint returns at most 100 comments a page):
 
 ```sh
-gh api "repos/david-engelmann/maidan/pulls/<N>/comments?per_page=100" | jq -r '
-  . as $all | .[]
+gh api --paginate --slurp "repos/david-engelmann/maidan/pulls/<N>/comments?per_page=100" | jq -r '
+  add | . as $all | .[]
   | select(.user.login | test("coderabbit")) | select(.in_reply_to_id == null)
   | select((.body | test("Addressed in commit")) | not)
   | . as $c | select([$all[] | select(.in_reply_to_id == $c.id)] | length == 0)
