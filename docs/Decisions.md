@@ -1060,7 +1060,7 @@ no longer fail publish because of NOTIFY size. Hydration adds one PK read
 per notification — acceptable vs multi-kilobyte JSON on the wire.
 
 **To revisit:** outbox / guaranteed delivery remains a standing risk
-(see [[Open Work]]). `InMemoryBus` stays full-envelope.
+(see [Open Work](Open%20Work.md)). `InMemoryBus` stays full-envelope.
 
 ### Embedding dimension is 1024
 
@@ -1718,14 +1718,14 @@ add a build pipeline that consumes the vault.
 **Superseded.** The docs are published as an mdBook site
 (`book/`, `book/sync-docs.sh`), whose link check fails the build on a dead
 internal link. Reference and integrator pages use ordinary Markdown links
-(`scripts/check-docs-presentation.sh` refuses wikilinks on the published
-reference pages); wikilinks survive in the historical cluster, retro and
+(`scripts/check-docs-presentation.sh` refuses wikilinks on every top-level
+reference page); wikilinks survive in the historical cluster, retro and
 handoff records, which the sync rewrites or leaves out.
 
 ### OIDC human login deferred to `v2.0.0` (spike in `v1.4.2`)
 
 **Decision.** `v1.4.0` ships bootstrap hardening (`MAIDAN_BOOTSTRAP`) and an
-OIDC **design document** ([[OIDC]]) only. Runtime OIDC login, session cookies,
+OIDC **design document** ([OIDC](OIDC.md)) only. Runtime OIDC login, session cookies,
 and identity tables land in **`v2.0.0`**.
 
 **Alternative.** Ship OIDC in `v1.4.0` alongside bootstrap gating; or defer
@@ -1738,7 +1738,7 @@ and threat-model updates without half-implemented login.
 
 **To revisit:** if a deployment needs browser login before `v2.0.0`, use an
 external reverse proxy (OAuth2 Proxy) in front of `/ui/` only — documented in
-[[OIDC]] as a stopgap, not a supported Maidan API.
+[OIDC](OIDC.md) as a stopgap, not a supported Maidan API.
 
 **Superseded.** OIDC login shipped at `v2.0.0`: authorization code with
 S256 PKCE, ES256 JWKS validation, sessions and provider logout, tested

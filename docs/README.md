@@ -75,8 +75,10 @@ pages above, the pages above are right.
 ## Conventions
 
 - Relative Markdown links (`[Title](File.md)`), with spaces encoded as `%20`.
-  Reference pages refuse `[[wikilinks]]` (`scripts/check-docs-presentation.sh`);
-  they survive only in history.
+  Every top-level page here refuses `[[wikilinks]]`
+  (`scripts/check-docs-presentation.sh`) except the history pages (Capabilities,
+  Cluster history, Architecture history); they survive only there and under
+  `Clusters/`, `Retros/`, `Tracks/`, `Gates/` and `archive/`.
 - Mermaid in fenced `mermaid` blocks.
 - A page published in the book is listed in `book/src/SUMMARY.md` and in the
   copy set in `book/sync-docs.sh`; a link from it to a page outside the book is

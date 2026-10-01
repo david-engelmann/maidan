@@ -373,11 +373,12 @@ says so.
 
 The job runs `cargo vet --locked` (cargo-vet 0.10.2) over the root
 `Cargo.lock`. It fails when a crate version has neither an audit nor an
-exemption in `supply-chain/`, which happens only when the lockfile changes: it
-names each crate, the version and the criteria it is missing. Run `cargo vet`
-locally, then certify or exempt what it lists, as
-[Conventions](Conventions.md) ("Dependencies") describes, and commit
-`supply-chain/` with the lockfile change.
+exemption in `supply-chain/`, which follows a lockfile change, or an edit to
+`supply-chain/` (`audits.toml`, `config.toml`, `imports.lock`) that drops or
+narrows an audit or exemption: it names each crate, the version and the
+criteria it is missing. Run `cargo vet` locally, then certify or exempt what
+it lists, as [Conventions](Conventions.md) ("Dependencies") describes, and
+commit `supply-chain/` with the change.
 
 ### NOTIFY floor simulation fails
 

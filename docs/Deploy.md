@@ -83,8 +83,10 @@ DATABASE_URL=sqlite::memory: cargo run --bin maidan-server
 content key-encryption key; without it, or a real `MAIDAN_CONTENT_KEK`, the server
 refuses to start ([Production.md](Production.md#crypto-shredding)).
 `MAIDAN_SESSION_SECRET` (at least 32 bytes) signs browser sessions and
-subscribe-resume tokens; with authentication on and no OIDC the server refuses
-to start without it. `?mode=rwc` lets SQLite create `dev.db` on first run.
+subscribe-resume tokens. The server refuses to start without it when OIDC is on,
+and when authentication is on without OIDC unless `MAIDAN_SUBSCRIBE_RESUME_SECRET`
+is set instead; with authentication off it falls back to a built-in test secret.
+`?mode=rwc` lets SQLite create `dev.db` on first run.
 
 The server detects the dialect from the `DATABASE_URL` prefix
 (`postgres://`, `postgresql://`, or `sqlite:`) and selects the
@@ -143,7 +145,7 @@ The `prod` overlay is a template. Before applying:
 | `DATABASE_URL`       | yes                  | Postgres connection string.            |
 | `MAIDAN_CONTENT_KEK` | yes                  | 32-byte key-encryption key (`openssl rand -hex 32`); wraps per-message content keys. Keep it out of data backups. |
 | `MAIDAN_CONTENT_KEK_PREVIOUS` | during a rotation | Comma-separated retired KEKs still able to unwrap. |
-| `MAIDAN_SESSION_SECRET` | yes (unless OIDC) | At least 32 bytes; signs sessions and subscribe-resume tokens. Must match across replicas. |
+| `MAIDAN_SESSION_SECRET` | yes | At least 32 bytes; signs sessions and subscribe-resume tokens. Must match across replicas. Required with OIDC; without OIDC, `MAIDAN_SUBSCRIBE_RESUME_SECRET` can stand in for it. |
 | `S3_ENDPOINT`        | only if S3 backend   |                                        |
 | `S3_BUCKET`          | only if S3 backend   |                                        |
 | `S3_REGION`          | only if S3 backend   |                                        |

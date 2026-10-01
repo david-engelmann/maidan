@@ -139,8 +139,10 @@ until `has_more` is false, then `follow` from the page head.
 the SDK default.
 
 Taps (webhook, WS, search) verify backfill, drain history before
-live, and compare live-ready to the **workspace / shape** head, which is what
-`Maidan-Room-LSN` reports.
+live, and compare live-ready to the head they are chasing. `Maidan-Room-LSN`
+reports the caller's **workspace** head only; a tap with a narrower shape
+(a channel, thread or kind filter) compares against its own shape's head, or it
+waits on events it will never be sent.
 
 Wait helpers are **not** extra HTTP methods. They wrap `subscribe`:
 

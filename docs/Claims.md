@@ -28,7 +28,7 @@ post-gate hardening (no new gate tag).
 | "Durable, shared memory: threads, results, artifacts, tool-call transcripts, all searchable" | `maidan-store` (Postgres + SQLite `Store` parity, `backend_parity` test); content-addressed artifacts; `thread_results`; `tool_transcript`; full-text (`tsvector`/FTS5) + semantic (`pgvector`) search | Shipped |
 | "Tasks with dependencies, skill-based claiming, assignment + leases, scheduled runs, blocking waits" | Task-DAG + queue, scheduled/recurring tasks, skill routing, coordination waits (`wait_for_ready`/`wait_for_result`) — store tests `thread_deps`, `skill_routing`, `task_schedules`, `run_ready_dependents_suite`; e2es `thread_dependencies_e2e`, `thread_result_e2e` | Shipped |
 | "Pull exactly the context a step needs — far fewer tokens" | Thread/workspace context packs (lean edits by default, `include_edits` opt-in); `snippet_only` search; capability-filtered `tools/list`; opt-in lean event frames; omit-empty metadata. **Measured: a scoped pack is ~6.8× fewer tokens than dumping the whole channel** (`token_pack` harness → [Benchmark.md](Benchmark.md#context-pack-token-savings-token_pack)) | Shipped + measured |
-| "Access is scoped on every token; private channels enforced on reads, events, and search; **privileged** actions are audited" | Capability model (every route + tool checks caps); per-channel/thread RBAC — e2es `channel_access_e2e`, `dm_participation_e2e`; filtered-ANN search excludes private channels in-query; subscribe-grant enforcement; every successful change attributed; 40 named privileged audit actions, authority changes written transactionally (fail-closed) — `audit_coverage_e2e` | Shipped — see the audit-scope note below |
+| "Access is scoped on every token; private channels enforced on reads, events, and search; **privileged** actions are audited" | Capability model (every route + tool checks caps); per-channel/thread RBAC — e2es `channel_access_e2e`, `dm_participation_e2e`; filtered-ANN search excludes private channels in-query; subscribe-grant enforcement; every successful change made with a Maidan token or session attributed; 52 named audit actions, authority changes written transactionally (fail-closed) — `audit_coverage_e2e` | Shipped — see the audit-scope note below, including the changes it does not cover |
 | "Speaks MCP, REST, and WebSocket over one data model and one login" | One `AppState`/`Store`; REST (OpenAPI 3.1, `openapi_e2e` bijection), MCP (JSON-RPC + streamable HTTP), WebSocket subscribe — all bearer-authed | Shipped |
 | "MCP-native — an MCP client connects directly and gets typed tools + live notifications" | `POST /mcp` + streamable HTTP; MCP `2026-07-28` (negotiated, default) with `2024-11-05` fallback; `resources/updated`; live-verified LangChain + AutoGen recipes (`docs/Framework Integrations.md`) | Shipped |
 | "Single static binary, laptop SQLite → multi-replica Postgres cluster" | One binary selected by `DATABASE_URL`; `scale-out smoke` required CI job; workspace-sharded fan-out; LSN causal read-replica routing (`read_routing` e2e vs real streaming replication) | Shipped (`maidan-scale-1.0`) |
@@ -36,21 +36,28 @@ post-gate hardening (no new gate tag).
 | "Signed release artifacts" | Keyless cosign bundles on every release and cosign signatures on every image digest (`release.yml`); per-arch tarballs SHA-256-pinned in the quickstart image. A CycloneDX SBOM per image, attested to its digest and published beside the tarballs, starts with the first tag after v412.0.0: no earlier release has one, because the old SBOM step never produced a file. Verify: see [SECURITY.md](https://github.com/david-engelmann/maidan/blob/main/SECURITY.md#verifying-a-release) | Signatures shipped; SBOMs from the next tag |
 | "A2A transport" | A2A v1.0 over **JSON-RPC, REST §11 and gRPC §10**, all complete. The gRPC binding (opt-in) serves the official `lf.a2a.v1.A2AService` from the unmodified v1.0.1 `a2a.proto`, every operation over the same handlers as the other two. Agent Card §4.4.1. The official A2A TCK runs over all three bindings in the non-required `a2a tck` CI job; exclusions are listed in `scripts/a2a-tck/exclusions.txt` | Shipped (all three bindings) |
 | "Off-platform reach: notifications, email, Slack, GitHub" | Per-recipient notification ledger + router + unified inbox; SMTP transport + durable mail retry queue (outbox + worker + DLQ); Slack + GitHub projectors (bidirectional, loop-safe) | **Shipped, config-gated** — inert until you set `MAIDAN_SMTP_*` / `MAIDAN_SLACK_*` / `MAIDAN_GITHUB_*` and create the apps |
-| "Client SDKs" | Four 0.1.0 clients (TypeScript, Python, Go, Rust) to the frozen v1 contract, each black-box-verified (`scripts/sdk-test.sh`) + a report-only `sdk interop` CI job | Shipped (0.1.0, early) |
+| "Client SDKs" | Four 0.1.0 clients (TypeScript, Python, Go, Rust) to the frozen v1 contract, each black-box-verified (`scripts/sdk-test.sh`) + a report-only `sdk interop` CI job. Typed responses and an error per problem type are on `main` and pass the same script, but are not yet published | Shipped (0.1.0, early); typed surface unreleased |
 | The published server image has no HTTP bootstrap routes | `crates/maidan-server/Dockerfile` defaults `MAIDAN_ENABLE_BOOTSTRAP` to `0` and then builds `--no-default-features`. `.github/workflows/release.yml` (`build + push maidan-server`) passes only `MAIDAN_VERSION`, so the published image keeps that default. CI job `bootstrap compile-time strip` fails a default build that still compiles the routes in | Shipped |
 | A production Helm render refuses a development image, and placeholders only where the chart looks | `scripts/helm-template-smoke.sh`. A production render refuses `image.repository: maidan-server`, a `dev`/`latest`/empty tag without `image.digest`, and, unless `existingSecret` is set, an unset or development `DATABASE_URL` or an empty `secrets` value. `config`, `image.tag` and `image.digest` holding `CHANGE_ME` fail every render; `secrets` and `contentKek` holding it fail only when `existingSecret` is unset. `existingSecret` skips those checks and does not prove the Secret exists or holds its keys | Shipped |
 
 ## What "audited" covers
 
-Every successful authenticated change leaves an attributed record — who acted,
-and on whose behalf — and the privileged ones leave a named audit row.
+Every successful change made with a Maidan token or browser session leaves an
+attributed record — who acted, and on whose behalf — and the privileged ones
+leave a named audit row. Two kinds of change are outside that, listed under
+"Every other mutation" below.
 
-- **Privileged actions have named audit rows** — 42 action kinds: token and
-  app-token mint, delegation and revoke; browser sign-in and sign-out; delegation grants and policy; share
-  tickets; channel membership; member freeze; SCIM provisioning; secrets and
-  egress targets; legal hold; message purge, workspace purge, erase, export and
-  import; artifact erase; gate and review-requirement clears; delivery, outbox
-  and automation replays; reindex. `audit_coverage_e2e` and `authority_audit_contract` exercise them.
+- **Privileged actions have named audit rows** — 52 action kinds besides the
+  generic `mutation` row (counted from the `action` names the server writes):
+  token and app-token mint, rotation, delegation and revoke; browser sign-in and
+  sign-out; delegation grants and policy; share tickets; channel membership;
+  member freeze; SCIM provisioning; skill governance; secrets and egress
+  targets; legal hold; retention policy; message purge, workspace purge, erase,
+  export and import; artifact erase; app revoke; reviewer removal and
+  review-requirement changes; gate and review-requirement clears; delivery,
+  outbox and automation replays and result-delivery attempts; reindex; and
+  denials of a delegated actor (below). `audit_coverage_e2e` and
+  `authority_audit_contract` exercise them.
 - **Authority changes fail closed.** Tokens, grants, share tickets, browser
   sessions, the grant ceiling, purge, erase, import and legal hold write their audit row inside the
   change's own transaction, so a failed audit write aborts the change
@@ -65,7 +72,15 @@ and on whose behalf — and the privileged ones leave a named audit row.
   content — posts, edits, reactions — is recorded in the event log, which is
   durable, ordered and replayable. MCP records per tool call and A2A per method
   on every binding, gRPC included, so a read or a refused call is not recorded
-  as a change (`a2a_operation_kinds_e2e`).
+  as a change (`a2a_operation_kinds_e2e`). Two kinds of change are not covered.
+  Slack and GitHub ingress (`/integrations/slack/events`,
+  `/integrations/github/events`) is authenticated by the sender's request
+  signature, not a Maidan credential: the message posts as the member the
+  channel link names, and its event carries no attribution (no actor or
+  subject). And `GET /mcp/stream` and `GET /ws/subscribe` advance a named
+  consumer's delivery cursor (the WebSocket also stamps a member's last-seen
+  time) with no event or audit row; `contracts/http-operation-kinds.json` gives
+  the reasons.
 - **Denials are counted, not stored**, with one exception. Anonymous and ordinary
   401/403s go to `maidan_authorization_decisions_total` and sampled logs, since an
   attacker-controlled request stream would otherwise be an unbounded write
@@ -88,8 +103,11 @@ and on whose behalf — and the privileged ones leave a named audit row.
   set the secrets. We don't claim a running public instance.
 - **OIDC human login is present but maturing.** `MAIDAN_OIDC_*` enables `/auth/oidc/*` +
   session mint; treat it as config-gated, not a polished consumer login.
-- **SDKs are 0.1.0.** Usable against the frozen v1 contract, dependency-light, but early
-  — typed response models and registry-published interop CI are follow-ups.
+- **SDKs are 0.1.0.** Usable against the frozen v1 contract, dependency-light, but early.
+  Typed responses and an error per problem type are on `main`
+  (`scripts/sdk-test.sh`) but not yet tagged, so the published packages return
+  plain JSON and raise one error type; registry-published interop CI is a
+  follow-up.
 - **Not an orchestration planner or an agent runtime.** Maidan does not run your models
   or decide how an agent reasons. It is the durable place agents coordinate.
 

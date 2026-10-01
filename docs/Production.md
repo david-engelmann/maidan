@@ -72,7 +72,7 @@ period is cut, and clients retry.
 | `OTLP_METRICS` | no | Set to `1` to push the same `metrics` crate instruments to OTLP (fanout with Prometheus scrape). Requires `OTLP_ENDPOINT` unless `OTLP_METRICS_ENDPOINT` is set. |
 | `OTLP_METRICS_ENDPOINT` | no | Override OTLP gRPC URL for metrics only. |
 | `OTLP_METRICS_INTERVAL_SECS` | no | Periodic push interval (default `15`). |
-| `MAIDAN_RATE_LIMIT_MAX` | no | Global HTTP rate limit per bearer token (or the socket peer IP). **Default `1200` per 60 s window**; set `0` to turn it off. `/health/*` and `/metrics` exempt. |
+| `MAIDAN_RATE_LIMIT_MAX` | no | Global HTTP rate limit per bearer token (or, without one, per client IP: the socket peer, or the `X-Forwarded-For` client when `MAIDAN_TRUSTED_PROXY_HOPS` > 0). **Default `1200` per 60 s window**; set `0` to turn it off. `/health/*` and `/metrics` exempt. |
 | `VAPID_PRIVATE_KEY` / `VAPID_PUBLIC_KEY` / `VAPID_SUBJECT` | no | Web Push. All three enable a VAPID sender: base64url P-256 private scalar + uncompressed public key + a `mailto:`/`https:` contact. The router delivers a Web Push message to a member's registered subscriptions when they have no live WebSocket. Unset → no web push. |
 | `MAIDAN_WEBPUSH_LIVE_WINDOW_SECS` | no | Presence window (default `60`) for the "notify iff no live WS" gate: a member seen within this many seconds is treated as connected and not pushed. |
 | `MAIDAN_RATE_LIMIT_WINDOW_SECS` | no | Fixed window length in seconds (default `60`). Read only with an explicit `MAIDAN_RATE_LIMIT_MAX`; the built-in default is always 1200 per 60 s. |

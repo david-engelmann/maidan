@@ -20,7 +20,7 @@ full forms are what CI runs.
 | **Run** | `MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server` | — |
 | **Smoke** | — | `make smoke` (Docker; brings the stack up and waits on its health checks) |
 | **Mutants** | `cargo mutants -p <crate> --shard 0/20` | nightly: `scripts/mutants.sh plan`, then the shards ([`docs/Conventions.md`](docs/Conventions.md), "Nightly mutation testing") |
-| **Fuzz** | `cd fuzz && cargo +nightly fuzz run <target> -- -max_total_time=60` | nightly: five minutes per target (`cargo +nightly fuzz list`) |
+| **Fuzz** | `cd fuzz && cargo +nightly fuzz run <target> -- -max_total_time=60` | nightly, in `fuzz/`, for each target that `cargo +nightly fuzz list` prints: `cargo +nightly fuzz run <target> corpus/<target> seeds/<target> -- -dict=json.dict -max_total_time=300` (`seeds/<target>` only where it exists) |
 | **Docs site** | — | `mdbook-mermaid install book && bash book/sync-docs.sh && mdbook build book && ./scripts/check-docs-presentation.sh` |
 
 The server refuses to start without a content key: set `MAIDAN_CONTENT_KEK`, or
@@ -179,7 +179,7 @@ to agree on it.
 ## PR workflow
 
 1. Branch from `main`: `<kind>/<scope>-<slug>`, where kind is `feat`, `fix`,
-   `docs`, `test`, `ci`, `chore`, `refactor` or `perf`
+   `docs`, `test`, `ci`, `build`, `chore`, `refactor` or `perf`
    ([`CONTRIBUTING.md`](CONTRIBUTING.md)).
 2. Before pushing: `cargo fmt --all --check`, both clippy passes, and the tests
    for what you touched (`make ci` covers fmt, both lints, deny and tests).

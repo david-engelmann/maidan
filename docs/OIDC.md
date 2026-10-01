@@ -1,8 +1,8 @@
 # OIDC human login (design spike, v1.4.2)
 
 Status: **implemented** at **`v2.0.0`**. This document remains the design
-reference; runtime routes and env vars are documented in [[Production]] and
-[[Retros/Cluster 2.0]].
+reference; runtime routes and env vars are documented in [Production](Production.md) and
+[Retros/Cluster 2.0](Retros/Cluster%202.0.md).
 
 Since **`v406.0.0`**, required integration coverage also drives the production
 runtime against a test-only loopback provider with real discovery, authorization,
@@ -11,7 +11,7 @@ that bad state, nonce, signature, audience, or issuer cannot issue a session.
 The deterministic mock remains for fast handler tests; it is not production
 configuration or the sole protocol evidence.
 
-Related: [[Threat-Model]], [[Production]], Cluster F auth (`v0.5.0`), `v1.4.1`
+Related: [Threat model](Threat-Model.md), [Production](Production.md), Cluster F auth (`v0.5.0`), `v1.4.1`
 bootstrap gating.
 
 ## Problem
@@ -171,7 +171,7 @@ Validate at boot: OIDC enabled ⇒ session secret set; disallow with
 | Email trust | Treat `email` as display only unless IdP marks it verified (`email_verified`). |
 | Session fixation | Rotate session id after successful login. |
 
-Update [[Threat-Model]] T1/T3 when implemented: stolen session cookie ≈ stolen
+Update [Threat model](Threat-Model.md) T1/T3 when implemented: stolen session cookie ≈ stolen
 API token for UI-scoped capabilities.
 
 ## MCP and WebSocket
@@ -192,7 +192,7 @@ API token for UI-scoped capabilities.
 | **P3** | post-2.0 | Device code for MCP; SCIM/group → capability templates (optional). |
 
 **Recommendation:** ship **P1 in `v2.0.0`** only after bootstrap + token flows are
-documented for greenfield installs ([[Production]]). Do not add OIDC to `v1.4.0`
+documented for greenfield installs ([Production](Production.md)). Do not add OIDC to `v1.4.0`
 retro scope beyond this spike.
 
 ## Alternatives considered
@@ -216,4 +216,4 @@ retro scope beyond this spike.
 
 - [OAuth 2.0 for Browser-Based Apps (BCP)](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-browser-based-apps)
 - [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
-- Cluster F: [[Clusters/Cluster F]] — capability vocabulary and token mint.
+- Cluster F: [Clusters/Cluster F](Clusters/Cluster%20F.md) — capability vocabulary and token mint.

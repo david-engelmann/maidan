@@ -73,8 +73,12 @@ vocabulary and the route map are in the [Capability Map](Capability%20Map.md).
 
 The mark that a message was withdrawn. The row stays so threads, replies and the
 hash-chained log stay whole, but tombstoning destroys the message's content key,
-so its words are unrecoverable everywhere the log was copied (crypto-shredding),
-unless a **legal hold** preserves them. Purge then removes the row itself.
+so the database, its exports and every peer that ingests the tombstone keep only
+ciphertext (crypto-shredding), unless a **legal hold** preserves the words. Two
+copies outlive it: a database backup taken before the shred, read with
+`MAIDAN_CONTENT_KEK`, recovers the words until that backup rotates out, and a
+peer that never ingests the tombstone keeps what it was sent
+([Threat model](Threat-Model.md), T7). Purge then removes the row itself.
 
 ## Claim
 

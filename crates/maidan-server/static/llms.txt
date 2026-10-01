@@ -55,9 +55,10 @@ its schedule fires.
    task.
 2. `acknowledge_claim` - start the working clock as soon as you begin, so the
    room can tell working from claimed-and-idle. A claim still unacknowledged
-   120 s after it was taken (`MAIDAN_CLAIM_ACK_TIMEOUT_SECS`) is reported to
-   the task's owner as a `ClaimUnacknowledged`. The claim stays yours until
-   its lease lapses.
+   past the acknowledgement timeout (120 s by default; the operator sets it
+   with `MAIDAN_CLAIM_ACK_TIMEOUT_SECS`, and `0` turns the report off) is
+   reported to the task's owner as a `ClaimUnacknowledged`. The claim stays
+   yours until its lease lapses.
 3. `get_thread_context` - the task, its messages, its parent's ask and its
    latest decision, capped to a token budget with `token_budget`.
 4. `post_message`, `set_thread_result` - report progress and the structured

@@ -308,8 +308,9 @@ a filtered page cannot be verified as one; verify with
 **Tap projector contract.** Webhook, WS, MCP SSE, AG-UI, and search
 are taps — they are not the log. Each must (1) **verify** every
 backfill page, (2) **backfill** before live, (3) **filter** by
-projector shape, (4) **wait for history** against the workspace or
-shape head (not the global Room-LSN), (5) treat webhook / WS the
+projector shape, (4) **wait for history** against the head it is
+chasing: the workspace head that `Maidan-Room-LSN` reports, or, for a
+narrower shape, that shape's own head, (5) treat webhook / WS the
 same as SSE. A pruned gap is CursorTooOld → refetch the snapshot,
 never clamp. Search is a projector of message posted/edited/tombstoned
 events; a chain break or `Lagged` without a durable log fails loud
@@ -949,7 +950,11 @@ in TypeScript and Python, `*maidan.NotFoundError` in Go,
 `title`, `detail` and the body as sent. A type added after the SDK was
 published arrives as its unknown-problem error. The SDKs return typed
 models for every response they wrap; see
-[Client Contract](Client%20Contract.md) §2 and §4.
+[Client Contract](Client%20Contract.md) §2 and §4. The per-problem
+errors and the typed models are on `main` and not yet published: the
+registries still carry 0.1.0, which returns plain JSON and raises one
+error type for every problem
+([sdk/README.md](https://github.com/david-engelmann/maidan/blob/main/sdk/README.md)).
 
 ### Installed apps (OAuth-style)
 
@@ -1023,9 +1028,10 @@ the server's default (`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s unless the operat
 changed it); name one and it must be between 1 second and 7 days, or the call is
 refused (400 / InvalidParams) before anything is claimed. `renew_claim` is held to
 the same bounds. Renew well before the deadline, a third of the lease is a good
-interval: once it lapses the reaper takes the thread back within seconds. A thread
-you were handed with `assign_thread` or took by id with `claim_thread` carries no
-lease; it stays yours until someone unassigns it or you release it.
+interval: once it lapses the reaper takes the thread back within a reaper tick
+(5 s by default). A thread you were handed with `assign_thread` or took by id with
+`claim_thread` carries no lease; it stays yours until someone unassigns it,
+someone hands it to another member with `assign_thread`, or you release it.
 
 To watch a collaborator rather than one queue, follow them with
 `POST /members/:id/member-follows` and `{ "followed_member_id": "…" }` (MCP
@@ -1174,9 +1180,11 @@ holds the pointer; an external verifier records pass/fail. Not a CI product.
 Both decisions keep their history. The current review and the current pointer
 are what the gate reads. `GET /threads/:id/reviews/history` (MCP
 `list_review_history`) and `GET /threads/:id/land-gate/history` (MCP
-`list_land_gate_history`) return every verdict ever recorded, oldest first, with
-the delegate that acted where one did (`workspace:read`). A re-submitted review,
-a dismissal on send-back, or clearing the gate leaves earlier verdicts there.
+`list_land_gate_history`) return every verdict recorded since migration 0121,
+oldest first, with the delegate that acted where one did (`workspace:read`). The
+migration seeded the history with each review and gate pointer as it stood then;
+verdicts overwritten before it were not kept. A re-submitted review, a dismissal
+on send-back, or clearing the gate leaves earlier verdicts there.
 An approval-gate answer is final: the first answer wins, and later answers
 change nothing.
 
@@ -1265,9 +1273,10 @@ task again. `start_review` is not a land: separation of duties does not restrict
 it, and closing stays with somebody else (below).
 
 **A lapsed lease comes back on its own.** The claim reaper runs on every replica
-(`MAIDAN_CLAIM_REAP_TICK_SECS`, every 5 s by default). Each tick it frees every
-claim whose lease has lapsed, on an open thread, clears the holder and its fencing
-token, and emits `ClaimExpired` for the holder: the "an agent died" signal that
+(`MAIDAN_CLAIM_REAP_TICK_SECS`, every 5 s by default). Each tick a replica frees
+up to 1,000 claims whose lease has lapsed, on open threads, and leaves any more
+for the next tick. For each it clears the holder and its fencing token and emits
+`ClaimExpired` for the holder: the "an agent died" signal that
 `wait_for_claim_expired` blocks on and that the notification router sends as stuck
 work to the owner and followers. It fires on an idle channel too, with nobody
 calling `claim_next_thread`. If a claimer gets there between ticks, that reclaim
@@ -1353,9 +1362,10 @@ the adapter again on every replica and on replay, and a verdict the reviewer
 already gave after the thread's current result was produced is not given again.
 
 A change request from anyone else, or on a thread not under review, is recorded
-and does nothing else, the way an implementer's approval is recorded and not
-counted. `transition_thread` does not take `request_changes`: the review, which
-carries the note, is the only way to send work back.
+but does not send the thread back, the way an implementer's approval is recorded
+and not counted. It still notifies the last worker, as above. `transition_thread`
+does not take `request_changes`: the review, which carries the note, is the only
+way to send work back.
 
 ### Asking a human mid-loop
 
