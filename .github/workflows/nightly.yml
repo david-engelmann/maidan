@@ -6,6 +6,15 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
+      # A night fills most of the 20-job runner pool for hours, so a manual
+      # run of one job (a fix to the fuzz job, the store shards a busy night
+      # left over) does not start the others. A scheduled run has no inputs
+      # and runs everything.
+      jobs:
+        description: "Which jobs to run: mutation is auth, bus and artifacts; store is the store plan and its shards"
+        type: choice
+        options: [all, mutation, store, bench, fuzz]
+        default: all
       store_base:
         description: "Mutate the store code changed since this commit (default: the last commit more than 25 hours old)"
         required: false
@@ -28,6 +37,7 @@ jobs:
   # measurements.
   mutation:
     name: mutation tests (${{ matrix.name }})
+    if: ${{ !inputs.jobs || inputs.jobs == 'all' || inputs.jobs == 'mutation' }}
     runs-on: ubuntu-latest
     timeout-minutes: 100
     env:
@@ -109,6 +119,7 @@ jobs:
   # testing") has the measurements.
   mutation-store-plan:
     name: mutation plan (store)
+    if: ${{ !inputs.jobs || inputs.jobs == 'all' || inputs.jobs == 'store' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -192,9 +203,9 @@ jobs:
 
   bench:
     name: criterion benchmarks
+    if: ${{ !inputs.jobs || inputs.jobs == 'all' || inputs.jobs == 'bench' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: install rust
@@ -204,12 +215,26 @@ jobs:
       - name: bench store hot path
         run: cargo bench -p maidan-store --bench store_hot --no-run
 
+  # Every target in `cargo fuzz list` is built, then fuzzed for FUZZ_SECONDS.
+  # A target that crashes, leaks, times out or stops early does not stop the
+  # others: each one's outcome goes in the job summary, a failure's input goes
+  # there (base64) and in the fuzz-artifacts upload, and any failure fails the
+  # job.
   fuzz:
     name: fuzz the input parsers
+    if: ${{ !inputs.jobs || inputs.jobs == 'all' || inputs.jobs == 'fuzz' }}
     runs-on: ubuntu-latest
     # Nine targets at five minutes each, plus the sanitizer build.
     timeout-minutes: 90
-    continue-on-error: true
+    env:
+      # cargo-fuzz builds for the triple it was itself compiled for unless
+      # told otherwise, and the release binary install-action fetches is the
+      # musl one. rustc refuses the address sanitizer with musl's static libc,
+      # and the nightly toolchain has no musl standard library, so until this
+      # was set every night failed before compiling a target ("can't find
+      # crate for `core`").
+      FUZZ_TRIPLE: x86_64-unknown-linux-gnu
+      FUZZ_SECONDS: 300
     steps:
       - uses: actions/checkout@v4
       - name: install rust (nightly, for the sanitizer)
@@ -222,18 +247,69 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-fuzz
+      - name: build every target
+        working-directory: fuzz
+        run: cargo +nightly fuzz build --target "$FUZZ_TRIPLE"
       - name: five minutes per target
         working-directory: fuzz
         run: |
-          for target in $(cargo +nightly fuzz list); do
+          set +e
+          targets="$(cargo +nightly fuzz list)"
+          if [ -z "$targets" ]; then
+            echo "::error title=fuzz::cargo fuzz list found no targets"
+            exit 1
+          fi
+          {
+            echo "### Fuzzing: $FUZZ_SECONDS s per target"
+            echo
+            echo "| target | result | corpus |"
+            echo "|---|---|---|"
+          } >>"$GITHUB_STEP_SUMMARY"
+          failed=()
+          for target in $targets; do
             echo "::group::$target"
+            log="$RUNNER_TEMP/fuzz-$target.log"
             mkdir -p "corpus/$target"
             seeds=()
             if [ -d "seeds/$target" ]; then seeds=("seeds/$target"); fi
-            cargo +nightly fuzz run "$target" "corpus/$target" "${seeds[@]}" -- \
-              -dict=json.dict -max_total_time=300
+            cargo +nightly fuzz run --target "$FUZZ_TRIPLE" "$target" "corpus/$target" "${seeds[@]}" -- \
+              -dict=json.dict -max_total_time="$FUZZ_SECONDS" 2>&1 | tee "$log"
+            code="${PIPESTATUS[0]}"
             echo "::endgroup::"
+            # libFuzzer's last line when it ran out the clock.
+            done_line="$(grep -m1 -E '^Done [0-9]+ runs in [0-9]+ second' "$log")"
+            corpus="$(find "corpus/$target" -type f | wc -l)"
+            if [ "$code" -ne 0 ]; then
+              failed+=("$target")
+              result="**failed** (exit $code)"
+            elif [ -z "$done_line" ]; then
+              failed+=("$target")
+              result="**failed**: stopped before its $FUZZ_SECONDS s"
+            else
+              result="$done_line"
+            fi
+            echo "| \`$target\` | $result | $corpus |" >>"$GITHUB_STEP_SUMMARY"
           done
+          for target in "${failed[@]}"; do
+            log="$RUNNER_TEMP/fuzz-$target.log"
+            where="$(grep -m1 -oE "panicked at [^ ]+|ERROR: [A-Za-z]+: [a-z -]+" "$log")"
+            echo "::error title=fuzz $target::${where:-no libFuzzer summary; see the log}. The input is in the job summary and the fuzz-artifacts upload."
+            {
+              echo
+              echo "#### \`$target\` failed"
+              echo
+              echo '```'
+              grep -m1 -A4 -E 'panicked at|ERROR: [A-Za-z]+:' "$log" || tail -n 20 "$log"
+              echo '```'
+              for f in "artifacts/$target"/*; do
+                [ -f "$f" ] || continue
+                echo "- \`fuzz/$f\` ($(stat -c %s "$f") bytes): \`$(base64 -w0 "$f" | head -c 400)\`"
+              done
+              echo
+              echo "Reproduce with \`cd fuzz && cargo +nightly fuzz run $target <file>\`."
+            } >>"$GITHUB_STEP_SUMMARY"
+          done
+          [ "${#failed[@]}" -eq 0 ]
       - name: keep what crashed
         if: failure()
         uses: actions/upload-artifact@v4
