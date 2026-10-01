@@ -1120,6 +1120,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   effort. The workspace now enables serde_json's `float_roundtrip`, so a
   number reads as the double it names. Found by `mcp_request` the same night.
 
+### Backup, restore and CI checks do what they say
+
+- **Fixed:** `scripts/restore.sh --force` opened the SQLite target to count
+  its tables, so a corrupt target, which is when a restore is needed, made it
+  exit before replacing anything. With `--force` it no longer opens the
+  target; without it, an unreadable target is refused by name. The restored
+  file keeps the owner and mode of the file it replaces, so a restore run as
+  root no longer leaves the server a file it cannot write. `backup.sh` and
+  `restore.sh` percent-decode the path in `DATABASE_URL` as SQLx does, so
+  `room%3Farchive.db` is the file `room?archive.db` the server opens. The
+  SQLite backup drill covers all three.
+- **Fixed:** the release attested one Postgres SBOM, trivy's scan of the
+  runner's platform (amd64), to the whole multi-arch index, so arm64 users
+  got an amd64 inventory. Each platform's manifest now gets its own SBOM and
+  attestation (`maidan-postgres.linux-amd64.cdx.json`,
+  `maidan-postgres.linux-arm64.cdx.json`); SECURITY.md shows how to verify
+  the one you run.
+- **Fixed:** `scripts/check-changelog-released.sh` stopped at an untagged
+  newest section (a retro written before its tag) and checked nothing; it now
+  checks the newest section that is tagged. `scripts/check-open-work.sh`
+  fails when the "Now: in flight" heading is missing or a row names its PR in
+  a form it does not read, instead of passing without reading anything.
+- **Changed:** `ci.yml` sets `permissions: contents: read` for every job, and
+  the `open work` and `changelog (released sections)` checkouts do not keep
+  the token.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

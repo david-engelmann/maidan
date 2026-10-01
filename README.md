@@ -222,8 +222,9 @@ cosign verify-attestation --type cyclonedx "ghcr.io/david-engelmann/maidan-serve
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-Release binaries, the CLI and Postgres images, and the SBOMs verify the same way; see
-[SECURITY.md](SECURITY.md#verifying-a-release).
+Release binaries, the CLI and Postgres images, and the SBOMs verify the same way, except
+that the Postgres SBOMs are one per platform, attested to that platform's manifest digest;
+see [SECURITY.md](SECURITY.md#verifying-a-release).
 
 ### Build + test
 

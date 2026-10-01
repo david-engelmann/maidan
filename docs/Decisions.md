@@ -1404,10 +1404,12 @@ ignored because the crate's users resolve their own. The TypeScript and Python
 SDKs have no runtime dependencies; the script fails if one gains a dependency
 without a lockfile. Accepted advisories, each with its reason, are in
 `.config/osv-scanner.toml`. It fails on anything else and has no
-`continue-on-error`. The release attests one CycloneDX SBOM to each image's
-index digest (`cosign attest --type cyclonedx`, keyless, the same identity as
-`cosign sign`): cargo-cyclonedx for the server and CLI, trivy for Postgres.
-The same files are published and blob-signed beside the tarballs.
+`continue-on-error`. The release attests CycloneDX SBOMs by digest
+(`cosign attest --type cyclonedx`, keyless, the same identity as
+`cosign sign`): cargo-cyclonedx for the server and CLI, attested to each
+image's index, and trivy for Postgres, one SBOM per platform attested to that
+platform's manifest, because a trivy scan reads one platform's packages. The
+same files are published and blob-signed beside the tarballs.
 
 **Alternative.** osv-scanner over the whole repository, root lockfile
 included; a required check; SBOMs only as release assets.

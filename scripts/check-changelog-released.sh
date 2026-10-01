@@ -22,11 +22,18 @@ if [[ -n "$dups" ]]; then
   exit 1
 fi
 
-version=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
-[[ -n "$version" ]] || { echo "changelog: no released section"; exit 0; }
-if ! git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
-  echo "changelog: v$version is not tagged; nothing to compare"; exit 0
-fi
+# A section can be written before its tag is cut (a retro adds `## [N.0.0]`
+# first), so walk down to the newest section that has one, rather than stop at
+# an untagged one and check nothing.
+version=""
+while read -r candidate; do
+  if git rev-parse -q --verify "refs/tags/v$candidate" >/dev/null; then
+    version=$candidate
+    break
+  fi
+  echo "changelog: [$candidate] is not tagged yet; checking the section below it"
+done < <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
+[[ -n "$version" ]] || { echo "changelog: no released section is tagged; nothing to compare"; exit 0; }
 tagged=$(mktemp); trap 'rm -f "$tagged"' EXIT
 git show "v$version:CHANGELOG.md" > "$tagged"
 added=$(comm -13 <(section_headings "$tagged" "$version" | sort) <(section_headings CHANGELOG.md "$version" | sort))

@@ -10,7 +10,10 @@
 #     back: a killed server's -wal left beside the file would otherwise be
 #     replayed over the snapshot the next time it is opened;
 #   - the restored database holds exactly the snapshot's rows, and the
-#     artifact archive round-trips.
+#     artifact archive round-trips;
+#   - --force replaces a target that is not a database at all, keeping the
+#     replaced file's mode;
+#   - both scripts decode a percent-encoded path as SQLx does.
 #
 # Usage: scripts/sqlite-backup-drill.sh   (needs bash and the sqlite3 CLI)
 set -euo pipefail
@@ -114,5 +117,36 @@ DATABASE_URL="sqlite://$orphan_db" ARTIFACT_LOCALFS_ROOT="$work/restored-artifac
   bash "$here/restore.sh" "$work/backup" >/dev/null
 check_restored "$orphan_db" "an orphaned -wal"
 cmp -s "$work/artifacts/ab12" "$work/restored-artifacts/ab12" || fail "artifact archive round trip"
+
+# 3. A target that is not a database, which is when a restore is most needed.
+# Without --force it is refused and left alone; --force replaces it without
+# opening it, and the restore keeps the mode of the file it replaced.
+garbage_db="$work/garbage/maidan.db"
+mkdir -p "$(dirname "$garbage_db")"
+echo "not a database" > "$garbage_db"
+chmod 600 "$garbage_db"
+if DATABASE_URL="sqlite://$garbage_db" ARTIFACT_LOCALFS_ROOT="$work/restored-artifacts-3" \
+  bash "$here/restore.sh" "$work/backup" >/dev/null 2>&1; then
+  fail "restore over a corrupt target succeeded without --force"
+fi
+[[ "$(cat "$garbage_db")" == "not a database" ]] || fail "a refused restore changed the corrupt target"
+DATABASE_URL="sqlite://$garbage_db" ARTIFACT_LOCALFS_ROOT="$work/restored-artifacts-3" \
+  bash "$here/restore.sh" "$work/backup" --force >/dev/null \
+  || fail "restore --force could not replace a corrupt target"
+check_restored "$garbage_db" "--force over a corrupt target"
+mode="$(stat -c '%a' "$garbage_db" 2>/dev/null || stat -f '%Lp' "$garbage_db")"
+[[ "$mode" == 600 ]] || fail "the restore did not keep the replaced file's mode (600, got $mode)"
+
+# 4. SQLx percent-decodes the path, so `%3F` is a `?` in the file name, not the
+# start of the options. Both scripts must touch the file the server opens.
+encoded_url="sqlite://$work/encoded/room%3Farchive.db?mode=rwc"
+DATABASE_URL="$encoded_url" ARTIFACT_LOCALFS_ROOT="$work/restored-artifacts-4" \
+  bash "$here/restore.sh" "$work/backup" >/dev/null
+[[ -f "$work/encoded/room?archive.db" ]] || fail "restore.sh did not decode a percent-encoded path"
+check_restored "$work/encoded/room?archive.db" "a percent-encoded path"
+DATABASE_URL="$encoded_url" bash "$here/backup.sh" "$work/backup-encoded" >/dev/null 2>&1 \
+  || fail "backup.sh did not decode a percent-encoded path"
+[[ "$(sqlite3 "$work/backup-encoded/maidan.sqlite" "SELECT count(*) FROM events")" == "$snap_rows" ]] \
+  || fail "backup of a percent-encoded path"
 
 echo "sqlite-backup-drill: ok ($snap_rows rows snapshotted mid-write of $live_rows, restored exactly)"
