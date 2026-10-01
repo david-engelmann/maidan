@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Message tool schemas match their prose
+
+- **Fixed:** `post_message` and `edit_message` no longer require `body` when
+  `content` is present. The server derives `body` from those blocks when
+  `body` is omitted, and refuses the call when both are omitted.
+  `edit_message` content blocks use the same
+  `text|code|tool_use|tool_result|resource_link` enum as `post_message`.
+  `cast_vote.kind` stays an open string: the server stores any kind verbatim
+  and has no closed set to enumerate.
+
 ### The local book build, and three doc corrections
 
 - **Docs:** the README's local book build runs the steps the docs workflow already runs, in the order they are required: `bash book/sync-docs.sh`, `mdbook-mermaid install book`, and `mdbook-linkcheck` on `PATH`, then `mdbook build book`. The from-source section says a member token cannot mint another member token, because `POST /workspaces/{wid}/members/{mid}/tokens` requires `token:admin`. Open Work's web-push row cites thread 49, not thread 23. The unreferenced `docs/assets/maidan-wordmark.svg` is removed.
