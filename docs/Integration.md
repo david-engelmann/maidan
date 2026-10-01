@@ -1690,9 +1690,10 @@ MAIDAN_MCP_TOKEN=<bearer> maidan mcp-stdio
 
 In-process event bus + indexer for desktop/edge use ([Capabilities.md](Capabilities.md) v100).
 
-One JSON-RPC request per line in, one response per line out. A notification (a line with no `id`,
-such as `notifications/initialized`) runs and gets no line back, not even an error; the resource
-notifications you subscribed to follow the response they came after.
+One JSON-RPC request per line in, one response per line out. A notification (a valid JSON-RPC
+request object with no `id`, such as `notifications/initialized`) runs and gets no line back; the
+resource notifications you subscribed to follow the response they came after. Malformed JSON and a
+request object the spec rejects are not notifications: each gets an error response.
 
 This binary *hosts* the server — it opens the database and answers tool calls over
 the pipe — so the token is the whole of the authorization: every tool runs with
