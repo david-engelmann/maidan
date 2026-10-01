@@ -342,16 +342,11 @@
       #board-title { font-size: 1.15rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
       #board-summary { color: var(--muted); font-size: 0.85rem; display: flex; gap: 0.9rem; flex-wrap: wrap; }
       #board-summary b { color: var(--ink); font-weight: 650; }
-      #board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; align-items: start; }
+      #board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
       @media (max-width: 1000px) { #board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-      .board-col { background: #efece5; border-radius: var(--radius); padding: 0.5rem; min-height: 5rem; }
-      .board-col h3 { display: flex; align-items: center; gap: 0.4rem; margin: 0.1rem 0.25rem 0.5rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #52525b; }
-      .board-col h3 .count { margin-left: auto; background: #fff; border-radius: 999px; padding: 0 0.45rem; font-size: 0.72rem; color: var(--muted); }
-      .board-col .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; }
-      .col-open .dot { background: #a1a1aa; }
-      .col-working .dot { background: #22c55e; }
-      .col-review .dot { background: #f59e0b; }
-      .col-done .dot { background: #6366f1; }
+      /* A lane is space, not a box: no fill, no border, no padding, no shadow. */
+      .board-col { background: transparent; border: 0; box-shadow: none; padding: 0; min-height: 0; }
+      .board-col h3 { margin: 0 0 8px; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: #63636c; }
       .board-empty { color: #a1a1aa; font-size: 0.78rem; text-align: center; padding: 0.75rem 0; }
       .card {
         background: var(--panel); border: 1px solid var(--line); border-radius: 0.5rem;
@@ -1837,16 +1832,13 @@
         const cols = {};
         BOARD_COLUMNS.forEach((c) => {
           const col = document.createElement("section");
-          col.className = `board-col col-${c.key}`;
+          col.className = "board-col";
           col.dataset.column = c.key;
           const h = document.createElement("h3");
-          const dot = document.createElement("span");
-          dot.className = "dot";
           const label = document.createElement("span");
           label.textContent = c.title;
           const count = document.createElement("span");
-          count.className = "count";
-          h.append(dot, label, count);
+          h.append(label, " ", count);
           col.appendChild(h);
           board.appendChild(col);
           cols[c.key] = { el: col, count, n: 0 };

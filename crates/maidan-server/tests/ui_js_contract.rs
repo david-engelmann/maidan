@@ -1227,6 +1227,41 @@ fn ui_js_hides_the_composer_until_a_card_is_open() {
     );
 }
 
+/// A lane is space, not a box. No tinted column, no colored dot, no white
+/// count pill. The heading is the lane name and its number, in 12px muted type.
+#[test]
+fn ui_js_lanes_are_space_not_boxes() {
+    assert!(
+        HTML.contains(".board-col { background: transparent; border: 0; box-shadow: none; padding: 0; min-height: 0; }"),
+        "a lane has no background, border, padding, or shadow"
+    );
+    assert!(
+        !HTML.contains("#efece5")
+            && !HTML.contains(".board-col .dot")
+            && !HTML.contains(".board-col h3 .count"),
+        "the tinted box, the colored dot, and the white count pill are gone"
+    );
+    assert!(
+        HTML.contains("gap: 16px")
+            && HTML.contains(".board-col h3 { margin: 0 0 8px; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: #63636c; }"),
+        "lanes sit 16px apart and the heading is 12px muted type, not uppercase tracking"
+    );
+    let board = function_body(script(HTML), "renderBoard");
+    assert!(
+        !board.contains("className = \"dot\"") && !board.contains("className = \"count\""),
+        "renderBoard does not paint a dot or a count pill"
+    );
+    assert!(
+        board.contains("label.textContent = c.title")
+            && board.contains("h.append(label, \" \", count)"),
+        "the lane heading is the name plus the number"
+    );
+    assert!(
+        board.contains("col.count.textContent = String(col.n)"),
+        "the number is the count of cards in that lane"
+    );
+}
+
 /// QA items from #1141 that were still true on main: a dead server must not
 /// surface as `TypeError: Failed to fetch` or as a lost post, a 403 search
 /// must not dump problem JSON, Open DM selects the conversation and names the

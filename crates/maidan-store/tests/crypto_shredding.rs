@@ -1043,12 +1043,28 @@ mod blob_reap {
     async fn sqlite_file() -> (tempfile::TempDir, super::Db) {
         let dir = tempfile::tempdir().unwrap();
         let url = format!("sqlite://{}?mode=rwc", dir.path().join("reap.db").display());
+        // busy_timeout and foreign_keys are per connection. Applying them once
+        // on the pool leaves the other three connections fail-fast, so a write
+        // that overlaps a reap's lock returns "database is locked" at once.
         let pool = super::SqlitePoolOptions::new()
             .max_connections(4)
+            .after_connect(|conn, _| {
+                Box::pin(async move {
+                    sqlx::query("PRAGMA foreign_keys = ON")
+                        .execute(&mut *conn)
+                        .await?;
+                    sqlx::query("PRAGMA journal_mode = WAL")
+                        .execute(&mut *conn)
+                        .await?;
+                    sqlx::query("PRAGMA busy_timeout = 5000")
+                        .execute(&mut *conn)
+                        .await?;
+                    Ok(())
+                })
+            })
             .connect(&url)
             .await
             .unwrap();
-        maidan_store::configure_sqlite_pool(&pool).await.unwrap();
         super::run_sqlite_migrations(&pool).await.unwrap();
         (dir, super::Db::Sqlite(pool))
     }

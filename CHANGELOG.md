@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A blob reap releases its write lock before it returns
+
+- **Fixed:** a reap that finds the artifact still referenced returned while its
+  write transaction was only queued to roll back. On a multi-connection SQLite
+  pool the next write, including the erase that follows, could fail with
+  `database is locked`. The transaction now rolls back before the reap returns.
+
 ### SQLite retention keeps a cursor that moved on the cutoff's day
 
 - **Fixed:** a delivery cursor's `updated_at` is SQLite `CURRENT_TIMESTAMP`

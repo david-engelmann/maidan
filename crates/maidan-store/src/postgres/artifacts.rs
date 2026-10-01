@@ -116,6 +116,10 @@ pub async fn reap_blob(
             .fetch_one(&mut *tx)
             .await?;
     if held {
+        // Roll back before returning. Dropping the transaction only queues the
+        // rollback, so the sha lock can outlive this call. SQLite's twin hits
+        // "database is locked" when the next write starts on another connection.
+        tx.rollback().await?;
         return Ok(crate::BlobReap::Referenced);
     }
     // A lapsed lease left by a reaper that died is replaced.
