@@ -176,14 +176,12 @@ pub async fn manifest(
             .store
             .get_artifact_for_workspace(ticket.workspace_id, &sha256)
             .await?;
-        if artifact.tombstoned_at.is_none() {
-            artifacts.push(SharedArtifact {
-                sha256: artifact.sha256,
-                size_bytes: artifact.size_bytes,
-                mime_type: artifact.mime_type,
-                kind: artifact.kind,
-            });
-        }
+        artifacts.push(SharedArtifact {
+            sha256: artifact.sha256,
+            size_bytes: artifact.size_bytes,
+            mime_type: artifact.mime_type,
+            kind: artifact.kind,
+        });
     }
     Ok(Json(ShareManifest {
         ticket_id: ticket.id,
@@ -280,9 +278,6 @@ pub async fn download_artifact(
         .store
         .get_artifact_for_workspace(context.0.workspace_id, &sha_hex)
         .await?;
-    if artifact.tombstoned_at.is_some() {
-        return Err(ApiError::NotFound);
-    }
     let bytes = state.artifacts.get(&sha).await?;
     Ok(crate::artifact_response::artifact_response(
         &artifact, bytes,

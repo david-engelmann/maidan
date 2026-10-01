@@ -91,9 +91,6 @@ pub async fn read(
                 Some(ws) => store.get_artifact_for_workspace(ws, id_str).await?,
                 None => store.get_artifact_by_sha(id_str).await?,
             };
-            if meta.tombstoned_at.is_some() {
-                return Err(McpError::NotFound);
-            }
             json!({
                 "artifact": meta,
                 "byte_length": meta.size_bytes,

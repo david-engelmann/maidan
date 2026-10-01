@@ -1,8 +1,8 @@
 //! Artifacts are content-addressed + deduped across workspaces, so this proves
 //! a caller in workspace B cannot fetch a blob workspace A uploaded just by
 //! knowing its SHA — the `maidan_artifact_refs` per-tenant access gate — and
-//! that no read serves a tombstoned artifact, while one workspace erasing its
-//! copy leaves another's intact.
+//! that one workspace erasing its copy leaves another's intact. Erase is the
+//! only way to remove an artifact; there is no tombstone.
 
 use std::{
     net::SocketAddr,
@@ -24,7 +24,6 @@ struct Ctx {
     _server: tokio::task::JoinHandle<()>,
     client: reqwest::Client,
     store: Arc<dyn Store>,
-    pool: sqlx::SqlitePool,
     _dir: tempfile::TempDir,
 }
 impl Ctx {
@@ -74,7 +73,6 @@ async fn spawn() -> Ctx {
             .build()
             .unwrap(),
         store,
-        pool,
         _dir: dir,
     }
 }
@@ -228,28 +226,6 @@ async fn read_statuses(ctx: &Ctx, token: &str, sha: &str) -> Vec<StatusCode> {
         out.push(resp.status());
     }
     out
-}
-
-#[tokio::test]
-async fn a_tombstoned_artifact_is_served_by_no_read() {
-    let ctx = spawn().await;
-    let (_wa, tok) = workspace_with_token(&ctx, "acme").await;
-    let sha = upload(&ctx, &tok, b"withdrawn bytes").await;
-    assert_eq!(read_statuses(&ctx, &tok, &sha).await, [StatusCode::OK; 3]);
-
-    // Nothing in the API writes an artifact tombstone yet; the column is the
-    // contract every reader honours (the share route, thread context).
-    sqlx::query("UPDATE maidan_artifacts SET tombstoned_at = ? WHERE sha256 = ?")
-        .bind(chrono::Utc::now())
-        .bind(&sha)
-        .execute(&ctx.pool)
-        .await
-        .unwrap();
-    assert_eq!(
-        read_statuses(&ctx, &tok, &sha).await,
-        [StatusCode::NOT_FOUND; 3],
-        "the same 404 the share route gives a tombstoned artifact"
-    );
 }
 
 #[tokio::test]

@@ -113,7 +113,6 @@ fn artifact() -> Artifact {
         kind: ArtifactKind::Attachment,
         uploaded_by: Some(maidan_types::MemberId(id(2))),
         created_at: ts(),
-        tombstoned_at: None,
     }
 }
 
