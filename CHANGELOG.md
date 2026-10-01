@@ -23,6 +23,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   a nameserver that never answers held every tenant's webhooks. The lookup now
   gives up after 5 s (`EGRESS_RESOLUTION_TIMEOUT`).
 
+### The docs describe the board at `/ui`
+
+- **Docs:** the README, Production, Integration, OIDC, Architecture, FAQ,
+  Protocols, `ui-tests/README.md` and the v408 Capabilities row say what `/ui`
+  is now. It is a board in the same binary. A pasted token is exchanged for a
+  session, and OIDC signs a person in when a provider is configured. They no
+  longer say the page is not ready to show, that it has no login, that
+  `data-ui-version` versions it, or that captured screenshots of it exist.
+  The Playwright suite does not replace the PR template's checklist.
+
 ### Program C: context economics
 
 - **Added:** `docs/Context Economics.md`, the design for making agents

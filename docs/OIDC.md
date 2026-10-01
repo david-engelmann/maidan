@@ -44,7 +44,7 @@ localStorage. Industry default: **OpenID Connect (OIDC)** against an IdP
 | OIDC for federation peers | Peers keep peer bearer secrets (Cluster G). |
 | SQLite-first OIDC session store | v2.0 targets Postgres; SQLite dev may use encrypted cookies only. |
 
-## Current model (v1.4.x)
+## What signs in today
 
 ```text
 Client --Authorization: Bearer <api_token>--> maidan-server
@@ -57,7 +57,11 @@ Client --Authorization: Bearer <api_token>--> maidan-server
   `MAIDAN_BOOTSTRAP=1` (or `AUTH_DISABLED=1` for tests).
 - Token mint: `POST /workspaces/:wid/members/:mid/tokens` requires existing
   bearer with `token:admin`.
-- Web UI (`/ui/`): no login; read-only tail against open routes when auth is off.
+- Web UI (`/ui/`): a person signs in with the identity provider (authorization
+  code and PKCE, below) or pastes a token. The page exchanges that token for an
+  HttpOnly session (`POST /auth/session/from-token`) and does not keep it. With
+  no `MAIDAN_SESSION_SECRET` there is no session, and the page keeps a pasted
+  token in the tab only. There is no anonymous read-only board.
 
 ## Recommended approach: OIDC Authorization Code + PKCE
 

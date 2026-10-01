@@ -301,11 +301,12 @@ read and the server behaves exactly as before.
 
 After OIDC login, use `/ui/` (session cookie) or mint an API token for MCP.
 
-**Channel browser (`v92.0.0`):** From `/ui/`, list channels and threads, then post
-messages via `POST /ui/api/...` using the session cookie — no bearer or curl required.
-A token pasted in the header field is exchanged for a session with that token's
-authority (`POST /auth/session/from-token`) and not kept by the page; revoking or
-rotating the token ends the session.
+**The board (`/ui/`):** channels and tasks, and the thread when one is open.
+Posts go through `/ui/api/...` on the session cookie. A token is pasted on the
+first-run card — those fields sit behind Change in the header once you are in —
+and exchanged for a session with that token's authority
+(`POST /auth/session/from-token`). The page does not keep the token. Revoking
+or rotating it ends the session.
 
 **Sessions.** A session row (`maidan_sessions`) names its member and workspace
 and, for one made from a token, the token's id. It is checked on every request:

@@ -1622,7 +1622,7 @@ See [Result Delivery](Result%20Delivery.md#discoverability).
 
 ## Browser UI (`/ui/`)
 
-Humans use the static shell at `/ui/` (version marker `data-ui-version` on `<body>`). The UI calls session-authenticated proxies under `/ui/api/...` after OIDC or bootstrap session setup. **Agents should prefer bearer tokens** on the REST/MCP routes above, not scrape HTML.
+Humans use the board at `/ui/`. It calls session-authenticated proxies under `/ui/api/...` after an OIDC login or a pasted token exchanged for a session. **Agents should prefer bearer tokens** on the REST/MCP routes above, not scrape HTML. `data-ui-version` on `<body>` is not a version of the page.
 
 The page does not keep a pasted token. It sends it once to
 `POST /auth/session/from-token` (as `Authorization: Bearer …`), which sets the
@@ -1680,7 +1680,7 @@ it from the field. A token left in `localStorage` by an older page is exchanged
 on the next load and removed. Once connected, the inputs fold into the header
 behind **Change**. **Sign out** ends the session.
 
-Panels include channels, live WS tail, search, tokens, artifacts, and admin surfaces. A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The console fetches the bytes with the viewer's bearer header or session cookie, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
+The page is a board: a channel list, tasks, and the thread when one is open. More tools holds the other panels (search, tokens, DMs, notifications, admin). A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The page fetches the bytes with the viewer's session cookie or bearer header, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 
 ---
 
