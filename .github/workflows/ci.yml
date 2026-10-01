@@ -33,6 +33,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      openwork: ${{ steps.filter.outputs.openwork }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,12 +45,20 @@ jobs:
         run: |
           if [ "$EVENT" != "pull_request" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "openwork=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Documentation: docs/, book/, and Markdown anywhere. Everything
           # else (code, workflows, scripts, deploy files, openapi) is code.
           changed="$(git diff --name-only "$BASE" HEAD)"
           printf '%s\n' "$changed"
+          # Open Work is kept by the coordinator, not by feature PRs, so its
+          # check runs on main and on a PR that edits it, not on every PR.
+          if printf '%s\n' "$changed" | grep -qx 'docs/Open Work.md'; then
+            echo "openwork=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "openwork=false" >> "$GITHUB_OUTPUT"
+          fi
           if printf '%s\n' "$changed" | grep -Ev '^(docs/|book/)|\.md$' | grep -q .; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
@@ -593,9 +602,12 @@ jobs:
   open-work:
     # docs/Open Work.md's live tables against history: a PR listed as in
     # flight must not have merged, and the reconciliation stamp must be on this
-    # branch. Red means the file needs reconciling (the drift policy in
-    # docs/Conventions.md). Not required.
+    # branch. Runs on main and on a PR that edits the file. Red on main means
+    # the file needs reconciling (the drift policy in docs/Conventions.md).
+    # Not required.
     name: open work
+    needs: changes
+    if: needs.changes.outputs.openwork == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

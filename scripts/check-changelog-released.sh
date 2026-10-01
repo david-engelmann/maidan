@@ -12,6 +12,16 @@ section_headings() { # $1 = file, $2 = version: the ### headings of ## [version]
   awk -v v="## [$2]" 'index($0, v) == 1 {on=1; next} on && /^## \[/ {exit} on && /^### / {print}' "$1"
 }
 
+# An entry appears once. A keep-both merge of a moved entry once left two
+# copies of the same entry in [Unreleased].
+dups=$(awk '/^## \[Unreleased\]/{on=1; next} on && /^## \[/{exit} on && /^### /' CHANGELOG.md \
+  | grep -vxE '### (Added|Changed|Fixed|Removed|Security|Deprecated)' | sort | uniq -d || true)
+if [[ -n "$dups" ]]; then
+  echo "changelog: [Unreleased] lists an entry more than once:"
+  printf '%s\n' "$dups" | sed 's/^/  /'
+  exit 1
+fi
+
 version=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
 [[ -n "$version" ]] || { echo "changelog: no released section"; exit 0; }
 if ! git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
