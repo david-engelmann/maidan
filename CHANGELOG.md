@@ -1120,6 +1120,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   effort. The workspace now enables serde_json's `float_roundtrip`, so a
   number reads as the double it names. Found by `mcp_request` the same night.
 
+### Program C: context economics
+
+- **Added:** `docs/Context Economics.md`, the design for making agents
+  coordinated through Maidan spend less on models. It covers what the
+  providers' caches reward (exact prefixes, cheap reads, priced writes, narrow
+  scope, a cold start that costs everyone), where a team's money actually
+  goes, where Maidan stood on 2026-10-01, the principles (bytes are a
+  contract, shared bytes go first, measure per completed task, never proxy),
+  the phased program C1 to C12 with the MCEB-1 benchmark, and a usage
+  normalization table for eight providers.
+- **Changed:** Open Work gains Program C (C3, the ledger, and C4, the SDK
+  normalizers and recipes, enter Next at 2 and 3; C5 to C12 are in Later), and
+  J3's `ttlMs`, `cacheScope` and `server/discover` leave Won't do, because the
+  2026-07-28 schema requires them. Decisions records that Maidan shapes and
+  measures model spend and never proxies model calls. The Roadmap gains the
+  horizon "agents pay for what changed".
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

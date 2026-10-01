@@ -82,7 +82,16 @@ flight and the ranked plan are the **Now** and **Next** sections of
    the rest of the QA pass, the ten changes of the [UI design
    contract](UI%20Design.md), write paths for a signed-in person, typed modules
    with a CSP, and screenshots captured by a script.
-5. **Launch** (the maintainer's call): the public site, an in-browser
+5. **Agents pay for what changed.** Maidan's context is byte-stable and
+   layered, its MCP surface follows the 2026-07-28 caching rules with small,
+   stable tool profiles, and its ledger prices every cache tier and reports
+   cost per completed task. Then it coordinates for the cache: warm then fan
+   out, claims inside the cache TTL, a batch lane for work with slack, and no
+   duplicate runs. The claim is measured by a pre-registered benchmark, not a
+   hit rate. This is Program C ([Context Economics](Context%20Economics.md)).
+   In flight: the canonical context pack and MCP conformance. Next: the ledger
+   and the SDK normalizers.
+6. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
    room itself staying open source.
 

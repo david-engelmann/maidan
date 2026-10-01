@@ -84,6 +84,7 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   perl -pi -e 's{\]\(SDK%20Release\.md\)}{]($ENV{GH}/docs/SDK%20Release.md)}g' "$f"
   # The /ui design contract is a repo doc, not a SUMMARY page.
   perl -pi -e 's{\]\(UI%20Design\.md\)}{]($ENV{GH}/docs/UI%20Design.md)}g' "$f"
+  perl -pi -e 's{\]\(Context%20Economics\.md\)}{]($ENV{GH}/docs/Context%20Economics.md)}g' "$f"
   perl -pi -e 's{\]\(Clusters/Product%20Ladder%20102\+\.md\)}{]($ENV{GH}/docs/Clusters/Product%20Ladder%20102+.md)}g' "$f"
   perl -pi -e 's{\]\(Clusters/Product%20Ladder%2077\+\.md\)}{]($ENV{GH}/docs/Clusters/Product%20Ladder%2077+.md)}g' "$f"
   perl -pi -e 's{\]\(Tracks/README\.md\)}{]($ENV{GH}/docs/Tracks/README.md)}g' "$f"
