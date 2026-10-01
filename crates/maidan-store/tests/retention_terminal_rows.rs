@@ -2,17 +2,20 @@
 //! those: delivered egress and mail, published outbox rows, and dead-lettered
 //! agent runs go; pending rows and egress or mail dead letters (an operator's
 //! to-do, with an alert on it) stay, and so does everything in a workspace
-//! under a legal hold. Both backends.
+//! under a legal hold, including webhook, automation and transactional-outbox
+//! rows. Both backends.
 
 use std::future::Future;
 
 use chrono::{Duration, Utc};
-use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::{
-    ChannelId, EgressKind, EgressTarget, Event, MemberKind, NewChannel, NewDlqEntry,
-    NewEgressOutbox, NewMailOutbox, NewMember, NewThread, NewWorkspace, ThreadId, WorkspaceId,
+    AutomationSourceKind, ChannelId, EgressKind, EgressTarget, Event, MemberKind,
+    NewAutomationDelivery, NewChannel, NewDlqEntry, NewEgressOutbox, NewMailOutbox, NewMember,
+    NewThread, NewWebhookSubscription, NewWorkspace, ThreadId, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::Row;
 
 struct Room {
     workspace: WorkspaceId,
@@ -143,11 +146,14 @@ async fn room(store: &dyn Store, name: &str, log_base: i64) -> Room {
 }
 
 /// `publish_outbox` marks every transactional-outbox row published, as the
-/// relay would, and returns how many it marked.
-async fn run_suite<F, Fut>(store: &dyn Store, publish_outbox: F)
+/// relay would, and returns how many it marked. `published_outbox` counts one
+/// workspace's published rows.
+async fn run_suite<P, PFut, C, CFut>(store: &dyn Store, publish_outbox: P, published_outbox: C)
 where
-    F: Fn() -> Fut,
-    Fut: Future<Output = u64>,
+    P: Fn() -> PFut,
+    PFut: Future<Output = u64>,
+    C: Fn(WorkspaceId) -> CFut,
+    CFut: Future<Output = i64>,
 {
     let free = room(store, "free", 1_000).await;
     let held = room(store, "held", 2_000).await;
@@ -169,7 +175,14 @@ where
         .await
         .expect("hold");
     let published = publish_outbox().await;
-    assert!(published >= 2, "each room appended an event");
+    let free_published = published_outbox(free.workspace).await;
+    let held_published = published_outbox(held.workspace).await;
+    assert_eq!(
+        free_published + held_published,
+        i64::try_from(published).expect("count"),
+        "each published outbox row belongs to one of the two rooms"
+    );
+    assert!(free_published > 0 && held_published > 0);
 
     let past = Utc::now() - Duration::days(1);
     assert_eq!(
@@ -181,9 +194,15 @@ where
     let future = Utc::now() + Duration::days(1);
     assert_eq!(
         store.prune_deliveries(future, 5_000).await.expect("prune"),
-        published + 3,
-        "the free room's delivered egress, delivered mail and dlq entry, and \
-         every published outbox row"
+        u64::try_from(free_published).expect("count") + 3,
+        "the free room's delivered egress, delivered mail, dlq entry and \
+         published outbox; the held room's outbox stays"
+    );
+    assert_eq!(published_outbox(free.workspace).await, 0);
+    assert_eq!(
+        published_outbox(held.workspace).await,
+        held_published,
+        "a held workspace keeps its published outbox rows"
     );
     assert_eq!(
         store.prune_deliveries(future, 5_000).await.expect("again"),
@@ -238,9 +257,11 @@ where
         .expect("lift");
     assert_eq!(
         store.prune_deliveries(future, 5_000).await.expect("lifted"),
-        3,
-        "lifting the hold releases the held room's delivered egress, mail and dlq entry"
+        u64::try_from(held_published).expect("count") + 3,
+        "lifting the hold releases the held room's delivered egress, mail, dlq \
+         entry and published outbox"
     );
+    assert_eq!(published_outbox(held.workspace).await, 0);
 }
 
 #[tokio::test]
@@ -255,17 +276,38 @@ async fn delivery_retention_prunes_finished_rows_and_keeps_dead_letters_pending_
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
     let store = SqliteStore::for_tests(pool.clone());
-    run_suite(&store, || async {
-        sqlx::query(
-            "UPDATE maidan_outbox SET published_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-             WHERE published_at IS NULL",
-        )
-        .execute(&pool)
-        .await
-        .expect("publish")
-        .rows_affected()
-    })
+    let published = |ws: WorkspaceId| {
+        let pool = pool.clone();
+        async move { count_published_sqlite(&pool, ws).await }
+    };
+    run_suite(
+        &store,
+        || async {
+            sqlx::query(
+                "UPDATE maidan_outbox SET published_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                 WHERE published_at IS NULL",
+            )
+            .execute(&pool)
+            .await
+            .expect("publish")
+            .rows_affected()
+        },
+        &published,
+    )
     .await;
+}
+
+async fn count_published_sqlite(pool: &sqlx::SqlitePool, ws: WorkspaceId) -> i64 {
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS n FROM maidan_outbox o
+         INNER JOIN maidan_events e ON e.id = o.log_id
+         WHERE e.workspace_id = ? AND o.published_at IS NOT NULL",
+    )
+    .bind(ws.0)
+    .fetch_one(pool)
+    .await
+    .expect("count");
+    row.get("n")
 }
 
 #[tokio::test]
@@ -299,12 +341,344 @@ async fn delivery_retention_prunes_finished_rows_and_keeps_dead_letters_pending_
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool.clone());
-    run_suite(&store, || async {
-        sqlx::query("UPDATE maidan_outbox SET published_at = now() WHERE published_at IS NULL")
+    let published = |ws: WorkspaceId| {
+        let pool = pool.clone();
+        async move { count_published_postgres(&pool, ws).await }
+    };
+    run_suite(
+        &store,
+        || async {
+            sqlx::query("UPDATE maidan_outbox SET published_at = now() WHERE published_at IS NULL")
+                .execute(&pool)
+                .await
+                .expect("publish")
+                .rows_affected()
+        },
+        &published,
+    )
+    .await;
+}
+
+async fn count_published_postgres(pool: &sqlx::PgPool, ws: WorkspaceId) -> i64 {
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS n FROM maidan_outbox o
+         INNER JOIN maidan_events e ON e.id = o.log_id
+         WHERE e.workspace_id = $1 AND o.published_at IS NOT NULL",
+    )
+    .bind(ws.0)
+    .fetch_one(pool)
+    .await
+    .expect("count");
+    row.get("n")
+}
+
+struct Tenant {
+    workspace: WorkspaceId,
+    member: maidan_types::Member,
+}
+
+/// One workspace with a delivered webhook, a quarantined webhook, a pending
+/// webhook, a delivered automation, a pending automation, and one event (so
+/// one transactional-outbox row).
+async fn tenant(store: &dyn Store, name: &str) -> Tenant {
+    let ws = store
+        .create_workspace(NewWorkspace { name: name.into() })
+        .await
+        .expect("workspace");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "n".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("member");
+    store
+        .append_event(&Event::MemberJoined {
+            occurred_at: Utc::now(),
+            workspace_id: ws.id,
+            member: member.clone(),
+        })
+        .await
+        .expect("event");
+    let sub = store
+        .create_webhook_subscription(NewWebhookSubscription {
+            workspace_id: ws.id,
+            url: "https://hooks.example/in".into(),
+            label: None,
+            event_kinds: vec!["member_joined".into()],
+            secret_ciphertext: "x".into(),
+        })
+        .await
+        .expect("subscription");
+    let delivered = store
+        .enqueue_webhook_delivery(sub.id, 1, "{}")
+        .await
+        .expect("webhook");
+    store
+        .mark_webhook_delivery_delivered(delivered)
+        .await
+        .expect("delivered");
+    let quarantined = store
+        .enqueue_webhook_delivery(sub.id, 2, "{}")
+        .await
+        .expect("webhook");
+    store
+        .quarantine_webhook_delivery(quarantined)
+        .await
+        .expect("quarantine");
+    store
+        .enqueue_webhook_delivery(sub.id, 3, "{}")
+        .await
+        .expect("pending webhook");
+    let automation = |payload: &str| NewAutomationDelivery {
+        workspace_id: ws.id,
+        source_kind: AutomationSourceKind::SlashCommand,
+        source_id: uuid::Uuid::new_v4(),
+        target_url: "https://hooks.example/auto".into(),
+        header_name: "X-Maidan-Event".into(),
+        header_value: "slash".into(),
+        payload: payload.into(),
+    };
+    let delivered = store
+        .enqueue_automation_delivery(automation("delivered"))
+        .await
+        .expect("automation");
+    store
+        .mark_automation_delivery_delivered(delivered)
+        .await
+        .expect("delivered");
+    store
+        .enqueue_automation_delivery(automation("pending"))
+        .await
+        .expect("pending automation");
+    Tenant {
+        workspace: ws.id,
+        member,
+    }
+}
+
+fn listed(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    filter: AutomationDeliveryFilter,
+) -> impl Future<Output = usize> + '_ {
+    async move {
+        store
+            .list_webhook_deliveries(ws, filter, 20)
+            .await
+            .expect("webhooks")
+            .len()
+    }
+}
+
+/// The instance sweep drops one tenant's finished webhook, automation and
+/// outbox rows and keeps the other's, because that workspace is held.
+async fn run_two_tenant<P, PFut, C, CFut>(store: &dyn Store, publish_outbox: P, published_outbox: C)
+where
+    P: Fn() -> PFut,
+    PFut: Future<Output = ()>,
+    C: Fn(WorkspaceId) -> CFut,
+    CFut: Future<Output = i64>,
+{
+    let free = tenant(store, "tenant-free").await;
+    let held = tenant(store, "tenant-held").await;
+    store
+        .place_legal_hold(held.workspace, "matter", None)
+        .await
+        .expect("hold");
+    publish_outbox().await;
+    // One unpublished outbox row each, which retention must not touch.
+    for room in [&free, &held] {
+        store
+            .append_event(&Event::MemberJoined {
+                occurred_at: Utc::now(),
+                workspace_id: room.workspace,
+                member: room.member.clone(),
+            })
+            .await
+            .expect("unpublished event");
+    }
+    let free_published = published_outbox(free.workspace).await;
+    let held_published = published_outbox(held.workspace).await;
+    assert!(free_published >= 1 && held_published >= 1);
+
+    let future = Utc::now() + Duration::days(1);
+    assert_eq!(
+        store.prune_deliveries(future, 5_000).await.expect("prune"),
+        u64::try_from(free_published).expect("count") + 3,
+        "the free tenant's delivered webhook, quarantined webhook, delivered \
+         automation and published outbox"
+    );
+    assert_eq!(published_outbox(free.workspace).await, 0);
+    assert_eq!(
+        published_outbox(held.workspace).await,
+        held_published,
+        "the held tenant keeps its published outbox"
+    );
+    assert_eq!(
+        listed(store, free.workspace, AutomationDeliveryFilter::Delivered).await,
+        0
+    );
+    assert_eq!(
+        listed(store, free.workspace, AutomationDeliveryFilter::DeadLetter).await,
+        0
+    );
+    assert_eq!(
+        listed(store, free.workspace, AutomationDeliveryFilter::Pending).await,
+        1
+    );
+    assert_eq!(
+        listed(store, held.workspace, AutomationDeliveryFilter::Delivered).await,
+        1
+    );
+    assert_eq!(
+        listed(store, held.workspace, AutomationDeliveryFilter::DeadLetter).await,
+        1
+    );
+    assert_eq!(
+        listed(store, held.workspace, AutomationDeliveryFilter::Pending).await,
+        1
+    );
+    assert!(store
+        .list_automation_deliveries(free.workspace, AutomationDeliveryFilter::Delivered, 20)
+        .await
+        .expect("automation")
+        .is_empty());
+    assert_eq!(
+        store
+            .list_automation_deliveries(free.workspace, AutomationDeliveryFilter::Pending, 20)
+            .await
+            .expect("automation")
+            .len(),
+        1
+    );
+    assert_eq!(
+        store
+            .list_automation_deliveries(held.workspace, AutomationDeliveryFilter::Delivered, 20)
+            .await
+            .expect("automation")
+            .len(),
+        1,
+        "the held tenant keeps its delivered automation"
+    );
+    assert_eq!(
+        store
+            .list_automation_deliveries(held.workspace, AutomationDeliveryFilter::Pending, 20)
+            .await
+            .expect("automation")
+            .len(),
+        1
+    );
+
+    let hold = store
+        .list_legal_holds()
+        .await
+        .expect("holds")
+        .into_iter()
+        .find(|h| h.workspace_id == held.workspace)
+        .expect("hold");
+    store
+        .lift_legal_hold(held.workspace, hold.id)
+        .await
+        .expect("lift");
+    assert_eq!(
+        store.prune_deliveries(future, 5_000).await.expect("lifted"),
+        u64::try_from(held_published).expect("count") + 3,
+        "lifting the hold releases the held tenant's finished deliveries"
+    );
+    assert_eq!(published_outbox(held.workspace).await, 0);
+    assert_eq!(
+        listed(store, held.workspace, AutomationDeliveryFilter::Pending).await,
+        1
+    );
+    assert_eq!(
+        store
+            .list_automation_deliveries(held.workspace, AutomationDeliveryFilter::Pending, 20)
+            .await
+            .expect("automation")
+            .len(),
+        1,
+        "a pending delivery is never pruned"
+    );
+}
+
+#[tokio::test]
+async fn instance_sweep_skips_a_held_workspaces_webhook_automation_and_outbox_sqlite() {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::for_tests(pool.clone());
+    let published = |ws: WorkspaceId| {
+        let pool = pool.clone();
+        async move { count_published_sqlite(&pool, ws).await }
+    };
+    run_two_tenant(
+        &store,
+        || async {
+            sqlx::query(
+                "UPDATE maidan_outbox SET published_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                 WHERE published_at IS NULL",
+            )
             .execute(&pool)
             .await
-            .expect("publish")
-            .rows_affected()
-    })
+            .expect("publish");
+        },
+        &published,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn instance_sweep_skips_a_held_workspaces_webhook_automation_and_outbox_postgres() {
+    use maidan_store::{run_postgres_migrations, PostgresStore};
+    use sqlx::postgres::PgPoolOptions;
+    use testcontainers::{runners::AsyncRunner, ImageExt};
+    use testcontainers_modules::postgres::Postgres;
+
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(c) => c,
+        Err(err) => {
+            maidan_store::test_support::docker::skip_start_failure(err).await;
+            return;
+        }
+    };
+    let host = container.get_host().await.expect("host");
+    let port = container.get_host_port_ipv4(5432).await.expect("port");
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(std::time::Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .expect("connect");
+    run_postgres_migrations(&pool).await.expect("migrate");
+    let store = PostgresStore::for_tests(pool.clone());
+    let published = |ws: WorkspaceId| {
+        let pool = pool.clone();
+        async move { count_published_postgres(&pool, ws).await }
+    };
+    run_two_tenant(
+        &store,
+        || async {
+            sqlx::query("UPDATE maidan_outbox SET published_at = now() WHERE published_at IS NULL")
+                .execute(&pool)
+                .await
+                .expect("publish");
+        },
+        &published,
+    )
     .await;
 }

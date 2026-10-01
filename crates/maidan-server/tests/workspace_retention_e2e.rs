@@ -450,6 +450,7 @@ where
         events_days: None,
         audit_days: None,
         deliveries_days: None,
+        notifications_days: None,
         sweep: Duration::from_secs(86_400),
         batch: 100,
     };

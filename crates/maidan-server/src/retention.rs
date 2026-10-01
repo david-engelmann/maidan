@@ -1,18 +1,20 @@
 //! Background data-retention pruning.
 //!
-//! The event log, audit trail, and delivery tables (webhook and automation
-//! deliveries, the transactional, egress and mail outboxes, the agent-run DLQ)
-//! grow without bound. This
-//! sweeper deletes rows past a per-table age, in batches (so a first sweep over
-//! a long-unpruned table doesn't lock it). Everything is opt-in: with no
+//! The event log, audit trail, read notifications, and delivery tables
+//! (webhook and automation deliveries, the transactional, egress and mail
+//! outboxes, the agent-run DLQ) grow without bound. This sweeper deletes rows
+//! past a per-table age, in batches (so a first sweep over a long-unpruned
+//! table doesn't lock it). Everything is opt-in: with no
 //! `MAIDAN_RETENTION_*_DAYS` set and no workspace policy, nothing is pruned.
+//! The usage ledger is not pruned.
 //!
 //! **Per-workspace retention.** A workspace may set a shorter retention for
 //! its messages, events and finished deliveries (`maidan_retention_policies`,
 //! never longer than the instance keeps). Each sweep then prunes that
 //! workspace's rows past its own cutoff, after the instance sweep. A workspace
-//! under legal hold loses nothing either way: the store's per-workspace prunes
-//! check the hold in the deleting statement or transaction.
+//! under legal hold loses nothing either way: the instance delivery sweep and
+//! the store's per-workspace prunes check the hold in the deleting statement
+//! or transaction.
 //!
 //! **Event-log safety.** Events are pruned only up to `min_delivery_cursor` —
 //! the lowest watermark across all at-least-once consumers — so a lagging
@@ -35,6 +37,9 @@ pub struct RetentionConfig {
     pub events_days: Option<u32>,
     pub audit_days: Option<u32>,
     pub deliveries_days: Option<u32>,
+    /// Read notifications. Unread and snoozed rows are never pruned. `None`
+    /// keeps every notification.
+    pub notifications_days: Option<u32>,
     pub sweep: Duration,
     pub batch: i64,
 }
@@ -61,6 +66,7 @@ pub fn config_from_env() -> RetentionConfig {
     let events_days = parse_days(std::env::var("MAIDAN_RETENTION_EVENTS_DAYS").ok());
     let audit_days = parse_days(std::env::var("MAIDAN_RETENTION_AUDIT_DAYS").ok());
     let deliveries_days = parse_days(std::env::var("MAIDAN_RETENTION_DELIVERIES_DAYS").ok());
+    let notifications_days = parse_days(std::env::var("MAIDAN_RETENTION_NOTIFICATIONS_DAYS").ok());
     let sweep = std::env::var("MAIDAN_RETENTION_SWEEP_SECS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
@@ -75,6 +81,7 @@ pub fn config_from_env() -> RetentionConfig {
         events_days,
         audit_days,
         deliveries_days,
+        notifications_days,
         sweep: Duration::from_secs(sweep),
         batch,
     }
@@ -113,6 +120,14 @@ pub async fn sweep_once(store: &Arc<dyn Store>, cfg: &RetentionConfig) {
         })
         .await;
         record("audit", deleted);
+    }
+
+    if let Some(days) = cfg.notifications_days {
+        let deleted = prune_loop("notifications", cfg.batch, |limit| {
+            store.prune_notifications(cutoff(now, days), limit)
+        })
+        .await;
+        record("notifications", deleted);
     }
 
     if let Some(days) = cfg.deliveries_days {
@@ -218,6 +233,7 @@ pub async fn run(store: Arc<dyn Store>, cfg: RetentionConfig) {
         events_days = ?cfg.events_days,
         audit_days = ?cfg.audit_days,
         deliveries_days = ?cfg.deliveries_days,
+        notifications_days = ?cfg.notifications_days,
         sweep_secs = cfg.sweep.as_secs(),
         "retention sweeper started"
     );

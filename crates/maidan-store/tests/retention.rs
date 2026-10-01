@@ -2,21 +2,11 @@
 //! for the event log; audit + deliveries by age.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{Event, MemberKind, NewAuditEvent, NewMember, NewWorkspace};
+use maidan_types::{
+    Event, EventKind, MemberKind, NewAuditEvent, NewMember, NewNotification, NewWorkspace,
+};
 use sqlx::sqlite::SqlitePoolOptions;
-
-async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
-        .connect("sqlite::memory:")
-        .await
-        .expect("connect");
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
-        .await
-        .expect("pragma");
-    run_sqlite_migrations(&pool).await.expect("migrate");
-    SqliteStore::for_tests(pool)
-}
+use std::future::Future;
 
 async fn workspace_with_member(store: &dyn Store, name: &str) -> maidan_types::Member {
     let ws = store
@@ -144,9 +134,170 @@ async fn run_retention_suite(store: &dyn Store) {
     assert!(fresh_store_cursor.is_some(), "cursor set earlier persists");
 }
 
+async fn run_notification_retention<F, Fut>(store: &dyn Store, age: F)
+where
+    F: Fn(uuid::Uuid) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let open = workspace_with_member(store, "notes-open").await;
+    let held_member = workspace_with_member(store, "notes-held").await;
+
+    async fn notify(
+        store: &dyn Store,
+        member: &maidan_types::Member,
+        source: i64,
+    ) -> maidan_types::Notification {
+        store
+            .create_notification(NewNotification {
+                workspace_id: member.workspace_id,
+                member_id: member.id,
+                kind: EventKind::MemberJoined,
+                source_log_id: source,
+                channel_id: None,
+                thread_id: None,
+                message_id: None,
+                actor_id: None,
+            })
+            .await
+            .expect("notification")
+    }
+
+    let old_read = notify(store, &open, 1).await;
+    let unread = notify(store, &open, 2).await;
+    let snoozed = notify(store, &open, 3).await;
+    let lapsed = notify(store, &open, 4).await;
+    let recent = notify(store, &open, 5).await;
+    let held_read = notify(store, &held_member, 1).await;
+
+    for note in [&old_read, &snoozed, &lapsed, &recent, &held_read] {
+        assert!(store
+            .mark_notification_read(note.member_id, note.id)
+            .await
+            .expect("read"));
+    }
+    assert!(store
+        .snooze_notification(
+            snoozed.member_id,
+            snoozed.id,
+            chrono::Utc::now() + chrono::Duration::days(7),
+        )
+        .await
+        .expect("snooze"));
+    assert!(store
+        .snooze_notification(
+            lapsed.member_id,
+            lapsed.id,
+            chrono::Utc::now() - chrono::Duration::days(2),
+        )
+        .await
+        .expect("lapsed snooze"));
+    for note in [&old_read, &unread, &snoozed, &lapsed, &held_read] {
+        age(note.id.0).await;
+    }
+    store
+        .place_legal_hold(held_member.workspace_id, "matter", None)
+        .await
+        .expect("hold");
+
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(30);
+    assert_eq!(
+        store
+            .prune_notifications(cutoff, 5_000)
+            .await
+            .expect("prune"),
+        1,
+        "only the open workspace's old read notification, with no snooze set"
+    );
+    let ids: Vec<_> = store
+        .list_notifications(open.id, false, 20)
+        .await
+        .expect("list")
+        .into_iter()
+        .map(|n| n.id)
+        .collect();
+    assert!(
+        !ids.contains(&old_read.id),
+        "the old read notification is gone"
+    );
+    assert!(ids.contains(&unread.id), "an unread notification stays");
+    // The inbox hides a snooze that is still ahead, so the row is checked
+    // directly. Marking read is idempotent and reports whether the row exists.
+    assert!(
+        store
+            .mark_notification_read(snoozed.member_id, snoozed.id)
+            .await
+            .expect("snoozed still there"),
+        "a snoozed notification stays"
+    );
+    assert!(
+        !ids.contains(&snoozed.id),
+        "a future snooze is hidden from the inbox, not deleted"
+    );
+    assert!(
+        ids.contains(&lapsed.id),
+        "a snooze that has already lapsed still keeps the row"
+    );
+    assert!(
+        ids.contains(&recent.id),
+        "a read notification inside the window stays"
+    );
+    assert_eq!(
+        store
+            .list_notifications(held_member.id, false, 20)
+            .await
+            .expect("held list")
+            .len(),
+        1,
+        "a held workspace keeps its old read notification"
+    );
+
+    let hold = store
+        .list_legal_holds()
+        .await
+        .expect("holds")
+        .into_iter()
+        .find(|h| h.workspace_id == held_member.workspace_id)
+        .expect("hold");
+    store
+        .lift_legal_hold(held_member.workspace_id, hold.id)
+        .await
+        .expect("lift");
+    assert_eq!(
+        store
+            .prune_notifications(cutoff, 5_000)
+            .await
+            .expect("after lift"),
+        1,
+        "lifting the hold releases that read notification, and nothing else"
+    );
+    assert!(store
+        .list_notifications(held_member.id, false, 20)
+        .await
+        .expect("held list")
+        .is_empty());
+    assert_eq!(
+        store
+            .list_notifications(open.id, false, 20)
+            .await
+            .expect("list")
+            .len(),
+        3,
+        "unread, lapsed-snooze and recent rows are still in the inbox"
+    );
+}
+
 #[tokio::test]
 async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
-    let store = sqlite().await;
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::for_tests(pool.clone());
     // No cursors yet → None.
     let long_ago = chrono::Utc::now() - chrono::Duration::days(365);
     assert_eq!(
@@ -154,6 +305,19 @@ async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
         None
     );
     run_retention_suite(&store).await;
+    let aged = chrono::Utc::now() - chrono::Duration::days(100);
+    run_notification_retention(&store, |id| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query("UPDATE maidan_notifications SET created_at = ? WHERE id = ?")
+                .bind(aged)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .expect("age");
+        }
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -186,6 +350,19 @@ async fn retention_prunes_by_age_and_respects_the_delivery_floor_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::for_tests(pool);
+    let store = PostgresStore::for_tests(pool.clone());
     run_retention_suite(&store).await;
+    let aged = chrono::Utc::now() - chrono::Duration::days(100);
+    run_notification_retention(&store, |id| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query("UPDATE maidan_notifications SET created_at = $1 WHERE id = $2")
+                .bind(aged)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .expect("age");
+        }
+    })
+    .await;
 }

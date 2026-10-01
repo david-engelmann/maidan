@@ -3094,6 +3094,14 @@ impl DeliveryCursorStore for SqliteStore {
         retention::prune_audit(&self.pool, cutoff, limit).await
     }
 
+    async fn prune_notifications(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError> {
+        retention::prune_notifications(&self.pool, cutoff, limit).await
+    }
+
     async fn prune_deliveries(
         &self,
         cutoff: chrono::DateTime<chrono::Utc>,
