@@ -1313,6 +1313,442 @@ fn ui_js_state_is_a_word_not_a_pill() {
     );
 }
 
+/// `#team` is only people holding work. From docs/UI Design.md:
+/// do not append a chip whose state is `idle`; the viewer may still show
+/// when `needsYou.length` is non-zero ("N waiting on you"); when someone
+/// holds two open tasks, the title is the `running` one, else the one with
+/// the latest `updated_at`. Not "the first non-closed task unless a later
+/// one is running."
+///
+/// This runs the page's `renderTeam`. It fails if a person who is not
+/// holding work is shown, or if a person who is holding work is hidden.
+#[test]
+fn ui_js_team_is_only_people_holding_work() {
+    let scenes = team_scenes();
+    let rendered = render_team_in_page(&scenes);
+    for scene in &scenes {
+        let actual = rendered
+            .get(scene.name)
+            .unwrap_or_else(|| panic!("no render for {}", scene.name));
+        let expected = team_the_rule_requires(scene);
+        for (id, text) in actual {
+            assert!(
+                expected.contains_key(id.as_str()),
+                "{}: showed {id} ({text}), who is not holding work",
+                scene.name
+            );
+        }
+        for (id, want) in &expected {
+            let got = actual.get(*id).unwrap_or_else(|| {
+                panic!(
+                    "{}: hid {id}, who is holding work{}",
+                    scene.name,
+                    if *id == scene.viewer {
+                        " (or is the viewer, with work waiting)"
+                    } else {
+                        ""
+                    }
+                )
+            });
+            // A held task is "label · title". The rule picks the title.
+            // The viewer's waiting line has no separator.
+            let line = got.split_once(" · ").map(|(_, title)| title).unwrap_or(got);
+            assert_eq!(line, want, "{}", scene.name);
+        }
+    }
+}
+
+struct Mate {
+    id: &'static str,
+    name: &'static str,
+    kind: &'static str,
+    live: bool,
+}
+
+struct OpenTask {
+    id: &'static str,
+    assignee_id: Option<&'static str>,
+    state: &'static str,
+    title: &'static str,
+    updated_at: &'static str,
+    work_started_at: Option<&'static str>,
+    /// Pending gate. `Some(true)` means the gate has a schema.
+    gate_schema: Option<bool>,
+}
+
+struct TeamScene {
+    name: &'static str,
+    viewer: &'static str,
+    needs_you: usize,
+    people: Vec<Mate>,
+    threads: Vec<OpenTask>,
+}
+
+fn mate(id: &'static str, name: &'static str, kind: &'static str, live: bool) -> Mate {
+    Mate {
+        id,
+        name,
+        kind,
+        live,
+    }
+}
+
+fn task(
+    id: &'static str,
+    assignee: Option<&'static str>,
+    state: &'static str,
+    title: &'static str,
+    updated_at: &'static str,
+) -> OpenTask {
+    OpenTask {
+        id,
+        assignee_id: assignee,
+        state,
+        title,
+        updated_at,
+        work_started_at: None,
+        gate_schema: None,
+    }
+}
+
+fn running(
+    id: &'static str,
+    assignee: &'static str,
+    title: &'static str,
+    updated_at: &'static str,
+) -> OpenTask {
+    OpenTask {
+        work_started_at: Some(updated_at),
+        ..task(id, Some(assignee), "working", title, updated_at)
+    }
+}
+
+fn team_scenes() -> Vec<TeamScene> {
+    vec![
+        TeamScene {
+            name: "idle people stay off, including a live one; holders stay on, including an offline human",
+            viewer: "you",
+            needs_you: 0,
+            people: vec![
+                mate("you", "You", "human", true),
+                mate("ada", "Ada", "agent", true),
+                mate("ben", "Ben", "agent", false),
+                mate("cara", "Cara", "human", false),
+                mate("dan", "Dan", "human", true),
+                mate("erin", "Erin", "human", false),
+            ],
+            threads: vec![
+                task("t-ben", Some("ben"), "working", "Hold the line", "2026-10-01T00:00:00Z"),
+                task("t-cara", Some("cara"), "working", "File the note", "2026-10-01T00:00:00Z"),
+                task("t-erin", Some("erin"), "closed", "Already done", "2026-10-03T00:00:00Z"),
+            ],
+        },
+        TeamScene {
+            name: "two claimed tasks title the latest updated_at, not the first",
+            viewer: "you",
+            needs_you: 0,
+            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            threads: vec![
+                task("a", Some("ben"), "working", "Alpha", "2026-10-01T00:00:00Z"),
+                task("b", Some("ben"), "working", "Beta", "2026-10-03T00:00:00Z"),
+            ],
+        },
+        TeamScene {
+            name: "two running tasks title the latest updated_at, not the later running one",
+            viewer: "you",
+            needs_you: 0,
+            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            threads: vec![
+                running("g", "ben", "Gamma", "2026-10-04T00:00:00Z"),
+                running("d", "ben", "Delta", "2026-10-02T00:00:00Z"),
+            ],
+        },
+        TeamScene {
+            name: "the running task wins over a newer claimed one",
+            viewer: "you",
+            needs_you: 0,
+            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            threads: vec![
+                task("e", Some("ben"), "working", "Epsilon", "2026-10-05T00:00:00Z"),
+                running("z", "ben", "Zeta", "2026-10-01T00:00:00Z"),
+            ],
+        },
+        TeamScene {
+            name: "the running task wins over a newer in-review one",
+            viewer: "you",
+            needs_you: 0,
+            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            threads: vec![
+                running("eta", "ben", "Eta", "2026-10-01T00:00:00Z"),
+                task("theta", Some("ben"), "in_review", "Theta", "2026-10-06T00:00:00Z"),
+            ],
+        },
+        TeamScene {
+            name: "the running task wins over a newer gated one",
+            viewer: "you",
+            needs_you: 0,
+            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            threads: vec![
+                running("iota", "ben", "Iota", "2026-10-01T00:00:00Z"),
+                OpenTask {
+                    gate_schema: Some(false),
+                    ..task("kappa", Some("ben"), "working", "Kappa", "2026-10-07T00:00:00Z")
+                },
+            ],
+        },
+        TeamScene {
+            name: "closed and archived tasks are not work being held",
+            viewer: "you",
+            needs_you: 0,
+            people: vec![
+                mate("you", "You", "human", false),
+                mate("ben", "Ben", "agent", true),
+                mate("cara", "Cara", "human", false),
+            ],
+            threads: vec![
+                OpenTask {
+                    work_started_at: Some("2026-10-08T00:00:00Z"),
+                    ..task("gone", Some("ben"), "archived", "Gone", "2026-10-08T00:00:00Z")
+                },
+                task("old", Some("cara"), "closed", "Old", "2026-10-01T00:00:00Z"),
+                task("open", Some("cara"), "working", "Still open", "2026-10-02T00:00:00Z"),
+            ],
+        },
+        TeamScene {
+            name: "the viewer shows while work is waiting, and says how many",
+            viewer: "you",
+            needs_you: 3,
+            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            threads: vec![
+                task("old", Some("you"), "closed", "Old", "2026-10-01T00:00:00Z"),
+                task("b", Some("ben"), "working", "Hold the line", "2026-10-02T00:00:00Z"),
+            ],
+        },
+        TeamScene {
+            name: "a viewer who holds work shows that task, not the waiting line",
+            viewer: "you",
+            needs_you: 3,
+            people: vec![mate("you", "You", "human", false)],
+            threads: vec![task("yours", Some("you"), "working", "Your task", "2026-10-02T00:00:00Z")],
+        },
+        TeamScene {
+            name: "an unassigned task puts nobody on the strip",
+            viewer: "you",
+            needs_you: 0,
+            people: vec![mate("you", "You", "human", true), mate("ada", "Ada", "agent", true)],
+            threads: vec![task("free", None, "open", "Free", "2026-10-01T00:00:00Z")],
+        },
+    ]
+}
+
+/// Who the strip shows, and the line under their name.
+///
+/// Holding an open task means assigned, and not `closed` or `archived`.
+/// `running` is that task's session chrome: work has started, and it is not
+/// in review and not waiting on a gate. The title is the running task when
+/// there is one, otherwise the latest `updated_at`.
+fn team_the_rule_requires(scene: &TeamScene) -> std::collections::BTreeMap<&'static str, String> {
+    let mut held: std::collections::BTreeMap<&str, Vec<&OpenTask>> =
+        std::collections::BTreeMap::new();
+    for th in &scene.threads {
+        if th.assignee_id.is_some() && th.state != "closed" && th.state != "archived" {
+            held.entry(th.assignee_id.unwrap()).or_default().push(th);
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    for person in &scene.people {
+        if person.kind != "agent" && person.kind != "human" {
+            continue;
+        }
+        if let Some(tasks) = held.get(person.id) {
+            let chosen = title_task(tasks);
+            out.insert(person.id, chosen.title.to_string());
+        } else if person.id == scene.viewer && scene.needs_you > 0 {
+            out.insert(person.id, format!("{} waiting on you", scene.needs_you));
+        }
+    }
+    out
+}
+
+fn title_task<'a>(tasks: &[&'a OpenTask]) -> &'a OpenTask {
+    let running: Vec<_> = tasks.iter().copied().filter(|th| is_running(th)).collect();
+    let pool: Vec<&OpenTask> = if running.is_empty() {
+        tasks.to_vec()
+    } else {
+        running
+    };
+    pool.into_iter()
+        .max_by_key(|th| th.updated_at)
+        .expect("a held task")
+}
+
+fn is_running(th: &OpenTask) -> bool {
+    th.assignee_id.is_some()
+        && th.work_started_at.is_some()
+        && th.gate_schema.is_none()
+        && th.state != "closed"
+        && th.state != "archived"
+        && th.state != "in_review"
+}
+
+/// Execute the page's `sessionChrome` and `renderTeam` for each scene.
+/// The oracle above is the rule; this only reports what the page drew.
+fn render_team_in_page(
+    scenes: &[TeamScene],
+) -> std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> {
+    let payload = serde_json::json!({
+        "html": HTML,
+        "scenes": scenes.iter().map(scene_payload).collect::<Vec<_>>(),
+    });
+    let mut child = std::process::Command::new("node")
+        .arg("-e")
+        .arg(TEAM_PAGE_HARNESS)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("node is required to run renderTeam: {err}"));
+    serde_json::to_writer(child.stdin.take().expect("stdin"), &payload).expect("write scenes");
+    let out = child.wait_with_output().expect("node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "renderTeam harness failed\n{stderr}\n{stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|err| panic!("renderTeam harness returned {err}: {stdout}"));
+    let mut rendered = std::collections::BTreeMap::new();
+    for scene in value.as_array().expect("scene list") {
+        let name = scene["name"].as_str().expect("name").to_string();
+        let mut chips = std::collections::BTreeMap::new();
+        for chip in scene["chips"].as_array().expect("chips") {
+            let id = chip["id"].as_str().expect("id").to_string();
+            let text = chip["text"].as_str().expect("text").to_string();
+            assert!(
+                chips.insert(id.clone(), text.clone()).is_none(),
+                "{name}: {id} was drawn twice"
+            );
+        }
+        rendered.insert(name, chips);
+    }
+    rendered
+}
+
+fn scene_payload(scene: &TeamScene) -> serde_json::Value {
+    serde_json::json!({
+        "name": scene.name,
+        "viewer": scene.viewer,
+        "needsYou": scene.needs_you,
+        "people": scene.people.iter().map(|p| serde_json::json!({
+            "id": p.id,
+            "name": p.name,
+            "kind": p.kind,
+            "live": p.live,
+        })).collect::<Vec<_>>(),
+        "threads": scene.threads.iter().map(|th| {
+            let mut v = serde_json::json!({
+                "id": th.id,
+                "state": th.state,
+                "title": th.title,
+                "updated_at": th.updated_at,
+            });
+            if let Some(id) = th.assignee_id {
+                v["assignee_id"] = serde_json::json!(id);
+            }
+            if let Some(at) = th.work_started_at {
+                v["work_started_at"] = serde_json::json!(at);
+            }
+            if let Some(schema) = th.gate_schema {
+                v["gate"] = serde_json::json!({ "hasSchema": schema });
+            }
+            v
+        }).collect::<Vec<_>>(),
+    })
+}
+
+const TEAM_PAGE_HARNESS: &str = r#"
+const fs = require("fs");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const html = input.html;
+const start = html.indexOf("<script>") + "<script>".length;
+const js = html.slice(start, html.indexOf("</script>", start));
+function functionSource(name) {
+  const key = "function " + name + "(";
+  const at = js.indexOf(key);
+  if (at < 0) throw new Error("missing " + name);
+  const rel = js.slice(at).indexOf("\n      }\n");
+  if (rel < 0) throw new Error("unclosed " + name);
+  return js.slice(at, at + rel) + "\n      }";
+}
+const sessionChrome = new Function(functionSource("sessionChrome") + "\nreturn sessionChrome;")();
+const renderTeam = new Function(
+  "document",
+  "memberDirectory",
+  "lastGates",
+  "needsYou",
+  "authorId",
+  "lastSeen",
+  "LIVE_MS",
+  "avatarEl",
+  "sessionChrome",
+  functionSource("renderTeam") + "\nreturn renderTeam;"
+);
+function makeEl(tag) {
+  return {
+    tag,
+    children: [],
+    dataset: {},
+    className: "",
+    textContent: "",
+    title: "",
+    appendChild(child) { this.children.push(child); return child; },
+    append(...kids) { for (const kid of kids) this.children.push(kid); },
+    replaceChildren() { this.children = []; },
+  };
+}
+const results = input.scenes.map((scene) => {
+  const teamBox = makeEl("div");
+  const document = {
+    getElementById(id) {
+      if (id !== "team") throw new Error("unexpected element " + id);
+      return teamBox;
+    },
+    createElement(tag) { return makeEl(tag); },
+  };
+  const memberDirectory = new Map(scene.people.map((p) => [p.id, { name: p.name, kind: p.kind }]));
+  const lastGates = {};
+  const threads = scene.threads.map((th) => {
+    const copy = Object.assign({}, th);
+    if (copy.gate) lastGates[copy.id] = copy.gate;
+    delete copy.gate;
+    return copy;
+  });
+  const needsYou = Array.from({ length: scene.needsYou }, () => ({}));
+  const now = Date.now();
+  const lastSeen = new Map(scene.people.filter((p) => p.live).map((p) => [p.id, now]));
+  const avatarEl = () => makeEl("span");
+  renderTeam(
+    document,
+    memberDirectory,
+    lastGates,
+    needsYou,
+    () => scene.viewer,
+    lastSeen,
+    120000,
+    avatarEl,
+    sessionChrome
+  )(threads);
+  const chips = teamBox.children.map((chip) => {
+    const text = chip.children.find((child) => child.className === "mate-text");
+    const small = text.children.find((child) => child.tag === "small");
+    return { id: chip.dataset.memberId, text: small.textContent };
+  });
+  return { name: scene.name, chips };
+});
+process.stdout.write(JSON.stringify(results));
+"#;
+
 /// QA items from #1141 that were still true on main: a dead server must not
 /// surface as `TypeError: Failed to fetch` or as a lost post, a 403 search
 /// must not dump problem JSON, Open DM selects the conversation and names the
