@@ -95,6 +95,8 @@ pub async fn get(pool: &PgPool, id: MemberId) -> Result<Member, StoreError> {
     row_to_member(&row)
 }
 
+/// The workspace's member with this handle, ignoring case. `Alice` and
+/// `alice` are the same handle. A tombstoned member is `NotFound`.
 pub async fn get_by_handle(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -103,7 +105,7 @@ pub async fn get_by_handle(
     let row = sqlx::query(
         "SELECT id, workspace_id, handle, display_name, kind, created_at, updated_at, tombstoned_at
          FROM maidan_members
-         WHERE workspace_id = $1 AND handle = $2 AND tombstoned_at IS NULL",
+         WHERE workspace_id = $1 AND lower(handle) = lower($2) AND tombstoned_at IS NULL",
     )
     .bind(workspace_id.0)
     .bind(handle)

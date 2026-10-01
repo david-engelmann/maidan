@@ -368,6 +368,9 @@ pub async fn create_user(
         .await
     {
         Ok(provisioned) => provisioned,
+        // The lookup above is the usual refusal. The unique index is the one
+        // that still holds if two creates race, including a case-only twin.
+        Err(maidan_store::StoreError::Conflict(_)) => return user_name_taken(),
         Err(err) => {
             return scim_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -428,28 +431,25 @@ pub async fn list_users(
     };
     let matching: Vec<maidan_types::MemberId> = match &filter {
         None => links.iter().map(|link| link.member_id).collect(),
-        // userName is not caseExact (RFC 7643 §4.1.1); externalId is.
+        // userName is not caseExact (RFC 7643 §4.1.1). The match is the
+        // store's handle lookup, which folds case, not a scan of every member.
         Some((attr, value)) if attr == "username" => {
-            let members = match state.store.list_members(auth.workspace_id).await {
-                Ok(members) => members,
+            match state
+                .store
+                .get_member_by_handle(auth.workspace_id, value)
+                .await
+            {
+                Ok(member) if links.iter().any(|link| link.member_id == member.id) => {
+                    vec![member.id]
+                }
+                Ok(_) | Err(maidan_store::StoreError::NotFound) => Vec::new(),
                 Err(err) => {
                     return scim_error(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &format!("list failed: {err}"),
                     )
                 }
-            };
-            let wanted = value.to_lowercase();
-            let named: std::collections::HashSet<uuid::Uuid> = members
-                .iter()
-                .filter(|m| m.handle.to_lowercase() == wanted)
-                .map(|m| m.id.0)
-                .collect();
-            links
-                .iter()
-                .filter(|link| named.contains(&link.member_id.0))
-                .map(|link| link.member_id)
-                .collect()
+            }
         }
         Some((attr, value)) if attr == "externalid" => links
             .iter()

@@ -64,6 +64,27 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
         matches!(dup, Err(StoreError::Conflict(_))),
         "expected conflict, got {dup:?}"
     );
+    // Alice and alice are the same handle. The stored spelling stays.
+    let folded = store
+        .create_member(NewMember {
+            workspace_id: workspace.id,
+            handle: "Alice".to_string(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await;
+    assert!(
+        matches!(folded, Err(StoreError::Conflict(_))),
+        "expected case-only conflict, got {folded:?}"
+    );
+    assert_eq!(
+        store
+            .get_member_by_handle(workspace.id, "ALICE")
+            .await
+            .expect("lookup folds case")
+            .id,
+        alice.id
+    );
 
     let channel = store
         .create_channel(NewChannel {

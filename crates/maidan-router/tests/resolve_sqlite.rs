@@ -1,6 +1,9 @@
 //! Hierarchy resolution against an in-memory SQLite store.
 
-use maidan_router::{resolve_channel_context, resolve_message_chain, resolve_thread_context};
+use maidan_router::{
+    resolve_channel_context, resolve_message_chain, resolve_thread_context,
+    route_mentions_in_message,
+};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -84,4 +87,65 @@ async fn resolve_thread_and_message_chain_match_channel_workspace() {
     assert_eq!(chain.workspace_id, ws.id);
     assert_eq!(chain.channel_id, ch.id);
     assert_eq!(chain.thread_id, thread.id);
+}
+
+#[tokio::test]
+async fn a_mention_folds_the_handle_case() {
+    let store = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "mentions".into(),
+        })
+        .await
+        .unwrap();
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: ch.id,
+            title: None,
+            parent_thread_id: None,
+        })
+        .await
+        .unwrap();
+    let alice = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "alice".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let bob = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "bob".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let msg = store
+        .post_message(NewMessage {
+            thread_id: thread.id,
+            author_id: bob.id,
+            body: "hey @ALICE".into(),
+            metadata: Default::default(),
+            content: None,
+        })
+        .await
+        .unwrap();
+
+    let mentioned = route_mentions_in_message(&store, ws.id, msg.id, bob.id, "hey @ALICE")
+        .await
+        .unwrap();
+    assert_eq!(mentioned, vec![alice.id]);
 }
