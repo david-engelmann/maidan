@@ -1236,7 +1236,9 @@ fn ui_js_lanes_are_space_not_boxes() {
         "a lane has no background, border, padding, or shadow"
     );
     assert!(
-        !HTML.contains("#efece5") && !HTML.contains(".board-col .dot") && !HTML.contains(".board-col h3 .count"),
+        !HTML.contains("#efece5")
+            && !HTML.contains(".board-col .dot")
+            && !HTML.contains(".board-col h3 .count"),
         "the tinted box, the colored dot, and the white count pill are gone"
     );
     assert!(
@@ -1250,7 +1252,8 @@ fn ui_js_lanes_are_space_not_boxes() {
         "renderBoard does not paint a dot or a count pill"
     );
     assert!(
-        board.contains("label.textContent = c.title") && board.contains("h.append(label, \" \", count)"),
+        board.contains("label.textContent = c.title")
+            && board.contains("h.append(label, \" \", count)"),
         "the lane heading is the name plus the number"
     );
     assert!(

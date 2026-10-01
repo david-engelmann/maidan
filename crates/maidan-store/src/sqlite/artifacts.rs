@@ -109,6 +109,10 @@ pub async fn reap_blob(
             .fetch_one(&mut *tx)
             .await?;
     if held {
+        // Roll back before returning. Dropping the transaction only queues the
+        // rollback, so this BEGIN IMMEDIATE can still hold the file when the
+        // next write starts and that write fails with "database is locked".
+        tx.rollback().await?;
         return Ok(crate::BlobReap::Referenced);
     }
     // A lapsed lease left by a reaper that died is replaced.
