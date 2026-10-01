@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { openMoreTools } from "./_tools";
 
 const fx = fixtures();
 
@@ -13,6 +14,7 @@ test("the looking glass looks up an unknown artifact and shows not-found", async
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.token);
 
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="glass"]');
   await expect(page.locator("#panel-glass")).toBeVisible();
 

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { openMoreTools } from "./_tools";
 
 const fx = fixtures();
 
@@ -12,6 +13,7 @@ test("the /ui console loads its JS and renders seeded data", async ({ page }) =>
 
   // The page + its script are present (version marker + the tab bar).
   await expect(page.locator('[data-ui-version="8"]')).toBeAttached();
+  await openMoreTools(page);
   await expect(page.locator('.tabs button[data-tab="notifications"]')).toBeVisible();
 
   // Authenticate (bearer) + point at the seeded workspace, then load channels.

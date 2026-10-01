@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { openMoreTools } from "./_tools";
 
 const fx = fixtures();
 
@@ -29,6 +30,7 @@ test("the Approvals tab lists a pending gate and resolves it on Accept", async (
   // loads on click, reading #workspace).
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.token);
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="approvals"]');
 
   // Our pending gate renders with its three actions.
@@ -47,6 +49,7 @@ test("the visible Approvals tab discovers a new gate without manual refresh", as
   await page.goto("/ui/");
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.token);
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="approvals"]');
   await expect(page.locator("#approval-list li.approval-row").first()).toBeVisible();
 

@@ -93,6 +93,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   with `ClaimFailed` instead of giving it to the next agent.
 - A freeze still lasts until an unfreeze. Freeze expiry is not part of this.
 
+### More tools starts closed
+
+- **Changed:** `#tools` (More tools) is closed on the first screen. The command
+  palette still opens a tab.
+
 ### A signed-in person can edit, upload, and decide
 
 - **Added:** an OIDC session can edit a message, upload a file, and paste one

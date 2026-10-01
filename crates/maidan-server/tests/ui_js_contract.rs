@@ -1179,6 +1179,24 @@ fn ui_js_keeps_the_first_screen_quiet() {
     );
 }
 
+/// More tools is closed on first paint. The command palette still opens a tab.
+#[test]
+fn ui_js_more_tools_starts_closed() {
+    assert!(
+        HTML.contains("<details id=\"tools\">"),
+        "More tools is on the page"
+    );
+    assert!(
+        !HTML.contains("<details id=\"tools\" open"),
+        "More tools starts closed; the palette opens it"
+    );
+    let body = function_body(script(HTML), "openTool");
+    assert!(
+        body.contains("tools.open = true") && body.contains("tab.click()"),
+        "openTool still opens More tools and selects the tab"
+    );
+}
+
 /// QA items from #1141 that were still true on main: a dead server must not
 /// surface as `TypeError: Failed to fetch` or as a lost post, a 403 search
 /// must not dump problem JSON, Open DM selects the conversation and names the
