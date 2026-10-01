@@ -101,11 +101,9 @@ pub fn check_request_origin(method: &Method, headers: &HeaderMap) -> Result<(), 
 ///
 /// `Sec-Fetch-Site` is the browser's own verdict and survives a proxy that
 /// rewrites `Host`, so it decides when present. Without it, `Origin` must name
-/// this host. With neither, the request is allowed: every current browser
-/// sends one of them on a cross-origin request, so a request with neither did
-/// not come from another origin's page, and a client that is not a browser and
-/// presents the cookie already holds the credential. This is the rule Go's
-/// `net/http.CrossOriginProtection` adopted.
+/// this host. With neither, the request is accepted. That is a fallback for a
+/// client that is not a browser and already holds the cookie. It is not a
+/// guarantee that a page in another origin cannot omit both headers.
 pub fn refuse_cross_origin(headers: &HeaderMap) -> Result<(), ApiError> {
     let refused =
         || ApiError::Forbidden("a cross-origin request cannot use a browser session".into());
@@ -233,7 +231,7 @@ mod tests {
             ("origin", "https://maidan.example"),
         ]);
         assert!(check_request_origin(&delete, &proxied).is_ok());
-        // No Origin and no Sec-Fetch-Site: not another origin's page.
+        // No Origin and no Sec-Fetch-Site: accepted, not an origin guarantee.
         assert!(check_request_origin(&delete, &HeaderMap::new()).is_ok());
     }
 

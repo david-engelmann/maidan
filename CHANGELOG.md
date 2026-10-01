@@ -878,12 +878,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   session cannot make another), and `MAIDAN_SESSION_SECRET`, which now signs
   sessions without OIDC too.
 - **Changed:** the `/ui` exchanges a pasted token and empties the field;
-  nothing in `localStorage` holds it, and one an older page stored there is
-  exchanged once and removed. Sign out ends the session.
+  nothing in `localStorage` holds it. A token stored by an older page is
+  exchanged once and then removed. Sign out ends the session.
 - **Fixed (security):** an unsafe request on a session, or a session
   WebSocket, from another origin is refused (`403`, or close `1008`):
   `Sec-Fetch-Site` decides when present, else `Origin` must name this host; a
-  request with neither is not another origin's page and is served.
+  request with neither header is accepted.
 - **Fixed:** `POST /auth/logout` answered `307`, so the browser re-sent the POST
   to `/ui/` and got a `405`; it now answers `303`. It works without OIDC, and a
   token's session is not sent to the identity provider.

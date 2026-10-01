@@ -261,7 +261,7 @@ detail. Summary:
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `MAIDAN_OIDC_ENABLED` | when using OIDC | `1` enables `/auth/oidc/*` and session routes. |
-| `MAIDAN_SESSION_SECRET` | when OIDC on | HMAC key for signed `maidan_session` cookies (32+ bytes). Bare session UUIDs in cookies are rejected. |
+| `MAIDAN_SESSION_SECRET` | when OIDC is on; optional otherwise | HMAC key for signed `maidan_session` cookies and subscribe `resume_token`s (32+ bytes). Required at startup when OIDC is on; bare session UUIDs in cookies are rejected. Without OIDC it signs the sessions `/ui/` makes from a pasted token (`POST /auth/session/from-token`); unset, there are none and the page keeps a pasted token in the tab only. |
 | `MAIDAN_OIDC_ISSUER` | yes (non-mock) | IdP issuer URL for discovery. |
 | `MAIDAN_OIDC_CLIENT_ID` | yes (non-mock) | OAuth client id. |
 | `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Code exchange secret. |
@@ -271,7 +271,6 @@ detail. Summary:
 | `MAIDAN_COOKIE_SECURE` | no | Set `1` in production for `Secure` session cookies. |
 | `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered post-logout redirect (e.g. `https://host/ui/`). Used when IdP exposes `end_session_endpoint`. |
 | `MAIDAN_OIDC_AUTO_MINT` | no | `1` redirects to `/ui/?auto_mint=1` after login when the workspace has no `token:admin` yet; the UI then calls `POST /auth/session/mint`. Off by default. Requires first-admin mint (`MAIDAN_OIDC_FIRST_ADMIN` not `0`). |
-| `MAIDAN_SESSION_SECRET` | when auth on (or OIDC) | HMAC key for signed `resume_token` and session cookies (32+ bytes). Without OIDC it still signs the sessions `/ui/` makes from a pasted token (`POST /auth/session/from-token`); unset, there are none and the page keeps a pasted token in the tab only. |
 | `MAIDAN_SESSION_TTL_SECS` | no | Browser session lifetime (default `28800`, 8 hours), OIDC or token. A token's session also ends with the token. |
 | `MAIDAN_SUBSCRIBE_RESUME_SECRET` | no | Override HMAC key for subscribe resume tokens only. |
 | `MAIDAN_SUBSCRIBE_RESUME_TTL_SECS` | no | Resume token lifetime in seconds (default `3600`). |

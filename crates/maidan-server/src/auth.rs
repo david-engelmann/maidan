@@ -318,22 +318,29 @@ async fn session_or_bearer(
 
     if let Some(secret) = bearer_from_headers(req.headers()) {
         if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
-            let workspace_id = ctx.workspace_id;
-            req.extensions_mut().insert(ctx);
-            return tag_room(run_as(state, req, next).await, workspace_id);
+            // The bearer tree records a delegated 401/403/404. These UI groups
+            // are mounted beside it, so a denied token here has to go through
+            // the same path or the `authorization.decision` row is never written.
+            return run_authorized(state, req, next, ctx).await;
         }
     }
 
     match load_session(state, req.headers()).await {
         Ok(session) => {
+            let ctx = session.auth_context(oidc_capabilities);
             if let Err(err) = check_request_origin(req.method(), req.headers()) {
+                record_delegated_authorization(
+                    state.store.as_ref(),
+                    &ctx,
+                    AuthorizationSurface::Rest,
+                    &format!("{} {}", req.method(), req.uri().path()),
+                    AuthorizationOutcome::Denied,
+                )
+                .await;
                 return err.into_response();
             }
-            let ctx = session.auth_context(oidc_capabilities);
-            let workspace_id = ctx.workspace_id;
             req.extensions_mut().insert(session);
-            req.extensions_mut().insert(ctx);
-            tag_room(run_as(state, req, next).await, workspace_id)
+            run_authorized(state, req, next, ctx).await
         }
         Err(err) => {
             record_authentication_denial(req.uri().path());

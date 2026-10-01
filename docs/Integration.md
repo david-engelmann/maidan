@@ -1572,7 +1572,7 @@ An unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) on a session, and a
 WebSocket subscribe on one, is refused (`403`, or close `1008`) when the browser
 says it came from another origin: `Sec-Fetch-Site` other than `same-origin`,
 or, without that header, an `Origin` that does not name this host. A request
-with neither header is not from another origin's page and is served. Requests
+with neither header is accepted. Requests
 with a bearer are not checked, since a browser never attaches a bearer on its
 own. `POST /auth/logout` ends either kind of session (`303` to `/ui/`, or to the
 identity provider's end-session page for an OIDC session). A server without
@@ -1601,10 +1601,11 @@ when the server has one. The card reads that from the `auth` block of
 "auth": { "bearer": true, "oidc": true, "oidc_login": "/auth/oidc/login" }
 ```
 
-`oidc_login` is present only when `oidc` is true. A pasted token is kept in the
-browser's `localStorage` until **Sign out**, which forgets it (and ends the
-session, if there is one); once connected, the inputs fold into the header
-behind **Change**.
+`oidc_login` is present only when `oidc` is true. The page exchanges a pasted
+token once for the `HttpOnly; SameSite=Lax` `maidan_session` cookie and removes
+it from the field. A token left in `localStorage` by an older page is exchanged
+on the next load and removed. Once connected, the inputs fold into the header
+behind **Change**. **Sign out** ends the session.
 
 Panels include channels, live WS tail, search, tokens, artifacts, and admin surfaces. A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The console fetches the bytes with the viewer's bearer header or session cookie, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 

@@ -100,6 +100,7 @@ pub fn mint_auth_session_token() {}
     responses(
         (status = 201, body = SessionResponse, description = "Session created; the cookie is in `Set-Cookie`",
             headers(("Set-Cookie" = String, description = "The `maidan_session` cookie"))),
+        (status = 401, description = "No bearer in `Authorization` (a session cannot make another), or the credential is not an API token", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, response = Forbidden),
         (status = 404, description = "Browser sessions are not configured (no `MAIDAN_SESSION_SECRET`)", body = ProblemDetails, content_type = "application/problem+json"),
     )

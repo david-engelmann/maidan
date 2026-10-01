@@ -5886,19 +5886,25 @@
         // An older page kept the token in localStorage: exchange it once and
         // remove it.
         const stored = localStorage.getItem(tokenKey);
+        let storedTokenError = null;
         if (stored) {
           localStorage.removeItem(tokenKey);
           const exchanged = await exchangeToken(stored);
           if (!exchanged.ok) {
-            const status = document.getElementById("session-status");
-            status.hidden = false;
-            status.className = "err";
-            status.textContent =
+            storedTokenError =
               "The token saved in this browser did not sign in: it may have expired or been revoked. Paste a new one, or sign in another way.";
           }
         }
         await refreshSession();
         await refreshBearerIdentity();
+        // refreshSession hides the status when there is no session, which
+        // would swallow the failure of the token an older page had stored.
+        if (storedTokenError) {
+          const status = document.getElementById("session-status");
+          status.hidden = false;
+          status.className = "err";
+          status.textContent = storedTokenError;
+        }
         await loadChannels();
         const me = authorId();
         if (me) {
