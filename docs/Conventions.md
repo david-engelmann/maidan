@@ -248,8 +248,9 @@ The nightly jobs report them; they are findings, not failures.
   N runs in S second(s)` line; a failed target's panic or sanitizer line and
   its input, base64, follow the table, and the file is in the
   `fuzz-artifacts` upload. Reproduce with `cd fuzz && cargo +nightly fuzz run
-  <target> <file>`, fix the parser, and add the input to
-  `fuzz/seeds/<target>/` or as a unit test.
+  --target x86_64-unknown-linux-gnu <target> <file>` (off Linux, without
+  `--target`), fix the parser, and add the input to `fuzz/seeds/<target>/` or
+  as a unit test.
 - **Pass `--target x86_64-unknown-linux-gnu` on Linux.** cargo-fuzz defaults to
   the triple it was compiled for, and its release binary is the musl build,
   where rustc refuses the address sanitizer; every night failed that way

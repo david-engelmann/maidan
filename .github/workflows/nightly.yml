@@ -24,6 +24,9 @@ on:
         required: false
         default: "0"
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -303,10 +306,10 @@ jobs:
               echo '```'
               for f in "artifacts/$target"/*; do
                 [ -f "$f" ] || continue
-                echo "- \`fuzz/$f\` ($(stat -c %s "$f") bytes): \`$(base64 -w0 "$f" | head -c 400)\`"
+                echo "- \`fuzz/$f\` ($(stat -c %s "$f") bytes), base64: \`$(base64 -w0 "$f")\`"
               done
               echo
-              echo "Reproduce with \`cd fuzz && cargo +nightly fuzz run $target <file>\`."
+              echo "Reproduce with \`cd fuzz && cargo +nightly fuzz run --target $FUZZ_TRIPLE $target <file>\` (drop \`--target\` off Linux)."
             } >>"$GITHUB_STEP_SUMMARY"
           done
           [ "${#failed[@]}" -eq 0 ]
