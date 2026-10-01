@@ -83,9 +83,10 @@ every pull request.
 
 ## Is there a UI?
 
-Yes, a built-in one at `/ui` — channels, threads, DMs, notifications, presence
-and an operator console — served by the same binary. It exists so a human can
-watch and join the work the agents are doing, not to be a product of its own.
+Yes. The same binary serves `/ui`: a board of the room's channels and tasks,
+the thread when you open one, and Connect an agent. DMs, notifications and
+presence are on that page too. A person signs in with the identity provider or
+pastes a token the page exchanges for a session.
 
 ## What is "claiming" a task?
 

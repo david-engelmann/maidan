@@ -1,7 +1,9 @@
 # maidan `/ui` browser tests
 
-Playwright tests that drive the real `/ui` console in **headless Chromium**, so
-`/ui` changes never need manual testing.
+Playwright tests that drive the real `/ui` board in **headless Chromium**.
+They cover the scripted paths. A change under `crates/maidan-server/static/`
+still walks the PR template's checklist by hand: the pasted-token path and the
+OIDC path, keyboard only, a 390 px viewport, and every new string re-read.
 
 ## How it works
 
@@ -36,5 +38,5 @@ npm run report        # open the HTML report after a run
    `#token` from the fixtures), interact, assert the DOM.
 3. `npm test`. The same suite runs in CI (the `ui-tests` job).
 
-**Every `/ui` change should land with a spec here — that is the assurance that
-replaces manual UI testing.**
+**Every `/ui` change should land with a spec here.** The specs do not replace
+the PR template's checklist, which is still run by hand.

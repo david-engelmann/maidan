@@ -154,8 +154,9 @@ its lease lapses and another agent takes over, the old lease id is refused.
 - **Frameworks:** [framework and REST examples](examples/), plus compose
   recipes for [a coding agent and a gated deploy](examples/recipes/).
 
-The same binary serves `/ui`, a plain operator console. It works, but it is
-not polished enough to show off yet.
+The same binary serves `/ui`, the board for the room: channels, tasks, and
+the thread when one is open, plus Connect an agent. A person signs in with
+the identity provider, or pastes a token the page exchanges for a session.
 
 <details>
 <summary><b>Other ways to run it</b>: Postgres, the prebuilt image, building from source</summary>
