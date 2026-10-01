@@ -60,6 +60,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   session can do both. A token the server accepts clears the rejection shown
   for the previous one.
 
+### One store delegation list (#1100)
+
+- **Changed:** the Postgres and SQLite store impls expand from one
+  `store_delegations!` list (`crates/maidan-store/src/delegate.rs`). A method
+  added on one backend and not the other no longer compiles. The call each
+  method makes is unchanged. Reads go through `read_pool`; on SQLite that is
+  the only pool. `write_lsn` calls `current_wal_lsn`: a WAL position on
+  Postgres, none on SQLite. `get_member_in` and `ensure_cursor_fresh`
+  are in the list, with the same bodies as their trait defaults, so neither
+  backend can leave them out. The dialect merge (F-48 tiers 2 and 3) is not
+  this change.
+
 ### A misspelt MAIDAN_* variable refuses boot
 
 - **Changed:** the server refuses to start when the environment holds a
@@ -1081,13 +1093,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Open Work names what blocks a deploy, and is kept by one hand
 
-- **Changed:** Open Work opens with **Before anyone deploys**: the release
-  pins name `v412.0.0` (62 commits and a cross-tenant fix behind), the stack's
-  prod values pull the `dev` image, the charts render default credentials, and
-  the ARM64 page runs an old release with auth off. Now lists each open PR
-  with its state and merge order; Next is re-ranked with the deploy fixes first and the
-  "first screen is the board" work merged into one row; rows cite file and line
-  on `main`. The Roadmap gains a "safe to deploy" horizon and says what landed.
+- **Changed:** Open Work opens with **Before anyone deploys**: the deploy
+  pins are not one release (some paths `v412.0.0`, the prod overlay `v0.0.1`,
+  the ARM64 page `v315.0.0`; the newest tag is 62 commits and a cross-tenant
+  fix behind), the stack's prod values pull the `dev` image, the charts render
+  default credentials, and the ARM64 page runs with auth off. Now is a table
+  of in-flight PRs (PR, what it does, state, merge after). Next is re-ranked
+  with the deploy fixes first and the "first screen is the board" work merged
+  into one row. The Roadmap gains a "safe to deploy" horizon and says what
+  landed.
 - **Changed:** feature PRs no longer edit Open Work or the Roadmap; the
   coordinator reconciles them after merges. The `open work` CI job runs on
   `main` and on a PR that edits Open Work, not on every PR.

@@ -1896,3 +1896,21 @@ retention, since it is a billing record.
 mention and has no reader after it is read.
 
 **Status.** Being built in #1165.
+
+### F-48 Tier 1 is one delegation list, not a shared SQL dialect (#1100)
+
+**Decision.** The Postgres and SQLite trait impls are generated from one
+`store_delegations!` list. Adding a method adds it to both backends; leaving
+it off either side does not compile. The body is the same call. Postgres
+reads use `read_pool` (the replica, when the request may); SQLite's
+`read_pool` is its only pool. `write_lsn` calls `current_wal_lsn`, which is
+the one inherent method that differs: Postgres returns a WAL position and
+SQLite returns none.
+
+**Alternatives.** A `Dialect` trait that rewrites `$n` versus `?` and
+picks a `now()` (Tier 2). That is a behavior change waiting on a stable
+schema, and it is not required to stop the impls drifting. Merging the
+claim algorithms (Tier 3: outbox, mail outbox, messages, egress) was
+rejected: they are different concurrency models, not two copies.
+
+**To revisit.** Tier 2, once the migration stream slows down.
