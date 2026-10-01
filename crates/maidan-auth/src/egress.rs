@@ -1,9 +1,17 @@
 //! Fail-closed validation for operator-supplied HTTP egress targets.
 
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::time::Duration;
 
 use thiserror::Error;
 use url::{Host, Url};
+
+/// How long a DNS lookup for an egress target may take. The HTTP client's
+/// connect and total timeouts start only after [`resolve_egress_target`]
+/// returns, and the webhook poller sends one delivery at a time, so a lookup
+/// that never answers used to hold every tenant's webhooks.
+pub const EGRESS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Error)]
 pub enum EgressTargetError {
@@ -15,6 +23,8 @@ pub enum EgressTargetError {
     NonPublic,
     #[error("egress target could not be resolved")]
     Unresolvable,
+    #[error("egress target resolution timed out")]
+    ResolutionTimedOut,
 }
 
 #[derive(Clone, Debug)]
@@ -126,6 +136,8 @@ pub fn validate_egress_target(raw: &str) -> Result<Url, EgressTargetError> {
     }
 }
 
+/// Resolves `raw`, giving the DNS lookup [`EGRESS_RESOLUTION_TIMEOUT`]. A
+/// stalled resolver is [`EgressTargetError::ResolutionTimedOut`], not a hang.
 pub async fn resolve_egress_target(raw: &str) -> Result<ResolvedEgressTarget, EgressTargetError> {
     let allow_private = private_egress_explicitly_allowed();
     let url = validate_egress_target(raw)?;
@@ -136,19 +148,39 @@ pub async fn resolve_egress_target(raw: &str) -> Result<ResolvedEgressTarget, Eg
     let port = url
         .port_or_known_default()
         .ok_or(EgressTargetError::InvalidUrl)?;
-    let addresses = tokio::net::lookup_host((host.as_str(), port))
-        .await
-        .map_err(|_| EgressTargetError::Unresolvable)?
-        .collect::<Vec<_>>();
-    if addresses.is_empty() {
-        return Err(EgressTargetError::Unresolvable);
-    }
+    let addresses = lookup_with_deadline(
+        tokio::net::lookup_host((host.as_str(), port)),
+        EGRESS_RESOLUTION_TIMEOUT,
+    )
+    .await?;
     ensure_public_addresses(&addresses, allow_private)?;
     Ok(ResolvedEgressTarget {
         url,
         host,
         addresses,
     })
+}
+
+async fn lookup_with_deadline<F, I>(
+    lookup: F,
+    deadline: Duration,
+) -> Result<Vec<SocketAddr>, EgressTargetError>
+where
+    F: Future<Output = std::io::Result<I>>,
+    I: IntoIterator<Item = SocketAddr>,
+{
+    match tokio::time::timeout(deadline, lookup).await {
+        Ok(Ok(found)) => {
+            let addresses: Vec<_> = found.into_iter().collect();
+            if addresses.is_empty() {
+                Err(EgressTargetError::Unresolvable)
+            } else {
+                Ok(addresses)
+            }
+        }
+        Ok(Err(_)) => Err(EgressTargetError::Unresolvable),
+        Err(_) => Err(EgressTargetError::ResolutionTimedOut),
+    }
 }
 
 fn ensure_public_addresses(
@@ -234,5 +266,65 @@ mod tests {
             Err(EgressTargetError::NonPublic)
         ));
         assert!(ensure_public_addresses(&addresses, true).is_ok());
+    }
+
+    #[test]
+    fn the_dns_deadline_is_five_seconds() {
+        assert_eq!(EGRESS_RESOLUTION_TIMEOUT, Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn a_stalled_dns_lookup_ends_at_its_deadline() {
+        let deadline = Duration::from_millis(40);
+        let started = std::time::Instant::now();
+        let result = lookup_with_deadline(
+            std::future::pending::<std::io::Result<std::vec::IntoIter<SocketAddr>>>(),
+            deadline,
+        )
+        .await;
+        let waited = started.elapsed();
+        assert!(matches!(result, Err(EgressTargetError::ResolutionTimedOut)));
+        assert!(
+            waited >= deadline && waited < Duration::from_secs(2),
+            "ended after {waited:?}, not at the deadline"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_lookup_is_unresolvable_rather_than_a_timeout() {
+        let result = lookup_with_deadline(
+            std::future::ready(Err::<std::vec::IntoIter<SocketAddr>, _>(
+                std::io::Error::other("no such host"),
+            )),
+            EGRESS_RESOLUTION_TIMEOUT,
+        )
+        .await;
+        assert!(matches!(result, Err(EgressTargetError::Unresolvable)));
+    }
+
+    #[tokio::test]
+    async fn an_empty_answer_is_unresolvable() {
+        let result = lookup_with_deadline(
+            std::future::ready(Ok(Vec::<SocketAddr>::new().into_iter())),
+            EGRESS_RESOLUTION_TIMEOUT,
+        )
+        .await;
+        assert!(matches!(result, Err(EgressTargetError::Unresolvable)));
+    }
+
+    #[tokio::test]
+    async fn a_public_address_literal_resolves_without_a_dns_wait() {
+        let started = std::time::Instant::now();
+        let target = resolve_egress_target("https://1.1.1.1/hook")
+            .await
+            .expect("a literal needs no nameserver");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "a literal waited on DNS"
+        );
+        assert!(target
+            .addresses
+            .iter()
+            .any(|addr| addr.ip() == "1.1.1.1".parse::<IpAddr>().expect("address")));
     }
 }

@@ -1500,8 +1500,9 @@ peers, and A2A push targets. This is checked again when Maidan sends, so a DNS
 change cannot turn a previously public registration into private-network
 access.
 
-Deliveries are HMAC-signed (`X-Maidan-Signature`). Answer within 10 s (5 s to
-connect): a slower answer is a failed attempt, retried with backoff like any
+Deliveries are HMAC-signed (`X-Maidan-Signature`). The name is resolved
+within 5 s, then the delivery gives up after 5 s to connect and 10 s in all:
+a slower answer is a failed attempt, retried with backoff like any
 other, so acknowledge first and do slow work afterwards. The JSON body also carries
 `$type` (`maidan.event.{kind}/1`) on the envelope and the nested `event`.
 Each POST stamps `Maidan-Room-LSN` with the subscribing workspace's event-log

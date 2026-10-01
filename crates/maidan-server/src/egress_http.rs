@@ -21,6 +21,10 @@ pub fn bounded() -> ClientBuilder {
         .timeout(EGRESS_TIMEOUT)
 }
 
+/// A no-redirect client for an operator-supplied URL. Name resolution gives
+/// up after [`maidan_auth::EGRESS_RESOLUTION_TIMEOUT`], before this client
+/// exists; connecting then gives up after [`EGRESS_CONNECT_TIMEOUT`], and the
+/// whole request after [`EGRESS_TIMEOUT`].
 pub async fn client_for(raw: &str) -> Result<(Client, Url), String> {
     let target = maidan_auth::resolve_egress_target(raw)
         .await
