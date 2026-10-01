@@ -1274,11 +1274,15 @@ and everything merged through #1077.
   now `-32600 Invalid Request`, and `-32700` is kept for bytes that are not
   JSON. A `null` id, which MCP forbids, is refused instead of being run as a
   notification and never answered. The A2A binding already did this.
-- **Fixed:** the stdio MCP transport answered notifications; a line with no
-  `id` now gets no response.
+- **Fixed:** the stdio MCP transport answered notifications; a valid request
+  with no `id` now gets no response. A line that is not JSON, or not a valid
+  request, is still answered with its error and a null id.
 - **Changed:** `authority_audit_contract` skips each `#[cfg(test)]` item
   instead of the rest of the file, so it now reads 1,693 lines it skipped
   before (all of `openapi/mod.rs`, the MCP tool dispatch). It found nothing.
+  The blanker it shares with `attribution_scope_contract` reads Rust
+  lexically: a `#[cfg(test)]` in a comment or string is not a marker, and a
+  brace in a `/* */` comment or a `;` inside `[u8; 4]` does not end an item.
 
 ## [412.0.0] — 2026-09-28
 

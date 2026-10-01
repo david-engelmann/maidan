@@ -156,7 +156,8 @@ fn find_in_code(src: &[u8], mut i: usize, needle: &[u8]) -> Option<usize> {
 
 /// The index just past the item that starts at `from`: its `;`, or the brace
 /// that closes its body. Skips comments and string, raw string and char
-/// literals, so a `{` or `"` inside one does not count.
+/// literals, so a `{` or `"` inside one does not count. A `;` inside brackets,
+/// as in `fn t(x: [u8; 2])`, is not the end of the item.
 fn end_of_item(src: &[u8], mut i: usize) -> usize {
     let mut depth = 0usize;
     while i < src.len() {
@@ -167,7 +168,8 @@ fn end_of_item(src: &[u8], mut i: usize) -> usize {
         }
         match src[i] {
             b';' if depth == 0 => return i + 1,
-            b'{' => depth += 1,
+            b'{' | b'(' | b'[' => depth += 1,
+            b')' | b']' => depth = depth.saturating_sub(1),
             b'}' => {
                 depth = depth.saturating_sub(1);
                 if depth == 0 {
@@ -243,4 +245,12 @@ fn after_test() { store.revoke(z); }\n\
     assert!(!kept.contains("let _ = 1"));
     assert!(kept.contains("fn after_test() { store.revoke(z); }"));
     assert_eq!(kept.lines().count(), src.lines().count());
+}
+
+#[test]
+fn a_semicolon_inside_brackets_does_not_end_a_test_item() {
+    let src = "#[cfg(test)]\nfn t(x: [u8; 2]) { tokio::spawn(x); }\nfn b() {}\n";
+    let kept = without_tests(src);
+    assert!(!kept.contains("tokio::spawn"), "{kept}");
+    assert!(kept.contains("fn b() {}"), "{kept}");
 }
