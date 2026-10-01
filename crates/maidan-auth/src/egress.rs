@@ -70,11 +70,20 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
         && segments[0] != 0x2002
 }
 
+const MAX_EGRESS_URL_LEN: usize = 2048;
+
 pub fn parse_egress_target(raw: &str) -> Result<Url, EgressTargetError> {
-    if raw.len() > 2048 || raw.trim() != raw {
+    if raw.len() > MAX_EGRESS_URL_LEN || raw.trim() != raw {
         return Err(EgressTargetError::InvalidUrl);
     }
     let url = Url::parse(raw).map_err(|_| EgressTargetError::InvalidUrl)?;
+    // Parsing percent-encodes the path and punycodes the host, so the URL
+    // this returns can be longer than what was sent. Bounding only the input
+    // accepted URLs whose own form the guard then refused (found by the
+    // `egress_target` fuzz target).
+    if url.as_str().len() > MAX_EGRESS_URL_LEN {
+        return Err(EgressTargetError::InvalidUrl);
+    }
     if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
         return Err(EgressTargetError::InvalidUrl);
     }
@@ -196,6 +205,22 @@ mod tests {
         assert!(is_public_ip(
             "::ffff:8.8.8.8".parse().expect("mapped public")
         ));
+    }
+
+    #[test]
+    fn a_url_that_percent_encodes_past_the_limit_is_refused() {
+        // 1,220 bytes as sent; each `é` prints as `%C3%A9`, 3,620 bytes.
+        let raw = format!("https://example.com/{}", "é".repeat(600));
+        assert!(raw.len() <= MAX_EGRESS_URL_LEN);
+        assert!(matches!(
+            parse_egress_target(&raw),
+            Err(EgressTargetError::InvalidUrl)
+        ));
+
+        let fits = format!("https://example.com/{}", "é".repeat(300));
+        let url = parse_egress_target(&fits).expect("1,820 bytes printed");
+        let again = parse_egress_target(url.as_str()).expect("its own form passes");
+        assert_eq!(again, url);
     }
 
     #[test]

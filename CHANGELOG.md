@@ -1091,6 +1091,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the claim-ending work in flight, and adds read-notification retention to the
   legal-hold item.
 
+### The nightly jobs report their failures
+
+- **Fixed:** the nightly fuzz job had never run a target. cargo-fuzz passes
+  `--target` for the triple it was compiled for, and the release binary the
+  job installs is the musl build, for which rustc refuses the address
+  sanitizer and the nightly toolchain has no standard library, so the job
+  failed before compiling anything ("can't find crate for `core`") and
+  `continue-on-error` reported it passed. It now builds for the gnu triple.
+- **Changed:** a failing fuzz target no longer stops the others. Every target
+  is built, then each is fuzzed for five minutes; the job summary has a row
+  per target with libFuzzer's run count, and a target that crashes, leaks,
+  times out or stops early fails the job, with the panic or sanitizer line
+  and the input (base64) in the summary and the file uploaded.
+- **Changed:** no nightly job is `continue-on-error` (the benchmark build was
+  the other), so a failing night is red. A manual run of `nightly.yml` can run
+  one group with `jobs` (`mutation`, `store`, `bench` or `fuzz`) instead of
+  the whole night, and the store planner's overflow warning names
+  `jobs=store`.
+- **Fixed:** the egress guard bounded a URL at 2,048 bytes as sent, but
+  parsing percent-encodes the path and punycodes the host, so it accepted
+  URLs whose own printed form it then refused (1,541 bytes sent, 2,150
+  printed). It now bounds the printed form too. Found by `egress_target` on
+  the job's first night; it failed closed, so nothing was reached that the
+  guard meant to refuse.
+- **Fixed:** an MCP request id of `1.5555555555555555e92` was answered with
+  id `1.5555555555555558e+92`: serde_json's default float parse is best
+  effort. The workspace now enables serde_json's `float_roundtrip`, so a
+  number reads as the double it names. Found by `mcp_request` the same night.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

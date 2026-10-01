@@ -87,7 +87,7 @@ plan() {
     fi
   } | summary
   if ((end < total)); then
-    echo "::warning title=store mutants not tested::shards $end to $((total - 1)) of $total (up to $(((total - end) * STORE_MUTANTS_PER_SHARD)) mutants) do not run; run nightly.yml by hand with store_base=$base and store_first_shard=$end"
+    echo "::warning title=store mutants not tested::shards $end to $((total - 1)) of $total (up to $(((total - end) * STORE_MUTANTS_PER_SHARD)) mutants) do not run; run nightly.yml by hand with jobs=store, store_base=$base and store_first_shard=$end"
   fi
 }
 

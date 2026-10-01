@@ -183,6 +183,14 @@ WebSocket subscribe frame). A new parser of untrusted input gets a target
 there, with seed inputs under `fuzz/seeds/<target>/` when it reads structured
 input.
 
+No nightly job is `continue-on-error`, so a failing job makes the night red.
+Before October 2026 every mutation shard and the fuzz job failed in their
+first seconds each night, and the run showed green. A manual run
+(`gh workflow run nightly.yml -f jobs=<job>`) can run one group alone: `all`
+(the default, and what the schedule runs), `mutation` (auth, bus and
+artifacts), `store` (the store plan and its shards), `bench` or `fuzz`. A full
+night holds most of the runner pool for hours, so rerun only the part you need.
+
 ### Nightly mutation testing
 
 A mutant that survives the tests is a change to the code that no test notices.
@@ -209,8 +217,8 @@ The nightly jobs report them; they are findings, not failures.
   before the shards start). That is 200 mutants a night; in the week to
   2026-09-30 one day's store changes produced up to about 390, so a busy day
   overflows. The planning job then warns and names the manual run
-  (`store_base`, `store_first_shard`) that covers the rest; run it before
-  `main` moves, since the shards are cut from the diff to the head.
+  (`jobs=store`, `store_base`, `store_first_shard`) that covers the rest; run
+  it before `main` moves, since the shards are cut from the diff to the head.
 - **A shard that does not finish fails.** Each cargo-mutants step has its own
   time limit, shorter than the job's, so a shard cut off by it still reports:
   `scripts/mutants.sh report` writes the counts and the missed and timed-out
@@ -228,3 +236,23 @@ The nightly jobs report them; they are findings, not failures.
   check to "no daemon" turns every Postgres test into a skip, so that mutant
   survives by construction. Code is excluded only when mutating it cannot say
   anything about the code the tests check; hard to test is not a reason.
+
+### Nightly fuzzing
+
+- **Every target runs.** The job builds every target in `cargo +nightly fuzz
+  list`, then fuzzes each for `FUZZ_SECONDS` (300) with its seeds and
+  `fuzz/json.dict`. A target that fails does not stop the others.
+- **A failure is red.** A crash, a sanitizer report (a leak included), a
+  libFuzzer timeout or out-of-memory, or a target that stops before its time
+  fails the job. The job summary has a row per target with libFuzzer's `Done
+  N runs in S second(s)` line; a failed target's panic or sanitizer line and
+  its input, base64, follow the table, and the file is in the
+  `fuzz-artifacts` upload. Reproduce with `cd fuzz && cargo +nightly fuzz run
+  --target x86_64-unknown-linux-gnu <target> <file>` (off Linux, without
+  `--target`), fix the parser, and add the input to `fuzz/seeds/<target>/` or
+  as a unit test.
+- **Pass `--target x86_64-unknown-linux-gnu` on Linux.** cargo-fuzz defaults to
+  the triple it was compiled for, and its release binary is the musl build,
+  where rustc refuses the address sanitizer; every night failed that way
+  until the job set the triple. A cargo-fuzz built from source on the machine
+  does not need it.
