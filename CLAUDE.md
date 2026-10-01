@@ -20,7 +20,7 @@ full forms are what CI runs.
 | **Run** | `MAIDAN_ALLOW_INSECURE_DEV_KEK=1 DATABASE_URL=sqlite::memory: MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 cargo run --bin maidan-server` | — |
 | **Smoke** | — | `make smoke` (Docker; brings the stack up and waits on its health checks) |
 | **Mutants** | `cargo mutants -p <crate> --shard 0/20` | nightly: `scripts/mutants.sh plan`, then the shards ([`docs/Conventions.md`](docs/Conventions.md), "Nightly mutation testing") |
-| **Fuzz** | `cd fuzz && cargo +nightly fuzz run <target> -- -max_total_time=60` | nightly, in `fuzz/`, for each target that `cargo +nightly fuzz list` prints: `cargo +nightly fuzz run <target> corpus/<target> seeds/<target> -- -dict=json.dict -max_total_time=300` (`seeds/<target>` only where it exists) |
+| **Fuzz** | `cd fuzz && cargo +nightly fuzz run <target> -- -max_total_time=60` | nightly, in `fuzz/`, for each target that `cargo +nightly fuzz list` prints: `cargo +nightly fuzz run --target x86_64-unknown-linux-gnu <target> corpus/<target> seeds/<target> -- -dict=json.dict -max_total_time=300` (`seeds/<target>` only where it exists; [`docs/Conventions.md`](docs/Conventions.md), "Nightly fuzzing") |
 | **Docs site** | — | `mdbook-mermaid install book && bash book/sync-docs.sh && mdbook build book && ./scripts/check-docs-presentation.sh` |
 
 The server refuses to start without a content key: set `MAIDAN_CONTENT_KEK`, or
@@ -141,8 +141,11 @@ Lessons that cost real time, and that still apply:
   `claim_next_thread` re-handed finished work (#1046) after every unit test had
   passed.
 - **A job that cannot fail reports nothing.** Until 2026-09-30 no nightly
-  mutation shard had tested a mutant and the nightly fuzz job failed every
-  night; `continue-on-error` showed both green (#1155).
+  mutation shard had tested a mutant (#1155), and until October no fuzz
+  target had run in CI: the fuzz job failed every night before compiling one.
+  `continue-on-error` showed both green. No nightly job has it now; a failing
+  night is red. On Linux, a cargo-fuzz release binary needs `--target
+  x86_64-unknown-linux-gnu` (it defaults to musl, which has no sanitizer).
 - **A required check red at the same step on consecutive `main` commits is a
   break, not a flake.** `docker compose smoke` was red from #973 to #1005 while
   about 30 PRs were admin-merged over it.
