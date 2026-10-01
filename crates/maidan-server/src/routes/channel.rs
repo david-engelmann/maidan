@@ -230,12 +230,10 @@ pub async fn add_channel_member(
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     cap(&auth, CHANNEL_ADMIN)?;
     ensure_workspace(&auth, channel.workspace_id)?;
-    let member = state.store.get_member(MemberId(body.member_id)).await?;
-    if member.workspace_id != channel.workspace_id {
-        return Err(ApiError::BadRequest(
-            "member is not in the channel's workspace".into(),
-        ));
-    }
+    let member = state
+        .store
+        .get_member_in(channel.workspace_id, MemberId(body.member_id))
+        .await?;
     let role = body.role.unwrap_or(ChannelMemberRole::Member);
     let (actor, workspace_id) = (auth.actor_id, channel.workspace_id);
     let m = state

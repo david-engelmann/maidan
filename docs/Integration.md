@@ -786,9 +786,12 @@ One-shot JSON-RPC without holding SSE: use `POST /mcp`, or send `Accept: applica
 `text/event-stream`) to the streamable POST. `POST /mcp` is also the endpoint that takes a top-level
 array as a JSON-RPC batch and answers a notification (a request with no `id`) with `202 Accepted` and
 no body; the streamable POST handles one request per call. Every transport (both POSTs and stdio)
-reads a request the same way: a JSON object, whose duplicate members keep the last value. Anything
-else, including a positional array such as `["2.0", 1, "tools/list"]` or a body that is not valid
-UTF-8 JSON, is a parse error (`-32700`) with a `null` id.
+reads a request the same way: a JSON object with `"jsonrpc": "2.0"`, a string `method`, and an `id`
+that is a string or an integer (or no `id`, for a notification); duplicate members keep the last
+value. Bytes that are not valid UTF-8 JSON are a parse error (`-32700`). JSON that is not such an
+object, including a positional array such as `["2.0", 1, "tools/list"]`, an object with no `method`,
+a `null` id (MCP forbids one) or a non-object item inside a batch, is an invalid request (`-32600`).
+Both are answered with a `null` id; in a batch, a bad item gets its own error and the rest run.
 
 Maidan never issues requests *to* your client: there is no sampling, roots, or elicitation
 back-channel. When an agent needs a human, it opens a durable approval gate — see "Asking a human
@@ -914,10 +917,17 @@ Three rules for using them safely:
   `https://maidan.dev/problems/overloaded`), so a retry after the delay is safe
   even for a write. `/ws/subscribe` answers the same way at its connection
   ceiling. `/health*` and `/metrics` are never refused.
-- **A member id you send must name a member of the workspace.** Setting a
-  thread's owner or assignee, recording a mention and opening a DM answer
-  `404` (MCP: not found) when the id names no member or a member of another
-  workspace, and write nothing.
+- **A member id you send must name a member of the workspace.** Every route
+  and MCP tool that takes a member id, in the path, the query or the body,
+  answers a member of another workspace exactly as it answers an id that names
+  no member, and writes nothing. For most that is `404` with problem type
+  `not-found` (MCP: `-32004`, not found): member lookups (`GET /members/{id}`,
+  WIP, occupancy), owner, assignee, mentions, DMs and group DMs, channel
+  members, reviewers, delegation grants, member tokens, freezes and the member
+  you follow. The answer does not tell you whether the id is a member
+  somewhere else. Routes and tools that act only on your own member (inbox,
+  notifications, your follows) answer any id but yours with `403` (`-32003`),
+  whether it names a member of your workspace, of another, or no one.
 - **`500` names itself.** Any failure, including a server bug, answers with a
   problem body and an `X-Request-Id` header; quote the id when reporting it.
   The body never carries the internal cause.
@@ -1680,6 +1690,11 @@ MAIDAN_MCP_TOKEN=<bearer> maidan mcp-stdio
 ```
 
 In-process event bus + indexer for desktop/edge use ([Capabilities.md](Capabilities.md) v100).
+
+One JSON-RPC request per line in, one response per line out. A notification (a valid JSON-RPC
+request object with no `id`, such as `notifications/initialized`) runs and gets no line back; the
+resource notifications you subscribed to follow the response they came after. Malformed JSON and a
+request object the spec rejects are not notifications: each gets an error response.
 
 This binary *hosts* the server — it opens the database and answers tool calls over
 the pipe — so the token is the whole of the authorization: every tool runs with

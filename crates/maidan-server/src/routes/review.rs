@@ -147,12 +147,7 @@ pub async fn add_reviewer(
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     let member = MemberId(body.member_id);
     // The reviewer must be a member of the thread's workspace.
-    let m = state.store.get_member(member).await?;
-    if m.workspace_id != ctx.workspace_id {
-        return Err(ApiError::BadRequest(
-            "reviewer is not in this workspace".into(),
-        ));
-    }
+    state.store.get_member_in(ctx.workspace_id, member).await?;
     state.store.add_reviewer(thread_id, member).await?;
     Ok(StatusCode::NO_CONTENT)
 }

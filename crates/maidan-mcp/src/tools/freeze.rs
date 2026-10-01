@@ -21,13 +21,9 @@ async fn ensure_same_workspace(
     auth: &AuthContext,
     member_id: MemberId,
 ) -> Result<WorkspaceId, McpError> {
-    let member = store.get_member(member_id).await?;
-    if !auth.bypass && member.workspace_id != auth.workspace_id {
-        return Err(McpError::InvalidParams(
-            "member is not in the caller's workspace".into(),
-        ));
-    }
-    Ok(member.workspace_id)
+    Ok(super::requested_member(store.as_ref(), auth, member_id)
+        .await?
+        .workspace_id)
 }
 
 #[derive(Deserialize)]

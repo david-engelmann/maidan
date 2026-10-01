@@ -8,7 +8,7 @@ use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{capability::TOKEN_ADMIN, AuthContext};
 use maidan_types::*;
 
-use super::{cap, ensure_workspace, publish_stored, ApiResult};
+use super::{cap, ensure_workspace, publish_stored, requested_member, ApiResult};
 use crate::dto::*;
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
@@ -20,9 +20,7 @@ async fn authorize_member(
     auth: &AuthContext,
     member_id: MemberId,
 ) -> ApiResult<Member> {
-    let member = state.store.get_member(member_id).await?;
-    ensure_workspace(auth, member.workspace_id)?;
-    Ok(member)
+    requested_member(state, auth, member_id).await
 }
 
 pub async fn freeze_member(

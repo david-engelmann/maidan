@@ -9,7 +9,7 @@ use maidan_auth::{
 };
 use maidan_types::*;
 
-use super::{cap, ensure_own_personal_state, ensure_workspace, ApiResult};
+use super::{cap, ensure_own_personal_state, requested_member, ApiResult};
 use crate::dto::*;
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
@@ -23,9 +23,8 @@ pub async fn add_member_skill(
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AddSkill>,
 ) -> ApiResult<StatusCode> {
-    let member = state.store.get_member(MemberId(id)).await?;
+    let member = requested_member(&state, &auth, MemberId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, member.workspace_id)?;
     if body.skill.trim().is_empty() {
         return Err(ApiError::BadRequest("skill must not be empty".into()));
     }
@@ -70,9 +69,8 @@ pub async fn list_member_skills(
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<Vec<MemberSkill>>> {
-    let member = state.store.get_member(MemberId(id)).await?;
+    let member = requested_member(&state, &auth, MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
-    ensure_workspace(&auth, member.workspace_id)?;
     ensure_own_personal_state(&auth, member.id)?;
     Ok(Json(state.store.list_member_skills(member.id).await?))
 }
@@ -82,9 +80,8 @@ pub async fn remove_member_skill(
     Extension(auth): Extension<AuthContext>,
     ApiPath((id, skill)): ApiPath<(uuid::Uuid, String)>,
 ) -> ApiResult<StatusCode> {
-    let member = state.store.get_member(MemberId(id)).await?;
+    let member = requested_member(&state, &auth, MemberId(id)).await?;
     cap(&auth, WORKSPACE_WRITE)?;
-    ensure_workspace(&auth, member.workspace_id)?;
     // Anyone may drop their own skill. An operator may also revoke a governance
     // skill from someone else — narrowing who may approve has to be possible
     // without the holder's cooperation, or a misbehaving agent keeps it.

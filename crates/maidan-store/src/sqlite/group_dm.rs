@@ -28,12 +28,12 @@ pub async fn open(
             "group DM member_ids must be unique".into(),
         ));
     }
+    // Another workspace's member is `NotFound`, as an id that names no
+    // member is, so the answer does not say the id is a member elsewhere.
     for mid in &unique {
         let member = crate::sqlite::members::get(pool, *mid).await?;
         if member.workspace_id != workspace_id {
-            return Err(StoreError::InvalidInput(
-                "all members must belong to the workspace".into(),
-            ));
+            return Err(StoreError::NotFound);
         }
     }
     let channel = dm::ensure_dm_channel(pool, workspace_id).await?;

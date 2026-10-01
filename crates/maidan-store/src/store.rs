@@ -189,6 +189,21 @@ pub trait MemberStore: Send + Sync {
         new: NewMember,
     ) -> Result<(Member, StoredEvent), StoreError>;
     async fn get_member(&self, id: MemberId) -> Result<Member, StoreError>;
+    /// The member `id` names, if it is one of `workspace_id`'s. A member of
+    /// another workspace is `NotFound`, as an id that names no member is, so
+    /// a caller cannot learn that the id is a member somewhere else.
+    async fn get_member_in(
+        &self,
+        workspace_id: WorkspaceId,
+        id: MemberId,
+    ) -> Result<Member, StoreError> {
+        let member = self.get_member(id).await?;
+        if member.workspace_id == workspace_id {
+            Ok(member)
+        } else {
+            Err(StoreError::NotFound)
+        }
+    }
     async fn get_member_by_handle(
         &self,
         workspace_id: WorkspaceId,
@@ -2085,6 +2100,9 @@ pub trait MessageStore: Send + Sync {
 
 #[async_trait]
 pub trait MentionInboxStore: Send + Sync {
+    /// Record a mention without appending its event: the `@handle` router
+    /// publishes `MentionRecorded` itself. `NotFound` unless `member_id` is a
+    /// member of the message's workspace, as for the evented form.
     async fn record_mention(
         &self,
         message_id: MessageId,

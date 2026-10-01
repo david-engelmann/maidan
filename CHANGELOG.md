@@ -20,6 +20,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   its notifications. The usage ledger is not pruned.
 - **Docs:** Production.md and Operations.md.
 
+### A member of another workspace is answered as no member; JSON-RPC errors follow the spec
+
+- **Fixed:** channel membership, reviewers, delegation grants, member tokens,
+  group DMs, freezes, follows and every `/members/{id}/...` route answered a
+  member of another workspace with a `400` or `403` that differed from the
+  `404` for an unknown id, which told the caller the id was a member
+  somewhere. Every route and MCP tool that takes a member id now answers both
+  alike: `404 not-found` (MCP `-32004`), writing nothing
+  (`foreign_member_e2e`, 108 probes). The event-less `record_mention` that
+  `@handle` routing uses checks the member's workspace, as the evented form
+  does since #1136.
+- **Fixed:** MCP answered `-32700 Parse error` for JSON that is not a request
+  (`[1]` in a batch, an object with no `method`, a `"jsonrpc": "1.0"`); that is
+  now `-32600 Invalid Request`, and `-32700` is kept for bytes that are not
+  JSON. A `null` id, which MCP forbids, is refused instead of being run as a
+  notification and never answered. The A2A binding already did this.
+- **Fixed:** the stdio MCP transport answered notifications; a valid request
+  with no `id` now gets no response. A line that is not JSON, or not a valid
+  request, is still answered with its error and a null id.
+- **Changed:** `authority_audit_contract` skips each `#[cfg(test)]` item
+  instead of the rest of the file, so it now reads 1,693 lines it skipped
+  before (all of `openapi/mod.rs`, the MCP tool dispatch). It found nothing.
+  The blanker it shares with `attribution_scope_contract` reads Rust
+  lexically: a `#[cfg(test)]` in a comment or string is not a marker, and a
+  brace in a `/* */` comment or a `;` inside `[u8; 4]` does not end an item.
+  A test-only match arm, field or element ends at its own `,` or before the
+  bracket that encloses it, so the sibling after it is still scanned.
+
 ### `/ui` reports a failure in words
 
 - **Fixed:** posting a message when the server cannot be reached keeps the

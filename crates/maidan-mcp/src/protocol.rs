@@ -77,6 +77,15 @@ impl JsonRpcError {
             data: None,
         }
     }
+
+    /// JSON that is not a request object: JSON-RPC 2.0's Invalid Request.
+    pub fn invalid_request(why: &str) -> Self {
+        Self {
+            code: -32600,
+            message: format!("invalid request: {why}"),
+            data: None,
+        }
+    }
 }
 
 impl JsonRpcNotification {
@@ -104,11 +113,9 @@ pub fn parse_body(body: &[u8]) -> Result<RequestBody, JsonRpcError> {
     let value: serde_json::Value =
         serde_json::from_slice(body).map_err(|_| JsonRpcError::parse_error())?;
     match value {
-        serde_json::Value::Array(items) if items.is_empty() => Err(JsonRpcError {
-            code: -32600,
-            message: "invalid request: empty batch".into(),
-            data: None,
-        }),
+        serde_json::Value::Array(items) if items.is_empty() => {
+            Err(JsonRpcError::invalid_request("empty batch"))
+        }
         serde_json::Value::Array(items) => Ok(RequestBody::Batch(
             items.into_iter().map(request_from_value).collect(),
         )),
@@ -125,16 +132,56 @@ pub fn parse_request(body: &[u8]) -> Result<JsonRpcRequest, JsonRpcError> {
     request_from_value(value)
 }
 
+/// A JSON number with no fractional part. `Number::is_i64` and `is_u64` are
+/// false once the value does not fit, even when it is a whole number: those
+/// are kept as `f64`, and every finite `f64` at magnitude 2^53 or above is a
+/// whole number. A fractional value such as `1.5` is not an id.
+fn number_is_integer(number: &serde_json::Number) -> bool {
+    if number.is_i64() || number.is_u64() {
+        return true;
+    }
+    #[allow(clippy::float_cmp)]
+    number
+        .as_f64()
+        .is_some_and(|value| value.is_finite() && value.fract() == 0.0)
+}
+
 /// Through a JSON value rather than straight into the struct: serde reads a
 /// struct from an array by position and skips unknown members without
 /// checking their UTF-8, so a direct read accepted `["2.0",1,"tools/call"]`
 /// and bodies that are not JSON at all, which a gateway reading the body as
 /// JSON would route differently or refuse.
+///
+/// JSON that does not make a request is Invalid Request (`-32600`), not a
+/// parse error: that code is for bytes that are not JSON. MCP forbids a null
+/// id, which JSON-RPC allows, and read as an absent one it turned a request
+/// into a notification that was run and never answered.
 fn request_from_value(value: serde_json::Value) -> Result<JsonRpcRequest, JsonRpcError> {
-    if !value.is_object() {
-        return Err(JsonRpcError::parse_error());
+    let serde_json::Value::Object(object) = &value else {
+        return Err(JsonRpcError::invalid_request("a request is a JSON object"));
+    };
+    if object.get("jsonrpc").and_then(serde_json::Value::as_str) != Some("2.0") {
+        return Err(JsonRpcError::invalid_request("jsonrpc must be \"2.0\""));
     }
-    serde_json::from_value(value).map_err(|_| JsonRpcError::parse_error())
+    match object.get("id") {
+        None | Some(serde_json::Value::String(_)) => {}
+        // i64/u64 miss a whole number that does not fit: serde_json stores it
+        // as f64. It is still an integer, and the reply must echo it. A
+        // fraction (1.5) is not an integer and stays invalid.
+        Some(serde_json::Value::Number(n)) if number_is_integer(n) => {}
+        Some(_) => {
+            return Err(JsonRpcError::invalid_request(
+                "id must be a string or an integer",
+            ))
+        }
+    }
+    if !object
+        .get("method")
+        .is_some_and(serde_json::Value::is_string)
+    {
+        return Err(JsonRpcError::invalid_request("method must be a string"));
+    }
+    serde_json::from_value(value).map_err(|_| JsonRpcError::invalid_request("malformed request"))
 }
 
 #[cfg(test)]
@@ -166,8 +213,8 @@ mod tests {
         assert_eq!(no_params.id, Some(json!("abc")));
         assert_eq!(no_params.params, serde_json::Value::Null);
 
-        // An explicit JSON `null` id deserializes to `None` (like an absent id)
-        // because `id` is `Option<Value>`.
+        // The struct reads a JSON `null` id as absent, because `id` is
+        // `Option<Value>`; `parse_request` refuses a null id before this.
         let null_id: JsonRpcRequest =
             serde_json::from_value(json!({"jsonrpc": "2.0", "id": null, "method": "x"}))
                 .expect("parse null id");
@@ -226,6 +273,55 @@ mod tests {
             panic!("a batch is a batch");
         };
         assert!(items[0].is_err(), "a positional batch item was read");
+    }
+
+    #[test]
+    fn json_that_is_not_a_request_is_an_invalid_request_and_bytes_that_are_not_json_a_parse_error()
+    {
+        fn code(result: Result<JsonRpcRequest, JsonRpcError>) -> i32 {
+            result.expect_err("refused").code
+        }
+        for body in [
+            &b"{not json"[..],
+            b"",
+            b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"x\":\"\xcd\"}",
+        ] {
+            assert_eq!(code(parse_request(body)), -32700, "{body:?}");
+            assert_eq!(parse_body(body).expect_err("refused").code, -32700);
+        }
+        for body in [
+            &br#"1"#[..],
+            br#""ping""#,
+            br#"null"#,
+            br#"["2.0",1,"tools/list"]"#,
+            br#"{"jsonrpc":"2.0","id":1}"#,
+            br#"{"jsonrpc":"2.0","id":1,"method":7}"#,
+            br#"{"id":1,"method":"ping"}"#,
+            br#"{"jsonrpc":"1.0","id":1,"method":"ping"}"#,
+            br#"{"jsonrpc":"2.0","id":null,"method":"ping"}"#,
+            br#"{"jsonrpc":"2.0","id":{"a":1},"method":"ping"}"#,
+            br#"{"jsonrpc":"2.0","id":1.5,"method":"ping"}"#,
+        ] {
+            assert_eq!(
+                code(parse_request(body)),
+                -32600,
+                "{}",
+                String::from_utf8_lossy(body)
+            );
+        }
+        let Ok(RequestBody::Batch(items)) = parse_body(
+            br#"[1,{"jsonrpc":"2.0","method":"ping"},{"jsonrpc":"2.0","id":2,"method":"ping"}]"#,
+        ) else {
+            panic!("a batch is a batch");
+        };
+        assert_eq!(items[0].as_ref().expect_err("not a request").code, -32600);
+        assert!(
+            items[1].as_ref().is_ok_and(|r| r.id.is_none()),
+            "a notification"
+        );
+        assert!(items[2].as_ref().is_ok_and(|r| r.id == Some(json!(2))));
+        assert_eq!(parse_body(b"[]").expect_err("empty batch").code, -32600);
+        assert_eq!(parse_body(b"7").expect_err("not a request").code, -32600);
     }
 
     #[test]

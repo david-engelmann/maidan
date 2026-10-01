@@ -675,9 +675,8 @@ pub(super) async fn get_member_wip(
 ) -> Result<Value, McpError> {
     let a: MemberWipArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
-    let member = store.get_member(member_id).await?;
     // Another workspace's member: its claims and limit are not ours to read.
-    auth.ensure_workspace(member.workspace_id)?;
+    let member = super::requested_member(store.as_ref(), auth, member_id).await?;
     let live_claims = store.count_live_claims(member_id).await?;
     let limit = store.get_wip_limit(member.workspace_id).await?;
     Ok(content_json(
@@ -701,8 +700,7 @@ pub(super) async fn list_assigned_threads(
 ) -> Result<Value, McpError> {
     let a: ListAssignedThreadsArgs = serde_json::from_value(args.clone())?;
     let member_id = MemberId(a.member_id);
-    let member = store.get_member(member_id).await?;
-    auth.ensure_workspace(member.workspace_id)?;
+    let member = super::requested_member(store.as_ref(), auth, member_id).await?;
     let threads = store
         .list_assigned_threads(member.workspace_id, member_id)
         .await?;

@@ -63,12 +63,9 @@ pub(super) async fn add_channel_member(
 ) -> Result<Value, McpError> {
     let a: AddChannelMemberArgs = serde_json::from_value(args.clone())?;
     let channel = own_channel(store, auth, ChannelId(a.channel_id)).await?;
-    let member = store.get_member(MemberId(a.member_id)).await?;
-    if member.workspace_id != channel.workspace_id {
-        return Err(McpError::InvalidParams(
-            "member is not in the channel's workspace".into(),
-        ));
-    }
+    let member = store
+        .get_member_in(channel.workspace_id, MemberId(a.member_id))
+        .await?;
     let role = a.role.unwrap_or(ChannelMemberRole::Member);
     let (actor, workspace_id) = (auth.actor_id, channel.workspace_id);
     let m = store

@@ -491,7 +491,9 @@ async fn channel_admin_api_manages_membership_end_to_end() {
         .send()
         .await
         .unwrap();
-    assert_eq!(foreign.status(), StatusCode::BAD_REQUEST);
+    // Answered as a member that does not exist, so the answer does not say
+    // the id is a member of another workspace.
+    assert_eq!(foreign.status(), StatusCode::NOT_FOUND);
 
     // Remove Bob → denied again.
     let del = ctx

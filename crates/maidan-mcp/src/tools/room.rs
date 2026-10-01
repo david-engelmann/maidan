@@ -388,12 +388,7 @@ pub(super) async fn create_delegation_grant(
     let subject_id = MemberId(a.subject_id);
     let delegate_id = MemberId(a.delegate_id);
     for member_id in [subject_id, delegate_id] {
-        let member = store.get_member(member_id).await?;
-        if member.workspace_id != workspace_id {
-            return Err(McpError::InvalidParams(
-                "subject and delegate must belong to the workspace".into(),
-            ));
-        }
+        store.get_member_in(workspace_id, member_id).await?;
     }
     let actor = auth.actor_id;
     let grant = store

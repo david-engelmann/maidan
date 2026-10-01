@@ -13,7 +13,7 @@ use serde_json::json;
 
 use super::{
     cap, clamp_context_transition_limit, ensure_workspace, observe_spawn_denial, publish_stored,
-    ApiResult,
+    requested_member, ApiResult,
 };
 use crate::dto::*;
 use crate::error::ApiError;
@@ -1075,8 +1075,7 @@ pub async fn list_assigned_threads(
 ) -> ApiResult<Json<Vec<Thread>>> {
     cap(&auth, WORKSPACE_READ)?;
     let member_id = MemberId(id);
-    let member = state.store.get_member(member_id).await?;
-    ensure_workspace(&auth, member.workspace_id)?;
+    let member = requested_member(&state, &auth, member_id).await?;
     let threads = state
         .store
         .list_assigned_threads(member.workspace_id, member_id)
@@ -1103,8 +1102,7 @@ pub async fn get_member_wip(
 ) -> ApiResult<Json<MemberWipView>> {
     cap(&auth, WORKSPACE_READ)?;
     let member_id = MemberId(id);
-    let member = state.store.get_member(member_id).await?;
-    ensure_workspace(&auth, member.workspace_id)?;
+    let member = requested_member(&state, &auth, member_id).await?;
     Ok(Json(MemberWipView {
         live_claims: state.store.count_live_claims(member_id).await?,
         limit: state.store.get_wip_limit(member.workspace_id).await?,

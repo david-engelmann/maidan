@@ -90,6 +90,20 @@ pub(crate) fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) ->
     auth.ensure_workspace(workspace_id).map_err(Into::into)
 }
 
+/// The member a request names by id, if it is one of the caller's workspace.
+/// Another workspace's member is `404`, as an id that names no member is: a
+/// `403` for it told the caller the id was a member somewhere.
+pub(crate) async fn requested_member(
+    state: &AppState,
+    auth: &AuthContext,
+    id: MemberId,
+) -> ApiResult<Member> {
+    if auth.bypass {
+        return Ok(state.store.get_member(id).await?);
+    }
+    Ok(state.store.get_member_in(auth.workspace_id, id).await?)
+}
+
 /// Personal state — inbox, notification preferences, delivery address, follows,
 /// push subscriptions — belongs to one member, and a token acts as one member.
 /// Rewriting another member's delivery address is not that; it is how their

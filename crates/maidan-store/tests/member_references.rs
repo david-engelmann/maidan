@@ -1,9 +1,9 @@
 //! A write that names a member names one of the workspace it writes into.
 //!
-//! Setting a thread's owner or assignee, recording a mention and opening a DM
-//! each store a member id. Left to the foreign key, an id that named no member
-//! failed as a database error (a 500 over HTTP) and a member of another
-//! workspace was stored. Both are now `NotFound`, and nothing is written.
+//! Setting a thread's owner or assignee, recording a mention (with or without
+//! its event) and opening a DM each store a member id. Left to the foreign
+//! key, an id that named no member failed as a database error (a 500 over
+//! HTTP) and a member of another workspace was stored. Both are now `NotFound`, and nothing is written.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -108,6 +108,10 @@ async fn run_suite(store: &dyn Store) {
             store.record_mention_with_event(message.id, id).await,
         );
         not_found(
+            &format!("event-less mention of {who}"),
+            store.record_mention(message.id, id).await,
+        );
+        not_found(
             &format!("DM with {who}"),
             store.open_dm_conversation(ws.id, own.id, id).await,
         );
@@ -158,6 +162,10 @@ async fn run_suite(store: &dyn Store) {
         .record_mention_with_event(message.id, peer.id)
         .await
         .expect("mention");
+    store
+        .record_mention(message.id, own.id)
+        .await
+        .expect("mention without an event");
     store
         .open_dm_conversation(ws.id, own.id, peer.id)
         .await
