@@ -459,18 +459,12 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
     }
 }
 
-fn listed(
-    store: &dyn Store,
-    ws: WorkspaceId,
-    filter: AutomationDeliveryFilter,
-) -> impl Future<Output = usize> + '_ {
-    async move {
-        store
-            .list_webhook_deliveries(ws, filter, 20)
-            .await
-            .expect("webhooks")
-            .len()
-    }
+async fn listed(store: &dyn Store, ws: WorkspaceId, filter: AutomationDeliveryFilter) -> usize {
+    store
+        .list_webhook_deliveries(ws, filter, 20)
+        .await
+        .expect("webhooks")
+        .len()
 }
 
 /// The instance sweep drops one tenant's finished webhook, automation and
