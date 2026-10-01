@@ -182,6 +182,10 @@ pub async fn revoke_api_token(
 /// A holder may rotate the token it is calling with; rotating any other token
 /// takes `token:admin` in its workspace. The capability check runs before the
 /// lookup, so a caller without it cannot learn which token ids exist.
+///
+/// Quotas are read before that transaction commits. The response is the only
+/// place the new secret is shown, and a quota read that failed afterwards
+/// would return an error once the old secret was already revoked.
 pub async fn rotate_api_token(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -194,6 +198,9 @@ pub async fn rotate_api_token(
     }
     let existing = state.store.get_api_token(token_id).await?;
     ensure_workspace(&auth, existing.workspace_id)?;
+    // The store copies these rows onto the successor inside the rotation.
+    // Reading them first means a failed quota query never hides the secret.
+    let quotas = state.store.list_token_quotas(token_id).await?;
     let secret = TokenSecret::generate();
     let actor = auth.actor_id;
     let rotated = state
@@ -215,7 +222,6 @@ pub async fn rotate_api_token(
             }),
         )
         .await?;
-    let quotas = state.store.list_token_quotas(rotated.id).await?;
     Ok(Json(MintApiTokenResponse {
         id: rotated.id,
         secret: secret.as_str().to_string(),

@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Rotating a token returns the quotas it read before the secret changed
+
+- **Fixed:** `POST /tokens/{id}/rotate` listed the successor's quotas after the
+  rotation had committed. A failure on that read returned an error without
+  showing the new secret, and the old secret was already revoked. The route
+  reads the source token's quotas first and returns those. The rotation still
+  copies them onto the successor in the same transaction.
+
 ### A workspace rate limit is spent only by that workspace
 
 - **Fixed:** the per-workspace rate limit was taken from the `/workspaces/{id}`
