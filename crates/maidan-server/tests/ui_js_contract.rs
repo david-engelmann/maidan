@@ -1177,3 +1177,88 @@ fn ui_js_keeps_the_first_screen_quiet() {
         "a long refusal stays available without becoming a banner"
     );
 }
+
+/// QA items from #1141 that were still true on main: a dead server must not
+/// surface as `TypeError: Failed to fetch` or as a lost post, a 403 search
+/// must not dump problem JSON, Open DM selects the conversation and names the
+/// other member, Add task does not claim to need a bearer, and a token that
+/// is accepted clears the rejection that came before it.
+#[test]
+fn ui_js_reports_qa_failures_in_words_and_opens_the_dm() {
+    let js = script(HTML);
+    let channels = function_body(js, "loadChannels");
+    assert!(
+        channels.contains("renderState(list, unreachable(e), \"err\")"),
+        "a channel refresh that cannot reach the server uses the friendly copy"
+    );
+    assert!(
+        !channels.contains("String(e)"),
+        "a channel refresh must not render the raw exception"
+    );
+
+    let post = js
+        .split("getElementById(\"post-message\").onclick")
+        .nth(1)
+        .expect("post handler");
+    let post = &post[..post
+        .find("getElementById(\"reload-messages\")")
+        .expect("next handler")];
+    assert!(
+        post.contains("catch (e)") && post.contains("showError(unreachable(e))"),
+        "a post that never reaches the server is reported"
+    );
+    let refused = post.find("if (!res.ok)").expect("http failure branch");
+    let cleared = post
+        .find("compose-body\").value = \"\"")
+        .expect("composer clear");
+    assert!(
+        refused < cleared,
+        "the draft is cleared only after the server accepts the post"
+    );
+
+    let dms = function_body(js, "loadDms");
+    assert!(
+        dms.contains("memberName(other)") && dms.contains("await loadMembers()"),
+        "a DM list names the other member"
+    );
+    assert!(
+        !dms.contains("with ${dmOther(c)}"),
+        "a DM list must not show the raw member id"
+    );
+    let open = function_body(js, "openDm");
+    assert!(
+        open.contains("selectDm(opened)"),
+        "opening a DM selects that conversation"
+    );
+
+    assert!(
+        !HTML.contains("title=\"Requires bearer token\""),
+        "Add task and new channel no longer say they require a bearer"
+    );
+    assert!(
+        HTML.contains("title=\"Sign in or paste a token\""),
+        "the write buttons say a session or a token is enough"
+    );
+
+    let search = js
+        .split("getElementById(\"run-search\").onclick")
+        .nth(1)
+        .expect("search handler");
+    let search = &search[..search
+        .find("getElementById(\"create-channel\")")
+        .expect("next")];
+    assert!(
+        search.contains("humanError(res.status, detail)")
+            && !search.contains("box.textContent = body"),
+        "a refused search is words, not the raw problem body"
+    );
+
+    let token = js
+        .split("getElementById(\"token\").addEventListener(\"change\"")
+        .nth(1)
+        .expect("token change");
+    assert!(
+        token.contains("status.hidden = true;\n        status.textContent = \"\";"),
+        "an accepted token clears the earlier rejection"
+    );
+}

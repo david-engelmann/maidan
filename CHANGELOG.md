@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### `/ui` reports a failure in words
+
+- **Fixed:** posting a message when the server cannot be reached keeps the
+  draft and says so. Refreshing the channel list says the same, instead of
+  `TypeError: Failed to fetch`. A search the caller is not allowed to run
+  shows that in words, not the raw problem JSON.
+- **Fixed:** Open DM selects the conversation it just opened, and the DM list
+  names the other member instead of printing their id. Add task and the new
+  channel button no longer say they require a bearer token: a signed-in
+  session can do both. A token the server accepts clears the rejection shown
+  for the previous one.
+
 ### A misspelt MAIDAN_* variable refuses boot
 
 - **Changed:** the server refuses to start when the environment holds a
