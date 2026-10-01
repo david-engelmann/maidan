@@ -20,6 +20,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   its notifications. The usage ledger is not pruned.
 - **Docs:** Production.md and Operations.md.
 
+### A member of another workspace is answered as no member; JSON-RPC errors follow the spec
+
+- **Fixed:** channel membership, reviewers, delegation grants, member tokens,
+  group DMs, freezes, follows and every `/members/{id}/...` route answered a
+  member of another workspace with a `400` or `403` that differed from the
+  `404` for an unknown id, which told the caller the id was a member
+  somewhere. Every route and MCP tool that takes a member id now answers both
+  alike: `404 not-found` (MCP `-32004`), writing nothing
+  (`foreign_member_e2e`, 108 probes). The event-less `record_mention` that
+  `@handle` routing uses checks the member's workspace, as the evented form
+  does since #1136.
+- **Fixed:** MCP answered `-32700 Parse error` for JSON that is not a request
+  (`[1]` in a batch, an object with no `method`, a `"jsonrpc": "1.0"`); that is
+  now `-32600 Invalid Request`, and `-32700` is kept for bytes that are not
+  JSON. A `null` id, which MCP forbids, is refused instead of being run as a
+  notification and never answered. The A2A binding already did this.
+- **Fixed:** the stdio MCP transport answered notifications; a valid request
+  with no `id` now gets no response. A line that is not JSON, or not a valid
+  request, is still answered with its error and a null id.
+- **Changed:** `authority_audit_contract` skips each `#[cfg(test)]` item
+  instead of the rest of the file, so it now reads 1,693 lines it skipped
+  before (all of `openapi/mod.rs`, the MCP tool dispatch). It found nothing.
+  The blanker it shares with `attribution_scope_contract` reads Rust
+  lexically: a `#[cfg(test)]` in a comment or string is not a marker, and a
+  brace in a `/* */` comment or a `;` inside `[u8; 4]` does not end an item.
+
 ### `/ui` reports a failure in words
 
 - **Fixed:** posting a message when the server cannot be reached keeps the
@@ -1226,63 +1252,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** `ci.yml` sets `permissions: contents: read` for every job, and
   the `open work` and `changelog (released sections)` checkouts do not keep
   the token.
-
-## [412.0.0] — 2026-09-28
-
-The first release since 410.0.0. **411.0.0 was never tagged; its delegated
-authority work (#996–#1008, below) ships in 412.0.0**, with Clusters 412–418
-and everything merged through #1077.
-
-### Deleting an artifact's bytes no longer blocks other writes
-
-- **Fixed:** reaping an orphaned artifact's bytes (after the last reference
-  is erased, or a workspace purge) held the database transaction for the
-  whole blob delete. On SQLite every other write waited on the blob store,
-  and failed after the busy timeout; on Postgres a pooled connection sat idle
-  in a transaction. The reap now takes a per-sha lease (migration 0117),
-  deletes outside any transaction, and gives up on a delete after 30 s. Only
-  an upload of the same bytes waits for it.
-
-### SQLite backups are snapshots, and a restore cannot bring back the old database
-
-- **Added:** `scripts/backup.sh` and `scripts/restore.sh` take a SQLite
-  `DATABASE_URL`. A backup is a `VACUUM INTO` snapshot, taken with the server
-  running and checked with `PRAGMA integrity_check`; before, the scripts were
-  Postgres-only and Production documented no SQLite backup at all, which left
-  copying the file, and that misses whatever is still in the `-wal`.
-- **Added:** a restore puts the snapshot in place of the file and deletes the
-  old `-wal` and `-shm`. A `-wal` left by a killed server, or beside a file
-  someone removed, would otherwise be replayed over the restored file the next
-  time it is opened. It refuses a target that has tables unless `--force`, as
-  the Postgres restore does.
-- **Added:** `scripts/sqlite-backup-drill.sh`, run in CI as `sqlite backup
-  drill` (not required), and the store test `sqlite_backup`.
-
-### A member of another workspace is answered as no member; JSON-RPC errors follow the spec
-
-- **Fixed:** channel membership, reviewers, delegation grants, member tokens,
-  group DMs, freezes, follows and every `/members/{id}/...` route answered a
-  member of another workspace with a `400` or `403` that differed from the
-  `404` for an unknown id, which told the caller the id was a member
-  somewhere. Every route and MCP tool that takes a member id now answers both
-  alike: `404 not-found` (MCP `-32004`), writing nothing
-  (`foreign_member_e2e`, 108 probes). The event-less `record_mention` that
-  `@handle` routing uses checks the member's workspace, as the evented form
-  does since #1136.
-- **Fixed:** MCP answered `-32700 Parse error` for JSON that is not a request
-  (`[1]` in a batch, an object with no `method`, a `"jsonrpc": "1.0"`); that is
-  now `-32600 Invalid Request`, and `-32700` is kept for bytes that are not
-  JSON. A `null` id, which MCP forbids, is refused instead of being run as a
-  notification and never answered. The A2A binding already did this.
-- **Fixed:** the stdio MCP transport answered notifications; a valid request
-  with no `id` now gets no response. A line that is not JSON, or not a valid
-  request, is still answered with its error and a null id.
-- **Changed:** `authority_audit_contract` skips each `#[cfg(test)]` item
-  instead of the rest of the file, so it now reads 1,693 lines it skipped
-  before (all of `openapi/mod.rs`, the MCP tool dispatch). It found nothing.
-  The blanker it shares with `attribution_scope_contract` reads Rust
-  lexically: a `#[cfg(test)]` in a comment or string is not a marker, and a
-  brace in a `/* */` comment or a `;` inside `[u8; 4]` does not end an item.
 
 ## [412.0.0] — 2026-09-28
 

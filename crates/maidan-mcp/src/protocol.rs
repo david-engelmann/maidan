@@ -132,6 +132,20 @@ pub fn parse_request(body: &[u8]) -> Result<JsonRpcRequest, JsonRpcError> {
     request_from_value(value)
 }
 
+/// A JSON number with no fractional part. `Number::is_i64` and `is_u64` are
+/// false once the value does not fit, even when it is a whole number: those
+/// are kept as `f64`, and every finite `f64` at magnitude 2^53 or above is a
+/// whole number. A fractional value such as `1.5` is not an id.
+fn number_is_integer(number: &serde_json::Number) -> bool {
+    if number.is_i64() || number.is_u64() {
+        return true;
+    }
+    #[allow(clippy::float_cmp)]
+    number
+        .as_f64()
+        .is_some_and(|value| value.is_finite() && value.fract() == 0.0)
+}
+
 /// Through a JSON value rather than straight into the struct: serde reads a
 /// struct from an array by position and skips unknown members without
 /// checking their UTF-8, so a direct read accepted `["2.0",1,"tools/call"]`
@@ -151,7 +165,10 @@ fn request_from_value(value: serde_json::Value) -> Result<JsonRpcRequest, JsonRp
     }
     match object.get("id") {
         None | Some(serde_json::Value::String(_)) => {}
-        Some(serde_json::Value::Number(n)) if n.is_i64() || n.is_u64() => {}
+        // i64/u64 miss a whole number that does not fit: serde_json stores it
+        // as f64. It is still an integer, and the reply must echo it. A
+        // fraction (1.5) is not an integer and stays invalid.
+        Some(serde_json::Value::Number(n)) if number_is_integer(n) => {}
         Some(_) => {
             return Err(JsonRpcError::invalid_request(
                 "id must be a string or an integer",
