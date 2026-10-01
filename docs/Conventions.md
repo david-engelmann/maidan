@@ -242,6 +242,11 @@ The nightly jobs report them; they are findings, not failures.
 - **Every target runs.** The job builds every target in `cargo +nightly fuzz
   list`, then fuzzes each for `FUZZ_SECONDS` (300) with its seeds and
   `fuzz/json.dict`. A target that fails does not stop the others.
+- **The corpus carries over.** The job restores the newest saved
+  `fuzz/corpus` from the Actions cache before fuzzing and saves it afterwards,
+  even when a target failed, so each night starts from what the last one
+  found rather than from the seeds alone. The cache evicts the oldest entries
+  past the repository's limit.
 - **A failure is red.** A crash, a sanitizer report (a leak included), a
   libFuzzer timeout or out-of-memory, or a target that stops before its time
   fails the job. The job summary has a row per target with libFuzzer's `Done

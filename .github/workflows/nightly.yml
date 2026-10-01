@@ -253,6 +253,15 @@ jobs:
       - name: build every target
         working-directory: fuzz
         run: cargo +nightly fuzz build --target "$FUZZ_TRIPLE"
+      # The corpus each night grows is restored the next night, so coverage
+      # accumulates instead of restarting from the seeds every run. The key is
+      # unique per run, and the prefix restores the newest saved corpus.
+      - name: restore the corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
       - name: five minutes per target
         working-directory: fuzz
         run: |
@@ -314,6 +323,14 @@ jobs:
             } >>"$GITHUB_STEP_SUMMARY"
           done
           [ "${#failed[@]}" -eq 0 ]
+      # Saved even when a target failed: the inputs it found before the crash
+      # are still coverage.
+      - name: save the corpus
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
       - name: keep what crashed
         if: failure()
         uses: actions/upload-artifact@v4

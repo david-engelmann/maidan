@@ -1276,6 +1276,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   effort. The workspace now enables serde_json's `float_roundtrip`, so a
   number reads as the double it names. Found by `mcp_request` the same night.
 
+### The nightly fuzz corpus carries over between nights
+
+- **Changed:** the nightly fuzz job restores the last night's `fuzz/corpus`
+  from the Actions cache and saves it afterwards, failures included, so each
+  target's coverage builds up across nights instead of restarting from its
+  seeds every run (deferred by #1160).
+
 ### Backup, restore and CI checks do what they say
 
 - **Fixed:** `scripts/restore.sh --force` opened the SQLite target to count
