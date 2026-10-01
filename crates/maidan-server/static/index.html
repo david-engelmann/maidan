@@ -259,13 +259,15 @@
       #conn-fields[hidden] { display: none; }
       header label { color: var(--muted); font-size: 0.75rem; }
       header input { min-width: 11rem; font-size: 0.85rem; }
+      /* Identity is type: the name and the workspace name, muted. Not a chip. */
       #identity-pill {
         display: inline-flex; align-items: center; gap: 0.5rem;
-        padding: 0.25rem 0.35rem 0.25rem 0.3rem; border: 1px solid var(--line);
-        border-radius: 999px; background: var(--soft); font-size: 0.85rem;
+        padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
+        font-size: 0.85rem; font-weight: 400; color: var(--muted);
       }
       #identity-pill[hidden] { display: none; }
-      #identity-pill .ws-name { color: var(--muted); }
+      #identity-pill .person { color: inherit; font-weight: inherit; }
+      #identity-pill .ws-name { color: inherit; }
       #first-run { margin-bottom: 1rem; border-style: solid; }
       #first-run[hidden] { display: none; }
       #first-run #conn-fields { margin-bottom: 0.8rem; }
@@ -5855,8 +5857,8 @@
 
       // Connection chrome. Until this browser holds a working credential (a
       // stored token or a signed-in session) the three inputs sit in the
-      // board's first-run card; after, they fold into one "who am I, where am
-      // I" pill in the header, and "Change" opens them there. The inputs move
+      // board's first-run card; after, the header shows the name and the
+      // workspace name, and "Change" opens the inputs. The inputs move
       // rather than being copied, so there is one value of each.
       function showConnection(editing) {
         const connected = !!authorId();
@@ -5873,7 +5875,7 @@
       }
       async function renderIdentity(memberId) {
         const who = document.getElementById("identity-who");
-        who.replaceChildren(personEl(memberId, { tag: true }));
+        who.replaceChildren(personEl(memberId, { avatar: false }));
         const wsLabel = document.getElementById("identity-ws");
         wsLabel.textContent = `workspace ${wid().slice(0, 8)}…`;
         if (wid()) {
