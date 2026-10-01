@@ -321,6 +321,60 @@ async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
 }
 
 #[tokio::test]
+async fn sqlite_cursor_later_the_same_day_still_holds_the_retention_floor() {
+    // `advance_delivery_cursor` stamps `updated_at` with SQLite
+    // `CURRENT_TIMESTAMP` (`YYYY-MM-DD HH:MM:SS`). The cutoff is bound as
+    // RFC3339 (`YYYY-MM-DDTHH:MM:SS+00:00`). On the cutoff's calendar day a
+    // later cursor sorts first as text, because ` ` < `T`, so it looks idle
+    // and the floor disappears.
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let store = SqliteStore::for_tests(pool.clone());
+    let member = workspace_with_member(&store, "cursor-day").await;
+    let delivered = append_event_at(&store, &member, 100).await;
+    let pending = append_event_at(&store, &member, 100).await;
+    store
+        .advance_delivery_cursor("consumer-day", member.workspace_id, delivered)
+        .await
+        .expect("advance");
+    sqlx::query(
+        "UPDATE maidan_delivery_cursor SET updated_at = '2026-09-01 20:00:00'
+         WHERE consumer_id = 'consumer-day'",
+    )
+    .execute(&pool)
+    .await
+    .expect("stamp");
+    let cutoff = chrono::DateTime::parse_from_rfc3339("2026-09-01T18:00:00+00:00")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+
+    assert_eq!(
+        store.min_delivery_cursor(cutoff).await.expect("floor"),
+        Some(delivered),
+        "a cursor that moved after the cutoff still holds the floor"
+    );
+    store
+        .prune_workspace_events(member.workspace_id, cutoff, 100)
+        .await
+        .expect("prune");
+    assert!(
+        store.get_stored_event(delivered).await.is_err(),
+        "the event at the cursor is already delivered"
+    );
+    assert!(
+        store.get_stored_event(pending).await.is_ok(),
+        "an event past the cursor is still owed to that consumer"
+    );
+}
+
+#[tokio::test]
 async fn retention_prunes_by_age_and_respects_the_delivery_floor_postgres() {
     use maidan_store::{run_postgres_migrations, PostgresStore};
     use sqlx::postgres::PgPoolOptions;
