@@ -11,8 +11,8 @@ async function openDesk(page: Page) {
   await page.click(`#channel-list li[data-id="${fx.desk_channel_id}"]`);
 }
 
-// The agent's close is refused by the server. A person watching the board
-// sees that sentence, not a toast we made up.
+// The agent's close is refused by the server. The card says "Close refused"
+// and its title is that sentence. There is no banner above the lanes.
 test("a refused close is visible on the board", async ({ page, request }) => {
   const res = await request.post(`${fx.base_url}/threads/${fx.desk_waiting_thread_id}`, {
     headers: { Authorization: `Bearer ${fx.review_token}`, "Content-Type": "application/json" },
@@ -32,13 +32,11 @@ test("a refused close is visible on the board", async ({ page, request }) => {
   expect(note.body).toContain("Next:");
 
   await openDesk(page);
-  const banner = page.locator("#board-refusal");
-  await expect(banner).toBeVisible();
-  await expect(banner.locator(".refusal-text")).toContainText("review requirement not met");
-  await expect(banner.locator(".refusal-text")).toContainText(note.body.slice(0, 40));
-  await expect(
-    page.locator(`#board .card[data-id="${fx.desk_waiting_thread_id}"] .card-refusal`),
-  ).toHaveText("Close refused");
+  // The refusal stays on the card. The strip above the lanes is not painted.
+  await expect(page.locator("#board-refusal")).toBeHidden();
+  const card = page.locator(`#board .card[data-id="${fx.desk_waiting_thread_id}"]`);
+  await expect(card.locator(".card-refusal")).toHaveText("Close refused");
+  await expect(card).toHaveAttribute("title", note.body);
   const after = await (await request.get(`${fx.base_url}/threads/${fx.desk_waiting_thread_id}`, {
     headers: { Authorization: `Bearer ${fx.review_token}` },
   })).json();
