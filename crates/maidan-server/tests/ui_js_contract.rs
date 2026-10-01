@@ -617,7 +617,8 @@ fn ui_js_puts_the_decisions_agents_wait_on_first() {
         "the queue reads the waiting inbox and keeps the decisions: reviews and gates"
     );
     assert!(
-        s.contains("apiWritePath(`/threads/${tid}/reviews`)") && s.contains("{ action: \"close\" }"),
+        s.contains("apiWritePath(`/threads/${tid}/reviews`)")
+            && s.contains("{ action: \"close\" }"),
         "approve, request changes and close go through the review and FSM routes"
     );
     assert!(
