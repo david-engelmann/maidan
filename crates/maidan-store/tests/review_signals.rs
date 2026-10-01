@@ -282,12 +282,19 @@ async fn run_suite(store: &dyn Store) {
         submitted(&first.submitted, ws, ch, t).decision,
         ReviewDecision::RequestChanges
     );
+    // The close-gate arms in the same commit as the verdict.
+    assert_eq!(store.review_status(t).await.unwrap().required_count, 1);
     assert!(store
         .apply_critical_review_decision(t, bot, &critical)
         .await
         .unwrap()
         .is_none());
     assert_eq!(store.list_review_history(t).await.unwrap().len(), 1);
+    assert_eq!(
+        store.review_status(t).await.unwrap().required_count,
+        1,
+        "a replay that writes nothing does not clear the gate"
+    );
     store.set_thread_result(t, bot, &critical).await.unwrap();
     assert!(
         store

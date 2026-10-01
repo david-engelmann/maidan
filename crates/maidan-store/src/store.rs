@@ -1576,9 +1576,10 @@ pub trait ReviewStore: Send + Sync {
     /// finding **and** `reviewer_id` has declared the `review` skill, upsert a
     /// `request_changes` decision and, when the thread has no requirement yet,
     /// set `k = 1` so the close-gate refuses `closed` until a qualifying human
-    /// approve. `None` = nothing to apply (wrong shape, no critical, reviewer
-    /// not review-skilled, or the reviewer's standing verdict already covers
-    /// the thread's stored result). An existing `k` is left alone.
+    /// approve. The verdict and that `k` commit in one transaction. `None` =
+    /// nothing to apply (wrong shape, no critical, reviewer not review-skilled,
+    /// or the reviewer's standing verdict already covers the thread's stored
+    /// result). An existing `k` is left alone.
     async fn apply_critical_review_decision(
         &self,
         thread_id: ThreadId,
