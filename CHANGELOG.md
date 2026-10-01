@@ -944,10 +944,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `revoke_secret_egress_host`, each audited in its own transaction (D-A).
   Listing needs `secret:admin`; adding a host also needs `secret:read`, since
   the host then receives the values. Values come only from the sending
-  workspace's secrets; any other host gets the literal ref.
+  workspace's secrets; any other host gets the literal ref. So does an `http`
+  URL, including a listed host: substitution is `https` only, and plain HTTP
+  egress is not refused. A secret that cannot be resolved stays literal.
   `MAIDAN_SECRET_EGRESS_ALLOWLIST` is now an instance ceiling (unset: none;
   empty: no host), not the allowlist, so a deployment that set it substitutes
-  nothing until its workspaces list their hosts. Migration 0130.
+  nothing until its workspaces list their hosts. Adding a host outside the
+  ceiling is `400`; at send time the delivery keeps the literal ref.
+  Migration 0130.
 - **Fixed:** a value with a quote or newline (a PEM key) was inserted raw and
   broke the JSON body; it is now JSON-escaped.
 

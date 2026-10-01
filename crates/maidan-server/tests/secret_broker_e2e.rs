@@ -1,9 +1,11 @@
 //! The egress SecretBroker. Proves the security property: a `secret://<name>`
 //! ref in an outbound payload is substituted with the real value ONLY when the
-//! target host is on the sending workspace's secret-egress allowlist (and inside
-//! the instance ceiling, when one is set), and only from that workspace's own
-//! secrets — otherwise it's left as the literal placeholder. Exercises the
-//! async resolve + decrypt path every egress worker calls at send time.
+//! target is `https` and its host is on the sending workspace's secret-egress
+//! allowlist (and inside the instance ceiling, when one is set), and only from
+//! that workspace's own secrets — otherwise it's left as the literal
+//! placeholder. Plain `http` keeps the literal even for a listed host.
+//! Exercises the async resolve + decrypt path every egress worker calls at
+//! send time.
 
 use std::sync::{atomic::AtomicI64, Arc};
 
@@ -151,6 +153,21 @@ async fn one_workspaces_secret_never_reaches_another_workspaces_egress() {
 
     let from_a = secret_broker::substitute_for_egress(&state, a, HOOK, body).await;
     assert!(from_a.contains("VALUE-OF-A") && !from_a.contains("VALUE-OF-B"));
+}
+
+#[tokio::test]
+async fn an_http_target_keeps_the_literal_ref() {
+    let (state, store) = broker_state(None).await;
+    let ws = workspace_with_secret(store.as_ref(), "w", "api-key", "TOPSECRET").await;
+    trust(store.as_ref(), ws, "hooks.example.com").await;
+    let http = "http://hooks.example.com/x";
+    let untouched = secret_broker::substitute_for_egress(&state, ws, http, BODY).await;
+    assert_eq!(
+        untouched, BODY,
+        "plain http is delivered with the literal ref"
+    );
+    let subbed = secret_broker::substitute_for_egress(&state, ws, HOOK, BODY).await;
+    assert!(subbed.contains("TOPSECRET"), "{subbed}");
 }
 
 #[tokio::test]

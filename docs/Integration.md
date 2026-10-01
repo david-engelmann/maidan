@@ -1521,7 +1521,9 @@ it at exec (`POST …/secrets/{name}/resolve`, MCP `resolve_secret`).
 Maidan also substitutes references on the way out, at send time, on every
 egress that carries a payload you shaped: event webhooks, slash-command and FSM
 hook HTTP deliveries (the first POST and every queued retry), and A2A push
-notifications. It does so **only for a host the sending workspace has listed**:
+notifications. It does so **only for an `https` URL whose host the sending
+workspace has listed**. An `http` delivery still goes out; the references stay
+literal. Plain HTTP egress is not refused.
 
 ```http
 POST /workspaces/{workspace_id}/secret-egress-hosts
@@ -1531,8 +1533,10 @@ Content-Type: application/json
 {"host": "hooks.example.com"}
 ```
 
-- A listed host receives the value of every secret a payload bound for it
-  names, so adding one needs `secret:read` as well as `secret:admin`. List with
+- A listed `https` host receives the value of each resolvable secret a payload
+  bound for it names. A secret the workspace does not hold, or whose lookup or
+  decryption fails, stays the literal `secret://` reference. Adding a host
+  needs `secret:read` as well as `secret:admin`. List with
   `GET …/secret-egress-hosts` and remove with `DELETE …/secret-egress-hosts/{host}`
   (`secret:admin`); the MCP twins are `allow_secret_egress_host`,
   `list_secret_egress_hosts` and `revoke_secret_egress_host`. Each change writes
@@ -1548,8 +1552,9 @@ Content-Type: application/json
 - Queued rows, the event log and audit rows keep the reference. A receiver that
   echoes the value back (in a slash command's response, say) puts it into the
   message's `metadata.slash_response`, which is logged; do not echo it.
-- An operator may set an instance ceiling (`MAIDAN_SECRET_EGRESS_ALLOWLIST`);
-  a host outside it is refused with `400` and never receives a value.
+- An operator may set an instance ceiling (`MAIDAN_SECRET_EGRESS_ALLOWLIST`).
+  Adding a host outside it is refused with `400`. At send time that host is
+  not an error: the delivery goes out with the literal `secret://` reference.
 
 ---
 

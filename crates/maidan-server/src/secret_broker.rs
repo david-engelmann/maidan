@@ -3,12 +3,14 @@
 //! On outbound delivery (a webhook POST, an automation HTTP call from a slash
 //! command or FSM hook, an A2A push notification), Maidan substitutes
 //! `secret://<name>` references in the payload with the sending workspace's
-//! secret values, **but only when the target host is on that workspace's
-//! secret-egress allowlist** (`maidan_secret_egress_hosts`, managed with
-//! `secret:admin`). A ref bound for any other host is left as the literal
+//! secret values, **but only for an `https` URL whose host is on that
+//! workspace's secret-egress allowlist** (`maidan_secret_egress_hosts`,
+//! managed with `secret:admin`). Plain `http` is still delivered; the refs
+//! stay literal. A ref bound for any other host is left as the literal
 //! placeholder, so a secret is never sent to a host its workspace has not
-//! trusted with it. The value is resolved and decrypted here at send time and
-//! never persists in a delivery queue, the event log or an audit row.
+//! trusted with it, and never over a cleartext URL. The value is resolved and
+//! decrypted here at send time and never persists in a delivery queue, the
+//! event log or an audit row.
 //!
 //! `MAIDAN_SECRET_EGRESS_ALLOWLIST`, when set, is an instance-wide ceiling: a
 //! host outside it never receives a value, whatever a workspace lists, and a
@@ -76,10 +78,12 @@ fn json_escaped(value: &str) -> Option<String> {
 
 /// Substitute `secret://<name>` refs in the JSON `body` of an egress to `url`,
 /// from `workspace_id`'s secrets. Returns `body` unchanged when there are no
-/// refs, the host may not receive this workspace's secrets, or no encryption
-/// key is configured; a ref naming a secret the workspace does not hold stays
+/// refs, the URL is not `https`, the host may not receive this workspace's
+/// secrets, or no encryption key is configured; a ref naming a secret the
+/// workspace does not hold, or whose lookup or decryption fails, stays
 /// literal. The broker fails safe: a ref is substituted or left literal, never
-/// blanked, and only ever from the sending workspace's own secrets.
+/// blanked, and only ever from the sending workspace's own secrets. HTTP
+/// egress itself is not refused here.
 pub async fn substitute_for_egress(
     state: &AppState,
     workspace_id: WorkspaceId,
@@ -87,7 +91,12 @@ pub async fn substitute_for_egress(
     body: &str,
 ) -> String {
     let names = secret_refs_in(body);
-    if names.is_empty() || !may_receive_secrets(state, workspace_id, url).await {
+    // Scheme is checked here, not in `client_for`: public HTTP egress stays
+    // allowed, it just does not receive a secret value.
+    let https = maidan_auth::validate_egress_target(url)
+        .ok()
+        .is_some_and(|target| target.scheme() == "https");
+    if names.is_empty() || !https || !may_receive_secrets(state, workspace_id, url).await {
         return body.to_string();
     }
     let Some(key) = state.federation.encryption_key.as_deref() else {
