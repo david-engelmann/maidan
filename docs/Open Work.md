@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `06a3caf1` (2026-10-01).
+on a decision. Last reconciled against `main` at `bd360306` (2026-10-01).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -47,16 +47,15 @@ CI ran.
 
 | PR | What it does | State (2026-10-01) | Merge after |
 |---|---|---|---|
-| #1152 | A member of another workspace is answered like an unknown one on every member-taking route and tool; `authority_audit_contract` scans past each `#[cfg(test)]`; JSON-RPC `-32600` for a non-request; stdio answers no notification | Rebased on #1154; four CodeRabbit comments being answered (lane CRO) | — |
-| #1140 | `secret://` references are substituted on automation and A2A push egress, against a per-workspace allowlist | Rebased on #1154 (route pin 310, 203 MCP tools); three CodeRabbit comments being answered (lane CRO) | — |
-| #1142 | A pasted token is exchanged for the `HttpOnly` session, so no token stays in `localStorage`; unsafe session requests from another origin are refused; `csrf_secret` is dropped | Rebased on `main` by lane O; seven CodeRabbit comments being answered | — |
-| #1159 | The SDKs say 0.3.0 in the tree, and the Go publish job checks its version | CI running | — |
-| #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | Idle since 2026-09-29; needs a rebase that adds every store method since, and must not carry its old Open Work and Roadmap edits | Everything above that adds a `Store` method |
-| (lane BUD) | Every way a claim ends charges its worked time against `max_wall_secs`: release, unassign, reassignment, freeze, SCIM deactivation, a budget stop (which today forgets the wall time it stopped for) and close; then `claim_next` refuses a thread over any budget, and a freeze can carry an expiry | Building, two PRs | — |
-| (lane IDN) | A member handle is unique regardless of case (migration 0135, which renames existing case-only duplicates), and SCIM, mentions and member creation match that way; then artifacts are erased, never soft-deleted, and the unused `tombstoned_at` goes (0136) | Building, two PRs | — |
-| (lane NGT) | The nightly fuzz job builds on musl, and no nightly job hides a failure behind `continue-on-error` | Building; proven by a nightly dispatched on the branch | — |
-| (lane SEC) | From the review triage: a workspace's rate-limit budget is charged only for a request authenticated into that workspace, and an unverified bearer is limited by client IP (today anyone who knows a workspace id can spend its budget, and made-up bearers each get a fresh bucket; #1153 comment 4149899835); then the server and store findings (token rotation reads quotas before the commit, a deadline on egress DNS, one transaction for a critical-review verdict), then the MCP and tracing findings | Building, three PRs | — |
-| (lane CRD) | From the review triage: the docs, `docs/Claims.md`, script, CI and SDK findings, including the Glossary's erasure promise (a pre-shred backup plus the KEK still recovers words), `restore.sh --force` on a corrupt target, and the audit-action count Claims gives twice (40 and 42) | Building, two or three PRs | — |
+| #1152 | A member of another workspace is answered like an unknown one on every member-taking route and tool; `authority_audit_contract` scans past each `#[cfg(test)]`; JSON-RPC `-32600` for a non-request; stdio answers no notification | Rebased onto `bd360306` after #1159 and #1160 merged (`23d500ce`); CodeRabbit threads from the previous head were answered; CI restarts on the new head | — |
+| #1140 | `secret://` references are substituted on automation and A2A push egress, against a per-workspace allowlist | Rebased onto `bd360306` after #1159 and #1160 merged (`df0f9153`); CodeRabbit threads from the previous head were answered; CI restarts on the new head | — |
+| #1142 | A pasted token is exchanged for the `HttpOnly` session, so no token stays in `localStorage`; unsafe session requests from another origin are refused; `csrf_secret` is dropped | Rebased onto `bd360306` after #1159 and #1160 merged (`601f386e`); CodeRabbit threads from the previous head were answered; CI restarts on the new head | — |
+| #1165 | Held-workspace delivery sweep skips webhook, automation and outbox; `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` prunes read notifications only; the usage ledger is kept | Lint was red on `535c6669`; the fix is on `de1967c7` | — |
+| #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | Rebased onto `bd360306` after #1159 and #1160 merged (`f3b0ac0b`); CodeRabbit threads from the previous head were answered; CI restarts on the new head | Everything above that adds a `Store` method |
+| (lane BUD) | Every way a claim ends charges its worked time against `max_wall_secs`: release, unassign, reassignment, freeze, SCIM deactivation, a budget stop (which today forgets the wall time it stopped for) and close; then `claim_next` refuses a thread over any budget, and a freeze can carry an expiry | no branch was ever pushed; start from main, do not look for a worktree | — |
+| (lane IDN) | A member handle is unique regardless of case (migration 0135, which renames existing case-only duplicates), and SCIM, mentions and member creation match that way; then artifacts are erased, never soft-deleted, and the unused `tombstoned_at` goes (0136) | no branch was ever pushed; start from main, do not look for a worktree | — |
+| (lane SEC) | From the review triage: a workspace's rate-limit budget is charged only for a request authenticated into that workspace, and an unverified bearer is limited by client IP (today anyone who knows a workspace id can spend its budget, and made-up bearers each get a fresh bucket; #1153 comment 4149899835); then the server and store findings (token rotation reads quotas before the commit, a deadline on egress DNS, one transaction for a critical-review verdict), then the MCP and tracing findings | no branch was ever pushed; start from main, do not look for a worktree | — |
+| (lane CRD) | From the review triage: the docs, `docs/Claims.md`, script, CI and SDK findings, including the Glossary's erasure promise (a pre-shred backup plus the KEK still recovers words), `restore.sh --force` on a corrupt target, and the audit-action count Claims gives twice (40 and 42) | no branch was ever pushed; start from main, do not look for a worktree | — |
 | (design) | Hosted console v1: sign-up through the existing OIDC provider, a second workspace without `MAIDAN_BOOTSTRAP`, and an agent invite (#1144 builds the invite's member and worker token); a design note first, then the authorization change in `routes/workspace.rs` | Design (another agent) | — |
 
 ## Next: ranked
@@ -146,6 +145,7 @@ Each links its record. Entries roll off after about a month.
 
 | Date | Decision | Record |
 |---|---|---|
+| 2026-10-01 | #1159 and #1160 landed | #1159, #1160 |
 | 2026-10-01 | Prod renders name a release and refuse placeholders; deploy pins stay on the newest tag (#1156 landed) | #1156 |
 | 2026-10-01 | PRs merge by admin squash when the eight required checks pass on the exact head and every CodeRabbit comment is answered; no review is required while one person maintains the repo | [Decisions](Decisions.md) |
 | 2026-10-01 | Branches need not be up to date to merge (F-43 stays off); the merge loop builds each PR on current `main` and runs the static contracts first | [Decisions](Decisions.md) |
