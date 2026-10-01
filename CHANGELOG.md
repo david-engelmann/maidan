@@ -989,6 +989,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   on read), and `GetTask` reads it too, so listing and fetching one task
   apply the same rule.
 
+### The maintainer's delegated decisions are recorded; CodeRabbit comments gate a merge
+
+- **Changed:** `docs/Decisions.md` records the decisions of 2026-10-01: admin
+  squash with no review requirement, `strict` branch protection kept off,
+  squash commits that carry the PR title and body (the repository setting is
+  changed), `max_wall_secs` as the thread's total worked time, case-insensitive
+  member handles, erase-only artifacts, SCIM groups that grant nothing,
+  `thread:transition` for OIDC sessions, and read notifications that age out.
+  Open Work's pending decisions are down to when to release and the launch.
+- **Changed:** a PR merges only when every CodeRabbit comment is fixed or
+  answered, as Decisions already said; `docs/Conventions.md` has the query
+  that lists the unanswered ones. 127 comments on PRs merged from 2026-09-28
+  were never answered; their triage is in Open Work's Now.
+- **Changed:** Open Work folds in the `/ui` design contract
+  (`docs/UI Design.md`) as Next item 5, merges the budget and freeze items into
+  the claim-ending work in flight, and adds read-notification retention to the
+  legal-hold item.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

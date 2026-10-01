@@ -1574,9 +1574,34 @@ reviewer anyway. The CI-required-checks discipline replaces the
 local-first discipline. Local CI is still encouraged but not
 load-bearing.
 
+**Reaffirmed 2026-10-01.** The maintainer kept admin squash with no review
+requirement while one person maintains the repo. The merge loop adds what
+GitHub does not enforce: all eight required checks passed on the PR's exact
+head commit (`--match-head-commit`), every CodeRabbit comment answered, and a
+build of the PR merged onto current `main` with the static contracts.
+
 **To revisit:** when a second human reviewer joins the project. At
 that point, restore PR-review enforcement and drop the `--admin`
 flag.
+
+### Branches need not be up to date to merge (F-43 stays off)
+
+**Decision.** Branch protection's `strict` setting stays off. A PR whose base
+is behind `main` can merge once its own checks pass. The merge loop builds the
+PR merged onto current `main` and runs the static contracts first, and
+`main`'s own CI runs after every merge.
+
+**Alternative.** Turn `strict` on, so every PR reruns CI after each merge.
+
+**Why this:** with about twenty runners and five to ten PRs open at once,
+`strict` turns each merge into a full CI rerun for every other PR, and most
+of what it would catch (a counter two PRs bump, a contract a new route must
+satisfy) the pre-merge build catches in minutes. What it misses is a break
+that only the full test suite on the merged tree shows, which `main`'s CI
+then reports.
+
+**To revisit:** if a merge breaks `main` in a way the pre-merge build could
+not see, or when CI capacity makes the reruns cheap.
 
 ### Squash-merge only; PR body becomes the commit body
 
@@ -1585,11 +1610,10 @@ settings level. The PR title becomes the squash commit title; the PR
 body (including the **mandatory** PR-level retro section) becomes
 the commit body.
 
-**Not what the setting does.** The repository's squash message is set to
-`COMMIT_MESSAGES`, so the squash commit's body is the PR's commit
-messages, not its body, and the PR-level retro lives only on the PR.
-Flipping the setting to `PR_BODY` restores this decision; that is the
-maintainer's call, recorded in [Open Work](Open%20Work.md).
+The repository's squash title and message are set to `PR_TITLE` and
+`PR_BODY` (since 2026-10-01; until then the message was `COMMIT_MESSAGES`,
+so a squash commit carried the PR's commit messages and the retro lived only
+on the PR).
 
 **Why this:** every commit on `main` carries its own retro inline.
 `git log` is searchable. Cluster-level retros aggregate the per-PR
@@ -1783,3 +1807,90 @@ make the trace part of the domain.
 **To revisit.** If a caller needs the trace of a span that is not the one
 that wrote the event (a later read, a manual replay), the columns are the
 write's span only.
+
+### The wall-clock budget is the thread's total worked time (2026-10-01)
+
+**Decision.** `max_wall_secs` counts every second an agent worked a thread,
+from acknowledging a claim to the claim's end, however the claim ends: a
+release, an unassign, a reassignment, a freeze, a SCIM deactivation, a
+budget stop, a close, or a lapsed lease (#1139). `claim_next` does not hand
+out a thread over any of its budgets until the budget is raised or reset.
+
+**Alternative.** Charge only lapsed leases, as #1139 did, so the budget
+bounds hung agents only.
+
+**Why this:** a budget that a release resets is not a budget. An agent that
+releases and reclaims would never reach it, and an operator reading
+`used_wall_secs` would see less than was spent.
+
+**Status.** Being built (Open Work, Now: lane BUD). Until it lands, only a
+lapsed lease is charged.
+
+**To revisit:** if an operator needs a per-claim limit as well as a total.
+
+### A member handle is unique regardless of case (2026-10-01)
+
+**Decision.** Within a workspace, `Alice` and `alice` are the same handle.
+Creation by REST, SCIM or the CLI refuses a case-only duplicate, lookups and
+mentions fold case, and the SCIM `userName eq` filter is a store query. The
+migration that adds the index renames all but the oldest member in each
+existing case-only group, so an upgraded database still boots.
+
+**Alternative.** Case-sensitive handles, as before. But SCIM's filter already
+matched case-insensitively, so two members could both match one `userName`.
+
+**Why this:** identity providers treat `userName` as case-insensitive, and a
+person typing `@alice` means the same person as `@Alice`.
+
+**Status.** Being built (Open Work, Now: lane IDN).
+
+### Artifacts are erased, never soft-deleted (2026-10-01)
+
+**Decision.** Removing an artifact means erasing this workspace's reference
+(`DELETE /artifacts/:sha`), and the bytes go when the last reference does.
+There is no per-workspace tombstone. The `tombstoned_at` column on
+`maidan_artifacts`, which no code outside tests ever wrote, is dropped along
+with every check of it.
+
+**To revisit:** when a workspace needs to hide an artifact without deleting
+it. That is a per-reference flag, not a column on the shared row.
+
+**Status.** Being built (Open Work, Now: lane IDN).
+
+### A SCIM group grants nothing (2026-10-01)
+
+**Decision.** A SCIM group records membership (#1133) and grants no
+capability or channel. If an operator asks for IdP-driven access, the first
+step is channel membership from a group, before any capability templates.
+
+**Why this:** a grant that follows an IdP group moves authority outside the
+audited grant paths. Nobody has asked for it yet.
+
+### An OIDC browser session can move a thread (2026-10-01)
+
+**Decision.** The capability set an OIDC session carries gains
+`thread:transition`, so a person can start a review and close a task from
+the board. The separation-of-duties checks apply unchanged: an approval may
+be borrowed, never self-approved. A token's session (#1142) carries the
+token's own capabilities and reaches the bearer routes except MCP.
+
+**Alternative.** Keep moving a thread token-only, so a person signed in
+through an identity provider can read and post but not decide.
+
+**Why this:** the board puts Approve and Close in front of a person. A
+session that cannot press them is a broken page, not a safer one.
+
+**Status.** The OIDC half is Open Work Next, write paths for a signed-in
+person. The token-session half is #1142.
+
+### Read notifications age out; the usage ledger is kept (2026-10-01)
+
+**Decision.** `MAIDAN_RETENTION_NOTIFICATIONS_DAYS`, off by default, prunes
+read notifications older than that through the retention sweeper. Unread
+and snoozed notifications are never pruned. The usage ledger has no
+retention, since it is a billing record.
+
+**Why this:** read notifications are the one table that grows with every
+mention and has no reader after it is read.
+
+**Status.** Open Work Next, retention.

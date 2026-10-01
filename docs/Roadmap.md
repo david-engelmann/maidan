@@ -52,28 +52,31 @@ flight and the ranked plan are the **Now** and **Next** sections of
    event (#1132), a hung agent's time is charged against its budget (#1139),
    the SDKs return typed results and errors (#1129), and stateless MCP
    subscriptions work across replicas (#1131), and an agent can claim the next
-   ready thread anywhere in its workspace (#1145). Next: workspace-wide waits
-   and queue depth, and budget stops that keep a thread from being handed out.
+   ready thread anywhere in its workspace (#1145). In flight: every way a claim
+   ends charges its worked time, and a thread over budget is not handed out.
+   Next: workspace-wide waits and queue depth.
 2. **Nothing is silently lost, and nothing grows without bound.** Retries share
    a per-host budget (#1122), every audit row belongs to a workspace (#1134),
    both backends have a tested backup path (#1126), and fairness and retention
    are per workspace by default (#1153). Next: a legal hold that keeps a
-   workspace's deliveries, and partitioning the append-only tables.
+   workspace's deliveries, read notifications that age out, and partitioning
+   the append-only tables.
 3. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus
    tests are mutation-checked (#1125), releases attest their SBOMs (#1119), and
    every HTTP operation is classified as reading or changing state (#1121).
    The nightly store mutation job tests mutants (none had before #1155), and
-   `cargo vet` covers the root lockfile (#1155). Next: nightly jobs that show
-   their failures, Kani proofs, and a named regression test per Threat-Model
-   row.
+   `cargo vet` covers the root lockfile (#1155). In flight: nightly jobs that
+   show their failures, and the review comments left unanswered on merged PRs.
+   Next: Kani proofs, and a named regression test per Threat-Model row.
 4. **A web UI worth showing.** The board is the one thread surface (#1118),
    errors are inline (#1117), a blank page walks to a connected board (#1123),
    attachments show their names and images (#1135), tokens rotate from the page
    (#1127), Connect an agent finishes with a worker token (#1144), a refused
    close shows on the board (#1147), and the first screen leads with the board
    (#1151). In flight: the token leaving the browser's storage (#1142). Next:
-   the rest of the QA pass, a drawer that starts closed, typed modules with a
-   CSP, and screenshots captured by a script.
+   the rest of the QA pass, the ten changes of the [UI design
+   contract](UI%20Design.md), write paths for a signed-in person, typed modules
+   with a CSP, and screenshots captured by a script.
 5. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
    room itself staying open source.
