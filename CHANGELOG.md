@@ -15,6 +15,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   count. Retention then prunes events that consumer has not received.
   The floor compares the instants.
 
+### A critical-review verdict arms the close-gate with it
+
+- **Fixed:** a critical finding wrote its `request_changes` verdict and then
+  set `k = 1` in a later transaction. If that second write failed, the verdict
+  stood and a retry treated it as already given, so the close-gate never armed.
+  The verdict and the requirement now commit together, or neither does.
+
 ### An egress DNS lookup has its own deadline
 
 - **Fixed:** resolving an operator-supplied URL waited on `lookup_host` with

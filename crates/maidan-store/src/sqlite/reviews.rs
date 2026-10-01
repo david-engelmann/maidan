@@ -184,9 +184,24 @@ pub async fn submit_review(
     decision: ReviewDecision,
     note: Option<&str>,
 ) -> Result<ReviewSubmission, StoreError> {
+    let mut tx = pool.begin().await?;
+    let submission = submit_review_on(&mut tx, thread_id, reviewer_id, decision, note).await?;
+    tx.commit().await?;
+    Ok(submission)
+}
+
+/// The review, its history row and `ReviewSubmitted` (and a send-back, when
+/// one applies), without committing. Callers that have more to write in the
+/// same transaction use this.
+async fn submit_review_on(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+    reviewer_id: MemberId,
+    decision: ReviewDecision,
+    note: Option<&str>,
+) -> Result<ReviewSubmission, StoreError> {
     let actor_id = crate::attribution::delegate_acting_for(reviewer_id);
     let now = Utc::now().to_rfc3339();
-    let mut tx = pool.begin().await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_thread_reviews
              (thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id)
@@ -203,7 +218,7 @@ pub async fn submit_review(
     .bind(&now)
     .bind(&now)
     .bind(actor_id.map(|m| m.0))
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     let review = row_to_review(&row)?;
     // The history keeps every verdict; the row above keeps only the latest.
@@ -218,14 +233,14 @@ pub async fn submit_review(
     .bind(note)
     .bind(actor_id.map(|m| m.0))
     .bind(&now)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
     let mut reopened = None;
     if decision == ReviewDecision::RequestChanges
-        && sends_back_in_tx(&mut tx, thread_id, reviewer_id, actor_id).await?
+        && sends_back_in_tx(tx, thread_id, reviewer_id, actor_id).await?
     {
         let result = super::thread_transitions::transition_in_tx(
-            &mut tx,
+            tx,
             thread_id,
             reviewer_id,
             ThreadAction::RequestChanges,
@@ -237,14 +252,14 @@ pub async fn submit_review(
         )
         .bind(&now)
         .bind(thread_id.0)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
         reopened = Some(result);
     }
-    let (workspace_id, channel_id) = super::events::thread_scope_in_tx(&mut tx, thread_id).await?;
-    let worker_id = super::thread_workers::last_worker_in_tx(&mut tx, thread_id).await?;
+    let (workspace_id, channel_id) = super::events::thread_scope_in_tx(tx, thread_id).await?;
+    let worker_id = super::thread_workers::last_worker_in_tx(tx, thread_id).await?;
     let submitted = super::events::append_in_tx(
-        &mut tx,
+        tx,
         &Event::ReviewSubmitted {
             occurred_at: review.updated_at,
             workspace_id,
@@ -259,12 +274,11 @@ pub async fn submit_review(
     )
     .await?;
     let reopened = match reopened {
-        Some(result) => Some(
-            super::thread_transitions::state_changed_in_tx(&mut tx, reviewer_id, &result).await?,
-        ),
+        Some(result) => {
+            Some(super::thread_transitions::state_changed_in_tx(tx, reviewer_id, &result).await?)
+        }
         None => None,
     };
-    tx.commit().await?;
     Ok(ReviewSubmission {
         review,
         submitted,
@@ -394,7 +408,9 @@ pub async fn review_status(
 /// member plus a reviewed `example.review.result/1` with any `critical` finding
 /// writes `request_changes`. If the thread has no requirement yet, this sets `k
 /// = 1` so `closed` refuses until a qualifying human approve. An existing `k`
-/// is left alone.
+/// is left alone. The verdict and that `k` commit in one transaction: a failure
+/// leaves neither, so a retry still writes the verdict instead of seeing it
+/// already given and skipping the gate.
 pub async fn apply_critical_review_decision(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -411,28 +427,30 @@ pub async fn apply_critical_review_decision(
     // The router applies this again for the same result on every replica and
     // on replay. Each verdict is an event, and a change request notifies the
     // worker, so a verdict already given on the stored result is not given
-    // twice.
-    if verdict_covers_result(pool, thread_id, reviewer_id, decision).await? {
+    // twice. The check, the verdict and the close-gate arm commit together.
+    let mut tx = pool.begin().await?;
+    if verdict_covers_result(&mut tx, thread_id, reviewer_id, decision).await? {
         return Ok(None);
     }
-    let review = submit_review(
-        pool,
+    let review = submit_review_on(
+        &mut tx,
         thread_id,
         reviewer_id,
         decision,
         Some(CRITICAL_REVIEW_NOTE),
     )
     .await?;
-    if get_requirement(pool, thread_id).await?.is_none() {
-        set_requirement(pool, thread_id, 1).await?;
+    if get_requirement_on(&mut tx, thread_id).await?.is_none() {
+        set_requirement_on(&mut tx, thread_id, 1).await?;
     }
+    tx.commit().await?;
     Ok(Some(review))
 }
 
 /// Whether `reviewer_id`'s standing review already gives `decision` on the
 /// thread's current result: it was recorded after the result was produced.
 async fn verdict_covers_result(
-    pool: &SqlitePool,
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
     reviewer_id: MemberId,
     decision: ReviewDecision,
@@ -446,7 +464,7 @@ async fn verdict_covers_result(
     .bind(thread_id.0)
     .bind(reviewer_id.0)
     .bind(decision.as_str())
-    .fetch_optional(pool)
+    .fetch_optional(&mut **tx)
     .await?;
     Ok(row.is_some())
 }
