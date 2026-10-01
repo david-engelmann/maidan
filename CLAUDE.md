@@ -122,7 +122,7 @@ Working beside other agents (several PRs are usually open at once):
   `Store::get_member_in(workspace, id)` (from #1152).
 - **Merging:** an admin squash only when all eight required checks passed on
   the PR's exact head commit and every CodeRabbit comment has a fix or a reply,
-  merged with `gh pr merge --match-head-commit <sha>`; `gh pr checks` and even
+  merged with `gh pr merge --squash --match-head-commit <sha>`; `gh pr checks` and even
   `headRefOid` can show the previous commit for a moment after a push. List the
   unanswered comments with the `gh api .../pulls/<N>/comments` query in
   [`docs/Conventions.md`](docs/Conventions.md) ("CodeRabbit").
