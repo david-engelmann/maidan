@@ -284,9 +284,10 @@ flowchart LR
   secrets, trace ids); `uuid_v7_contract` enforces the allowlist.
 - **Outbound HTTP.** Operator-supplied webhook, slash, federation, OIDC, and experimental
   provider origins share one parser and client factory: resolve only public addresses,
-  pin the connection to the checked DNS result, refuse redirects, and give up after 5 s to
-  connect and 10 s in all, so a destination that never answers cannot hold a worker.
-  The Slack and GitHub API clients take the same timeouts. Destination
+  pin the connection to the checked DNS result, refuse redirects, and give up after 5 s
+  resolving the name, 5 s to connect and 10 s in all, so a destination or its nameserver
+  that never answers cannot hold a worker.
+  The Slack and GitHub API clients take the same connect and total timeouts. Destination
   approval and data governance remain operator policy beyond that network boundary.
 
 ## What's deliberately not here yet

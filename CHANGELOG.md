@@ -15,6 +15,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   count. Retention then prunes events that consumer has not received.
   The floor compares the instants.
 
+### An egress DNS lookup has its own deadline
+
+- **Fixed:** resolving an operator-supplied URL waited on `lookup_host` with
+  no deadline. The HTTP client's connect and total timeouts start only after
+  that lookup returns, and the webhook poller sends one delivery at a time, so
+  a nameserver that never answers held every tenant's webhooks. The lookup now
+  gives up after 5 s (`EGRESS_RESOLUTION_TIMEOUT`).
+
 ### Program C: context economics
 
 - **Added:** `docs/Context Economics.md`, the design for making agents

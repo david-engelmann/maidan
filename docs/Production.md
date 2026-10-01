@@ -637,8 +637,12 @@ until each workspace lists its hosts.
 Every outbound delivery (event webhooks, automation HTTP, Slack and GitHub
 projector and result egress) gives up after 5 s waiting to connect and 10 s in
 all, so a receiver that accepts the connection and never answers cannot hold
-up the workers. A failed delivery is retried on its worker's backoff: webhooks
-and automation wait `2^attempts` seconds (at most 256 s) up to their
+up the workers. An operator-supplied URL (a webhook, an automation target, a
+slash or FSM handler, a federation peer, an A2A push, web push, the advisor)
+also gives up after 5 s resolving the name, before those clocks start, so a
+nameserver that never answers cannot hold them either. A failed delivery is
+retried on its worker's backoff: webhooks and automation wait `2^attempts`
+seconds (at most 256 s) up to their
 `*_MAX_ATTEMPTS`; mail and egress wait 30 s doubling to an hour, eight attempts.
 
 Backoff spaces one delivery's attempts, not a destination's. When a host that
