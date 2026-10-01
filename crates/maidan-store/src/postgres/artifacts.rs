@@ -18,8 +18,7 @@ const UPSERT_SQL: &str =
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (sha256) DO UPDATE
          SET sha256 = EXCLUDED.sha256
-     RETURNING id, sha256, size_bytes, mime_type, filename, kind, uploaded_by, created_at,
-               tombstoned_at";
+     RETURNING id, sha256, size_bytes, mime_type, filename, kind, uploaded_by, created_at";
 
 /// An artifact as one workspace sees it: shared content, that workspace's own
 /// metadata. A ref written without metadata (older rows, bare access grants)
@@ -34,8 +33,7 @@ const WORKSPACE_VIEW_SQL: &str = "SELECT a.id, a.sha256, a.size_bytes,
             COALESCE(r.kind, a.kind) AS kind,
             CASE WHEN r.workspace_id IS NULL THEN a.uploaded_by ELSE r.uploaded_by END
                 AS uploaded_by,
-            COALESCE(r.created_at, a.created_at) AS created_at,
-            a.tombstoned_at
+            COALESCE(r.created_at, a.created_at) AS created_at
      FROM maidan_artifacts a
      LEFT JOIN maidan_artifact_refs r ON r.sha256 = a.sha256 AND r.workspace_id = $1
      WHERE a.sha256 = $2
@@ -187,8 +185,7 @@ pub async fn upsert_with_event(
 
 pub async fn get_by_sha(pool: &PgPool, sha256: &str) -> Result<Artifact, StoreError> {
     let row = sqlx::query(
-        "SELECT id, sha256, size_bytes, mime_type, filename, kind, uploaded_by, created_at,
-                tombstoned_at
+        "SELECT id, sha256, size_bytes, mime_type, filename, kind, uploaded_by, created_at
          FROM maidan_artifacts WHERE sha256 = $1",
     )
     .bind(sha256)
@@ -288,7 +285,6 @@ fn row_to_artifact(row: &sqlx::postgres::PgRow) -> Result<Artifact, StoreError> 
         kind,
         uploaded_by: row.get::<Option<Uuid>, _>("uploaded_by").map(MemberId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
-        tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
     })
 }
 

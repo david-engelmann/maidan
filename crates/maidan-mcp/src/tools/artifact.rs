@@ -233,9 +233,5 @@ pub(super) async fn get_artifact_metadata(
             .get_artifact_for_workspace(auth.workspace_id, &a.sha256)
             .await?
     };
-    // A tombstoned artifact is absent, as on every REST read.
-    if artifact.tombstoned_at.is_some() {
-        return Err(McpError::NotFound);
-    }
     Ok(content_json(&artifact))
 }

@@ -8588,26 +8588,6 @@ mod tests {
         );
         let resp_a = server.handle(req(uri.clone()), &auth_a).await;
         assert!(resp_a.result.is_some() && resp_a.error.is_none());
-
-        // A tombstoned artifact is absent from both reads, as over REST.
-        sqlx::query("UPDATE maidan_artifacts SET tombstoned_at = ? WHERE sha256 = ?")
-            .bind(chrono::Utc::now())
-            .bind(&sha)
-            .execute(&pool)
-            .await
-            .unwrap();
-        let tombstoned = server
-            .call_tool(&auth_a, "get_artifact_metadata", &json!({ "sha256": sha }))
-            .await;
-        assert!(
-            matches!(tombstoned, Err(McpError::NotFound)),
-            "a tombstoned artifact's metadata is not served, got {tombstoned:?}"
-        );
-        let resp_a = server.handle(req(uri), &auth_a).await;
-        assert!(
-            resp_a.error.is_some() && resp_a.result.is_none(),
-            "a tombstoned artifact is not served by resources/read"
-        );
     }
 
     #[tokio::test]

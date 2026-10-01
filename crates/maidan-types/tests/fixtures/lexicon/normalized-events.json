@@ -18,7 +18,6 @@
       "mime_type": "text/plain",
       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "size_bytes": 4,
-      "tombstoned_at": null,
       "uploaded_by": "00000000-0000-0000-0000-000000000002"
     },
     "kind": "artifact_upserted",

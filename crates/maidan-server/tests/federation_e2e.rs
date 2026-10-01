@@ -321,7 +321,6 @@ async fn federation_ingest_rejects_non_federatable_artifact_event() {
             kind: ArtifactKind::Attachment,
             uploaded_by: Some(MemberId(uuid::Uuid::from_u128(10))),
             created_at: now,
-            tombstoned_at: None,
         },
     };
     let stored = StoredEvent {
@@ -767,7 +766,6 @@ async fn a_refused_event_does_not_wedge_the_origin_chain() {
             kind: ArtifactKind::Attachment,
             uploaded_by: None,
             created_at: now,
-            tombstoned_at: None,
         },
     };
 

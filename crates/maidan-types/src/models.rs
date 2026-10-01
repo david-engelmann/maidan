@@ -2437,7 +2437,6 @@ pub struct Artifact {
     pub kind: ArtifactKind,
     pub uploaded_by: Option<MemberId>,
     pub created_at: DateTime<Utc>,
-    pub tombstoned_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone)]

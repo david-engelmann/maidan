@@ -248,8 +248,7 @@ pub async fn erase_artifact(
 
 /// The artifact with the caller's workspace's own metadata. The shared row's
 /// `uploaded_by` is whoever uploaded the bytes first, possibly in another
-/// tenant. A tombstoned artifact is `NotFound`, as on the share route and in
-/// thread context: neither its bytes nor its metadata are served.
+/// tenant. A workspace that erased its reference gets `NotFound`.
 async fn artifact_as_seen_by(
     state: &AppState,
     auth: &AuthContext,
@@ -263,8 +262,5 @@ async fn artifact_as_seen_by(
             .get_artifact_for_workspace(auth.workspace_id, sha_hex)
             .await?
     };
-    if artifact.tombstoned_at.is_some() {
-        return Err(ApiError::NotFound);
-    }
     Ok(artifact)
 }

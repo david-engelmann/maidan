@@ -70,11 +70,10 @@ async fn collect_edit_views(
     Ok(out)
 }
 
-/// Non-tombstoned artifacts referenced by a page's messages' metadata. Ordered
-/// by `created_at`; a missing/tombstoned blob is skipped.
-/// The artifacts `messages` reference, as their workspace sees them. A sha the
-/// workspace holds no ref to is skipped: naming one in a message's metadata is
-/// not access to it.
+/// The artifacts `messages` reference, as their workspace sees them. Ordered
+/// by `created_at`. A sha the workspace holds no ref to is skipped: naming one
+/// in a message's metadata is not access to it. Erasing a reference is what
+/// removes an artifact; there is no tombstone to skip.
 async fn collect_artifacts(
     store: &dyn Store,
     workspace_id: maidan_types::WorkspaceId,
@@ -89,9 +88,7 @@ async fn collect_artifacts(
     let mut artifacts = Vec::new();
     for sha in shas {
         if let Ok(a) = store.get_artifact_for_workspace(workspace_id, &sha).await {
-            if a.tombstoned_at.is_none() {
-                artifacts.push(a);
-            }
+            artifacts.push(a);
         }
     }
     artifacts.sort_by_key(|a| a.created_at);
