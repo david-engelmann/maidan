@@ -37,10 +37,10 @@ helm upgrade --install maidan ./helm/maidan-stack -n maidan --create-namespace \
   --set maidan.existingSecret=maidan-secrets
 ```
 
-`maidan-secrets` holds `DATABASE_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and
-`MAIDAN_CONTENT_KEK`; see the [chart README](README.md#umbrella-stack).
-Create the Secret with all four keys before installation. Rendering does not
-verify an existing Secret or its keys.
+The stack connects the server to its own Postgres and MinIO, so `maidan-secrets`
+needs only `MAIDAN_CONTENT_KEK`; see the [chart README](README.md#umbrella-stack).
+Create it before installation. Rendering does not verify an existing Secret or
+its keys.
 
 **S3 artifacts on managed object storage:**
 

@@ -84,6 +84,14 @@ contentKekPrevious: ""
 # envFrom. Keeps secret material out of values files / release history.
 existingSecret: ""
 
+# More envFrom sources, read after the chart's ConfigMap and Secret, so a key
+# in one of them overrides `config` and `secrets`. Names go through tpl, so a
+# parent chart can name its release's resources: maidan-stack points this at
+# the Secret that connects the server to its bundled Postgres and MinIO. The
+# render cannot see what these sources hold, so, as with `existingSecret`, a
+# production render does not check `secrets.DATABASE_URL` when this is set.
+extraEnvFrom: []
+
 # Health probes. Startup + liveness hit the SHALLOW /health/live (process
 # alive); readiness hits the DEEP /health/ready (dependencies OK) so a degraded
 # dependency drains traffic instead of restart-storming the pod.

@@ -138,6 +138,20 @@ The `prod` overlay is a template. Before applying:
    kubectl apply -k k8s/overlays/prod
    ```
 
+### Helm
+
+`helm/maidan` installs the server against a database and object store you
+already run. `helm/maidan-stack` wraps it and can run its own Postgres
+(`maidan-postgres`, the pgvector image above) and MinIO (Chainguard's, by the
+digest compose uses), wiring the server to both. Values, refusals and the
+install commands are in [Production.md](Production.md#helm-production) and
+`helm/maidan-stack/README.md`. To try the stack on the kind cluster above:
+
+```sh
+helm install demo helm/maidan-stack -f helm/maidan-stack/values-ci.yaml \
+  --set maidan.contentKek="$(openssl rand -hex 32)" -n maidan-stack --create-namespace
+```
+
 ### Required secret keys
 
 | Key                  | Required?            | Notes                                  |

@@ -43,6 +43,9 @@ spec:
                 name: {{ include "maidan.fullname" . }}-config
             - secretRef:
                 name: {{ include "maidan.secretName" . }}
+            {{- with .Values.extraEnvFrom }}
+            {{- tpl (toYaml .) $ | nindent 12 }}
+            {{- end }}
           # Named explicitly so a Secret without the content KEK stops the pod
           # (CreateContainerConfigError) instead of starting a server that cannot
           # seal message content.
