@@ -8,12 +8,12 @@ For the agent implementing `crates/maidan-server/static/index.html`. One file, v
 
 The board is the product. Everything else is a way back to it.
 
-| Product | The rule that matters here |
+| Kind of product | The rule that matters here |
 | --- | --- |
-| Airbnb | One filled action on the surface (Search, then Reserve). The listing is the page. Coral is scarce. |
-| AllTrails | The map is full-bleed. Controls float and collapse. A hike is not a stack of stat boxes. |
-| Linear (March 2026 refresh) | The sidebar is dimmer than the work. Borders are felt, not drawn. Icons and chrome shrink so the list can stay dense. |
-| Stripe | One primary button per flow. Hierarchy is type and space. Color means succeeded, failed, or waiting, not "this is a category." A status is a sentence: what happened, and what to do next. |
+| A booking marketplace | One filled action on the surface (search, then reserve). The listing is the page. The accent color is scarce. |
+| A trail map | The map is full-bleed. Controls float and collapse. A route is not a stack of stat boxes. |
+| An issue tracker | The sidebar is dimmer than the work. Borders are felt, not drawn. Icons and chrome shrink so the list can stay dense. |
+| A payments dashboard | One primary button per flow. Hierarchy is type and space. Color means succeeded, failed, or waiting, not "this is a category." A status is a sentence: what happened, and what to do next. |
 
 ## Visual rules
 
