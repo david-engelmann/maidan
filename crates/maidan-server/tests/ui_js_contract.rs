@@ -1867,3 +1867,231 @@ fn ui_js_a_session_edits_uploads_and_decides_without_a_bearer() {
         "a session can start a review and close a task"
     );
 }
+
+/// One channel hides the sidebar. From docs/UI Design.md:
+/// in `loadChannels`, if `channels.length === 1`, hide `aside`.
+/// At two or more, show `aside`. The channel name is already `#board-title`.
+///
+/// This runs the page's `loadChannels`. It fails if the sidebar stays visible
+/// when there is only one channel, and fails if it hides when there is more
+/// than one. The expected visibility is that rule, not a copy of the markup.
+#[test]
+fn ui_js_one_channel_hides_the_sidebar() {
+    assert_eq!(
+        HTML.matches("<aside").count(),
+        1,
+        "one sidebar, not a second one"
+    );
+    let counts = [1usize, 2, 8, 1, 0, 3];
+    let rendered = sidebar_after_load_channels(&counts);
+    for count in counts {
+        let hidden = rendered[&count];
+        let want = the_design_hides_the_sidebar(count);
+        if want {
+            assert!(
+                hidden,
+                "{count} channel: sidebar stayed visible; one channel hides it"
+            );
+        } else if count > 1 {
+            assert!(
+                !hidden,
+                "{count} channels: sidebar hid; two or more show it"
+            );
+        } else {
+            assert!(
+                !hidden,
+                "no channels: sidebar hid; the rule hides it only when there is one"
+            );
+        }
+    }
+}
+
+/// Hide the sidebar only when the workspace has exactly one channel.
+fn the_design_hides_the_sidebar(channel_count: usize) -> bool {
+    channel_count == 1
+}
+
+/// What `loadChannels` did to `aside` for each channel count.
+/// A missing sidebar, `hidden`, or `display: none` counts as hidden.
+fn sidebar_after_load_channels(counts: &[usize]) -> std::collections::BTreeMap<usize, bool> {
+    let payload = serde_json::json!({ "html": HTML, "counts": counts });
+    let mut child = std::process::Command::new("node")
+        .arg("-e")
+        .arg(SIDEBAR_PAGE_HARNESS)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("node is required to run loadChannels: {err}"));
+    serde_json::to_writer(child.stdin.take().expect("stdin"), &payload).expect("write counts");
+    let out = child.wait_with_output().expect("node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "loadChannels harness failed\n{stderr}\n{stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|err| panic!("loadChannels harness returned {err}: {stdout}"));
+    let mut rendered = std::collections::BTreeMap::new();
+    for scene in value.as_array().expect("count list") {
+        let count = scene["count"].as_u64().expect("count") as usize;
+        let hidden = scene["hidden"].as_bool().expect("hidden");
+        rendered.insert(count, hidden);
+    }
+    assert_eq!(
+        rendered.len(),
+        counts
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        "each channel count was loaded"
+    );
+    rendered
+}
+
+const SIDEBAR_PAGE_HARNESS: &str = r##"
+const fs = require("fs");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const html = input.html;
+const start = html.indexOf("<script>") + "<script>".length;
+const js = html.slice(start, html.indexOf("</script>", start));
+function functionSource(name) {
+  const key = "async function " + name + "(";
+  const at = js.indexOf(key);
+  if (at < 0) throw new Error("missing " + name);
+  const rel = js.slice(at).indexOf("\n      }\n");
+  if (rel < 0) throw new Error("unclosed " + name);
+  return js.slice(at, at + rel) + "\n      }";
+}
+function makeEl(tag) {
+  const el = {
+    tag,
+    hidden: false,
+    children: [],
+    dataset: {},
+    className: "",
+    textContent: "",
+    value: "",
+    title: "",
+    attrs: {},
+    style: { display: "" },
+    classList: { add() {}, remove() {}, toggle() {} },
+    appendChild(child) { this.children.push(child); return child; },
+    append(...kids) { for (const kid of kids) this.children.push(kid); },
+    replaceChildren() { this.children = []; },
+    setAttribute(k, v) {
+      this.attrs[k] = String(v);
+      if (k === "hidden") this.hidden = true;
+    },
+    getAttribute(k) {
+      return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null;
+    },
+    removeAttribute(k) {
+      delete this.attrs[k];
+      if (k === "hidden") this.hidden = false;
+    },
+    querySelector(sel) {
+      const all = this.querySelectorAll(sel);
+      return all[0] || null;
+    },
+    querySelectorAll(sel) {
+      if (sel === "li[data-id]" || sel.indexOf("li[data-id=") === 0) {
+        const mark = 'li[data-id="';
+        let id = null;
+        if (sel.indexOf(mark) === 0 && sel.endsWith('"]')) id = sel.slice(mark.length, -2);
+        return this.children.filter((c) => c.tag === "li" && c.dataset.id && (id === null || c.dataset.id === id));
+      }
+      return [];
+    },
+    click() { if (typeof this.onclick === "function") this.onclick(); },
+  };
+  Object.defineProperty(el, "innerHTML", {
+    set() { el.children = []; },
+    get() { return ""; },
+  });
+  return el;
+}
+const list = makeEl("ul");
+const aside = makeEl("aside");
+const byId = {};
+function element(id) {
+  if (id === "channel-list") return list;
+  if (!byId[id]) byId[id] = makeEl(id);
+  return byId[id];
+}
+const document = {
+  getElementById(id) { return element(id); },
+  querySelector(sel) { return sel === "aside" ? aside : null; },
+  querySelectorAll(sel) {
+    if (sel === "#channel-list li") return list.children.filter((c) => c.tag === "li");
+    return [];
+  },
+  createElement(tag) { return makeEl(tag); },
+};
+const store = {};
+const localStorage = {
+  getItem(k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
+  setItem(k, v) { store[k] = String(v); },
+};
+let current = [];
+async function fetch() {
+  return { ok: true, json: async () => current };
+}
+const loadChannels = new Function(
+  "document",
+  "fetch",
+  "localStorage",
+  `
+    const CSS = { escape(s) { return String(s); } };
+    let selectedChannelId = null;
+    let selectedChannelName = null;
+    let selectedThreadId = null;
+    let boardSeen = new Map();
+    let headerGen = 0;
+    let sessionMemberId = null;
+    const channelKey = "maidan_channel";
+    function wid() { return "ws"; }
+    function renderState() {}
+    function setLoading() {}
+    function clearLoading() {}
+    function persist() {}
+    function token() { return ""; }
+    function base() { return "http://maidan.test"; }
+    function uiReadPath(s) { return s; }
+    function headers() { return {}; }
+    async function responseError() { return "no"; }
+    async function loadMembers() {}
+    function escapeHtml(s) { return String(s); }
+    function keyActivates() {}
+    function syncCollabPanel() {}
+    function unreachable(e) { return String(e && e.message || e); }
+    function loadThreads() {}
+    ${functionSource("loadChannels")}
+    return loadChannels;
+  `
+)(document, fetch, localStorage);
+function isHidden(el) {
+  if (!el) return true;
+  if (el.hidden === true) return true;
+  if (el.style && el.style.display === "none") return true;
+  return false;
+}
+(async () => {
+  const results = [];
+  for (const count of input.counts) {
+    current = Array.from({ length: count }, (_, i) => ({
+      id: "c" + i,
+      name: "Channel " + i,
+      private: false,
+    }));
+    await loadChannels();
+    results.push({ count, hidden: isHidden(aside) });
+  }
+  process.stdout.write(JSON.stringify(results));
+})().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+"##;

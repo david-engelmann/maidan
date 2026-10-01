@@ -277,6 +277,8 @@
       #session-status[hidden] { display: none; }
       #shell { grid-template-columns: 15.5rem 1fr; min-height: calc(100vh - 3.5rem); }
       aside { padding: 0.9rem 0.75rem; background: var(--soft); }
+      aside[hidden] { display: none; }
+      #shell:has(aside[hidden]) { grid-template-columns: minmax(0, 1fr); }
       aside h2 { font-size: 0.7rem; letter-spacing: 0.08em; margin: 0.25rem 0.25rem 0.4rem; }
       aside .inline-form input { font-size: 0.8rem; padding: 0.25rem 0.45rem; }
       aside .inline-form button { padding: 0.2rem 0.55rem; font-size: 0.8rem; }
@@ -4634,7 +4636,9 @@
 
       async function loadChannels() {
         const list = document.getElementById("channel-list");
+        const aside = document.querySelector("aside");
         if (!wid()) {
+          aside.hidden = false;
           renderState(list, "Set a workspace ID to load channels.");
           return;
         }
@@ -4648,10 +4652,14 @@
         try {
           const res = await fetch(url, { headers: headers(), credentials: "include" });
           if (!res.ok) {
+            aside.hidden = false;
             renderState(list, await responseError(res, "Could not load channels"), "err");
             return;
           }
           const channels = await res.json();
+          // One channel: the name is already the board title, so the sidebar
+          // stays off. Two or more, and it comes back, on --soft.
+          aside.hidden = channels.length === 1;
           await loadMembers();
           list.innerHTML = "";
           if (!channels.length) {
@@ -4702,6 +4710,7 @@
             else if (channels.length === 1) list.querySelector("li[data-id]").click();
           }
         } catch (e) {
+          aside.hidden = false;
           renderState(list, unreachable(e), "err");
         } finally {
           clearLoading(list);
