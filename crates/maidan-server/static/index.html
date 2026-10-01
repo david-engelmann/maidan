@@ -621,7 +621,7 @@
         <ul id="channel-list"></ul>
         <div class="inline-form">
           <input id="new-channel-name" placeholder="New channel" />
-          <button id="create-channel" type="button" title="Requires bearer token">+</button>
+          <button id="create-channel" type="button" title="Sign in or paste a token">+</button>
         </div>
       </aside>
       <main id="main-content">
@@ -677,7 +677,7 @@
             <div id="board-summary" aria-live="polite"></div>
             <div class="inline-form" id="new-task">
               <input id="new-thread-title" placeholder="New task title" aria-label="New task title" />
-              <button id="create-thread" type="button" title="Requires bearer token">Add task</button>
+              <button id="create-thread" type="button" title="Sign in or paste a token">Add task</button>
             </div>
           </div>
           <div id="team" aria-label="Who is on this board"></div>
@@ -2833,6 +2833,7 @@
           list.innerHTML = "<li>Sign in or set a valid bearer token</li>";
           return;
         }
+        await loadMembers();
         const suffix = `/workspaces/${wid()}/dm?member_id=${encodeURIComponent(me)}`;
         const url = token() ? `${base()}${suffix}` : uiReadPath(suffix);
         try {
@@ -2850,7 +2851,9 @@
             const li = document.createElement("li");
             const a = document.createElement("a");
             a.href = "#";
-            a.textContent = `with ${dmOther(c)}`;
+            const other = dmOther(c);
+            a.textContent = `with ${memberName(other)}`;
+            a.title = other;
             a.onclick = (ev) => {
               ev.preventDefault();
               selectDm(c);
@@ -2859,7 +2862,7 @@
             list.appendChild(li);
           });
         } catch (e) {
-          list.innerHTML = `<li>${escapeHtml(String(e))}</li>`;
+          renderState(list, unreachable(e), "err");
         }
       }
 
@@ -2911,11 +2914,17 @@
             credentials: "include",
             body: JSON.stringify({ other_member_id: other }),
           });
-          if (!res.ok) return setStatus(`HTTP ${res.status}`, "err");
+          if (!res.ok) {
+            showError(await responseError(res, "Could not open that DM"));
+            return;
+          }
+          const opened = await res.json();
           setStatus("DM opened", "ok");
+          await loadMembers();
           await loadDms();
+          selectDm(opened);
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
       }
 
@@ -4655,7 +4664,7 @@
             else if (channels.length === 1) list.querySelector("li[data-id]").click();
           }
         } catch (e) {
-          renderState(list, String(e), "err");
+          renderState(list, unreachable(e), "err");
         } finally {
           clearLoading(list);
         }
@@ -5214,12 +5223,29 @@
         const url = token()
           ? `${base()}/workspaces/${wid()}/search?${params}`
           : `${uiReadPath(`/workspaces/${wid()}/search`)}?${params}`;
-        const res = await fetch(url, { headers: headers(), credentials: "include" });
+        let res;
+        try {
+          res = await fetch(url, { headers: headers(), credentials: "include" });
+        } catch (e) {
+          const box = document.getElementById("search-results");
+          box.textContent = unreachable(e);
+          setStatus("Could not reach the server", "err");
+          return;
+        }
         const body = await res.text();
         const box = document.getElementById("search-results");
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
-          box.textContent = body;
+          let detail = "";
+          try {
+            const problem = JSON.parse(body);
+            detail = problem.detail || problem.title || problem.error || problem.message || "";
+          } catch (_e) {
+            detail = body;
+          }
+          detail = String(detail).replace(/\s+/g, " ").trim().slice(0, 500);
+          const said = humanError(res.status, detail);
+          box.textContent = detail ? `${said} — ${detail} (HTTP ${res.status})` : `${said} (HTTP ${res.status})`;
+          setStatus(said, "err");
           return;
         }
         setStatus("OK", "ok");
@@ -5292,20 +5318,28 @@
         const text = document.getElementById("compose-body").value.trim();
         if (!text) return showError("Message body required");
         persist();
-        const res = await fetch(
-          apiWritePath(`/threads/${selectedThreadId}/messages`),
-          {
-            method: "POST",
-            headers: headers(true),
-            credentials: "include",
-            body: JSON.stringify({ body: text }),
-          }
-        );
-        const body = await res.text();
-        if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
-          return setOut(body);
+        let res;
+        try {
+          res = await fetch(
+            apiWritePath(`/threads/${selectedThreadId}/messages`),
+            {
+              method: "POST",
+              headers: headers(true),
+              credentials: "include",
+              body: JSON.stringify({ body: text }),
+            }
+          );
+        } catch (e) {
+          // The draft stays. A dead server used to reject the promise and
+          // leave the composer looking as if nothing had been tried.
+          showError(unreachable(e));
+          return;
         }
+        if (!res.ok) {
+          showError(await responseError(res, "Could not post"));
+          return;
+        }
+        const body = await res.text();
         document.getElementById("compose-body").value = "";
         setStatus("Posted", "ok");
         setOut(JSON.parse(body));
@@ -5741,6 +5775,9 @@
         bearerMemberId = identity.member_id;
         if (!wid()) document.getElementById("workspace").value = identity.workspace_id;
         persist();
+        // A later success must not leave the previous rejection on screen.
+        status.hidden = true;
+        status.textContent = "";
         status.className = "muted";
         await loadChannels();
         await renderIdentity(identity.member_id);
