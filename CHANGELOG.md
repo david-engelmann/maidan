@@ -93,6 +93,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   with `ClaimFailed` instead of giving it to the next agent.
 - A freeze still lasts until an unfreeze. Freeze expiry is not part of this.
 
+### No composer until a card is open
+
+- **Changed:** `#collab-panel` stays hidden while no card is open. The first
+  screen has no thread, no composer, and no Post. Opening a card shows them.
+
 ### More tools starts closed
 
 - **Changed:** `#tools` (More tools) is closed on the first screen. The command
