@@ -6,5 +6,8 @@ import type { Page } from "@playwright/test";
 export async function openMoreTools(page: Page): Promise<void> {
   const tools = page.locator("#tools");
   if (await tools.evaluate((el: HTMLDetailsElement) => el.open)) return;
-  await tools.locator("summary").click();
+  // Nested <details> sit inside the panel (audit, purge, DMs, and the rest).
+  // locator("summary") matches every one of them, and strict mode will not
+  // click fifteen summaries. The More tools summary is the direct child.
+  await page.locator("#tools > summary").click();
 }
