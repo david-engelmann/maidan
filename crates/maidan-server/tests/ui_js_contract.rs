@@ -617,7 +617,7 @@ fn ui_js_puts_the_decisions_agents_wait_on_first() {
         "the queue reads the waiting inbox and keeps the decisions: reviews and gates"
     );
     assert!(
-        s.contains("`${base()}/threads/${tid}/reviews`") && s.contains("{ action: \"close\" }"),
+        s.contains("apiWritePath(`/threads/${tid}/reviews`)") && s.contains("{ action: \"close\" }"),
         "approve, request changes and close go through the review and FSM routes"
     );
     assert!(
@@ -1260,5 +1260,39 @@ fn ui_js_reports_qa_failures_in_words_and_opens_the_dm() {
     assert!(
         token.contains("status.hidden = true;\n        status.textContent = \"\";"),
         "an accepted token clears the earlier rejection"
+    );
+}
+
+#[test]
+fn ui_js_a_session_edits_uploads_and_decides_without_a_bearer() {
+    let s = script(HTML);
+    assert!(
+        s.contains("function apiReadPath(") && s.contains("function apiWritePath("),
+        "reads and writes share a pair of path helpers"
+    );
+    assert!(
+        !s.contains("function requireTokenForWrite("),
+        "the bearer-only write guard is replaced, not kept beside the session path"
+    );
+    assert!(
+        s.contains("apiWritePath(`/messages/${id}`)")
+            && s.contains("apiWritePath(`/artifacts?${params}`)")
+            && s.contains("apiWritePath(`/threads/${tid}/reviews`)")
+            && s.contains("apiWritePath(`/threads/${tid}`)"),
+        "edit, upload, review and close go through the session proxy"
+    );
+    assert!(
+        s.contains("apiReadPath(`/threads/${tid}/review-status`)")
+            && s.contains("apiReadPath(`/threads/${id}`)")
+            && s.contains("apiReadPath(`/workspaces/${wid()}`)"),
+        "thread, review status and workspace reads go through the session proxy"
+    );
+    assert!(
+        s.contains("This needs a bearer token. A signed-in session cannot call it."),
+        "a bearer-only action tells a session so, instead of sending it to a raw error"
+    );
+    assert!(
+        !s.contains("a browser session cannot transition"),
+        "a session can start a review and close a task"
     );
 }

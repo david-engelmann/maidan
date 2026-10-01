@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A signed-in person can edit, upload, and decide
+
+- **Added:** an OIDC session can edit a message, upload a file, and paste one
+  through `/ui/api`. The session carries `thread:transition` and
+  `artifact:upload`, so that person can start a review and close a task from
+  the board. An approval may still be borrowed, and is never self-approved.
+  `apiReadPath()` sits beside `apiWritePath()`.
+- **Added:** `/ui/api` proxies for reading a thread, its review status, and a
+  workspace, and for editing a message, uploading an artifact, submitting a
+  review, and moving a thread.
+- **Changed:** a route that still takes only a bearer (purge, peers, mint,
+  revoke) answers a signed-in session with a sentence, not a raw error.
+
 ### Retention keeps a held workspace's deliveries, and drops read notifications
 
 - **Fixed:** the instance delivery sweep skipped legal holds for webhook

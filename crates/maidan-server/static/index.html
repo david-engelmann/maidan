@@ -1521,20 +1521,30 @@
           return null;
         }
       }
-      function requireTokenForWrite() {
-        if (!token()) {
-          showError("Bearer token required for writes (mint from session or Tokens tab).");
-          return false;
-        }
-        return true;
-      }
       function uiReadPath(suffix) {
         return `${base()}/ui/api${suffix}`;
       }
+      // A read the bearer API and the session proxy both serve. Token
+      // authority goes to the bearer route; a signed-in session goes through
+      // /ui/api. Same split as a write.
+      function apiReadPath(suffix) {
+        return token() ? `${base()}${suffix}` : uiReadPath(suffix);
+      }
       // Writes go straight to the bearer API when a token is set, else through
-      // the session-authed /ui/api proxy (same suffix). Mirrors the read path.
+      // the session-authed /ui/api proxy (same suffix).
       function apiWritePath(suffix) {
         return token() ? `${base()}${suffix}` : uiReadPath(suffix);
+      }
+      // Purge, peers, mint and revoke stay on the bearer tree. A session is
+      // told so in a sentence and is not sent there to read a raw error.
+      function requireBearer() {
+        if (token()) return true;
+        showError(
+          sessionMemberId
+            ? "This needs a bearer token. A signed-in session cannot call it."
+            : "Set a bearer token to do this."
+        );
+        return false;
       }
       // A write is allowed with either a bearer token or a signed-in session.
       function requireAuthForWrite() {
@@ -2416,17 +2426,19 @@
           renderNeedsYou();
         }, 380);
       }
-      // Reviews and closes are thread transitions, so they need a bearer token
-      // with thread:transition (a browser session cannot transition threads).
+      // Reviews and closes are thread transitions. An OIDC session carries
+      // thread:transition; a token uses its own grant. The store still refuses
+      // a self-approval, including one made with a borrowed token.
       async function submitReview(tid, decision, note) {
-        if (!token()) {
-          return { ok: false, why: "Approving needs a token with thread:transition. Set one with Change, or mint one in Tokens." };
+        if (!token() && !sessionMemberId) {
+          return { ok: false, why: "Sign in to approve." };
         }
         let res;
         try {
-          res = await fetch(`${base()}/threads/${tid}/reviews`, {
+          res = await fetch(apiWritePath(`/threads/${tid}/reviews`), {
             method: "POST",
             headers: headers(true),
+            credentials: "include",
             body: JSON.stringify(note ? { decision, note } : { decision }),
           });
         } catch (e) {
@@ -2437,7 +2449,10 @@
       }
       async function reviewStatus(tid) {
         try {
-          const res = await fetch(`${base()}/threads/${tid}/review-status`, { headers: headers() });
+          const res = await fetch(apiReadPath(`/threads/${tid}/review-status`), {
+            headers: headers(),
+            credentials: "include",
+          });
           return res.ok ? await res.json() : null;
         } catch (_e) {
           return null;
@@ -2446,9 +2461,10 @@
       async function closeThread(tid) {
         let res;
         try {
-          res = await fetch(`${base()}/threads/${tid}`, {
+          res = await fetch(apiWritePath(`/threads/${tid}`), {
             method: "POST",
             headers: headers(true),
+            credentials: "include",
             body: JSON.stringify({ action: "close" }),
           });
         } catch (e) {
@@ -2540,7 +2556,7 @@
       function renderThreadActions(th, rs) {
         const box = document.getElementById("thread-actions");
         box.replaceChildren();
-        if (th.state !== "in_review" || !token()) return;
+        if (th.state !== "in_review" || (!token() && !sessionMemberId)) return;
         const mine = needsYou.find((i) => i.kind === "review_request" && i.thread_id === th.id);
         if (mine) {
           const approve = document.createElement("button");
@@ -4352,7 +4368,7 @@
         const button = document.getElementById("cx-create-agent");
         const status = document.getElementById("cx-status");
         const secretBox = document.getElementById("cx-secret");
-        if (!requireTokenForWrite()) {
+        if (!requireBearer()) {
           status.textContent = "Sign in with an admin token first (maidan init prints one).";
           return;
         }
@@ -5186,7 +5202,7 @@
         if (currentTokenId) rotateToken(currentTokenId);
       };
       document.getElementById("rotate-token").onclick = () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireBearer()) return;
         const id = document.getElementById("token-revoke-id").value.trim();
         if (!id) return showError("Token ID required");
         rotateToken(id);
@@ -5409,14 +5425,15 @@
       document.getElementById("slash-register").onclick = registerSlashCommand;
       document.getElementById("slash-refresh").onclick = loadSlashCommands;
       document.getElementById("edit-message").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireAuthForWrite()) return;
         const id = document.getElementById("edit-message-id").value.trim();
         if (!id) return showError("Message ID required");
         const text = document.getElementById("edit-message-body").value.trim();
         persist();
-        const res = await fetch(`${base()}/messages/${id}`, {
+        const res = await fetch(apiWritePath(`/messages/${id}`), {
           method: "PATCH",
           headers: headers(true),
+          credentials: "include",
           body: JSON.stringify({ body: text }),
         });
         const body = await res.text();
@@ -5441,9 +5458,10 @@
         const params = new URLSearchParams({ kind });
         if (blob.type) params.set("mime_type", blob.type);
         if (blob.name) params.set("filename", blob.name);
-        const res = await fetch(`${base()}/artifacts?${params}`, {
+        const res = await fetch(apiWritePath(`/artifacts?${params}`), {
           method: "POST",
           headers: headers(),
+          credentials: "include",
           body: blob,
         });
         const body = await res.text();
@@ -5472,7 +5490,7 @@
         return pres.ok;
       }
       document.getElementById("upload-artifact").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireAuthForWrite()) return;
         const fileInput = document.getElementById("artifact-file");
         if (!fileInput.files || !fileInput.files[0]) return showError("Choose a file");
         const kind = document.getElementById("artifact-kind").value;
@@ -5490,7 +5508,7 @@
         const files = Array.from((event.clipboardData && event.clipboardData.files) || []);
         if (!files.length) return;
         event.preventDefault();
-        if (!requireTokenForWrite()) return;
+        if (!requireAuthForWrite()) return;
         if (!selectedThreadId) {
           setStatus("Select a thread before pasting a file", "err");
           return;
@@ -5505,7 +5523,10 @@
       document.getElementById("load-thread").onclick = async () => {
         persist();
         const id = document.getElementById("thread-id").value.trim();
-        const res = await fetch(`${base()}/threads/${id}`, { headers: headers() });
+        const res = await fetch(apiReadPath(`/threads/${id}`), {
+          headers: headers(),
+          credentials: "include",
+        });
         const body = await res.text();
         if (!res.ok) {
           setStatus(`HTTP ${res.status}`, "err");
@@ -5515,12 +5536,14 @@
         setOut(JSON.parse(body));
       };
       document.getElementById("transition-thread").onclick = async () => {
+        if (!requireAuthForWrite()) return;
         persist();
         const id = document.getElementById("thread-id").value.trim();
         const action = document.getElementById("fsm-action").value;
-        const res = await fetch(`${base()}/threads/${id}`, {
+        const res = await fetch(apiWritePath(`/threads/${id}`), {
           method: "POST",
           headers: headers(true),
+          credentials: "include",
           body: JSON.stringify({ action }),
         });
         const body = await res.text();
@@ -5583,7 +5606,7 @@
       };
 
       document.getElementById("purge-workspace").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireBearer()) return;
         const w = wid();
         if (!w) return showError("Workspace ID required");
         if (document.getElementById("purge-confirm").value.trim() !== w) {
@@ -5640,7 +5663,7 @@
 
       document.getElementById("refresh-peers").onclick = loadPeers;
       document.getElementById("create-peer").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireBearer()) return;
         if (!wid()) return showError("Workspace ID required");
         const name = document.getElementById("peer-name").value.trim();
         const baseUrl = document.getElementById("peer-base-url").value.trim();
@@ -5662,7 +5685,7 @@
         await loadPeers();
       };
       document.getElementById("delete-peer").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireBearer()) return;
         const pid = document.getElementById("peer-delete-id").value.trim();
         if (!pid || !wid()) return showError("Peer ID and workspace required");
         persist();
@@ -5681,7 +5704,7 @@
       };
 
       document.getElementById("mint-member-token").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireBearer()) return;
         persist();
         const mid = document.getElementById("token-member").value.trim();
         const label = document.getElementById("token-label").value.trim();
@@ -5774,7 +5797,7 @@
         });
       };
       document.getElementById("revoke-token").onclick = async () => {
-        if (!requireTokenForWrite()) return;
+        if (!requireBearer()) return;
         const id = document.getElementById("token-revoke-id").value.trim();
         if (!id) return showError("Token ID required");
         persist();
@@ -5868,9 +5891,12 @@
         who.replaceChildren(personEl(memberId, { tag: true }));
         const wsLabel = document.getElementById("identity-ws");
         wsLabel.textContent = `workspace ${wid().slice(0, 8)}…`;
-        if (token()) {
+        if (wid()) {
           try {
-            const res = await fetch(`${base()}/workspaces/${wid()}`, { headers: headers() });
+            const res = await fetch(apiReadPath(`/workspaces/${wid()}`), {
+              headers: headers(),
+              credentials: "include",
+            });
             if (res.ok) wsLabel.textContent = (await res.json()).name || wsLabel.textContent;
           } catch (_e) {
             /* the short id stays */

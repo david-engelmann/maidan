@@ -905,6 +905,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/ui/api/channels/{cid}/threads", get(routes::list_threads))
         .route("/ui/api/threads/{tid}/messages", get(routes::list_messages))
+        .route("/ui/api/threads/{tid}", get(routes::get_thread))
+        .route(
+            "/ui/api/threads/{tid}/review-status",
+            get(routes::get_review_status),
+        )
+        .route("/ui/api/workspaces/{wid}", get(routes::get_workspace))
         .route(
             "/ui/api/workspaces/{wid}/search",
             get(routes::search_messages),
@@ -1037,6 +1043,10 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_thread),
         )
         .route("/ui/api/threads/{tid}/messages", post(routes::post_message))
+        .route("/ui/api/threads/{tid}", post(routes::transition_thread))
+        .route("/ui/api/threads/{tid}/reviews", post(routes::submit_review))
+        .route("/ui/api/messages/{mid}", patch(routes::edit_message))
+        .route("/ui/api/artifacts", post(routes::upload_artifact))
         .route(
             "/ui/api/messages/{mid}/reactions",
             post(routes::add_reaction).merge(delete(routes::remove_reaction)),
