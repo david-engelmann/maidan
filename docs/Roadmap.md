@@ -44,8 +44,9 @@ flight and the ranked plan are the **Now** and **Next** sections of
 ## Horizons
 
 0. **Safe to deploy.** Before anyone runs Maidan: every deploy path runs the
-   newest release (today they run `v412.0.0`, before the week's cross-tenant
-   fixes), no chart renders a default credential or the `dev` image, and a
+   newest release (today they pin `v412.0.0` or older, or the `dev` image,
+   all from before the week's cross-tenant fixes), no chart renders a default
+   credential or the `dev` image, and a
    contract keeps the pins from drifting again. This is the **Before anyone
    deploys** section of Open Work, and it comes first.
 1. **Agents coordinate at workspace scale.** A verdict reaches the worker as an
@@ -62,7 +63,8 @@ flight and the ranked plan are the **Now** and **Next** sections of
    workspace's deliveries, read notifications that age out, and partitioning
    the append-only tables.
 3. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus
-   tests are mutation-checked (#1125), releases attest their SBOMs (#1119), and
+   tests are mutation-checked (#1125), the release workflow attests image SBOMs
+   from the next tag on (#1119), and
    every HTTP operation is classified as reading or changing state (#1121).
    The nightly store mutation job tests mutants (none had before #1155), and
    `cargo vet` covers the root lockfile (#1155). In flight: nightly jobs that
