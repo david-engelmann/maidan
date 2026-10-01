@@ -210,6 +210,15 @@ async fn rotation_replaces_the_secret_and_keeps_the_authority() {
         json!([capability::WORKSPACE_READ, capability::MESSAGE_POST])
     );
     assert_eq!(
+        rotated["quotas"],
+        json!([{
+            "capability": capability::MESSAGE_POST,
+            "max_per_window": 5,
+            "window_secs": 60
+        }]),
+        "the response carries the quotas read before the secret changed"
+    );
+    assert_eq!(
         h.store.list_token_quotas(successor).await.unwrap(),
         vec![quota],
         "a rotation cannot shed a quota"
