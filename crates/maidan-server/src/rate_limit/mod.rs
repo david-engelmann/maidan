@@ -10,7 +10,7 @@ use std::{
 use axum::{
     body::Body,
     extract::{ConnectInfo, State},
-    http::{header, Request, StatusCode},
+    http::{header, Method, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
@@ -163,18 +163,28 @@ fn forwarded_client_ip(header: &str, peer: IpAddr, trusted_hops: usize) -> Optio
         .and_then(|index| chain.get(index).copied())
 }
 
-fn client_key(req: &Request<Body>) -> String {
-    if let Some(h) = req.headers().get(header::AUTHORIZATION) {
-        if let Ok(s) = h.to_str() {
-            if let Some(token) = s
-                .strip_prefix("Bearer ")
-                .or_else(|| s.strip_prefix("bearer "))
-            {
-                let n = token.len().min(40);
-                return format!("bearer:{}", &token[..n]);
-            }
-        }
-    }
+fn raw_bearer(req: &Request<Body>) -> Option<&str> {
+    let header_value = req.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
+    header_value
+        .strip_prefix("Bearer ")
+        .or_else(|| header_value.strip_prefix("bearer "))
+}
+
+/// `Bearer` as [`crate::auth::parse_bearer`] accepts it. The outer limiter
+/// defers only a bearer that middleware will actually resolve; a lowercase
+/// scheme is not one of those.
+fn presented_bearer(req: &Request<Body>) -> Option<&str> {
+    let header_value = req.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
+    let token = header_value.strip_prefix("Bearer ")?.trim();
+    (!token.is_empty()).then_some(token)
+}
+
+fn bearer_client_key(token: &str) -> String {
+    let n = token.len().min(40);
+    format!("bearer:{}", &token[..n])
+}
+
+fn ip_client_key(req: &Request<Body>) -> String {
     let peer = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
@@ -191,31 +201,191 @@ fn client_key(req: &Request<Body>) -> String {
     "anonymous".into()
 }
 
+fn client_key(req: &Request<Body>) -> String {
+    if let Some(token) = raw_bearer(req) {
+        return bearer_client_key(token);
+    }
+    ip_client_key(req)
+}
+
+fn at_or_under(path: &str, root: &str) -> bool {
+    path == root || path.starts_with(&format!("{root}/"))
+}
+
+/// `POST /workspaces/{wid}/members` is the ungated bootstrap seed, not the
+/// bearer-auth router. Charging it as a verified bearer would skip the limit
+/// whenever bootstrap is what answers.
+fn bootstrap_member_create(path: &str) -> bool {
+    let mut parts = path.split('/');
+    parts.next() == Some("")
+        && parts.next() == Some("workspaces")
+        && parts.next().is_some_and(|segment| !segment.is_empty())
+        && parts.next() == Some("members")
+        && parts.next().is_none()
+}
+
+/// Routes whose bearer is resolved by `auth::middleware`, the UI session
+/// middleware, or peer ingest. Anywhere else a bearer is not a credential
+/// this limiter has verified, so it does not name a bucket.
+fn bearer_resolved_later(method: &Method, path: &str) -> bool {
+    if method == Method::POST && bootstrap_member_create(path) {
+        return false;
+    }
+    const ROOTS: &[&str] = &[
+        "/mcp",
+        "/agui",
+        "/members",
+        "/threads",
+        "/dm",
+        "/group-dms",
+        "/channels",
+        "/messages",
+        "/artifacts",
+        "/tokens",
+        "/operator",
+        "/scim",
+        "/approval-gates",
+        "/task-schedules",
+        "/me",
+        "/references",
+        "/capability-sets",
+    ];
+    if ROOTS.iter().any(|root| at_or_under(path, root)) {
+        return true;
+    }
+    // The collection itself is the bootstrap create, which does not resolve
+    // a bearer. Nested workspace routes do.
+    if path.starts_with("/workspaces/") {
+        return true;
+    }
+    path.starts_with("/a2a/v1/rpc")
+        || path.starts_with("/a2a/v1/message")
+        || path.starts_with("/a2a/v1/tasks")
+        || path == "/a2a/v1/extendedAgentCard"
+        || path == "/a2a/v1/events"
+        || path.starts_with("/ui/api/")
+        || path.starts_with("/auth/session/")
+}
+
+fn defer_global_bearer(state: &crate::state::AppState, req: &Request<Body>) -> bool {
+    !state.auth_disabled
+        && presented_bearer(req).is_some()
+        && bearer_resolved_later(req.method(), req.uri().path())
+}
+
+/// A caller authenticated into the workspace named by the path. A bypass
+/// caller is authenticated into every workspace, matching `ensure_workspace`.
+/// Anyone else must present that workspace's own credential: knowing the id
+/// is not enough, and neither is a token for a different workspace.
+pub(crate) fn authenticated_into_path(
+    bypass: bool,
+    workspace_id: &maidan_types::WorkspaceId,
+    path: &str,
+) -> bool {
+    let Some(wid) = workspace_id_from_path(path) else {
+        return false;
+    };
+    bypass || workspace_id.to_string() == wid
+}
+
+async fn enforce_global(
+    state: &crate::state::AppState,
+    client: &str,
+    is_mcp: bool,
+) -> Result<(), Response> {
+    let Some(cfg) = resolve_global(state.rate_limit_default_on) else {
+        return Ok(());
+    };
+    let key = format!("global:{client}");
+    if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
+        Ok(())
+    } else {
+        Err(too_many(cfg.window, cfg.max, is_mcp))
+    }
+}
+
+/// The per-client bucket for a bearer that resolved. An invented bearer must
+/// not reach this: it would open a fresh bucket per secret.
+pub(crate) async fn enforce_verified_bearer(
+    state: &crate::state::AppState,
+    secret: &str,
+    is_mcp: bool,
+) -> Result<(), Response> {
+    enforce_global(state, &bearer_client_key(secret), is_mcp).await
+}
+
+/// The per-client bucket for a bearer that did not resolve, shared with
+/// clients that presented no bearer: the socket IP (or the forwarded client
+/// when proxy hops are declared).
+/// Owned client-IP key, taken before an `.await` so the request itself is
+/// not borrowed across one (that future would not be `Send`).
+pub(crate) fn client_ip_key(req: &Request<Body>) -> String {
+    ip_client_key(req)
+}
+
+pub(crate) async fn enforce_client_key(
+    state: &crate::state::AppState,
+    client: &str,
+    is_mcp: bool,
+) -> Result<(), Response> {
+    enforce_global(state, client, is_mcp).await
+}
+
+/// Charge `ws:{wid}` only when this caller is authenticated into that
+/// workspace. A miss spends nothing of the target's budget.
+pub(crate) async fn enforce_workspace(
+    state: &crate::state::AppState,
+    path: &str,
+    bypass: bool,
+    workspace_id: &maidan_types::WorkspaceId,
+) -> Result<(), Response> {
+    if !authenticated_into_path(bypass, workspace_id, path) {
+        return Ok(());
+    }
+    let Some(cfg) = resolve_workspace(state.rate_limit_default_on) else {
+        return Ok(());
+    };
+    let Some(wid) = workspace_id_from_path(path) else {
+        return Ok(());
+    };
+    let key = format!("ws:{wid}");
+    if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
+        Ok(())
+    } else {
+        Err(too_many(cfg.window, cfg.max, is_mcp_jsonrpc_path(path)))
+    }
+}
+
 pub async fn middleware(
     State(state): State<crate::state::AppState>,
     req: Request<Body>,
     next: Next,
 ) -> Response {
     let global = resolve_global(state.rate_limit_default_on);
-    let workspace = resolve_workspace(state.rate_limit_default_on);
-    if (global.is_none() && workspace.is_none()) || exempt_path(req.uri().path()) {
+    let workspace_on = resolve_workspace(state.rate_limit_default_on).is_some();
+    if (global.is_none() && !workspace_on) || exempt_path(req.uri().path()) {
         return next.run(req).await;
     }
-    let redis = state.rate_limit_redis.as_ref();
+    let redis = state.rate_limit_redis.clone();
     let is_mcp = is_mcp_jsonrpc_path(req.uri().path());
 
-    // Global per-client (bearer/IP) limit.
+    // The workspace budget is not taken here. It is taken after authentication,
+    // and only for a caller authenticated into that workspace
+    // (`enforce_workspace`). Taking it from the path alone let any client who
+    // knew the id spend it.
     if let Some(cfg) = global {
-        let key = format!("global:{}", client_key(&req));
-        if !try_acquire(&key, cfg.into(), redis).await {
-            return too_many(cfg.window, cfg.max, is_mcp);
-        }
-    }
-    // Per-workspace fairness on workspace-scoped routes.
-    if let Some(cfg) = workspace {
-        if let Some(wid) = workspace_id_from_path(req.uri().path()) {
-            let key = format!("ws:{wid}");
-            if !try_acquire(&key, cfg.into(), redis).await {
+        // A bearer on a route that will resolve it is counted there: the
+        // verified secret keeps its own bucket, and a secret that does not
+        // resolve shares the client IP. Counting the raw secret here gave
+        // every invented bearer a fresh bucket.
+        if !defer_global_bearer(&state, &req) {
+            let client = if state.auth_disabled {
+                client_key(&req)
+            } else {
+                ip_client_key(&req)
+            };
+            let key = format!("global:{client}");
+            if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
                 return too_many(cfg.window, cfg.max, is_mcp);
             }
         }
@@ -364,5 +534,48 @@ mod tests {
             DEFAULT_WORKSPACE_MAX,
             DEFAULT_WORKSPACE_WINDOW_SECS,
         );
+    }
+
+    #[test]
+    fn workspace_budget_requires_that_workspaces_credential() {
+        let own = maidan_types::WorkspaceId::new();
+        let other = maidan_types::WorkspaceId::new();
+        let path = format!("/workspaces/{own}/search");
+        assert!(authenticated_into_path(false, &own, &path));
+        assert!(!authenticated_into_path(false, &other, &path));
+        assert!(authenticated_into_path(true, &other, &path));
+        assert!(!authenticated_into_path(false, &own, "/workspaces"));
+        assert!(!authenticated_into_path(true, &own, "/channels/x"));
+    }
+
+    #[test]
+    fn invented_bearer_is_not_deferred_off_the_auth_routers() {
+        assert!(bearer_resolved_later(
+            &Method::GET,
+            "/workspaces/abc/search"
+        ));
+        assert!(bearer_resolved_later(&Method::POST, "/mcp"));
+        assert!(bearer_resolved_later(
+            &Method::GET,
+            "/ui/api/workspaces/abc/channels"
+        ));
+        assert!(bearer_resolved_later(&Method::POST, "/a2a/v1/events"));
+        assert!(bearer_resolved_later(
+            &Method::POST,
+            "/auth/session/from-token"
+        ));
+        assert!(!bearer_resolved_later(&Method::POST, "/workspaces"));
+        assert!(!bearer_resolved_later(
+            &Method::POST,
+            "/workspaces/abc/members"
+        ));
+        assert!(bearer_resolved_later(
+            &Method::GET,
+            "/workspaces/abc/members"
+        ));
+        assert!(!bearer_resolved_later(&Method::GET, "/openapi.json"));
+        assert!(!bearer_resolved_later(&Method::GET, "/health/ready"));
+        assert!(!bearer_resolved_later(&Method::GET, "/ui"));
+        assert!(!bearer_resolved_later(&Method::GET, "/no-such"));
     }
 }

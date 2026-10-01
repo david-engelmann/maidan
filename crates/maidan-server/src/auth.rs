@@ -145,6 +145,15 @@ pub const READ_ONLY_OPERATIONS: &[&str] = &[
 pub async fn middleware(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
     if state.auth_disabled {
         let auth = auth_disabled_context(&state, req.headers()).await;
+        // Bypass is authenticated into every workspace, so the path's budget
+        // is the one this request spends. The outer limiter already counted
+        // the client; it does not know the workspace yet.
+        let path = req.uri().path().to_owned();
+        if let Err(response) =
+            crate::rate_limit::enforce_workspace(&state, &path, true, &auth.workspace_id).await
+        {
+            return response;
+        }
         req.extensions_mut().insert(auth);
         return run_as(&state, req, next).await;
     }
@@ -153,39 +162,73 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(parse_bearer);
+        .and_then(parse_bearer)
+        .map(str::to_owned);
+    let path = req.uri().path().to_owned();
+    let is_mcp = crate::rate_limit::is_mcp_jsonrpc_path(&path);
+    // Taken now: an `.await` must not borrow `req`, or this middleware's
+    // future is not `Send`.
+    let ip_key = crate::rate_limit::client_ip_key(&req);
 
     let Some(secret) = bearer else {
         // A page that exchanged its token for a session sends no bearer.
+        // Its client IP was already counted by the outer limiter.
         let session = token_session(&state, req.uri().path(), req.method(), req.headers()).await;
-        return match session {
-            Ok((session, ctx)) => {
-                req.extensions_mut().insert(session);
-                run_authorized(&state, req, next, ctx).await
-            }
+        let (session, ctx) = match session {
+            Ok(pair) => pair,
             Err(err) => {
                 if matches!(err, ApiError::Unauthorized) {
                     record_authentication_denial(req.uri().path());
                 }
-                err.into_response()
+                return err.into_response();
             }
         };
+        if let Err(response) =
+            crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id).await
+        {
+            return response;
+        }
+        req.extensions_mut().insert(session);
+        return run_authorized(&state, req, next, ctx).await;
     };
 
-    match resolve_bearer(state.store.as_ref(), secret).await {
-        Ok(ctx) => run_authorized(&state, req, next, ctx).await,
-        Err(_) => match resolve_peer_bearer(state.store.as_ref(), secret).await {
-            Ok(peer) => {
-                let workspace_id = peer.workspace_id;
-                req.extensions_mut().insert(PeerContext(peer));
-                tag_room(run_as(&state, req, next).await, workspace_id)
-            }
-            Err(_) => {
-                record_authentication_denial(req.uri().path());
-                ApiError::Unauthorized.into_response()
-            }
-        },
+    if let Ok(ctx) = resolve_bearer(state.store.as_ref(), &secret).await {
+        if let Err(response) =
+            crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
+        {
+            return response;
+        }
+        if let Err(response) =
+            crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id).await
+        {
+            return response;
+        }
+        return run_authorized(&state, req, next, ctx).await;
     }
+
+    if let Ok(peer) = resolve_peer_bearer(state.store.as_ref(), &secret).await {
+        if let Err(response) =
+            crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
+        {
+            return response;
+        }
+        let workspace_id = peer.workspace_id;
+        if let Err(response) =
+            crate::rate_limit::enforce_workspace(&state, &path, false, &workspace_id).await
+        {
+            return response;
+        }
+        req.extensions_mut().insert(PeerContext(peer));
+        return tag_room(run_as(&state, req, next).await, workspace_id);
+    }
+
+    record_authentication_denial(&path);
+    // Invented bearers share the client IP. Counting each secret opened a
+    // new global bucket, so the limit never applied.
+    if let Err(response) = crate::rate_limit::enforce_client_key(&state, &ip_key, is_mcp).await {
+        return response;
+    }
+    ApiError::Unauthorized.into_response()
 }
 
 /// Run a request on the bearer tree as `ctx`, recording a delegated caller's
@@ -328,12 +371,23 @@ async fn session_or_bearer(
         return run_as(state, req, next).await;
     }
 
-    if let Some(secret) = bearer_from_headers(req.headers()) {
-        if let Ok(ctx) = resolve_bearer(state.store.as_ref(), secret).await {
+    if let Some(secret) = bearer_from_headers(req.headers()).map(str::to_owned) {
+        let ip_key = crate::rate_limit::client_ip_key(&req);
+        if let Ok(ctx) = resolve_bearer(state.store.as_ref(), &secret).await {
+            // The outer limiter left this bearer uncounted so a secret that
+            // does not resolve cannot open its own bucket. This one did.
+            if let Err(response) =
+                crate::rate_limit::enforce_verified_bearer(state, &secret, false).await
+            {
+                return response;
+            }
             // The bearer tree records a delegated 401/403/404. These UI groups
             // are mounted beside it, so a denied token here has to go through
             // the same path or the `authorization.decision` row is never written.
             return run_authorized(state, req, next, ctx).await;
+        }
+        if let Err(response) = crate::rate_limit::enforce_client_key(state, &ip_key, false).await {
+            return response;
         }
     }
 

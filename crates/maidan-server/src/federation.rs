@@ -945,16 +945,34 @@ pub async fn peer_auth_middleware(
     mut req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    let Some(secret) = crate::auth::bearer_from_headers(req.headers()) else {
+    let Some(secret) = crate::auth::bearer_from_headers(req.headers()).map(str::to_owned) else {
         return ApiError::Unauthorized.into_response();
     };
-    match resolve_peer_bearer(state.store.as_ref(), secret).await {
-        Ok(peer) => {
-            req.extensions_mut().insert(PeerContext(peer));
-            next.run(req).await
+    let ip_key = crate::rate_limit::client_ip_key(&req);
+    let Some(peer) = resolve_peer_bearer(state.store.as_ref(), &secret)
+        .await
+        .ok()
+    else {
+        if !state.auth_disabled {
+            if let Err(response) =
+                crate::rate_limit::enforce_client_key(&state, &ip_key, false).await
+            {
+                return response;
+            }
         }
-        Err(_) => ApiError::Unauthorized.into_response(),
+        return ApiError::Unauthorized.into_response();
+    };
+    // Auth is on, so the outer limiter did not count this bearer. A peer
+    // credential that resolved keeps its own bucket.
+    if !state.auth_disabled {
+        if let Err(response) =
+            crate::rate_limit::enforce_verified_bearer(&state, &secret, false).await
+        {
+            return response;
+        }
     }
+    req.extensions_mut().insert(PeerContext(peer));
+    next.run(req).await
 }
 
 #[cfg(test)]

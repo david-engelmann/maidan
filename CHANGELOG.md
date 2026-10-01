@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A workspace rate limit is spent only by that workspace
+
+- **Fixed:** the per-workspace rate limit was taken from the `/workspaces/{id}`
+  path before authentication, so any client who knew the id could spend that
+  workspace's budget. It is charged only for a request authenticated into that
+  workspace (a bypass caller still is; a token for another workspace is not).
+  An unverified bearer shares the client-IP bucket instead of opening one per
+  invented secret.
+
 ### A claim's worked time is charged however it ends
 
 - **Changed:** `max_wall_secs` counts every second an agent worked a thread,
