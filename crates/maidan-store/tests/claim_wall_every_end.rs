@@ -290,15 +290,12 @@ async fn every_ending_charges_the_time_the_claim_worked(store: &dyn Store) {
     // Other threads in this channel are free and under no cap. The stopped
     // one is over its token budget, so it is skipped until the cap is raised.
     let mut handed = Vec::new();
-    loop {
-        match store
-            .claim_next_thread(r.channel, r.other, Some(60))
-            .await
-            .unwrap()
-        {
-            Some(t) => handed.push(t.id),
-            None => break,
-        }
+    while let Some(t) = store
+        .claim_next_thread(r.channel, r.other, Some(60))
+        .await
+        .unwrap()
+    {
+        handed.push(t.id);
     }
     assert!(
         !handed.contains(&stop_id),
