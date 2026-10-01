@@ -28,6 +28,26 @@ set -euo pipefail
 
 : "${DATABASE_URL:?set DATABASE_URL to the database URL (postgres:// or sqlite:)}"
 
+# SQLx percent-decodes the path in a sqlite: URL (so a file name can hold `?`
+# or `#`), and so must this, or the backup reads a file the server never
+# opens. An escape that is not two hex digits stays as written, as in SQLx.
+# restore.sh has the same function.
+percent_decode() {
+  local rest="$1" out="" byte
+  while [[ "$rest" == *%* ]]; do
+    out+="${rest%%\%*}"
+    rest="${rest#*%}"
+    if [[ "${rest:0:2}" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+      printf -v byte '%b' "\\x${rest:0:2}"
+      out+="$byte"
+      rest="${rest:2}"
+    else
+      out+="%"
+    fi
+  done
+  printf '%s' "$out$rest"
+}
+
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
 out="${1:-${BACKUP_DIR:-backups/$ts}}"
 mkdir -p "$out"
@@ -40,6 +60,7 @@ case "$DATABASE_URL" in
     db="${db#//}"
     db="${db%%\?*}"
     [[ "$db" != ":memory:" && -n "$db" ]] || { echo "backup: $DATABASE_URL is not a file; nothing to back up" >&2; exit 1; }
+    db="$(percent_decode "$db")"
     [[ -f "$db" ]] || { echo "backup: SQLite database $db not found" >&2; exit 1; }
     command -v sqlite3 >/dev/null || { echo "backup: the sqlite3 CLI is required for a SQLite backup" >&2; exit 1; }
     [[ ! -e "$out/maidan.sqlite" ]] || { echo "backup: $out/maidan.sqlite already exists" >&2; exit 1; }

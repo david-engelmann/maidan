@@ -9,7 +9,11 @@
 #
 # SQLite: stop the server first. The snapshot replaces the database file, and
 # the old -wal and -shm files are removed with it: left behind, SQLite would
-# replay the old database's uncheckpointed pages onto the restored one.
+# replay the old database's uncheckpointed pages onto the restored one. With
+# --force the target is not opened at all, so a corrupt file can be replaced.
+# The restored file keeps the owner and mode of the one it replaces; a new
+# target belongs to whoever runs this, so run it as the server's user (or
+# chown the file after).
 #
 # Usage:
 #   DATABASE_URL=postgres://…  scripts/restore.sh backups/<timestamp> [--force]
@@ -23,6 +27,26 @@ set -euo pipefail
 src="${1:?usage: restore.sh <backup-dir> [--force]}"
 force="${2:-}"
 
+# SQLx percent-decodes the path in a sqlite: URL (so a file name can hold `?`
+# or `#`), and so must this, or the restore lands beside the file the server
+# opens. An escape that is not two hex digits stays as written, as in SQLx.
+# backup.sh has the same function.
+percent_decode() {
+  local rest="$1" out="" byte
+  while [[ "$rest" == *%* ]]; do
+    out+="${rest%%\%*}"
+    rest="${rest#*%}"
+    if [[ "${rest:0:2}" =~ ^[0-9A-Fa-f]{2}$ ]]; then
+      printf -v byte '%b' "\\x${rest:0:2}"
+      out+="$byte"
+      rest="${rest:2}"
+    else
+      out+="%"
+    fi
+  done
+  printf '%s' "$out$rest"
+}
+
 case "$DATABASE_URL" in
   sqlite:*)
     [[ -f "$src/maidan.sqlite" ]] || { echo "restore: $src/maidan.sqlite not found (is this a Postgres backup?)" >&2; exit 1; }
@@ -30,20 +54,33 @@ case "$DATABASE_URL" in
     db="${db#//}"
     db="${db%%\?*}"
     [[ "$db" != ":memory:" && -n "$db" ]] || { echo "restore: $DATABASE_URL is not a file" >&2; exit 1; }
+    db="$(percent_decode "$db")"
     command -v sqlite3 >/dev/null || { echo "restore: the sqlite3 CLI is required for a SQLite restore" >&2; exit 1; }
     [[ "$(sqlite3 "$src/maidan.sqlite" "PRAGMA integrity_check")" == "ok" ]] \
       || { echo "restore: $src/maidan.sqlite failed its integrity check" >&2; exit 1; }
-    tables=0
-    if [[ -f "$db" ]]; then
-      tables="$(sqlite3 "$db" "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'")"
+    if [[ "$force" != "--force" && -f "$db" ]]; then
+      tables="$(sqlite3 "$db" "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'" 2>/dev/null)" \
+        || { echo "restore: $db is not a readable SQLite database. Stop the server, then re-run with --force to replace it." >&2; exit 1; }
+      if [[ "$tables" -gt 0 ]]; then
+        echo "restore: target database is not empty ($tables tables). Stop the server, then re-run with --force to overwrite." >&2
+        exit 1
+      fi
     fi
-    if [[ "${tables:-0}" -gt 0 && "$force" != "--force" ]]; then
-      echo "restore: target database is not empty ($tables tables). Stop the server, then re-run with --force to overwrite." >&2
-      exit 1
+    # A copy made as root would leave a root-owned file the server cannot
+    # write. GNU stat takes -c, BSD stat -f.
+    owner_mode=""
+    if [[ -e "$db" ]]; then
+      owner_mode="$(stat -c '%u:%g %a' "$db" 2>/dev/null || stat -f '%u:%g %Lp' "$db")"
     fi
     echo "restore: replacing $db with $src/maidan.sqlite"
     mkdir -p "$(dirname "$db")"
     cp "$src/maidan.sqlite" "$db.restoring"
+    if [[ -n "$owner_mode" ]] \
+      && ! { chown "${owner_mode% *}" "$db.restoring" && chmod "${owner_mode#* }" "$db.restoring"; }; then
+      rm -f "$db.restoring"
+      echo "restore: cannot give the restored file the owner and mode of $db ($owner_mode); run as root or as its owner" >&2
+      exit 1
+    fi
     rm -f "$db-wal" "$db-shm"
     mv -f "$db.restoring" "$db"
     ;;

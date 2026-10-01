@@ -243,11 +243,14 @@ Tagging is the maintainer's call, not part of closing a cluster. To cut
      `maidan-cli` and `maidan-postgres`;
    - a blocking trivy scan of each image, then `cosign sign` of each image
      digest and `cosign attest` of that image's CycloneDX SBOM to the same
-     digest (`generate image SBOMs`: cargo-cyclonedx for the server and CLI,
-     trivy for Postgres);
+     digest (`generate image SBOMs`: cargo-cyclonedx for the server and CLI;
+     trivy for Postgres, one SBOM per platform, each attested to that
+     platform's manifest digest);
    - `published server + CLI boot smoke` against the published images;
-   - the GitHub Release, with the three `<image>.cdx.json` SBOMs and a
-     `.cosign.bundle` beside every artifact.
+   - the GitHub Release, with the four SBOMs (`maidan-server.cdx.json`,
+     `maidan-cli.cdx.json`, `maidan-postgres.linux-amd64.cdx.json`,
+     `maidan-postgres.linux-arm64.cdx.json`) and a `.cosign.bundle` beside
+     every artifact.
 4. Verify the release, and see "Debugging the release workflow" below if a job
    fails. Anyone can verify signatures:
 

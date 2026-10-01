@@ -11,6 +11,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# No job here writes to the repository, so the token is read-only whatever the
+# repository's default is.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -614,12 +619,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Open Work against history
         run: bash scripts/check-open-work.sh
 
   changelog-released:
-    # A released CHANGELOG section gains no entries after its tag; new work
-    # goes under [Unreleased]. Not required.
+    # The newest tagged CHANGELOG section gains no entries after its tag; new
+    # work goes under [Unreleased]. Not required.
     name: changelog (released sections)
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -627,6 +633,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Released sections match their tags
         run: bash scripts/check-changelog-released.sh
 
@@ -646,9 +653,9 @@ jobs:
 
   sqlite-backup-drill:
     # The SQLite half of backup and restore: a VACUUM INTO snapshot taken while
-    # a writer runs, restored over a killed server's database and an orphaned
-    # -wal. Evidence for the SQLite procedure in docs/Production.md. Not
-    # required.
+    # a writer runs, restored over a killed server's database, an orphaned -wal
+    # and a file that is not a database, and to a percent-encoded path.
+    # Evidence for the SQLite procedure in docs/Production.md. Not required.
     name: sqlite backup drill
     needs: changes
     if: needs.changes.outputs.code == 'true'

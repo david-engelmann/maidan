@@ -444,6 +444,9 @@ jobs:
     permissions:
       contents: read
       packages: read
+    outputs:
+      postgres_amd64: ${{ steps.postgres.outputs.amd64 }}
+      postgres_arm64: ${{ steps.postgres.outputs.arm64 }}
     # One CycloneDX SBOM per published image. `sign-images` attests each to its
     # image digest, and `release` publishes and blob-signs them. A missing SBOM
     # fails the release: the step this replaces was `continue-on-error`, looked
@@ -482,7 +485,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: resolve postgres digest
+      - name: resolve postgres platform digests
+        # The index's linux/amd64 and linux/arm64 manifests; the attestation
+        # manifests buildx adds are platform unknown/unknown and drop out.
         id: postgres
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
@@ -490,21 +495,33 @@ jobs:
             TAG="${{ inputs.tag }}"
           fi
           IMAGE="ghcr.io/${{ github.repository_owner }}/maidan-postgres"
-          DIGEST="$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{.Manifest.Digest}}')"
-          echo "ref=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
-      - name: SBOM of the postgres image
-        # No Rust in this image, so cargo-cyclonedx has nothing to describe;
-        # trivy lists its OS packages and binaries (linux/amd64, the runner's
-        # platform) from the pushed image itself.
+          RAW="$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --raw)"
+          for arch in amd64 arm64; do
+            DIGEST="$(jq -r --arg arch "$arch" '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch) | .digest] | if length == 1 then .[0] else error("expected one linux/\($arch) manifest in the index, found \(length)") end' <<<"$RAW")"
+            echo "${arch}=${DIGEST}" >> "$GITHUB_OUTPUT"
+            echo "${arch}_ref=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          done
+      # No Rust in this image, so cargo-cyclonedx has nothing to describe; trivy
+      # lists its OS packages and binaries from the pushed image. Its packages
+      # differ by architecture, so each platform's manifest gets its own SBOM:
+      # one scan of the index reads only the runner's platform.
+      - name: SBOM of the postgres image (linux/amd64)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
-          image-ref: ${{ steps.postgres.outputs.ref }}
+          image-ref: ${{ steps.postgres.outputs.amd64_ref }}
           format: cyclonedx
-          output: sbom/maidan-postgres.cdx.json
+          output: sbom/maidan-postgres.linux-amd64.cdx.json
+      - name: SBOM of the postgres image (linux/arm64)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ steps.postgres.outputs.arm64_ref }}
+          format: cyclonedx
+          output: sbom/maidan-postgres.linux-arm64.cdx.json
       - name: check every SBOM is CycloneDX
         run: |
-          for name in maidan-server maidan-cli maidan-postgres; do
+          for name in maidan-server maidan-cli maidan-postgres.linux-amd64 maidan-postgres.linux-arm64; do
             jq -e '.bomFormat == "CycloneDX" and (.components | length) > 0' "sbom/${name}.cdx.json" >/dev/null
           done
           ls -la sbom
@@ -554,7 +571,10 @@ jobs:
         # Resolve each tag to its immutable index digest and sign THAT, so the
         # signature can't be dodged by a later tag re-point. The SBOM is
         # attested to the same digest under the same identity; `--replace`
-        # keeps a re-run from stacking a second SBOM on the digest. Verify:
+        # keeps a re-run from stacking a second SBOM on the digest. The server
+        # and CLI SBOMs cover both platforms (see `sbom`), so each is attested
+        # to the index; the postgres SBOMs are one per platform, so each is
+        # attested to its platform's manifest digest instead. Verify:
         #   cosign verify ghcr.io/david-engelmann/maidan-server:<tag> \
         #     --certificate-identity-regexp \
         #     '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
@@ -562,6 +582,8 @@ jobs:
         #   cosign verify-attestation --type cyclonedx <same image and flags>
         env:
           COSIGN_YES: "true"
+          POSTGRES_AMD64: ${{ needs.sbom.outputs.postgres_amd64 }}
+          POSTGRES_ARM64: ${{ needs.sbom.outputs.postgres_arm64 }}
         run: |
           OWNER="${{ github.repository_owner }}"
           TAG="${{ steps.tag.outputs.tag }}"
@@ -570,10 +592,20 @@ jobs:
             DIGEST="$(docker buildx imagetools inspect "${IMAGE}:${TAG}" --format '{{.Manifest.Digest}}')"
             echo "signing ${IMAGE}@${DIGEST}"
             cosign sign --yes "${IMAGE}@${DIGEST}"
-            echo "attesting sbom/${name}.cdx.json to ${IMAGE}@${DIGEST}"
-            cosign attest --yes --replace --type cyclonedx \
-              --predicate "sbom/${name}.cdx.json" "${IMAGE}@${DIGEST}"
+            if [ "$name" != maidan-postgres ]; then
+              echo "attesting sbom/${name}.cdx.json to ${IMAGE}@${DIGEST}"
+              cosign attest --yes --replace --type cyclonedx \
+                --predicate "sbom/${name}.cdx.json" "${IMAGE}@${DIGEST}"
+            fi
           done
+          attest_postgres() { # $1 = platform, $2 = its manifest digest
+            [ -n "$2" ] || { echo "the sbom job resolved no $1 digest" >&2; exit 1; }
+            echo "attesting sbom/maidan-postgres.$1.cdx.json to ghcr.io/${OWNER}/maidan-postgres@$2"
+            cosign attest --yes --replace --type cyclonedx \
+              --predicate "sbom/maidan-postgres.$1.cdx.json" "ghcr.io/${OWNER}/maidan-postgres@$2"
+          }
+          attest_postgres linux-amd64 "$POSTGRES_AMD64"
+          attest_postgres linux-arm64 "$POSTGRES_ARM64"
 
   published-image-smoke:
     name: published server + CLI boot smoke

@@ -80,10 +80,11 @@ cosign verify-blob \
 ```
 
 **SBOMs.** Each image's CycloneDX SBOM is attested to the image digest by the same
-workflow identity, so it is bound to the image you pull:
+workflow identity, so it is bound to the image you pull. The server and CLI SBOMs are
+attested to the multi-arch index, so the tag finds them:
 
 ```sh
-for image in maidan-server maidan-cli maidan-postgres; do
+for image in maidan-server maidan-cli; do
   cosign verify-attestation --type cyclonedx "ghcr.io/david-engelmann/${image}:<tag>" \
     --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
@@ -91,11 +92,27 @@ for image in maidan-server maidan-cli maidan-postgres; do
 done
 ```
 
-The server and CLI SBOMs come from cargo-cyclonedx and list the Rust dependencies of the
-binary (a superset: it unifies features across the workspace); the Postgres SBOM comes
-from trivy and lists the image's packages. The same files are on the release page as
-`<image>.cdx.json`, each with a `.cosign.bundle` that `verify-blob` checks as above. Tags
-up to and including v412.0.0 have neither: their SBOM step never produced a file.
+The Postgres image's packages differ by architecture, so it has one SBOM per platform,
+each attested to that platform's manifest. Verify the one you run:
+
+```sh
+image=ghcr.io/david-engelmann/maidan-postgres
+digest="$(docker buildx imagetools inspect "${image}:<tag>" --raw \
+  | jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64") | .digest')"
+cosign verify-attestation --type cyclonedx "${image}@${digest}" \
+  --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  | jq -r '.payload' | base64 -d | jq '.predicate'
+```
+
+(`amd64` for an x86_64 host.) The server and CLI SBOMs come from cargo-cyclonedx and list
+the Rust dependencies of the binary (a superset: it unifies features across the workspace,
+and its x86_64 list covers the arm64 build too); the Postgres SBOMs come from trivy and
+list that platform's packages.
+The same files are on the release page as `maidan-server.cdx.json`, `maidan-cli.cdx.json`,
+`maidan-postgres.linux-amd64.cdx.json` and `maidan-postgres.linux-arm64.cdx.json`, each
+with a `.cosign.bundle` that `verify-blob` checks as above. Tags up to and including
+v412.0.0 have neither: their SBOM step never produced a file.
 
 A verification failure means the artifact was not produced by this repo's release
 pipeline — do not run it.

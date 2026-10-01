@@ -942,13 +942,19 @@ of the file, and deletes the old `-wal` and `-shm`. Deleting them is not
 housekeeping: a `-wal` left from a server that was killed (or beside a file
 someone removed) is replayed over whatever file has that name the next time it
 is opened, and the restored database comes back as the old one, or corrupt.
-Without `--force` it refuses a target that already has tables. Start the server,
-confirm `/health/ready`, and it migrates forward if the snapshot is older than
-the binary.
+Without `--force` it refuses a target that already has tables, or that is not
+a readable SQLite database; with `--force` it does not open the target, so it
+replaces a corrupt file too. The restored file keeps the owner and mode of the
+file it replaces. A new target belongs to whoever runs the script, so run it as
+the server's user (or `chown` the file after). A path in `DATABASE_URL` is
+percent-decoded, as the server decodes it (`%3F` is a `?` in the file name).
+Start the server, confirm `/health/ready`, and it migrates forward if the
+snapshot is older than the binary.
 
 **The drill.** `scripts/sqlite-backup-drill.sh` takes a snapshot while a writer
-is inserting, then restores it over a killed server's database and over an
-orphaned `-wal`, and fails unless exactly the snapshot's rows come back.
+is inserting, then restores it over a killed server's database, over an
+orphaned `-wal` and over a file that is not a database, and to a
+percent-encoded path, and fails unless exactly the snapshot's rows come back.
 `sqlite_backup` (a store test) shows a snapshot of a migrated Maidan database
 passes `integrity_check` and `foreign_key_check` and opens and migrates as it
 stands. CI runs the drill as `sqlite backup drill`.
