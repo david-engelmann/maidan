@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `14920393` (2026-10-01).
+on a decision. Last reconciled against `main` at `06a3caf1` (2026-10-01).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -48,7 +48,6 @@ CI ran.
 | PR | What it does | State (2026-10-01) | Merge after |
 |---|---|---|---|
 | #1152 | A member of another workspace is answered like an unknown one on every member-taking route and tool; `authority_audit_contract` scans past each `#[cfg(test)]`; JSON-RPC `-32600` for a non-request; stdio answers no notification | Rebased on #1154; four CodeRabbit comments being answered (lane CRO) | — |
-| #1156 | B2, B3 and B5: prod renders refuse the local repository, a `dev` or `latest` tag, default credentials and `CHANGE_ME`; the stack names the GHCR image; the vendored stack chart is repackaged and checked against `helm/maidan`; `scripts/check-deploy-pins.sh` (job `deploy pins`) keeps ten pins on the newest tagged release | Rebased on #1154; eight CodeRabbit comments being answered (lane CRO) | — |
 | #1140 | `secret://` references are substituted on automation and A2A push egress, against a per-workspace allowlist | Rebased on #1154 (route pin 310, 203 MCP tools); three CodeRabbit comments being answered (lane CRO) | — |
 | #1142 | A pasted token is exchanged for the `HttpOnly` session, so no token stays in `localStorage`; unsafe session requests from another origin are refused; `csrf_secret` is dropped | Rebased on `main` by lane O; seven CodeRabbit comments being answered | — |
 | #1159 | The SDKs say 0.3.0 in the tree, and the Go publish job checks its version | CI running | — |
@@ -147,6 +146,7 @@ Each links its record. Entries roll off after about a month.
 
 | Date | Decision | Record |
 |---|---|---|
+| 2026-10-01 | Prod renders name a release and refuse placeholders; deploy pins stay on the newest tag (#1156 landed) | #1156 |
 | 2026-10-01 | PRs merge by admin squash when the eight required checks pass on the exact head and every CodeRabbit comment is answered; no review is required while one person maintains the repo | [Decisions](Decisions.md) |
 | 2026-10-01 | Branches need not be up to date to merge (F-43 stays off); the merge loop builds each PR on current `main` and runs the static contracts first | [Decisions](Decisions.md) |
 | 2026-10-01 | A squash commit carries the PR title and body, so each commit on `main` holds its retro | [Decisions](Decisions.md) |
