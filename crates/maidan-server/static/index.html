@@ -1320,11 +1320,13 @@
         detail = String(detail).replace(/\s+/g, " ").trim().slice(0, 500);
         const lead = prefix ? `${prefix}: ` : "";
         const said = humanError(res.status, detail);
-        return `${lead}${said}${detail ? ` — ${detail}` : ""} (HTTP ${res.status})`;
+        // The person sees this sentence only. The server body and the status
+        // code stay off the toast, the row, the thread, and the board.
+        return `${lead}${said}`;
       }
-      // Say what went wrong and what to do about it, before the detail from the server
-      // detail. A 409 is a rule refusing the action; its detail already says
-      // what unblocks it, so it leads.
+      // Say what went wrong and what to do about it. The server body is read
+      // only so a missing capability can be named. It is not shown, and neither
+      // is the status code. A 409 is a rule refusing the action.
       function humanError(status, detail) {
         const needs = /(?:capability|needs?|requires?)[^a-z]*([a-z]+:[a-z_]+)/i.exec(detail || "");
         if (status === 401) return "Your token or session was not accepted. Use Change to set a working one";
@@ -2405,7 +2407,7 @@
             body: JSON.stringify(note ? { decision, note } : { decision }),
           });
         } catch (e) {
-          return { ok: false, why: `Review not recorded: could not reach the server (${e}). Check the connection and try again.` };
+          return { ok: false, why: "Review not recorded: could not reach the server. Check the connection and try again." };
         }
         if (!res.ok) return { ok: false, why: await responseError(res, "Review not recorded") };
         return { ok: true };
@@ -2431,7 +2433,7 @@
             body: JSON.stringify({ action: "close" }),
           });
         } catch (e) {
-          return { ok: false, why: `Not closed: could not reach the server (${e}). Check the connection and try again.` };
+          return { ok: false, why: "Not closed: could not reach the server. Check the connection and try again." };
         }
         if (!res.ok) return { ok: false, why: await responseError(res, "Not closed") };
         return { ok: true };
@@ -4073,7 +4075,7 @@
             body: JSON.stringify({ request_state: requestState, action }),
           });
         } catch (e) {
-          const why = `Could not reach the server: ${e}`;
+          const why = unreachable(e);
           setStatus(why, "err");
           return { ok: false, why };
         }
@@ -4750,7 +4752,11 @@
           headers: { ...headers(), Accept: "*/*" },
           credentials: "include",
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          const err = new Error(await responseError(res, "Could not download the attachment"));
+          err.said = true;
+          throw err;
+        }
         return new Blob([await res.arrayBuffer()], { type });
       }
 
@@ -4808,7 +4814,7 @@
             a.click();
             setTimeout(() => URL.revokeObjectURL(a.href), 1000);
           } catch (e) {
-            showError(`Could not download the attachment: ${e.message || e}`);
+            showError(e && e.said ? e.message : unreachable(e));
           }
         };
         artifactMeta(sha)
