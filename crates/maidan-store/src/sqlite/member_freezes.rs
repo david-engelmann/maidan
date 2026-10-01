@@ -67,17 +67,9 @@ pub(crate) async fn freeze_on(
     .fetch_one(&mut *tx)
     .await?;
     let freeze = row_to_freeze(&row);
-    let released = sqlx::query(
-        "UPDATE maidan_threads
-         SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL,
-             work_started_at = NULL, updated_at = ?
-         WHERE assignee_id = ? AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')",
-    )
-    .bind(&now)
-    .bind(member_id.0)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected();
+    // Charge each acknowledged claim, then release it. `now` above is the
+    // freeze row's clock; the charge uses the same host clock.
+    let released = super::threads::release_member_claims_in_tx(&mut tx, member_id).await?;
     let stored = events::append_in_tx(
         &mut tx,
         &Event::MemberFrozen {

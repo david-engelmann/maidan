@@ -8,10 +8,13 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use chrono::Duration;
+
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    BlockedReason, BudgetLimits, ChannelId, ChannelMemberRole, EventKind, MemberId, MemberKind,
-    NewApprovalGate, NewChannel, NewMember, NewThread, NewWorkspace, ThreadId, WorkspaceId,
+    BlockedReason, BudgetLimits, BudgetPatch, ChannelId, ChannelMemberRole, EventKind, MemberId,
+    MemberKind, NewApprovalGate, NewChannel, NewMember, NewThread, NewWorkspace, ThreadId,
+    WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -153,9 +156,9 @@ async fn takes_over_a_lapsed_lease_and_reports_it(store: &dyn Store) {
     );
 }
 
-/// A lapsed claim the workspace claim takes over is charged its worked wall
-/// time, as the channel claim and the reaper charge it: over budget, the dead
-/// holder's claim fails and is dead-lettered.
+/// A lapsed claim already over its wall budget is not handed out by the
+/// workspace claim. The reaper charges it and stops it; raising the budget
+/// puts the thread back in the queue.
 async fn a_takeover_charges_the_lapsed_claims_wall_time(store: &dyn Store) {
     const LEASE_SECS: i64 = 2;
     let ws = workspace(store, "wall").await;
@@ -192,14 +195,25 @@ async fn a_takeover_charges_the_lapsed_claims_wall_time(store: &dyn Store) {
         .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS))
         .await
         .expect("takeover");
-    assert_eq!(claimed.map(|c| c.id), Some(t));
-    assert_eq!(
-        events.iter().map(|e| e.kind).collect::<Vec<_>>(),
-        vec![EventKind::ClaimFailed, EventKind::ThreadAssignmentChanged]
-    );
+    assert!(claimed.is_none(), "a thread over budget is not handed out");
+    assert!(events.is_empty());
     let worked = (held.assignment_expires_at.expect("deadline")
         - held.work_started_at.expect("started"))
     .num_seconds();
+    let now = held.assignment_expires_at.expect("deadline") + Duration::seconds(1);
+    loop {
+        let batch = store.reap_expired_claims(now, 100).await.expect("reap");
+        let freed = store
+            .get_thread(t)
+            .await
+            .expect("thread")
+            .assignee_id
+            .is_none();
+        if freed || batch.len() < 100 {
+            break;
+        }
+    }
+    assert_eq!(store.get_thread(t).await.expect("thread").assignee_id, None);
     let budget = store
         .get_thread_budget(t)
         .await
@@ -210,6 +224,30 @@ async fn a_takeover_charges_the_lapsed_claims_wall_time(store: &dyn Store) {
         "charged acknowledgement to deadline"
     );
     assert_eq!(store.list_channel_dlq(ch, 10).await.expect("dlq").len(), 1);
+    let (still, _) = store
+        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS))
+        .await
+        .expect("still over");
+    assert!(still.is_none());
+    store
+        .patch_thread_budget(
+            t,
+            BudgetPatch {
+                max_wall_secs: Some(Some(worked + 1)),
+                ..BudgetPatch::default()
+            },
+        )
+        .await
+        .expect("raise");
+    let (raised, _) = store
+        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS))
+        .await
+        .expect("raised");
+    assert_eq!(
+        raised.map(|c| c.id),
+        Some(t),
+        "raising the budget requeues it"
+    );
 }
 
 /// A private channel's thread goes to its members only; the non-member gets

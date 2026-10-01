@@ -9,7 +9,9 @@
 //! A thread is claimable when it is open and live, unheld or its lease lapsed,
 //! every dependency is finished, the claimer holds every skill it requires, it
 //! has no pending approval gate, it is neither parked unclaimable nor blocked,
-//! and the claimer is not frozen. It goes only to a member who may read it:
+//! the claimer is not frozen, and the thread is not already over any budget
+//! (tokens, usd, turns, or wall, counting the time a lapsed claim worked).
+//! It goes only to a member who may read it:
 //! the channel is in the member's workspace, a `__dm__` thread needs the member
 //! in its DM or group DM, a private channel needs a `channel_members` row. The
 //! read rule is `maidan_auth::authorize_thread`'s, in SQL, and must agree with
@@ -48,6 +50,9 @@ pub(crate) struct ClaimSql<'a> {
     pub now: &'a str,
     /// Whole hours the candidate `cand` has waited since it was created.
     pub hours_waiting: &'a str,
+    /// Seconds a lapsed claim on `cand` worked, acknowledgement to deadline,
+    /// or 0 when that claim was never acknowledged or the thread is free.
+    pub lapsed_worked_secs: &'a str,
 }
 
 /// `SELECT {columns}` of the one thread `claim_next` would give the claimer in
@@ -61,6 +66,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         dm_channel,
         now,
         hours_waiting,
+        lapsed_worked_secs,
     } = sql;
     let in_scope = match scope {
         ClaimScope::Channel(_) => format!("cand.channel_id = {scope_id}"),
@@ -99,6 +105,17 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
            )
            AND NOT EXISTS (
                SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = {member}
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_budgets b
+               WHERE b.thread_id = cand.id
+                 AND (
+                   (b.max_tokens > 0 AND b.used_tokens >= b.max_tokens)
+                   OR (b.max_usd_micros > 0 AND b.used_usd_micros >= b.max_usd_micros)
+                   OR (b.max_turns > 0 AND b.used_turns >= b.max_turns)
+                   OR (b.max_wall_secs > 0
+                       AND b.used_wall_secs + ({lapsed_worked_secs}) >= b.max_wall_secs)
+                 )
            )
            AND {readable}
          ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC, cand.created_at ASC, cand.id ASC

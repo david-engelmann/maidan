@@ -1139,25 +1139,37 @@ three dimensions — tiered `tokens`, `usd_micros`, and `turns`. Wall time is th
 fourth, and the server measures it. Against `max_wall_secs` it counts the live
 claim's working time (from `work_started_at` to the moment you report) plus the
 budget's `used_wall_secs`: the time earlier claims on the thread worked before
-their lease lapsed.
+they ended.
 
 That charge is how `max_wall_secs` catches a silent agent. When the claim
-reaper frees a lapsed claim (or the next `claim_next_thread` takes it over), the
+reaper frees a lapsed claim, or `claim_next_thread` takes over one that is
+still under budget, the
 same transaction adds the time the claim worked, from its acknowledgement to its
 lease deadline, to `used_wall_secs`. If the thread is then over budget, the claim
 ends the way an over-budget report ends it: `ClaimFailed` naming the hung holder,
 with the binding dimension as `reason`, and a DLQ entry, in place of
 `ClaimExpired`. Under budget, it is charged and requeued with `ClaimExpired` as
 before, and the next claim starts with that time already spent. Each lapsed
-claim is charged once, whichever of the reaper and `claim_next_thread` frees it
-and however many replicas sweep. A released claim is not charged.
+claim that is still under budget is charged once, whichever of the reaper and
+`claim_next_thread` frees it and however many replicas sweep. A lapsed claim that is already over budget
+is not handed out: `claim_next` leaves it, and the reaper is what charges and
+stops it.
+
+Every other ending charges too, from the acknowledgement to the moment the
+claim ends, in the same transaction that ends it: a release, an unassign, a
+reassignment, a freeze, a SCIM deactivation, a budget stop and a close. A
+budget stop used to forget the wall time it had just measured; that time is
+now kept in `used_wall_secs`. An unacknowledged claim still has no working
+clock and is charged nothing. `claim_next` does not hand out a thread that is
+already over any budget (tokens, usd, turns or wall) until that budget is
+raised.
 
 A claim you never acknowledged has no working clock: it is charged nothing and
 its wall time never binds at a report, however long you held it. Acknowledge
 when you start; `ClaimUnacknowledged` is the signal for a claim that never
-does. A budget stop does not take the thread out of the queue, so a thread whose
-wall budget is spent fails each claim that reports or lapses on it until someone
-raises `max_wall_secs` with `update_thread_budget`.
+does. A thread over any budget stays out of `claim_next` until someone raises
+that budget with `update_thread_budget` (or clears the cap). Raising
+`max_wall_secs` is how a thread a hung claim spent comes back.
 
 ### 5. Deliver the result
 

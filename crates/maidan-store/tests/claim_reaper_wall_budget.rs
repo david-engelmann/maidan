@@ -282,8 +282,9 @@ async fn a_lapsed_claim_is_charged_once(store: &dyn Store) {
     assert_eq!(used_wall_secs(store, q.thread).await, worked(&held));
 }
 
-/// A busy channel's lapsed leases are mostly taken by the next `claim_next`
-/// before a reaper tick; that path charges too.
+/// A lapsed claim already over its wall budget is not handed out. `claim_next`
+/// leaves it for the reaper, which charges it and stops it; raising the budget
+/// puts the thread back in the queue.
 async fn a_reclaim_by_claim_next_charges_as_the_reaper_would(store: &dyn Store) {
     const LEASE_SECS: i64 = 3;
     let q = queue(store, "reclaim", Some(1)).await;
@@ -299,10 +300,18 @@ async fn a_reclaim_by_claim_next_charges_as_the_reaper_would(store: &dyn Store) 
         .claim_next_thread_with_event(q.channel, q.next, Some(3600))
         .await
         .unwrap();
-    assert_eq!(taken.map(|t| t.id), Some(q.thread));
+    assert!(taken.is_none(), "a thread over budget is not handed out");
+    assert!(events.is_empty());
+    assert_eq!(
+        store.get_thread(q.thread).await.unwrap().assignee_id,
+        Some(q.holder),
+        "the dead holder keeps it until the reaper"
+    );
+
+    let events = reap_for(store, past(&[&held]), q.thread).await;
     assert_eq!(
         events.iter().map(|e| e.kind).collect::<Vec<_>>(),
-        vec![EventKind::ClaimFailed, EventKind::ThreadAssignmentChanged]
+        vec![EventKind::ClaimFailed]
     );
     let failed: Event = serde_json::from_value(events[0].payload.clone()).unwrap();
     assert_eq!(failed.member_id(), Some(q.holder), "names the dead holder");
@@ -310,6 +319,36 @@ async fn a_reclaim_by_claim_next_charges_as_the_reaper_would(store: &dyn Store) 
     assert_eq!(
         store.list_channel_dlq(q.channel, 10).await.unwrap().len(),
         1
+    );
+
+    let (still, _) = store
+        .claim_next_thread_with_event(q.channel, q.next, Some(3600))
+        .await
+        .unwrap();
+    assert!(still.is_none(), "the charge left it over budget");
+
+    store
+        .patch_thread_budget(
+            q.thread,
+            BudgetPatch {
+                max_wall_secs: Some(Some(charge + 1)),
+                ..BudgetPatch::default()
+            },
+        )
+        .await
+        .unwrap();
+    let (raised, events) = store
+        .claim_next_thread_with_event(q.channel, q.next, Some(3600))
+        .await
+        .unwrap();
+    assert_eq!(
+        raised.map(|t| t.id),
+        Some(q.thread),
+        "raising the budget requeues it"
+    );
+    assert_eq!(
+        events.iter().map(|e| e.kind).collect::<Vec<_>>(),
+        vec![EventKind::ThreadAssignmentChanged]
     );
 }
 

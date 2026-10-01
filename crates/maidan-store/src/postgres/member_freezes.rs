@@ -71,18 +71,9 @@ pub(crate) async fn freeze_on(
     .fetch_one(&mut *tx)
     .await?;
     let freeze = row_to_freeze(&row);
-    // Drop leases: release the member's active (non-terminal, non-tombstoned)
-    // claims so the work returns to the queue for another agent.
-    let released = sqlx::query(
-        "UPDATE maidan_threads
-         SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL,
-             work_started_at = NULL, updated_at = NOW()
-         WHERE assignee_id = $1 AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')",
-    )
-    .bind(member_id.0)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected();
+    // Drop leases: release the member's active claims, charging each
+    // acknowledged claim's worked time in this same transaction.
+    let released = super::threads::release_member_claims_in_tx(&mut tx, member_id).await?;
     let stored = events::append_in_tx(
         &mut tx,
         &Event::MemberFrozen {

@@ -1825,8 +1825,9 @@ bounds hung agents only.
 releases and reclaims would never reach it, and an operator reading
 `used_wall_secs` would see less than was spent.
 
-**Status.** Being built (Open Work, Now: lane BUD). Until it lands, only a
-lapsed lease is charged.
+**Status.** Landed. Every ending charges, and `claim_next` will not hand
+out a thread that is over any budget. A freeze still lasts until an unfreeze;
+an expiry on a freeze was not part of this decision.
 
 **To revisit:** if an operator needs a per-claim limit as well as a total.
 

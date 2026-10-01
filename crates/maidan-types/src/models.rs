@@ -438,8 +438,8 @@ pub struct ThreadBlock {
 /// micros ($1 = 1_000_000) to keep money out of floats. Wall time is measured,
 /// never reported: the live claim's share comes from the thread's working clock
 /// (`work_started_at`), and `used_wall_secs` holds what earlier claims worked
-/// before their lease lapsed, charged when the reaper (or the next claim)
-/// freed them.
+/// before they ended. A lapsed lease is charged through its deadline; every
+/// other ending is charged through the moment it ended.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThreadBudget {
@@ -451,9 +451,10 @@ pub struct ThreadBudget {
     pub used_tokens: i64,
     pub used_usd_micros: i64,
     pub used_turns: i64,
-    /// Seconds worked by earlier claims on this thread whose lease lapsed, from
-    /// each one's acknowledgement to its deadline. Counted against
-    /// `max_wall_secs` together with the live claim's working time.
+    /// Seconds worked by earlier claims on this thread, from each one's
+    /// acknowledgement to the moment that claim ended. A lapsed lease ends at
+    /// its deadline. Counted against `max_wall_secs` together with the live
+    /// claim's working time.
     #[serde(default)]
     pub used_wall_secs: i64,
     pub created_at: DateTime<Utc>,

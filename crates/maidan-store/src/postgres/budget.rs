@@ -112,6 +112,24 @@ async fn add_usage_in_tx(
     Ok(row_to_budget(&row))
 }
 
+/// A budget stop used to drop the claim without recording the wall time that
+/// stop was measured against. Persist that time before the claim is cleared,
+/// so the next reader sees it in `used_wall_secs`. A stop with no working
+/// clock (or a zero one) leaves the row as the usage write left it.
+async fn keep_stopped_wall(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    budget: ThreadBudget,
+    wall: Option<i64>,
+) -> Result<ThreadBudget, StoreError> {
+    let Some(secs) = wall.map(|secs| secs.max(0)).filter(|secs| *secs > 0) else {
+        return Ok(budget);
+    };
+    Ok(charge_wall_in_tx(tx, thread_id, Some(secs))
+        .await?
+        .unwrap_or(budget))
+}
+
 /// Report usage and enforce the budget — the "stop the run" path. Accumulates
 /// `delta`, and if the thread is now over budget AND has an active claim,
 /// atomically: releases the claim, appends a `ClaimFailed` event, and records a
@@ -140,33 +158,47 @@ pub async fn report_usage(
     let work_started_at = ctx.get::<Option<DateTime<Utc>>, _>("work_started_at");
     let channel_id = ChannelId(ctx.get::<Uuid, _>("channel_id"));
     let workspace_id = WorkspaceId(ctx.get::<Uuid, _>("workspace_id"));
-    let wall = work_started_at.map(|w| (Utc::now() - w).num_seconds());
+    // The working clock and this instant are both the database clock, so a
+    // container whose clock differs from the host still charges what it measured.
+    let clock = sqlx::query("SELECT NOW() AS ended_at")
+        .fetch_one(&mut *tx)
+        .await?;
+    let wall = work_started_at
+        .map(|started| (clock.get::<DateTime<Utc>, _>("ended_at") - started).num_seconds());
 
-    let (stopped, reason, stored) = match (budget.exceeded(wall), assignee) {
-        (Some(reason), Some(member)) => {
-            let row = sqlx::query(
-                "UPDATE maidan_threads
+    let stop = match (budget.exceeded(wall), assignee) {
+        (Some(reason), Some(member)) => Some((reason, member)),
+        _ => None,
+    };
+    let budget = if stop.is_some() {
+        keep_stopped_wall(&mut tx, thread_id, budget, wall).await?
+    } else {
+        budget
+    };
+    let (stopped, reason, stored) = if let Some((reason, member)) = stop {
+        let row = sqlx::query(
+            "UPDATE maidan_threads
                  SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = now()
                  WHERE id = $1
                  RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
-            )
-            .bind(thread_id.0)
-            .fetch_one(&mut *tx)
-            .await?;
-            let thread = threads::row_to_thread(&row)?;
-            let stored = fail_claim_in_tx(
-                &mut tx,
-                workspace_id,
-                channel_id,
-                thread,
-                member,
-                reason,
-                &budget,
-            )
-            .await?;
-            (true, Some(reason.as_str().to_owned()), Some(stored))
-        }
-        _ => (false, None, None),
+        )
+        .bind(thread_id.0)
+        .fetch_one(&mut *tx)
+        .await?;
+        let thread = threads::row_to_thread(&row)?;
+        let stored = fail_claim_in_tx(
+            &mut tx,
+            workspace_id,
+            channel_id,
+            thread,
+            member,
+            reason,
+            &budget,
+        )
+        .await?;
+        (true, Some(reason.as_str().to_owned()), Some(stored))
+    } else {
+        (false, None, None)
     };
     tx.commit().await?;
     Ok((
@@ -232,6 +264,18 @@ pub async fn report_accounted_usage(
         },
     )
     .await?;
+    let clock = sqlx::query("SELECT NOW() AS ended_at")
+        .fetch_one(&mut *tx)
+        .await?;
+    let wall = ctx
+        .get::<Option<DateTime<Utc>>, _>("work_started_at")
+        .map(|started| (clock.get::<DateTime<Utc>, _>("ended_at") - started).num_seconds());
+    let stopping = budget.exceeded(wall);
+    let budget = if stopping.is_some() {
+        keep_stopped_wall(&mut tx, new.thread_id, budget, wall).await?
+    } else {
+        budget
+    };
     let stamp = PayerStamp {
         payer: workspace_id,
         reporter: new.reporter,
@@ -253,10 +297,7 @@ pub async fn report_accounted_usage(
     };
     let usage_stored = events::append_in_tx(&mut tx, &usage).await?;
 
-    let wall = ctx
-        .get::<Option<DateTime<Utc>>, _>("work_started_at")
-        .map(|started| (Utc::now() - started).num_seconds());
-    let (stopped, reason, failed) = if let Some(reason) = budget.exceeded(wall) {
+    let (stopped, reason, failed) = if let Some(reason) = stopping {
         let row = sqlx::query(
             "UPDATE maidan_threads
              SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = now()

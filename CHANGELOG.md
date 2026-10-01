@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A claim's worked time is charged however it ends
+
+- **Changed:** `max_wall_secs` counts every second an agent worked a thread,
+  from acknowledging the claim to the moment the claim ends. A release, an
+  unassign, a reassignment, a freeze, a SCIM deactivation, a budget stop and a
+  close each add that time to `used_wall_secs` in the transaction that ends
+  the claim. A lapsed lease is still charged through its deadline, by the
+  reaper or by `claim_next` when the claim is still under budget. A claim that
+  was never acknowledged is still charged nothing.
+- **Fixed:** a budget stop measured the live claim's wall time and then forgot
+  it, so the next claim started as if that time had not been spent. The stop
+  now keeps it.
+- **Changed:** `claim_next` (one channel, or the whole workspace) does not hand
+  out a thread that is already over any budget. Raise or clear that budget and
+  the thread is claimable again. A lapsed claim whose worked time would put
+  the thread over budget is left for the reaper, which charges it and stops it
+  with `ClaimFailed` instead of giving it to the next agent.
+- A freeze still lasts until an unfreeze. Freeze expiry is not part of this.
+
 ### A signed-in person can edit, upload, and decide
 
 - **Added:** an OIDC session can edit a message, upload a file, and paste one
@@ -19,6 +38,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   review, and moving a thread.
 - **Changed:** a route that still takes only a bearer (purge, peers, mint,
   revoke) answers a signed-in session with a sentence, not a raw error.
+
 
 ### Retention keeps a held workspace's deliveries, and drops read notifications
 

@@ -489,7 +489,7 @@ All three are now carried.
      elapsed time is the room's own measurement. A claim whose lease lapses
      is charged the time it worked (acknowledgement to deadline) when the
      reaper frees it, so the bound also stops a hung agent that never
-     reports ([Integration](Integration.md), step 4).
+     reports. A release, unassign, reassignment, freeze, SCIM deactivation, budget stop or close charges from the acknowledgement to that moment ([Integration](Integration.md), step 4).
    - **To arm the wall dimension, acknowledge the claim.** `work_started_at` is
      `NULL` until the holder calls `acknowledge_claim {thread_id,
      claim_lease_id}` (REST `POST /threads/:id/claim/acknowledge`). The holder

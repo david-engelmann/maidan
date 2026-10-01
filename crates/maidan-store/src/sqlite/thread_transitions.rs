@@ -165,13 +165,27 @@ pub(crate) async fn transition_in_tx(
     .execute(&mut **tx)
     .await?;
 
+    let terminal = to_state.is_terminal();
+    if terminal {
+        super::threads::charge_open_claim_in_tx(tx, thread_id).await?;
+    }
     let row = sqlx::query(
-        "UPDATE maidan_threads SET state = ?, updated_at = ?
+        "UPDATE maidan_threads SET state = ?, updated_at = ?,
+            assignee_id = CASE WHEN ? THEN NULL ELSE assignee_id END,
+            assignment_expires_at = CASE WHEN ? THEN NULL ELSE assignment_expires_at END,
+            claim_lease_id = CASE WHEN ? THEN NULL ELSE claim_lease_id END,
+            claimed_at = CASE WHEN ? THEN NULL ELSE claimed_at END,
+            work_started_at = CASE WHEN ? THEN NULL ELSE work_started_at END
          WHERE id = ?
          RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(to_state.as_str())
     .bind(&now)
+    .bind(terminal)
+    .bind(terminal)
+    .bind(terminal)
+    .bind(terminal)
+    .bind(terminal)
     .bind(thread_id.0)
     .fetch_one(&mut **tx)
     .await?;
