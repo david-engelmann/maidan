@@ -109,6 +109,9 @@ jobs:
       - name: agent contract golden files
         run: ./scripts/check-agent-contract.sh
 
+  # Installs helm/maidan, then helm/maidan-stack with its own Postgres and
+  # MinIO, on the server and maidan-postgres images it builds, and waits for
+  # the stack's /health/ready: migrations on pgvector and a reachable bucket.
   helm-kind:
     name: helm install (kind)
     needs: changes

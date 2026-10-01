@@ -1,0 +1,72 @@
+{{- if .Values.minio.enabled }}
+{{- $minio := .Values.minio }}
+{{- $name := include "maidan-stack.minio.fullname" . }}
+{{- $labels := dict "ctx" . "name" "minio" "component" "buckets" }}
+# Creates minio.defaultBuckets, as compose's minio-init does. A hook, so an
+# upgrade replaces the finished Job instead of patching its immutable spec. It
+# runs after the release's resources exist (after they are ready, with --wait);
+# until MinIO answers it fails and is retried. The server would also create its
+# own bucket on boot; this makes the rest exist and fails the install loudly
+# when MinIO does not come up.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-buckets
+  labels:
+    {{- include "maidan-stack.labels" $labels | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        {{- include "maidan-stack.labels" $labels | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      enableServiceLinks: false
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mc
+          image: {{ include "maidan-stack.image" (dict "image" $minio.clientImage "path" "minio.clientImage") | quote }}
+          imagePullPolicy: {{ $minio.clientImage.pullPolicy }}
+          # mc writes its config even when MC_HOST_local defines the alias.
+          args:
+            - --config-dir
+            - /tmp/.mc
+            - mb
+            - --ignore-existing
+            {{- range fromJsonArray (include "maidan-stack.minio.buckets" .) }}
+            - {{ printf "local/%s" . | quote }}
+            {{- end }}
+          env:
+            - name: MC_HOST_local
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: mc-host
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

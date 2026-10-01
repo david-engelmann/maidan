@@ -1,19 +1,89 @@
+# Postgres with pgvector, for the server's database. When enabled, the server's
+# DATABASE_URL is this database's, whatever maidan.secrets holds.
 postgresql:
   enabled: false
+  # The local development image, built from docker/Dockerfile.db as
+  # maidan-server:dev is built for the server (`docker build -t
+  # maidan-postgres:dev -f docker/Dockerfile.db .`). values-prod.yaml names the
+  # published release, ghcr.io/david-engelmann/maidan-postgres. A digest, when
+  # set, is the reference and `tag` is ignored.
+  image:
+    repository: maidan-postgres
+    tag: dev
+    digest: ""
+    pullPolicy: IfNotPresent
+  # Used on the first start, when the data directory is created. Changing the
+  # password afterwards changes what the server sends, not the database's:
+  # ALTER ROLE first.
   auth:
     username: maidan
+    # Development default; a production render refuses it.
     password: maidan
     database: maidan
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+      # Empty: the cluster's default StorageClass.
+      storageClass: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
 
+# MinIO, for the server's artifacts. When enabled, the server's
+# ARTIFACT_BACKEND is s3 and its S3_* settings name this MinIO and the first of
+# defaultBuckets, whatever maidan.config and maidan.secrets hold.
 minio:
   enabled: false
+  # MinIO's own images are no longer pullable. Chainguard's build is the one
+  # compose.yaml and k8s/ run, and its free tier publishes only :latest, so the
+  # digest is the pin (scripts/check-deploy-contract.sh keeps the three equal).
+  image:
+    repository: cgr.dev/chainguard/minio
+    tag: ""
+    digest: sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
+    pullPolicy: IfNotPresent
+  # Runs `mc mb --ignore-existing` for defaultBuckets after each install and
+  # upgrade.
+  clientImage:
+    repository: cgr.dev/chainguard/minio-client
+    tag: ""
+    digest: sha256:b8b144ab34694ecea25aa352c4be9de4c26ee2a02701521dce02ee5593c57338
+    pullPolicy: IfNotPresent
+  # The server uses these as its S3 keys. MinIO needs a user of 3 characters or
+  # more and a password of 8 or more; neither may hold a colon.
   auth:
     rootUser: minio
+    # Development default; a production render refuses it.
     rootPassword: minioadmin
+  # Comma-separated. The server stores artifacts in the first.
   defaultBuckets: maidan-artifacts
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 maidan:
   replicaCount: 1
   # Required: the content KEK (`--set maidan.contentKek=…`) or
   # `maidan.existingSecret`; see the maidan chart's values.yaml.
   contentKek: ""
+  # How the server reaches the bundled stores: <release>-datastores, which this
+  # chart renders when postgresql or minio is enabled (optional, so the pod
+  # starts without it otherwise). A list you set here replaces this one, so
+  # keep this entry; the render refuses without it while a store is enabled.
+  extraEnvFrom:
+    - secretRef:
+        name: "{{ .Release.Name }}-datastores"
+        optional: true

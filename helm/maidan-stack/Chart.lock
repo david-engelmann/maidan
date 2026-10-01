@@ -2,11 +2,5 @@ dependencies:
 - name: maidan
   repository: file://../maidan
   version: 0.1.0
-- name: postgresql
-  repository: https://charts.bitnami.com/bitnami
-  version: 15.5.38
-- name: minio
-  repository: https://charts.bitnami.com/bitnami
-  version: 14.8.5
-digest: sha256:e26546f43df5fdad81b196732cb52cc1f1c69eece70cca4bb3eb7de10739e53f
-generated: "2026-05-29T00:16:35.26275-04:00"
+digest: sha256:5ddb5fc5d9b6d25a6e31aadd21fc7d9b2e20297d6ddbbeb8286e8e66121ec920
+generated: "2026-10-01T02:30:25.602261-04:00"

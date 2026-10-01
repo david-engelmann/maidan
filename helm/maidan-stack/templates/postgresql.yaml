@@ -1,0 +1,161 @@
+{{- if .Values.postgresql.enabled }}
+{{- $pg := .Values.postgresql }}
+{{- $name := include "maidan-stack.postgresql.fullname" . }}
+{{- $labels := dict "ctx" . "name" "postgresql" "component" "database" }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "maidan-stack.labels" $labels | nindent 4 }}
+type: Opaque
+stringData:
+  password: {{ $pg.auth.password | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "maidan-stack.labels" $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+  selector:
+    {{- include "maidan-stack.selectorLabels" $labels | nindent 4 }}
+---
+# Governs the StatefulSet's pod identity; clients use the Service above.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name | trunc 60 | trimSuffix "-" }}-hl
+  labels:
+    {{- include "maidan-stack.labels" $labels | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+  selector:
+    {{- include "maidan-stack.selectorLabels" $labels | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "maidan-stack.labels" $labels | nindent 4 }}
+spec:
+  serviceName: {{ $name | trunc 60 | trimSuffix "-" }}-hl
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "maidan-stack.selectorLabels" $labels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "maidan-stack.labels" $labels | nindent 8 }}
+    spec:
+      # The image is configured by POSTGRES_* variables; keep Kubernetes from
+      # adding its own for every Service named postgres-*.
+      enableServiceLinks: false
+      # The image's postgres user. Running as it from the start skips the
+      # entrypoint's root-only chown; fsGroup makes the volume writable.
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgresql
+          image: {{ include "maidan-stack.image" (dict "image" $pg.image "path" "postgresql.image") | quote }}
+          imagePullPolicy: {{ $pg.image.pullPolicy }}
+          env:
+            - name: POSTGRES_USER
+              value: {{ $pg.auth.username | quote }}
+            - name: POSTGRES_DB
+              value: {{ $pg.auth.database | quote }}
+            # Read on the first start only, when the data directory is created;
+            # changing it later changes what the server sends, not the database.
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: password
+            # A subdirectory, so a volume's lost+found does not stop initdb.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          # Over TCP: during first-start initialisation the entrypoint runs a
+          # temporary server on the Unix socket only, which is not ready yet.
+          startupProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", {{ $pg.auth.username | quote }}, "-d", {{ $pg.auth.database | quote }}]
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", {{ $pg.auth.username | quote }}, "-d", {{ $pg.auth.database | quote }}]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", {{ $pg.auth.username | quote }}, "-d", {{ $pg.auth.database | quote }}]
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml $pg.primary.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        # The container runtime's default /dev/shm is 64 MiB, which parallel
+        # queries outgrow.
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        {{- if not $pg.primary.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if $pg.primary.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "maidan-stack.selectorLabels" $labels | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with $pg.primary.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $pg.primary.persistence.size }}
+  {{- end }}
+{{- end }}

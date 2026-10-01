@@ -297,7 +297,8 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   exempt what it lists, and commit `supply-chain/` with the lockfile
   ([`docs/Conventions.md`](docs/Conventions.md), "Dependencies").
 - **Cutting a release means bumping every deploy pin in one PR** (Helm prod
-  values for both charts, the quickstart compose file and Dockerfile's
+  values for both charts, the stack's twice: server and `maidan-postgres`;
+  the quickstart compose file and Dockerfile's
   `MAIDAN_VERSION`, the prod kustomize overlay, the install commands in the
   README and `docs/Production.md`). The Dockerfile's tarball SHA-256s move
   with that version, but `scripts/check-deploy-pins.sh` does not check them:
@@ -307,6 +308,9 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `helm/maidan-stack/charts/maidan-0.1.0.tgz`
   (`helm package helm/maidan -d helm/maidan-stack/charts`), or the stack keeps
   rendering the old chart; `helm-template-smoke.sh` fails while they differ.
+  Bumping the Chainguard MinIO digest in compose means bumping it in `k8s/`
+  and `helm/maidan-stack/values.yaml` too; `check-deploy-contract.sh` (in the
+  `lint` job) fails while they differ.
 - **Splitting a large source file into a module directory** can break the
   `bootstrap compile-time strip` job (imports unused under
   `--no-default-features`) and `check-agent-contract.sh` (it greps paths).

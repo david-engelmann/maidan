@@ -64,6 +64,9 @@ the stack's prod values shipped `maidan-server:dev`. A `CHANGE_ME` placeholder
 in `config`, and in `secrets` or a content KEK when no `existingSecret` is set,
 is refused: it is never a working value. `image.tag` and `image.digest` holding
 one are refused by `maidan.image`, including when `existingSecret` is set.
+`extraEnvFrom` is read after `secrets` and may supply DATABASE_URL, which the
+render cannot see, so the DATABASE_URL checks are left to whoever sets it (the
+stack checks it when it runs no database of its own).
 */}}
 {{- define "maidan.validate" -}}
 {{- range $k, $v := .Values.config }}
@@ -83,9 +86,11 @@ one are refused by `maidan.image`, including when `existingSecret` is set.
 {{- end }}
 {{- end }}
 {{- if .Values.production }}
+{{- if not .Values.extraEnvFrom }}
 {{- $db := required "a production install needs its database: set existingSecret to a Secret holding DATABASE_URL and MAIDAN_CONTENT_KEK, or set secrets.DATABASE_URL" .Values.secrets.DATABASE_URL }}
 {{- if eq $db "postgres://maidan:maidan@postgres:5432/maidan" }}
 {{- fail "secrets.DATABASE_URL is the chart's development default (user and password maidan): set existingSecret to a Secret holding DATABASE_URL and MAIDAN_CONTENT_KEK, or set secrets.DATABASE_URL to your database" }}
+{{- end }}
 {{- end }}
 {{- range $k, $v := .Values.secrets }}
 {{- if not $v }}

@@ -1,0 +1,148 @@
+{{- if .Values.minio.enabled }}
+{{- $minio := .Values.minio }}
+{{- $name := include "maidan-stack.minio.fullname" . }}
+{{- $labels := dict "ctx" . "name" "minio" "component" "object-store" }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "maidan-stack.labels" $labels | nindent 4 }}
+type: Opaque
+stringData:
+  root-user: {{ $minio.auth.rootUser | quote }}
+  root-password: {{ $minio.auth.rootPassword | quote }}
+  # The client image has no shell, so the bucket Job's alias is this variable.
+  mc-host: {{ printf "http://%s:%s@%s:9000" $minio.auth.rootUser $minio.auth.rootPassword $name | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "maidan-stack.labels" $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+  selector:
+    {{- include "maidan-stack.selectorLabels" $labels | nindent 4 }}
+---
+# Governs the StatefulSet's pod identity; clients use the Service above.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name | trunc 60 | trimSuffix "-" }}-hl
+  labels:
+    {{- include "maidan-stack.labels" $labels | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+  selector:
+    {{- include "maidan-stack.selectorLabels" $labels | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "maidan-stack.labels" $labels | nindent 4 }}
+spec:
+  serviceName: {{ $name | trunc 60 | trimSuffix "-" }}-hl
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "maidan-stack.selectorLabels" $labels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "maidan-stack.labels" $labels | nindent 8 }}
+    spec:
+      # MinIO is configured by MINIO_* variables; keep Kubernetes from adding
+      # its own for every Service named minio-*.
+      enableServiceLinks: false
+      # Chainguard's MinIO runs as uid 65532; fsGroup makes the volume writable.
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: minio
+          image: {{ include "maidan-stack.image" (dict "image" $minio.image "path" "minio.image") | quote }}
+          imagePullPolicy: {{ $minio.image.pullPolicy }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: root-user
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: root-password
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            {{- toYaml $minio.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if not $minio.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if $minio.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "maidan-stack.selectorLabels" $labels | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with $minio.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $minio.persistence.size }}
+  {{- end }}
+{{- end }}
