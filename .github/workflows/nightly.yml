@@ -296,6 +296,7 @@ jobs:
           for target in "${failed[@]}"; do
             log="$RUNNER_TEMP/fuzz-$target.log"
             where="$(grep -m1 -oE "panicked at [^ ]+|ERROR: [A-Za-z]+: [a-z -]+" "$log")"
+            where="${where%:}"
             echo "::error title=fuzz $target::${where:-no libFuzzer summary; see the log}. The input is in the job summary and the fuzz-artifacts upload."
             {
               echo

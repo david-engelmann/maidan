@@ -247,6 +247,29 @@ mod tests {
         assert_eq!(single, same);
     }
 
+    #[test]
+    fn a_number_id_is_read_as_the_number_the_client_sent() {
+        // Found by the `mcp_request` fuzz target: serde_json's default float
+        // parse is best effort, so `1.5555555555555555e92` read as
+        // 1.5555555555555558e92 and the reply echoed an id the client never
+        // sent. The long integer is the fuzz input; it prints as that float.
+        for literal in [
+            "1.5555555555555555e92".to_string(),
+            format!("1{}", "5".repeat(92)),
+        ] {
+            let body = format!(r#"{{"jsonrpc":"2.0","id":{literal},"method":"ping"}}"#);
+            let request = parse_request(body.as_bytes()).expect("parses");
+            let sent: f64 = literal.parse().expect("a number");
+            assert_eq!(
+                request.id.as_ref().and_then(serde_json::Value::as_f64),
+                Some(sent),
+                "{literal}"
+            );
+            let printed = serde_json::to_vec(&request).expect("serializes");
+            assert_eq!(parse_request(&printed).expect("reparses"), request);
+        }
+    }
+
     proptest! {
         /// Fuzz the error envelope: any (code, message, optional data) survives
         /// serialization with its fields intact and `data` omitted iff `None`.

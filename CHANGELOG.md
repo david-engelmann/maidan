@@ -1097,6 +1097,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   one group with `jobs` (`mutation`, `store`, `bench` or `fuzz`) instead of
   the whole night, and the store planner's overflow warning names
   `jobs=store`.
+- **Fixed:** the egress guard bounded a URL at 2,048 bytes as sent, but
+  parsing percent-encodes the path and punycodes the host, so it accepted
+  URLs whose own printed form it then refused (1,541 bytes sent, 2,150
+  printed). It now bounds the printed form too. Found by `egress_target` on
+  the job's first night; it failed closed, so nothing was reached that the
+  guard meant to refuse.
+- **Fixed:** an MCP request id of `1.5555555555555555e92` was answered with
+  id `1.5555555555555558e+92`: serde_json's default float parse is best
+  effort. The workspace now enables serde_json's `float_roundtrip`, so a
+  number reads as the double it names. Found by `mcp_request` the same night.
 
 ## [412.0.0] — 2026-09-28
 
