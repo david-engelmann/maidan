@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `40baab84` (2026-10-01).
+on a decision. Last reconciled against `main` at `7b822083` (2026-10-01).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -50,8 +50,6 @@ CI ran.
 
 | PR | What it does | State (2026-10-01) | Merge after |
 |---|---|---|---|
-| #1152 | A member of another workspace is answered like an unknown one on every member-taking route and tool; `authority_audit_contract` and `attribution_scope_contract` scan past each `#[cfg(test)]` lexically; JSON-RPC `-32600` for a non-request; stdio answers no notification | `36838124`; rebased after session, scripts, and retention landed; CI restarted | — |
-| #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | `86b6cad0`; rebased after session, scripts, and retention landed; CI restarted | Everything above that adds a `Store` method |
 | (lane BUD) | Every way a claim ends charges its worked time against `max_wall_secs`: release, unassign, reassignment, freeze, SCIM deactivation, a budget stop (which today forgets the wall time it stopped for) and close; then `claim_next` refuses a thread over any budget, and a freeze can carry an expiry | **Active** in the coordinator's session; its work is in a local worktree and not yet pushed. Do not start it again | — |
 | (lane IDN) | A member handle is unique regardless of case (migration 0135, which renames existing case-only duplicates), and SCIM, mentions and member creation match that way; then artifacts are erased, never soft-deleted, and the unused `tombstoned_at` goes (0136) | **Active**, local worktree, not yet pushed. Do not start it again | — |
 | (lane SEC) | From the review triage: a workspace's rate-limit budget is charged only for a request authenticated into that workspace, and an unverified bearer is limited by client IP (today anyone who knows a workspace id can spend its budget, and made-up bearers each get a fresh bucket; #1153 comment 4149899835); then the server and store findings (token rotation reads quotas before the commit, a deadline on egress DNS, one transaction for a critical-review verdict), then the MCP and tracing findings | **Active**, local worktree, not yet pushed. Do not start it again | — |
