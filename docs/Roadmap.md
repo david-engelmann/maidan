@@ -44,11 +44,12 @@ flight and the ranked plan are the **Now** and **Next** sections of
 ## Horizons
 
 0. **Safe to deploy.** Before anyone runs Maidan: every deploy path runs the
-   newest release (today they pin `v412.0.0` or older, or the `dev` image,
-   all from before the week's cross-tenant fixes), no chart renders a default
-   credential or the `dev` image, and a
-   contract keeps the pins from drifting again. This is the **Before anyone
-   deploys** section of Open Work, and it comes first.
+   newest release, no chart renders a default credential or the `dev` image,
+   and a contract keeps the pins from drifting (both #1156). What remains: the
+   pins name `v412.0.0`, from before the week's cross-tenant fixes, until the
+   next tag, and the stack's bundled Postgres and MinIO images no longer exist
+   (in flight). This is the **Before anyone deploys** section of Open Work, and
+   it comes first.
 1. **Agents coordinate at workspace scale.** A verdict reaches the worker as an
    event (#1132), a hung agent's time is charged against its budget (#1139),
    the SDKs return typed results and errors (#1129), and stateless MCP
@@ -59,17 +60,19 @@ flight and the ranked plan are the **Now** and **Next** sections of
 2. **Nothing is silently lost, and nothing grows without bound.** Retries share
    a per-host budget (#1122), every audit row belongs to a workspace (#1134),
    both backends have a tested backup path (#1126), and fairness and retention
-   are per workspace by default (#1153). Next: a legal hold that keeps a
-   workspace's deliveries, read notifications that age out, and partitioning
-   the append-only tables.
+   are per workspace by default (#1153). In flight: a legal hold that keeps a
+   workspace's deliveries, and read notifications that age out (#1165). Next:
+   partitioning the append-only tables.
 3. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus
    tests are mutation-checked (#1125), the release workflow attests image SBOMs
    from the next tag on (#1119), and
    every HTTP operation is classified as reading or changing state (#1121).
    The nightly store mutation job tests mutants (none had before #1155), and
-   `cargo vet` covers the root lockfile (#1155). In flight: nightly jobs that
-   show their failures, and the review comments left unanswered on merged PRs.
-   Next: Kani proofs, and a named regression test per Threat-Model row.
+   `cargo vet` covers the root lockfile (#1155), and every nightly job fails red,
+   the fuzz job on every target (#1160, whose first night found two real
+   decoder bugs). In flight: the review comments left unanswered on merged PRs,
+   one of them a cross-tenant rate-limit bug. Next: Kani proofs, and a named
+   regression test per Threat-Model row.
 4. **A web UI worth showing.** The board is the one thread surface (#1118),
    errors are inline (#1117), a blank page walks to a connected board (#1123),
    attachments show their names and images (#1135), tokens rotate from the page
