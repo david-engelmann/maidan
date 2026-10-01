@@ -46,7 +46,7 @@ pub use models::*;
 pub use subscribe::{Follow, Subscription};
 
 /// The client version, tracked independently of the server.
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = "0.3.0";
 
 /// Wire name of the projector-lag header (HTTP is case-insensitive).
 /// Distinct from `Maidan-Consistency-Token` (Postgres WAL LSN).

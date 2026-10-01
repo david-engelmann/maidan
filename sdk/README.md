@@ -1,8 +1,9 @@
 # sdk/
 
 Language clients for Maidan. The **server** crate is unpublished
-(`publish = false`); these packages are the public clients, all
-**live at 0.1.0** on their registries.
+(`publish = false`); these packages are the public clients. The registries
+carry **0.1.0**. The tree is **0.3.0**, which publishes with the next server
+release.
 
 | Dir | Registry package | Status |
 |-----|------------------|--------|
@@ -12,7 +13,8 @@ Language clients for Maidan. The **server** crate is unpublished
 | `go/` | module in this repo | **`sdk/go/v0.1.0` tag** |
 
 `pip install maidan` / `npm i maidan` / `cargo add maidan` /
-`go get github.com/david-engelmann/maidan/sdk/go@sdk/go/v0.1.0`.
+`go get github.com/david-engelmann/maidan/sdk/go@sdk/go/v0.1.0` install 0.1.0
+until 0.3.0 is tagged.
 
 **Live here.** Independent SemVer from the server. A `vX.0.0`
 server tag does not publish these — publish only on an explicit
@@ -30,13 +32,18 @@ Cursor door (`client.mcp_url` is a string, not a dependency).
 A2A is a recipe, not a fourth library. Do not generate the full
 OpenAPI. Rust must not depend on `maidan-server`.
 
-0.1.0 is the first usable release (shipped, clusters 294–299). 0.2.0 (in the tree, not yet tagged) adds retries with `Idempotency-Key` on every write, and auto-paging; see each README and `docs/Client Contract.md` §2.
+0.1.0 is the first usable release (shipped, clusters 294–299). 0.3.0 is
+next, and 0.2.0 is skipped: it was never tagged, and nobody depends on it.
+0.3.0 adds retries with `Idempotency-Key` on every write, auto-paging, typed
+responses that follow the server's OpenAPI schemas, and an error type per RFC
+9457 problem `type` (#1129). Each SDK's black-box suite
+(`scripts/sdk-test.sh <lang>`) fails when a live response carries a member its
+model does not declare.
+
 Clients capture `Maidan-Room-LSN` as `last_room_lsn` (Cluster 390). Since
-Cluster 398.8 that value is **the caller's workspace head**, not the instance's,
-so it is comparable to a `log_id` the client has actually seen.
-Typed responses and an error type per RFC 9457 problem `type` are in the tree
-too (not yet tagged): each SDK's models follow the server's OpenAPI schemas,
-and its black-box suite (`scripts/sdk-test.sh <lang>`) fails when a live
-response carries a member its model does not declare. The packages still say
-0.2.0; the version these ship under is the maintainer's call.
-Do not bump the package version for the header capture.
+Cluster 398.8 that value is **the caller's workspace head**, not the
+instance's, so it is comparable to a `log_id` the client has actually seen.
+
+**Publishing 0.3.0.** Push `sdk-ts-v0.3.0`, `sdk-py-v0.3.0`, `sdk-rs-v0.3.0`
+and `sdk-go-v0.3.0` at the commit the server release is cut from. Each job
+refuses a tag that differs from its package's version.

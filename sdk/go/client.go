@@ -21,7 +21,7 @@ import (
 )
 
 // Version is the client version, tracked independently of the server.
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 // RoomLSNHeader is the projector-lag header (HTTP is case-insensitive).
 // Distinct from Maidan-Consistency-Token (Postgres WAL LSN).

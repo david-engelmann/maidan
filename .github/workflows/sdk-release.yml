@@ -121,6 +121,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+      - name: version matches tag
+        working-directory: sdk/go
+        run: |
+          want="${TAG#sdk-go-v}"
+          have="$(sed -nE 's/^const Version = "([^"]+)".*/\1/p' client.go)"
+          echo "tag=$want client.go=$have"
+          [ "$want" = "$have" ] || { echo "::error::tag $want != client.go Version $have"; exit 1; }
       - name: verify
         working-directory: sdk/go
         run: |
@@ -130,6 +137,10 @@ jobs:
         run: |
           ver="${TAG#sdk-go-}"          # sdk-go-v0.1.0 -> v0.1.0
           modtag="sdk/go/${ver}"
-          echo "creating $modtag at ${{ github.sha }}"
-          git tag "$modtag" "${{ github.sha }}"
+          # The commit whose client.go was checked, not github.sha: a manual
+          # dispatch checks out inputs.tag, which can differ from the ref it
+          # was dispatched on.
+          commit="$(git rev-parse HEAD)"
+          echo "creating $modtag at $commit"
+          git tag "$modtag" "$commit"
           git push origin "$modtag"

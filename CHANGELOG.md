@@ -1021,6 +1021,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   on read), and `GetTask` reads it too, so listing and fetching one task
   apply the same rule.
 
+### The SDKs are 0.3.0 in the tree
+
+- **Changed:** the TypeScript, Python, Rust and Go clients say 0.3.0, the
+  version their typed results and errors (#1129), retries and auto-paging
+  publish under with the next server release. 0.2.0 is skipped: it was never
+  tagged. The registries carry 0.1.0 until the `sdk-*-v0.3.0` tags are
+  pushed, and `sdk/README.md` says which version each install command
+  fetches.
+- **Changed:** the Go publish job refuses a tag that differs from
+  `client.go`'s `Version`, as the npm, PyPI and crates.io jobs already did
+  for their manifests.
+
 ### Attribution and the reaper say where they stop, and the new doc claims have evidence rows
 
 - **Fixed:** Claims no longer says every successful token or session change
