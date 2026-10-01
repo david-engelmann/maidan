@@ -1021,6 +1021,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   on read), and `GetTask` reads it too, so listing and fetching one task
   apply the same rule.
 
+### Attribution and the reaper say where they stop, and the new doc claims have evidence rows
+
+- **Fixed:** Claims no longer says every successful token or session change
+  leaves an attributed record. A routine change whose only record is the
+  generic audit row can succeed with no record when that best-effort write
+  fails. Authority changes stay transactional.
+- **Fixed:** Integration's lease paragraph names the reaper's per-replica cap
+  of 1,000 claims a tick, which the later reaper section already stated.
+- **Changed:** Claims gains a row for each behavior this PR's docs state: the
+  subscribe-resume secret standing in at startup, the workspace head versus a
+  shape's head, reaper timing and the 1,000 cap, an unleased claim ended by
+  `assign_thread`, review history from migration 0121, a change request that
+  notifies without sending work back, and the two copies a tombstone does not
+  reach.
+
 ### The docs say what the code does: erasure, attribution, claims and SDKs
 
 - **Fixed:** the Glossary promised a tombstone left words unrecoverable

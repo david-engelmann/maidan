@@ -28,7 +28,7 @@ post-gate hardening (no new gate tag).
 | "Durable, shared memory: threads, results, artifacts, tool-call transcripts, all searchable" | `maidan-store` (Postgres + SQLite `Store` parity, `backend_parity` test); content-addressed artifacts; `thread_results`; `tool_transcript`; full-text (`tsvector`/FTS5) + semantic (`pgvector`) search | Shipped |
 | "Tasks with dependencies, skill-based claiming, assignment + leases, scheduled runs, blocking waits" | Task-DAG + queue, scheduled/recurring tasks, skill routing, coordination waits (`wait_for_ready`/`wait_for_result`) — store tests `thread_deps`, `skill_routing`, `task_schedules`, `run_ready_dependents_suite`; e2es `thread_dependencies_e2e`, `thread_result_e2e` | Shipped |
 | "Pull exactly the context a step needs — far fewer tokens" | Thread/workspace context packs (lean edits by default, `include_edits` opt-in); `snippet_only` search; capability-filtered `tools/list`; opt-in lean event frames; omit-empty metadata. **Measured: a scoped pack is ~6.8× fewer tokens than dumping the whole channel** (`token_pack` harness → [Benchmark.md](Benchmark.md#context-pack-token-savings-token_pack)) | Shipped + measured |
-| "Access is scoped on every token; private channels enforced on reads, events, and search; **privileged** actions are audited" | Capability model (every route + tool checks caps); per-channel/thread RBAC — e2es `channel_access_e2e`, `dm_participation_e2e`; filtered-ANN search excludes private channels in-query; subscribe-grant enforcement; every successful change made with a Maidan token or session attributed; 52 named audit actions, authority changes written transactionally (fail-closed) — `audit_coverage_e2e` | Shipped — see the audit-scope note below, including the changes it does not cover |
+| "Access is scoped on every token; private channels enforced on reads, events, and search; **privileged** actions are audited" | Capability model (every route + tool checks caps); per-channel/thread RBAC — e2es `channel_access_e2e`, `dm_participation_e2e`; filtered-ANN search excludes private channels in-query; subscribe-grant enforcement; every successful change made with a Maidan token or session attributed, unless its only record is a best-effort generic audit row and that write fails; 52 named audit actions, authority changes written transactionally (fail-closed) — `audit_coverage_e2e` | Shipped — see the audit-scope note below, including the changes it does not cover |
 | "Speaks MCP, REST, and WebSocket over one data model and one login" | One `AppState`/`Store`; REST (OpenAPI 3.1, `openapi_e2e` bijection), MCP (JSON-RPC + streamable HTTP), WebSocket subscribe — all bearer-authed | Shipped |
 | "MCP-native — an MCP client connects directly and gets typed tools + live notifications" | `POST /mcp` + streamable HTTP; MCP `2026-07-28` (negotiated, default) with `2024-11-05` fallback; `resources/updated`; live-verified LangChain + AutoGen recipes (`docs/Framework Integrations.md`) | Shipped |
 | "Single static binary, laptop SQLite → multi-replica Postgres cluster" | One binary selected by `DATABASE_URL`; `scale-out smoke` required CI job; workspace-sharded fan-out; LSN causal read-replica routing (`read_routing` e2e vs real streaming replication) | Shipped (`maidan-scale-1.0`) |
@@ -40,12 +40,29 @@ post-gate hardening (no new gate tag).
 | The published server image has no HTTP bootstrap routes | `crates/maidan-server/Dockerfile` defaults `MAIDAN_ENABLE_BOOTSTRAP` to `0` and then builds `--no-default-features`. `.github/workflows/release.yml` (`build + push maidan-server`) passes only `MAIDAN_VERSION`, so the published image keeps that default. CI job `bootstrap compile-time strip` fails a default build that still compiles the routes in | Shipped |
 | A production Helm render refuses a development image, and placeholders only where the chart looks | `scripts/helm-template-smoke.sh`. A production render refuses `image.repository: maidan-server`, a `dev`/`latest`/empty tag without `image.digest`, and, unless `existingSecret` is set, an unset or development `DATABASE_URL` or an empty `secrets` value. `config`, `image.tag` and `image.digest` holding `CHANGE_ME` fail every render; `secrets` and `contentKek` holding it fail only when `existingSecret` is unset. `existingSecret` skips those checks and does not prove the Secret exists or holds its keys | Shipped |
 
+## Behavior the reference docs state
+
+These are not README slogans. They are sentences in the reference docs, and
+each maps the same way: a test, the code that does it, or an honest gap.
+
+| Claim | Evidence | Status |
+|-------|----------|--------|
+| With OIDC off, `MAIDAN_SUBSCRIBE_RESUME_SECRET` lets the server start without `MAIDAN_SESSION_SECRET` | `main.rs` calls `subscribe_resume::secret_from_env()` only when OIDC is off. That function uses `MAIDAN_SUBSCRIBE_RESUME_SECRET` when set, otherwise the session secret. With authentication off and neither secret set, startup uses the built-in test secret. OIDC still refuses to start without `MAIDAN_SESSION_SECRET` (`oidc::OidcSettings::from_env`) | Shipped — no test covers the env choice |
+| `Maidan-Room-LSN` is the caller's workspace head; a narrower tap waits on its own shape's head | `the_header_reports_the_callers_room_not_the_instance` (`room_lsn_scope_e2e`) stamps the caller's room, not the instance. A tap compares history to the head it was given (`history_caught_up`, `live_waits_for_workspace_head_not_global_room`). For a channel, thread or kind filter that head is the shape's own high-water, not the workspace header. The server does not publish a second header for the shape | Shipped |
+| A lapsed lease returns within a reaper tick (5 s by default), and one replica frees at most 1,000 claims per tick | Tick default: `the_reaper_is_on_by_default_and_zero_turns_it_off`. The store sweep stops at the limit it is given and leaves the rest (`a_batch_is_bounded_and_takes_the_oldest_deadline_first` in `reap_expired_claims_sqlite` / `_postgres`). The replica cap is `MAX_PER_TICK` (1,000) in `claim_reaper.rs` | Shipped — no test fills the 1,000 cap |
+| `assign_thread` and `claim_thread` carry no lease, and `assign_thread` ends the previous hold | `a_new_holder_never_inherits_a_lease_deadline_sqlite` / `_postgres`: assigning over a live lease clears the deadline and the new holder keeps the thread. `reap_expired_claims_*` leaves a claim with no lease alone | Shipped |
+| Review and land-gate history starts at migration 0121; verdicts overwritten before it were not kept | `decision_history_keeps_every_verdict_sqlite` / `_postgres` drops the history tables, re-runs 0121, and checks the backfill of the rows that existed then | Shipped |
+| A change request that does not send work back still notifies the last worker | `every_review_verdict_appends_review_submitted_with_the_last_worker_sqlite` / `_postgres` records the worker on a change request that sends nothing back. The notification router notifies `ReviewSubmitted` / `RequestChanges` whenever that worker is set; it does not look at whether the thread was sent back | Shipped — no test asserts the inbox row for the non-send-back case |
+| A tombstone leaves ciphertext in the database, its exports and every peer that ingests it. A pre-shred backup read with `MAIDAN_CONTENT_KEK`, and a peer that never ingests the tombstone, still have the words | `withdrawn_words_are_unreadable_on_every_surface` and `peers_get_ciphertext_only_for_shredded_words` (`crypto_shredding_e2e`). The two surviving copies are Threat Model T7; neither is exercised by a test | Shipped for the shred; the two copies are the threat model, not a test |
+
 ## What "audited" covers
 
 Every successful change made with a Maidan token or browser session leaves an
 attributed record — who acted, and on whose behalf — and the privileged ones
-leave a named audit row. Two kinds of change are outside that, listed under
-"Every other mutation" below.
+leave a named audit row, unless the change wrote no event or audit row of its
+own and the best-effort generic row fails to write. Authority changes are not
+on that path: a failed audit write aborts the change. Two kinds of change are
+outside attribution entirely, listed under "Every other mutation" below.
 
 - **Privileged actions have named audit rows** — 52 action kinds besides the
   generic `mutation` row (counted from the `action` names the server writes):
@@ -64,9 +81,11 @@ leave a named audit row. Two kinds of change are outside that, listed under
   (`authority_audit_contract`). Routine rows are best-effort: a failed write is
   counted in `maidan_audit_write_failures_total` and pages
   `MaidanAuditWriteFailures` on the first.
-- **Every other mutation is attributed.** A successful `POST`/`PUT`/`PATCH`/`DELETE`
+- **Every other mutation is attributed, best-effort.** A successful `POST`/`PUT`/`PATCH`/`DELETE`
   that wrote no attributed event or audit row of its own gets a generic
-  `mutation` row (operation, path, status), unless
+  `mutation` row (operation, path, status). That write is the best-effort path
+  above: if it fails, the change still stands and has no attributed record. The
+  row is skipped when
   `contracts/http-operation-kinds.json` classifies it as a read
   (`http_operation_kinds_e2e` checks that each one writes nothing). Ordinary
   content — posts, edits, reactions — is recorded in the event log, which is

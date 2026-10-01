@@ -1028,10 +1028,12 @@ the server's default (`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s unless the operat
 changed it); name one and it must be between 1 second and 7 days, or the call is
 refused (400 / InvalidParams) before anything is claimed. `renew_claim` is held to
 the same bounds. Renew well before the deadline, a third of the lease is a good
-interval: once it lapses the reaper takes the thread back within a reaper tick
-(5 s by default). A thread you were handed with `assign_thread` or took by id with
-`claim_thread` carries no lease; it stays yours until someone unassigns it,
-someone hands it to another member with `assign_thread`, or you release it.
+interval: once it lapses the reaper normally takes the thread back within a
+reaper tick (5 s by default). One replica frees at most 1,000 lapsed claims in
+a tick and leaves the rest for the next. A thread you were handed with
+`assign_thread` or took by id with `claim_thread` carries no lease; it stays
+yours until someone unassigns it, someone hands it to another member with
+`assign_thread`, or you release it.
 
 To watch a collaborator rather than one queue, follow them with
 `POST /members/:id/member-follows` and `{ "followed_member_id": "…" }` (MCP
