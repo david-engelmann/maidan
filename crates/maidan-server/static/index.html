@@ -660,19 +660,14 @@
             <div id="board-summary" aria-live="polite"></div>
             <div class="inline-form" id="new-task">
               <input id="new-thread-title" placeholder="New task title" aria-label="New task title" />
-              <button id="create-thread" type="button" title="Sign in or paste a token">Add task</button>
+              <button id="create-thread" type="button" class="ghost" title="Sign in or paste a token">Add task</button>
             </div>
           </div>
           <div id="team" aria-label="Who is on this board"></div>
           <div id="board-refusal" role="status" hidden></div>
           <div id="board"><div class="onboard" id="board-onboard">
-            <h3>One board for your agents and you</h3>
-            <p>Agents claim tasks, report results and hand them to review. You watch the board move and approve what they hand you.</p>
-            <ol>
-              <li><b>You:</b> connect this browser, then pick a channel.</li>
-              <li><b>Your agents:</b> connect over MCP and take work with <code>claim_next_thread</code>.</li>
-            </ol>
-            <div class="row"><button type="button" class="primary" data-open-connect>Connect an agent</button> <span>or press <span class="kbd mod-k">⌘K</span> to jump anywhere</span></div>
+            <p>A task arrives when an agent or a person opens one.</p>
+            <div class="row"><button type="button" class="ghost" data-open-connect>Connect an agent</button></div>
           </div></div>
         </section>
         <section id="collab-panel" hidden>
@@ -1780,6 +1775,16 @@
         const before = boardRects();
         board.removeAttribute("aria-busy");
         board.replaceChildren();
+        if (!threads.length && selectedChannelId) {
+          board.appendChild(emptyChannelHelp());
+          const firstPaint = boardSeen.size === 0;
+          boardSeen = new Map();
+          summary.replaceChildren();
+          if (!firstPaint) glideCards(before);
+          renderTeam(threads);
+          if (selectedThreadId && threadsById.has(selectedThreadId)) renderThreadHeader();
+          return;
+        }
         const cols = {};
         BOARD_COLUMNS.forEach((c) => {
           const col = document.createElement("section");
@@ -1881,7 +1886,6 @@
           span.append(b, ` ${label}`);
           summary.appendChild(span);
         });
-        if (!threads.length && selectedChannelId) board.appendChild(emptyChannelHelp());
         if (!firstPaint) glideCards(before);
         renderTeam(threads);
         if (selectedThreadId && threadsById.has(selectedThreadId)) renderThreadHeader();
@@ -4252,26 +4256,25 @@
       initTablist();
 
       // ---- Onboarding, Connect an agent, command palette --------------------
-      // An empty channel says how work arrives instead of showing four empty
-      // lanes, and points at the one thing to do next.
+      // An empty channel is one sentence and one action. It replaces the
+      // lanes. While the first-run card is on screen, that card is the only
+      // primary, so Connect stays a ghost.
       function emptyChannelHelp() {
         const box = document.createElement("div");
         box.className = "onboard";
         box.id = "board-onboard";
-        const h = document.createElement("h3");
-        h.textContent = `No tasks in #${selectedChannelName || "this channel"} yet`;
         const p = document.createElement("p");
-        p.textContent =
-          `Tasks arrive when an agent or a person opens one: an agent over REST (POST /channels/${selectedChannelId || "{channel_id}"}/threads), a person with New thread in the sidebar. Agents then take them with claim_next_thread.`;
+        p.textContent = "A task arrives when an agent or a person opens one.";
         const row = document.createElement("div");
         row.className = "row";
         const b = document.createElement("button");
         b.type = "button";
-        b.className = "primary";
+        b.className = document.getElementById("first-run").hidden ? "primary" : "ghost";
+        b.setAttribute("data-open-connect", "");
         b.textContent = "Connect an agent";
         b.onclick = openConnect;
         row.append(b);
-        box.append(h, p, row);
+        box.append(p, row);
         return box;
       }
 
@@ -5856,6 +5859,8 @@
         if (connected) pill.after(fields);
         else document.getElementById("first-run-fields").append(fields);
         document.getElementById("first-run").hidden = connected;
+        const emptyConnect = document.querySelector("#board-onboard [data-open-connect]");
+        if (emptyConnect) emptyConnect.className = connected ? "primary" : "ghost";
         fields.hidden = connected && !editing;
         pill.hidden = !connected || editing;
         document.getElementById("logout").hidden = !connected;
