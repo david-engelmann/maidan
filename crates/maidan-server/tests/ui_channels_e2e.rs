@@ -15,7 +15,7 @@ use maidan_server::{
     router, AppState, FederationRuntime,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{NewMember, NewWorkspace, WorkspaceId};
+use maidan_types::{MemberId, NewMember, NewWorkspace, ThreadId, WorkspaceId};
 use reqwest::{redirect::Policy, StatusCode};
 use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -31,6 +31,7 @@ struct Harness {
     client: reqwest::Client,
     server: tokio::task::JoinHandle<()>,
     workspace_id: WorkspaceId,
+    store: Arc<dyn Store>,
 }
 
 async fn spawn_oidc() -> Harness {
@@ -64,7 +65,7 @@ async fn spawn_oidc() -> Harness {
     let artifacts = Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));
     let mut state = AppState::new(
-        store,
+        store.clone(),
         artifacts,
         bus,
         search,
@@ -114,6 +115,7 @@ async fn spawn_oidc() -> Harness {
         client,
         server,
         workspace_id: workspace.id,
+        store,
     }
 }
 
@@ -451,7 +453,7 @@ async fn session_identity_is_the_only_message_and_reaction_actor() {
 /// bearer-only `protected` router, so a browser session cannot reach them — the
 /// audit's "a session can read another member's inbox" was a false positive on
 /// reachability. This documents that truth:
-/// a session cookie with no bearer gets `401`, never another member's data.
+/// a session cookie with no bearer gets `403` and a sentence, never another member's data.
 /// The handlers also require self or explicit delegated personal-state access,
 /// guarding any future `/ui/api` session mount.
 #[tokio::test]
@@ -484,10 +486,230 @@ async fn legacy_inbox_and_mentions_are_bearer_only_not_session_reachable() {
             .expect("session on bearer-only route");
         assert_eq!(
             resp.status(),
-            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
             "a session cookie does not authenticate on the bearer-only route {path}"
         );
+        let body: serde_json::Value = resp.json().await.expect("problem");
+        let detail = body["detail"].as_str().unwrap_or("");
+        assert!(
+            detail.contains("A signed-in session cannot call it."),
+            "bearer-only route should answer a session with a sentence, got {body}"
+        );
     }
+
+    h.server.abort();
+}
+
+/// An OIDC session edits, uploads, and reads through `/ui/api`, and can move a
+/// thread. A route that stays bearer-only answers that session with a sentence.
+/// An approval from the thread's owner is recorded and does not count.
+#[tokio::test]
+async fn oidc_session_edits_uploads_and_transitions_through_the_proxy() {
+    let h = spawn_oidc().await;
+    let base = format!("http://{}", h.addr);
+    let wid = h.workspace_id.0;
+    let cookie = login_session(&h).await;
+    let session: serde_json::Value = h
+        .client
+        .get(format!("{base}/auth/session"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .send()
+        .await
+        .expect("session")
+        .json()
+        .await
+        .expect("session json");
+    let member_id = session["member_id"].as_str().expect("member_id");
+
+    let workspace: serde_json::Value = h
+        .client
+        .get(format!("{base}/ui/api/workspaces/{wid}"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .send()
+        .await
+        .expect("workspace")
+        .error_for_status()
+        .expect("workspace status")
+        .json()
+        .await
+        .expect("workspace json");
+    assert_eq!(workspace["name"], "ui-channels");
+
+    let channel: serde_json::Value = h
+        .client
+        .post(format!("{base}/ui/api/workspaces/{wid}/channels"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({"name": "writes", "private": false}))
+        .send()
+        .await
+        .expect("channel")
+        .error_for_status()
+        .expect("channel status")
+        .json()
+        .await
+        .expect("channel json");
+    let channel_id = channel["id"].as_str().expect("channel id");
+    let thread: serde_json::Value = h
+        .client
+        .post(format!("{base}/ui/api/channels/{channel_id}/threads"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({"title": "edit me"}))
+        .send()
+        .await
+        .expect("thread")
+        .error_for_status()
+        .expect("thread status")
+        .json()
+        .await
+        .expect("thread json");
+    let thread_id = thread["id"].as_str().expect("thread id");
+    let posted: serde_json::Value = h
+        .client
+        .post(format!("{base}/ui/api/threads/{thread_id}/messages"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({"body": "first"}))
+        .send()
+        .await
+        .expect("post")
+        .error_for_status()
+        .expect("post status")
+        .json()
+        .await
+        .expect("post json");
+    let message_id = posted["id"].as_str().expect("message id");
+
+    let edited: serde_json::Value = h
+        .client
+        .patch(format!("{base}/ui/api/messages/{message_id}"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({"body": "edited by the session"}))
+        .send()
+        .await
+        .expect("edit")
+        .error_for_status()
+        .expect("edit status")
+        .json()
+        .await
+        .expect("edit json");
+    assert_eq!(edited["body"], "edited by the session");
+
+    let artifact = h
+        .client
+        .post(format!(
+            "{base}/ui/api/artifacts?kind=attachment&filename=note.txt"
+        ))
+        .header(reqwest::header::COOKIE, &cookie)
+        .header(reqwest::header::CONTENT_TYPE, "text/plain")
+        .body("pasted bytes")
+        .send()
+        .await
+        .expect("upload");
+    assert_eq!(artifact.status(), StatusCode::CREATED, "upload");
+    let artifact: serde_json::Value = artifact.json().await.expect("artifact json");
+    assert!(artifact["sha256"].as_str().is_some_and(|s| !s.is_empty()));
+
+    let got = h
+        .client
+        .get(format!("{base}/ui/api/threads/{thread_id}"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .send()
+        .await
+        .expect("get thread")
+        .error_for_status()
+        .expect("get thread status")
+        .json::<serde_json::Value>()
+        .await
+        .expect("thread json");
+    assert_eq!(got["id"], thread_id);
+
+    let status = h
+        .client
+        .get(format!("{base}/ui/api/threads/{thread_id}/review-status"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .send()
+        .await
+        .expect("review status")
+        .error_for_status()
+        .expect("review status code")
+        .json::<serde_json::Value>()
+        .await
+        .expect("review status json");
+    assert_eq!(status["approvals"], json!(0));
+
+    let started = h
+        .client
+        .post(format!("{base}/ui/api/threads/{thread_id}"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({"action": "start_review"}))
+        .send()
+        .await
+        .expect("start review");
+    assert!(
+        !matches!(
+            started.status(),
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+        ),
+        "a session with thread:transition was refused: {} {}",
+        started.status(),
+        started.text().await.unwrap_or_default()
+    );
+
+    let thread_uuid = thread_id.parse().expect("thread uuid");
+    let member_uuid = member_id.parse().expect("member uuid");
+    h.store
+        .set_thread_owner(ThreadId(thread_uuid), Some(MemberId(member_uuid)))
+        .await
+        .expect("owner");
+    h.store
+        .set_review_requirement(ThreadId(thread_uuid), 1)
+        .await
+        .expect("requirement");
+    let review = h
+        .client
+        .post(format!("{base}/ui/api/threads/{thread_id}/reviews"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({"decision": "approve"}))
+        .send()
+        .await
+        .expect("review")
+        .error_for_status()
+        .expect("review status");
+    assert!(review.status().is_success());
+    let after: serde_json::Value = h
+        .client
+        .get(format!("{base}/ui/api/threads/{thread_id}/review-status"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .send()
+        .await
+        .expect("status after")
+        .error_for_status()
+        .expect("status after code")
+        .json()
+        .await
+        .expect("status after json");
+    assert_eq!(
+        after["approvals"],
+        json!(0),
+        "the owner's own approval is borrowed authority and does not count: {after}"
+    );
+
+    let purge = h
+        .client
+        .post(format!("{base}/workspaces/{wid}/purge"))
+        .header(reqwest::header::COOKIE, &cookie)
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("purge");
+    assert_eq!(purge.status(), StatusCode::FORBIDDEN);
+    let problem: serde_json::Value = purge.json().await.expect("purge problem");
+    assert!(
+        problem["detail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("A signed-in session cannot call it."),
+        "{problem}"
+    );
 
     h.server.abort();
 }

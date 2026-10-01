@@ -292,7 +292,7 @@ fn ui_session_path_templates_resolve_to_the_proxy() {
     // Every literal passed directly to either proxy helper must be mounted by
     // the session router. Variable suffixes remain covered by the full UI
     // route census above and by the proxy-vs-OpenAPI method contract.
-    for helper in ["uiReadPath(", "apiWritePath("] {
+    for helper in ["uiReadPath(", "apiReadPath(", "apiWritePath("] {
         let mut cursor = 0;
         while let Some(found) = script()[cursor..].find(helper) {
             let open = cursor + found + helper.len() - 1;
@@ -322,7 +322,7 @@ fn ui_inline_fetch_methods_resolve_to_the_session_proxy() {
     while let Some(found) = source[cursor..].find("fetch(") {
         let open = cursor + found + "fetch".len();
         let call = balanced_call(source, open);
-        for helper in ["uiReadPath(", "apiWritePath("] {
+        for helper in ["uiReadPath(", "apiReadPath(", "apiWritePath("] {
             let Some(found_helper) = call.find(helper) else {
                 continue;
             };
@@ -343,7 +343,7 @@ fn ui_inline_fetch_methods_resolve_to_the_session_proxy() {
                     .expect("quoted helper argument"),
             )
             .expect("helper path");
-            let methods = if helper == "uiReadPath(" {
+            let methods = if helper == "uiReadPath(" || helper == "apiReadPath(" {
                 vec!["GET"]
             } else if let Some(method_at) = call.find("method:") {
                 let method_expr = call[method_at + "method:".len()..]

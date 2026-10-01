@@ -7,7 +7,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use maidan_auth::{
-    capability::{EVENT_SUBSCRIBE, MESSAGE_POST, SEARCH_QUERY, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{
+        ARTIFACT_UPLOAD, EVENT_SUBSCRIBE, MESSAGE_POST, SEARCH_QUERY, THREAD_TRANSITION,
+        WORKSPACE_READ, WORKSPACE_WRITE,
+    },
     record_delegated_authorization, resolve_bearer, resolve_peer_bearer, AuthContext,
     AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,
 };
@@ -216,11 +219,16 @@ async fn run_authorized(
     tag_room(response, workspace_id)
 }
 
+/// What a bearer-only route tells an OIDC session. The cookie authenticated
+/// someone; this route still takes a bearer, and the answer is a sentence.
+const SESSION_NEEDS_BEARER: &str = "This needs a bearer token. A signed-in session cannot call it.";
+
 /// The session a bearer-tree request without a bearer rides on. Only a session
 /// made from a token reaches this tree, with that token's authority: the bearer
 /// routes accept exactly what the token's bearer would. An OIDC session's fixed
-/// capabilities were sized for the `/ui/api` routes and stay there, and MCP is
-/// an agent protocol, bearer only.
+/// capabilities stay on the `/ui/api` routes, so a bearer-only route answers it
+/// with [`SESSION_NEEDS_BEARER`] instead of a raw unauthorized error. MCP is an
+/// agent protocol and stays bearer only.
 async fn token_session(
     state: &AppState,
     path: &str,
@@ -231,7 +239,9 @@ async fn token_session(
         return Err(ApiError::Unauthorized);
     }
     let session = load_session(state, headers).await?;
-    let ctx = session.token.clone().ok_or(ApiError::Unauthorized)?;
+    let Some(ctx) = session.token.clone() else {
+        return Err(ApiError::Forbidden(SESSION_NEEDS_BEARER.into()));
+    };
     check_request_origin(method, headers)?;
     Ok((session, ctx))
 }
@@ -279,6 +289,8 @@ const OIDC_WRITE_CAPABILITIES: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
     MESSAGE_POST,
+    THREAD_TRANSITION,
+    ARTIFACT_UPLOAD,
     EVENT_SUBSCRIBE,
     SEARCH_QUERY,
 ];
