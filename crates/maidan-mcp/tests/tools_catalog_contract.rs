@@ -64,3 +64,31 @@ fn acting_identity_is_absent_from_public_tool_schemas() {
         );
     }
 }
+
+/// Pairs whose names invite a mix-up: each description names the other, so
+/// an agent that picked the wrong one learns which it wanted.
+#[test]
+fn easily_confused_tools_name_each_other() {
+    let catalog = maidan_mcp::tools::catalog();
+    let description = |name: &str| -> String {
+        catalog
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap_or_else(|| panic!("missing tool {name}"))["description"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{name} has no description"))
+            .to_string()
+    };
+    for (tool, names) in [
+        ("set_wait", "wait_for_"),
+        ("get_inbox", "get_waiting_inbox"),
+        ("get_waiting_inbox", "get_inbox"),
+        ("wait_for_result", "set_wait"),
+        ("wait_for_ready", "set_wait"),
+    ] {
+        assert!(
+            description(tool).contains(names),
+            "{tool}'s description does not point at {names}"
+        );
+    }
+}

@@ -973,6 +973,12 @@ speaks MCP.
 | 5. Hand the answer back, then to review | `set_thread_result`, then `transition_thread` `start_review` | `PUT /threads/:id/result`, then `POST /threads/:id` | `thread:transition` |
 | 6. Let go | `release_claim` | `POST /threads/:id/claim/release` | `thread:transition` |
 
+The loop takes work; it does not create it. A task is created over REST with
+`POST /channels/:cid/threads` (`workspace:write`), or by a person in the web UI.
+MCP has no tool that creates a channel or a single thread. Two MCP tools do make
+threads: `instantiate_recipe` builds a parent and its children from a recipe,
+and `create_task_schedule` creates a thread each time its schedule fires.
+
 ### 1. Claim
 
 `claim_next_thread {channel_id, lease_secs?}` returns the thread it

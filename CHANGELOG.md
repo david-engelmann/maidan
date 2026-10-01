@@ -892,6 +892,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   terminated in front of it. An unparseable `MAIDAN_A2A_GRPC_ADDR` now refuses
   boot instead of logging and starting without gRPC.
 
+### Agent-facing text says what the server does
+
+- **Fixed:** `llms.txt` said a claim taken without `lease_secs` never lapses.
+  Every `claim_next_thread` claim is leased (600 s by default,
+  `MAIDAN_CLAIM_DEFAULT_LEASE_SECS`); a lapsed claim's worked time counts
+  against the task's `max_wall_secs`; and a claim still unacknowledged 120 s
+  after it was taken is reported to the task's owner as a
+  `ClaimUnacknowledged`. The first two steps of the work loop now say so.
+- **Added:** `llms.txt`, the `claim_next_thread` description and the waiter
+  loop in `docs/Integration.md` say where tasks come from. MCP has no tool that
+  creates a channel or a single task: a task is created with
+  `POST /channels/{cid}/threads` or by a person in the web UI.
+- **Changed:** the MCP tool schemas list the values `transition_thread.action`
+  accepts (`start_review`, `close`, `archive`) and a `post_message` content
+  block's `type` (`text`, `code`, `tool_use`, `tool_result`, `resource_link`)
+  as enums. The server accepted exactly these before, and still refuses any
+  other value with `-32602`.
+- **Changed:** `set_wait`, the thread-scoped `wait_for_*` tools, `get_inbox`
+  and `get_waiting_inbox` each name the tool they are mistaken for and when to
+  use it.
+- **Fixed:** the comment in `scripts/a2a-tck.sh` presented the TCK report's
+  per-transport counts as a breakdown of pytest's 182 passed; it now says which
+  tally each number comes from. The UI test `waiting.spec.ts` now checks the
+  listed items, not the word "waiting", which an empty inbox also prints.
+
 ### SQLite backups are snapshots, and a restore cannot bring back the old database
 
 - **Added:** `scripts/backup.sh` and `scripts/restore.sh` take a SQLite

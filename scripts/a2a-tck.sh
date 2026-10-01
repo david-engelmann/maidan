@@ -26,10 +26,21 @@ export MAIDAN_ALLOW_INSECURE_DEV_KEK=1
 tck_repo="https://github.com/a2aproject/a2a-tck.git"
 tck_commit="263b9cfaf16a554bdfb166a7ba5b67716e946349"
 # Tests that pass at this commit. Raise it when a fix makes more pass.
-# The full run at this commit (CI, 2026-09-29): 182 passed, 65 skipped,
-# 18 deselected. By binding: JSON-RPC 73 of 80 (7 skipped), HTTP+JSON 70 of 75
-# (5 skipped), gRPC 47 of 50 (3 skipped). The 18 deselected are the tests matched
-# by the six prefixes in scripts/a2a-tck/exclusions.txt. Update these numbers with min_passed.
+# A TCK run prints two tallies, and they count different things. From the CI
+# run of 2026-09-30:
+#   - pytest's last line counts test cases: 182 passed, 65 skipped,
+#     18 deselected. min_passed is checked against this "passed". The 18
+#     deselected are the tests matched by the six prefixes in
+#     scripts/a2a-tck/exclusions.txt.
+#   - The TCK's "Compatibility Report" above it counts requirement checks,
+#     which only some tests record. BY TRANSPORT: agent_card 10/10,
+#     jsonrpc 73/80 (7 skipped), http_json 70/75 (5 skipped), grpc 47/50
+#     (3 skipped). Its level table shows 42 requirements as failed; none
+#     failed (the report lists no FAILED REQUIREMENTS). It counts a
+#     requirement that no test checked as failed.
+# The walkthrough (examples/a2a_interop.py) runs before the TCK and prints
+# no counts, only "A2A walkthrough: all checks passed".
+# Update these numbers with min_passed.
 min_passed=182
 
 port="${MAIDAN_A2A_PORT:-18095}"
