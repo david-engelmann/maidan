@@ -1065,6 +1065,36 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "list_secret_egress_hosts",
+            "description": "List the hosts trusted with this workspace's secret values: on a webhook, automation HTTP or A2A push delivery to one of them, secret://<name> refs in the payload are replaced with the workspace's values; any other host gets the literal ref. Empty (the default) means no host gets a value. Requires secret:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
+            "name": "allow_secret_egress_host",
+            "description": "Trust a host with this workspace's secret values (idempotent). A listed host receives the value of every secret a payload bound for it names, so this needs secret:read as well as secret:admin. The host is a lowercase hostname or IPv4 address with no scheme, port, path or wildcard, and must be inside the instance ceiling when the operator set one. Audited.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string", "description": "e.g. hooks.example.com"}
+                },
+                "required": ["host"]
+            }
+        }),
+        json!({
+            "name": "revoke_secret_egress_host",
+            "description": "Stop trusting a host with this workspace's secret values; the next delivery to it carries the literal secret:// refs. Not found when the host was not listed. Requires secret:admin. Audited.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string"}
+                },
+                "required": ["host"]
+            }
+        }),
+        json!({
             "name": "freeze_member",
             "description": "Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released, and emits member_frozen to the workspace (the reason included). The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.",
             "inputSchema": {

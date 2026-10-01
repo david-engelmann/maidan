@@ -1,33 +1,35 @@
 //! The egress SecretBroker.
 //!
-//! On outbound delivery (a webhook POST), Maidan substitutes `secret://<name>`
-//! references in the payload with the resolved value — **but only when the
-//! target host is on an allowlist** (`MAIDAN_SECRET_EGRESS_ALLOWLIST`,
-//! comma-separated hostnames). A ref bound for a non-allowlisted host is left
-//! as the literal placeholder, so a secret is never leaked to an untrusted
-//! endpoint. The value is resolved + decrypted here at send time and never
-//! persists in the delivery queue or the event log.
-
-use std::sync::OnceLock;
+//! On outbound delivery (a webhook POST, an automation HTTP call from a slash
+//! command or FSM hook, an A2A push notification), Maidan substitutes
+//! `secret://<name>` references in the payload with the sending workspace's
+//! secret values, **but only for an `https` URL whose host is on that
+//! workspace's secret-egress allowlist** (`maidan_secret_egress_hosts`,
+//! managed with `secret:admin`). Plain `http` is still delivered; the refs
+//! stay literal. A ref bound for any other host is left as the literal
+//! placeholder, so a secret is never sent to a host its workspace has not
+//! trusted with it, and never over a cleartext URL. The value is resolved and
+//! decrypted here at send time and never persists in a delivery queue, the
+//! event log or an audit row.
+//!
+//! `MAIDAN_SECRET_EGRESS_ALLOWLIST`, when set, is an instance-wide ceiling: a
+//! host outside it never receives a value, whatever a workspace lists, and a
+//! workspace cannot add it. Unset, the workspace lists alone decide. Set to
+//! the empty string, no host receives a value.
+//!
+//! Every payload the broker sees is a JSON document, and a ref's characters
+//! need no escaping, so a ref only ever appears inside a JSON string. The value
+//! is inserted JSON-escaped: a secret holding a quote or a newline (a PEM key)
+//! leaves the document valid instead of breaking or rewriting it.
 
 use maidan_auth::decrypt_peer_secret_rotating;
-use maidan_types::{secret_refs_in, substitute_secret_refs, WorkspaceId};
+use maidan_types::{
+    secret_refs_in, substitute_secret_refs, within_secret_egress_ceiling, WorkspaceId,
+};
 
 use crate::state::AppState;
 
-/// The parsed egress allowlist, cached from `MAIDAN_SECRET_EGRESS_ALLOWLIST` on
-/// first use (comma/whitespace-separated hostnames). Empty ⇒ the broker never
-/// substitutes (the safe default — no host is trusted with resolved secrets).
-fn allowlist() -> &'static [String] {
-    static ALLOWLIST: OnceLock<Vec<String>> = OnceLock::new();
-    ALLOWLIST.get_or_init(|| {
-        std::env::var("MAIDAN_SECRET_EGRESS_ALLOWLIST")
-            .map(|raw| parse_allowlist(&raw))
-            .unwrap_or_default()
-    })
-}
-
-/// Parse a comma/whitespace-separated host allowlist. Pure.
+/// Parse a comma/whitespace-separated host list (the instance ceiling). Pure.
 pub fn parse_allowlist(raw: &str) -> Vec<String> {
     raw.split([',', ' ', '\t', '\n'])
         .map(str::trim)
@@ -36,47 +38,65 @@ pub fn parse_allowlist(raw: &str) -> Vec<String> {
         .collect()
 }
 
-/// The canonical parsed host for an already-valid public egress URL.
+/// The lowercase host an egress URL would be sent to, when the egress guard
+/// would send to it at all.
 pub fn host_of(url: &str) -> Option<String> {
-    maidan_auth::parse_egress_target(url)
+    maidan_auth::validate_egress_target(url)
         .ok()?
         .host_str()
-        .map(ToOwned::to_owned)
+        .map(str::to_ascii_lowercase)
 }
 
-/// Whether `url`'s host is on `allowlist` (case-insensitive exact match). Pure.
-pub fn host_allowed(url: &str, allowlist: &[String]) -> bool {
-    match host_of(url) {
-        Some(host) => allowlist.contains(&host.to_ascii_lowercase()),
-        None => false,
+/// Whether `workspace_id` may send its secret values to `url`'s host: the
+/// host is inside the instance ceiling and on the workspace's allowlist. Any
+/// doubt (an unparseable URL, a failed lookup) is a no.
+pub async fn may_receive_secrets(state: &AppState, workspace_id: WorkspaceId, url: &str) -> bool {
+    let Some(host) = host_of(url) else {
+        return false;
+    };
+    if !within_secret_egress_ceiling(&host, state.mcp.secret_egress_ceiling()) {
+        return false;
+    }
+    match state
+        .store
+        .is_secret_egress_host_allowed(workspace_id, &host)
+        .await
+    {
+        Ok(allowed) => allowed,
+        Err(err) => {
+            tracing::warn!(%workspace_id, %host, error = %err, "secret egress allowlist lookup failed; leaving refs literal");
+            false
+        }
     }
 }
 
-/// Substitute `secret://<name>` refs in `body` for an egress to `url`, if the
-/// host is allowlisted. Returns `body` unchanged when there are no refs, the host
-/// isn't allowlisted, or no encryption key is configured (the broker fails safe —
-/// a ref is never blanked, only substituted or left literal). Resolves + decrypts
-/// each referenced secret at send time; the plaintext never persists.
+/// `value` escaped for the inside of a JSON string.
+fn json_escaped(value: &str) -> Option<String> {
+    let quoted = serde_json::to_string(value).ok()?;
+    Some(quoted.strip_prefix('"')?.strip_suffix('"')?.to_string())
+}
+
+/// Substitute `secret://<name>` refs in the JSON `body` of an egress to `url`,
+/// from `workspace_id`'s secrets. Returns `body` unchanged when there are no
+/// refs, the URL is not `https`, the host may not receive this workspace's
+/// secrets, or no encryption key is configured; a ref naming a secret the
+/// workspace does not hold, or whose lookup or decryption fails, stays
+/// literal. The broker fails safe: a ref is substituted or left literal, never
+/// blanked, and only ever from the sending workspace's own secrets. HTTP
+/// egress itself is not refused here.
 pub async fn substitute_for_egress(
     state: &AppState,
     workspace_id: WorkspaceId,
     url: &str,
     body: &str,
 ) -> String {
-    substitute_with(state, workspace_id, url, body, allowlist()).await
-}
-
-/// The allowlist-parameterized core of [`substitute_for_egress`], so the resolve
-/// path is testable without the process-global env cache.
-pub async fn substitute_with(
-    state: &AppState,
-    workspace_id: WorkspaceId,
-    url: &str,
-    body: &str,
-    allowlist: &[String],
-) -> String {
     let names = secret_refs_in(body);
-    if names.is_empty() || !host_allowed(url, allowlist) {
+    // Scheme is checked here, not in `client_for`: public HTTP egress stays
+    // allowed, it just does not receive a secret value.
+    let https = maidan_auth::validate_egress_target(url)
+        .ok()
+        .is_some_and(|target| target.scheme() == "https");
+    if names.is_empty() || !https || !may_receive_secrets(state, workspace_id, url).await {
         return body.to_string();
     }
     let Some(key) = state.federation.encryption_key.as_deref() else {
@@ -94,7 +114,9 @@ pub async fn substitute_with(
         match state.store.get_secret_ciphertext(workspace_id, name).await {
             Ok(Some(ciphertext)) => match decrypt_peer_secret_rotating(&ciphertext, key) {
                 Ok(value) => {
-                    resolved.insert(name.clone(), value);
+                    if let Some(escaped) = json_escaped(&value) {
+                        resolved.insert(name.clone(), escaped);
+                    }
                 }
                 Err(err) => {
                     tracing::warn!(secret = %name, error = %err, "egress secret decrypt failed")
@@ -132,7 +154,7 @@ mod tests {
     #[test]
     fn extracts_host_from_urls() {
         assert_eq!(
-            host_of("https://api.example.com/hook?x=1"),
+            host_of("https://API.example.com/hook?x=1"),
             Some("api.example.com".to_string())
         );
         assert_eq!(host_of("http://user:pw@host.internal:8443/x"), None);
@@ -144,14 +166,29 @@ mod tests {
     }
 
     #[test]
-    fn allowlist_is_exact_case_insensitive_host_match() {
-        let allow = parse_allowlist("api.example.com");
-        assert!(host_allowed("https://API.example.com/hook", &allow));
-        assert!(!host_allowed("https://evil.example.com/hook", &allow));
-        assert!(!host_allowed(
-            "https://api.example.com.evil.com/hook",
-            &allow
+    fn the_ceiling_is_an_exact_host_match_and_unset_is_no_ceiling() {
+        let ceiling = parse_allowlist("api.example.com");
+        assert!(within_secret_egress_ceiling(
+            "api.example.com",
+            Some(&ceiling)
         ));
-        assert!(!host_allowed("https://api.example.com/hook", &[]));
+        assert!(!within_secret_egress_ceiling(
+            "evil.example.com",
+            Some(&ceiling)
+        ));
+        assert!(!within_secret_egress_ceiling(
+            "api.example.com.evil.com",
+            Some(&ceiling)
+        ));
+        assert!(!within_secret_egress_ceiling("api.example.com", Some(&[])));
+        assert!(within_secret_egress_ceiling("api.example.com", None));
+    }
+
+    #[test]
+    fn a_value_is_escaped_for_the_json_string_it_lands_in() {
+        assert_eq!(
+            json_escaped("line one\n\"quoted\"").as_deref(),
+            Some("line one\\n\\\"quoted\\\"")
+        );
     }
 }

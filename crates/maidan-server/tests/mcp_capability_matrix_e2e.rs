@@ -51,8 +51,22 @@ fn deny_caps(required: &str) -> Vec<String> {
             capability::WORKSPACE_WRITE.into(),
         ],
         capability::SECRET_READ => vec![capability::WORKSPACE_READ.into()],
+        capability::SECRET_ADMIN => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::SECRET_READ.into(),
+        ],
         capability::TOKEN_ADMIN => vec![capability::WORKSPACE_READ.into()],
         other => panic!("unknown capability in map: {other}"),
+    }
+}
+
+/// Tools that check a second capability after the mapped one. The map names
+/// one capability per tool; these are the exceptions, each for a stated reason.
+fn also_required(tool: &str) -> &'static [&'static str] {
+    match tool {
+        // A listed host receives the secrets' values.
+        "allow_secret_egress_host" => &[capability::SECRET_READ],
+        _ => &[],
     }
 }
 
@@ -213,13 +227,9 @@ async fn every_mcp_tool_passes_capability_gate_with_required_cap() {
     let ws = workspace_id.0.to_string();
 
     for (tool, required) in contract_map() {
-        let bearer = mint_token(
-            h.store.as_ref(),
-            workspace_id,
-            member_id,
-            vec![required.clone()],
-        )
-        .await;
+        let mut caps = vec![required.clone()];
+        caps.extend(also_required(&tool).iter().map(|c| c.to_string()));
+        let bearer = mint_token(h.store.as_ref(), workspace_id, member_id, caps).await;
         let args = if required == capability::WORKSPACE_READ {
             json!({ "workspace_id": ws })
         } else {

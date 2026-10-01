@@ -1869,6 +1869,44 @@ pub fn resolve_secret() {}
     ))]
 pub fn delete_secret() {}
 
+/// Trust a host with the workspace's secret values
+///
+/// Needs `secret:admin` and `secret:read`: a listed host receives the value
+/// of every secret a payload bound for it names. 400 when the host is not a
+/// bare hostname or is outside the instance ceiling.
+#[utoipa::path(post, path = "/workspaces/{wid}/secret-egress-hosts", tag = "secrets",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = AllowSecretEgressHost,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, body = SecretEgressHost),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn allow_secret_egress_host() {}
+
+/// List the hosts trusted with the workspace's secret values
+#[utoipa::path(get, path = "/workspaces/{wid}/secret-egress-hosts", tag = "secrets",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Vec<SecretEgressHost>),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_secret_egress_hosts() {}
+
+/// Stop trusting a host with the workspace's secret values
+#[utoipa::path(delete, path = "/workspaces/{wid}/secret-egress-hosts/{host}", tag = "secrets",
+    params(("wid" = Uuid, Path, description = "Workspace id"),
+        ("host" = String, Path, description = "The listed host")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn revoke_secret_egress_host() {}
+
 // --- member freeze kill-switch ---
 
 /// Freeze a member

@@ -638,6 +638,14 @@ pub fn router(state: AppState) -> Router {
             delete(routes::delete_secret),
         )
         .route(
+            "/workspaces/{wid}/secret-egress-hosts",
+            post(routes::allow_secret_egress_host).merge(get(routes::list_secret_egress_hosts)),
+        )
+        .route(
+            "/workspaces/{wid}/secret-egress-hosts/{host}",
+            delete(routes::revoke_secret_egress_host),
+        )
+        .route(
             "/members/{id}/freeze",
             post(routes::freeze_member)
                 .merge(delete(routes::unfreeze_member))

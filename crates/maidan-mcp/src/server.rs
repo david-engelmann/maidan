@@ -114,6 +114,11 @@ pub struct McpServer {
     /// startup from the server's keyring; unset in tests/embedders that don't
     /// configure one, in which case `resolve_secret` reports it's unavailable.
     encryption_key: std::sync::OnceLock<Arc<[u8; 32]>>,
+    /// The instance-wide ceiling on the hosts a workspace may trust with its
+    /// secret values (`MAIDAN_SECRET_EGRESS_ALLOWLIST`). Unset means no
+    /// ceiling: the workspace lists alone decide. REST and the egress broker
+    /// read it from here too.
+    secret_egress_ceiling: std::sync::OnceLock<Vec<String>>,
     /// Operator Ed25519 key for signed workspace export. Unset means
     /// `export_workspace` refuses — never emit an unsigned bundle.
     export_signing: std::sync::OnceLock<maidan_auth::ExportSigningKey>,
@@ -151,6 +156,7 @@ impl McpServer {
             resource_notifier: None,
             slash_dispatcher: std::sync::OnceLock::new(),
             encryption_key: std::sync::OnceLock::new(),
+            secret_egress_ceiling: std::sync::OnceLock::new(),
             export_signing: std::sync::OnceLock::new(),
             export_verify_keys: std::sync::OnceLock::new(),
             presence_reader: Arc::new(std::sync::RwLock::new(None)),
@@ -223,6 +229,18 @@ impl McpServer {
 
     pub(crate) fn encryption_key(&self) -> Option<&Arc<[u8; 32]>> {
         self.encryption_key.get()
+    }
+
+    /// Set the instance ceiling on secret-egress hosts (lowercase hostnames).
+    /// Called once at startup when `MAIDAN_SECRET_EGRESS_ALLOWLIST` is set; an
+    /// empty list means no host may receive a secret value.
+    pub fn set_secret_egress_ceiling(&self, hosts: Vec<String>) {
+        let _ = self.secret_egress_ceiling.set(hosts);
+    }
+
+    /// The instance ceiling, or `None` when there is none.
+    pub fn secret_egress_ceiling(&self) -> Option<&[String]> {
+        self.secret_egress_ceiling.get().map(Vec::as_slice)
     }
 
     /// Install the operator signing key for `export_workspace`. Called once at
@@ -5705,6 +5723,132 @@ mod tests {
             )
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn secret_egress_host_tools_need_admin_and_read_and_are_audited() {
+        use maidan_auth::capability::{SECRET_ADMIN, SECRET_READ};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "sec".into() })
+            .await
+            .unwrap();
+        let member = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "admin".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool.clone())),
+            Arc::new(HashV1Provider),
+        );
+        server.set_secret_egress_ceiling(vec!["hooks.example.com".into()]);
+        let content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let admin_only = AuthContext::from_session(member.id, ws.id, vec![SECRET_ADMIN.into()]);
+        let admin = AuthContext::from_session(
+            member.id,
+            ws.id,
+            vec![SECRET_ADMIN.into(), SECRET_READ.into()],
+        );
+        let allow = json!({ "host": "Hooks.Example.com" });
+
+        // Listing a host hands it the values, so rotating secrets is not enough.
+        let err = server
+            .call_tool(&admin_only, "allow_secret_egress_host", &allow)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, McpError::Forbidden(ref m) if m.contains("secret:read")),
+            "{err:?}"
+        );
+        assert!(store
+            .list_secret_egress_hosts(ws.id)
+            .await
+            .unwrap()
+            .is_empty());
+
+        let entry = content(
+            server
+                .call_tool(&admin, "allow_secret_egress_host", &allow)
+                .await
+                .unwrap(),
+        );
+        assert_eq!(entry["host"], json!("hooks.example.com"));
+        for refused in ["https://hooks.example.com", "other.example.com"] {
+            let err = server
+                .call_tool(
+                    &admin,
+                    "allow_secret_egress_host",
+                    &json!({ "host": refused }),
+                )
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, McpError::InvalidParams(_)),
+                "{refused}: {err:?}"
+            );
+        }
+
+        let listed = content(
+            server
+                .call_tool(&admin_only, "list_secret_egress_hosts", &json!({}))
+                .await
+                .unwrap(),
+        );
+        assert_eq!(listed.as_array().unwrap().len(), 1);
+
+        server
+            .call_tool(
+                &admin_only,
+                "revoke_secret_egress_host",
+                &json!({ "host": "hooks.example.com" }),
+            )
+            .await
+            .unwrap();
+        assert!(store
+            .list_secret_egress_hosts(ws.id)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(matches!(
+            server
+                .call_tool(
+                    &admin_only,
+                    "revoke_secret_egress_host",
+                    &json!({ "host": "hooks.example.com" }),
+                )
+                .await,
+            Err(McpError::NotFound)
+        ));
+
+        let audit = store.list_audit(20).await.unwrap();
+        for action in ["secret_egress_host.allow", "secret_egress_host.revoke"] {
+            assert!(
+                audit
+                    .iter()
+                    .any(|row| row.action == action && row.metadata["host"] == "hooks.example.com"),
+                "{action} unrecorded"
+            );
+        }
     }
 
     #[tokio::test]

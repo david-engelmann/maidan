@@ -16,6 +16,7 @@ use maidan_a2a::{
 use maidan_auth::capability::WORKSPACE_WRITE;
 use maidan_auth::{decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext};
 use maidan_store::A2aPushConfigRow;
+use maidan_types::WorkspaceId;
 use uuid::Uuid;
 
 use super::error::{denied, internal, store};
@@ -249,7 +250,9 @@ pub(crate) async fn delete(
 }
 
 /// Notify every config of `task` of its current state, in the background.
-pub(super) fn notify(state: &AppState, task: &Task) {
+/// `workspace_id` is the task's: `secret://` refs in the payload are
+/// substituted from its secrets, for a config whose host it trusts with them.
+pub(super) fn notify(state: &AppState, workspace_id: WorkspaceId, task: &Task) {
     let state = state.clone();
     let mut task = task.clone();
     task.history = None;
@@ -267,7 +270,7 @@ pub(super) fn notify(state: &AppState, task: &Task) {
         if configs.is_empty() {
             return;
         }
-        let payload = match serde_json::to_value(StreamResponse::Task(task.clone())) {
+        let payload = match serde_json::to_string(&StreamResponse::Task(task.clone())) {
             Ok(payload) => payload,
             Err(err) => {
                 tracing::error!(task_id = task.id, error = %err, "a2a push: payload failed");
@@ -282,10 +285,19 @@ pub(super) fn notify(state: &AppState, task: &Task) {
             let payload = payload.clone();
             let task_id = task.id.clone();
             let trace = trace.clone();
+            let state = state.clone();
             maidan_store::attribution::spawn(async move {
+                // Once per config, before the retries: the host decides.
+                let body = crate::secret_broker::substitute_for_egress(
+                    &state,
+                    workspace_id,
+                    &config.url,
+                    &payload,
+                )
+                .await;
                 maidan_store::trace::maybe_scope(
                     trace,
-                    deliver_a2a_push(&config.url, &payload, &task_id, &headers),
+                    deliver_a2a_push(&config.url, &body, &task_id, &headers),
                 )
                 .await;
             });
@@ -339,12 +351,7 @@ impl PushHeaders {
 
 /// POST one notification with bounded retry and backoff. Best-effort (not a
 /// durable outbox); every outcome is counted in `maidan_a2a_push_total`.
-async fn deliver_a2a_push(
-    url: &str,
-    payload: &serde_json::Value,
-    task_id: &str,
-    headers: &PushHeaders,
-) {
+async fn deliver_a2a_push(url: &str, payload: &str, task_id: &str, headers: &PushHeaders) {
     let (client, target) = match crate::egress_http::client_for(url).await {
         Ok(target) => target,
         Err(err) => {
@@ -356,7 +363,8 @@ async fn deliver_a2a_push(
     let mut backoff = Duration::from_millis(200);
     for attempt in 1..=MAX_ATTEMPTS {
         let mut request = crate::trace_context::stamp(client.post(target.clone()))
-            .json(payload)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(payload.to_owned())
             .timeout(Duration::from_secs(10));
         if let Some(authorization) = &headers.authorization {
             request = request.header(reqwest::header::AUTHORIZATION, authorization);
@@ -451,7 +459,7 @@ mod tests {
             token: Some("tok".into()),
         };
         let payload = serde_json::json!({ "task": { "id": "t1" } });
-        deliver_a2a_push(&url, &payload, "t1", &headers).await;
+        deliver_a2a_push(&url, &payload.to_string(), "t1", &headers).await;
         assert_eq!(hits.load(Ordering::SeqCst), 3, "should retry up to success");
         let seen = seen.lock().unwrap();
         let (headers, body) = seen.last().unwrap();
@@ -467,7 +475,7 @@ mod tests {
         let (url, hits, seen) = push_server(u32::MAX).await;
         deliver_a2a_push(
             &url,
-            &serde_json::json!({ "task": { "id": "t2" } }),
+            &serde_json::json!({ "task": { "id": "t2" } }).to_string(),
             "t2",
             &PushHeaders::default(),
         )

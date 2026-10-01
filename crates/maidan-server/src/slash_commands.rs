@@ -337,7 +337,16 @@ async fn dispatch_http(
         Ok(s) => s,
         Err(err) => return json!({ "ok": false, "error": err.to_string() }),
     };
-    let signature = sign_payload(&secret, &body);
+    // The receiver gets the substituted body; a retry is queued with `body`,
+    // the literal refs, and substituted again when it is sent.
+    let sent = crate::secret_broker::substitute_for_egress(
+        state,
+        workspace_id,
+        &registration.command.handler_target,
+        &body,
+    )
+    .await;
+    let signature = sign_payload(&secret, &sent);
     let (client, target) =
         match crate::egress_http::client_for(&registration.command.handler_target).await {
             Ok(target) => target,
@@ -348,7 +357,7 @@ async fn dispatch_http(
         .header("Content-Type", "application/json")
         .header("X-Maidan-Signature", signature)
         .header("X-Maidan-Command", &parsed.name)
-        .body(body.clone())
+        .body(sent)
         .send()
         .await
     {

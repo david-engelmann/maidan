@@ -108,7 +108,7 @@ responses are trimmed to the fields that matter.
 
 ```jsonc
 // → initialize {"protocolVersion":"2026-07-28", ...}
-{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 200 tools in tools/list at full capability; this token sees fewer
+{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 203 tools in tools/list at full capability; this token sees fewer
 
 // → tools/call whoami {}
 {"member_id":"01a0e957-4413…","capabilities":["workspace:read","workspace:write","message:post","thread:transition"]}

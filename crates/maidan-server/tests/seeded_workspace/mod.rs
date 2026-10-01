@@ -238,6 +238,7 @@ const FIELD_HINTS: &[(&str, &str)] = &[
 /// request field that carries it when the thing is created.
 const KEYED_BY_FIELD: &[(&str, &str)] = &[
     ("secrets", "name"),
+    ("secret-egress-hosts", "host"),
     ("glossary", "term"),
     ("skills", "skill"),
     ("required-skills", "skill"),

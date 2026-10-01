@@ -363,7 +363,8 @@ share the main HTTP port.
 
 A2A push configs seal their `token` and credentials with `FEDERATION_ENCRYPTION_KEY`;
 without it, creating a push config that carries either fails. Push targets pass the
-same egress checks as webhooks.
+same egress checks as webhooks, and `secret://` references in a pushed task are
+substituted like a webhook's (see *Secret substitution on egress*).
 
 ## WebSocket and MCP subscribe (`v4.0.0`)
 
@@ -602,6 +603,33 @@ registration fails delivery rather than being contacted.
 | Pending rows not draining | Worker not running | Confirm `AutomationDeliveryWorker` spawned in `maidan-server` main |
 
 **Manual recovery (SQL):** `UPDATE maidan_automation_deliveries SET quarantined_at = NULL, attempts = 0, next_attempt_at = datetime('now') WHERE id = $id;` (SQLite) or equivalent `now()` on Postgres — prefer HTTP replay when auth is available.
+
+### Secret substitution on egress
+
+Event webhooks, automation HTTP (slash commands and FSM hooks, the first POST
+and every queued retry) and A2A push notifications replace `secret://<name>`
+references in their JSON body with the sending workspace's secret value, at
+send time, when the delivery URL's host is on that workspace's secret-egress
+allowlist (`maidan_secret_egress_hosts`). Any other host gets the literal
+reference. Queued rows keep the reference, so a retry after a host is removed
+carries the literal; the value is never written to a queue, the event log or an
+audit row. Substitution needs `FEDERATION_ENCRYPTION_KEY`; without it every
+reference stays literal.
+
+Workspaces manage their own lists (`GET`/`POST /workspaces/:wid/secret-egress-hosts`,
+`DELETE …/:host`; MCP `list_`/`allow_`/`revoke_secret_egress_host`). Adding a
+host needs `secret:admin` and `secret:read`. The operator's control is a
+ceiling:
+
+| Env | Effect |
+|-----|--------|
+| `MAIDAN_SECRET_EGRESS_ALLOWLIST` | Comma-separated hostnames. Set, a host outside it never receives a value, whatever a workspace lists, and a workspace cannot add it (`400`). Unset, the workspace lists alone decide. Set to the empty string, no host receives a value. Read at boot. |
+
+Narrowing the ceiling does not delete workspace entries outside it; they stay
+listed and inert until the ceiling admits them again or a workspace removes
+them. Before this list existed the variable was the whole allowlist, for every
+workspace; a deployment that set it keeps the ceiling but substitutes nothing
+until each workspace lists its hosts.
 
 ### Outbound timeouts and the retry budget
 

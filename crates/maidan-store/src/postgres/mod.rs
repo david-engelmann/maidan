@@ -66,6 +66,7 @@ mod reviews;
 mod scim_audited;
 mod scim_groups;
 mod scim_users;
+mod secret_egress_hosts;
 mod secrets;
 mod sessions;
 mod share_tickets;
@@ -1833,6 +1834,32 @@ impl SecretStore for PostgresStore {
         name: &str,
     ) -> Result<bool, StoreError> {
         secrets::delete(&self.pool, workspace_id, name).await
+    }
+    async fn allow_secret_egress_host(
+        &self,
+        new: NewSecretEgressHost,
+    ) -> Result<SecretEgressHost, StoreError> {
+        secret_egress_hosts::allow(&self.pool, new).await
+    }
+    async fn list_secret_egress_hosts(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<SecretEgressHost>, StoreError> {
+        secret_egress_hosts::list(&self.pool, workspace_id).await
+    }
+    async fn revoke_secret_egress_host(
+        &self,
+        workspace_id: WorkspaceId,
+        host: &str,
+    ) -> Result<bool, StoreError> {
+        secret_egress_hosts::revoke(&self.pool, workspace_id, host).await
+    }
+    async fn is_secret_egress_host_allowed(
+        &self,
+        workspace_id: WorkspaceId,
+        host: &str,
+    ) -> Result<bool, StoreError> {
+        secret_egress_hosts::is_allowed(&self.pool, workspace_id, host).await
     }
 }
 
@@ -3793,6 +3820,21 @@ impl GovernanceAuditStore for PostgresStore {
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError> {
         governance_audited::delete_secret(&self.pool, workspace_id, name, audit).await
+    }
+    async fn allow_secret_egress_host_audited(
+        &self,
+        new: NewSecretEgressHost,
+        audit: crate::AuditFor<SecretEgressHost>,
+    ) -> Result<SecretEgressHost, StoreError> {
+        governance_audited::allow_secret_egress_host(&self.pool, new, audit).await
+    }
+    async fn revoke_secret_egress_host_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        host: &str,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError> {
+        governance_audited::revoke_secret_egress_host(&self.pool, workspace_id, host, audit).await
     }
     async fn scim_provision_audited(
         &self,

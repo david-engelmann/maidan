@@ -1,20 +1,26 @@
 //! The egress SecretBroker. Proves the security property: a `secret://<name>`
 //! ref in an outbound payload is substituted with the real value ONLY when the
-//! target host is allowlisted — otherwise it's left as the literal placeholder
-//! (never leaked). Exercises the async resolve + decrypt path directly (the
-//! webhook worker calls the same fn at send time).
+//! target is `https` and its host is on the sending workspace's secret-egress
+//! allowlist (and inside the instance ceiling, when one is set), and only from
+//! that workspace's own secrets — otherwise it's left as the literal
+//! placeholder. Plain `http` keeps the literal even for a listed host.
+//! Exercises the async resolve + decrypt path every egress worker calls at
+//! send time.
 
 use std::sync::{atomic::AtomicI64, Arc};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::encrypt_peer_secret;
-use maidan_server::secret_broker::parse_allowlist;
 use maidan_server::{secret_broker, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewMember, NewSecret, NewWorkspace};
+use maidan_types::{
+    MemberKind, NewMember, NewSecret, NewSecretEgressHost, NewWorkspace, WorkspaceId,
+};
 use sqlx::sqlite::SqlitePoolOptions;
 
-async fn state_with_key(key: Arc<[u8; 32]>) -> (AppState, Arc<dyn Store>) {
+const KEY: [u8; 32] = [3u8; 32];
+
+async fn broker_state(ceiling: Option<Vec<String>>) -> (AppState, Arc<dyn Store>) {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -37,20 +43,24 @@ async fn state_with_key(key: Arc<[u8; 32]>) -> (AppState, Arc<dyn Store>) {
         Arc::new(maidan_search::HashV1Provider),
         true,
         false,
-        FederationRuntime::new(true, Some(key)),
+        FederationRuntime::new(true, Some(Arc::new(KEY))),
         Arc::new(AtomicI64::new(0)),
         None,
     );
+    if let Some(ceiling) = ceiling {
+        state.mcp.set_secret_egress_ceiling(ceiling);
+    }
     (state, store)
 }
 
-#[tokio::test]
-async fn broker_substitutes_only_for_allowlisted_hosts() {
-    let key: Arc<[u8; 32]> = Arc::new([3u8; 32]);
-    let (state, store) = state_with_key(key.clone()).await;
-
+async fn workspace_with_secret(
+    store: &dyn Store,
+    name: &str,
+    secret: &str,
+    value: &str,
+) -> WorkspaceId {
     let ws = store
-        .create_workspace(NewWorkspace { name: "w".into() })
+        .create_workspace(NewWorkspace { name: name.into() })
         .await
         .unwrap();
     let member = store
@@ -65,37 +75,130 @@ async fn broker_substitutes_only_for_allowlisted_hosts() {
     store
         .create_secret(NewSecret {
             workspace_id: ws.id,
-            name: "api-key".into(),
-            value_ciphertext: encrypt_peer_secret("TOPSECRET", &key).unwrap(),
+            name: secret.into(),
+            value_ciphertext: encrypt_peer_secret(value, &KEY).unwrap(),
             created_by: member.id,
         })
         .await
         .unwrap();
+    ws.id
+}
 
-    let body = r#"{"auth":"Bearer secret://api-key","other":"secret://missing"}"#;
-    let allow = parse_allowlist("hooks.example.com");
+async fn trust(store: &dyn Store, ws: WorkspaceId, host: &str) {
+    store
+        .allow_secret_egress_host(NewSecretEgressHost {
+            workspace_id: ws,
+            host: host.into(),
+        })
+        .await
+        .unwrap();
+}
 
-    // Allowlisted host → the known secret is substituted; an unknown ref stays literal.
-    let subbed =
-        secret_broker::substitute_with(&state, ws.id, "https://hooks.example.com/x", body, &allow)
-            .await;
-    assert!(
-        subbed.contains("Bearer TOPSECRET"),
-        "known secret substituted"
-    );
+const HOOK: &str = "https://hooks.example.com/x";
+const BODY: &str = r#"{"auth":"Bearer secret://api-key","other":"secret://missing"}"#;
+
+#[tokio::test]
+async fn broker_substitutes_only_for_hosts_the_workspace_trusts() {
+    let (state, store) = broker_state(None).await;
+    let ws = workspace_with_secret(store.as_ref(), "w", "api-key", "TOPSECRET").await;
+
+    // Nothing listed: nothing substituted.
+    let untouched = secret_broker::substitute_for_egress(&state, ws, HOOK, BODY).await;
+    assert_eq!(untouched, BODY, "an unlisted host gets the literal refs");
+
+    trust(store.as_ref(), ws, "hooks.example.com").await;
+    let subbed = secret_broker::substitute_for_egress(&state, ws, HOOK, BODY).await;
+    assert!(subbed.contains("Bearer TOPSECRET"), "{subbed}");
     assert!(
         subbed.contains("secret://missing"),
         "unknown ref left literal"
     );
     assert!(!subbed.contains("secret://api-key"));
 
-    // Non-allowlisted host → the payload is unchanged, the secret NEVER leaks.
-    let untouched =
-        secret_broker::substitute_with(&state, ws.id, "https://evil.example.com/x", body, &allow)
-            .await;
+    for elsewhere in [
+        "https://evil.example.com/x",
+        "https://hooks.example.com.evil.com/x",
+    ] {
+        let untouched = secret_broker::substitute_for_egress(&state, ws, elsewhere, BODY).await;
+        assert_eq!(untouched, BODY, "{elsewhere} got a value");
+    }
+
+    assert!(store
+        .revoke_secret_egress_host(ws, "hooks.example.com")
+        .await
+        .unwrap());
+    let untouched = secret_broker::substitute_for_egress(&state, ws, HOOK, BODY).await;
+    assert_eq!(untouched, BODY, "a revoked host gets the literal refs");
+}
+
+#[tokio::test]
+async fn one_workspaces_secret_never_reaches_another_workspaces_egress() {
+    let (state, store) = broker_state(None).await;
+    let a = workspace_with_secret(store.as_ref(), "a", "api-key", "VALUE-OF-A").await;
+    let b = workspace_with_secret(store.as_ref(), "b", "b-only", "VALUE-OF-B").await;
+    trust(store.as_ref(), a, "hooks.example.com").await;
+
+    // A trusting the host does not let B's egress to it substitute anything.
+    let from_b = secret_broker::substitute_for_egress(&state, b, HOOK, BODY).await;
+    assert_eq!(from_b, BODY);
+
+    // B trusting the same host resolves from B's secrets only: A's `api-key`
+    // stays a literal ref in B's payload.
+    trust(store.as_ref(), b, "hooks.example.com").await;
+    let body = r#"{"a":"secret://api-key","b":"secret://b-only"}"#;
+    let from_b = secret_broker::substitute_for_egress(&state, b, HOOK, body).await;
+    assert!(!from_b.contains("VALUE-OF-A"), "{from_b}");
+    assert!(from_b.contains("secret://api-key"));
+    assert!(from_b.contains("VALUE-OF-B"));
+
+    let from_a = secret_broker::substitute_for_egress(&state, a, HOOK, body).await;
+    assert!(from_a.contains("VALUE-OF-A") && !from_a.contains("VALUE-OF-B"));
+}
+
+#[tokio::test]
+async fn an_http_target_keeps_the_literal_ref() {
+    let (state, store) = broker_state(None).await;
+    let ws = workspace_with_secret(store.as_ref(), "w", "api-key", "TOPSECRET").await;
+    trust(store.as_ref(), ws, "hooks.example.com").await;
+    let http = "http://hooks.example.com/x";
+    let untouched = secret_broker::substitute_for_egress(&state, ws, http, BODY).await;
     assert_eq!(
-        untouched, body,
-        "non-allowlisted host gets the literal refs"
+        untouched, BODY,
+        "plain http is delivered with the literal ref"
     );
-    assert!(!untouched.contains("TOPSECRET"));
+    let subbed = secret_broker::substitute_for_egress(&state, ws, HOOK, BODY).await;
+    assert!(subbed.contains("TOPSECRET"), "{subbed}");
+}
+
+#[tokio::test]
+async fn the_instance_ceiling_bounds_what_a_workspace_can_trust() {
+    let (state, store) = broker_state(Some(vec!["other.example.com".into()])).await;
+    let ws = workspace_with_secret(store.as_ref(), "w", "api-key", "TOPSECRET").await;
+    // Listed in the store directly: the ceiling holds at send time too, for a
+    // host listed before the operator narrowed it.
+    trust(store.as_ref(), ws, "hooks.example.com").await;
+    let untouched = secret_broker::substitute_for_egress(&state, ws, HOOK, BODY).await;
+    assert_eq!(
+        untouched, BODY,
+        "a host outside the ceiling gets the literal refs"
+    );
+
+    let (off, store) = broker_state(Some(vec![])).await;
+    let ws = workspace_with_secret(store.as_ref(), "w", "api-key", "TOPSECRET").await;
+    trust(store.as_ref(), ws, "hooks.example.com").await;
+    let untouched = secret_broker::substitute_for_egress(&off, ws, HOOK, BODY).await;
+    assert_eq!(untouched, BODY, "an empty ceiling admits no host");
+}
+
+#[tokio::test]
+async fn a_value_with_quotes_and_newlines_leaves_the_payload_valid_json() {
+    let (state, store) = broker_state(None).await;
+    let pem = "-----BEGIN KEY-----\nab\"c\\d\n-----END KEY-----";
+    let ws = workspace_with_secret(store.as_ref(), "w", "pem", pem).await;
+    trust(store.as_ref(), ws, "hooks.example.com").await;
+    let body = r#"{"key":"secret://pem","n":1}"#;
+    let subbed = secret_broker::substitute_for_egress(&state, ws, HOOK, body).await;
+    let parsed: serde_json::Value = serde_json::from_str(&subbed).expect("still JSON");
+    assert_eq!(parsed["key"], pem);
+    assert_eq!(parsed["n"], 1);
 }
