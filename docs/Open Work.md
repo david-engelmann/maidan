@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `bd360306` (2026-10-01).
+on a decision. Last reconciled against `main` at `413e45a6` (2026-10-01).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -50,13 +50,10 @@ CI ran.
 
 | PR | What it does | State (2026-10-01) | Merge after |
 |---|---|---|---|
-| #1152 | A member of another workspace is answered like an unknown one on every member-taking route and tool; `authority_audit_contract` and `attribution_scope_contract` scan past each `#[cfg(test)]` lexically; JSON-RPC `-32600` for a non-request; stdio answers no notification | Lane CRO is answering the last CodeRabbit threads | — |
-| #1140 | `secret://` references are substituted on automation and A2A push egress, against a per-workspace allowlist; a reference on plain-HTTP egress stays literal | Rebased onto `bd360306`; lane CRO is answering CodeRabbit | — |
-| #1142 | A pasted token is exchanged for the `HttpOnly` session, so no token stays in `localStorage`; unsafe session requests from another origin are refused; `csrf_secret` is dropped; UI denials are audited | Rebased onto `bd360306`; lane O is folding its unpushed work onto the commits another agent added | — |
-| #1165 | Held-workspace delivery sweep skips webhook, automation and outbox; `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` prunes read notifications only; the usage ledger is kept | Lane REV is running the Postgres twins and reviewing; the lint fix is on `de1967c7` | — |
-| #1167 | `restore.sh --force` replaces a corrupt target, and the review triage's other script and CI findings (lane CRD) | CI running | — |
+| #1152 | A member of another workspace is answered like an unknown one on every member-taking route and tool; `authority_audit_contract` and `attribution_scope_contract` scan past each `#[cfg(test)]` lexically; JSON-RPC `-32600` for a non-request; stdio answers no notification | `36838124`; rebased after session, scripts, and retention landed; CI restarted | — |
+| #1140 | `secret://` references are substituted on automation and A2A push egress, against a per-workspace allowlist; a reference on plain-HTTP egress stays literal | `95257832`; rebased after session, scripts, and retention landed; CI restarted | — |
 | #1168 | The SDKs page past 500 rows, and their READMEs install the surface they show (lane CRD) | CI running | #1159 (merged) |
-| #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | Rebased onto `bd360306`; must absorb every store method the PRs above add | Everything above that adds a `Store` method |
+| #1100 | F-48 Tier 1: one `store_delegations!` list for both backends | `86b6cad0`; rebased after session, scripts, and retention landed; CI restarted | Everything above that adds a `Store` method |
 | (lane BUD) | Every way a claim ends charges its worked time against `max_wall_secs`: release, unassign, reassignment, freeze, SCIM deactivation, a budget stop (which today forgets the wall time it stopped for) and close; then `claim_next` refuses a thread over any budget, and a freeze can carry an expiry | **Active** in the coordinator's session; its work is in a local worktree and not yet pushed. Do not start it again | — |
 | (lane IDN) | A member handle is unique regardless of case (migration 0135, which renames existing case-only duplicates), and SCIM, mentions and member creation match that way; then artifacts are erased, never soft-deleted, and the unused `tombstoned_at` goes (0136) | **Active**, local worktree, not yet pushed. Do not start it again | — |
 | (lane SEC) | From the review triage: a workspace's rate-limit budget is charged only for a request authenticated into that workspace, and an unverified bearer is limited by client IP (today anyone who knows a workspace id can spend its budget, and made-up bearers each get a fresh bucket; #1153 comment 4149899835); then the server and store findings (token rotation reads quotas before the commit, a deadline on egress DNS, one transaction for a critical-review verdict), then the MCP and tracing findings | **Active**, local worktree, not yet pushed. Do not start it again | — |
