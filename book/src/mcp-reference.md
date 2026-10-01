@@ -4325,6 +4325,18 @@ Post a message to a thread as the authenticated member.
 
 ```json
 {
+  "anyOf": [
+    {
+      "required": [
+        "body"
+      ]
+    },
+    {
+      "required": [
+        "content"
+      ]
+    }
+  ],
   "properties": {
     "body": {
       "description": "plain text; omit when sending typed content (body is derived from it)",
@@ -4361,8 +4373,7 @@ Post a message to a thread as the authenticated member.
     }
   },
   "required": [
-    "thread_id",
-    "body"
+    "thread_id"
   ],
   "type": "object"
 }
@@ -4415,6 +4426,18 @@ Edit your own message (message:post). Only the author can edit a message; anothe
 
 ```json
 {
+  "anyOf": [
+    {
+      "required": [
+        "body"
+      ]
+    },
+    {
+      "required": [
+        "content"
+      ]
+    }
+  ],
   "properties": {
     "body": {
       "description": "plain text; omit when sending typed content (body is derived from it)",
@@ -4423,6 +4446,21 @@ Edit your own message (message:post). Only the author can edit a message; anothe
     "content": {
       "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}",
       "items": {
+        "properties": {
+          "type": {
+            "enum": [
+              "text",
+              "code",
+              "tool_use",
+              "tool_result",
+              "resource_link"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
         "type": "object"
       },
       "type": "array"
@@ -4436,8 +4474,7 @@ Edit your own message (message:post). Only the author can edit a message; anothe
     }
   },
   "required": [
-    "message_id",
-    "body"
+    "message_id"
   ],
   "type": "object"
 }
@@ -4471,7 +4508,7 @@ Mark a member as mentioned in a message.
 
 ### `cast_vote`
 
-Cast a vote on a message (e.g. approve, request-changes, emoji). Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.
+Cast a vote on a message. kind is any string and is stored verbatim; the server has no closed set (conventions include approve, request-changes, ack, and a custom emoji). Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.
 
 **Capability:** `workspace:write`
 
@@ -4485,6 +4522,7 @@ Cast a vote on a message (e.g. approve, request-changes, emoji). Optional confid
       "type": "number"
     },
     "kind": {
+      "description": "any string, stored verbatim; not a closed set",
       "type": "string"
     },
     "message_id": {

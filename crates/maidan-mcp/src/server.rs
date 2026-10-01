@@ -1097,6 +1097,73 @@ mod tests {
         (server, thread.id, member.id)
     }
 
+    /// Typed content is enough: the server derives `body`. Omitting both is
+    /// rejected for a post and for an edit.
+    #[tokio::test]
+    async fn content_without_body_is_accepted_and_neither_is_refused() {
+        let (server, thread_id, member_id) = mk_server().await;
+        let thread = server.store.get_thread(thread_id).await.unwrap();
+        let channel = server.store.get_channel(thread.channel_id).await.unwrap();
+        let auth = AuthContext::from_session(
+            member_id,
+            channel.workspace_id,
+            vec![maidan_auth::capability::MESSAGE_POST.to_string()],
+        );
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let posted = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "post_message",
+                    &json!({
+                        "thread_id": thread_id.0,
+                        "content": [{"type": "text", "text": "from blocks"}],
+                    }),
+                )
+                .await
+                .expect("content without body is a valid post"),
+        );
+        assert_eq!(posted["body"], "from blocks");
+
+        let missing = server
+            .call_tool(&auth, "post_message", &json!({ "thread_id": thread_id.0 }))
+            .await;
+        assert!(
+            matches!(&missing, Err(McpError::InvalidParams(m)) if m.contains("body")),
+            "omitting body and content must fail, got {missing:?}"
+        );
+
+        let edited = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "edit_message",
+                    &json!({
+                        "message_id": posted["id"],
+                        "content": [{"type": "code", "code": "1 + 1"}],
+                    }),
+                )
+                .await
+                .expect("content without body is a valid edit"),
+        );
+        assert_eq!(edited["body"], "```\n1 + 1\n```");
+
+        let missing_edit = server
+            .call_tool(
+                &auth,
+                "edit_message",
+                &json!({ "message_id": posted["id"] }),
+            )
+            .await;
+        assert!(
+            matches!(&missing_edit, Err(McpError::InvalidParams(m)) if m.contains("body")),
+            "omitting body and content must fail an edit, got {missing_edit:?}"
+        );
+    }
+
     fn request(id: i64, method: &str, params: Value) -> JsonRpcRequest {
         JsonRpcRequest {
             jsonrpc: "2.0".into(),

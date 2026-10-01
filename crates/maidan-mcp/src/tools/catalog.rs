@@ -1961,7 +1961,8 @@ pub fn catalog() -> Vec<Value> {
                     "metadata": {"type": "object"},
                     "content": {"type": "array", "items": {"type": "object", "properties": {"type": {"type": "string", "enum": ["text", "code", "tool_use", "tool_result", "resource_link"]}}, "required": ["type"]}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
-                "required": ["thread_id", "body"]
+                "required": ["thread_id"],
+                "anyOf": [{"required": ["body"]}, {"required": ["content"]}]
             }
         }),
         json!({
@@ -1987,9 +1988,10 @@ pub fn catalog() -> Vec<Value> {
                     "message_id": {"type": "string", "format": "uuid"},
                     "body": {"type": "string", "description": "plain text; omit when sending typed content (body is derived from it)"},
                     "metadata": {"type": "object"},
-                    "content": {"type": "array", "items": {"type": "object"}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
+                    "content": {"type": "array", "items": {"type": "object", "properties": {"type": {"type": "string", "enum": ["text", "code", "tool_use", "tool_result", "resource_link"]}}, "required": ["type"]}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
-                "required": ["message_id", "body"]
+                "required": ["message_id"],
+                "anyOf": [{"required": ["body"]}, {"required": ["content"]}]
             }
         }),
         json!({
@@ -2006,12 +2008,12 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "cast_vote",
-            "description": "Cast a vote on a message (e.g. approve, request-changes, emoji). Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.",
+            "description": "Cast a vote on a message. kind is any string and is stored verbatim; the server has no closed set (conventions include approve, request-changes, ack, and a custom emoji). Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "message_id": {"type": "string", "format": "uuid"},
-                    "kind": {"type": "string"},
+                    "kind": {"type": "string", "description": "any string, stored verbatim; not a closed set"},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "optional confidence weight for weighted consensus"}
                 },
                 "required": ["message_id", "kind"]
@@ -2491,5 +2493,63 @@ mod portability_tests {
             array_types(&name, &tool["inputSchema"], &mut found);
         }
         assert!(found.is_empty(), "array-valued `type` at: {found:?}");
+    }
+
+    /// `body` is required only when `content` is absent, and an edit's content
+    /// blocks name the same types a post does.
+    #[test]
+    fn message_tool_schemas_match_their_prose() {
+        let catalog = catalog();
+        let tool = |name: &str| {
+            catalog
+                .iter()
+                .find(|entry| entry["name"] == name)
+                .unwrap_or_else(|| panic!("missing {name}"))
+        };
+        let post = tool("post_message");
+        let edit = tool("edit_message");
+        for (name, schema) in [("post_message", post), ("edit_message", edit)] {
+            let required = schema["inputSchema"]["required"].as_array().unwrap();
+            assert!(
+                !required.iter().any(|value| value == "body"),
+                "{name} still requires body unconditionally"
+            );
+            let any_of = schema["inputSchema"]["anyOf"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{name} has no anyOf"));
+            let needs = |key: &str| {
+                any_of.iter().any(|branch| {
+                    branch["required"]
+                        .as_array()
+                        .is_some_and(|req| req.iter().any(|value| value == key))
+                })
+            };
+            assert!(
+                needs("body") && needs("content"),
+                "{name} must require body or content"
+            );
+            let description = schema["inputSchema"]["properties"]["body"]["description"]
+                .as_str()
+                .unwrap();
+            assert!(
+                description.contains("omit when sending typed content"),
+                "{name} body prose drifted: {description}"
+            );
+        }
+        let block_enum =
+            serde_json::json!(["text", "code", "tool_use", "tool_result", "resource_link"]);
+        assert_eq!(
+            post["inputSchema"]["properties"]["content"]["items"]["properties"]["type"]["enum"],
+            block_enum
+        );
+        assert_eq!(
+            edit["inputSchema"]["properties"]["content"]["items"]["properties"]["type"]["enum"],
+            block_enum
+        );
+        // A vote kind is not an enum: the server stores whatever string it is
+        // given (TEXT NOT NULL, no parser). A closed list would invent kinds.
+        let kind = &tool("cast_vote")["inputSchema"]["properties"]["kind"];
+        assert_eq!(kind["type"], "string");
+        assert!(kind.get("enum").is_none(), "cast_vote.kind must stay open");
     }
 }

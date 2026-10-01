@@ -196,6 +196,21 @@ fn merge_slash_metadata(mut base: Value, extra: Value) -> Value {
     base
 }
 
+/// `body` is the searchable text. When it is omitted, derive it from typed
+/// `content`. Omitting both is a client error: an empty post is not a content
+/// post.
+fn body_from_content(body: &str, content: Option<&[ContentBlock]>) -> Result<String, McpError> {
+    if !body.is_empty() {
+        return Ok(body.to_string());
+    }
+    match content {
+        Some(blocks) if !blocks.is_empty() => Ok(derive_body(blocks)),
+        _ => Err(McpError::InvalidParams(
+            "body is required unless content is present".into(),
+        )),
+    }
+}
+
 pub(super) async fn post_message(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -204,11 +219,7 @@ pub(super) async fn post_message(
     let store = &server.store;
     let a: PostMessageArgs = serde_json::from_value(args.clone())?;
     let content = a.content.clone();
-    let body = if a.body.is_empty() {
-        content.as_deref().map(derive_body).unwrap_or_default()
-    } else {
-        a.body.clone()
-    };
+    let body = body_from_content(&a.body, content.as_deref())?;
     let thread_id = ThreadId(a.thread_id);
     let ctx = resolve_thread_context(store.as_ref(), thread_id)
         .await
@@ -345,14 +356,11 @@ pub(super) async fn edit_message(
         Some(v) if !v.is_null() => v,
         _ => existing.metadata,
     };
-    // Omitted content keeps existing; an empty body with content re-derives the
-    // searchable body.
+    // A content edit with no body re-derives the searchable body. Omitted
+    // content keeps the existing blocks, but only once body or content was
+    // actually sent — omitting both is the same client error as a post.
+    let edit_body = body_from_content(&a.body, a.content.as_deref())?;
     let content = a.content.or(existing.content);
-    let edit_body = if a.body.is_empty() {
-        content.as_deref().map(derive_body).unwrap_or_default()
-    } else {
-        a.body
-    };
     // The edit + its `MessageEdited` event commit atomically, then the bus is
     // notified — so an MCP edit (like a REST edit) triggers embedding reindex,
     // feeds as-of context replay, and reaches WS/SSE subscribers. (MCP
