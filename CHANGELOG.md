@@ -959,11 +959,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Open Work names what blocks a deploy, and is kept by one hand
 
-- **Changed:** Open Work opens with **Before anyone deploys**: every deploy
-  path runs `v412.0.0` (62 commits and a cross-tenant fix behind), the stack's
+- **Changed:** Open Work opens with **Before anyone deploys**: the release
+  pins name `v412.0.0` (62 commits and a cross-tenant fix behind), the stack's
   prod values pull the `dev` image, the charts render default credentials, and
-  the ARM64 page runs with auth off. Now lists every open PR with its owner and
-  its failing check; Next is re-ranked with the deploy fixes first and the
+  the ARM64 page runs an old release with auth off. Now lists each open PR
+  with its state and merge order; Next is re-ranked with the deploy fixes first and the
   "first screen is the board" work merged into one row; rows cite file and line
   on `main`. The Roadmap gains a "safe to deploy" horizon and says what landed.
 - **Changed:** feature PRs no longer edit Open Work or the Roadmap; the
@@ -988,6 +988,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   (migration 0131 fills it for existing tasks from what the server resolved
   on read), and `GetTask` reads it too, so listing and fetching one task
   apply the same rule.
+
+### The maintainer's delegated decisions are recorded; CodeRabbit comments gate a merge
+
+- **Changed:** `docs/Decisions.md` records the decisions of 2026-10-01: admin
+  squash with no review requirement, `strict` branch protection kept off,
+  squash commits that carry the PR title and body (the repository setting is
+  changed), `max_wall_secs` as the thread's total worked time, case-insensitive
+  member handles, erase-only artifacts, SCIM groups that grant nothing,
+  `thread:transition` for OIDC sessions, and read notifications that age out.
+  Open Work's pending decisions are down to when to release and the launch.
+- **Changed:** a PR merges only when every CodeRabbit comment is fixed or
+  answered, as Decisions already said; `docs/Conventions.md` has the query
+  that lists the unanswered ones. 126 comments on PRs merged from 2026-09-28
+  were never answered; the triage found 75 valid, and their fixes are in Open
+  Work's Now and Next.
+- **Changed:** Open Work folds in the `/ui` design contract
+  (`docs/UI Design.md`) as Next item 5, merges the budget and freeze items into
+  the claim-ending work in flight, and adds read-notification retention to the
+  legal-hold item.
 
 ## [412.0.0] — 2026-09-28
 

@@ -74,14 +74,15 @@ change.
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
   not required.
 
-## Current state (2026-09-30)
+## Current state (2026-10-01)
 
 - **Releases:** latest **`v412.0.0`**. Release tags are cut when the
   maintainer chooses, not per cluster, so some clusters were never tagged
   (v23–26, v78–100, v311, v350–401, v403, v411); their work ships in the next
   tag. `main` is well ahead of `v412.0.0`. Tagging is the maintainer's call.
-- **Do not point anyone at a deploy yet.** Every deploy path pins `v412.0.0`,
-  which predates the week's cross-tenant fixes. Open Work's **Before anyone
+- **Do not point anyone at a deploy yet.** No deploy path runs a release with
+  the week's cross-tenant fixes: the release pins name `v412.0.0`, and some
+  paths run `dev`, `latest`, `v315.0.0` or `v0.0.1`. Open Work's **Before anyone
   deploys** lists the blockers; the pin bump waits for the next tag, and
   `scripts/check-deploy-pins.sh` (from #1156) says which lines to change.
 - **The forward plan is the ranked list in
@@ -93,15 +94,18 @@ change.
   keeper reconciles after the merge. When each PR edited its own row, every PR
   conflicted with every other.
 - **Decisions only the maintainer makes** are listed in Open Work under
-  "Decisions pending the maintainer". Don't guess at them.
+  "Decisions pending the maintainer" (on 2026-10-01, only when to cut the next
+  release and the launch). Don't guess at them. The ones he delegated are under
+  "Recently decided" and in [`docs/Decisions.md`](docs/Decisions.md).
 
 Working beside other agents (several PRs are usually open at once):
 
 - **CHANGELOG:** put your entry at the end of `[Unreleased]`, immediately
   before the first `## [N.0.0]` line, or before a heading you have checked is
   above that line. An entry placed before a heading under a released version is
-  filed in that release; `scripts/check-changelog-released.sh` fails on it, and
-  on the same entry listed twice.
+  filed in that release. `scripts/check-changelog-released.sh` fails when the
+  newest tagged section gains an entry after its tag, and when `[Unreleased]`
+  lists an entry twice. It does not check older sections.
 - **Counters that two PRs can bump by the same line:** the `.route(` count
   pinned in `tenant_isolation_e2e`, the MCP tool count in `docs/Protocols.md`,
   `README.md` and `book/src/introduction.md`, and migration numbers. Git merges
@@ -116,9 +120,11 @@ Working beside other agents (several PRs are usually open at once):
   `maidan_store::attribution::spawn`; a member id from a request goes through
   `Store::get_member_in(workspace, id)` (from #1152).
 - **Merging:** an admin squash only when all eight required checks passed on
-  the PR's exact head commit, merged with `gh pr merge --match-head-commit
-  <sha>`; `gh pr checks` and even `headRefOid` can show the previous commit for
-  a moment after a push.
+  the PR's exact head commit and every CodeRabbit comment has a fix or a reply,
+  merged with `gh pr merge --match-head-commit <sha>`; `gh pr checks` and even
+  `headRefOid` can show the previous commit for a moment after a push. List the
+  unanswered comments with the `gh api .../pulls/<N>/comments` query in
+  [`docs/Conventions.md`](docs/Conventions.md) ("CodeRabbit").
 
 Lessons that cost real time, and that still apply:
 
