@@ -1113,13 +1113,14 @@ knob is an age in days; the sweeper runs every `MAIDAN_RETENTION_SWEEP_SECS`
 (default 86400) and deletes in batches of `MAIDAN_RETENTION_BATCH` (default
 5000), so a first sweep over a long-unpruned table does not lock it. Each sweep
 counts what it deleted in `maidan_retention_pruned_total{table}` (`events`,
-`audit`, `deliveries`, and `messages` for workspace policies).
+`audit`, `notifications`, `deliveries`, and `messages` for workspace policies).
 
 | Variable | What it prunes | What it never prunes |
 |---|---|---|
 | `MAIDAN_RETENTION_EVENTS_DAYS` | Event-log rows older than the cutoff | Anything above the lowest at-least-once delivery cursor still advancing, so a lagging consumer loses nothing undelivered; a held workspace's events |
 | `MAIDAN_RETENTION_AUDIT_DAYS` | Audit rows older than the cutoff, including instance-level rows (no `workspace_id`) | A held workspace's audit rows |
-| `MAIDAN_RETENTION_DELIVERIES_DAYS` | Finished delivery rows: delivered or quarantined webhook and automation deliveries, published transactional-outbox rows, delivered projector and result egress, delivered notification mail, and dead-lettered agent runs | Pending or retrying rows, whatever their age; egress and mail **dead letters**, which leave when an operator requeues them (`MaidanEgressDeadLettered` and `MaidanMailDeadLettered` fire while any exist); a held workspace's egress, mail and agent runs |
+| `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` | Read notifications older than the cutoff | Unread notifications; any notification with a snooze set, including one whose snooze has lapsed; a held workspace's notifications |
+| `MAIDAN_RETENTION_DELIVERIES_DAYS` | Finished delivery rows: delivered or quarantined webhook and automation deliveries, published transactional-outbox rows, delivered projector and result egress, delivered notification mail, and dead-lettered agent runs | Pending or retrying rows, whatever their age; egress and mail **dead letters**, which leave when an operator requeues them (`MaidanEgressDeadLettered` and `MaidanMailDeadLettered` fire while any exist); a held workspace's rows in every one of these tables |
 
 Audit rows belong to the workspace stamped on them when they were written. On
 upgrade, migration 0123 backfilled older rows from what they reference: a
@@ -1131,6 +1132,10 @@ since erased) has no workspace: it is instance-level, shown only in
 `GET /operator/audit`, and pruned under the instance cutoff whatever holds
 stand. Count them with
 `SELECT count(*) FROM maidan_audit WHERE workspace_id IS NULL`.
+
+`MAIDAN_RETENTION_NOTIFICATIONS_DAYS` is off when unset. It deletes read
+notifications older than that many days and leaves unread ones, snoozed ones
+and a held workspace's rows. The usage ledger is not pruned.
 
 A delivered egress row goes with its dedup key, so the same source event
 could be queued again only if the router replayed an event older than the

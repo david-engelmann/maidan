@@ -73,6 +73,34 @@ pub async fn prune_audit(
     Ok(res.rows_affected())
 }
 
+/// Delete up to `limit` read notifications with `created_at < cutoff`.
+/// Unread rows stay, and so does any row with a snooze set: lapsing does not
+/// make it eligible. A hold keeps its own workspace's rows, as with audit.
+pub async fn prune_notifications(
+    pool: &PgPool,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64, StoreError> {
+    let res = sqlx::query(
+        "DELETE FROM maidan_notifications
+         WHERE id IN (
+             SELECT id FROM maidan_notifications
+             WHERE created_at < $1
+               AND read_at IS NOT NULL
+               AND snoozed_until IS NULL
+               AND (workspace_id IS NULL
+                    OR workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds))
+             ORDER BY created_at ASC, id ASC
+             LIMIT $2
+         )",
+    )
+    .bind(cutoff)
+    .bind(limit)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
 /// A delivery table's terminal rows: finished work nothing will read again.
 /// A row that still asks an operator to act (an egress or mail dead letter,
 /// which `MaidanEgressDeadLettered` / `MaidanMailDeadLettered` fire on) is not
@@ -82,8 +110,11 @@ struct TerminalRows {
     /// When the row became terminal (or, for the older tables, was created).
     age: &'static str,
     terminal: &'static str,
-    /// Whether rows carry a `workspace_id` a legal hold exempts, like events.
-    held: bool,
+    /// The workspace a row belongs to, as SQL over alias `d`, so the instance
+    /// sweep can skip a held workspace. NULL (a row whose event or
+    /// subscription is gone, or mail with no workspace) belongs to no tenant's
+    /// hold, and still prunes.
+    hold: &'static str,
     /// The workspace a row belongs to, as SQL over the row, for a workspace's
     /// own retention.
     owner: &'static str,
@@ -94,48 +125,50 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         table: "maidan_webhook_deliveries",
         age: "created_at",
         terminal: "(delivered_at IS NOT NULL OR quarantined_at IS NOT NULL)",
-        held: false,
+        hold: "(SELECT s.workspace_id FROM maidan_webhook_subscriptions s WHERE s.id = d.subscription_id)",
         owner: "(SELECT s.workspace_id FROM maidan_webhook_subscriptions s WHERE s.id = subscription_id)",
     },
     TerminalRows {
         table: "maidan_automation_deliveries",
         age: "created_at",
         terminal: "(delivered_at IS NOT NULL OR quarantined_at IS NOT NULL)",
-        held: false,
+        hold: "d.workspace_id",
         owner: "workspace_id",
     },
     TerminalRows {
         table: "maidan_outbox",
         age: "published_at",
         terminal: "published_at IS NOT NULL",
-        held: false,
+        hold: "(SELECT e.workspace_id FROM maidan_events e WHERE e.id = d.log_id)",
         owner: "(SELECT e.workspace_id FROM maidan_events e WHERE e.id = log_id)",
     },
     TerminalRows {
         table: "maidan_egress_outbox",
         age: "updated_at",
         terminal: "status = 'delivered'",
-        held: true,
+        hold: "d.workspace_id",
         owner: "workspace_id",
     },
     TerminalRows {
         table: "maidan_mail_outbox",
         age: "updated_at",
         terminal: "status = 'delivered'",
-        held: true,
+        hold: "d.workspace_id",
         owner: "workspace_id",
     },
     TerminalRows {
         table: "maidan_agent_work_dlq",
         age: "failed_at",
         terminal: "TRUE",
-        held: true,
+        hold: "d.workspace_id",
         owner: "workspace_id",
     },
 ];
 
 /// Delete up to `limit` terminal rows older than `cutoff` from each delivery
-/// table; see [`TERMINAL_ROWS`] for what terminal means per table.
+/// table; see [`TERMINAL_ROWS`] for what terminal means per table. A held
+/// workspace keeps its rows in every table, including webhook, automation
+/// and transactional-outbox rows, whose workspace is not a column of the row.
 pub async fn prune_deliveries(
     pool: &PgPool,
     cutoff: DateTime<Utc>,
@@ -147,20 +180,19 @@ pub async fn prune_deliveries(
             table,
             age,
             terminal,
-            held,
+            hold,
             ..
         } = rows;
-        let unheld = if *held {
-            "AND (workspace_id IS NULL
-                  OR workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds))"
-        } else {
-            ""
-        };
+        // `hold` is SQL over alias `d`. A NULL workspace matches no hold, so
+        // those rows still prune, as instance-level audit rows do.
         let sql = format!(
             "DELETE FROM {table}
              WHERE id IN (
-                 SELECT id FROM {table}
-                 WHERE {age} < $1 AND {terminal} {unheld}
+                 SELECT d.id FROM {table} d
+                 WHERE {age} < $1 AND {terminal}
+                   AND NOT EXISTS (
+                       SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = {hold}
+                   )
                  ORDER BY {age} ASC
                  LIMIT $2
              )"
@@ -208,7 +240,7 @@ pub async fn prune_workspace_events(
 }
 
 /// [`prune_deliveries`] for one workspace's rows. A hold keeps every delivery
-/// table's rows here, not only those the instance sweep exempts.
+/// table's rows, as the instance sweep does.
 pub async fn prune_workspace_deliveries(
     pool: &PgPool,
     workspace_id: WorkspaceId,

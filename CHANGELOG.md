@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Retention keeps a held workspace's deliveries, and drops read notifications
+
+- **Fixed:** the instance delivery sweep skipped legal holds for webhook
+  deliveries, automation deliveries and the transactional outbox, so a held
+  workspace lost those rows while its egress, mail and agent runs were kept.
+  The sweep now skips a held workspace in every delivery table, as a
+  workspace's own prune already did.
+- **Added:** `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` (unset means keep them)
+  deletes read notifications older than that many days. Unread notifications
+  stay, and so does any notification with a snooze set. A held workspace keeps
+  its notifications. The usage ledger is not pruned.
+- **Docs:** Production.md and Operations.md.
+
 ### `/ui` reports a failure in words
 
 - **Fixed:** posting a message when the server cannot be reached keeps the

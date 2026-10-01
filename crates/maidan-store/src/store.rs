@@ -2858,12 +2858,21 @@ pub trait DeliveryCursorStore: Send + Sync {
         limit: i64,
     ) -> Result<u64, StoreError>;
 
+    /// Delete up to `limit` read notifications with `created_at < cutoff`.
+    /// Unread rows stay, and so does any row with a snooze set. A workspace
+    /// under legal hold keeps its own rows.
+    async fn prune_notifications(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError>;
+
     /// Delete up to `limit` of the oldest **finished** rows older than `cutoff`
     /// from each delivery table: delivered or quarantined webhook and
     /// automation deliveries, published outbox rows, delivered egress and
     /// mail, and dead-lettered agent runs. Pending rows are never pruned, nor
-    /// are egress and mail dead letters (they wait for an operator), nor a
-    /// held workspace's egress, mail or agent runs.
+    /// are egress and mail dead letters (they wait for an operator), nor any
+    /// row of a held workspace.
     async fn prune_deliveries(
         &self,
         cutoff: chrono::DateTime<chrono::Utc>,
