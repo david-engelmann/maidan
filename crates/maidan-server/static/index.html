@@ -1986,11 +1986,21 @@
         box.replaceChildren();
         if (!memberDirectory.size || !threads.length) return;
         const holding = new Map();
+        const updatedAt = (row) => {
+          const n = Date.parse((row && row.updated_at) || "");
+          return Number.isNaN(n) ? -Infinity : n;
+        };
         threads.forEach((th) => {
           if (th.assignee_id && th.state !== "closed" && th.state !== "archived") {
             const chrome = sessionChrome(th, lastGates[th.id]);
             const cur = holding.get(th.assignee_id);
-            if (!cur || chrome.label === "running") holding.set(th.assignee_id, { th, chrome });
+            // Two open tasks: the running one, else the latest updated_at.
+            const nextRun = chrome.label === "running";
+            const curRun = !!(cur && cur.chrome.label === "running");
+            const later = cur && updatedAt(th) > updatedAt(cur.th);
+            if (!cur || (nextRun && !curRun) || (nextRun === curRun && later)) {
+              holding.set(th.assignee_id, { th, chrome });
+            }
           }
         });
         const waiting = needsYou.length;
@@ -2002,8 +2012,9 @@
           const held = holding.get(id);
           const state = held ? (held.chrome.label === "running" ? "running" : "holding") : "idle";
           const live = state === "running" || now - (lastSeen.get(id) || 0) < LIVE_MS;
-          if (m.kind === "human" && !live && id !== authorId()) return;
-          if (state === "idle" && !live && people.length > 8) return;
+          // Only people holding work. Idle is not a chip, except the viewer
+          // while something is waiting on them.
+          if (state === "idle" && !(id === authorId() && waiting)) return;
           const chip = document.createElement("span");
           chip.className = "mate";
           chip.dataset.memberId = id;
@@ -2020,8 +2031,7 @@
           name.textContent = m.name;
           const what = document.createElement("small");
           if (held) what.textContent = `${held.chrome.label} · ${held.th.title || "untitled"}`;
-          else if (id === authorId() && waiting) what.textContent = `${waiting} waiting on you`;
-          else what.textContent = live ? "active" : "idle";
+          else what.textContent = `${waiting} waiting on you`;
           text.append(name, what);
           chip.append(av, text);
           box.appendChild(chip);
