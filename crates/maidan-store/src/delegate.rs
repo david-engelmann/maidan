@@ -226,6 +226,21 @@ macro_rules! store_delegations {
                 members::get(self.read_pool(), id).await
             }
 
+            async fn get_member_in(
+                &self,
+                workspace_id: WorkspaceId,
+                id: MemberId,
+            ) -> Result<Member, StoreError> {
+                // Same as the trait default: another workspace's member is
+                // NotFound, as an id that names no member is.
+                let member = members::get(self.read_pool(), id).await?;
+                if member.workspace_id == workspace_id {
+                    Ok(member)
+                } else {
+                    Err(StoreError::NotFound)
+                }
+            }
+
             async fn list_members(
                 &self,
                 workspace_id: WorkspaceId,
@@ -2888,6 +2903,25 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
             ) -> Result<Option<i64>, StoreError> {
                 events::min_event_id(self.pool(), workspace_id).await
+            }
+
+            async fn ensure_cursor_fresh(
+                &self,
+                workspace_id: WorkspaceId,
+                after_id: i64,
+            ) -> Result<(), StoreError> {
+                // Same as the trait default. The oldest id is read on the
+                // primary, through min_event_id, so a prune is not missed.
+                if after_id <= 0 {
+                    return Ok(());
+                }
+                let Some(oldest_id) = self.min_event_id(workspace_id).await? else {
+                    return Ok(());
+                };
+                if maidan_types::cursor_is_too_old(after_id, Some(oldest_id)) {
+                    return Err(StoreError::cursor_too_old(after_id, oldest_id));
+                }
+                Ok(())
             }
 
             async fn max_event_id(&self) -> Result<i64, StoreError> {

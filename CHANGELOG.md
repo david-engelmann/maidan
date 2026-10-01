@@ -67,7 +67,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   added on one backend and not the other no longer compiles. The call each
   method makes is unchanged. Reads go through `read_pool`; on SQLite that is
   the only pool. `write_lsn` calls `current_wal_lsn`: a WAL position on
-  Postgres, none on SQLite. The dialect merge (F-48 tiers 2 and 3) is not
+  Postgres, none on SQLite. `get_member_in` and `ensure_cursor_fresh`
+  are in the list, with the same bodies as their trait defaults, so neither
+  backend can leave them out. The dialect merge (F-48 tiers 2 and 3) is not
   this change.
 
 ### A misspelt MAIDAN_* variable refuses boot
