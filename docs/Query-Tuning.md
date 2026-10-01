@@ -118,4 +118,4 @@ per-distinct-sha — both are out of the `v106.0.0` scope.
 - NOTIFY gaps — clients should use WS `replay_hint` + `GET …/events` (shipped
   in `v1.1.0`).
 
-See [[Open Work]] for perf track items (criterion benches, mutation tests).
+See [Open Work](Open%20Work.md) for perf track items (criterion benches, mutation tests).

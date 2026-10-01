@@ -3,8 +3,18 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 html="$root/book/build/html"
 
-if rg -n '\[\[' "$root/docs/Glossary.md" "$root/docs/Production.md" "$root/docs/Threat-Model.md"; then
-  echo "published reference pages must use real Markdown links, not wikilinks" >&2
+# History keeps the wikilinks it was written with; every other top-level page
+# is reference and links in Markdown. A `[[` that opens a code span shows
+# syntax (a TOML table, the wikilink form itself), so it is not a link.
+pages=()
+for page in "$root"/docs/*.md; do
+  case "${page##*/}" in
+    Capabilities.md | Cluster-history.md | Architecture-history.md) ;;
+    *) pages+=("$page") ;;
+  esac
+done
+if rg -n '(^|[^`])\[\[' "${pages[@]}"; then
+  echo "reference pages in docs/ must use real Markdown links, not wikilinks" >&2
   exit 1
 fi
 

@@ -38,7 +38,7 @@ members on other replicas, refreshed by a heartbeat.
 - A disconnect propagates an `offline` frame promptly; a crashed replica's
   members expire from others' rosters within the TTL.
 - Tunables: `MAIDAN_PRESENCE_HEARTBEAT_SECS` (default 10), `MAIDAN_PRESENCE_TTL_SECS`
-  (default 30) — see [[Production]].
+  (default 30) — see [Production](Production.md).
 - Each change is decided, sent to local sockets and queued for other replicas
   under one lock, and one task publishes the queue in order, so a reconnect's
   `online` is never overtaken by the old connection's `offline`. A member
@@ -53,5 +53,5 @@ members on other replicas, refreshed by a heartbeat.
 
 ## Related
 
-- [[Integration]] — HTTP capability map
-- [[Clusters/Cluster 99.0]] — cluster exit criteria
+- [Integration](Integration.md) — HTTP capability map
+- [Clusters/Cluster 99.0](Clusters/Cluster%2099.0.md) — cluster exit criteria

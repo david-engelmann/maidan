@@ -1021,6 +1021,45 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   on read), and `GetTask` reads it too, so listing and fetching one task
   apply the same rule.
 
+### Attribution and the reaper say where they stop, and the new doc claims have evidence rows
+
+- **Fixed:** Claims no longer says every successful token or session change
+  leaves an attributed record. A routine change whose only record is the
+  generic audit row can succeed with no record when that best-effort write
+  fails. Authority changes stay transactional.
+- **Fixed:** Integration's lease paragraph names the reaper's per-replica cap
+  of 1,000 claims a tick, which the later reaper section already stated.
+- **Changed:** Claims gains a row for each behavior this PR's docs state: the
+  subscribe-resume secret standing in at startup, the workspace head versus a
+  shape's head, reaper timing and the 1,000 cap, an unleased claim ended by
+  `assign_thread`, review history from migration 0121, a change request that
+  notifies without sending work back, and the two copies a tombstone does not
+  reach.
+
+### The docs say what the code does: erasure, attribution, claims and SDKs
+
+- **Fixed:** the Glossary promised a tombstone left words unrecoverable
+  everywhere the log was copied; it now names the two copies the Threat Model
+  already did (a pre-shred backup read with the KEK, and a peer that never
+  ingests the tombstone).
+- **Fixed:** Claims no longer says every authenticated change is attributed.
+  Signed Slack and GitHub ingress posts with no attribution, and
+  `GET /mcp/stream` and `GET /ws/subscribe` move delivery cursors with no
+  record; both are named. Its two audit counts (40 and 42) are replaced by
+  the 52 named actions the server writes, and the SDK rows say the typed
+  surface is on `main`, not published.
+- **Fixed:** Integration says the reaper frees up to 1,000 lapsed claims per
+  replica per tick, that `assign_thread` also ends an unleased claim, that
+  review history starts at migration 0121, that a change request that does not
+  send work back still notifies the worker, and that `Maidan-Room-LSN` is the
+  workspace head, not a shape's (Client Contract too). Deploy, Production,
+  Operations, `llms.txt`, the README transcript and this repo's agent guide
+  each get one correction.
+- **Changed:** `scripts/check-docs-presentation.sh` refuses wikilinks on every
+  top-level page in `docs/` except the three history pages, and the four
+  pages that still had them (OIDC, Presence and Roster, Query Tuning,
+  Decisions) link in Markdown.
+
 ### The maintainer's delegated decisions are recorded; CodeRabbit comments gate a merge
 
 - **Changed:** `docs/Decisions.md` records the decisions of 2026-10-01: admin
