@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { openMoreTools } from "./_tools";
 
 // WCAG-AA keyboard operability in a real browser (Cluster 353.4): the tab bar is
 // a proper ARIA tablist (roles + roving tabindex + arrow-key navigation) and a
@@ -6,6 +7,7 @@ import { test, expect } from "@playwright/test";
 // chrome, exercised without authentication.
 test("the tab bar is a keyboard-operable ARIA tablist with a skip link", async ({ page }) => {
   await page.goto("/ui/");
+  await openMoreTools(page);
 
   // Tabs and panels carry linked ARIA roles.
   const adminTab = page.locator("#tab-admin");

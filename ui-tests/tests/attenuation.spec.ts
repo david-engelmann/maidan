@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { openMoreTools } from "./_tools";
 
 const fx = fixtures();
 
@@ -13,6 +14,7 @@ test("minting cannot widen the caller's grant", async ({ page }) => {
   await page.goto("/ui/");
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.token);
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="tokens"]');
 
   // The ceiling reflects the fixture token's real grant.

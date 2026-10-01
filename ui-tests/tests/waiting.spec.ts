@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { openMoreTools } from "./_tools";
 
 const fx = fixtures();
 
@@ -34,6 +35,7 @@ test("the Work tab lists the items waiting on the member", async ({ page }) => {
   await page.locator("#token").press("Tab");
   await identity;
 
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="work"]');
   await page.click("#waiting-refresh");
 

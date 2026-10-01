@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { openMoreTools } from "./_tools";
 
 const fx = fixtures();
 
@@ -67,6 +68,7 @@ test("creating an agent mints a token that can claim, post, and transition", asy
   // The Tokens form default is the same grant, not the read/write/post preset
   // that claim refuses.
   await page.locator("#connect-dialog").evaluate((d: HTMLDialogElement) => d.close());
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="tokens"]');
   await expect(page.locator("#token-caps")).toHaveValue(
     "workspace:read,workspace:write,message:post,thread:transition",

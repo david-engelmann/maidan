@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { openMoreTools } from "./_tools";
 
 const fx = fixtures();
 
@@ -12,6 +13,7 @@ test("the Session tab renders the capability card from the real grant", async ({
   await page.goto("/ui/");
   // A bearer is enough for /me; the tab loads on click.
   await page.fill("#token", fx.token);
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="session"]');
 
   // Identity: a token acts as exactly one member.

@@ -1,5 +1,6 @@
 import { test, expect, APIRequestContext } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { openMoreTools } from "./_tools";
 
 // Rotating a token gives a new secret for the same authority and ends the old
 // one. Each test mints its own throwaway token with the admin fixture, so a
@@ -28,6 +29,7 @@ test("the Session tab rotates the token this page runs on, and keeps working", a
   await page.locator("#token").dispatchEvent("change");
   await expect(page.locator("#identity-pill")).toBeVisible();
 
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="session"]');
   await expect(page.locator("#session-credential")).toHaveText("bearer token — acts as this member");
   await page.getByRole("button", { name: "Rotate this token" }).click();
@@ -56,6 +58,7 @@ test("an admin rotates another token from the Tokens tab without losing their ow
   await page.locator("#token").dispatchEvent("change");
   await expect(page.locator("#identity-pill")).toBeVisible();
 
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="tokens"]');
   await page.fill("#token-revoke-id", agent.id);
   await page.getByRole("button", { name: "Rotate token" }).click();

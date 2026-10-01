@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { openMoreTools } from "./_tools";
 
 const fx = fixtures();
 
@@ -12,6 +13,7 @@ test("the Work tab shows queue depth and threads for a channel", async ({ page }
   await page.fill("#token", fx.token);
 
   // Open the Work tab (loads channels + schedules).
+  await openMoreTools(page);
   await page.click('.tabs button[data-tab="work"]');
   await expect(page.locator("#panel-work")).toBeVisible();
 
