@@ -12,8 +12,12 @@ pub async fn min_delivery_cursor(
     pool: &SqlitePool,
     advanced_since: DateTime<Utc>,
 ) -> Result<Option<i64>, StoreError> {
+    // `updated_at` is SQLite `CURRENT_TIMESTAMP` (`YYYY-MM-DD HH:MM:SS`).
+    // The cutoff is RFC3339. Text `>=` treats a later time on the cutoff's
+    // calendar day as earlier, because ` ` < `T`, and then drops that
+    // consumer's floor. `julianday` compares the instants.
     let row: Option<(Option<i64>,)> = sqlx::query_as(
-        "SELECT MIN(last_delivered_log_id) FROM maidan_delivery_cursor WHERE updated_at >= ?",
+        "SELECT MIN(last_delivered_log_id) FROM maidan_delivery_cursor WHERE julianday(updated_at) >= julianday(?)",
     )
     .bind(advanced_since)
     .fetch_optional(pool)
@@ -225,7 +229,8 @@ pub async fn prune_workspace_events(
              WHERE workspace_id = ?1 AND occurred_at < ?2
                AND id <= COALESCE(
                    (SELECT MIN(last_delivered_log_id) FROM maidan_delivery_cursor
-                    WHERE workspace_id = ?1 AND updated_at >= ?2),
+                    WHERE workspace_id = ?1
+                      AND julianday(updated_at) >= julianday(?2)),
                    9223372036854775807)
                AND NOT EXISTS (SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = ?1)
              ORDER BY id ASC

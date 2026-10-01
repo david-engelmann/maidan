@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### SQLite retention keeps a cursor that moved on the cutoff's day
+
+- **Fixed:** a delivery cursor's `updated_at` is SQLite `CURRENT_TIMESTAMP`
+  (`YYYY-MM-DD HH:MM:SS`). Comparing that text to an RFC3339 cutoff treats a
+  later time on the cutoff's calendar day as earlier, so the cursor does not
+  count. Retention then prunes events that consumer has not received.
+  The floor compares the instants.
+
 ### Program C: context economics
 
 - **Added:** `docs/Context Economics.md`, the design for making agents
