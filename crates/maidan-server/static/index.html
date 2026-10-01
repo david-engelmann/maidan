@@ -5888,7 +5888,14 @@
         const stored = localStorage.getItem(tokenKey);
         if (stored) {
           localStorage.removeItem(tokenKey);
-          await exchangeToken(stored);
+          const exchanged = await exchangeToken(stored);
+          if (!exchanged.ok) {
+            const status = document.getElementById("session-status");
+            status.hidden = false;
+            status.className = "err";
+            status.textContent =
+              "The token saved in this browser did not sign in: it may have expired or been revoked. Paste a new one, or sign in another way.";
+          }
         }
         await refreshSession();
         await refreshBearerIdentity();

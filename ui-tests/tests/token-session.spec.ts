@@ -71,9 +71,13 @@ test("sign out ends the session and leaves nothing to sign back in with", async 
 
   await page.click("#logout");
   await page.waitForURL("**/ui/");
-  await expect(page.locator("#session-status")).toContainText("Not signed in");
+  // The board hides the session line when nobody is signed in; the first-run
+  // card is what shows, and the cookie no longer authenticates.
+  await expect(page.locator("#first-run")).toBeVisible();
+  await expect(page.locator("#session-status")).toBeHidden();
   expect(await page.evaluate(async () => (await fetch("/me")).status)).toBe(401);
   await page.reload();
   await expect(page.locator("#token")).toHaveValue("");
-  await expect(page.locator("#session-status")).toContainText("Not signed in");
+  await expect(page.locator("#first-run")).toBeVisible();
+  expect(await page.evaluate(async () => (await fetch("/me")).status)).toBe(401);
 });
