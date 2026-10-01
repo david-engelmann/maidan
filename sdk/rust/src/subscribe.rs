@@ -52,7 +52,8 @@ pub struct Follow {
     pub types: Vec<String>,
     pub consumer_id: Option<String>,
     pub after_id: i64,
-    /// HTTP page size. `0` uses the server default (100).
+    /// HTTP page size. `0` uses 100; more than [`crate::MAX_PAGE_SIZE`] uses
+    /// that.
     pub page_limit: i64,
 }
 
@@ -153,11 +154,7 @@ impl Client {
     where
         F: Fn(Value) + Send + 'static,
     {
-        let limit = if spec.page_limit > 0 {
-            spec.page_limit
-        } else {
-            100
-        };
+        let limit = crate::page_size(usize::try_from(spec.page_limit).unwrap_or(0)) as i64;
         let mut after = spec.after_id;
         loop {
             let query = follow_query(spec, after, limit);

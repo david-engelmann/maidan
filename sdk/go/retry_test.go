@@ -5,6 +5,7 @@ package maidan
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -169,5 +170,47 @@ func TestListEventsAllPagesByAfterID(t *testing.T) {
 	}
 	if n != 3 || !strings.Contains((*calls)[1].url, "after_id=2") {
 		t.Fatalf("%d %s", n, (*calls)[1].url)
+	}
+}
+
+// The server clamps limit to 500. A helper that asked for more would get a
+// page of 500, read it as short, and stop with rows left.
+func TestPagingHelpersAskForNoMoreThanTheServersPageSize(t *testing.T) {
+	threads := make([]M, MaxPageSize)
+	for i := range threads {
+		threads[i] = M{"id": fmt.Sprintf("t%d", i)}
+	}
+	c, calls, _ := fakeServer(t, []answer{
+		{status: 200, body: threads},
+		{status: 200, body: []M{{"id": "last"}}},
+	})
+	n := 0
+	if err := c.Threads.ListAll("ch", 1000, func(Thread) error { n++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if n != MaxPageSize+1 || !strings.Contains((*calls)[0].url, "limit=500") {
+		t.Fatalf("%d threads, first request %s", n, (*calls)[0].url)
+	}
+
+	events := make([]M, MaxPageSize)
+	for i := range events {
+		events[i] = M{"id": i + 1}
+	}
+	c, calls, _ = fakeServer(t, []answer{
+		{status: 200, body: events},
+		{status: 200, body: []M{{"id": MaxPageSize + 1}}},
+	})
+	n = 0
+	if err := c.Workspaces.ListEventsAll("w", map[string][]string{"limit": {"1000"}}, func(StoredEvent) error { n++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if n != MaxPageSize+1 || !strings.Contains((*calls)[0].url, "limit=500") {
+		t.Fatalf("%d events, first request %s", n, (*calls)[0].url)
+	}
+
+	for in, want := range map[int]int{0: 100, -1: 100, 7: 7, 500: 500, 501: 500} {
+		if got := pageSize(in); got != want {
+			t.Fatalf("pageSize(%d) = %d, want %d", in, got, want)
+		}
 	}
 }

@@ -5,8 +5,11 @@ layer for teams of AI agents. **REST + WebSocket** (MCP is a URL, not a dependen
 recipe). **Dependency-free** — standard library only (`net/http` for REST, a small built-in
 RFC-6455 client for `Subscribe`).
 
+The example below is 0.3.0, which is not tagged yet: `@latest` still resolves to 0.1.0,
+which returns maps and has one error type. Until 0.3.0 is tagged, take `main`:
+
 ```sh
-go get github.com/david-engelmann/maidan/sdk/go@latest
+go get github.com/david-engelmann/maidan/sdk/go@main
 ```
 
 ```go
@@ -62,7 +65,7 @@ func main() {
   `*APIError` (`.Status`, `.Type`, `.Title`, `.Detail`, `.Problem` as sent, `.RetryAfter` on
   429 and 503, `.IsConflict()` / `.IsCursorTooOld()` / `.IsForbidden()` / `.IsRateLimited()`),
   so `errors.As` matches either the specific type or `*APIError`.
-- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `Client.MaxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `Threads.ListAll` and `Workspaces.ListEventsAll` call a func for every item across pages. Typed responses and the error types are new since 0.1.
+- **0.3.0 (unreleased; 0.2.0 was never tagged):** writes send an `Idempotency-Key` reused across retries; requests retry up to `Client.MaxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 500, 502, 503, 504 and 409 `idempotency-key-in-flight`. `Threads.ListAll` and `Workspaces.ListEventsAll` call a func for every item across pages, asking for at most `MaxPageSize` (500, the server's cap) per page. Typed responses and the error types are new since 0.1.
 - Responses are structs (`*Thread`, `*ClaimedThread`, `[]Message`, `*ThreadContext`,
   `[]StoredEvent`, …) from the server's OpenAPI schemas; the black-box tests decode every
   operation against a live server with unknown fields refused, which proves the structs

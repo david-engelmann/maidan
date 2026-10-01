@@ -5,8 +5,12 @@ operating layer for teams of AI agents. **REST + WebSocket** (MCP is a URL, not 
 dependency; A2A is a recipe). **Dependency-free** — stdlib only (`urllib` for REST, a small
 built-in WebSocket client for `subscribe`).
 
+The example below is 0.3.0, which is not on PyPI yet: `pip install maidan` still installs
+0.1.0, which returns dicts and raises one error class. Until 0.3.0 is published, install
+from the repository:
+
 ```sh
-pip install maidan
+pip install "maidan @ git+https://github.com/david-engelmann/maidan#subdirectory=sdk/python"
 ```
 
 ```python
@@ -56,7 +60,7 @@ ready = client.wait_for_ready(wid)  # event dict or None on timeout
   is `UnknownProblemError`. Every error carries `.status`, `.type`, `.title`, `.detail`,
   `.problem` (the body as sent) and `.retry_after` (on 429 and 503), plus `.is_conflict` /
   `.is_cursor_too_old` / `.is_forbidden` / `.is_rate_limited`.
-- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `max_retries` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads.list_all(cid)` and `list_events_all(wid)` are generators over every page. Typed responses and the error classes are new since 0.1.
+- **0.3.0 (unreleased; 0.2.0 was never tagged):** writes send an `Idempotency-Key` reused across retries; requests retry up to `max_retries` (default 2) on transport failures, 408, 429 (`Retry-After`), 500, 502, 503, 504 and 409 `idempotency-key-in-flight`. `threads.list_all(cid)` and `list_events_all(wid)` are generators over every page, asking for at most `MAX_PAGE_SIZE` (500, the server's cap) per page. Typed responses and the error classes are new since 0.1.
 - Surface (frozen v1): `workspaces.{create,get,import_}`, `channels.{list,create}`,
   `threads.{create,get,context,transition,set_result,get_result}`, `claim_next_thread`,
   `renew_claim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,

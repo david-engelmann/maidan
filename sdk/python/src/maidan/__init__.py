@@ -6,6 +6,7 @@ failures raise the :class:`MaidanError` subclass their problem ``type`` names.
 """
 
 from .client import (
+    MAX_PAGE_SIZE,
     Client,
     Subscription,
     __version__,
@@ -84,6 +85,7 @@ __all__ = [
     "ImportResult",
     "InternalError",
     "InvalidSignatureError",
+    "MAX_PAGE_SIZE",
     "MaidanError",
     "Member",
     "Message",

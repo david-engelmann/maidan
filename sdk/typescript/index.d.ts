@@ -54,6 +54,9 @@ export interface Problem {
 /** URI prefix of every problem `type` the server emits. */
 export declare const PROBLEM_BASE: "https://maidan.dev/problems/";
 
+/** The most rows the server returns for one page; the paging helpers ask for no more. */
+export declare const MAX_PAGE_SIZE: 500;
+
 /**
  * A failed request. Each problem `type` the server documents has a subclass
  * (catch with `instanceof`); an unknown type is {@link UnknownProblemError}.
@@ -398,6 +401,7 @@ export interface FollowSpec {
   types?: string[];
   consumerId?: string;
   afterId?: number;
+  /** Backfill page size: default 100, at most {@link MAX_PAGE_SIZE}. */
   pageLimit?: number;
 }
 
@@ -435,7 +439,7 @@ export declare class Client {
     import(bundle: unknown, mode?: "new" | "restore"): Promise<ImportResult>;
     /** GET /workspaces/{id}/events — projector-shaped HTTP backfill. */
     events(id: WorkspaceId, query?: Record<string, string | number>): Promise<StoredEvent[]>;
-    /** Every event after `query.after_id`, fetching `query.limit` (default 100) per page. */
+    /** Every event after `query.after_id`, fetching `query.limit` (default 100, at most {@link MAX_PAGE_SIZE}) per page. */
     eventsAll(id: WorkspaceId, query?: Record<string, string | number>): AsyncGenerator<StoredEvent>;
   };
   members: {
@@ -460,7 +464,7 @@ export declare class Client {
   threads: {
     /** GET /channels/{cid}/threads — one page (`limit`, `cursor` = last thread id). */
     list(cid: ChannelId, query?: { limit?: number; cursor?: ThreadId }): Promise<Thread[]>;
-    /** Every live thread in the channel, `pageSize` (default 100) per request. */
+    /** Every live thread in the channel, `pageSize` (default 100, at most {@link MAX_PAGE_SIZE}) per request. */
     listAll(cid: ChannelId, opts?: { pageSize?: number }): AsyncGenerator<Thread>;
     create(cid: ChannelId, title: string): Promise<Thread>;
     get(id: ThreadId): Promise<Thread>;

@@ -2,7 +2,7 @@
 // (no server needed).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Client, MaidanError, retryDelayMs } from "./index.js";
+import { Client, MAX_PAGE_SIZE, MaidanError, retryDelayMs } from "./index.js";
 
 function fakeFetch(answers) {
   const calls = [];
@@ -119,4 +119,22 @@ test("workspaces.eventsAll pages by after_id", async () => {
   for await (const ev of c.workspaces.eventsAll("w", { limit: 2 })) ids.push(ev.id);
   assert.deepEqual(ids, [1, 2, 3]);
   assert.match(calls[1].url, /after_id=2/);
+});
+
+// The server clamps limit to 500: a helper that asked for more would get a page
+// of 500, read it as short, and stop with rows left.
+test("the paging helpers ask for no more than the server's page size", async () => {
+  const threads = Array.from({ length: MAX_PAGE_SIZE }, (_, i) => ({ id: `t${i}` }));
+  let { c, calls } = client([[200, threads], [200, [{ id: "last" }]]]);
+  let n = 0;
+  for await (const _ of c.threads.listAll("ch", { pageSize: 1000 })) n++;
+  assert.equal(n, MAX_PAGE_SIZE + 1);
+  assert.match(calls[0].url, /limit=500/);
+
+  const events = Array.from({ length: MAX_PAGE_SIZE }, (_, i) => ({ id: i + 1 }));
+  ({ c, calls } = client([[200, events], [200, [{ id: MAX_PAGE_SIZE + 1 }]]]));
+  n = 0;
+  for await (const _ of c.workspaces.eventsAll("w", { limit: 1000 })) n++;
+  assert.equal(n, MAX_PAGE_SIZE + 1);
+  assert.match(calls[0].url, /limit=500/);
 });

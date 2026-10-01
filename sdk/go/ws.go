@@ -127,16 +127,13 @@ type Follow struct {
 	Types       []string
 	ConsumerID  string
 	AfterID     int64
-	PageLimit   int64
+	PageLimit   int64 // backfill page size: default 100, at most MaxPageSize
 }
 
 // FollowLog pages GET /workspaces/{id}/events then cuts over to SubscribeFrom.
 // A pruned cursor is returned as a *CursorTooOldError — never clamped.
 func (c *Client) FollowLog(spec Follow, onEvent func(Event), onError func(error)) (*Subscription, error) {
-	limit := spec.PageLimit
-	if limit <= 0 {
-		limit = 100
-	}
+	limit := int64(pageSize(int(min(spec.PageLimit, MaxPageSize))))
 	after := spec.AfterID
 	for {
 		q := url.Values{}

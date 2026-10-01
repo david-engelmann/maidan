@@ -7,7 +7,7 @@ from email.message import Message
 
 import pytest
 
-from maidan import Client, MaidanError, retry_delay
+from maidan import MAX_PAGE_SIZE, Client, MaidanError, retry_delay
 
 IN_FLIGHT = "https://maidan.dev/problems/idempotency-key-in-flight"
 TS = "2026-09-29T00:00:00Z"
@@ -148,3 +148,22 @@ def test_list_events_all_pages_by_after_id():
     c, calls, _ = fake([(200, [event(1), event(2)]), (200, [event(3)])])
     assert [e.id for e in c.list_events_all("w", {"limit": 2})] == [1, 2, 3]
     assert "after_id=2" in calls[1].full_url
+
+
+def test_paging_helpers_ask_for_no_more_than_the_servers_page_size():
+    # The server clamps limit to 500: a helper that asked for more would get a
+    # page of 500, read it as short, and stop with rows left.
+    full = [thread(f"t{i}") for i in range(MAX_PAGE_SIZE)]
+    c, calls, _ = fake([(200, full), (200, [thread("last")])])
+    assert len(list(c.threads.list_all("ch", page_size=1000))) == MAX_PAGE_SIZE + 1
+    assert calls[0].full_url.endswith("limit=500")
+
+    full = [event(i + 1) for i in range(MAX_PAGE_SIZE)]
+    c, calls, _ = fake([(200, full), (200, [event(MAX_PAGE_SIZE + 1)])])
+    assert len(list(c.list_events_all("w", {"limit": 1000}))) == MAX_PAGE_SIZE + 1
+    assert "limit=500" in calls[0].full_url
+
+    c, calls, _ = fake([(200, []), (200, [])])
+    list(c.threads.list_all("ch", page_size=0))
+    list(c.list_events_all("w", {"limit": 0}))
+    assert all("limit=100" in call.full_url for call in calls)

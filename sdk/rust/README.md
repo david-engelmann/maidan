@@ -4,9 +4,13 @@ Official Rust client for [Maidan](https://github.com/david-engelmann/maidan), th
 layer for teams of AI agents. **REST + WebSocket** (MCP is a URL, not a dependency; A2A is a
 recipe). A standalone crate — it does **not** depend on any `maidan-*` server crate.
 
+The example below is 0.3.0, which is not on crates.io yet: `maidan = "0.1"` returns
+`serde_json::Value` and has one error type, so the example does not compile against it.
+Until 0.3.0 is published, depend on the repository (Cargo finds the crate in `sdk/rust`):
+
 ```toml
 [dependencies]
-maidan = "0.1"
+maidan = { git = "https://github.com/david-engelmann/maidan" }
 serde_json = "1"
 ```
 
@@ -58,7 +62,7 @@ fn main() -> Result<(), MaidanError> {
   `raw` as sent, `retry_after` on 429 and 503, `snapshot()`); `.status()`, `.problem()`,
   `.is_conflict()` / `.is_cursor_too_old()` / `.is_forbidden()` / `.is_rate_limited()` /
   `.is_transport()` work on any error.
-- **0.2 (unreleased):** writes send an `Idempotency-Key` reused across retries; requests retry up to `.with_max_retries(n)` (default 2) on transport failures, 408, 429 (`Retry-After`), 5xx and 409 `idempotency-key-in-flight`. `threads().list_all(cid, n)` and `list_events_all(wid, q)` are iterators over every page. Typed responses and the error enum are new since 0.1.
+- **0.3.0 (unreleased; 0.2.0 was never tagged):** writes send an `Idempotency-Key` reused across retries; requests retry up to `.with_max_retries(n)` (default 2) on transport failures, 408, 429 (`Retry-After`), 500, 502, 503, 504 and 409 `idempotency-key-in-flight`. `threads().list_all(cid, n)` and `list_events_all(wid, q)` are iterators over every page, asking for at most `MAX_PAGE_SIZE` (500, the server's cap) per page. Typed responses and the error enum are new since 0.1.
 - Responses are serde structs in `maidan::models` (re-exported at the root: `Thread`,
   `ClaimedThread`, `Message`, `ThreadContext`, `StoredEvent`, …), from the server's OpenAPI
   schemas and checked against a live server by `tests/black_box.rs`. Members the server adds
