@@ -118,6 +118,10 @@ pub struct AppState {
     pub outbox_backend: Option<OutboxBackend>,
     /// OIDC client + settings when `MAIDAN_OIDC_ENABLED=1`.
     pub oidc: Option<Arc<OidcRuntime>>,
+    /// Browser-session keys when `MAIDAN_SESSION_SECRET` is set, for the token
+    /// exchange on a server without OIDC. Read through
+    /// [`Self::browser_sessions`], which prefers OIDC's.
+    pub sessions: Option<crate::session::SessionSettings>,
     /// HMAC secret for subscribe resume tokens (when OIDC is off).
     pub subscribe_resume_secret: Option<Arc<[u8]>>,
     /// TTL for signed resume tokens (seconds).
@@ -261,6 +265,7 @@ impl AppState {
             outbox_nudge: None,
             outbox_backend: None,
             oidc: None,
+            sessions: None,
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
             presence,
@@ -380,6 +385,20 @@ impl AppState {
     pub fn attach_presence_notifier(&mut self, notifier: Arc<dyn PresenceNotifier>) {
         self.presence = Arc::new(PresenceHub::default().with_presence_notifier(notifier));
         self.mcp.attach_presence_reader(self.presence.clone());
+    }
+
+    /// How browser sessions are signed and how long they last, or `None` when
+    /// this deployment has none. OIDC's settings when OIDC is on (they come
+    /// from the same `MAIDAN_SESSION_SECRET`), else [`Self::sessions`].
+    pub fn browser_sessions(&self) -> Option<crate::session::SessionSettings> {
+        if let Some(oidc) = &self.oidc {
+            return Some(crate::session::SessionSettings {
+                secret: oidc.session_secret.clone(),
+                ttl_secs: oidc.settings.session_ttl_secs,
+                cookie_secure: oidc.settings.cookie_secure,
+            });
+        }
+        self.sessions.clone()
     }
 
     /// The key that signs subscribe-resume and approval-gate `requestState`

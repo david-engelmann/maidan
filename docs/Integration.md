@@ -213,6 +213,8 @@ Send a JSON subscribe frame carrying the bearer token in its `token` field, for
 example `{"token": "maid_…", "filter": {"workspace_id": "…"}, "after_id": 0}` (the
 filter is [contracts/ws-subscribe-filter.schema.json](../contracts/ws-subscribe-filter.schema.json)).
 A frame without a token, and without a browser session cookie, is closed with 1008.
+A session cookie from another origin is refused the same way (see
+[Browser UI](#browser-ui-ui)).
 Server replies with `subscribe_ack`, `schema_version`, `resume_token`, `after_id`,
 and `room_lsn` (the event-log high-water at subscribe time — many WebSocket
 clients never see HTTP 101 response headers).
@@ -1549,6 +1551,34 @@ See [Result Delivery](Result%20Delivery.md#discoverability).
 
 Humans use the static shell at `/ui/` (version marker `data-ui-version` on `<body>`). The UI calls session-authenticated proxies under `/ui/api/...` after OIDC or bootstrap session setup. **Agents should prefer bearer tokens** on the REST/MCP routes above, not scrape HTML.
 
+The page does not keep a pasted token. It sends it once to
+`POST /auth/session/from-token` (as `Authorization: Bearer …`), which sets the
+`HttpOnly; SameSite=Lax` `maidan_session` cookie and returns
+`{member_id, workspace_id, expires_at, token_id}`, and then empties the field.
+A token an older page left in `localStorage` is exchanged the same way on the
+next load and removed.
+
+A session made this way holds that token's authority, not a fixed set: every
+request on it resolves the token again, so it has the token's capabilities,
+workspace and delegation grant, and it stops working when the token is revoked
+or rotated, expires, or its grant or app installation is withdrawn. It reaches
+the `/ui/api` routes and every bearer route except MCP. It lasts at most
+`MAIDAN_SESSION_TTL_SECS` (default 8 hours) and never past the token's own
+expiry. A session cannot make another (`401` without a bearer), and a token
+without `workspace:read` is refused. An OIDC session keeps its fixed
+`/ui/api` capabilities and does not reach the bearer routes.
+
+An unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) on a session, and a
+WebSocket subscribe on one, is refused (`403`, or close `1008`) when the browser
+says it came from another origin: `Sec-Fetch-Site` other than `same-origin`,
+or, without that header, an `Origin` that does not name this host. A request
+with neither header is accepted. Requests
+with a bearer are not checked, since a browser never attaches a bearer on its
+own. `POST /auth/logout` ends either kind of session (`303` to `/ui/`, or to the
+identity provider's end-session page for an OIDC session). A server without
+`MAIDAN_SESSION_SECRET` has no sessions and answers the exchange with `404`;
+the page then keeps a pasted token in the tab only, never in storage.
+
 OIDC deployments use the provider's discovery document and the authorization-code
 flow with S256 PKCE; Maidan validates issuer, audience, nonce, and the ID-token
 signature from the provider's JWKS before issuing a session. `MAIDAN_OIDC_MOCK=1`
@@ -1571,10 +1601,11 @@ when the server has one. The card reads that from the `auth` block of
 "auth": { "bearer": true, "oidc": true, "oidc_login": "/auth/oidc/login" }
 ```
 
-`oidc_login` is present only when `oidc` is true. A pasted token is kept in the
-browser's `localStorage` until **Sign out**, which forgets it (and ends the
-session, if there is one); once connected, the inputs fold into the header
-behind **Change**.
+`oidc_login` is present only when `oidc` is true. The page exchanges a pasted
+token once for the `HttpOnly; SameSite=Lax` `maidan_session` cookie and removes
+it from the field. A token left in `localStorage` by an older page is exchanged
+on the next load and removed. Once connected, the inputs fold into the header
+behind **Change**. **Sign out** ends the session.
 
 Panels include channels, live WS tail, search, tokens, artifacts, and admin surfaces. A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The console fetches the bytes with the viewer's bearer header or session cookie, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 

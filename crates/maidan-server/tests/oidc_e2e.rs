@@ -244,7 +244,7 @@ async fn mock_oidc_login_sets_session_cookie_and_logout_clears_it() {
         .send()
         .await
         .unwrap();
-    assert_eq!(logout.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(logout.status(), StatusCode::SEE_OTHER);
     let cleared = logout
         .headers()
         .get_all(reqwest::header::SET_COOKIE)
@@ -379,9 +379,10 @@ async fn signing_in_and_out_are_recorded_with_the_member_as_actor() {
             .header(reqwest::header::COOKIE, cookie)
             .send()
     };
+    // 303, not 307: a browser must not re-POST the logout form at /ui/.
     assert_eq!(
         logout(cookie.clone()).await.unwrap().status(),
-        StatusCode::TEMPORARY_REDIRECT
+        StatusCode::SEE_OTHER
     );
     let deleted = h.audit(maidan_server::oidc::SESSION_DELETE).await;
     assert_eq!(deleted.len(), 1, "{deleted:?}");
@@ -398,7 +399,7 @@ async fn signing_in_and_out_are_recorded_with_the_member_as_actor() {
     // Signing out of a session already ended ends nothing and records nothing.
     assert_eq!(
         logout(cookie).await.unwrap().status(),
-        StatusCode::TEMPORARY_REDIRECT
+        StatusCode::SEE_OTHER
     );
     assert_eq!(h.audit(maidan_server::oidc::SESSION_DELETE).await.len(), 1);
     let _ = second;

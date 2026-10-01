@@ -261,7 +261,7 @@ detail. Summary:
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `MAIDAN_OIDC_ENABLED` | when using OIDC | `1` enables `/auth/oidc/*` and session routes. |
-| `MAIDAN_SESSION_SECRET` | when OIDC on | HMAC key for signed `maidan_session` cookies (32+ bytes). Bare session UUIDs in cookies are rejected. |
+| `MAIDAN_SESSION_SECRET` | when OIDC is on; optional otherwise | HMAC key for signed `maidan_session` cookies and subscribe `resume_token`s (32+ bytes). Required at startup when OIDC is on; bare session UUIDs in cookies are rejected. Without OIDC it signs the sessions `/ui/` makes from a pasted token (`POST /auth/session/from-token`); unset, there are none and the page keeps a pasted token in the tab only. |
 | `MAIDAN_OIDC_ISSUER` | yes (non-mock) | IdP issuer URL for discovery. |
 | `MAIDAN_OIDC_CLIENT_ID` | yes (non-mock) | OAuth client id. |
 | `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Code exchange secret. |
@@ -271,7 +271,7 @@ detail. Summary:
 | `MAIDAN_COOKIE_SECURE` | no | Set `1` in production for `Secure` session cookies. |
 | `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered post-logout redirect (e.g. `https://host/ui/`). Used when IdP exposes `end_session_endpoint`. |
 | `MAIDAN_OIDC_AUTO_MINT` | no | `1` redirects to `/ui/?auto_mint=1` after login when the workspace has no `token:admin` yet; the UI then calls `POST /auth/session/mint`. Off by default. Requires first-admin mint (`MAIDAN_OIDC_FIRST_ADMIN` not `0`). |
-| `MAIDAN_SESSION_SECRET` | when auth on (or OIDC) | HMAC key for signed `resume_token` and session cookies (32+ bytes). |
+| `MAIDAN_SESSION_TTL_SECS` | no | Browser session lifetime (default `28800`, 8 hours), OIDC or token. A token's session also ends with the token. |
 | `MAIDAN_SUBSCRIBE_RESUME_SECRET` | no | Override HMAC key for subscribe resume tokens only. |
 | `MAIDAN_SUBSCRIBE_RESUME_TTL_SECS` | no | Resume token lifetime in seconds (default `3600`). |
 
@@ -302,7 +302,19 @@ After OIDC login, use `/ui/` (session cookie) or mint an API token for MCP.
 
 **Channel browser (`v92.0.0`):** From `/ui/`, list channels and threads, then post
 messages via `POST /ui/api/...` using the session cookie — no bearer or curl required.
-Bearer tokens still work for the same flows when pasted in the header field.
+A token pasted in the header field is exchanged for a session with that token's
+authority (`POST /auth/session/from-token`) and not kept by the page; revoking or
+rotating the token ends the session.
+
+**Sessions.** A session row (`maidan_sessions`) names its member and workspace
+and, for one made from a token, the token's id. It is checked on every request:
+an expired row, or one whose token is no longer live, is deleted and refused.
+Signing out (`POST /auth/logout`) deletes the row. CSRF is handled by
+`SameSite=Lax`, JSON request bodies, and refusing an unsafe session request or a
+session WebSocket from another origin; the session keeps no CSRF secret. Behind
+a proxy that rewrites `Host`, browsers still send `Sec-Fetch-Site`, which the
+check prefers. Creating a session writes an audit row in the same transaction
+(`session.from_token`, or `session.create` for an OIDC login).
 Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 
 ## API discovery

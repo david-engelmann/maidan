@@ -4,8 +4,9 @@ import { fixtures } from "./_fixtures";
 const fx = fixtures();
 
 // Connect an agent finishes in the product: it creates a member and mints the
-// worker preset. The browser's own token stays put, and the snippets keep a
-// placeholder. The minted token can claim.
+// worker preset. The browser keeps the session it already exchanged, and does
+// not put either secret back in the field. The snippets keep a placeholder.
+// The minted token can claim.
 test("creating an agent mints a token that can claim, post, and transition", async ({ page, request }) => {
   await page.goto("/ui/");
   await page.fill("#workspace", fx.workspace_id);
@@ -24,7 +25,9 @@ test("creating an agent mints a token that can claim, post, and transition", asy
   expect(token.length).toBeGreaterThan(20);
   await expect(page.locator("#cx-json")).toContainText("REPLACE_WITH_MAIDAN_TOKEN");
   await expect(page.locator("#cx-secret")).toContainText("thread:transition");
-  await expect(page.locator("#token")).toHaveValue(fx.admin_token);
+  await expect(page.locator("#token")).toHaveValue("");
+  expect(await page.evaluate(() => localStorage.getItem("maidan_token"))).toBeNull();
+  expect(token).not.toBe(fx.admin_token);
 
   const me = await request.get(`${fx.base_url}/me`, { headers: { Authorization: `Bearer ${token}` } });
   expect(me.ok()).toBeTruthy();

@@ -543,6 +543,9 @@ async fn main() -> anyhow::Result<()> {
         None
     };
     state.oidc = oidc_runtime.map(Arc::new);
+    // Without OIDC, `MAIDAN_SESSION_SECRET` still signs the sessions a pasted
+    // token is exchanged for.
+    state.sessions = maidan_server::session::SessionSettings::from_env()?;
     state.subscribe_resume_secret = subscribe_resume_secret;
     state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;
     state.webhooks = maidan_server::WebhookRuntime::new(federation_encryption_key.clone());

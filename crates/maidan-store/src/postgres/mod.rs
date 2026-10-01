@@ -1508,18 +1508,18 @@ impl SessionStore for PostgresStore {
     async fn create_session(&self, new: NewMaidanSession) -> Result<MaidanSession, StoreError> {
         sessions::create(&self.pool, new).await
     }
-    async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError> {
-        sessions::get(&self.pool, id).await
-    }
-    async fn delete_session(&self, id: SessionId) -> Result<(), StoreError> {
-        sessions::delete(&self.pool, id).await
-    }
     async fn create_session_audited(
         &self,
         new: NewMaidanSession,
         audit: crate::AuditFor<MaidanSession>,
     ) -> Result<MaidanSession, StoreError> {
         sessions::create_audited(&self.pool, new, audit).await
+    }
+    async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError> {
+        sessions::get(&self.pool, id).await
+    }
+    async fn delete_session(&self, id: SessionId) -> Result<(), StoreError> {
+        sessions::delete(&self.pool, id).await
     }
     async fn delete_session_audited(
         &self,

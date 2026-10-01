@@ -28,6 +28,7 @@
   {"method":"GET","path":"/auth/oidc/callback","kind":"changes","reason":"Consumes the one-time pending login, may provision the member and link the identity, and creates the browser session. A GET because the identity provider redirects the browser to it."},
   {"method":"GET","path":"/auth/oidc/login","kind":"changes","reason":"Stores the pending login (state, nonce and PKCE verifier) that the callback consumes. A GET because the browser is redirected to it."},
   {"method":"GET","path":"/auth/session","kind":"changes","reason":"Deletes the caller's session row when it has expired, then refuses it."},
+  {"method":"POST","path":"/auth/session/from-token","kind":"changes"},
   {"method":"POST","path":"/auth/session/mint","kind":"changes"},
   {"method":"GET","path":"/capability-sets","kind":"reads"},
   {"method":"GET","path":"/channels/{cid}/blocked","kind":"reads"},

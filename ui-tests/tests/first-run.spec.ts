@@ -15,7 +15,7 @@ test("a first visit shows the connection card, not header paste fields", async (
   await expect(card.locator("#token")).toBeVisible();
   await expect(page.locator("header #workspace")).toHaveCount(0);
   await expect(card).toContainText("maidan init");
-  await expect(card).toContainText("This browser keeps it until you sign out");
+  await expect(card).toContainText("This browser exchanges it for a session and does not keep the token");
   await expect(page.locator("#first-run-oidc"), "this server has no identity provider").toBeHidden();
   await expect(page.locator("#logout")).toBeHidden();
 });
@@ -31,7 +31,7 @@ test("a token connects, folds the inputs into the header, and Sign out forgets i
   await expect(page.locator("#identity-who")).toContainText("Operator");
   await page.click("#conn-edit");
   await expect(page.locator("header #conn-fields")).toBeVisible();
-  await expect(page.locator("header #token")).toHaveValue(fx.review_token);
+  await expect(page.locator("header #token")).toHaveValue("");
 
   const signOut = page.locator("#logout");
   await expect(signOut).toHaveText("Sign out");

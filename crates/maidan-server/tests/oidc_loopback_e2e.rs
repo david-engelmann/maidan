@@ -506,7 +506,7 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
         .send()
         .await
         .expect("logout");
-    assert_eq!(logout.status(), ClientStatus::TEMPORARY_REDIRECT);
+    assert_eq!(logout.status(), ClientStatus::SEE_OTHER);
     assert!(logout
         .headers()
         .get_all(reqwest::header::SET_COOKIE)

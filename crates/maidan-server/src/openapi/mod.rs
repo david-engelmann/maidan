@@ -45,7 +45,13 @@ impl Modify for SecurityAddon {
         );
         components.add_security_scheme(
             "sessionCookie",
-            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("maidan_session"))),
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::with_description(
+                "maidan_session",
+                "A browser session. An OIDC session reaches the `/ui/api` routes with a fixed \
+                 set of capabilities. A session from `POST /auth/session/from-token` holds \
+                 that token's authority and also reaches every `bearerAuth` route except MCP. \
+                 An unsafe request on a session must come from this origin.",
+            ))),
         );
         components.add_security_scheme(
             "shareTicketAuth",
@@ -569,6 +575,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::oidc_logout,
         paths::get_auth_session,
         paths::mint_auth_session_token,
+        paths::session_from_token,
         paths::ui_list_events,
         paths::ui_list_channels,
         paths::ui_create_channel,

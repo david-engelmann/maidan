@@ -846,6 +846,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/auth/session/from-token",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/ui/api/channels/{cid}/threads",
     "capability": "workspace:read",

@@ -576,6 +576,11 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/tokens/{id}", delete(routes::revoke_api_token))
         .route("/tokens/{id}/rotate", post(routes::rotate_api_token))
+        // On the bearer tree because what it exchanges is the bearer.
+        .route(
+            "/auth/session/from-token",
+            post(session::session_from_token),
+        )
         .route("/tokens/attenuate", post(routes::attenuate_api_token))
         .route("/tokens/delegate", post(routes::delegate_api_token))
         .route(

@@ -1,12 +1,130 @@
-use axum::{extract::State, http::StatusCode, Extension, Json};
-use chrono::Utc;
-use maidan_auth::{capability, hash_secret, TokenSecret, TOKEN_ADMIN};
-use maidan_types::{AuditScope, NewApiToken, NewAuditEvent};
+use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    Extension, Json,
+};
+use chrono::{DateTime, Duration, Utc};
+use maidan_auth::{
+    capability::{self, WORKSPACE_READ},
+    hash_secret, AuthContext, TokenSecret, TOKEN_ADMIN,
+};
+use maidan_types::{AuditScope, NewApiToken, NewAuditEvent, NewMaidanSession};
 
+use crate::auth::bearer_from_headers;
 use crate::dto::{MintApiTokenResponse, SessionResponse};
 use crate::error::ApiError;
-use crate::session::SessionContext;
+use crate::session::{parse_session_cookie, set_session_cookie, SessionContext};
 use crate::state::AppState;
+
+/// Exchange the request's bearer for a browser session holding the same
+/// authority, so a page can work without keeping the token. The session
+/// records the token's id and each request re-resolves it: it has exactly that
+/// token's capabilities, workspace and grant, and it ends when the token is
+/// revoked, rotated or expires, or at the session lifetime, whichever is first.
+///
+/// Creating it is an authority change (D-A): its audit row is written in the
+/// same transaction. `workspace:read` is required because a browser session
+/// exists to show a workspace.
+pub async fn session_from_token(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    // Only a bearer is exchanged: a session that could make another would
+    // renew itself past its lifetime.
+    if bearer_from_headers(&headers).is_none() {
+        return Err(ApiError::Unauthorized);
+    }
+    crate::routes::cap(&auth, WORKSPACE_READ)?;
+    let settings = state.browser_sessions().ok_or(ApiError::NotFound)?;
+    let token_id = auth.token_id.ok_or(ApiError::Unauthorized)?;
+    let token = state.store.get_api_token(token_id).await?;
+
+    let now = Utc::now();
+    let lifetime_end = i64::try_from(settings.ttl_secs)
+        .ok()
+        .and_then(Duration::try_seconds)
+        .and_then(|ttl| now.checked_add_signed(ttl))
+        .unwrap_or(DateTime::<Utc>::MAX_UTC);
+    let expires_at = token
+        .expires_at
+        .map_or(lifetime_end, |end| end.min(lifetime_end));
+
+    // This browser's previous session, if any, is replaced rather than left
+    // live beside the new one.
+    if let Some(previous) = parse_session_cookie(&headers, &settings.secret) {
+        let ended = state
+            .store
+            .delete_session_audited(
+                previous,
+                Box::new(|session| NewAuditEvent {
+                    scope: AuditScope::Workspace(session.workspace_id),
+                    actor_id: Some(session.member_id),
+                    action: "session.delete".into(),
+                    target_kind: Some("member".into()),
+                    target_id: Some(session.member_id.0),
+                    metadata: serde_json::json!({
+                        "workspace_id": session.workspace_id.0,
+                        "reason": "replaced",
+                    }),
+                }),
+            )
+            .await;
+        match ended {
+            Ok(_) | Err(maidan_store::StoreError::NotFound) => {}
+            Err(err) => return Err(err.into()),
+        }
+    }
+
+    let actor = auth.actor_id;
+    let grant = auth.delegation_grant_id;
+    let session = state
+        .store
+        .create_session_audited(
+            NewMaidanSession {
+                workspace_id: auth.workspace_id,
+                member_id: auth.member_id,
+                api_token_id: Some(token_id),
+                expires_at,
+            },
+            Box::new(move |session| NewAuditEvent {
+                actor_id: Some(actor),
+                scope: AuditScope::Workspace(session.workspace_id),
+                action: "session.from_token".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(token_id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": session.workspace_id.0,
+                    "subject_member_id": session.member_id.0,
+                    "grant_id": grant.map(|g| g.0),
+                    "expires_at": session.expires_at,
+                }),
+            }),
+        )
+        .await?;
+
+    let max_age = u64::try_from((session.expires_at - now).num_seconds()).unwrap_or(0);
+    let mut response = (
+        StatusCode::CREATED,
+        Json(SessionResponse {
+            member_id: session.member_id,
+            workspace_id: session.workspace_id,
+            expires_at: session.expires_at,
+            token_id: session.api_token_id,
+        }),
+    )
+        .into_response();
+    set_session_cookie(
+        response.headers_mut(),
+        session.id,
+        max_age,
+        settings.cookie_secure,
+        &settings.secret,
+    )
+    .map_err(|e| ApiError::Internal(e.to_string()))?;
+    Ok(response)
+}
 
 pub async fn mint_first_admin_token(
     State(state): State<AppState>,
@@ -16,6 +134,13 @@ pub async fn mint_first_admin_token(
         .oidc
         .as_ref()
         .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
+    // The first-admin mint is for a person who signed in, not a token's
+    // holder: a narrowed or borrowed token's session must not become admin.
+    if ctx.token.is_some() {
+        return Err(ApiError::Forbidden(
+            "a session made from a token cannot mint the first admin token".into(),
+        ));
+    }
     if !oidc.settings.first_admin_mint {
         return Err(ApiError::Forbidden(
             "first-admin session mint is disabled (MAIDAN_OIDC_FIRST_ADMIN)".into(),
@@ -90,5 +215,6 @@ pub async fn get_session(
         member_id: session.member_id,
         workspace_id: session.workspace_id,
         expires_at: session.expires_at,
+        token_id: session.api_token_id,
     }))
 }

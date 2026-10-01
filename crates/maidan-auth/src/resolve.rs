@@ -1,5 +1,5 @@
 use maidan_store::Store;
-use maidan_types::{ApiToken, Peer};
+use maidan_types::{ApiToken, ApiTokenId, Peer};
 
 use crate::context::AuthContext;
 use crate::error::AuthError;
@@ -12,6 +12,31 @@ pub async fn resolve_bearer(store: &dyn Store, bearer: &str) -> Result<AuthConte
     if !hashes_equal(&token.token_hash, &computed) {
         return Err(AuthError::Unauthorized);
     }
+    active_token_context(store, token).await
+}
+
+/// Resolve a token by id to the [`AuthContext`] its bearer would get, for a
+/// browser session made from it. The token must still be live by the same
+/// test a bearer passes — not revoked or rotated away, not expired, its grant
+/// and app installation live — so the session ends when the token does.
+pub async fn resolve_token_id(
+    store: &dyn Store,
+    token_id: ApiTokenId,
+) -> Result<AuthContext, AuthError> {
+    let token = store.get_api_token(token_id).await?;
+    let active = store
+        .get_active_api_token_by_hash(&token.token_hash)
+        .await?;
+    if active.id != token_id {
+        return Err(AuthError::Unauthorized);
+    }
+    active_token_context(store, active).await
+}
+
+async fn active_token_context(
+    store: &dyn Store,
+    token: ApiToken,
+) -> Result<AuthContext, AuthError> {
     if let Some(grant_id) = token.delegation_grant_id {
         let grant = store.get_delegation_grant(grant_id).await?;
         return Ok(AuthContext::from_delegated_token(

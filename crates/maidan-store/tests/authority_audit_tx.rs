@@ -113,10 +113,10 @@ where
         .set_delegation_policy_audited(ws.id, Some(30), audit_for("policy.set"))
         .await
         .unwrap();
-    let session = |secret: &str| NewMaidanSession {
+    let session = |_: &str| NewMaidanSession {
         workspace_id: ws.id,
         member_id: member.id,
-        csrf_secret: secret.into(),
+        api_token_id: None,
         expires_at: Utc::now() + Duration::hours(1),
     };
     let live_session = store
