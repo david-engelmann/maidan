@@ -1197,6 +1197,36 @@ fn ui_js_more_tools_starts_closed() {
     );
 }
 
+/// The thread panel, including the composer and Post, stays off the first
+/// screen until a card is open. Switching channels hides it again.
+#[test]
+fn ui_js_hides_the_composer_until_a_card_is_open() {
+    assert!(
+        HTML.contains("<section id=\"collab-panel\" hidden>"),
+        "the thread panel starts hidden"
+    );
+    assert!(
+        HTML.contains("#collab-panel[hidden] { display: none; }"),
+        "a hidden thread panel stays off the first screen"
+    );
+    let js = script(HTML);
+    let sync = function_body(js, "syncCollabPanel");
+    assert!(
+        sync.contains("getElementById(\"collab-panel\").hidden = !selectedThreadId"),
+        "the panel is hidden while no card is open"
+    );
+    let select = function_body(js, "selectThread");
+    assert!(
+        select.contains("syncCollabPanel()"),
+        "opening a card shows the thread and the composer"
+    );
+    let channels = function_body(js, "loadChannels");
+    assert!(
+        channels.contains("selectedThreadId = null") && channels.contains("syncCollabPanel()"),
+        "leaving a channel hides the composer again"
+    );
+}
+
 /// QA items from #1141 that were still true on main: a dead server must not
 /// surface as `TypeError: Failed to fetch` or as a lost post, a 403 search
 /// must not dump problem JSON, Open DM selects the conversation and names the

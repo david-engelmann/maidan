@@ -153,6 +153,7 @@
         max-height: 22rem;
         overflow: auto;
       }
+      #collab-panel[hidden] { display: none; }
       #message-list {
         background: #f4f4f5;
         padding: 0.5rem;
@@ -704,7 +705,7 @@
         </ul>
           </details>
         </section>
-        <section id="collab-panel">
+        <section id="collab-panel" hidden>
           <div id="thread-header">
             <span class="th-label">Thread</span>
             <span id="thread-badge"></span>
@@ -2592,8 +2593,15 @@
         }
       }
 
+      function syncCollabPanel() {
+        // The thread, the composer, and Post stay off the first screen
+        // until a card is open.
+        document.getElementById("collab-panel").hidden = !selectedThreadId;
+      }
+
       function selectThread(id, label) {
         selectedThreadId = id;
+        syncCollabPanel();
         document.getElementById("thread-id").value = id;
         document.getElementById("thread-context").textContent = label || id;
         // Reset the live marker for the newly-opened thread.
@@ -4694,6 +4702,7 @@
               selectedChannelName = ch.name;
               localStorage.setItem(channelKey, ch.id);
               selectedThreadId = null;
+              syncCollabPanel();
               boardSeen = new Map();
               document.getElementById("channel-id").value = ch.id;
               const sc = document.getElementById("search-channel");
