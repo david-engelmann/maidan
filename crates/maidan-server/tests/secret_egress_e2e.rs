@@ -1,9 +1,10 @@
 //! `secret://` refs on every egress path, end to end: the automation HTTP
 //! deliveries of a slash command (the synchronous POST and the queued retry the
-//! worker sends) and an A2A push notification carry the workspace's value to a
-//! host the workspace trusts, the literal ref to any other, and the value is
-//! written nowhere: not in the queued row, the event log, the audit trail or
-//! any other table.
+//! worker sends) and an A2A push notification. These receivers are plain
+//! `http`, so a host the workspace trusts still gets the literal ref.
+//! Substitution requires `https` (covered on the broker). The value is written
+//! nowhere: not in the queued row, the event log, the audit trail or any
+//! other table.
 
 // Mock receivers are plain axum servers, not the API (see clippy.toml).
 #![allow(clippy::disallowed_methods)]
@@ -302,7 +303,7 @@ fn text_of(body: &str) -> String {
 }
 
 #[tokio::test]
-async fn automation_http_carries_the_value_only_to_a_trusted_host() {
+async fn automation_http_keeps_the_literal_even_when_the_host_is_trusted() {
     let h = spawn().await;
     let (status, command) = h
         .call(
@@ -336,18 +337,19 @@ async fn automation_http_carries_the_value_only_to_a_trusted_host() {
     post(1).await;
     assert_eq!(text_of(&h.receiver.last().1), "secret://api-key");
 
-    // Trusted: the value, JSON-escaped, and the signature covers what was sent.
+    // Trusted, but the receiver is plain http: the ref stays literal, and the
+    // signature covers that body. https is what would substitute.
     h.trust_receiver().await;
     post(2).await;
     let (headers, body) = h.receiver.last();
-    assert_eq!(text_of(&body), VALUE);
+    assert_eq!(text_of(&body), "secret://api-key");
     let signature = headers["x-maidan-signature"].to_str().unwrap();
     assert!(maidan_server::webhooks::verify_signature(
         &signing, &body, signature
     ));
 
-    // A failed POST is queued with the literal ref; the worker substitutes
-    // again when it sends the retry.
+    // A failed POST is queued with the literal ref; the worker sends that
+    // same literal on the retry. Trust does not substitute over http.
     h.receiver.fail.store(true, Ordering::SeqCst);
     post(3).await;
     let queued: Vec<String> =
@@ -366,7 +368,7 @@ async fn automation_http_carries_the_value_only_to_a_trusted_host() {
         .await
         .unwrap();
     h.receiver.wait_for(4).await;
-    assert_eq!(text_of(&h.receiver.last().1), VALUE);
+    assert_eq!(text_of(&h.receiver.last().1), "secret://api-key");
 
     // Revoked: the next queued retry carries the literal ref again.
     h.distrust_receiver().await;
@@ -386,8 +388,8 @@ async fn automation_http_carries_the_value_only_to_a_trusted_host() {
         .filter(|b| b.contains(MARKER))
         .count();
     assert_eq!(
-        delivered, 3,
-        "the value went out exactly while the host was trusted"
+        delivered, 0,
+        "plain http never receives the value, even while the host is trusted"
     );
     let hits = h.database_mentions(MARKER).await;
     assert!(hits.is_empty(), "the value was written down: {hits:?}");
@@ -405,7 +407,7 @@ async fn automation_http_carries_the_value_only_to_a_trusted_host() {
 }
 
 #[tokio::test]
-async fn an_a2a_push_carries_the_value_only_to_a_trusted_host() {
+async fn an_a2a_push_keeps_the_literal_even_when_the_host_is_trusted() {
     let h = spawn().await;
     let send = |n: usize| {
         let h = &h;
@@ -446,7 +448,11 @@ async fn an_a2a_push_carries_the_value_only_to_a_trusted_host() {
 
     assert_eq!(send(1).await, "deploy-secret://api-key", "untrusted host");
     h.trust_receiver().await;
-    assert_eq!(send(2).await, format!("deploy-{VALUE}"), "trusted host");
+    assert_eq!(
+        send(2).await,
+        "deploy-secret://api-key",
+        "a trusted host on plain http still gets the literal"
+    );
     h.distrust_receiver().await;
     assert_eq!(send(3).await, "deploy-secret://api-key", "revoked host");
 
