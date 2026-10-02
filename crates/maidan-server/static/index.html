@@ -651,10 +651,11 @@
               <div id="conn-fields">
                 <label>API base <input id="base" /></label>
                 <label>Workspace <input id="workspace" /></label>
-                <label>Token <input id="token" type="password" autocomplete="off" title="This browser keeps the token until you sign out" /></label>
+                <label>Token <input id="token" type="password" autocomplete="off" title="Exchanged for a session. This browser does not keep the token" /></label>
               </div>
             </div>
             <p class="first-run-note">A token comes from <code>maidan init</code> on the server, or from an admin in Tokens. This browser exchanges it for a session and does not keep the token, so use your own device.</p>
+            <p class="first-run-note" id="storage-warning">The workspace id and the live resume token stay in localStorage as plaintext. Any script on this page can read them. The sign-in token itself is not stored there.</p>
             <div class="row" id="first-run-oidc" hidden><button id="login" type="button" class="primary">Sign in with your identity provider</button> <span>or paste a token</span></div>
           </section>
           <div id="board-head">
@@ -677,7 +678,7 @@
             <span class="th-label">Thread</span>
             <span id="thread-badge"></span>
             <span id="thread-context" class="muted">none selected</span>
-            <span id="live-indicator" class="muted" hidden title="This thread updates live from the WebSocket (connect it in the Events tab)">● live</span>
+            <span id="live-indicator" class="muted" hidden title="This thread updates live from the WebSocket. Press Connect WS in the Live toolbar.">● live</span>
             <span id="thread-actions"></span>
           </div>
           <div id="thread-facts"></div>
@@ -834,8 +835,8 @@
       <section id="panel-presence" class="panel">
         <p class="muted">
           Live workspace roster from the presence hub. Requires an active
-          WebSocket subscribe — connect in the <strong>Events (HTTP)</strong>
-          tab while signed in (the subscribe sends your member ID, which
+          WebSocket subscribe. Press <strong>Connect WS</strong> in the Live
+          toolbar while signed in (the subscribe sends your member ID, which
           registers you online). The roster updates on each
           <code>presence_snapshot</code> frame.
         </p>
@@ -1139,6 +1140,7 @@
         </details>
       </section>
       <section id="panel-tokens" class="panel">
+        <p class="muted" id="token-storage-warning">A minted secret is shown once and is not written to localStorage. The workspace id and the live resume token are stored there as plaintext, which any script on this page can read.</p>
         <label>Member <input id="token-member" /></label>
         <label>Label <input id="token-label" /></label>
         <label>Capabilities (comma-separated)
@@ -1733,39 +1735,60 @@
         if (!meta || meta.notice !== "transition_refused") return;
         rememberRefusal(v.thread_id, v.message.author_id, v.message.body, (v.message && v.message.created_at) || (v.occurred_at));
       }
+      // One notices read for the channel, not one history fetch per thread.
+      // The board already did the one gates read in fetchPendingGatesByThread.
+      // A notice is a message_posted event whose metadata.notice is
+      // transition_refused. rememberRefusal keeps a newer live sentence when
+      // this page is older. The strip above the lanes stays hidden.
       async function hydrateRefusals(threads) {
         if (!token() && !sessionMemberId) return;
-        const pending = threads.filter((th) => th.state === "in_review" && !refusals.has(th.id));
-        await Promise.all(pending.map(async (th) => {
-          try {
-            const url = token()
-              ? `${base()}/threads/${th.id}/messages?limit=500`
-              : uiReadPath(`/threads/${th.id}/messages?limit=500`);
-            const res = await fetch(url, { headers: headers(), credentials: "include" });
-            if (!res.ok) return;
-            const msgs = await res.json();
-            const hit = [...msgs].reverse().find((m) => m.metadata && m.metadata.notice === "transition_refused");
-            if (hit) rememberRefusal(th.id, hit.author_id, hit.body, hit.created_at);
-          } catch (_e) {
-            /* the live frame is the other way this arrives */
-          }
-        }));
-        if (pending.length) {
-          paintRefusal();
-          pending.forEach((th) => {
-            const rec = refusals.get(th.id);
-            if (!rec) return;
-            const card = document.querySelector(`#board .card[data-id="${CSS.escape(th.id)}"]`);
-            if (!card) return;
-            if (rec.text) card.title = rec.text;
-            if (!card.querySelector(".card-refusal")) {
-              const line = document.createElement("div");
-              line.className = "card-refusal";
-              line.textContent = "Close refused";
-              card.appendChild(line);
-            }
+        const pending = threads.filter((th) => th.state === "in_review");
+        if (!pending.length || !wid() || !selectedChannelId) return;
+        const wanted = new Set(pending.map((th) => th.id));
+        try {
+          const q = new URLSearchParams({
+            types: "message_posted",
+            channel_id: selectedChannelId,
+            limit: "500",
           });
+          const res = await fetch(
+            apiReadPath(`/workspaces/${wid()}/events?${q}`),
+            { headers: headers(), credentials: "include" }
+          );
+          if (res.ok) {
+            const events = await res.json();
+            for (const ev of events) {
+              const payload = ev.payload || {};
+              const message = payload.message;
+              const threadId = (message && message.thread_id) || payload.thread_id || ev.thread_id;
+              if (!wanted.has(threadId) || !message) continue;
+              const meta = message.metadata;
+              if (!meta || meta.notice !== "transition_refused") continue;
+              rememberRefusal(
+                threadId,
+                message.author_id,
+                message.body,
+                message.created_at || payload.occurred_at
+              );
+            }
+          }
+        } catch (_e) {
+          /* the live frame is the other way this arrives */
         }
+        paintRefusal();
+        pending.forEach((th) => {
+          const rec = refusals.get(th.id);
+          if (!rec) return;
+          const card = document.querySelector(`#board .card[data-id="${CSS.escape(th.id)}"]`);
+          if (!card) return;
+          if (rec.text) card.title = rec.text;
+          if (!card.querySelector(".card-refusal")) {
+            const line = document.createElement("div");
+            line.className = "card-refusal";
+            line.textContent = "Close refused";
+            card.appendChild(line);
+          }
+        });
       }
 
       function renderBoard(threads, gates) {
@@ -2612,8 +2635,9 @@
 
       // Live thread view. WS event frames whose thread matches the
       // open thread refresh the message list (debounced) instead of only
-      // landing as Events-tab log lines. Requires the WebSocket connected with a
-      // filter that includes this thread (workspace-wide subscribe covers it).
+      // landing as raw lines under the Live toolbar. Requires the WebSocket
+      // connected with a filter that includes this thread (workspace-wide
+      // subscribe covers it).
       const THREAD_CONTENT_KINDS = new Set([
         "message_posted",
         "message_edited",
@@ -2899,7 +2923,7 @@
 
       function selectDm(c) {
         selectedDm = c;
-        document.getElementById("dm-selected").textContent = `with ${dmOther(c)}`;
+        document.getElementById("dm-selected").textContent = `with ${memberName(dmOther(c))}`;
         loadDmMessages(c.thread_id);
       }
 
@@ -4905,7 +4929,7 @@
 
       function setPresence(status) {
         if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN) {
-          return setStatus("Connect the WebSocket (Events tab) first", "err");
+          return setStatus("Press Connect WS in the Live toolbar first", "err");
         }
         wsSocket.send(JSON.stringify({ type: "presence", status }));
         setStatus(`Presence → ${status}`, "ok");
