@@ -2654,7 +2654,7 @@ fn ui_js_empty_board_is_one_sentence_and_one_action() {
             actions.len()
         );
         assert!(
-            is_one_sentence(&prose[0]),
+            is_one_sentence(prose[0]),
             "{}: {:?} is not one sentence",
             view.label(),
             prose[0]
