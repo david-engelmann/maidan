@@ -95,6 +95,21 @@ pub async fn get(pool: &PgPool, id: WorkspaceId) -> Result<Workspace, StoreError
     Ok(row_to_workspace(&row))
 }
 
+pub async fn rename(pool: &PgPool, id: WorkspaceId, name: &str) -> Result<Workspace, StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_workspaces
+         SET name = $2, updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, name, created_at, updated_at, tombstoned_at",
+    )
+    .bind(id.0)
+    .bind(name)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    Ok(row_to_workspace(&row))
+}
+
 pub async fn get_mention_webhook_id(
     pool: &PgPool,
     workspace_id: WorkspaceId,

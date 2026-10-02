@@ -46,6 +46,14 @@ macro_rules! store_delegations {
                 workspaces::get(self.read_pool(), id).await
             }
 
+            async fn rename_workspace(
+                &self,
+                id: WorkspaceId,
+                name: &str,
+            ) -> Result<Workspace, StoreError> {
+                workspaces::rename(self.pool(), id, name).await
+            }
+
             async fn count_workspaces(&self) -> Result<i64, StoreError> {
                 workspaces::count(self.pool()).await
             }

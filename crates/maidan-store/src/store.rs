@@ -37,6 +37,9 @@ pub trait WorkspaceStore: Send + Sync {
         new: NewWorkspace,
     ) -> Result<(Workspace, StoredEvent), StoreError>;
     async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError>;
+    /// Set the workspace display name. The id is unchanged. `NotFound` when
+    /// the workspace does not exist.
+    async fn rename_workspace(&self, id: WorkspaceId, name: &str) -> Result<Workspace, StoreError>;
     async fn count_workspaces(&self) -> Result<i64, StoreError>;
     /// Live per-workspace usage counts (members/channels/threads/messages,
     /// excluding tombstoned rows) for metering.

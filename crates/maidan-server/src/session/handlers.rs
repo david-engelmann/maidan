@@ -9,13 +9,33 @@ use maidan_auth::{
     capability::{self, WORKSPACE_READ},
     hash_secret, AuthContext, TokenSecret, TOKEN_ADMIN,
 };
-use maidan_types::{AuditScope, NewApiToken, NewAuditEvent, NewMaidanSession};
+use maidan_types::{AuditScope, MemberId, NewApiToken, NewAuditEvent, NewMaidanSession};
 
 use crate::auth::bearer_from_headers;
 use crate::dto::{MintApiTokenResponse, SessionResponse};
 use crate::error::ApiError;
 use crate::session::{parse_session_cookie, set_session_cookie, SessionContext};
 use crate::state::AppState;
+
+async fn member_display_name(
+    state: &AppState,
+    member_id: MemberId,
+) -> Result<Option<String>, ApiError> {
+    match state.store.get_member(member_id).await {
+        Ok(member) => Ok(member.display_name.and_then(|name| {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                None
+            } else if trimmed.len() == name.len() {
+                Some(name)
+            } else {
+                Some(trimmed.to_string())
+            }
+        })),
+        Err(maidan_store::StoreError::NotFound) => Ok(None),
+        Err(err) => Err(err.into()),
+    }
+}
 
 /// Exchange the request's bearer for a browser session holding the same
 /// authority, so a page can work without keeping the token. The session
@@ -26,6 +46,7 @@ use crate::state::AppState;
 /// Creating it is an authority change (D-A): its audit row is written in the
 /// same transaction. `workspace:read` is required because a browser session
 /// exists to show a workspace.
+
 pub async fn session_from_token(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -112,6 +133,7 @@ pub async fn session_from_token(
             workspace_id: session.workspace_id,
             expires_at: session.expires_at,
             token_id: session.api_token_id,
+            display_name: member_display_name(&state, session.member_id).await?,
         }),
     )
         .into_response();
@@ -216,5 +238,6 @@ pub async fn get_session(
         workspace_id: session.workspace_id,
         expires_at: session.expires_at,
         token_id: session.api_token_id,
+        display_name: member_display_name(&state, session.member_id).await?,
     }))
 }

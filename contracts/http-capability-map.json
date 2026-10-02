@@ -930,6 +930,12 @@
     "surface": "http"
   },
   {
+    "method": "PATCH",
+    "path": "/workspaces/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/workspaces/{id}/purge",
     "capability": "token:admin",
@@ -1916,6 +1922,12 @@
   {
     "method": "PUT",
     "path": "/workspaces/{id}/handle",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "PATCH",
+    "path": "/ui/api/workspaces/{wid}",
     "capability": "workspace:write",
     "surface": "http"
   }

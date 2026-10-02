@@ -53,6 +53,19 @@ pub fn create_member_bootstrap() {}
     ))]
 pub fn get_workspace() {}
 
+/// Name a workspace
+#[utoipa::path(patch, path = "/workspaces/{id}", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = RenameWorkspace,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Workspace),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn rename_workspace() {}
+
 /// Erase a workspace
 #[utoipa::path(
     delete,

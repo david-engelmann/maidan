@@ -4292,3 +4292,124 @@ renderIdentity("mem_ada").then(() => {
 });
 
 "####;
+
+/// The line under the header. A member with a display name sees that name.
+/// The member id stays on the title, where a developer can read it, and is
+/// the visible line only when no display name is set.
+#[test]
+fn ui_js_signed_in_line_uses_display_name() {
+    let named = signed_in_line("mem_river", Some("River Chen"));
+    assert_eq!(named.text, "Signed in · River Chen");
+    assert!(
+        !named.text.contains("mem_river"),
+        "a display name replaces the member id on the signed-in line"
+    );
+    assert_eq!(named.title, "mem_river");
+
+    let blank = signed_in_line("mem_river", Some("   "));
+    assert_eq!(blank.text, "Signed in · mem_river");
+    assert_eq!(blank.title, "mem_river");
+
+    let unnamed = signed_in_line("mem_river", None);
+    assert_eq!(unnamed.text, "Signed in · mem_river");
+    assert_eq!(unnamed.title, "mem_river");
+}
+
+struct SignedInLine {
+    text: String,
+    title: String,
+}
+
+fn signed_in_line(member_id: &str, display_name: Option<&str>) -> SignedInLine {
+    let js = script(HTML);
+    let start = js
+        .find("async function refreshSession(")
+        .expect("refreshSession");
+    let rel = js[start..]
+        .find("\n      }\n")
+        .expect("end of refreshSession");
+    let refresh = format!("{}\n      }}", &js[start..start + rel]);
+    let payload = serde_json::json!({
+        "refresh": refresh,
+        "member_id": member_id,
+        "display_name": display_name,
+    });
+    let mut child = std::process::Command::new("node")
+        .arg("-e")
+        .arg(SIGNED_IN_HARNESS)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("node is required to show the signed-in line: {err}"));
+    serde_json::to_writer(child.stdin.take().expect("stdin"), &payload).expect("write");
+    let out = child.wait_with_output().expect("node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "signed-in harness failed: {}\n{stdout}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_str(stdout.trim()).expect("json");
+    SignedInLine {
+        text: value["text"].as_str().unwrap_or("").to_string(),
+        title: value["title"].as_str().unwrap_or("").to_string(),
+    }
+}
+
+const SIGNED_IN_HARNESS: &str = r####"
+const fs = require("fs");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+function makeEl() {
+  return { hidden: false, textContent: "", title: "", className: "", value: "" };
+}
+const els = {
+  "session-status": makeEl(),
+  mint: makeEl(),
+  workspace: makeEl(),
+  "token-member": makeEl(),
+};
+const document = { getElementById(id) { return els[id]; } };
+let sessionMemberId = null;
+let tokenSession = false;
+function base() { return ""; }
+function wid() { return "workspace-already-set"; }
+const refreshSession = new Function(
+  "document",
+  "fetch",
+  "base",
+  "wid",
+  input.refresh + "\nreturn refreshSession;"
+)(document, async () => ({
+  ok: true,
+  json: async () => ({
+    member_id: input.member_id,
+    workspace_id: "ws",
+    display_name: input.display_name,
+    token_id: null,
+  }),
+}), base, wid);
+refreshSession().then(() => {
+  const el = els["session-status"];
+  process.stdout.write(JSON.stringify({ text: el.textContent, title: el.title }));
+}).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+"####;
+
+/// Naming a workspace goes through PATCH on the workspace resource, the same
+/// path the server mounts for a bearer and for a signed-in session.
+#[test]
+fn ui_js_names_a_workspace_with_patch() {
+    let body = function_body(script(HTML), "saveWorkspaceName");
+    assert!(
+        body.contains("apiWritePath(`/workspaces/${wid()}`)"),
+        "the name control must PATCH the workspace path"
+    );
+    assert!(
+        body.contains("method: \"PATCH\""),
+        "naming uses PATCH, not a new workspace"
+    );
+    assert!(!body.contains("POST"), "naming must not create a workspace");
+}

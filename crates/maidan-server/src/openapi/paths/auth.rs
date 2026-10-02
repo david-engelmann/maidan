@@ -6,11 +6,11 @@ use uuid::Uuid;
 use crate::dto::{
     CreateChannel, CreateMessage, CreateThread, ListAuditQuery, ListEventsQuery,
     ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse,
-    OidcCallbackQuery, OidcLoginQuery, PeerResponse, SearchQuery, SessionResponse,
+    OidcCallbackQuery, OidcLoginQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
-use maidan_types::{AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread};
+use maidan_types::{AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, Workspace};
 
 /// Start an OIDC login
 #[utoipa::path(
@@ -146,6 +146,26 @@ pub fn ui_list_events() {}
     )
 )]
 pub fn ui_list_channels() {}
+
+/// Name a workspace (console)
+#[utoipa::path(
+    patch,
+    path = "/ui/api/workspaces/{wid}",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = RenameWorkspace,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Workspace),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_rename_workspace() {}
 
 /// Create a channel (console)
 #[utoipa::path(

@@ -7,6 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A workspace can be named, and the signed-in line uses a display name
+
+- **Added:** `PATCH /workspaces/{id}` sets the workspace display name (`workspace:write`). The same call is on `PATCH /ui/api/workspaces/{wid}` for a signed-in session. The id does not change. A blank name is refused. `POST /workspaces` stays closed after bootstrap.
+- **Fixed:** the line under the header shows the member display name when one is set. The member id stays on the line title, and is the visible text only when no display name is set. `GET /auth/session` returns `display_name`.
+
 ### Playwright checks the board as it is
 
 - **Fixed:** `ui tests (playwright)` failed on every board PR after the state word, the one empty-board sentence, and the human error replaced the pill, "pick a channel", and the raw 403 body. The specs still required those. They now require each task in its lane with its state word and holder, the one empty-board sentence and Connect an agent, no lanes on an empty board, and a 403 as the human sentence rather than the server detail. A Needs you refusal is painted on the row that is on screen, and that row survives a reload, so the sentence is not dropped before it can be read. The job is still not a required check.

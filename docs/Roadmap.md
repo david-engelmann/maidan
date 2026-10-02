@@ -84,7 +84,10 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    assertions (the pill, pick a channel, the raw error), so the job was
    ignored; it is still not a required check, and the specs now fail when
    the board is wrong and pass when the lanes, the state word, the empty
-   sentence, and the human refusal are right. In flight: the token leaving the browser's storage (#1142). Next:
+   sentence, and the human refusal are right. In flight: the token leaving
+   the browser's storage (#1142), the signed-in line showing a display name
+   instead of a member id, and naming a workspace with `PATCH /workspaces/{id}`.
+   Next:
    the rest of the QA pass, the ten changes of the [UI design
    contract](UI%20Design.md), write paths for a signed-in person, typed modules
    with a CSP, and screenshots captured by a script.

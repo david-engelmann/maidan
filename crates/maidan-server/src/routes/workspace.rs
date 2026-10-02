@@ -53,6 +53,38 @@ pub async fn get_workspace(
     Ok(Json(state.store.get_workspace(workspace_id).await?))
 }
 
+/// Longest display name `PATCH /workspaces/:id` accepts, in Unicode scalars.
+const WORKSPACE_NAME_MAX_CHARS: usize = 200;
+
+fn normalize_workspace_name(raw: &str) -> Result<String, ApiError> {
+    let name = raw.trim();
+    let len = name.chars().count();
+    if len == 0 || len > WORKSPACE_NAME_MAX_CHARS {
+        return Err(ApiError::BadRequest(format!(
+            "workspace name must be 1..={WORKSPACE_NAME_MAX_CHARS} characters"
+        )));
+    }
+    Ok(name.to_string())
+}
+
+/// `PATCH /workspaces/:id` — set the workspace display name. `workspace:write`.
+/// The id does not change. A blank name is refused. Creating another workspace
+/// after bootstrap stays closed; this is how an existing one is named.
+pub async fn rename_workspace(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<RenameWorkspace>,
+) -> ApiResult<Json<Workspace>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let name = normalize_workspace_name(&body.name)?;
+    Ok(Json(
+        state.store.rename_workspace(workspace_id, &name).await?,
+    ))
+}
+
 /// Export the whole workspace content graph as a signed
 /// `maidan.workspace.export/1` envelope. Gated on `token:admin`. Tokens die on
 /// export — secrets are omitted and the envelope records `token_policy`.
