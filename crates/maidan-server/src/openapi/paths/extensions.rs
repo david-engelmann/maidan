@@ -260,6 +260,18 @@ pub fn get_preserved_messages() {}
     ))]
 pub fn list_legal_holds() {}
 
+/// Open another workspace and its first admin
+#[utoipa::path(post, path = "/operator/workspaces", tag = "operator",
+    request_body = ProvisionWorkspace,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, description = "Workspace, its admin member, and a one-time admin token", body = ProvisionedWorkspace),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn provision_workspace() {}
+
 /// Get operator status
 #[utoipa::path(get, path = "/operator/status", tag = "operator",
     security(("bearerAuth" = [])),

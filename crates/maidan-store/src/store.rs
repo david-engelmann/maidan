@@ -21,6 +21,23 @@ pub trait MetaStore: Send + Sync {
     async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError>;
 }
 
+/// Input for [`WorkspaceStore::provision_workspace`].
+pub struct NewProvisionedTenant {
+    pub name: String,
+    pub admin_handle: String,
+    pub token_hash: String,
+    pub token_label: Option<String>,
+    pub capabilities: Vec<String>,
+}
+
+/// What [`WorkspaceStore::provision_workspace`] committed.
+pub struct ProvisionedTenant {
+    pub workspace: Workspace,
+    pub member: Member,
+    pub token: ApiToken,
+    pub events: Vec<StoredEvent>,
+}
+
 #[async_trait]
 pub trait WorkspaceStore: Send + Sync {
     /// Insert a whole workspace content graph — members, channels, threads,
@@ -36,6 +53,15 @@ pub trait WorkspaceStore: Send + Sync {
         &self,
         new: NewWorkspace,
     ) -> Result<(Workspace, StoredEvent), StoreError>;
+
+    /// Create a workspace, its first human admin, and the admin token in
+    /// one transaction, with the token audit row in the same transaction.
+    /// The two domain events are returned for the caller to publish.
+    async fn provision_workspace(
+        &self,
+        new: NewProvisionedTenant,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ProvisionedTenant, StoreError>;
     async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError>;
     /// Set the workspace display name. The id is unchanged. `NotFound` when
     /// the workspace does not exist.

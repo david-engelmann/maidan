@@ -6,12 +6,11 @@ use maidan_auth::{
     capability::{
         AUDIT_READ_GLOBAL, OPERATOR_GLOBAL, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
     },
-    AuthContext,
+    hash_secret, AuthContext, TokenSecret,
 };
 use maidan_store::{BlobReap, StoreError};
 use maidan_types::*;
 
-#[cfg(feature = "bootstrap")]
 use super::publish_stored;
 use super::{cap, clamp_context_transition_limit, ensure_workspace, ApiResult};
 use crate::dto::*;
@@ -40,6 +39,90 @@ pub async fn create_workspace(
         .await?;
     publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(ws)))
+}
+
+/// Longest admin handle `POST /operator/workspaces` accepts, in Unicode scalars.
+const ADMIN_HANDLE_MAX_CHARS: usize = 64;
+
+fn normalize_admin_handle(raw: &str) -> Result<String, ApiError> {
+    let handle = raw.trim();
+    let len = handle.chars().count();
+    if len == 0 || len > ADMIN_HANDLE_MAX_CHARS || handle.chars().any(char::is_whitespace) {
+        return Err(ApiError::BadRequest(format!(
+            "admin handle must be 1..={ADMIN_HANDLE_MAX_CHARS} characters with no whitespace"
+        )));
+    }
+    Ok(handle.to_string())
+}
+
+/// Capabilities of a workspace opened by an operator: everything except the
+/// two that read or operate across tenants.
+fn tenant_admin_capabilities() -> Vec<String> {
+    maidan_auth::capability::all()
+        .into_iter()
+        .filter(|cap| cap != OPERATOR_GLOBAL && cap != AUDIT_READ_GLOBAL)
+        .collect()
+}
+
+/// `POST /operator/workspaces` — open another workspace and its first admin.
+/// `operator:global`. Does not require `MAIDAN_BOOTSTRAP`. The admin token is
+/// returned once and cannot read or operate across tenants.
+pub async fn provision_workspace(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiJson(body): ApiJson<ProvisionWorkspace>,
+) -> ApiResult<(StatusCode, Json<ProvisionedWorkspace>)> {
+    cap(&auth, OPERATOR_GLOBAL)?;
+    let name = normalize_workspace_name(&body.name)?;
+    let admin_handle = normalize_admin_handle(&body.admin_handle)?;
+    let secret = TokenSecret::generate();
+    let capabilities = tenant_admin_capabilities();
+    let actor = auth.actor_id;
+    let provisioned = state
+        .store
+        .provision_workspace(
+            maidan_store::store::NewProvisionedTenant {
+                name,
+                admin_handle,
+                token_hash: hash_secret(secret.as_str()),
+                token_label: Some("workspace admin".to_string()),
+                capabilities,
+            },
+            Box::new(move |record| NewAuditEvent {
+                scope: AuditScope::Workspace(record.workspace_id),
+                actor_id: Some(actor),
+                action: "token.mint".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(record.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": record.workspace_id.0,
+                    "subject_member_id": record.member_id.0,
+                    "capabilities": record.capabilities.clone(),
+                    "source": "operator-workspace",
+                }),
+            }),
+        )
+        .await?;
+    for stored in provisioned.events {
+        publish_stored(&state, stored).await;
+    }
+    let token = provisioned.token;
+    Ok((
+        StatusCode::CREATED,
+        Json(ProvisionedWorkspace {
+            workspace: provisioned.workspace,
+            member: provisioned.member,
+            token: MintApiTokenResponse {
+                id: token.id,
+                secret: secret.as_str().to_string(),
+                workspace_id: token.workspace_id,
+                member_id: token.member_id,
+                capabilities: token.capabilities,
+                expires_at: token.expires_at,
+                quotas: vec![],
+            },
+        }),
+    ))
 }
 
 pub async fn get_workspace(

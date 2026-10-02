@@ -297,6 +297,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::list_workspace_legal_holds,
         paths::get_preserved_messages,
         paths::list_legal_holds,
+        paths::provision_workspace,
         paths::operator_status,
         paths::set_wip_limit,
         paths::get_wip_limit,

@@ -149,3 +149,76 @@ fn row_to_workspace(row: &sqlx::postgres::PgRow) -> Workspace {
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
     }
 }
+
+/// Workspace, first admin, and that admin token, one transaction.
+/// The token audit row commits with them (D-A). Domain events are not published.
+pub async fn provision(
+    pool: &PgPool,
+    new: crate::store::NewProvisionedTenant,
+    audit: crate::AuditFor<maidan_types::ApiToken>,
+) -> Result<crate::store::ProvisionedTenant, StoreError> {
+    use maidan_types::{Event, MemberKind, NewApiToken, NewMember};
+
+    let id = Uuid::now_v7();
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "INSERT INTO maidan_workspaces (id, name)
+         VALUES ($1, $2)
+         RETURNING id, name, created_at, updated_at, tombstoned_at",
+    )
+    .bind(id)
+    .bind(&new.name)
+    .fetch_one(&mut *tx)
+    .await?;
+    let workspace = row_to_workspace(&row);
+    let created = events::append_in_tx(
+        &mut tx,
+        &Event::WorkspaceCreated {
+            occurred_at: Utc::now(),
+            workspace: workspace.clone(),
+        },
+    )
+    .await?;
+    let member = super::members::create_on(
+        &mut tx,
+        NewMember {
+            workspace_id: workspace.id,
+            handle: new.admin_handle,
+            display_name: None,
+            kind: MemberKind::Human,
+        },
+    )
+    .await?;
+    let joined = events::append_in_tx(
+        &mut tx,
+        &Event::MemberJoined {
+            occurred_at: Utc::now(),
+            workspace_id: workspace.id,
+            member: member.clone(),
+        },
+    )
+    .await?;
+    let token = super::tokens::create_on(
+        &mut tx,
+        NewApiToken {
+            workspace_id: workspace.id,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: new.token_hash,
+            label: new.token_label,
+            capabilities: new.capabilities,
+            expires_at: None,
+        },
+    )
+    .await?;
+    super::audit::append_on(&mut tx, audit(&token))
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+    tx.commit().await?;
+    Ok(crate::store::ProvisionedTenant {
+        workspace,
+        member,
+        token,
+        events: vec![created, joined],
+    })
+}

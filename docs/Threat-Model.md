@@ -54,11 +54,11 @@ integrator document, not a formal audit.
 
 ## Bootstrap hardening options
 
-1. **One-shot seed flag** — `MAIDAN_BOOTSTRAP=1` required for bootstrap routes when auth is enabled (`v1.4.0`); only the first workspace may be created via bootstrap.
+1. **One-shot seed flag** — `MAIDAN_BOOTSTRAP=1` required for bootstrap routes when auth is enabled (`v1.4.0`); only the first workspace may be created via bootstrap. A later workspace is `POST /operator/workspaces`, which requires `operator:global` and mints an admin token that does not hold `operator:global` or `audit:read-global`.
 2. **IP allowlist** — reverse proxy restricts bootstrap paths to admin CIDR.
 3. **Compile-time strip** — production release builds omit bootstrap routes via Cargo feature `bootstrap` (default on for dev/tests; Docker image uses `--no-default-features`) (`v91.0.0`).
 
-Recommended production flow: seed the first admin with `maidan init` (writes through the store — no unauthenticated HTTP routes, no `AUTH_DISABLED`; see [Production.md](Production.md#maidan-init-recommended)), mint per-agent tokens from it, deploy the production image (no bootstrap routes), set `MAIDAN_ENV=production`. The HTTP-bootstrap / `AUTH_DISABLED=1` seed is a private-network-only alternative for dev.
+Recommended production flow: seed the first admin with `maidan init` (writes through the store — no unauthenticated HTTP routes, no `AUTH_DISABLED`; see [Production.md](Production.md#maidan-init-recommended)), mint per-agent tokens from it, deploy the production image (no bootstrap routes), set `MAIDAN_ENV=production`. A second workspace is `POST /operator/workspaces` with that admin token. The HTTP-bootstrap / `AUTH_DISABLED=1` seed is a private-network-only alternative for dev.
 
 ## Related docs
 
