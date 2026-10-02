@@ -3558,3 +3558,607 @@ function surface(id) {
 });
 })();
 "#####;
+
+/// Identity is type, not a chip. From docs/UI Design.md: `#identity-pill`
+/// loses the pill border, the 999px radius, and the chip background. It is
+/// the name and the workspace name, muted, with `#conn-edit` as a ghost.
+///
+/// This runs the page's `renderIdentity` and applies the page's styles.
+/// It fails if that line is shown as a chip, or if it shows anything other
+/// than the name and the workspace name.
+#[test]
+fn ui_js_identity_is_a_type_not_a_chip() {
+    let shown = identity_as_shown();
+    let name = "Ada Lovelace";
+    let workspace = "Northwind";
+    assert_eq!(
+        shown.texts,
+        vec![name.to_string(), workspace.to_string()],
+        "identity is the name and the workspace name"
+    );
+    assert!(
+        !shown.texts.iter().any(|text| text.contains("mem_ada")),
+        "a member id is a tooltip, not the label"
+    );
+    for part in &shown.parts {
+        if part.id == "conn-edit" {
+            continue;
+        }
+        if let Some(why) = chip_chrome(part) {
+            panic!(
+                "identity is shown as a chip ({why}) on <{} {} {}>",
+                part.tag, part.id, part.class_name
+            );
+        }
+    }
+    let name_el = shown
+        .parts
+        .iter()
+        .find(|part| part.text == name)
+        .expect("the name");
+    let workspace_el = shown
+        .parts
+        .iter()
+        .find(|part| part.id == "identity-ws")
+        .expect("the workspace name");
+    assert!(
+        is_muted(&name_el.color),
+        "the name is muted type, got {}",
+        name_el.color
+    );
+    assert!(
+        is_muted(&workspace_el.color),
+        "the workspace name is muted type, got {}",
+        workspace_el.color
+    );
+    let person = shown
+        .parts
+        .iter()
+        .find(|part| {
+            part.class_name
+                .split_whitespace()
+                .any(|class| class == "person")
+        })
+        .expect("the name comes from personEl");
+    assert_eq!(
+        person.title, "mem_ada",
+        "the member id stays on the tooltip"
+    );
+    let button = shown
+        .parts
+        .iter()
+        .find(|part| part.id == "conn-edit")
+        .expect("#conn-edit");
+    let classes = button.class_name.split_whitespace().collect::<Vec<_>>();
+    assert!(
+        classes.contains(&"ghost") && !classes.contains(&"primary"),
+        "#conn-edit is a ghost, got {}",
+        button.class_name
+    );
+    assert!(
+        is_clear(&button.background_color),
+        "#conn-edit background is not a ghost ({})",
+        button.background_color
+    );
+    assert!(
+        is_clear(&button.border_color),
+        "#conn-edit border is not a ghost ({})",
+        button.border_color
+    );
+    let pill = shown
+        .parts
+        .iter()
+        .find(|part| part.id == "identity-pill")
+        .expect("#identity-pill");
+    assert_ne!(pill.display, "none", "identity is shown");
+}
+
+fn chip_chrome(part: &IdentityPart) -> Option<&'static str> {
+    if part.border_radius.replace(' ', "").contains("999") {
+        return Some("999px radius");
+    }
+    if visible_border(part) {
+        return Some("pill border");
+    }
+    if !is_clear(&part.background_color) {
+        return Some("chip background");
+    }
+    None
+}
+
+fn visible_border(part: &IdentityPart) -> bool {
+    let width = part
+        .border_width
+        .trim()
+        .trim_end_matches("px")
+        .parse::<f64>()
+        .unwrap_or(0.0);
+    let style = part.border_style.trim();
+    width > 0.0 && style != "none" && style != "hidden" && !is_clear(&part.border_color)
+}
+
+fn is_clear(color: &str) -> bool {
+    let color = color
+        .split_whitespace()
+        .collect::<String>()
+        .to_ascii_lowercase();
+    color.is_empty() || color == "transparent" || color == "none" || color == "rgba(0,0,0,0)"
+}
+
+fn is_muted(color: &str) -> bool {
+    let color = color
+        .split_whitespace()
+        .collect::<String>()
+        .to_ascii_lowercase();
+    color == "#63636c" || color == "rgb(99,99,108)"
+}
+
+struct IdentityPart {
+    tag: String,
+    id: String,
+    class_name: String,
+    text: String,
+    title: String,
+    color: String,
+    background_color: String,
+    border_width: String,
+    border_style: String,
+    border_color: String,
+    border_radius: String,
+    display: String,
+}
+
+struct IdentityShown {
+    texts: Vec<String>,
+    parts: Vec<IdentityPart>,
+}
+
+fn identity_as_shown() -> IdentityShown {
+    let payload = serde_json::json!({ "html": HTML });
+    let mut child = std::process::Command::new("node")
+        .arg("-e")
+        .arg(IDENTITY_HARNESS)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("node is required to show identity: {err}"));
+    serde_json::to_writer(child.stdin.take().expect("stdin"), &payload).expect("write html");
+    let out = child.wait_with_output().expect("node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "identity harness failed\n{stderr}\n{stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|err| panic!("identity harness returned {err}: {stdout}"));
+    let part = |value: &serde_json::Value| IdentityPart {
+        tag: value["tag"].as_str().unwrap_or("").to_string(),
+        id: value["id"].as_str().unwrap_or("").to_string(),
+        class_name: value["class_name"].as_str().unwrap_or("").to_string(),
+        text: value["text"].as_str().unwrap_or("").to_string(),
+        title: value["title"].as_str().unwrap_or("").to_string(),
+        color: value["color"].as_str().unwrap_or("").to_string(),
+        background_color: value["background_color"].as_str().unwrap_or("").to_string(),
+        border_width: value["border_width"].as_str().unwrap_or("").to_string(),
+        border_style: value["border_style"].as_str().unwrap_or("").to_string(),
+        border_color: value["border_color"].as_str().unwrap_or("").to_string(),
+        border_radius: value["border_radius"].as_str().unwrap_or("").to_string(),
+        display: value["display"].as_str().unwrap_or("").to_string(),
+    };
+    IdentityShown {
+        texts: value["texts"]
+            .as_array()
+            .expect("texts")
+            .iter()
+            .map(|text| text.as_str().expect("text").to_string())
+            .collect(),
+        parts: value["parts"]
+            .as_array()
+            .expect("parts")
+            .iter()
+            .map(part)
+            .collect(),
+    }
+}
+
+const IDENTITY_HARNESS: &str = r####"
+const fs = require("fs");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const html = input.html;
+const start = html.indexOf("<script>") + "<script>".length;
+const js = html.slice(start, html.indexOf("</script>", start));
+function functionSource(name) {
+  const key = "function " + name + "(";
+  let at = js.indexOf(key);
+  if (at < 0) throw new Error("missing " + name);
+  if (js.slice(at - 6, at) === "async ") at -= 6;
+  const parenAt = js.indexOf("(", at);
+  let paren = 0;
+  let sig = parenAt;
+  for (; sig < js.length; sig++) {
+    if (js[sig] === "(") paren++;
+    else if (js[sig] === ")") {
+      paren--;
+      if (paren === 0) { sig++; break; }
+    }
+  }
+  const open = js.indexOf("{", sig);
+  let depth = 0;
+  for (let j = open; j < js.length; j++) {
+    const c = js[j];
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return js.slice(at, j + 1);
+    }
+  }
+  throw new Error("unclosed " + name);
+}
+function makeEl(tag) {
+  const el = {
+    tag: tag,
+    id: "",
+    hidden: false,
+    className: "",
+    textContent: "",
+    title: "",
+    children: [],
+    parent: null,
+    style: {},
+    attrs: {},
+  };
+  el.appendChild = (child) => {
+    child.parent = el;
+    el.children.push(child);
+    return child;
+  };
+  el.append = (...kids) => {
+    for (const kid of kids) {
+      if (typeof kid === "string") {
+        const text = makeEl("#text");
+        text.textContent = kid;
+        el.appendChild(text);
+      } else el.appendChild(kid);
+    }
+  };
+  el.replaceChildren = (...kids) => {
+    el.children = [];
+    if (kids.length) el.append(...kids);
+  };
+  el.setAttribute = (key, value) => {
+    el.attrs[key] = String(value);
+    if (key === "id") el.id = String(value);
+    if (key === "class") el.className = String(value);
+    if (key === "hidden") el.hidden = true;
+  };
+  el.removeAttribute = (key) => {
+    delete el.attrs[key];
+    if (key === "hidden") el.hidden = false;
+  };
+  return el;
+}
+function walk(el, fn) {
+  fn(el);
+  for (const child of el.children) walk(child, fn);
+}
+function byId(root, id) {
+  let found = null;
+  walk(root, (el) => {
+    if (el.id === id) found = el;
+  });
+  return found;
+}
+const styleStart = html.indexOf("<style>") + "<style>".length;
+const styleEnd = html.indexOf("</style>", styleStart);
+const css = html.slice(styleStart, styleEnd).replace(/\/\*[\s\S]*?\*\//g, "");
+function skipAt(css, i) {
+  const brace = css.indexOf("{", i);
+  const semi = css.indexOf(";", i);
+  if (brace < 0 || (semi >= 0 && semi < brace)) return semi < 0 ? css.length : semi + 1;
+  let depth = 0;
+  for (let j = brace; j < css.length; j++) {
+    if (css[j] === "{") depth++;
+    else if (css[j] === "}") {
+      depth--;
+      if (depth === 0) return j + 1;
+    }
+  }
+  return css.length;
+}
+const rules = [];
+const vars = {};
+{
+  let i = 0;
+  while (i < css.length) {
+    while (i < css.length && /\s/.test(css[i])) i++;
+    if (i >= css.length) break;
+    if (css[i] === "@") {
+      i = skipAt(css, i);
+      continue;
+    }
+    const brace = css.indexOf("{", i);
+    if (brace < 0) break;
+    const selector = css.slice(i, brace).trim();
+    let depth = 0;
+    let j = brace;
+    for (; j < css.length; j++) {
+      if (css[j] === "{") depth++;
+      else if (css[j] === "}") {
+        depth--;
+        if (depth === 0) { j++; break; }
+      }
+    }
+    const body = css.slice(brace + 1, j - 1);
+    const decls = {};
+    for (const part of body.split(";")) {
+      const c = part.indexOf(":");
+      if (c < 0) continue;
+      const k = part.slice(0, c).trim().toLowerCase();
+      const v = part.slice(c + 1).trim();
+      if (k) decls[k] = v;
+    }
+    if (selector === ":root") {
+      for (const [k, v] of Object.entries(decls)) if (k.startsWith("--")) vars[k] = v;
+    }
+    for (const sel of selector.split(",").map((s) => s.trim()).filter(Boolean)) {
+      if (!sel.startsWith("@")) rules.push({ selector: sel, decls });
+    }
+    i = j;
+  }
+}
+function subVars(value) {
+  let v = value;
+  for (let n = 0; n < 4; n++) {
+    const next = v.replace(/var\(\s*(--[A-Za-z0-9_-]+)\s*\)/g, (_, name) => vars[name] || "");
+    if (next === v) break;
+    v = next;
+  }
+  return v.trim();
+}
+function expand(decls) {
+  const out = Object.assign({}, decls);
+  if (out.border) {
+    const b = out.border.trim();
+    if (b === "0" || b === "none" || b === "0px") {
+      out["border-width"] = "0";
+      out["border-style"] = "none";
+      out["border-color"] = "transparent";
+    } else {
+      const m = b.match(/^(\S+)\s+(\S+)\s+(.+)$/);
+      if (m) {
+        out["border-width"] = m[1];
+        out["border-style"] = m[2];
+        out["border-color"] = m[3];
+      }
+    }
+    delete out.border;
+  }
+  if (out.background) {
+    const b = out.background.trim().toLowerCase();
+    if (b === "none" || b === "transparent") out["background-color"] = "transparent";
+    else if (!b.includes("url(")) out["background-color"] = out.background.trim();
+    delete out.background;
+  }
+  return out;
+}
+function specificity(selector) {
+  const ids = (selector.match(/#[A-Za-z0-9_-]+/g) || []).length;
+  const cls = (selector.match(/(\.[A-Za-z0-9_-]+|\[[^\]]+\])/g) || []).length;
+  const noId = selector.replace(/#[A-Za-z0-9_-]+/g, " ");
+  const noAttr = noId.replace(/\[[^\]]+\]/g, " ");
+  const tags = (noAttr.match(/[A-Za-z][A-Za-z0-9_-]*/g) || []).filter((t) => t !== "not").length;
+  return ids * 100 + cls * 10 + tags;
+}
+function matchCompound(el, compound) {
+  const m = compound.match(/^([A-Za-z][A-Za-z0-9_-]*)?(#[A-Za-z0-9_-]+)?((?:\.[A-Za-z0-9_-]+)*)(\[[^\]]+\])?$/);
+  if (!m) return false;
+  const tag = m[1] || "";
+  const id = m[2] ? m[2].slice(1) : "";
+  const classes = m[3] ? m[3].split(".").filter(Boolean) : [];
+  const attr = m[4] || "";
+  if (tag && tag.toLowerCase() !== el.tag) return false;
+  if (id && id !== el.id) return false;
+  const have = new Set(String(el.className || "").split(/\s+/).filter(Boolean));
+  for (const c of classes) if (!have.has(c)) return false;
+  if (attr === "[hidden]" && !el.hidden) return false;
+  if (attr && attr !== "[hidden]") return false;
+  return Boolean(tag || id || classes.length || attr);
+}
+function matches(el, selector) {
+  const parts = selector.split(/\s+/).filter(Boolean);
+  if (!parts.length) return false;
+  let node = el;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    let found = false;
+    while (node) {
+      if (matchCompound(node, parts[i])) {
+        found = true;
+        node = node.parent;
+        break;
+      }
+      if (i === parts.length - 1) return false;
+      node = node.parent;
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+function specified(el) {
+  const acc = {};
+  const rank = {};
+  rules.forEach((rule, order) => {
+    if (!matches(el, rule.selector)) return;
+    const spec = specificity(rule.selector) * 100000 + order;
+    const decls = expand(rule.decls);
+    for (const [k, v] of Object.entries(decls)) {
+      if (rank[k] == null || spec >= rank[k]) {
+        rank[k] = spec;
+        acc[k] = v;
+      }
+    }
+  });
+  for (const [k, v] of Object.entries(el.style || {})) {
+    acc[k] = v;
+  }
+  return acc;
+}
+const inherited = new Set(["color", "font-weight", "font-size"]);
+function resolved(el, prop) {
+  const own = specified(el)[prop];
+  if (own && own !== "inherit" && own !== "unset") return subVars(own);
+  if ((own === "inherit" || own == null) && inherited.has(prop) && el.parent) return resolved(el.parent, prop);
+  if (prop === "color") return "#232327";
+  if (prop === "font-weight") return "400";
+  if (prop === "font-size") return "14px";
+  if (prop === "background-color") return "transparent";
+  if (prop === "border-width") return "0";
+  if (prop === "border-style") return "none";
+  if (prop === "border-color") return "transparent";
+  if (prop === "border-radius") return "0";
+  if (prop === "display") return "inline";
+  return "";
+}
+function ownText(el) {
+  if (!el.children.length) return String(el.textContent || "").replace(/\s+/g, " ").trim();
+  return el.children.filter((c) => c.tag === "#text").map((c) => c.textContent).join("").replace(/\s+/g, " ").trim();
+}
+function sliceElement(src, marker) {
+  const at = src.indexOf(marker);
+  if (at < 0) throw new Error("missing " + marker);
+  let i = at;
+  let depth = 0;
+  while (i < src.length) {
+    if (src.startsWith("<!--", i)) {
+      i = src.indexOf("-->", i) + 3;
+      continue;
+    }
+    if (src[i] !== "<") { i++; continue; }
+    const gt = src.indexOf(">", i);
+    const raw = src.slice(i, gt + 1);
+    const closing = raw.startsWith("</");
+    const self = /\/>$/.test(raw) || /^<(input|br|img|meta|link)\b/i.test(raw);
+    if (closing) depth--;
+    else if (!self) depth++;
+    i = gt + 1;
+    if (depth === 0) return src.slice(at, i);
+  }
+  throw new Error("unclosed " + marker);
+}
+function parseElement(src) {
+  const root = makeEl("#frag");
+  const stack = [root];
+  const re = /<!--[\s\S]*?-->|<\/([A-Za-z0-9]+)>|<([A-Za-z0-9]+)([^>]*?)(\/?)>/g;
+  let m;
+  let last = 0;
+  while ((m = re.exec(src))) {
+    const text = src.slice(last, m.index).replace(/\s+/g, " ");
+    if (text.trim()) {
+      const t = makeEl("#text");
+      t.textContent = text.trim();
+      stack[stack.length - 1].appendChild(t);
+    }
+    last = m.index + m[0].length;
+    if (m[0].startsWith("<!--")) continue;
+    if (m[1]) {
+      const name = m[1].toLowerCase();
+      while (stack.length > 1 && stack[stack.length - 1].tag !== name) stack.pop();
+      if (stack.length > 1) stack.pop();
+      continue;
+    }
+    const el = makeEl(m[2].toLowerCase());
+    const attrRe = /([A-Za-z0-9:-]+)(?:\s*=\s*"([^"]*)"|\s*=\s*'([^']*)')?/g;
+    let a;
+    const attrSrc = m[3] || "";
+    while ((a = attrRe.exec(attrSrc))) {
+      const key = a[1].toLowerCase();
+      const val = a[2] != null ? a[2] : a[3] != null ? a[3] : "";
+      if (key === "class") el.className = val;
+      else if (key === "id") el.id = val;
+      else if (key === "title") el.title = val;
+      else if (key === "hidden") el.hidden = true;
+      el.attrs[key] = val;
+    }
+    stack[stack.length - 1].appendChild(el);
+    const self = m[4] === "/" || ["input", "br", "img", "meta", "link"].includes(el.tag);
+    if (!self) stack.push(el);
+  }
+  if (root.children.length !== 1) throw new Error("identity markup did not parse to one element");
+  return root.children[0];
+}
+const pill = parseElement(sliceElement(html, '<span id="identity-pill"'));
+const root = makeEl("header");
+root.appendChild(pill);
+const workspace = makeEl("input");
+workspace.id = "workspace";
+workspace.value = "0123456789abcdef";
+root.appendChild(workspace);
+const status = makeEl("p");
+status.id = "session-status";
+root.appendChild(status);
+const document = {
+  getElementById(id) { return byId(root, id); },
+  createElement(tag) { return makeEl(tag); },
+};
+const memberDirectory = new Map([
+  ["mem_ada", { name: "Ada Lovelace", kind: "human" }],
+]);
+const fetch = async () => ({
+  ok: true,
+  json: async () => ({ name: "Northwind" }),
+});
+const renderIdentity = new Function(
+  "document",
+  "fetch",
+  "memberDirectory",
+  "sessionMemberId",
+  functionSource("memberName") + "\n" +
+    functionSource("memberKind") + "\n" +
+    functionSource("initials") + "\n" +
+    functionSource("hueFor") + "\n" +
+    functionSource("avatarEl") + "\n" +
+    functionSource("personEl") + "\n" +
+    "function wid() { return document.getElementById('workspace').value.trim(); }\n" +
+    "function token() { return false; }\n" +
+    "function headers() { return {}; }\n" +
+    "function apiReadPath(suffix) { return suffix; }\n" +
+    functionSource("renderIdentity") + "\n" +
+    "return renderIdentity;"
+)(document, fetch, memberDirectory, null);
+renderIdentity("mem_ada").then(() => {
+  pill.hidden = false;
+  pill.removeAttribute("hidden");
+  const parts = [];
+  walk(pill, (el) => {
+    if (el.tag === "#text") return;
+    parts.push({
+      tag: el.tag,
+      id: el.id,
+      class_name: el.className,
+      text: ownText(el),
+      title: el.title || "",
+      color: resolved(el, "color"),
+      font_weight: String(resolved(el, "font-weight")),
+      background_color: resolved(el, "background-color"),
+      border_width: resolved(el, "border-width"),
+      border_style: resolved(el, "border-style"),
+      border_color: resolved(el, "border-color"),
+      border_radius: resolved(el, "border-radius"),
+      display: resolved(el, "display"),
+    });
+  });
+  const texts = [];
+  walk(pill, (el) => {
+    if (el.id === "conn-edit" || (el.parent && el.parent.id === "conn-edit")) return;
+    const t = ownText(el);
+    if (t) texts.push(t);
+  });
+  const button = parts.find((p) => p.id === "conn-edit");
+  process.stdout.write(JSON.stringify({ texts, parts, button }, null, 2));
+}).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+
+"####;
