@@ -3,30 +3,23 @@ import { fixtures } from "./_fixtures";
 
 const fx = fixtures();
 
-// Session-chrome badges in a real browser (Cluster 353.2): every thread in the
-// list carries a state badge. The seeded fixture thread has a pending, schemaless
-// approval gate, so it must render "needs-approval" (the gate path takes
-// precedence over in review/running/claimed/open). The gate_id fixture is never resolved by another
-// spec, so this is deterministic.
-test("the thread list badges the gated fixture thread as needs-approval", async ({ page }) => {
+// The seeded fixture thread has a pending, schemaless approval gate, so the
+// board shows it as the word needs-approval in Needs review. The gate path
+// takes precedence over in review, running, claimed, and open. A pill or a
+// legend means the board is wrong. The gate fixture is never resolved by
+// another spec, so this is deterministic.
+test("the board shows the gated thread as needs-approval", async ({ page }) => {
   await page.goto("/ui/");
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.token);
   await page.click("#refresh-channels");
 
-  // Selecting the seeded channel loads its threads (with chrome badges).
   await page.click(`#channel-list li[data-id="${fx.channel_id}"]`);
 
-  const row = page.locator(`#board .card[data-id="${fx.thread_id}"]`);
+  const row = page.locator(`#board .board-col[data-column="review"] .card[data-id="${fx.thread_id}"]`);
   await expect(row).toBeVisible();
-  const badge = row.locator(".chrome-badge");
-  await expect(badge).toHaveText("needs-approval");
-  // The state also rides the row dataset for scripting/assertions.
+  await expect(row.locator(".card-state")).toHaveText("needs-approval");
+  await expect(row.locator(".chrome-badge")).toHaveCount(0);
   await expect(row).toHaveAttribute("data-chrome", "needs-approval");
-
-  // The legend explains every state.
-  for (const state of ["open", "claimed", "running", "in review", "needs-approval", "done"]) {
-    await expect(page.locator(".chrome-legend")).toContainText(state);
-  }
-  await expect(page.locator(".chrome-legend")).not.toContainText("idle");
+  await expect(page.locator(".chrome-legend")).toHaveCount(0);
 });

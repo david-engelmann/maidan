@@ -1424,6 +1424,25 @@ fn ui_js_state_is_a_word_not_a_pill() {
     );
 }
 
+/// A Needs you refusal stays on the row the person is reading. A reload
+/// used to rebuild that row and drop the error, so the browser spec timed
+/// out waiting for a sentence that had already been painted on a detached
+/// node.
+#[test]
+fn ui_js_needs_you_error_stays_on_the_row() {
+    let js = script(HTML);
+    let render = function_body(js, "renderNeedsYou");
+    assert!(
+        render.contains("querySelector(\".ny-err\")") && render.contains("keep.set"),
+        "a reload keeps the row that is showing an error"
+    );
+    let approve = function_body(js, "approveFromInbox");
+    assert!(
+        approve.contains("rowOnScreen"),
+        "a refusal is painted on the row that is on screen after the request"
+    );
+}
+
 /// `#team` is only people holding work. From docs/UI Design.md:
 /// do not append a chip whose state is `idle`; the viewer may still show
 /// when `needsYou.length` is non-zero ("N waiting on you"); when someone

@@ -56,16 +56,20 @@ test("the palette jumps to a channel and to a task by keyboard", async ({ page }
 test("the empty board and an empty channel explain how work arrives", async ({ page }) => {
   await page.goto("/ui/");
   const onboard = page.locator("#board-onboard");
-  await expect(onboard).toContainText("One board for your agents and you");
-  await expect(onboard).toContainText("claim_next_thread");
+  await expect(onboard).toContainText("A task arrives when an agent or a person opens one.");
+  await expect(onboard.getByRole("button", { name: "Connect an agent" })).toBeVisible();
+  await expect(onboard).not.toContainText("claim_next_thread");
+  await expect(onboard).not.toContainText("pick a channel");
+  await expect(page.locator("#board .board-col")).toHaveCount(0);
 
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.token);
   await page.locator("#token").dispatchEvent("change");
   await page.click("#refresh-channels");
   await page.click(`#channel-list li[data-id="${fx.quiet_channel_id}"]`);
-  await expect(onboard).toContainText("No tasks in #quiet yet");
-  await expect(page.locator("#board .board-col")).toHaveCount(4);
+  await expect(onboard).toContainText("A task arrives when an agent or a person opens one.");
+  await expect(onboard).not.toContainText("No tasks in #quiet");
+  await expect(page.locator("#board .board-col")).toHaveCount(0);
   await onboard.getByRole("button", { name: "Connect an agent" }).click();
   await expect(page.locator("#connect-dialog")).toBeVisible();
 });

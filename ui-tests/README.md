@@ -15,6 +15,11 @@ OIDC path, keyboard only, a 390 px viewport, and every new string re-read.
   runs the specs, then stops it.
 - Specs read `.fixtures.json` (via `tests/_fixtures.ts`) for the base URL,
   bearer token, and seeded ids, then drive the browser and assert the DOM.
+- A red `ui tests (playwright)` job means the board in the browser does not
+  match: a task in the wrong lane, a state pill instead of the word, an
+  empty board that is not one sentence and Connect an agent, or a 403 that
+  shows the server body. The job is not a required check. Do not skip the
+  board to make it green.
 
 ## Run locally
 

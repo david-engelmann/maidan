@@ -39,11 +39,17 @@ test("the board puts each thread in its real lane with its holder's name", async
   await expect(page.locator("#board-summary")).toContainText("1 agent working");
   await expect(page.locator("#board-summary")).toContainText("1 waiting on review");
 
-  // Each thread is drawn once, on the board, with its real state; the
-  // sidebar lists channels only.
+  // Each thread is drawn once, on the board, with its state as a word in
+  // the foot. A pill, a legend, or a missing word means the board is wrong.
+  // The sidebar lists channels only.
   await expect(page.locator("#thread-list")).toHaveCount(0);
-  const badges = page.locator("#board .card .chrome-badge");
-  await expect(badges).toHaveCount(4);
+  await expect(page.locator("#board .card .chrome-badge")).toHaveCount(0);
+  await expect(page.locator(".chrome-legend")).toHaveCount(0);
+  await expect(card(fx.board_open_thread_id).locator(".card-state")).toHaveText("open");
+  await expect(card(fx.board_claimed_thread_id).locator(".card-state")).toHaveText("claimed");
+  await expect(card(fx.board_review_thread_id).locator(".card-state")).toHaveText("in review");
+  await expect(card(fx.board_done_thread_id).locator(".card-state")).toHaveText("done");
+  await expect(page.locator("#board .card .card-state")).toHaveCount(4);
   await expect(page.locator("#board")).not.toContainText("idle");
   await expect(
     page.locator(`#board .card[data-id="${fx.board_claimed_thread_id}"] .card-foot .name`),
@@ -57,7 +63,8 @@ test("a thread shows its state, holder, result and authors by name", async ({ pa
   await page.click(`#board .card[data-id="${fx.board_review_thread_id}"]`);
 
   await expect(page.locator("#thread-context")).toHaveText("Review: result waiting on a reviewer");
-  await expect(page.locator("#thread-badge .chrome-badge")).toHaveText("in review");
+  await expect(page.locator("#thread-badge")).toHaveText("in review");
+  await expect(page.locator("#thread-badge .chrome-badge")).toHaveCount(0);
   await expect(page.locator("#thread-facts")).toContainText("held by");
   await expect(page.locator("#thread-facts")).toContainText("Deployer");
   // The result reads as a field, not as JSON.

@@ -51,5 +51,11 @@ test("primary lists expose loading, actionable empty, and API error detail state
 
   response = "error";
   await page.click("#refresh-channels");
-  await expect(page.locator("#channel-list")).toContainText("channel access was revoked");
+  // A 403 is the human sentence. The server detail stays off the list.
+  // Showing "channel access was revoked", or an HTTP status, fails this.
+  const list = page.locator("#channel-list");
+  await expect(list).toContainText("Could not load channels: Your token is not allowed to do this. Mint one with the right capability in Tokens");
+  await expect(list).not.toContainText("channel access was revoked");
+  await expect(list).not.toContainText("403");
+  await expect(list).not.toContainText("HTTP");
 });

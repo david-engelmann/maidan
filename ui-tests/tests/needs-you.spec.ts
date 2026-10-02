@@ -108,7 +108,7 @@ test("approving without thread:transition says what is missing and how to fix it
   const waiting = row(page, fx.desk_waiting_thread_id);
   await waiting.getByRole("button", { name: "Approve" }).click();
   const err = waiting.locator(".ny-err");
-  await expect(err).toContainText("Your token is not allowed to do this; it needs thread:transition");
+  await expect(err).toContainText("Review not recorded: Your token is not allowed to do this; it needs thread:transition");
   await expect(err).toContainText("Mint a token with it in Tokens");
   expect(await threadState(page, fx.desk_waiting_thread_id)).toBe("in_review");
 });
