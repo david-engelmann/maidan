@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### The board page is ES modules
+
+- **Changed:** the style and script leave `index.html` as modules under `crates/maidan-server/static/ui`, served at `/ui/static/{name}` from the binary. `cargo build` does not run Node. JSDoc is checked with `tsc --noEmit --checkJs`, which is not wired into CI yet. DM and group-DM message loads share one function. Calls go through `api()`. `showError` and `setStatus` stay separate. `scripts/gen-ui-client.mjs` regenerates the typed path catalog from a saved `/openapi.json`. This change does not add a CSP.
+
 ### A schema change while two versions run expands, then contracts
 
 - **Docs:** `docs/Migrations.md` is the rule for a schema change when more than one server version shares one database. The migration that runs during that overlap only adds. A drop, rename, retype, or rewrite is a later release, after the previous binary is gone. The page is checked against the runner: boot apply, the advisory lock, one transaction per version, and no down scripts.
@@ -17,7 +21,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Playwright covers prefs, slash commands, deliveries, tokens, and DMs
 
-- **Added:** browser specs for notification prefs, slash-command register and revoke, replaying a dead-lettered webhook, minting a token and revoking it, and opening a DM. `ui-tests/README.md` lists what the suite covers. Unit tests for the auth-routing helpers and the error parser still wait for the module split, because those functions live in `static/index.html`.
+- **Added:** browser specs for notification prefs, slash-command register and revoke, replaying a dead-lettered webhook, minting a token and revoking it, and opening a DM. `ui-tests/README.md` lists what the suite covers. Unit tests for the auth-routing helpers and the error parser still wait. Those functions now live in `static/ui`.
 
 ### A workspace can be named, and the signed-in line uses a display name
 

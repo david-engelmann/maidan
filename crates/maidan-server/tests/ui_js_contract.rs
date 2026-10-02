@@ -7,15 +7,60 @@
 //! function parameter, or a known JS/DOM global.
 
 const HTML: &str = include_str!("../static/index.html");
+const UI_CSS: &str = include_str!("../static/ui/board.css");
+
+fn page() -> &'static str {
+    static CELL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CELL.get_or_init(|| format!("{HTML}\n{UI_CSS}")).as_str()
+}
+
+/// The board program with module import and export lines removed, so the
+/// existing contract can read it as one script. The browser loads the modules.
+fn script(_html: &str) -> &'static str {
+    static CELL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CELL.get_or_init(|| {
+        const PARTS: &[&str] = &[
+            include_str!("../static/ui/state.js"),
+            include_str!("../static/ui/client.js"),
+            include_str!("../static/ui/api.js"),
+            include_str!("../static/ui/feedback.js"),
+            include_str!("../static/ui/people.js"),
+            include_str!("../static/ui/session.js"),
+            include_str!("../static/ui/board.js"),
+            include_str!("../static/ui/needs.js"),
+            include_str!("../static/ui/thread.js"),
+            include_str!("../static/ui/dm.js"),
+            include_str!("../static/ui/artifacts.js"),
+            include_str!("../static/ui/tools.js"),
+            include_str!("../static/ui/palette.js"),
+            include_str!("../static/ui/realtime.js"),
+            include_str!("../static/ui/main.js"),
+        ];
+        let mut out = String::new();
+        for part in PARTS {
+            for line in part.lines() {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("import ") || trimmed.starts_with("export {") {
+                    continue;
+                }
+                if let Some(rest) = trimmed.strip_prefix("export ") {
+                    let indent = &line[..line.len() - trimmed.len()];
+                    out.push_str(indent);
+                    out.push_str(rest);
+                    out.push('\n');
+                    continue;
+                }
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        out
+    })
+    .as_str()
+}
 
 fn is_ident(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_' || c == '$'
-}
-
-fn script(html: &str) -> &str {
-    let start = html.find("<script>").expect("a <script> block") + "<script>".len();
-    let end = html[start..].find("</script>").expect("a </script>") + start;
-    &html[start..end]
 }
 
 /// The identifier ending at byte `idx` (exclusive), scanning left.
@@ -251,11 +296,11 @@ fn ui_js_wires_session_capability_card() {
         "\"can't\" must be computed from the known-capability vocabulary"
     );
     assert!(
-        HTML.contains("data-tab=\"session\""),
+        page().contains("data-tab=\"session\""),
         "the Session tab button must exist"
     );
     assert!(
-        HTML.contains("id=\"panel-session\""),
+        page().contains("id=\"panel-session\""),
         "the Session panel must exist"
     );
     assert!(
@@ -330,7 +375,7 @@ fn ui_js_wires_attenuation_chrome() {
         "the Tokens tab must load the attenuation ceiling"
     );
     assert!(
-        HTML.contains("id=\"attenuation-warning\""),
+        page().contains("id=\"attenuation-warning\""),
         "the attenuation warning element must exist"
     );
 }
@@ -342,7 +387,7 @@ fn ui_js_wires_attenuation_chrome() {
 fn ui_js_wires_wcag_tablist_and_skip_link() {
     let s = script(HTML);
     assert!(
-        HTML.contains("class=\"skip-link\"") && HTML.contains("id=\"main-content\""),
+        page().contains("class=\"skip-link\"") && page().contains("id=\"main-content\""),
         "a skip link must target the main content (WCAG 2.4.1)"
     );
     assert!(
@@ -386,11 +431,11 @@ fn ui_js_wires_work_tab() {
         "the channel selector must load depth + threads"
     );
     assert!(
-        HTML.contains("id=\"panel-work\"") && HTML.contains("id=\"work-channel\""),
+        page().contains("id=\"panel-work\"") && page().contains("id=\"work-channel\""),
         "the Work panel + channel selector must exist"
     );
     assert!(
-        HTML.contains("data-tab=\"work\""),
+        page().contains("data-tab=\"work\""),
         "the Work tab button must exist"
     );
 }
@@ -415,7 +460,7 @@ fn ui_js_wires_prefs_tab() {
         "the tab switch must call loadPrefs() for the Prefs tab"
     );
     assert!(
-        HTML.contains("id=\"panel-prefs\"") && HTML.contains("data-tab=\"prefs\""),
+        page().contains("id=\"panel-prefs\"") && page().contains("data-tab=\"prefs\""),
         "the Prefs panel + tab button must exist"
     );
 }
@@ -439,7 +484,7 @@ fn ui_js_wires_looking_glass_tab() {
         "the tab switch must call loadGlass() for the looking-glass tab"
     );
     assert!(
-        HTML.contains("id=\"panel-glass\"") && HTML.contains("data-tab=\"glass\""),
+        page().contains("id=\"panel-glass\"") && page().contains("data-tab=\"glass\""),
         "the looking-glass panel + tab button must exist"
     );
 }
@@ -462,7 +507,7 @@ fn ui_js_wires_waiting_inbox() {
         "loadWaiting must call the waiting inbox with an sla_secs"
     );
     assert!(
-        HTML.contains("id=\"waiting-list\"") && HTML.contains("id=\"waiting-sla\""),
+        page().contains("id=\"waiting-list\"") && page().contains("id=\"waiting-sla\""),
         "the waiting-on-you section must exist"
     );
 }
@@ -505,14 +550,14 @@ fn ui_js_wires_honest_async_states_and_live_approvals() {
 fn ui_uses_locked_brand_mark_and_palette() {
     for color in ["#f7f5f0", "#14532d", "#4ade80", "#b45309", "#232327"] {
         assert!(
-            HTML.contains(color),
+            page().contains(color),
             "the UI must retain brand color {color}"
         );
     }
     assert!(
-        HTML.contains("<svg class=\"brand-mark\" viewBox=\"0 0 64 64\"")
-            && HTML.contains("M38.95,32.85L48.07,37.53L59.65,35.70")
-            && HTML.contains("M37.52,27.69L47.28,24.55L51.08,17.60"),
+        page().contains("<svg class=\"brand-mark\" viewBox=\"0 0 64 64\"")
+            && page().contains("M38.95,32.85L48.07,37.53L59.65,35.70")
+            && page().contains("M37.52,27.69L47.28,24.55L51.08,17.60"),
         "the /ui header must retain the locked Sweep Reach mark"
     );
 }
@@ -564,7 +609,7 @@ fn ui_js_wires_live_board_and_collapsed_live_bar() {
         "thread/claim events on the socket must refresh the board"
     );
     assert!(
-        HTML.contains("<pre id=\"live-feed\" hidden>"),
+        page().contains("<pre id=\"live-feed\" hidden>"),
         "the raw live feed starts hidden"
     );
     assert!(
@@ -605,7 +650,7 @@ fn ui_js_thread_header_ignores_stale_overlapping_renders() {
 fn ui_js_puts_the_decisions_agents_wait_on_first() {
     let s = script(HTML);
     assert!(
-        HTML.contains("id=\"needs-you\"") && HTML.contains("id=\"needs-you-list\""),
+        page().contains("id=\"needs-you\"") && page().contains("id=\"needs-you-list\""),
         "the Needs you queue must exist"
     );
     let needs = HTML.find("id=\"needs-you\"").expect("needs-you");
@@ -776,7 +821,7 @@ fn ui_js_shows_the_team_and_moves_cards_between_lanes() {
     );
     assert!(
         s.contains("if (reduceMotion.matches || !before.size) return;")
-            && html.contains("@media (prefers-reduced-motion: reduce)"),
+            && page().contains("@media (prefers-reduced-motion: reduce)"),
         "nothing moves or pulses under prefers-reduced-motion"
     );
 }
@@ -956,7 +1001,7 @@ fn ui_js_reports_errors_without_blocking_dialogs() {
         }
     }
     assert!(
-        HTML.contains(r#"<div id="toasts"></div>"#),
+        page().contains(r#"<div id="toasts"></div>"#),
         "the toast region"
     );
 }
@@ -967,7 +1012,7 @@ fn ui_js_reports_errors_without_blocking_dialogs() {
 #[test]
 fn ui_js_draws_a_channels_threads_once_on_the_board() {
     assert!(
-        !HTML.contains("id=\"thread-list\""),
+        !page().contains("id=\"thread-list\""),
         "no second thread list"
     );
     let board_head = HTML
@@ -1026,7 +1071,7 @@ fn ui_js_first_run_offers_only_the_sign_in_paths_the_server_has() {
 #[test]
 fn ui_js_says_what_a_token_is_and_rotates_it() {
     assert!(
-        !HTML.contains("acts as any member"),
+        !page().contains("acts as any member"),
         "the pre-411 impersonation wording is gone"
     );
     let s = script(HTML);
@@ -1035,7 +1080,7 @@ fn ui_js_says_what_a_token_is_and_rotates_it() {
         "rotation uses the rotate route and the token id /me returns"
     );
     assert!(
-        HTML.contains("id=\"rotate-own-token\"") && HTML.contains("id=\"rotate-token\""),
+        page().contains("id=\"rotate-own-token\"") && page().contains("id=\"rotate-token\""),
         "the Session tab and the Tokens tab both offer rotation"
     );
 }
@@ -1146,21 +1191,21 @@ fn ui_js_shows_a_refused_close_and_leads_with_the_latest_review() {
 #[test]
 fn ui_js_names_the_live_connect_control() {
     assert!(
-        !HTML.contains("Events tab") && !script(HTML).contains("Events tab"),
+        !page().contains("Events tab") && !script(HTML).contains("Events tab"),
         "nothing still tells the reader to connect from an Events tab"
     );
     assert!(
-        !HTML.contains("Events (HTTP)</strong>"),
+        !page().contains("Events (HTTP)</strong>"),
         "the presence copy no longer points at the Events (HTTP) tab"
     );
     assert!(
-        HTML.contains(
+        page().contains(
             "title=\"This thread updates live from the WebSocket. Press Connect WS in the Live toolbar.\""
         ),
         "the live mark names Connect WS"
     );
     assert!(
-        HTML.contains("Press <strong>Connect WS</strong> in the Live"),
+        page().contains("Press <strong>Connect WS</strong> in the Live"),
         "the roster names Connect WS in the Live toolbar"
     );
     let presence = function_body(script(HTML), "setPresence");
@@ -1169,7 +1214,7 @@ fn ui_js_names_the_live_connect_control() {
         "setting presence names Connect WS"
     );
     assert!(
-        HTML.contains("id=\"ws-connect\""),
+        page().contains("id=\"ws-connect\""),
         "the named control is the connect button"
     );
 }
@@ -1259,19 +1304,19 @@ fn ui_js_hydrates_refusals_from_one_notices_read() {
 #[test]
 fn ui_js_keeps_the_first_screen_quiet() {
     assert!(
-        HTML.contains("id=\"live-more\"") && HTML.contains("id=\"needs-you-quiet\""),
+        page().contains("id=\"live-more\"") && page().contains("id=\"needs-you-quiet\""),
         "the live menu and the empty-queue line exist"
     );
     assert!(
-        !HTML.contains("class=\"primary\">Connect WS"),
+        !page().contains("class=\"primary\">Connect WS"),
         "connecting the socket is not the page's primary button"
     );
     assert!(
-        !HTML.contains("Connect to update the board"),
+        !page().contains("Connect to update the board"),
         "the live hint no longer leads the first screen"
     );
     assert!(
-        HTML.contains("Nothing is waiting on you."),
+        page().contains("Nothing is waiting on you."),
         "an empty queue is one sentence"
     );
     let js = script(HTML);
@@ -1294,11 +1339,11 @@ fn ui_js_keeps_the_first_screen_quiet() {
 #[test]
 fn ui_js_more_tools_starts_closed() {
     assert!(
-        HTML.contains("<details id=\"tools\">"),
+        page().contains("<details id=\"tools\">"),
         "More tools is on the page"
     );
     assert!(
-        !HTML.contains("<details id=\"tools\" open"),
+        !page().contains("<details id=\"tools\" open"),
         "More tools starts closed; the palette opens it"
     );
     let body = function_body(script(HTML), "openTool");
@@ -1313,11 +1358,11 @@ fn ui_js_more_tools_starts_closed() {
 #[test]
 fn ui_js_hides_the_composer_until_a_card_is_open() {
     assert!(
-        HTML.contains("<section id=\"collab-panel\" hidden>"),
+        page().contains("<section id=\"collab-panel\" hidden>"),
         "the thread panel starts hidden"
     );
     assert!(
-        HTML.contains("#collab-panel[hidden] { display: none; }"),
+        page().contains("#collab-panel[hidden] { display: none; }"),
         "a hidden thread panel stays off the first screen"
     );
     let js = script(HTML);
@@ -1343,18 +1388,18 @@ fn ui_js_hides_the_composer_until_a_card_is_open() {
 #[test]
 fn ui_js_lanes_are_space_not_boxes() {
     assert!(
-        HTML.contains(".board-col { background: transparent; border: 0; box-shadow: none; padding: 0; min-height: 0; }"),
+        page().contains(".board-col { background: transparent; border: 0; box-shadow: none; padding: 0; min-height: 0; }"),
         "a lane has no background, border, padding, or shadow"
     );
     assert!(
-        !HTML.contains("#efece5")
-            && !HTML.contains(".board-col .dot")
-            && !HTML.contains(".board-col h3 .count"),
+        !page().contains("#efece5")
+            && !page().contains(".board-col .dot")
+            && !page().contains(".board-col h3 .count"),
         "the tinted box, the colored dot, and the white count pill are gone"
     );
     assert!(
-        HTML.contains("gap: 16px")
-            && HTML.contains(".board-col h3 { margin: 0 0 8px; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: #63636c; }"),
+        page().contains("gap: 16px")
+            && page().contains(".board-col h3 { margin: 0 0 8px; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: #63636c; }"),
         "lanes sit 16px apart and the heading is 12px muted type, not uppercase tracking"
     );
     let board = function_body(script(HTML), "renderBoard");
@@ -1379,24 +1424,24 @@ fn ui_js_lanes_are_space_not_boxes() {
 #[test]
 fn ui_js_state_is_a_word_not_a_pill() {
     assert!(
-        !HTML.contains("legend-box")
-            && !HTML.contains("What the badges mean")
-            && !HTML.contains("chrome-badge"),
+        !page().contains("legend-box")
+            && !page().contains("What the badges mean")
+            && !page().contains("chrome-badge"),
         "the badge legend and the pill class are gone"
     );
     assert!(
-        HTML.contains(".card-foot { display: flex; align-items: center; gap: 0.4rem; font-size: 12px; font-weight: 400; color: #63636c; }"),
+        page().contains(".card-foot { display: flex; align-items: center; gap: 0.4rem; font-size: 12px; font-weight: 400; color: #63636c; }"),
         "the card foot is 12px muted type"
     );
     assert!(
-        HTML.contains("#thread-badge { font-size: 12px; font-weight: 400; color: #63636c; }"),
+        page().contains("#thread-badge { font-size: 12px; font-weight: 400; color: #63636c; }"),
         "the thread state is the same word, not a pill"
     );
     assert!(
-        HTML.contains(
+        page().contains(
             ".ny-kind { font-size: 12px; font-weight: 400; color: #63636c; white-space: nowrap; }"
-        ) && !HTML.contains(".ny-kind.gate")
-            && !HTML.contains("#ffedd5"),
+        ) && !page().contains(".ny-kind.gate")
+            && !page().contains("#ffedd5"),
         "Review and Approval are words, not a tinted chip"
     );
     let js = script(HTML);
@@ -1728,6 +1773,8 @@ fn render_team_in_page(
 ) -> std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>> {
     let payload = serde_json::json!({
         "html": HTML,
+        "js": script(HTML),
+        "css": UI_CSS,
         "scenes": scenes.iter().map(scene_payload).collect::<Vec<_>>(),
     });
     let mut child = std::process::Command::new("node")
@@ -1801,8 +1848,7 @@ const TEAM_PAGE_HARNESS: &str = r#"
 const fs = require("fs");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const html = input.html;
-const start = html.indexOf("<script>") + "<script>".length;
-const js = html.slice(start, html.indexOf("</script>", start));
+const js = input.js;
 function functionSource(name) {
   const key = "function " + name + "(";
   const at = js.indexOf(key);
@@ -1933,11 +1979,11 @@ fn ui_js_reports_qa_failures_in_words_and_opens_the_dm() {
     );
 
     assert!(
-        !HTML.contains("title=\"Requires bearer token\""),
+        !page().contains("title=\"Requires bearer token\""),
         "Add task and new channel no longer say they require a bearer"
     );
     assert!(
-        HTML.contains("title=\"Sign in or paste a token\""),
+        page().contains("title=\"Sign in or paste a token\""),
         "the write buttons say a session or a token is enough"
     );
 
@@ -2044,7 +2090,9 @@ fn the_design_hides_the_sidebar(channel_count: usize) -> bool {
 /// What `loadChannels` did to `aside` for each channel count.
 /// A missing sidebar, `hidden`, or `display: none` counts as hidden.
 fn sidebar_after_load_channels(counts: &[usize]) -> std::collections::BTreeMap<usize, bool> {
-    let payload = serde_json::json!({ "html": HTML, "counts": counts });
+    let payload = serde_json::json!({ "html": HTML,
+        "js": script(HTML),
+        "css": UI_CSS, "counts": counts });
     let mut child = std::process::Command::new("node")
         .arg("-e")
         .arg(SIDEBAR_PAGE_HARNESS)
@@ -2085,8 +2133,7 @@ const SIDEBAR_PAGE_HARNESS: &str = r##"
 const fs = require("fs");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const html = input.html;
-const start = html.indexOf("<script>") + "<script>".length;
-const js = html.slice(start, html.indexOf("</script>", start));
+const js = input.js;
 function functionSource(name) {
   const key = "async function " + name + "(";
   const at = js.indexOf(key);
@@ -2198,6 +2245,7 @@ const loadChannels = new Function(
     function syncCollabPanel() {}
     function unreachable(e) { return String(e && e.message || e); }
     function loadThreads() {}
+    function api(url, options) { return fetch(url, options); }
     ${functionSource("loadChannels")}
     return loadChannels;
   `
@@ -2428,6 +2476,8 @@ struct RefusalView {
 fn board_after_refusals(steps: &[RefusalStep]) -> Vec<RefusalView> {
     let payload = serde_json::json!({
         "html": HTML,
+        "js": script(HTML),
+        "css": UI_CSS,
         "steps": steps.iter().map(refusal_step_payload).collect::<Vec<_>>(),
     });
     let mut child = std::process::Command::new("node")
@@ -2506,8 +2556,7 @@ const REFUSAL_PAGE_HARNESS: &str = r#####"
 const fs = require("fs");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const html = input.html;
-const start = html.indexOf("<script>") + "<script>".length;
-const js = html.slice(start, html.indexOf("</script>", start));
+const js = input.js;
 function functionSource(name) {
   const marks = ["\n      function " + name + "(", "\n      async function " + name + "("];
   let at = -1;
@@ -2719,7 +2768,7 @@ process.stdout.write(JSON.stringify(views));
 #[test]
 fn ui_js_empty_board_is_one_sentence_and_one_action() {
     assert!(
-        HTML.contains("<button id=\"create-thread\" type=\"button\" class=\"ghost\""),
+        page().contains("<button id=\"create-thread\" type=\"button\" class=\"ghost\""),
         "#create-thread stays a ghost in #new-task"
     );
     let drawn = empty_boards_in_page();
@@ -2988,7 +3037,7 @@ fn raw_or_http(text: &str) -> Option<&'static str> {
 }
 
 fn person_facing_errors() -> serde_json::Value {
-    let payload = serde_json::json!({ "html": HTML });
+    let payload = serde_json::json!({ "html": HTML, "js": script(HTML), "css": UI_CSS });
     let mut child = std::process::Command::new("node")
         .arg("-e")
         .arg(ERROR_SURFACE_HARNESS)
@@ -3049,7 +3098,7 @@ impl EmptyBoardView {
 }
 
 fn empty_boards_in_page() -> Vec<EmptyBoardView> {
-    let payload = serde_json::json!({ "html": HTML });
+    let payload = serde_json::json!({ "html": HTML, "js": script(HTML), "css": UI_CSS });
     let mut child = std::process::Command::new("node")
         .arg("-e")
         .arg(EMPTY_BOARD_HARNESS)
@@ -3100,8 +3149,7 @@ const EMPTY_BOARD_HARNESS: &str = r#####"
 const fs = require("fs");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const html = input.html;
-const start = html.indexOf("<script>") + "<script>".length;
-const js = html.slice(start, html.indexOf("</script>", start));
+const js = input.js;
 function functionSource(name) {
   const mark = "\n      function " + name + "(";
   const i = js.indexOf(mark);
@@ -3287,8 +3335,7 @@ const fs = require("fs");
 const vm = require("vm");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const html = input.html;
-const start = html.indexOf("<script>") + "<script>".length;
-const js = html.slice(start, html.indexOf("</script>", start));
+const js = input.js;
 
 const all = [];
 function classes(el) {
@@ -3844,7 +3891,7 @@ struct IdentityShown {
 }
 
 fn identity_as_shown() -> IdentityShown {
-    let payload = serde_json::json!({ "html": HTML });
+    let payload = serde_json::json!({ "html": HTML, "js": script(HTML), "css": UI_CSS });
     let mut child = std::process::Command::new("node")
         .arg("-e")
         .arg(IDENTITY_HARNESS)
@@ -3897,8 +3944,7 @@ const IDENTITY_HARNESS: &str = r####"
 const fs = require("fs");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const html = input.html;
-const start = html.indexOf("<script>") + "<script>".length;
-const js = html.slice(start, html.indexOf("</script>", start));
+const js = input.js;
 function functionSource(name) {
   const key = "function " + name + "(";
   let at = js.indexOf(key);
@@ -3980,9 +4026,7 @@ function byId(root, id) {
   });
   return found;
 }
-const styleStart = html.indexOf("<style>") + "<style>".length;
-const styleEnd = html.indexOf("</style>", styleStart);
-const css = html.slice(styleStart, styleEnd).replace(/\/\*[\s\S]*?\*\//g, "");
+const css = String(input.css || "").replace(/\/\*[\s\S]*?\*\//g, "");
 function skipAt(css, i) {
   const brace = css.indexOf("{", i);
   const semi = css.indexOf(";", i);
@@ -4253,6 +4297,7 @@ const renderIdentity = new Function(
     "function token() { return false; }\n" +
     "function headers() { return {}; }\n" +
     "function apiReadPath(suffix) { return suffix; }\n" +
+    "function api(url, options) { return fetch(url, options); }\n" +
     functionSource("renderIdentity") + "\n" +
     "return renderIdentity;"
 )(document, fetch, memberDirectory, null);
@@ -4379,7 +4424,7 @@ const refreshSession = new Function(
   "fetch",
   "base",
   "wid",
-  input.refresh + "\nreturn refreshSession;"
+  "function api(url, options) { return fetch(url, options); }\n" + input.refresh + "\nreturn refreshSession;"
 )(document, async () => ({
   ok: true,
   json: async () => ({

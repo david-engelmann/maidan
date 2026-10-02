@@ -1,0 +1,819 @@
+// @ts-check
+import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid } from "./api.js";
+import { attachToSelectedThread, escapeHtml, uploadArtifact } from "./artifacts.js";
+import { loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChannelId, selectedThreadId } from "./board.js";
+import { loadDms, loadGroupDms, openDm, openGroupDm, sendDmMessage, sendGroupDmMessage } from "./dm.js";
+import { humanError, responseError, setOut, setStatus, showError, toggleLiveFeed, unreachable } from "./feedback.js";
+import { openConnect, openPalette, openTool } from "./palette.js";
+import { loadMembers } from "./people.js";
+import { connectWs, disconnectWs, reconnectNowIfWanted, setPresence } from "./realtime.js";
+import { loadServerAuth, oidcLoginPath, saveWorkspaceName, sessionMemberId, showConnection, showSecretOnce, start } from "./session.js";
+import { WORKER_PRESET, baseInput, onMac } from "./state.js";
+import { loadMessages } from "./thread.js";
+import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkDepth, loadWorkThreads, markAllNotificationsRead, myCapabilities, parseCaps, pollReindex, registerSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, startReindex } from "./tools.js";
+
+
+      setInterval(refreshTeamSoon, 30000);
+
+
+      document.querySelectorAll(".tabs button").forEach((btn) => {
+        btn.onclick = () => {
+          document.querySelectorAll(".tabs button").forEach((b) => {
+            b.setAttribute("aria-selected", "false");
+            b.tabIndex = -1;
+          });
+          btn.setAttribute("aria-selected", "true");
+          btn.tabIndex = 0;
+          document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+          document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+          if (btn.dataset.tab === "work") loadWork();
+          if (btn.dataset.tab === "prefs") loadPrefs();
+          if (btn.dataset.tab === "glass") loadGlass();
+          if (btn.dataset.tab === "notifications") loadNotifications();
+          if (btn.dataset.tab === "approvals") loadApprovals();
+          if (btn.dataset.tab === "session") loadSession();
+          if (btn.dataset.tab === "tokens") loadAttenuationCeiling();
+        };
+      });
+
+      initTablist();
+
+      document.querySelectorAll("[data-open-connect]").forEach((b) => (b.onclick = openConnect));
+
+      document.getElementById("connect-close").onclick = () => document.getElementById("connect-dialog").close();
+
+      document.getElementById("cx-mint").onclick = () => {
+        document.getElementById("connect-dialog").close();
+        openTool("tokens");
+      };
+
+      document.getElementById("cx-create-agent").onclick = async () => {
+        const button = document.getElementById("cx-create-agent");
+        const status = document.getElementById("cx-status");
+        const secretBox = document.getElementById("cx-secret");
+        if (!requireBearer()) {
+          status.textContent = "Sign in with an admin token first (maidan init prints one).";
+          return;
+        }
+        if (!wid()) {
+          status.textContent = "Set a workspace first.";
+          return;
+        }
+        const handle = document.getElementById("cx-handle").value.trim();
+        const display = document.getElementById("cx-name").value.trim();
+        if (!handle) {
+          status.textContent = "A handle is required. It is the name shown for that member on the board.";
+          return;
+        }
+        // One submission at a time. The one-time secret stays until a new
+        // token is actually minted, so a failed retry does not erase it.
+        if (button.disabled) return;
+        button.disabled = true;
+        persist();
+        status.textContent = "Creating the member…";
+        try {
+        let res;
+        try {
+          res = await api(`${base()}/workspaces/${wid()}/members`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ handle, display_name: display || null, kind: "agent" }),
+          });
+        } catch (e) {
+          status.textContent = unreachable(e);
+          return;
+        }
+        if (!res.ok) {
+          status.textContent = await responseError(res, "Could not create the member");
+          return;
+        }
+        const member = await res.json();
+        status.textContent = "Minting a worker token…";
+        try {
+          res = await api(`${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ label: handle, capability_set: WORKER_PRESET, capabilities: [] }),
+          });
+        } catch (e) {
+          status.textContent = unreachable(e);
+          return;
+        }
+        if (!res.ok) {
+          status.textContent = await responseError(res, "Member created, but the token was not minted");
+          return;
+        }
+        const minted = await res.json();
+        secretBox.hidden = false;
+        secretBox.replaceChildren();
+        document.getElementById("token-member").value = member.id;
+        const caps = (minted.capabilities || []).join(", ");
+        const lead = document.createElement("span");
+        lead.textContent = `Token for ${display || handle} (shown once). It can claim, post, and transition. Paste it where the snippet says REPLACE_WITH_MAIDAN_TOKEN. `;
+        const code = document.createElement("code");
+        code.id = "cx-secret-value";
+        code.textContent = minted.secret;
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = "Copy token";
+        copy.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(minted.secret);
+            status.textContent = "Token copied. The snippets still show a placeholder.";
+          } catch (_e) {
+            status.textContent = "Copy was blocked by the browser; select the token instead.";
+          }
+        };
+        secretBox.append(lead, code, document.createTextNode(" "), copy);
+        if (caps) secretBox.append(document.createTextNode(" Capabilities: " + caps + "."));
+        status.textContent = `Member ${handle} created. The worker preset is ${WORKER_PRESET}.`;
+        loadMembers();
+        } finally {
+          button.disabled = false;
+        }
+      };
+
+      document.querySelectorAll("#connect-dialog [data-copy]").forEach((b) => {
+        b.onclick = async () => {
+          const text = document.getElementById(b.dataset.copy).textContent;
+          const status = document.getElementById("cx-status");
+          try {
+            await navigator.clipboard.writeText(text);
+            status.textContent = "Copied.";
+          } catch (_e) {
+            status.textContent = "Copy was blocked by the browser; select the text instead.";
+          }
+        };
+      });
+
+      document.querySelectorAll(".kbd.mod-k").forEach((k) => (k.textContent = onMac ? "⌘K" : "Ctrl K"));
+
+      document.getElementById("palette-open").onclick = openPalette;
+
+      document.addEventListener("keydown", (e) => {
+        const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+          e.preventDefault();
+          openPalette();
+        } else if (e.key === "/" && !typing && !document.querySelector("dialog[open]")) {
+          e.preventDefault();
+          openPalette();
+        }
+      });
+
+
+      // Approval gates are a human-in-the-loop queue, not a manual-refresh
+      // report. Keep the visible panel fresh without polling a hidden tab.
+      setInterval(() => {
+        const panel = document.getElementById("panel-approvals");
+        if (panel.classList.contains("active") && document.visibilityState === "visible") {
+          loadApprovals(false);
+        }
+      }, 5000);
+
+      window.addEventListener("online", reconnectNowIfWanted);
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") reconnectNowIfWanted();
+      });
+
+      baseInput.addEventListener("change", loadServerAuth);
+
+      document.getElementById("login").onclick = () => {
+        if (!oidcLoginPath) return;
+        if (!wid()) return showError("Enter the workspace ID first.");
+        persist();
+        window.location.href =
+          `${base()}${oidcLoginPath}?workspace_id=${encodeURIComponent(wid())}&return_to=/ui/`;
+      };
+
+      document.getElementById("mint").onclick = async () => {
+        const res = await api(`${base()}/auth/session/mint`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const body = await res.text();
+        if (!res.ok) return setOut(body);
+        const parsed = JSON.parse(body);
+        document.getElementById("token").value = parsed.secret;
+        persist();
+        showSecretOnce("Admin token (once)", parsed.secret);
+        setStatus("Admin token minted", "ok");
+      };
+
+      document.getElementById("rotate-own-token").onclick = () => {
+        if (currentTokenId) rotateToken(currentTokenId);
+      };
+
+      document.getElementById("rotate-token").onclick = () => {
+        if (!requireBearer()) return;
+        const id = document.getElementById("token-revoke-id").value.trim();
+        if (!id) return showError("Token ID required");
+        rotateToken(id);
+      };
+
+      document.getElementById("copy-secret").onclick = () => {
+        const s = document.getElementById("mint-secret").textContent;
+        if (s) navigator.clipboard.writeText(s);
+      };
+
+      document.getElementById("refresh-channels").onclick = loadChannels;
+
+      document.getElementById("ws-connect").onclick = connectWs;
+
+      document.getElementById("ws-disconnect").onclick = disconnectWs;
+
+      document.getElementById("presence-online").onclick = () => setPresence("online");
+
+      document.getElementById("presence-away").onclick = () => setPresence("away");
+
+      document.getElementById("work-refresh").onclick = () => loadWork();
+
+      document.getElementById("waiting-refresh").onclick = () => loadWaiting();
+
+      document.getElementById("work-channel").onchange = () => {
+        loadWorkDepth();
+        loadWorkThreads();
+      };
+
+      document.getElementById("prefs-refresh").onclick = () => loadPrefs();
+
+      document.getElementById("prefs-mode-immediate").onclick = () =>
+        setPrefsDeliveryMode("immediate");
+
+      document.getElementById("prefs-mode-digest").onclick = () =>
+        setPrefsDeliveryMode("digest");
+
+      document.getElementById("prefs-email-set").onclick = () => setPrefsEmail();
+
+      document.getElementById("prefs-email-clear").onclick = () => clearPrefsEmail();
+
+      document.getElementById("prefs-mute").onclick = () => setPrefsMute(true);
+
+      document.getElementById("prefs-unmute").onclick = () => setPrefsMute(false);
+
+      document.getElementById("prefs-follow-channel-btn").onclick = () =>
+        followTarget("channel-follows");
+
+      document.getElementById("prefs-follow-thread-btn").onclick = () =>
+        followTarget("thread-follows");
+
+      document.getElementById("glass-kind-btn").onclick = () => glassEventsByKind();
+
+      document.getElementById("glass-thread-btn").onclick = () => glassThread();
+
+      document.getElementById("glass-sha-btn").onclick = () => glassArtifact();
+
+      document.getElementById("glass-peers-btn").onclick = () => glassPeers();
+
+      document.getElementById("notif-refresh").onclick = () => loadNotifications();
+
+      document.getElementById("approvals-refresh").onclick = () => loadApprovals();
+
+      document.getElementById("session-refresh").onclick = () => loadSession();
+
+      document.getElementById("notif-read-all").onclick = () =>
+        markAllNotificationsRead();
+
+      document.getElementById("notif-unread-only").onchange = () =>
+        loadNotifications();
+
+      document.getElementById("ws-clear").onclick = () => {
+        document.getElementById("live-feed").textContent = "";
+      };
+
+      document.getElementById("workspace").addEventListener("change", () => {
+        persist();
+        loadChannels();
+        disconnectWs();
+      });
+
+
+      document.getElementById("load-events").onclick = async () => {
+        persist();
+        const t = token();
+        const url = t
+          ? `${base()}/workspaces/${wid()}/events?after_id=0&limit=50`
+          : `${base()}/ui/api/workspaces/${wid()}/events?after_id=0&limit=50`;
+        const res = await api(url, { headers: headers(), credentials: "include" });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("OK", "ok");
+        setOut(JSON.parse(body));
+      };
+
+      document.getElementById("run-search").onclick = async () => {
+        persist();
+        if (!wid()) return showError("Workspace ID required");
+        const q = document.getElementById("search-q").value.trim();
+        const mode = document.getElementById("search-mode").value;
+        const params = new URLSearchParams({ q, mode, limit: "20" });
+        const ch =
+          document.getElementById("search-channel").value.trim() ||
+          selectedChannelId ||
+          "";
+        if (ch) params.set("channel", ch);
+        const author = document.getElementById("search-author").value.trim();
+        if (author) params.set("author", author);
+        const kind = document.getElementById("search-kind").value;
+        if (kind) params.set("kind", kind);
+        const url = token()
+          ? `${base()}/workspaces/${wid()}/search?${params}`
+          : `${uiReadPath(`/workspaces/${wid()}/search`)}?${params}`;
+        let res;
+        try {
+          res = await api(url, { headers: headers(), credentials: "include" });
+        } catch (e) {
+          const box = document.getElementById("search-results");
+          box.textContent = unreachable(e);
+          setStatus("Could not reach the server", "err");
+          return;
+        }
+        const body = await res.text();
+        const box = document.getElementById("search-results");
+        if (!res.ok) {
+          let detail = "";
+          try {
+            const problem = JSON.parse(body);
+            detail = problem.detail || problem.title || problem.error || problem.message || "";
+          } catch (_e) {
+            detail = body;
+          }
+          detail = String(detail).replace(/\s+/g, " ").trim().slice(0, 500);
+          const said = humanError(res.status, detail);
+          box.textContent = detail ? `${said} — ${detail} (HTTP ${res.status})` : `${said} (HTTP ${res.status})`;
+          setStatus(said, "err");
+          return;
+        }
+        setStatus("OK", "ok");
+        const hits = JSON.parse(body);
+        box.innerHTML = "";
+        if (!hits.length) {
+          box.textContent = "No hits";
+          setOut(hits);
+          return;
+        }
+        hits.forEach((h) => {
+          const div = document.createElement("div");
+          div.className = "hit";
+          div.innerHTML = `<strong>${escapeHtml(h.message_id || h.id || "?")}</strong> ${escapeHtml(h.body || h.snippet || "")}`;
+          box.appendChild(div);
+        });
+        setOut(hits);
+      };
+
+      document.getElementById("create-channel").onclick = async () => {
+        if (!requireAuthForWrite()) return;
+        if (!wid()) return showError("Workspace ID required");
+        const name = document.getElementById("new-channel-name").value.trim();
+        if (!name) return showError("Channel name required");
+        persist();
+        const res = await api(apiWritePath(`/workspaces/${wid()}/channels`), {
+          method: "POST",
+          headers: headers(true),
+          credentials: "include",
+          body: JSON.stringify({ name, private: false }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        document.getElementById("new-channel-name").value = "";
+        setStatus("Channel created", "ok");
+        setOut(JSON.parse(body));
+        await loadChannels();
+      };
+
+      document.getElementById("create-thread").onclick = async () => {
+        if (!requireAuthForWrite()) return;
+        if (!selectedChannelId) return showError("Select a channel first");
+        const title = document.getElementById("new-thread-title").value.trim();
+        persist();
+        const res = await api(
+          apiWritePath(`/channels/${selectedChannelId}/threads`),
+          {
+            method: "POST",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ title: title || null }),
+          }
+        );
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        const parsed = JSON.parse(body);
+        document.getElementById("new-thread-title").value = "";
+        setStatus("Thread created", "ok");
+        setOut(parsed);
+        await loadThreads();
+        selectThread(parsed.id, parsed.title || parsed.id);
+      };
+
+      document.getElementById("post-message").onclick = async () => {
+        if (!requireAuthForWrite()) return;
+        if (!selectedThreadId) return showError("Select a thread first");
+        const text = document.getElementById("compose-body").value.trim();
+        if (!text) return showError("Message body required");
+        persist();
+        let res;
+        try {
+          res = await api(
+            apiWritePath(`/threads/${selectedThreadId}/messages`),
+            {
+              method: "POST",
+              headers: headers(true),
+              credentials: "include",
+              body: JSON.stringify({ body: text }),
+            }
+          );
+        } catch (e) {
+          // The draft stays. A dead server used to reject the promise and
+          // leave the composer looking as if nothing had been tried.
+          showError(unreachable(e));
+          return;
+        }
+        if (!res.ok) {
+          showError(await responseError(res, "Could not post"));
+          return;
+        }
+        const body = await res.text();
+        document.getElementById("compose-body").value = "";
+        setStatus("Posted", "ok");
+        setOut(JSON.parse(body));
+        await loadMessages();
+      };
+
+      document.getElementById("reload-messages").onclick = loadMessages;
+
+      document.getElementById("gdm-open").onclick = openGroupDm;
+
+      document.getElementById("gdm-refresh").onclick = loadGroupDms;
+
+      document.getElementById("gdm-send").onclick = sendGroupDmMessage;
+
+      document.getElementById("dm-open").onclick = openDm;
+
+      document.getElementById("dm-refresh").onclick = loadDms;
+
+      document.getElementById("dm-send").onclick = sendDmMessage;
+
+      document.getElementById("op-deliv-refresh").onclick = loadDeliveries;
+
+      document.getElementById("op-audit-load").onclick = loadGlobalAudit;
+
+      document.getElementById("op-reindex-workspace").onclick = () => startReindex(false);
+
+      document.getElementById("op-reindex-global").onclick = () => startReindex(true);
+
+      document.getElementById("op-reindex-poll").onclick = pollReindex;
+
+      document.getElementById("slash-register").onclick = registerSlashCommand;
+
+      document.getElementById("slash-refresh").onclick = loadSlashCommands;
+
+      document.getElementById("edit-message").onclick = async () => {
+        if (!requireAuthForWrite()) return;
+        const id = document.getElementById("edit-message-id").value.trim();
+        if (!id) return showError("Message ID required");
+        const text = document.getElementById("edit-message-body").value.trim();
+        persist();
+        const res = await api(apiWritePath(`/messages/${id}`), {
+          method: "PATCH",
+          headers: headers(true),
+          credentials: "include",
+          body: JSON.stringify({ body: text }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("Edited", "ok");
+        const parsed = JSON.parse(body);
+        setOut(parsed);
+        await loadMessages();
+        await loadMessageEdits(id);
+      };
+
+      document.getElementById("load-edit-history").onclick = () => {
+        const id = document.getElementById("edit-message-id").value.trim();
+        loadMessageEdits(id);
+      };
+
+      document.getElementById("upload-artifact").onclick = async () => {
+        if (!requireAuthForWrite()) return;
+        const fileInput = document.getElementById("artifact-file");
+        if (!fileInput.files || !fileInput.files[0]) return showError("Choose a file");
+        const kind = document.getElementById("artifact-kind").value;
+        persist();
+        const artifact = await uploadArtifact(fileInput.files[0], kind);
+        if (!artifact) return;
+        setStatus("Artifact uploaded", "ok");
+        setOut(artifact);
+        const attach = document.getElementById("attach-artifact-next");
+        if (attach && attach.checked) await attachToSelectedThread(artifact);
+      };
+
+      // Paste a file (a screenshot, say) into the composer and it becomes an
+      // artifact attached to the selected thread. Pasting text is untouched.
+      document.getElementById("compose-body").addEventListener("paste", async (event) => {
+        const files = Array.from((event.clipboardData && event.clipboardData.files) || []);
+        if (!files.length) return;
+        event.preventDefault();
+        if (!requireAuthForWrite()) return;
+        if (!selectedThreadId) {
+          setStatus("Select a thread before pasting a file", "err");
+          return;
+        }
+        persist();
+        for (const file of files) {
+          const kind = file.type.startsWith("image/") ? "screenshot" : "attachment";
+          const artifact = await uploadArtifact(file, kind);
+          if (!artifact || !(await attachToSelectedThread(artifact))) return;
+        }
+      });
+
+      document.getElementById("load-thread").onclick = async () => {
+        persist();
+        const id = document.getElementById("thread-id").value.trim();
+        const res = await api(apiReadPath(`/threads/${id}`), {
+          headers: headers(),
+          credentials: "include",
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("OK", "ok");
+        setOut(JSON.parse(body));
+      };
+
+      document.getElementById("transition-thread").onclick = async () => {
+        if (!requireAuthForWrite()) return;
+        persist();
+        const id = document.getElementById("thread-id").value.trim();
+        const action = document.getElementById("fsm-action").value;
+        const res = await api(apiWritePath(`/threads/${id}`), {
+          method: "POST",
+          headers: headers(true),
+          credentials: "include",
+          body: JSON.stringify({ action }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("OK", "ok");
+        setOut(JSON.parse(body));
+      };
+
+      document.getElementById("load-messages").onclick = async () => {
+        persist();
+        const id = document.getElementById("thread-id").value.trim();
+        const res = await api(`${base()}/threads/${id}/messages?limit=50`, {
+          headers: headers(),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("OK", "ok");
+        setOut(JSON.parse(body));
+      };
+
+
+      document.getElementById("load-audit").onclick = async () => {
+        if (!wid()) return showError("Workspace ID required");
+        persist();
+        const limit = document.getElementById("audit-limit").value || "50";
+        const url = `${uiReadPath(`/workspaces/${wid()}/audit`)}?limit=${encodeURIComponent(limit)}`;
+        const res = await api(url, { headers: headers(), credentials: "include" });
+        const body = await res.text();
+        const box = document.getElementById("audit-list");
+        if (!res.ok) {
+          box.textContent = body;
+          setStatus(`HTTP ${res.status}`, "err");
+          return;
+        }
+        const rows = JSON.parse(body);
+        box.innerHTML = "";
+        if (!rows.length) {
+          box.textContent = "No audit rows";
+          setStatus("OK", "ok");
+          return;
+        }
+        rows.forEach((r) => {
+          const div = document.createElement("div");
+          div.className = "row";
+          div.textContent = `${r.occurred_at} · ${r.action} · actor=${r.actor_id || "—"}`;
+          box.appendChild(div);
+        });
+        setStatus("Audit loaded", "ok");
+        setOut(rows);
+      };
+
+
+      document.getElementById("purge-workspace").onclick = async () => {
+        if (!requireBearer()) return;
+        const w = wid();
+        if (!w) return showError("Workspace ID required");
+        if (document.getElementById("purge-confirm").value.trim() !== w) {
+          return showError("Confirmation must match workspace ID exactly");
+        }
+        if (!document.getElementById("purge-understand").checked) {
+          return showError("Check the confirmation box");
+        }
+        persist();
+        const res = await api(`${base()}/workspaces/${w}/purge`, {
+          method: "POST",
+          headers: headers(true),
+          body: "{}",
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("Workspace purged", "ok");
+        setOut(JSON.parse(body));
+        document.getElementById("load-audit").click();
+      };
+
+
+      document.getElementById("refresh-peers").onclick = loadPeers;
+
+      document.getElementById("create-peer").onclick = async () => {
+        if (!requireBearer()) return;
+        if (!wid()) return showError("Workspace ID required");
+        const name = document.getElementById("peer-name").value.trim();
+        const baseUrl = document.getElementById("peer-base-url").value.trim();
+        if (!name || !baseUrl) return showError("Name and base URL required");
+        persist();
+        const res = await api(`${base()}/workspaces/${wid()}/peers`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ name, base_url: baseUrl }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        const parsed = JSON.parse(body);
+        setStatus("Peer created — copy secret now", "ok");
+        setOut(parsed);
+        await loadPeers();
+      };
+
+      document.getElementById("delete-peer").onclick = async () => {
+        if (!requireBearer()) return;
+        const pid = document.getElementById("peer-delete-id").value.trim();
+        if (!pid || !wid()) return showError("Peer ID and workspace required");
+        persist();
+        const res = await api(`${base()}/workspaces/${wid()}/peers/${pid}`, {
+          method: "DELETE",
+          headers: headers(),
+        });
+        if (!res.ok) {
+          const body = await res.text();
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("Peer deleted", "ok");
+        setOut({ deleted: pid });
+        await loadPeers();
+      };
+
+
+      document.getElementById("mint-member-token").onclick = async () => {
+        if (!requireBearer()) return;
+        persist();
+        const mid = document.getElementById("token-member").value.trim();
+        const label = document.getElementById("token-label").value.trim();
+        const caps = parseCaps(document.getElementById("token-caps").value);
+        // Attenuation pre-flight: a minted token cannot exceed the caller's grant
+        // (the server enforces this too, via validate_subset — this flags it early).
+        if (!myCapabilities) await loadAttenuationCeiling();
+        const excess = capsExceedingGrant(caps);
+        const warn = document.getElementById("attenuation-warning");
+        if (excess.length) {
+          warn.textContent =
+            `Cannot widen your grant — these exceed your ceiling and will be rejected: ${excess.join(", ")}`;
+          warn.hidden = false;
+          setStatus("Attenuation: request exceeds your grant", "err");
+          return;
+        }
+        warn.hidden = true;
+        const res = await api(`${base()}/workspaces/${wid()}/members/${mid}/tokens`, {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({ label: label || null, capabilities: caps }),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        const parsed = JSON.parse(body);
+        document.getElementById("token").value = parsed.secret;
+        document.getElementById("token-revoke-id").value = parsed.id;
+        persist();
+        setStatus("Token minted", "ok");
+        setOut(parsed);
+      };
+
+      document.getElementById("list-member-tokens").onclick = async () => {
+        if (!wid()) return showError("Workspace ID required");
+        const mid =
+          document.getElementById("token-member").value.trim() || sessionMemberId;
+        if (!mid) return showError("Member ID required");
+        persist();
+        const path = token()
+          ? `${base()}/workspaces/${wid()}/members/${mid}/tokens`
+          : `${uiReadPath(`/workspaces/${wid()}/members/${mid}/tokens`)}`;
+        const res = await api(path, { headers: headers(), credentials: "include" });
+        const body = await res.text();
+        const box = document.getElementById("token-list");
+        if (!res.ok) {
+          box.textContent = body;
+          return;
+        }
+        const rows = JSON.parse(body);
+        box.innerHTML = "";
+        if (!rows.length) {
+          box.textContent = "No tokens for this member";
+          return;
+        }
+        rows.forEach((t) => {
+          const li = document.createElement("div");
+          const revoked = t.revoked_at ? " (revoked)" : "";
+          li.textContent = `${t.id} · ${(t.label || "—")}${revoked} · ${t.capabilities.join(", ")}`;
+          li.style.cursor = "pointer";
+          li.onclick = () => {
+            document.getElementById("token-revoke-id").value = t.id;
+          };
+          box.appendChild(li);
+        });
+      };
+
+      document.getElementById("list-app-installations").onclick = async () => {
+        if (!wid()) return showError("Workspace ID required");
+        persist();
+        const path = uiReadPath(`/workspaces/${wid()}/app-installations`);
+        const res = await api(path, { headers: headers(), credentials: "include" });
+        const body = await res.text();
+        const box = document.getElementById("app-install-list");
+        if (!res.ok) {
+          box.textContent = body;
+          return;
+        }
+        const rows = JSON.parse(body);
+        box.innerHTML = "";
+        if (!rows.length) {
+          box.textContent = "No app installations";
+          return;
+        }
+        rows.forEach((row) => {
+          const div = document.createElement("div");
+          const revoked = row.revoked_at ? " (revoked)" : "";
+          div.textContent = `${row.app_id} · install ${row.id}${revoked}`;
+          box.appendChild(div);
+        });
+      };
+
+      document.getElementById("revoke-token").onclick = async () => {
+        if (!requireBearer()) return;
+        const id = document.getElementById("token-revoke-id").value.trim();
+        if (!id) return showError("Token ID required");
+        persist();
+        const res = await api(`${base()}/tokens/${id}`, {
+          method: "DELETE",
+          headers: headers(),
+        });
+        const body = await res.text();
+        if (!res.ok) {
+          setStatus(`HTTP ${res.status}`, "err");
+          return setOut(body);
+        }
+        setStatus("Token revoked", "ok");
+        setOut(body ? JSON.parse(body) : { revoked: id });
+      };
+
+      document.getElementById("live-toggle").onclick = () => toggleLiveFeed();
+
+      document.getElementById("conn-edit").onclick = () => showConnection(true);
+
+      document.getElementById("workspace-name-save").onclick = () => saveWorkspaceName();
+
+      start();
+
+    

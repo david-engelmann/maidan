@@ -871,6 +871,87 @@ pub fn router(state: AppState) -> Router {
         axum::response::Html(include_str!("../static/index.html"))
     }
 
+    // Board modules next to the page. The name must be one of these files.
+    // Anything else is a 404. cargo build does not run a bundler.
+    async fn ui_asset(
+        crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
+    ) -> Result<
+        (
+            [(axum::http::header::HeaderName, &'static str); 1],
+            &'static str,
+        ),
+        axum::http::StatusCode,
+    > {
+        let (content_type, body) = match name.as_str() {
+            "board.css" => (
+                "text/css; charset=utf-8",
+                include_str!("../static/ui/board.css"),
+            ),
+            "main.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/main.js"),
+            ),
+            "state.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/state.js"),
+            ),
+            "client.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/client.js"),
+            ),
+            "api.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/api.js"),
+            ),
+            "feedback.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/feedback.js"),
+            ),
+            "people.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/people.js"),
+            ),
+            "session.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/session.js"),
+            ),
+            "board.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/board.js"),
+            ),
+            "needs.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/needs.js"),
+            ),
+            "thread.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/thread.js"),
+            ),
+            "dm.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/dm.js"),
+            ),
+            "artifacts.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/artifacts.js"),
+            ),
+            "tools.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/tools.js"),
+            ),
+            "palette.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/palette.js"),
+            ),
+            "realtime.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/realtime.js"),
+            ),
+            _ => return Err(axum::http::StatusCode::NOT_FOUND),
+        };
+        Ok(([(axum::http::header::CONTENT_TYPE, content_type)], body))
+    }
+
     // The agent-facing index (llmstxt.org): how to connect and the work loop,
     // with paths relative to this server. Public like `/ui`, and static.
     async fn llms_txt() -> impl axum::response::IntoResponse {
@@ -1159,6 +1240,7 @@ pub fn router(state: AppState) -> Router {
         .route("/metrics", get(metrics::scrape))
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
+        .route("/ui/static/{name}", get(ui_asset))
         .route("/llms.txt", get(llms_txt))
         .merge({
             #[cfg(feature = "bootstrap")]

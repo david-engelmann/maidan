@@ -10,7 +10,6 @@ use maidan_server::openapi::ApiDoc;
 use utoipa::openapi::path::{Operation, PathItem};
 use utoipa::OpenApi;
 
-const HTML: &str = include_str!("../static/index.html");
 const APP: &str = include_str!("../src/app.rs");
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -143,9 +142,46 @@ fn session_proxy_routes() -> BTreeSet<RouteKey> {
 }
 
 fn script() -> &'static str {
-    let start = HTML.find("<script>").expect("script") + "<script>".len();
-    let end = HTML[start..].find("</script>").expect("script end") + start;
-    &HTML[start..end]
+    static CELL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CELL.get_or_init(|| {
+        const PARTS: &[&str] = &[
+            include_str!("../static/ui/state.js"),
+            include_str!("../static/ui/client.js"),
+            include_str!("../static/ui/api.js"),
+            include_str!("../static/ui/feedback.js"),
+            include_str!("../static/ui/people.js"),
+            include_str!("../static/ui/session.js"),
+            include_str!("../static/ui/board.js"),
+            include_str!("../static/ui/needs.js"),
+            include_str!("../static/ui/thread.js"),
+            include_str!("../static/ui/dm.js"),
+            include_str!("../static/ui/artifacts.js"),
+            include_str!("../static/ui/tools.js"),
+            include_str!("../static/ui/palette.js"),
+            include_str!("../static/ui/realtime.js"),
+            include_str!("../static/ui/main.js"),
+        ];
+        let mut out = String::new();
+        for part in PARTS {
+            for line in part.lines() {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("import ") || trimmed.starts_with("export {") {
+                    continue;
+                }
+                if let Some(rest) = trimmed.strip_prefix("export ") {
+                    let indent = &line[..line.len() - trimmed.len()];
+                    out.push_str(indent);
+                    out.push_str(rest);
+                    out.push('\n');
+                    continue;
+                }
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        out
+    })
+    .as_str()
 }
 
 /// Extract JS string and template literals. Route candidates are selected
@@ -155,6 +191,22 @@ fn string_literals(source: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
+        // Comments are not strings. A quote inside one must not hide a route
+        // template that moved with its function.
+        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(bytes.len());
+            continue;
+        }
         let quote = bytes[i];
         if !matches!(quote, b'\'' | b'"' | b'`') {
             i += 1;
@@ -319,8 +371,8 @@ fn ui_inline_fetch_methods_resolve_to_the_session_proxy() {
     let proxy = session_proxy_routes();
     let source = script();
     let mut cursor = 0;
-    while let Some(found) = source[cursor..].find("fetch(") {
-        let open = cursor + found + "fetch".len();
+    while let Some(found) = source[cursor..].find("api(") {
+        let open = cursor + found + "api".len();
         let call = balanced_call(source, open);
         for helper in ["uiReadPath(", "apiReadPath(", "apiWritePath("] {
             let Some(found_helper) = call.find(helper) else {
