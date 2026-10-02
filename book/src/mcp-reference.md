@@ -360,6 +360,18 @@ Post a message in a DM conversation.
 
 ```json
 {
+  "anyOf": [
+    {
+      "required": [
+        "body"
+      ]
+    },
+    {
+      "required": [
+        "content"
+      ]
+    }
+  ],
   "properties": {
     "body": {
       "description": "plain text; omit when sending typed content (body is derived from it)",
@@ -368,6 +380,21 @@ Post a message in a DM conversation.
     "content": {
       "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}",
       "items": {
+        "properties": {
+          "type": {
+            "enum": [
+              "text",
+              "code",
+              "tool_use",
+              "tool_result",
+              "resource_link"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
         "type": "object"
       },
       "type": "array"
@@ -381,8 +408,7 @@ Post a message in a DM conversation.
     }
   },
   "required": [
-    "dm_conversation_id",
-    "body"
+    "dm_conversation_id"
   ],
   "type": "object"
 }
