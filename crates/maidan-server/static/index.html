@@ -2270,7 +2270,9 @@
         for (const li of list.children) {
           const note = li.querySelector(".ny-note input");
           const inUse = li.classList.contains("in-use") || li.contains(document.activeElement) || (note && note.value.trim());
-          if (!li.classList.contains("leaving") && inUse) {
+          // A row showing an error survives a reload. Rebuilding it drops the sentence.
+          const erred = li.querySelector(".ny-err");
+          if (!li.classList.contains("leaving") && (inUse || erred)) {
             keep.set(li.dataset.key, li);
           }
         }
@@ -2373,8 +2375,10 @@
               buttons.forEach((x) => (x.disabled = true));
               const out = await answerGate(item.gate_id, action, v.request_state);
               if (!out.ok) {
-                buttons.forEach((x) => (x.disabled = false));
-                return showRowError(li, out.why);
+                const row = rowOnScreen(item, li);
+                const live = row.querySelectorAll(".ny-actions button");
+                (live.length ? live : buttons).forEach((x) => (x.disabled = false));
+                return showRowError(row, out.why);
               }
               dropRow(item, li);
             };
@@ -2398,6 +2402,17 @@
         } catch (_e) {
           /* the title alone still identifies the review */
         }
+      }
+      // The row captured at click time may have been replaced while the
+      // request was in flight. Paint on the row that is on screen.
+      function rowOnScreen(item, li) {
+        const key = (li && li.dataset && li.dataset.key) || nyKey(item);
+        if (!key) return li;
+        const rows = document.querySelectorAll("#needs-you-list .ny-item");
+        for (const row of rows) {
+          if (row.dataset.key === key) return row;
+        }
+        return li;
       }
       function showRowError(li, msg) {
         let el = li.querySelector(".ny-err");
@@ -2467,9 +2482,11 @@
         const actions = li.querySelector(".ny-actions");
         actions.querySelectorAll("button").forEach((b) => (b.disabled = true));
         const out = await submitReview(item.thread_id, "approve");
+        const row = rowOnScreen(item, li);
+        const liveActions = row.querySelector(".ny-actions");
         if (!out.ok) {
-          actions.querySelectorAll("button").forEach((b) => (b.disabled = false));
-          return showRowError(li, out.why);
+          if (liveActions) liveActions.querySelectorAll("button").forEach((b) => (b.disabled = false));
+          return showRowError(row, out.why);
         }
         li.classList.add("in-use");
         const rs = await reviewStatus(item.thread_id);
@@ -2524,7 +2541,7 @@
           const out = await submitReview(item.thread_id, "request_changes", input.value.trim());
           if (!out.ok) {
             send.disabled = false;
-            return showRowError(li, out.why);
+            return showRowError(rowOnScreen(item, li), out.why);
           }
           dropRow(item, li);
           scheduleBoardRefresh();

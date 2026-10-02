@@ -11,13 +11,17 @@ async function signIn(page: Page) {
   await page.locator("#token").dispatchEvent("change");
 }
 
-// Several channels: a first visit still asks which board, so nothing is chosen
-// for the viewer.
-test("several channels stay on pick a channel until one is chosen", async ({ page }) => {
+// Several channels: nothing is chosen for the viewer. The empty board is
+// one sentence and one action, not a prompt to pick a channel.
+test("several channels stay unchosen until one is chosen", async ({ page }) => {
   await signIn(page);
   await expect(page.locator("#channel-list li[data-id]").first()).toBeVisible();
-  await expect(page.locator("#board-onboard")).toContainText("pick a channel");
+  const onboard = page.locator("#board-onboard");
+  await expect(onboard).toContainText("A task arrives when an agent or a person opens one.");
+  await expect(onboard.getByRole("button", { name: "Connect an agent" })).toBeVisible();
+  await expect(onboard).not.toContainText("pick a channel");
   await expect(page.locator("#channel-list li.selected")).toHaveCount(0);
+  await expect(page.locator("#board .board-col")).toHaveCount(0);
 });
 
 // One channel is the board. The viewer should not have to click it while a
@@ -55,6 +59,10 @@ test("the only channel opens by itself", async ({ page }) => {
   const row = page.locator(`#channel-list li[data-id="${fx.quiet_channel_id}"]`);
   await expect(row).toHaveClass(/selected/);
   await expect(page.locator("#board-title")).toHaveText("# quiet");
-  await expect(page.locator("#board-onboard")).toContainText("No tasks in #quiet");
-  await expect(page.locator("#board-onboard")).not.toContainText("pick a channel");
+  const onboard = page.locator("#board-onboard");
+  await expect(onboard).toContainText("A task arrives when an agent or a person opens one.");
+  await expect(onboard.getByRole("button", { name: "Connect an agent" })).toBeVisible();
+  await expect(onboard).not.toContainText("pick a channel");
+  await expect(onboard).not.toContainText("No tasks in #quiet");
+  await expect(page.locator("#board .board-col")).toHaveCount(0);
 });
