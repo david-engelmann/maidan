@@ -84,7 +84,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    assertions (the pill, pick a channel, the raw error), so the job was
    ignored; it is still not a required check, and the specs now fail when
    the board is wrong and pass when the lanes, the state word, the empty
-   sentence, and the human refusal are right. In flight (lane PW): specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs, with the coverage checklist. Unit tests for the auth-routing helpers and the error parser wait for the module split. In flight: the token leaving
+   sentence, and the human refusal are right. In flight (lane PW, #1205): specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs, with the coverage checklist. Unit tests for the auth-routing helpers and the error parser wait for the module split. In flight: the token leaving
    the browser's storage (#1142), the signed-in line showing a display name
    instead of a member id, and naming a workspace with `PATCH /workspaces/{id}`.
    Next:
