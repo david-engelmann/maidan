@@ -102,8 +102,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    and the SDK normalizers.
 6. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
-   room itself staying open source. In flight (#1208): an operator can open a
-   second workspace with `POST /operator/workspaces`, without `MAIDAN_BOOTSTRAP`.
+   room itself staying open source. An operator can open a
+   second workspace with `POST /operator/workspaces`, without `MAIDAN_BOOTSTRAP` (#1208).
    Signup and a hosted console are not started.
 
 ## What Maidan will not become
