@@ -24,6 +24,7 @@ maidan-store = { path = "../maidan-store" }
 maidan-artifacts = { path = "../maidan-artifacts" }
 maidan-bus = { path = "../maidan-bus" }
 maidan-auth = { path = "../maidan-auth" }
+maidan-env = { path = "../maidan-env" }
 maidan-mcp = { path = "../maidan-mcp" }
 maidan-search = { path = "../maidan-search", default-features = false }
 maidan-router = { path = "../maidan-router" }

@@ -96,17 +96,16 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // A misspelt variable would otherwise configure nothing and say nothing.
-    let unknown_env = maidan_server::env_registry::unknown_vars(
+    let unknown_env = maidan_env::unknown_vars(
         std::env::vars_os().map(|(name, _)| name.to_string_lossy().into_owned()),
         std::env::var_os("KUBERNETES_SERVICE_HOST").is_some(),
     );
-    let allow_unknown_env =
-        std::env::var(maidan_server::env_registry::ALLOW_UNKNOWN_ENV).as_deref() == Ok("1");
+    let allow_unknown_env = std::env::var(maidan_env::ALLOW_UNKNOWN_ENV).as_deref() == Ok("1");
     if !unknown_env.is_empty() && !allow_unknown_env {
         anyhow::bail!(
             "unknown environment variable(s): {}. Fix the name, or set {}=1 to start anyway.",
-            maidan_server::env_registry::describe(&unknown_env),
-            maidan_server::env_registry::ALLOW_UNKNOWN_ENV,
+            maidan_env::describe(&unknown_env),
+            maidan_env::ALLOW_UNKNOWN_ENV,
         );
     }
 
@@ -118,9 +117,9 @@ async fn main() -> anyhow::Result<()> {
 
     if !unknown_env.is_empty() {
         tracing::warn!(
-            unknown = %maidan_server::env_registry::describe(&unknown_env),
+            unknown = %maidan_env::describe(&unknown_env),
             "starting with unknown MAIDAN_* environment variables ({}=1)",
-            maidan_server::env_registry::ALLOW_UNKNOWN_ENV,
+            maidan_env::ALLOW_UNKNOWN_ENV,
         );
     }
 

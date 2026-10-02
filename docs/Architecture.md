@@ -82,6 +82,7 @@ flowchart LR
 | `maidan-observability` | Tracing + OpenTelemetry setup.                        |
 | `maidan-cli`           | Operator CLI (incl. `maidan init` first-admin bootstrap), also published as its own non-root multi-arch image. |
 | `maidan-wasi`          | Sandboxed WASI preview-1 host for slash handlers (wasmi, fuel + memory caps). |
+| `maidan-env`           | `MAIDAN_*` names the server and the operator CLI refuse when misspelt. |
 | `maidan-server`        | HTTP/WebSocket/gRPC binary + background workers.      |
 
 ## Data layering

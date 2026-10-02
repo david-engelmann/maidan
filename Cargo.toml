@@ -14,6 +14,7 @@ members = [
     "crates/maidan-observability",
     "crates/maidan-wasi",
     "crates/maidan-cli",
+    "crates/maidan-env",
     "crates/maidan-server",
 ]
 

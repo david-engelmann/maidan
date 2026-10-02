@@ -8,9 +8,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use maidan_server::env_registry::{ALLOW_UNKNOWN_ENV, SERVER_ENV, TOLERATED_ENV};
+use maidan_env::{ALLOW_UNKNOWN_ENV, SERVER_ENV, TOLERATED_ENV};
 
-const REGISTRY: &str = "crates/maidan-server/src/env_registry.rs";
+const REGISTRY: &str = "crates/maidan-env/src/lib.rs";
 
 /// The crates linked into the server binary. `maidan-cli` is its own binary.
 const SERVER_CRATES: &[&str] = &[
@@ -169,7 +169,10 @@ fn every_server_variable_is_read_by_a_server_crate() {
     }
     let mut read = BTreeSet::new();
     for path in sources {
-        if path.ends_with("env_registry.rs") || path.extension().is_none_or(|e| e != "rs") {
+        if path.ends_with("env_registry.rs")
+            || path.ends_with("maidan-env/src/lib.rs")
+            || path.extension().is_none_or(|e| e != "rs")
+        {
             continue;
         }
         let text = std::fs::read_to_string(&path).unwrap();

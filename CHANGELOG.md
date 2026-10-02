@@ -1459,6 +1459,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   An unknown action is a 400 from the body extractor. `request_changes`
   stays a review decision, and `cast_vote.kind` stays an open string.
 
+### The operator CLI refuses an unknown MAIDAN_* variable
+
+- **Fixed:** `maidan` refuses a `MAIDAN_*` name that is not on the server's list, before it parses arguments, and names the nearest known variable. `MAIDAN_ALLOW_UNKNOWN_ENV=1` starts anyway and logs the names. The list lives in `maidan-env`, which the server and the CLI both use.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
