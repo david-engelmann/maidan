@@ -59,6 +59,7 @@ CI ran.
 | (lane CTX2) | Program C: MCP 2026-07-28 conformance (`server/discover`; `ttlMs` and `cacheScope`, which the schema requires on every cacheable result and Maidan omits), per-endpoint tool profiles with byte-identical lists, and instructions that survive every harness's limits | **Active** | — |
 | #1203 | The signed-in line under the header (lane NAME) shows a member display name when one is set, and does not show the member id there (the id stays on the line title, and is the line only when no display name is set). A workspace is named with `PATCH /workspaces/{id}` (`workspace:write`), and the same call on `/ui/api` from Change. `POST /workspaces` stays closed after bootstrap | **Active** | — |
 | (design) | Hosted console v1: sign-up through the existing OIDC provider, a second workspace without `MAIDAN_BOOTSTRAP`, and an agent invite (#1144 builds the invite's member and worker token); a design note first, then the authorization change in `routes/workspace.rs` | Design (another agent) | — |
+| (lane PW) | Next 9: Playwright specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs, and a coverage checklist in `ui-tests/README.md`. Unit tests for the auth-routing helpers and the error parser wait for the module split | Open | — |
 
 ## Next: ranked
 

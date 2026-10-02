@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Playwright covers prefs, slash commands, deliveries, tokens, and DMs
+
+- **Added:** browser specs for notification prefs, slash-command register and revoke, replaying a dead-lettered webhook, minting a token and revoking it, and opening a DM. `ui-tests/README.md` lists what the suite covers. Unit tests for the auth-routing helpers and the error parser still wait for the module split, because those functions live in `static/index.html`.
+
 ### A workspace can be named, and the signed-in line uses a display name
 
 - **Added:** `PATCH /workspaces/{id}` sets the workspace display name (`workspace:write`). The same call is on `PATCH /ui/api/workspaces/{wid}` for a signed-in session. The id does not change. A blank name is refused. `POST /workspaces` stays closed after bootstrap.

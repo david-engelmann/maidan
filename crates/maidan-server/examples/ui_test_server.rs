@@ -22,7 +22,7 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewMessage, NewThread,
-    NewWorkspace,
+    NewWebhookSubscription, NewWorkspace,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -458,6 +458,28 @@ async fn main() {
         .await
         .expect("admin token");
 
+    // One dead-lettered webhook so the Operator tab can replay it. The harness
+    // does not run the webhook worker, and creating a subscription over HTTP
+    // needs an encryption key this process does not have.
+    let hook = store
+        .create_webhook_subscription(NewWebhookSubscription {
+            workspace_id: ws.id,
+            url: "https://hooks.example.test/maidan".into(),
+            label: Some("ui-test".into()),
+            event_kinds: vec!["message_posted".into()],
+            secret_ciphertext: "ui-test-ciphertext".into(),
+        })
+        .await
+        .expect("webhook");
+    let delivery_id = store
+        .enqueue_webhook_delivery(hook.id, 1, "{}")
+        .await
+        .expect("delivery");
+    store
+        .quarantine_webhook_delivery(delivery_id)
+        .await
+        .expect("quarantine");
+
     let art_dir = std::env::temp_dir().join(format!("maidan-ui-test-{}", std::process::id()));
     std::fs::create_dir_all(&art_dir).expect("art dir");
     let artifacts = Arc::new(LocalFsStore::new(&art_dir));
@@ -513,6 +535,8 @@ async fn main() {
         "lab_channel_id": lab.id.0.to_string(),
         "lab_thread_id": lab_thread.id.0.to_string(),
         "admin_token": admin_secret.as_str(),
+        "delivery_id": delivery_id,
+        "delivery_url": "https://hooks.example.test/maidan",
     });
     std::fs::write(
         &fixtures_path,

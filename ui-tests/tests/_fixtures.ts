@@ -44,6 +44,9 @@ export interface Fixtures {
   lab_thread_id: string;
   /** Admin grant (token:admin and the worker preset). Connect an agent uses it. */
   admin_token: string;
+  /** A dead-lettered webhook delivery the Operator tab can replay. */
+  delivery_id: number;
+  delivery_url: string;
 }
 
 export function fixtures(): Fixtures {
