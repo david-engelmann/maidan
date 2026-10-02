@@ -45,3 +45,20 @@ npm run report        # open the HTML report after a run
 
 **Every `/ui` change should land with a spec here.** The specs do not replace
 the PR template's checklist, which is still run by hand.
+
+## Coverage checklist
+
+Specs that drive a real page, and what is still missing.
+
+| Area | Spec | Notes |
+| --- | --- | --- |
+| Board lanes, empty board, human refusal | `board.spec.ts`, `needs-you.spec.ts`, `refused-close.spec.ts`, `calm.spec.ts` | The board as it is |
+| Prefs (delivery mode, email, mute, follow) | `prefs.spec.ts` | |
+| Slash commands (register, revoke) | `slash.spec.ts` | MCP tool handler. An http handler needs an encryption key the harness does not set |
+| Delivery replay | `deliveries.spec.ts` | One seeded dead-letter webhook |
+| Token mint and revoke | `tokens.spec.ts` | `attenuation.spec.ts` only checks the widening warning |
+| DMs | `dms.spec.ts` | Open and post |
+| Connect an agent | `connect.spec.ts` | |
+| Token rotation | `rotate.spec.ts` | |
+
+Unit tests for the auth-routing helpers (`apiReadPath`, `apiWritePath`, `requireBearer`) and the error parser (`humanError`) wait for the module split. Those functions live in `static/index.html`, so there is no module for `tsc` to check yet.
