@@ -61,4 +61,4 @@ Specs that drive a real page, and what is still missing.
 | Connect an agent | `connect.spec.ts` | |
 | Token rotation | `rotate.spec.ts` | |
 
-The board modules live in `crates/maidan-server/static/ui`. Check the JSDoc with `npx tsc --noEmit --checkJs -p crates/maidan-server/static/ui`. That check is not in CI yet. Unit tests for the auth-routing helpers (`apiReadPath`, `apiWritePath`, `requireBearer`) and the error parser (`humanError`) are still a follow-up.
+The board modules live in `crates/maidan-server/static/ui`. Check the JSDoc with `npx tsc --noEmit --checkJs -p crates/maidan-server/static/ui`. That check is not in CI yet. Unit tests for the auth-routing helpers (`apiReadPath`, `apiWritePath`, `requireBearer`) and the error parser (`humanError`) are `node --test crates/maidan-server/static/ui/helpers.test.mjs`. That run is local; it is not in CI.
