@@ -39,7 +39,8 @@ the maintainer's call.
 
 The latest release is `v412.0.0`, and `main` is ahead of it. The work in
 flight and the ranked plan are the **Now** and **Next** sections of
-[Open Work](Open%20Work.md).
+[Open Work](Open%20Work.md). `scripts/sdk-test.sh` and `scripts/lease-demo.sh`
+run the binary from `CARGO_TARGET_DIR` when it is set.
 
 ## Horizons
 

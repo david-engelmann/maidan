@@ -6,6 +6,7 @@
 #
 # Usage:  scripts/lease-demo.sh
 # Env:    MAIDAN_DEMO_PORT (default 8080). Needs python3 + node on PATH.
+#         CARGO_TARGET_DIR (the built binaries are read from there).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # A throwaway database, so the public development content KEK is acceptable.
@@ -20,10 +21,12 @@ done
 
 echo "=== building maidan-server ==="
 cargo build --quiet --bin maidan-server --bin maidan
+# cargo writes under CARGO_TARGET_DIR when it is set, otherwise ./target.
+bin_dir="${CARGO_TARGET_DIR:-target}/debug"
 
 demo_tmp="$(mktemp -d)"
 demo_db="sqlite://${demo_tmp}/maidan.db?mode=rwc"
-init_output="$(DATABASE_URL="${demo_db}" ./target/debug/maidan init --workspace lease-demo)"
+init_output="$(DATABASE_URL="${demo_db}" "${bin_dir}/maidan" init --workspace lease-demo)"
 admin_token="$(awk '$1 ~ /^maid_/ { print $1 }' <<<"${init_output}")"
 workspace_id="$(awk '/^[[:space:]]*workspace:/ { gsub(/[()]/, "", $3); print $3 }' <<<"${init_output}")"
 test -n "${admin_token}"
@@ -32,7 +35,7 @@ test -n "${workspace_id}"
 echo "=== booting (SQLite, authenticated) ==="
 DATABASE_URL="${demo_db}" MAIDAN_SESSION_SECRET="lease-demo-session-secret-change-me-0123456789" \
   MAIDAN_BOOTSTRAP=1 MAIDAN_RATE_LIMIT_MAX=0 \
-  MAIDAN_BIND="127.0.0.1:${port}" ./target/debug/maidan-server &
+  MAIDAN_BIND="127.0.0.1:${port}" "${bin_dir}/maidan-server" &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$demo_tmp"' EXIT
 

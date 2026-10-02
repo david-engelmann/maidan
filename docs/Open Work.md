@@ -98,8 +98,7 @@ token's workspace, not the path's, for a bypass caller (#1134); a receiver that
 echoes a secret back in a slash response puts it in `metadata.slash_response`
 (#1140, documented); the retry budget is per replica and does not bound
 first-attempt floods (#1122, documented); the 0124 backfill ordering has no
-test of its own (#1132); scripts that build into `./target` ignore
-`CARGO_TARGET_DIR` (#1129); `post_message` marks `body` required although its
+test of its own (#1132); `post_message` marks `body` required although its
 description says to omit it with typed content (#1149); `edit_message` lacks
 the content-block `type` enum and REST `TransitionThread.action` lacks an
 OpenAPI enum (#1149); the workspace claim's `readable_by` should become

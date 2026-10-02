@@ -5,6 +5,7 @@
 #
 # Usage:  scripts/sdk-test.sh [typescript|python|go|rust]   (default: typescript)
 # Env:    MAIDAN_SDK_PORT (default 8080).
+#         CARGO_TARGET_DIR (the built binaries are read from there).
 #
 # Build first, then run the binary, so the health-wait covers only boot (a cold
 # `cargo run` compile would otherwise outlast it).
@@ -19,10 +20,12 @@ base="http://127.0.0.1:${port}"
 
 echo "=== building maidan-server ==="
 cargo build --quiet --bin maidan-server --bin maidan
+# cargo writes under CARGO_TARGET_DIR when it is set, otherwise ./target.
+bin_dir="${CARGO_TARGET_DIR:-target}/debug"
 
 sdk_tmp="$(mktemp -d)"
 sdk_db="sqlite://${sdk_tmp}/maidan.db?mode=rwc"
-init_output="$(DATABASE_URL="${sdk_db}" ./target/debug/maidan init --workspace sdk-tests)"
+init_output="$(DATABASE_URL="${sdk_db}" "${bin_dir}/maidan" init --workspace sdk-tests)"
 admin_token="$(awk '$1 ~ /^maid_/ { print $1 }' <<<"${init_output}")"
 workspace_id="$(awk '/^[[:space:]]*workspace:/ { gsub(/[()]/, "", $3); print $3 }' <<<"${init_output}")"
 test -n "${admin_token}"
@@ -35,7 +38,7 @@ export_key="$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
 echo "=== booting (SQLite, authenticated) ==="
 DATABASE_URL="${sdk_db}" MAIDAN_SESSION_SECRET="sdk-test-session-secret-change-me-0123456789" \
   MAIDAN_EXPORT_SIGNING_KEY="${export_key}" MAIDAN_BOOTSTRAP=1 MAIDAN_RATE_LIMIT_MAX=0 \
-  MAIDAN_BIND="127.0.0.1:${port}" ./target/debug/maidan-server &
+  MAIDAN_BIND="127.0.0.1:${port}" "${bin_dir}/maidan-server" &
 server_pid=$!
 trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$sdk_tmp"' EXIT
 
