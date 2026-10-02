@@ -2720,6 +2720,165 @@ fn ui_js_empty_board_is_one_sentence_and_one_action() {
     }
 }
 
+/// A person never sees the raw error. From docs/UI Design.md: on `#toasts`,
+/// `.ny-err`, `.onboard.board-error`, `#message-list`, and `#board-summary
+/// .board-note`, the page shows the `humanError` sentence only. It does not
+/// append the server body or ` (HTTP ${status})`. `pre#out` and `#live-feed`
+/// may keep JSON; they sit behind More tools and `#live-more`.
+///
+/// This runs those surfaces against a problem document, a raw 500 body, a
+/// capability refusal, and a fetch that throws. It fails if any of them shows
+/// JSON, a stack, `HTTP`, or a status code.
+#[test]
+fn ui_js_never_shows_a_raw_error_or_an_http_code() {
+    let report = person_facing_errors();
+    let cases = report["cases"].as_array().expect("cases");
+    assert!(!cases.is_empty(), "the page painted no error surfaces");
+    let mut saw_refused = false;
+    let mut saw_capability = false;
+    let mut saw_server = false;
+    let mut saw_not_found = false;
+    let mut saw_unreachable = false;
+    for case in cases {
+        let name = case["name"].as_str().expect("name");
+        let texts = case["texts"].as_object().expect("texts");
+        for (surface, value) in texts {
+            let text = value.as_str().expect("text");
+            if text.is_empty() {
+                continue;
+            }
+            assert!(
+                raw_or_http(text).is_none(),
+                "{name} {surface} shows a raw error or an HTTP code ({})",
+                raw_or_http(text).unwrap_or("?"),
+            );
+            if text.contains("Refused") {
+                saw_refused = true;
+            }
+            if text.contains("thread:transition") && text.contains("Tokens") {
+                saw_capability = true;
+            }
+            if text.contains("The server hit an error") {
+                saw_server = true;
+            }
+            if text.contains("Not found") {
+                saw_not_found = true;
+            }
+            if text.to_lowercase().contains("reach the server") {
+                saw_unreachable = true;
+            }
+        }
+    }
+    assert!(
+        saw_refused,
+        "a 409 is the sentence Refused, not the problem document"
+    );
+    assert!(
+        saw_capability,
+        "a 403 names the missing capability and where to get it"
+    );
+    assert!(saw_server, "a 500 is a sentence, not the server body");
+    assert!(
+        saw_not_found,
+        "a missing attachment is a sentence, not HTTP 404"
+    );
+    assert!(
+        saw_unreachable,
+        "a fetch that throws is a sentence, not TypeError"
+    );
+    let messages = cases
+        .iter()
+        .find(|case| case["name"] == "messages-409")
+        .expect("message list");
+    assert_eq!(
+        messages["texts"]["messages"].as_str(),
+        Some("Refused"),
+        "the thread shows the humanError sentence and nothing after it"
+    );
+    let tools = &report["tools"];
+    assert!(
+        tools["out"].as_str().unwrap_or("").contains("HTTP 500"),
+        "pre#out may keep JSON"
+    );
+    assert!(
+        tools["live"].as_str().unwrap_or("").contains('{'),
+        "#live-feed may keep JSON"
+    );
+    let five = tools["five"].as_str().unwrap_or("");
+    assert!(
+        raw_or_http(five).is_none(),
+        "JSON left in the tools did not stay off the board, the row, the thread, and the toast ({five:?})"
+    );
+}
+
+fn raw_or_http(text: &str) -> Option<&'static str> {
+    if text.contains("HTTP") {
+        return Some("HTTP");
+    }
+    if text.contains('{') || text.contains('}') {
+        return Some("JSON");
+    }
+    if text.contains(" — ") {
+        return Some("server detail");
+    }
+    let lower = text.to_ascii_lowercase();
+    for needle in [
+        "typeerror",
+        "failed to fetch",
+        "thread is not in review",
+        "panic:",
+        "see stack",
+        "boom",
+        "sql error",
+    ] {
+        if lower.contains(needle) {
+            return Some(needle);
+        }
+    }
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i + 2 < bytes.len() {
+        let digit = bytes[i].is_ascii_digit();
+        let start = i == 0 || !bytes[i - 1].is_ascii_digit();
+        if digit && start && bytes[i + 1].is_ascii_digit() && bytes[i + 2].is_ascii_digit() {
+            let end = i + 3;
+            let end_ok = end == bytes.len() || !bytes[end].is_ascii_digit();
+            if end_ok {
+                let n = (bytes[i] - b'0') as u16 * 100
+                    + (bytes[i + 1] - b'0') as u16 * 10
+                    + (bytes[i + 2] - b'0') as u16;
+                if (100..600).contains(&n) {
+                    return Some("status code");
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+fn person_facing_errors() -> serde_json::Value {
+    let payload = serde_json::json!({ "html": HTML });
+    let mut child = std::process::Command::new("node")
+        .arg("-e")
+        .arg(ERROR_SURFACE_HARNESS)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("node is required to run the error surfaces: {err}"));
+    serde_json::to_writer(child.stdin.take().expect("stdin"), &payload).expect("write html");
+    let out = child.wait_with_output().expect("node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "error surface harness failed\n{stderr}\n{stdout}"
+    );
+    serde_json::from_str(&stdout)
+        .unwrap_or_else(|err| panic!("error surface harness returned {err}: {stdout}"))
+}
+
 fn is_one_sentence(text: &str) -> bool {
     let prose = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let marks = prose
@@ -2990,4 +3149,412 @@ try {
   process.exit(1);
 }
 process.stdout.write(JSON.stringify(views));
+"#####;
+
+const ERROR_SURFACE_HARNESS: &str = r#####"
+(function () {
+const fs = require("fs");
+const vm = require("vm");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const html = input.html;
+const start = html.indexOf("<script>") + "<script>".length;
+const js = html.slice(start, html.indexOf("</script>", start));
+
+const all = [];
+function classes(el) {
+  return String(el.className || "").split(/\s+/).filter(Boolean);
+}
+function makeEl(tag) {
+  const el = {
+    tag: String(tag || "div").toLowerCase(),
+    id: "",
+    className: "",
+    hidden: false,
+    value: "",
+    href: "",
+    title: "",
+    type: "",
+    placeholder: "",
+    method: "",
+    action: "",
+    disabled: false,
+    children: [],
+    parentElement: null,
+    _text: "",
+    innerHTML: "",
+    style: { setProperty() {} },
+    dataset: {},
+    attrs: {},
+  };
+  el.classList = {
+    add(...ns) {
+      const s = new Set(classes(el));
+      ns.forEach((n) => s.add(n));
+      el.className = [...s].join(" ");
+    },
+    remove(...ns) {
+      const s = new Set(classes(el));
+      ns.forEach((n) => s.delete(n));
+      el.className = [...s].join(" ");
+    },
+    toggle(n, force) {
+      const has = classes(el).includes(n);
+      const on = force === undefined ? !has : !!force;
+      if (on) el.classList.add(n);
+      else el.classList.remove(n);
+      return on;
+    },
+    contains: (n) => classes(el).includes(n),
+  };
+  el.appendChild = (child) => {
+    if (child == null) return child;
+    if (child.parentElement) child.remove();
+    child.parentElement = el;
+    el.children.push(child);
+    return child;
+  };
+  el.append = (...kids) => {
+    for (const kid of kids) {
+      if (typeof kid === "string") {
+        const t = makeEl("#text");
+        t._text = kid;
+        el.appendChild(t);
+      } else el.appendChild(kid);
+    }
+  };
+  el.replaceChildren = (...kids) => {
+    el.children.forEach((c) => (c.parentElement = null));
+    el.children = [];
+    if (kids.length) el.append(...kids);
+  };
+  el.remove = () => {
+    const p = el.parentElement;
+    if (!p) return;
+    p.children = p.children.filter((c) => c !== el);
+    el.parentElement = null;
+  };
+  el.setAttribute = (k, v) => {
+    el.attrs[k] = String(v);
+    if (k === "class") el.className = String(v);
+    if (k === "hidden") el.hidden = true;
+    if (k === "id") el.id = String(v);
+  };
+  el.getAttribute = (k) => (k in el.attrs ? el.attrs[k] : null);
+  el.removeAttribute = (k) => {
+    delete el.attrs[k];
+    if (k === "hidden") el.hidden = false;
+  };
+  el.addEventListener = () => {};
+  el.focus = () => {};
+  el.click = () => {
+    if (typeof el.onclick === "function") el.onclick({ stopPropagation() {}, preventDefault() {} });
+  };
+  el.submit = () => {};
+  el.after = (other) => {
+    const p = el.parentElement;
+    if (!p) return;
+    if (other.parentElement) other.remove();
+    const i = p.children.indexOf(el);
+    other.parentElement = p;
+    p.children.splice(i + 1, 0, other);
+  };
+  el.insertBefore = (node, before) => {
+    if (node.parentElement) node.remove();
+    node.parentElement = el;
+    const i = before ? el.children.indexOf(before) : el.children.length;
+    el.children.splice(i < 0 ? el.children.length : i, 0, node);
+    return node;
+  };
+  Object.defineProperty(el, "textContent", {
+    get() {
+      if (!el.children.length) return el._text || "";
+      return el.children.map((c) => c.textContent).join("");
+    },
+    set(v) {
+      el._text = String(v);
+      el.children.forEach((c) => (c.parentElement = null));
+      el.children = [];
+    },
+  });
+  Object.defineProperty(el, "firstElementChild", {
+    get() {
+      return el.children.find((c) => c.tag !== "#text") || null;
+    },
+  });
+  el.matches = (sel) => sel.split(",").some((part) => matchSimple(el, part.trim()));
+  el.querySelector = (sel) => query(el, sel)[0] || null;
+  el.querySelectorAll = (sel) => query(el, sel);
+  all.push(el);
+  return el;
+}
+function matchSimple(el, sel) {
+  if (!sel) return false;
+  if (sel.includes(" ")) return false;
+  let ok = true;
+  const chunks = sel.match(/([#.]?[\w-]+|\[[^\]]+\])/g) || [];
+  if (!chunks.length) return false;
+  for (const c of chunks) {
+    if (c[0] === "#") ok = ok && el.id === c.slice(1);
+    else if (c[0] === ".") ok = ok && classes(el).includes(c.slice(1));
+    else if (c[0] === "[") {
+      const m = c.slice(1, -1);
+      const eq = m.indexOf("=");
+      if (eq < 0) ok = ok && (m in el.attrs || el.getAttribute(m) != null);
+      else {
+        const k = m.slice(0, eq);
+        let v = m.slice(eq + 1).replace(/^["']|["']$/g, "");
+        ok = ok && String(el.attrs[k] || "") === v;
+      }
+    } else ok = ok && el.tag === c.toLowerCase();
+  }
+  return ok;
+}
+function descendants(root) {
+  const out = [];
+  const walk = (el) => {
+    for (const c of el.children || []) {
+      out.push(c);
+      walk(c);
+    }
+  };
+  walk(root);
+  return out;
+}
+function query(root, sel) {
+  const scope = root ? descendants(root) : all;
+  const groups = sel.split(",").map((s) => s.trim()).filter(Boolean);
+  const found = [];
+  for (const group of groups) {
+    const parts = group.split(/\s+/);
+    let pool = scope;
+    for (const part of parts) {
+      pool = pool.filter((el) => matchSimple(el, part));
+    }
+    for (const el of pool) if (!found.includes(el)) found.push(el);
+  }
+  return found;
+}
+
+const byId = new Map();
+function getById(id) {
+  if (!byId.has(id)) {
+    const el = makeEl("div");
+    el.id = id;
+    byId.set(id, el);
+  }
+  return byId.get(id);
+}
+const brand = makeEl("svg");
+brand.className = "brand-mark";
+brand.innerHTML = '<path fill="currentColor"/>';
+const aside = makeEl("aside");
+const body = makeEl("body");
+const documentStub = {
+  title: "",
+  body,
+  visibilityState: "hidden",
+  getElementById: getById,
+  createElement: makeEl,
+  querySelector: (sel) => query(null, sel)[0] || null,
+  querySelectorAll: (sel) => query(null, sel),
+  addEventListener() {},
+};
+const storage = new Map();
+const localStorageStub = {
+  getItem: (k) => (storage.has(k) ? storage.get(k) : null),
+  setItem: (k, v) => storage.set(k, String(v)),
+  removeItem: (k) => storage.delete(k),
+};
+function httpResponse(status, body) {
+  const text = typeof body === "string" ? body : JSON.stringify(body);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async text() { return text; },
+    async json() { return JSON.parse(text || "null"); },
+    async arrayBuffer() { return new ArrayBuffer(0); },
+  };
+}
+let fetchImpl = async () => httpResponse(401, "");
+const sandboxFetch = (...args) => fetchImpl(...args);
+
+global.document = documentStub;
+global.window = {
+  location: { origin: "http://maidan.test", href: "http://maidan.test/ui/" },
+  addEventListener() {},
+  matchMedia() { return { matches: false, addEventListener() {}, removeEventListener() {} }; },
+};
+global.localStorage = localStorageStub;
+global.fetch = sandboxFetch;
+global.setInterval = () => 0;
+global.clearInterval = () => {};
+global.alert = () => { throw new Error("alert"); };
+global.confirm = () => false;
+global.navigator = { platform: "Linux", userAgent: "node", clipboard: { writeText: async () => {} } };
+
+const extra = `
+globalThis.__api = {
+  setSignedIn() {
+    sessionMemberId = "member-1";
+    tokenSession = false;
+    document.getElementById("token").value = "";
+  },
+  setChannel(id, name) {
+    selectedChannelId = id;
+    selectedChannelName = name;
+  },
+  markBoardShown() { boardShownFor = selectedChannelId; },
+  setThread(id) { selectedThreadId = id; },
+  loadThreads, loadMessages, showRowError, responseError, humanError, artifactCard,
+  async review(id) {
+    const out = await submitReview(id, "approve");
+    const li = document.createElement("li");
+    showRowError(li, out.why);
+    return li;
+  },
+  async close(id) {
+    const out = await closeThread(id);
+    const li = document.createElement("li");
+    showRowError(li, out.why);
+    return li;
+  },
+  async gate(id) {
+    const out = await answerGate(id, "accept", "state-1");
+    const li = document.createElement("li");
+    showRowError(li, out.why);
+    return li;
+  },
+  async toastFrom(res, prefix) {
+    showError(await responseError(res, prefix));
+  },
+  async download(sha) {
+    const card = artifactCard(sha);
+    document.getElementById("message-list").appendChild(card);
+    const btn = card.querySelector("button");
+    await btn.onclick({ stopPropagation() {}, preventDefault() {} });
+  },
+  clear() {
+    for (const id of ["toasts", "board", "board-summary", "message-list", "status", "out", "live-feed"]) {
+      const el = document.getElementById(id);
+      el.textContent = "";
+    }
+  },
+};
+`;
+process.on("unhandledRejection", (err) => {
+  console.error("UNHANDLED", err && err.stack || err);
+  process.exit(1);
+});
+vm.runInThisContext(js + "\n" + extra, { filename: "index.html" });
+
+function leafText(el) {
+  if (!el || el.hidden) return "";
+  if (!el.children || el.children.length === 0) return String(el._text || "");
+  return el.children.map(leafText).filter(Boolean).join(" ");
+}
+function surface(id) {
+  return leafText(document.getElementById(id)).replace(/\s+/g, " ").trim();
+}
+
+(async () => {
+  await new Promise((r) => setTimeout(r, 40));
+  const api = global.__api;
+  api.setSignedIn();
+  api.setChannel("ch-1", "general");
+  const problem = JSON.stringify({
+    type: "about:blank",
+    title: "Conflict",
+    status: 409,
+    detail: 'thread is not in review {"error":"boom"} stack at /tmp/maidan',
+  });
+  const raw500 = 'panic: sql error at line 12 {code:500}';
+  const cases = [];
+  function push(name, extraText) {
+    const texts = {
+      toasts: surface("toasts"),
+      board: surface("board"),
+      note: surface("board-summary"),
+      messages: surface("message-list"),
+      row: extraText ? leafText(extraText).replace(/\s+/g, " ").trim() : "",
+    };
+    cases.push({ name, texts });
+    api.clear();
+  }
+
+  fetchImpl = async () => httpResponse(409, problem);
+  await api.toastFrom(httpResponse(409, problem), "Could not post");
+  push("toast-409");
+
+  await api.loadThreads();
+  push("board-409");
+
+  api.markBoardShown();
+  await api.loadThreads();
+  push("note-409");
+
+  api.setThread("th-1");
+  await api.loadMessages();
+  push("messages-409");
+
+  push("row-review-409", await api.review("th-1"));
+  push("row-close-409", await api.close("th-1"));
+  push("row-gate-409", await api.gate("g-1"));
+
+  fetchImpl = async () => { throw new TypeError("Failed to fetch"); };
+  await api.loadThreads();
+  push("board-network");
+  api.setThread("th-1");
+  await api.loadMessages();
+  push("messages-network");
+  push("row-review-network", await api.review("th-1"));
+  push("row-close-network", await api.close("th-1"));
+  push("row-gate-network", await api.gate("g-1"));
+
+  fetchImpl = async (url) => {
+    const u = String(url);
+    if (u.includes("/meta")) {
+      return httpResponse(200, { filename: "notes.txt", size_bytes: 12, mime_type: "text/plain" });
+    }
+    if (u.includes("/artifacts/")) return httpResponse(404, problem);
+    return httpResponse(401, "");
+  };
+  await api.download("abc123");
+  // meta then download is async; the click awaits blob
+  push("download-404");
+
+  fetchImpl = async (url) => {
+    const u = String(url);
+    if (u.includes("/meta")) {
+      return httpResponse(200, { filename: "notes.txt", size_bytes: 12, mime_type: "text/plain" });
+    }
+    if (u.includes("/artifacts/")) throw new TypeError("Failed to fetch");
+    return httpResponse(401, "");
+  };
+  await api.download("abc123");
+  push("download-network");
+
+  fetchImpl = async () => httpResponse(500, raw500);
+  await api.toastFrom(httpResponse(500, raw500), "Could not load approvals");
+  push("toast-500");
+  await api.loadThreads();
+  push("board-500");
+
+  const forbidden = JSON.stringify({
+    detail: 'caller needs thread:transition; see stack {"error":"boom"} HTTP 403',
+  });
+  fetchImpl = async () => httpResponse(403, forbidden);
+  await api.toastFrom(httpResponse(403, forbidden), "Could not post");
+  push("toast-403");
+
+  // Tools may keep JSON. These must not be required to be clean, and must not leak onto the five surfaces.
+  fetchImpl = async () => httpResponse(401, "");
+  setOut({ error: "HTTP 500", detail: "{raw}" });
+  appendLive('event {"status":409}');
+  const tools = { out: surface("out"), live: surface("live-feed"), five: [surface("toasts"), surface("board"), surface("board-summary"), surface("message-list")].join(" ") };
+  console.log(JSON.stringify({ cases, tools }, null, 2));
+})().catch((err) => {
+  console.error(err && err.stack || err);
+  process.exit(1);
+});
+})();
 "#####;
