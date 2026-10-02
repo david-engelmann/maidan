@@ -45,6 +45,17 @@ pub fn markdown() -> String {
          watch at most 1024 resources at once.\n\n",
     );
 
+    out.push_str(
+        "## Where a channel or a task comes from\n\n\
+         Creating a channel, and creating a single thread, stay on REST by design. \
+         There is no MCP tool for either. A task is created with \
+         `POST /channels/{cid}/threads` (`workspace:write`), or by a person in the web UI. \
+         A channel is created with `POST /workspaces/{wid}/channels`. Two tools do make \
+         threads, and only from a recipe or a timer: `instantiate_recipe` builds a parent \
+         and its children from a recipe, and `create_task_schedule` creates a thread each \
+         time its schedule fires.\n\n",
+    );
+
     out.push_str("## Tools\n\n");
     for tool in tools::catalog() {
         out.push_str(&render_tool(&tool));
@@ -127,5 +138,18 @@ mod tests {
             let name = prompt["name"].as_str().expect("prompt name");
             assert!(md.contains(name), "missing prompt {name}");
         }
+    }
+
+    #[test]
+    fn markdown_says_channel_and_thread_creation_stay_on_rest() {
+        let md = markdown();
+        assert!(
+            md.contains("stay on REST by design"),
+            "the catalog must say creation stays on REST by design"
+        );
+        assert!(md.contains("POST /channels/{cid}/threads"));
+        assert!(md.contains("POST /workspaces/{wid}/channels"));
+        assert!(md.contains("instantiate_recipe"));
+        assert!(md.contains("create_task_schedule"));
     }
 }

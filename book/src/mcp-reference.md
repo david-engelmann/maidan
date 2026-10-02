@@ -30,6 +30,10 @@ A subscription belongs to the caller that made it, in the session it made it in,
 
 Subscriptions end with their session; a stateless caller's end once it has had no listener on any replica for the session TTL (`MAIDAN_MCP_STREAMABLE_SESSION_TTL_SECS`, default 3600). A caller may watch at most 1024 resources at once.
 
+## Where a channel or a task comes from
+
+Creating a channel, and creating a single thread, stay on REST by design. There is no MCP tool for either. A task is created with `POST /channels/{cid}/threads` (`workspace:write`), or by a person in the web UI. A channel is created with `POST /workspaces/{wid}/channels`. Two tools do make threads, and only from a recipe or a timer: `instantiate_recipe` builds a parent and its children from a recipe, and `create_task_schedule` creates a thread each time its schedule fires.
+
 ## Tools
 
 ### `whoami`
@@ -1585,7 +1589,7 @@ A member's current live-claim count against the workspace WIP limit ({live_claim
 
 ### `claim_next_thread`
 
-Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Tasks are created over REST (POST /channels/{cid}/threads) or by a person in the web UI.
+Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Creating a channel, and creating a single task, stay on REST by design (POST /workspaces/{wid}/channels for a channel; POST /channels/{cid}/threads or the web UI for a task).
 
 **Capability:** `thread:transition`
 

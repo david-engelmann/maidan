@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Channel and thread creation stay on REST
+
+- **Docs:** creating a channel, and creating a single task, stay on REST by design. `llms.txt`, the MCP catalog (`claim_next_thread` and the generated reference), and the waiter loop in `docs/Integration.md` say so. `instantiate_recipe` and `create_task_schedule` remain the only MCP tools that make threads.
+
 ### Playwright covers prefs, slash commands, deliveries, tokens, and DMs
 
 - **Added:** browser specs for notification prefs, slash-command register and revoke, replaying a dead-lettered webhook, minting a token and revoking it, and opening a DM. `ui-tests/README.md` lists what the suite covers. Unit tests for the auth-routing helpers and the error parser still wait for the module split, because those functions live in `static/index.html`.
