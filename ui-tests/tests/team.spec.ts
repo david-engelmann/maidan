@@ -1,5 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { callUiExport } from "./_tools";
 
 const fx = fixtures();
 
@@ -73,7 +74,7 @@ for (const reduced of [false, true]) {
       data: {},
     });
     expect(res.ok()).toBeTruthy();
-    await page.evaluate(() => (window as unknown as { loadThreads: () => Promise<void> }).loadThreads());
+    await callUiExport(page, "board.js", "loadThreads");
     await expect(inLane("working")).toBeVisible();
     const moved = await page.evaluate(() => (window as unknown as { __moved: string[] }).__moved);
     if (reduced) {
