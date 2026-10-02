@@ -2095,3 +2095,481 @@ function isHidden(el) {
   process.exit(1);
 });
 "##;
+
+/// No refusal strip. From docs/UI Design.md:
+/// do not paint `#board-refusal`. Keep `.card-refusal` with the text
+/// "Close refused" on that `.card`. The server's sentence can be the card
+/// `title`. Do not drop the refusal itself.
+///
+/// This runs the page's `rememberRefusal` and `renderBoard`. It fails if
+/// `#board-refusal` is shown or painted, including when the refusal arrives
+/// before the board has any cards (that used to open the strip). A refused
+/// card keeps the line "Close refused" and the server's sentence as its
+/// title. A card that was not refused does not grow either.
+#[test]
+fn ui_js_no_refusal_strip() {
+    let file = "Close needs a review. Next: ask a reviewer.";
+    let ship = "The result is still open. Next: post the result.";
+    let older = "An earlier close was refused. Next: wait.";
+    let steps = [
+        RefusalStep::remember("t1", "m-1", file, "2026-10-01T12:00:00Z"),
+        RefusalStep::render(&[
+            RefusedTask::new("t1", "File the notes", "in_review"),
+            RefusedTask::new("t2", "Ship the summary", "open"),
+        ]),
+        RefusalStep::remember("t2", "m-2", ship, "2026-10-01T12:05:00Z"),
+        RefusalStep::remember("t1", "m-1", older, "2026-10-01T11:00:00Z"),
+        RefusalStep::render(&[
+            RefusedTask::new("t1", "File the notes", "in_review"),
+            RefusedTask::new("t2", "Ship the summary", "open"),
+        ]),
+    ];
+    let drawn = board_after_refusals(&steps);
+    assert_eq!(drawn.len(), steps.len(), "every step was painted");
+
+    // What the rule keeps. A later notice replaces an earlier one. An older
+    // stamp does not. The banner is never part of this.
+    let mut sentence = std::collections::BTreeMap::new();
+    let mut stamp = std::collections::BTreeMap::new();
+    let mut on_board = std::collections::BTreeMap::new();
+    for (step, view) in steps.iter().zip(drawn.iter()) {
+        match step {
+            RefusalStep::Remember { id, text, at, .. } => {
+                let replace = match stamp.get(id) {
+                    Some(prev) => *prev <= *at,
+                    None => true,
+                };
+                if replace {
+                    sentence.insert(*id, *text);
+                    stamp.insert(*id, *at);
+                }
+            }
+            RefusalStep::Render { tasks } => {
+                on_board.clear();
+                for task in tasks.iter() {
+                    on_board.insert(task.id, task.title);
+                }
+            }
+        }
+        assert!(
+            !view.banner_shown && view.banner_text.is_empty() && !view.refusal_text_in_banner,
+            "painted a refusal banner at {}: shown {} text {:?} refusal-text {}",
+            step.label(),
+            view.banner_shown,
+            view.banner_text,
+            view.refusal_text_in_banner
+        );
+        assert_eq!(
+            view.cards.len(),
+            on_board.len(),
+            "{}: card count",
+            step.label()
+        );
+        for card in &view.cards {
+            let task_title = on_board.get(card.id.as_str()).unwrap_or_else(|| {
+                panic!(
+                    "{}: showed {}, which is not on the board",
+                    step.label(),
+                    card.id
+                )
+            });
+            assert_eq!(
+                card.heading.as_str(),
+                *task_title,
+                "{}: {}",
+                step.label(),
+                card.id
+            );
+            match sentence.get(card.id.as_str()) {
+                Some(words) => {
+                    assert_eq!(
+                        card.line.as_deref(),
+                        Some("Close refused"),
+                        "{}: {} dropped the refusal",
+                        step.label(),
+                        card.id
+                    );
+                    assert!(
+                        card.title == *words || card.heading == *words,
+                        "{}: {} sentence {words:?} is not the card title ({:?} / {:?})",
+                        step.label(),
+                        card.id,
+                        card.title,
+                        card.heading
+                    );
+                }
+                None => {
+                    assert!(
+                        card.line.is_none(),
+                        "{}: {} showed a refusal it does not have ({:?})",
+                        step.label(),
+                        card.id,
+                        card.line
+                    );
+                    assert!(
+                        card.title.is_empty(),
+                        "{}: {} titled a card that was not refused",
+                        step.label(),
+                        card.id
+                    );
+                }
+            }
+        }
+        for id in sentence.keys() {
+            if on_board.contains_key(id) {
+                assert!(
+                    view.cards.iter().any(|card| card.id == *id),
+                    "{}: hid {id}, whose close was refused",
+                    step.label()
+                );
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+struct RefusedTask {
+    id: &'static str,
+    title: &'static str,
+    state: &'static str,
+}
+
+impl RefusedTask {
+    fn new(id: &'static str, title: &'static str, state: &'static str) -> Self {
+        Self { id, title, state }
+    }
+}
+
+enum RefusalStep {
+    Remember {
+        id: &'static str,
+        actor: &'static str,
+        text: &'static str,
+        at: &'static str,
+    },
+    Render {
+        tasks: Vec<RefusedTask>,
+    },
+}
+
+impl RefusalStep {
+    fn remember(
+        id: &'static str,
+        actor: &'static str,
+        text: &'static str,
+        at: &'static str,
+    ) -> Self {
+        Self::Remember {
+            id,
+            actor,
+            text,
+            at,
+        }
+    }
+
+    fn render(tasks: &[RefusedTask]) -> Self {
+        Self::Render {
+            tasks: tasks.to_vec(),
+        }
+    }
+
+    fn label(&self) -> String {
+        match self {
+            Self::Remember { id, at, .. } => format!("remember {id} @ {at}"),
+            Self::Render { tasks } => format!("render {}", tasks.len()),
+        }
+    }
+}
+
+struct RefusalCard {
+    id: String,
+    heading: String,
+    line: Option<String>,
+    title: String,
+}
+
+struct RefusalView {
+    banner_shown: bool,
+    banner_text: String,
+    refusal_text_in_banner: bool,
+    cards: Vec<RefusalCard>,
+}
+
+fn board_after_refusals(steps: &[RefusalStep]) -> Vec<RefusalView> {
+    let payload = serde_json::json!({
+        "html": HTML,
+        "steps": steps.iter().map(refusal_step_payload).collect::<Vec<_>>(),
+    });
+    let mut child = std::process::Command::new("node")
+        .arg("-e")
+        .arg(REFUSAL_PAGE_HARNESS)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("node is required to run the board: {err}"));
+    serde_json::to_writer(child.stdin.take().expect("stdin"), &payload).expect("write steps");
+    let out = child.wait_with_output().expect("node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "refusal harness failed\n{stderr}\n{stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|err| panic!("refusal harness returned {err}: {stdout}"));
+    value
+        .as_array()
+        .expect("step list")
+        .iter()
+        .map(|scene| RefusalView {
+            banner_shown: scene["banner_shown"].as_bool().expect("banner_shown"),
+            banner_text: scene["banner_text"]
+                .as_str()
+                .expect("banner_text")
+                .to_string(),
+            refusal_text_in_banner: scene["refusal_text_in_banner"]
+                .as_bool()
+                .expect("refusal_text_in_banner"),
+            cards: scene["cards"]
+                .as_array()
+                .expect("cards")
+                .iter()
+                .map(|card| RefusalCard {
+                    id: card["id"].as_str().expect("id").to_string(),
+                    heading: card["heading"].as_str().expect("heading").to_string(),
+                    line: card["line"].as_str().map(str::to_string),
+                    title: card["title"].as_str().expect("title").to_string(),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn refusal_step_payload(step: &RefusalStep) -> serde_json::Value {
+    match step {
+        RefusalStep::Remember {
+            id,
+            actor,
+            text,
+            at,
+        } => serde_json::json!({
+            "op": "remember",
+            "id": id,
+            "actor": actor,
+            "text": text,
+            "at": at,
+        }),
+        RefusalStep::Render { tasks } => serde_json::json!({
+            "op": "render",
+            "threads": tasks.iter().map(|task| serde_json::json!({
+                "id": task.id,
+                "title": task.title,
+                "state": task.state,
+                "updated_at": "2026-10-01T12:00:00Z",
+            })).collect::<Vec<_>>(),
+        }),
+    }
+}
+
+const REFUSAL_PAGE_HARNESS: &str = r#####"
+const fs = require("fs");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const html = input.html;
+const start = html.indexOf("<script>") + "<script>".length;
+const js = html.slice(start, html.indexOf("</script>", start));
+function functionSource(name) {
+  const marks = ["\n      function " + name + "(", "\n      async function " + name + "("];
+  let at = -1;
+  for (const mark of marks) {
+    const i = js.indexOf(mark);
+    if (i >= 0) { at = i + 1; break; }
+  }
+  if (at < 0) throw new Error("missing " + name);
+  const open = js.indexOf("{", at);
+  let depth = 0;
+  for (let j = open; j < js.length; j++) {
+    const c = js[j];
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return js.slice(at, j + 1);
+    }
+  }
+  throw new Error("unclosed " + name);
+}
+function extractConst(name) {
+  const key = "const " + name + " = ";
+  const at = js.indexOf(key);
+  if (at < 0) throw new Error("missing " + name);
+  const line = js.lastIndexOf("\n", at) + 1;
+  let depth = 0;
+  let started = false;
+  for (let i = at; i < js.length; i++) {
+    const c = js[i];
+    if (c === "[" || c === "{") { depth++; started = true; }
+    else if (c === "]" || c === "}") depth--;
+    else if (c === ";" && started && depth === 0) return js.slice(line, i + 1);
+  }
+  throw new Error("unclosed " + name);
+}
+const prelude = `
+function makeEl(tag) {
+  const el = {
+    tag: tag,
+    id: "",
+    hidden: false,
+    children: [],
+    dataset: {},
+    className: "",
+    textContent: "",
+    title: "",
+    style: {},
+    attrs: {},
+    tabIndex: 0,
+  };
+  el.classList = {
+    add(name) { el.className = (el.className + " " + name).trim(); },
+    remove() {},
+    toggle() {},
+  };
+  el.appendChild = (child) => { el.children.push(child); return child; };
+  el.append = (...kids) => {
+    for (const kid of kids) {
+      if (typeof kid === "string") {
+        const text = makeEl("#text");
+        text.textContent = kid;
+        el.children.push(text);
+      } else {
+        el.children.push(kid);
+      }
+    }
+  };
+  el.replaceChildren = () => { el.children = []; };
+  el.setAttribute = (key, value) => {
+    el.attrs[key] = String(value);
+    if (key === "hidden") el.hidden = true;
+  };
+  el.getAttribute = (key) => (Object.prototype.hasOwnProperty.call(el.attrs, key) ? el.attrs[key] : null);
+  el.removeAttribute = (key) => { delete el.attrs[key]; };
+  el.querySelector = (sel) => querySel(el, sel);
+  return el;
+}
+function walk(el, fn) {
+  for (const child of el.children || []) {
+    fn(child);
+    walk(child, fn);
+  }
+}
+function classHas(el, name) {
+  return (" " + String(el.className || "") + " ").indexOf(" " + name + " ") >= 0;
+}
+function querySel(root, sel) {
+  if (sel === ".card-refusal") {
+    let hit = null;
+    walk(root, (el) => { if (!hit && classHas(el, "card-refusal")) hit = el; });
+    return hit;
+  }
+  const mark = '#board .card[data-id="';
+  if (sel.indexOf(mark) === 0 && sel.endsWith('"]')) {
+    const id = sel.slice(mark.length, -2);
+    let hit = null;
+    walk(byId.board, (el) => {
+      if (!hit && classHas(el, "card") && el.dataset && el.dataset.id === id) hit = el;
+    });
+    return hit;
+  }
+  return null;
+}
+function flatText(el) {
+  if (!el) return "";
+  if (!el.children || el.children.length === 0) return el.textContent || "";
+  return el.children.map(flatText).join("");
+}
+const byId = {};
+function element(id) {
+  if (!byId[id]) throw new Error("unexpected element " + id);
+  return byId[id];
+}
+for (const id of ["board", "board-summary", "board-title", "board-refusal", "team"]) {
+  byId[id] = makeEl("div");
+  byId[id].id = id;
+}
+byId["board-refusal"].hidden = true;
+const document = {
+  getElementById(id) { return element(id); },
+  createElement(tag) { return makeEl(tag); },
+  querySelector(sel) { return querySel(byId.board, sel); },
+  querySelectorAll() { return []; },
+};
+const CSS = { escape(s) { return String(s); } };
+let threadsById = new Map();
+let lastGates = null;
+let selectedChannelName = "Desk";
+let selectedThreadId = null;
+let boardSeen = new Map();
+let selectedChannelId = "ch-1";
+const refusals = new Map();
+function personEl(id) {
+  const el = document.createElement("span");
+  el.className = "person";
+  el.textContent = String(id);
+  return el;
+}
+function ago() { return ""; }
+function leaseLeft() { return ""; }
+function boardRects() { return new Map(); }
+function glideCards() {}
+function renderTeam() {}
+function emptyChannelHelp() { return document.createElement("div"); }
+function selectThread() {}
+`;
+const tail = `
+function snapshot() {
+  const banner = byId["board-refusal"];
+  let refusalText = false;
+  walk(banner, (el) => { if (classHas(el, "refusal-text")) refusalText = true; });
+  const cards = [];
+  walk(byId.board, (el) => {
+    if (!classHas(el, "card") || !el.dataset || !el.dataset.id) return;
+    const headingEl = (el.children || []).find((child) => classHas(child, "card-title"));
+    const lineEl = (el.children || []).find((child) => classHas(child, "card-refusal"));
+    cards.push({
+      id: el.dataset.id,
+      heading: headingEl ? headingEl.textContent : "",
+      line: lineEl ? lineEl.textContent : null,
+      title: el.title || "",
+    });
+  });
+  return {
+    banner_shown: banner.hidden !== true,
+    banner_text: flatText(banner),
+    refusal_text_in_banner: refusalText,
+    cards: cards,
+  };
+}
+const out = [];
+for (const step of steps) {
+  if (step.op === "remember") rememberRefusal(step.id, step.actor, step.text, step.at);
+  else if (step.op === "render") renderBoard(step.threads, {});
+  else throw new Error("bad op " + step.op);
+  out.push(snapshot());
+}
+return out;
+`;
+const body = prelude
+  + functionSource("sessionChrome") + "\n"
+  + extractConst("BOARD_COLUMNS") + "\n"
+  + functionSource("paintRefusal") + "\n"
+  + functionSource("rememberRefusal") + "\n"
+  + functionSource("renderBoard") + "\n"
+  + tail;
+let views;
+try {
+  views = new Function("steps", body)(input.steps);
+} catch (err) {
+  console.error(err && err.stack || err);
+  process.exit(1);
+}
+process.stdout.write(JSON.stringify(views));
+"#####;

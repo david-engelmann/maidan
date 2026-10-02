@@ -1696,36 +1696,17 @@
       // state puts it, with the one member holding it. Cards that changed since
       // the last render flash once, so a live update is visible.
       // A refused close, in the words the server already returned. The agent already got
-      // this sentence; the board shows the same one. Nothing here is invented.
+      // this sentence. It stays on the card: the line is "Close refused", and the
+      // sentence is the card title. The strip above the lanes is not painted.
       const refusals = new Map();
       function paintRefusal() {
         const banner = document.getElementById("board-refusal");
         if (!banner) return;
-        const visible = [...refusals.entries()].filter(([id]) => threadsById.has(id) || !threadsById.size);
-        // Prefer a refusal on a thread this board is showing. The newest
-        // sentence wins; Map order does not, because updating a key does
-        // not move it.
-        const onBoard = [...refusals.entries()].filter(([id]) => threadsById.has(id));
-        const pool = onBoard.length ? onBoard : visible;
-        pool.sort((a, b) => String((a[1] && a[1].at) || "").localeCompare(String((b[1] && b[1].at) || "")));
-        const pick = pool[pool.length - 1];
-        if (!pick) {
-          banner.hidden = true;
-          banner.replaceChildren();
-          return;
-        }
-        const [id, rec] = pick;
-        banner.hidden = false;
+        // Do not paint #board-refusal. A refusal that arrives before the card
+        // exists used to open this strip. The strip stays hidden; the card draws it.
+        banner.hidden = true;
         banner.replaceChildren();
-        const strong = document.createElement("strong");
-        strong.textContent = "Close refused";
-        banner.append(strong, " · ");
-        if (rec.actorId) banner.append(personEl(rec.actorId), " · ");
-        const text = document.createElement("span");
-        text.className = "refusal-text";
-        text.textContent = rec.text;
-        banner.append(text);
-        banner.dataset.threadId = id;
+        delete banner.dataset.threadId;
       }
       function rememberRefusal(threadId, actorId, text, at) {
         if (!threadId || !text) return;
@@ -1740,6 +1721,7 @@
         refusals.set(threadId, { actorId, text, at: stamp });
         paintRefusal();
         const card = document.querySelector(`#board .card[data-id="${CSS.escape(threadId)}"]`);
+        if (card && text) card.title = text;
         if (card && !card.querySelector(".card-refusal")) {
           const line = document.createElement("div");
           line.className = "card-refusal";
@@ -1772,9 +1754,12 @@
         if (pending.length) {
           paintRefusal();
           pending.forEach((th) => {
-            if (!refusals.has(th.id)) return;
+            const rec = refusals.get(th.id);
+            if (!rec) return;
             const card = document.querySelector(`#board .card[data-id="${CSS.escape(th.id)}"]`);
-            if (card && !card.querySelector(".card-refusal")) {
+            if (!card) return;
+            if (rec.text) card.title = rec.text;
+            if (!card.querySelector(".card-refusal")) {
               const line = document.createElement("div");
               line.className = "card-refusal";
               line.textContent = "Close refused";
@@ -1857,6 +1842,7 @@
             line.className = "card-refusal";
             line.textContent = "Close refused";
             card.appendChild(line);
+            if (refused.text) card.title = refused.text;
           }
           card.onclick = () => selectThread(th.id, title);
           card.onkeydown = (e) => {
