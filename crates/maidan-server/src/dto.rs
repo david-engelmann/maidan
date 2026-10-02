@@ -8,10 +8,10 @@ use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, BlockedReason, ChannelId,
     ChannelMemberRole, ContentBlock, DelegationGrantId, EgressSurface, EmailDeliveryMode,
-    EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, MemberFreeze, MemberId,
-    MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision, ShareTicket,
+    EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, Member, MemberFreeze,
+    MemberId, MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision, ShareTicket,
     SlashCommandId, SlashHandlerKind, ThreadDependency, ThreadId, TokenPolicy, TokenQuota,
-    WebhookSubscriptionId, WorkspaceId,
+    WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -19,6 +19,25 @@ use utoipa::{IntoParams, ToSchema};
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWorkspace {
     pub name: String,
+}
+
+/// Body for `POST /operator/workspaces`. Opens another workspace and its first
+/// admin. Both fields are trimmed. Blank is a 400 after the capability check,
+/// so a body of `{}` still reaches it.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ProvisionWorkspace {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub admin_handle: String,
+}
+
+/// `POST /operator/workspaces` response. `token.secret` is shown once.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProvisionedWorkspace {
+    pub workspace: Workspace,
+    pub member: Member,
+    pub token: MintApiTokenResponse,
 }
 
 /// Body for `PATCH /workspaces/:id`. Sets the display name. The workspace id

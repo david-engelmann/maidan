@@ -42,6 +42,14 @@ macro_rules! store_delegations {
                 workspaces::create_with_event(self.pool(), new).await
             }
 
+            async fn provision_workspace(
+                &self,
+                new: NewProvisionedTenant,
+                audit: crate::AuditFor<ApiToken>,
+            ) -> Result<ProvisionedTenant, StoreError> {
+                workspaces::provision(self.pool(), new, audit).await
+            }
+
             async fn get_workspace(&self, id: WorkspaceId) -> Result<Workspace, StoreError> {
                 workspaces::get(self.read_pool(), id).await
             }

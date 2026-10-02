@@ -795,6 +795,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/operator/audit", get(routes::list_global_audit))
         .route("/operator/legal-holds", get(routes::list_legal_holds))
+        .route("/operator/workspaces", post(routes::provision_workspace))
         .route("/operator/status", get(crate::status::operator_status))
         .route("/operator/mail/dead", get(routes::list_dead_mail))
         .route(

@@ -3,7 +3,7 @@
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::{DateTime, Utc};
 use maidan_auth::{
-    capability::{self, TOKEN_ADMIN, WORKSPACE_READ},
+    capability::{self, AUDIT_READ_GLOBAL, OPERATOR_GLOBAL, TOKEN_ADMIN, WORKSPACE_READ},
     hash_secret, AuthContext, TokenSecret,
 };
 use maidan_store::Store;
@@ -14,6 +14,23 @@ use crate::dto::*;
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
 use crate::state::AppState;
+
+/// Capabilities `token:admin` may grant.
+///
+/// Every known capability, except the two that read or operate across
+/// tenants. Those are included only when the caller already holds them, so a
+/// workspace admin cannot mint an instance operator.
+fn mint_vocabulary(auth: &AuthContext) -> Vec<String> {
+    if auth.bypass {
+        return capability::all();
+    }
+    capability::all()
+        .into_iter()
+        .filter(|cap| {
+            (*cap != OPERATOR_GLOBAL && *cap != AUDIT_READ_GLOBAL) || auth.has_capability(cap)
+        })
+        .collect()
+}
 
 fn holder_grant(auth: &AuthContext) -> Vec<String> {
     if auth.bypass {
@@ -46,13 +63,15 @@ pub async fn mint_api_token(
 
     state.store.get_member_in(workspace_id, member_id).await?;
 
-    // token:admin may grant any known set or list (held = vocabulary).
-    // Holder-side attenuation is POST /tokens/attenuate — no token:admin.
+    // token:admin grants from `mint_vocabulary`. Cross-tenant capabilities
+    // are included only when the caller already holds them.
+    // Holder-side attenuation is POST /tokens/attenuate and does not need token:admin.
+    let vocabulary = mint_vocabulary(&auth);
     let capabilities = if body.capability_set.is_none() && body.capabilities.is_empty() {
         capability::default_minted()
     } else {
         maidan_auth::progressive_grant(
-            &capability::all(),
+            &vocabulary,
             body.capability_set.as_deref(),
             &body.capabilities,
         )

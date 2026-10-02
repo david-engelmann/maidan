@@ -235,6 +235,25 @@ healthy, authenticates `/me` with the one-time token, and confirms anonymous
 access is rejected. A source checkout or locally built image cannot satisfy
 that release gate.
 
+### A second workspace
+
+`maidan init` stops after the first workspace. A later tenant is
+`POST /operator/workspaces` with the init token (it holds `operator:global`):
+
+```sh
+curl -sS -X POST "$MAIDAN_URL/operator/workspaces" \
+  -H "Authorization: Bearer $MAIDAN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"other-team","admin_handle":"ada"}'
+```
+
+The response is the workspace, its admin member, and that admin bearer token,
+shown once. The token can administer that workspace, including minting narrower
+tokens. It does not hold `operator:global` or `audit:read-global`, and a later
+mint cannot add those unless the caller already holds them. No
+`MAIDAN_BOOTSTRAP`, and the route exists on the production image, which is
+built without the bootstrap routes.
+
 ### HTTP bootstrap (development only)
 
 `maidan init` above is how a deployment gets its first token, on a private network

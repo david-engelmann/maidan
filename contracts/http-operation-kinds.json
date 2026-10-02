@@ -131,6 +131,7 @@
   {"method":"POST","path":"/operator/reindex-embeddings","kind":"changes"},
   {"method":"GET","path":"/operator/reindex-embeddings/{job_id}","kind":"reads"},
   {"method":"GET","path":"/operator/status","kind":"reads"},
+  {"method":"POST","path":"/operator/workspaces","kind":"changes"},
   {"method":"GET","path":"/references","kind":"reads"},
   {"method":"POST","path":"/references","kind":"changes"},
   {"method":"GET","path":"/scim/v2/Groups","kind":"reads"},

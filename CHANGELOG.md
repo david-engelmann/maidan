@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### An operator can open a second workspace
+
+- **Added:** `POST /operator/workspaces` (`operator:global`) creates another workspace, its first human admin, and a one-time admin token. It does not require `MAIDAN_BOOTSTRAP`, and it is present on a build that strips the bootstrap routes. The admin token holds every capability except `operator:global` and `audit:read-global`. A `token:admin` holder can mint those two only when they already hold them. `maidan init` still refuses a database that already has a workspace. Unauthenticated `POST /workspaces` is still one-shot bootstrap.
+
 ### The board page is ES modules
 
 - **Changed:** the style and script leave `index.html` as modules under `crates/maidan-server/static/ui`, served at `/ui/static/{name}` from the binary. `cargo build` does not run Node. JSDoc is checked with `tsc --noEmit --checkJs`, which is not wired into CI yet. DM and group-DM message loads share one function. Calls go through `api()`. `showError` and `setStatus` stay separate. `scripts/gen-ui-client.mjs` regenerates the typed path catalog from a saved `/openapi.json`. This change does not add a CSP.
