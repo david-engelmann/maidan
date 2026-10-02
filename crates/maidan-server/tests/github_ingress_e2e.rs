@@ -183,8 +183,9 @@ async fn github_issue_comment_in_a_linked_issue_posts_a_maidan_message() {
     server.abort();
 }
 
-/// A merged PR linked to a thread emits a `ThreadLanded` fact; a
-/// closed-but-unmerged PR, and an unlinked PR, emit nothing.
+/// A merged PR linked to a thread emits a `ThreadLanded` fact. A
+/// closed-but-unmerged PR linked to a thread posts one message and does not
+/// land. An unlinked PR emits nothing.
 #[tokio::test]
 async fn github_pull_request_merged_emits_thread_landed() {
     let (addr, client, store, server) = spawn(true).await;
@@ -247,13 +248,25 @@ async fn github_pull_request_merged_emits_thread_landed() {
         }
     };
 
-    // A closed-but-unmerged PR is not a land.
+    // A closed-but-unmerged PR is not a land. The linked thread hears it.
     let unmerged = r#"{"action":"closed","repository":{"full_name":"o/r"},"pull_request":{"number":7,"merged":false,"title":"wip"}}"#;
     assert_eq!(post("pull_request", unmerged.into()).await, StatusCode::OK);
+    let messages = store.list_messages(thread.id, 20).await.unwrap();
+    assert_eq!(messages.len(), 1, "one signal for the unmerged close");
+    assert_eq!(messages[0].body, "GitHub closed o/r#7 without merging: wip");
+    assert_eq!(messages[0].author_id, bot.id);
+    assert_eq!(messages[0].metadata["github"]["closed_unmerged"], true);
+    assert_eq!(messages[0].metadata["github"]["repo"], "o/r");
+    assert_eq!(messages[0].metadata["github"]["issue"], 7);
 
     // An unrelated (unlinked) merged PR is ignored.
     let unlinked = r#"{"action":"closed","repository":{"full_name":"o/r"},"pull_request":{"number":999,"merged":true,"title":"other"}}"#;
     assert_eq!(post("pull_request", unlinked.into()).await, StatusCode::OK);
+    assert_eq!(
+        store.list_messages(thread.id, 20).await.unwrap().len(),
+        1,
+        "an unlinked PR does not write on this thread"
+    );
 
     let landed = |s: &maidan_types::StoredEvent| s.kind == maidan_types::EventKind::ThreadLanded;
     let before = store.list_events_after(ws.id, 0, 100).await.unwrap();
@@ -278,6 +291,11 @@ async fn github_pull_request_merged_emits_thread_landed() {
     assert_eq!(payload["merged_by"], "octocat");
     assert_eq!(payload["merge_commit_sha"], "abc123");
     assert_eq!(payload["title"], "add the widget");
+    assert_eq!(
+        store.list_messages(thread.id, 20).await.unwrap().len(),
+        1,
+        "a merge lands a fact and does not add another close message"
+    );
 
     server.abort();
 }

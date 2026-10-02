@@ -60,7 +60,8 @@ impl GithubConfig {
 /// `404` when the projector isn't configured, `401` on a bad
 /// `X-Hub-Signature-256`, `200` for the `ping` setup event, an `issue_comment`
 /// (projected to the linked Maidan thread), a merged `pull_request` (a
-/// `ThreadLanded` fact), and (with no side effect) any other event.
+/// `ThreadLanded` fact), a closed-but-unmerged `pull_request` linked to a
+/// thread (one message, not a land), and (with no side effect) any other event.
 pub async fn github_events(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -90,6 +91,7 @@ pub async fn github_events(
             StatusCode::OK.into_response()
         }
         // A merged PR on a linked issue/PR → a `ThreadLanded` fact.
+        // A closed, unmerged PR on a linked issue/PR → one thread message.
         "pull_request" => {
             route_github_pull_request(&state, &payload).await;
             StatusCode::OK.into_response()
@@ -102,21 +104,19 @@ pub async fn github_events(
 /// Maidan thread is **merged** (`action == "closed"` with `pull_request.merged
 /// == true`), emit a `ThreadLanded` fact on that thread. This "steals the
 /// landed fact" — it records that the work landed; it does **not** transition
-/// the thread's FSM (not an automation product). Best-effort; the ingress
-/// always ACKs. A closed-but-unmerged PR, or a PR not linked to a thread, is
-/// ignored.
+/// the thread's FSM (not an automation product). A linked PR that closes
+/// without merging is not a land either: the thread gets one message, tagged
+/// `metadata.github` so egress does not echo it back to GitHub. Best-effort;
+/// the ingress always ACKs. A PR not linked to a thread is ignored.
 async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value) {
     if payload.get("action").and_then(|v| v.as_str()) != Some("closed") {
-        return; // only a close can be a merge
+        return; // only a close can be a merge or an unmerged close
     }
     let pr = payload.get("pull_request");
     let merged = pr
         .and_then(|p| p.get("merged"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    if !merged {
-        return; // closed without merging is not a land
-    }
     let (Some(repo), Some(pr_number)) = (
         payload
             .get("repository")
@@ -136,6 +136,10 @@ async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value
             return;
         }
     };
+    if !merged {
+        signal_pull_request_closed_unmerged(state, &link, repo, pr_number, pr).await;
+        return;
+    }
     let merged_by = pr
         .and_then(|p| p.get("merged_by"))
         .and_then(|u| u.get("login"))
@@ -164,6 +168,45 @@ async fn route_github_pull_request(state: &AppState, payload: &serde_json::Value
         },
     )
     .await;
+}
+
+/// One message on the linked thread when the PR closes without merging.
+/// Not a `ThreadLanded` fact, and not an FSM transition. `metadata.github`
+/// keeps egress from posting the sentence back onto the PR.
+async fn signal_pull_request_closed_unmerged(
+    state: &AppState,
+    link: &maidan_types::GithubIssueLink,
+    repo: &str,
+    pr_number: i64,
+    pr: Option<&serde_json::Value>,
+) {
+    let title = pr
+        .and_then(|p| p.get("title"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+    let body = match title {
+        Some(title) => format!("GitHub closed {repo}#{pr_number} without merging: {title}"),
+        None => format!("GitHub closed {repo}#{pr_number} without merging"),
+    };
+    let new = maidan_types::NewMessage {
+        thread_id: link.thread_id,
+        author_id: link.member_id,
+        body,
+        metadata: serde_json::json!({
+            "github": {
+                "repo": repo,
+                "issue": pr_number,
+                "closed_unmerged": true,
+            }
+        }),
+        content: None,
+    };
+    match state.store.post_message_with_event(new, None).await {
+        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+        Err(err) => {
+            tracing::warn!(error = %err, "github pull_request: unmerged close signal failed")
+        }
+    }
 }
 
 /// Route an inbound GitHub `issue_comment` event: a new comment on a linked
