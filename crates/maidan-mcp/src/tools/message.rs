@@ -65,11 +65,9 @@ pub(super) async fn post_dm_message(
         ));
     }
     let content = a.content.clone();
-    let body = if a.body.is_empty() {
-        content.as_deref().map(derive_body).unwrap_or_default()
-    } else {
-        a.body.clone()
-    };
+    // Same rule as a channel post: an empty body is derived from typed
+    // content, and omitting both is not a message.
+    let body = body_from_content(&a.body, content.as_deref())?;
     let msg = store
         .post_message(NewMessage {
             thread_id: dm.thread_id,
@@ -408,4 +406,36 @@ pub(super) async fn record_mention(
         .await?;
     server.publish_stored(&stored).await;
     Ok(content_json(&json!({"ok": true})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_dm_post_derives_its_body_from_content_and_refuses_neither() {
+        let with_content: PostDmMessageArgs = serde_json::from_value(json!({
+            "dm_conversation_id": "00000000-0000-0000-0000-000000000001",
+            "content": [{"type": "text", "text": "hello"}]
+        }))
+        .unwrap();
+        assert_eq!(
+            body_from_content(&with_content.body, with_content.content.as_deref()).unwrap(),
+            "hello"
+        );
+
+        let neither: PostDmMessageArgs = serde_json::from_value(json!({
+            "dm_conversation_id": "00000000-0000-0000-0000-000000000001"
+        }))
+        .unwrap();
+        match body_from_content(&neither.body, neither.content.as_deref()) {
+            Err(McpError::InvalidParams(msg)) => {
+                assert!(
+                    msg.contains("body is required unless content is present"),
+                    "{msg}"
+                );
+            }
+            other => panic!("expected invalid params, got {other:?}"),
+        }
+    }
 }

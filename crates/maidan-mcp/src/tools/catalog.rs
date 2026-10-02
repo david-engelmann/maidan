@@ -155,9 +155,10 @@ pub fn catalog() -> Vec<Value> {
                     "dm_conversation_id": {"type": "string", "format": "uuid"},
                     "body": {"type": "string", "description": "plain text; omit when sending typed content (body is derived from it)"},
                     "metadata": {"type": "object"},
-                    "content": {"type": "array", "items": {"type": "object"}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
+                    "content": {"type": "array", "items": {"type": "object", "properties": {"type": {"type": "string", "enum": ["text", "code", "tool_use", "tool_result", "resource_link"]}}, "required": ["type"]}, "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}"}
                 },
-                "required": ["dm_conversation_id", "body"]
+                "required": ["dm_conversation_id"],
+                "anyOf": [{"required": ["body"]}, {"required": ["content"]}]
             }
         }),
         json!({
@@ -2508,7 +2509,12 @@ mod portability_tests {
         };
         let post = tool("post_message");
         let edit = tool("edit_message");
-        for (name, schema) in [("post_message", post), ("edit_message", edit)] {
+        let dm = tool("post_dm_message");
+        for (name, schema) in [
+            ("post_message", post),
+            ("edit_message", edit),
+            ("post_dm_message", dm),
+        ] {
             let required = schema["inputSchema"]["required"].as_array().unwrap();
             assert!(
                 !required.iter().any(|value| value == "body"),
@@ -2544,6 +2550,10 @@ mod portability_tests {
         );
         assert_eq!(
             edit["inputSchema"]["properties"]["content"]["items"]["properties"]["type"]["enum"],
+            block_enum
+        );
+        assert_eq!(
+            dm["inputSchema"]["properties"]["content"]["items"]["properties"]["type"]["enum"],
             block_enum
         );
         // A vote kind is not an enum: the server stores whatever string it is
