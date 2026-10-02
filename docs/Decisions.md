@@ -1956,3 +1956,28 @@ cache by those hints, so they also decide how often a client re-fetches
 Maidan's 93 KB tool list.
 
 **Status.** Lane CTX2.
+
+### A shared schema expands, then contracts (2026-10-02)
+
+**Decision.** When more than one server version runs against one database, a
+schema change is two releases. The first only expands: a new table, a
+nullable or defaulted column, an index, or a constraint the previous binary
+still satisfies. The second, a later release, contracts: it drops, renames,
+retypes, or rewrites, and only after the previous binary is gone. A
+compatibility shim does not stay past the contract. A migration that cannot
+expand is a cutover, and the previous binary stops before it runs. The rule
+is [Migrations](Migrations.md). It does not add an HTTP or MCP compatibility
+promise (F-54).
+
+**Alternative.** Keep shipping drops and rewrites in the migration that the
+new binary applies on boot, and rely on surge (`maxUnavailable: 0`) to hide
+the overlap. Surge is the overlap: the new binary migrates while the previous
+one is still serving.
+
+**Why this:** the runner applies migrations on boot, one transaction per
+version, under a Postgres advisory lock. Readiness keeps traffic off a
+replica that is still migrating. It does not keep the previous binary off the
+new schema.
+
+**Status.** Written. The runner is unchanged.
+

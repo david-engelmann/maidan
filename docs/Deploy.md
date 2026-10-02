@@ -175,3 +175,8 @@ all pending migrations on boot via `run_postgres_migrations` (or
 `maidan-postgres` image is a thin pgvector layer that does **not**
 bundle schema into `docker-entrypoint-initdb.d` — fresh volumes and
 upgrades go through the same code path.
+
+A rollout that keeps the previous binary serving while the new one migrates
+follows [Migrations](Migrations.md). The migration that runs in that window
+only expands. A drop or a rewrite waits for a later contract. A migration
+that cannot expand is a cutover: stop the previous binary first.

@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A schema change while two versions run expands, then contracts
+
+- **Docs:** `docs/Migrations.md` is the rule for a schema change when more than one server version shares one database. The migration that runs during that overlap only adds. A drop, rename, retype, or rewrite is a later release, after the previous binary is gone. The page is checked against the runner: boot apply, the advisory lock, one transaction per version, and no down scripts.
+
 ### Channel and thread creation stay on REST
 
 - **Docs:** creating a channel, and creating a single task, stay on REST by design. `llms.txt`, the MCP catalog (`claim_next_thread` and the generated reference), and the waiter loop in `docs/Integration.md` say so. `instantiate_recipe` and `create_task_schedule` remain the only MCP tools that make threads.

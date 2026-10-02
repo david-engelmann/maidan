@@ -64,6 +64,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    are per workspace by default (#1153). In flight: a legal hold that keeps a
    workspace's deliveries, and read notifications that age out (#1165). Next:
    partitioning the append-only tables.
+   A schema change while two versions share one database expands, then contracts in a later release ([Migrations](Migrations.md)).
 3. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus
    tests are mutation-checked (#1125), the release workflow attests image SBOMs
    from the next tag on (#1119), and
