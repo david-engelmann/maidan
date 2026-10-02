@@ -34,7 +34,7 @@ import { memberDirectory } from "./state.js";
         const kind = memberKind(id) || "agent";
         el.className = `avatar ${kind}${large ? " lg" : ""}`;
         el.textContent = initials(memberName(id));
-        el.style.setProperty("--hue", String(hueFor(id)));
+        el.classList.add("hue-" + (hueFor(id) % 12));
         el.setAttribute("aria-hidden", "true");
         return el;
       }

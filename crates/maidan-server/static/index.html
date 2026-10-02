@@ -22,8 +22,8 @@
       <button id="mint" type="button" hidden>Mint admin</button>
       <button id="logout" type="button" hidden>Sign out</button>
     </header>
-    <p id="session-status" class="muted" style="margin: 0.25rem 1rem">Checking session…</p>
-    <div id="mint-banner" role="status" style="margin: 0 1rem">
+    <p id="session-status" class="muted">Checking session…</p>
+    <div id="mint-banner" role="status">
       <strong id="mint-title">Admin token (once)</strong>
       <code id="mint-secret"></code>
       <button id="copy-secret" type="button">Copy</button>
@@ -171,18 +171,18 @@
             <button id="post-message" type="button" class="primary">Post</button>
             <button id="reload-messages" type="button" class="ghost">Reload messages</button>
           </div>
-          <details style="margin-top: 0.75rem">
+          <details>
             <summary>Edit message</summary>
             <label>Message ID <input id="edit-message-id" /></label>
             <label>New body <textarea id="edit-message-body" class="compose"></textarea></label>
             <button id="edit-message" type="button">Save edit</button>
           </details>
-          <details style="margin-top: 0.5rem">
+          <details>
             <summary>Edit history</summary>
             <button id="load-edit-history" type="button">Load history</button>
             <div id="edit-history-list" class="muted">Select a message</div>
           </details>
-          <details style="margin-top: 0.5rem">
+          <details>
             <summary>Upload artifact</summary>
             <label>Kind
               <select id="artifact-kind">
@@ -227,7 +227,7 @@
           <button id="load-audit" type="button">Load audit</button>
           <div id="audit-list"></div>
         </details>
-        <details class="admin-danger" style="margin-top: 0.75rem">
+        <details class="admin-danger">
           <summary>Purge workspace messages</summary>
           <p class="muted">Tombstones/purges messages and revokes API tokens. Type the workspace ID to confirm.</p>
           <label>Confirm workspace ID
@@ -236,7 +236,7 @@
           <label><input id="purge-understand" type="checkbox" /> I understand this is destructive</label>
           <button id="purge-workspace" type="button">Purge workspace</button>
         </details>
-        <details style="margin-top: 0.75rem">
+        <details>
           <summary>Federation peers</summary>
           <button id="refresh-peers" type="button">Refresh peers</button>
           <div id="peer-list"></div>
@@ -341,7 +341,7 @@
         <div>
           <label
             >SLA (s)
-            <input id="waiting-sla" type="number" value="86400" style="width: 8rem"
+            <input id="waiting-sla" type="number" value="86400"
           /></label>
           <button id="waiting-refresh" type="button">Load</button>
           <span id="waiting-summary" class="muted"></span>
@@ -493,12 +493,12 @@
           </label>
           <button id="dm-open" type="button">Open DM</button>
         </details>
-        <details open style="margin-top: 0.5rem">
+        <details open>
           <summary>My DMs</summary>
           <button id="dm-refresh" type="button">Refresh</button>
           <ul id="dm-list" class="muted"></ul>
         </details>
-        <details open style="margin-top: 0.5rem">
+        <details open>
           <summary>Conversation</summary>
           <div id="dm-selected" class="muted">Select a DM</div>
           <div id="dm-messages"></div>
@@ -515,12 +515,12 @@
           <label>Title (optional) <input id="gdm-title" placeholder="optional" /></label>
           <button id="gdm-open" type="button">Open group DM</button>
         </details>
-        <details open style="margin-top: 0.5rem">
+        <details open>
           <summary>My group DMs</summary>
           <button id="gdm-refresh" type="button">Refresh</button>
           <ul id="gdm-list" class="muted"></ul>
         </details>
-        <details open style="margin-top: 0.5rem">
+        <details open>
           <summary>Conversation</summary>
           <div id="gdm-selected" class="muted">Select a group DM</div>
           <div id="gdm-messages"></div>
@@ -552,7 +552,7 @@
           <button id="op-deliv-refresh" type="button">Refresh</button>
           <div id="op-deliv-list" class="muted"></div>
         </details>
-        <details style="margin-top: 0.5rem">
+        <details>
           <summary>Global audit (cross-workspace)</summary>
           <p class="muted">
             Requires a bearer token with <code>audit:read-global</code> (set the
@@ -562,7 +562,7 @@
           <button id="op-audit-load" type="button">Load global audit</button>
           <div id="op-audit-list" class="muted"></div>
         </details>
-        <details style="margin-top: 0.5rem">
+        <details>
           <summary>Reindex embeddings</summary>
           <p class="muted">
             "This workspace" reindexes the current workspace (works on your
@@ -614,7 +614,7 @@
           <button id="slash-register" type="button">Register</button>
           <div id="slash-secret" class="muted"></div>
         </details>
-        <details open style="margin-top: 0.5rem">
+        <details open>
           <summary>Registered commands</summary>
           <button id="slash-refresh" type="button">Refresh</button>
           <div id="slash-list" class="muted"></div>
@@ -641,10 +641,10 @@
         <button id="revoke-token" type="button">Revoke token</button>
         <button id="rotate-token" type="button" title="A new secret for the same authority; the old one stops working">Rotate token</button>
         <button id="list-member-tokens" type="button">List tokens</button>
-        <div id="token-list" class="muted" style="margin-top: 0.5rem"></div>
-        <h3 style="margin-top: 1rem; font-size: 0.95rem">Installed apps (read-only)</h3>
+        <div id="token-list" class="muted"></div>
+        <h3>Installed apps (read-only)</h3>
         <button id="list-app-installations" type="button">Refresh apps</button>
-        <div id="app-install-list" class="muted" style="margin-top: 0.5rem"></div>
+        <div id="app-install-list" class="muted"></div>
       </section>
       <p id="status"></p>
       <pre id="out"></pre>

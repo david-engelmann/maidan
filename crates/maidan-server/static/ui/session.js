@@ -142,7 +142,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         document.getElementById("mint-title").textContent = title;
         document.getElementById("mint-secret").textContent = secret;
         const banner = document.getElementById("mint-banner");
-        banner.style.display = "block";
+        banner.classList.add("on");
         banner.scrollIntoView({ block: "nearest" });
         document.getElementById("copy-secret").focus();
       }
