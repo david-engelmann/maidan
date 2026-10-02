@@ -1142,6 +1142,117 @@ fn ui_js_shows_a_refused_close_and_leads_with_the_latest_review() {
     );
 }
 
+/// The live control is Connect WS in the Live toolbar, not an Events tab.
+#[test]
+fn ui_js_names_the_live_connect_control() {
+    assert!(
+        !HTML.contains("Events tab") && !script(HTML).contains("Events tab"),
+        "nothing still tells the reader to connect from an Events tab"
+    );
+    assert!(
+        !HTML.contains("Events (HTTP)</strong>"),
+        "the presence copy no longer points at the Events (HTTP) tab"
+    );
+    assert!(
+        HTML.contains(
+            "title=\"This thread updates live from the WebSocket. Press Connect WS in the Live toolbar.\""
+        ),
+        "the live mark names Connect WS"
+    );
+    assert!(
+        HTML.contains("Press <strong>Connect WS</strong> in the Live"),
+        "the roster names Connect WS in the Live toolbar"
+    );
+    let presence = function_body(script(HTML), "setPresence");
+    assert!(
+        presence.contains("Press Connect WS in the Live toolbar first"),
+        "setting presence names Connect WS"
+    );
+    assert!(
+        HTML.contains("id=\"ws-connect\""),
+        "the named control is the connect button"
+    );
+}
+
+/// The DM header names the other person. The list already does; the selection does too.
+#[test]
+fn ui_js_selects_a_dm_by_member_name() {
+    let body = function_body(script(HTML), "selectDm");
+    assert!(
+        body.contains("textContent = `with ${memberName(dmOther(c))}`"),
+        "the selection header uses the member name"
+    );
+    assert!(
+        !body.contains("textContent = `with ${dmOther(c)}`"),
+        "the selection header is not the raw member id"
+    );
+}
+
+/// Item 2a already says the browser exchanges a token for a session and does
+/// not keep it. What is left is the plaintext localStorage residual: the
+/// workspace id and the live resume token.
+#[test]
+fn ui_js_warns_that_local_storage_is_plaintext() {
+    let first_run = HTML
+        .split("id=\"first-run\"")
+        .nth(1)
+        .and_then(|rest| rest.split("</section>").next())
+        .expect("the first-run card");
+    assert!(
+        first_run.contains("exchanges it for a session and does not keep the token"),
+        "the retention sentence stays"
+    );
+    assert!(
+        first_run.contains("id=\"storage-warning\"")
+            && first_run.contains("localStorage as plaintext"),
+        "the login card states the plaintext localStorage residual"
+    );
+    assert!(
+        !first_run.contains("keeps the token until you sign out"),
+        "the token field no longer says the browser keeps the token"
+    );
+    let tokens = HTML
+        .split("id=\"panel-tokens\"")
+        .nth(1)
+        .and_then(|rest| rest.split("</section>").next())
+        .expect("the Tokens tab");
+    assert!(
+        tokens.contains("id=\"token-storage-warning\"") && tokens.contains("as plaintext"),
+        "the Tokens tab states the same residual"
+    );
+}
+
+/// A refused close still lands on the card, from one channel events read.
+/// Not one message-history fetch per in_review thread. The strip stays hidden.
+#[test]
+fn ui_js_hydrates_refusals_from_one_notices_read() {
+    let body = function_body(script(HTML), "hydrateRefusals");
+    assert!(
+        !body.contains("/messages"),
+        "hydration does not fetch thread history"
+    );
+    assert!(
+        body.contains("apiReadPath(`/workspaces/${wid()}/events?${q}`)")
+            && body.contains("types: \"message_posted\""),
+        "hydration is one message_posted events read for the channel"
+    );
+    assert!(
+        body.contains("fetchPendingGatesByThread")
+            || script(HTML).contains("const gates = await fetchPendingGatesByThread()"),
+        "the board still has the one gates read"
+    );
+    assert!(
+        body.contains("meta.notice !== \"transition_refused\"")
+            && body.contains("rememberRefusal("),
+        "a transition_refused notice is still remembered"
+    );
+    let paint = function_body(script(HTML), "paintRefusal");
+    assert!(
+        paint.contains("banner.hidden = true"),
+        "the refusal strip stays hidden"
+    );
+}
+
 /// The first screen is the board. Live controls sit in a closed menu, a
 /// refused subscribe is a status line, an empty Needs you queue is one
 /// sentence, and a decision row has a single filled button.
