@@ -54,10 +54,28 @@ pub struct CreateThread {
     pub parent_thread_id: Option<uuid::Uuid>,
 }
 
+/// Actions a caller may name on `POST /threads/{id}`.
+/// `request_changes` is not one of them: sending work back is a review
+/// decision, not a transition action. The same three values are the MCP
+/// `transition_thread.action` enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TransitionAction {
+    /// `open` to `in_review`.
+    StartReview,
+    /// `in_review` to `closed`.
+    Close,
+    /// `closed` to `archived`.
+    Archive,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TransitionThread {
-    pub action: String,
+    /// `start_review`, `close`, or `archive`. An unknown action is a 400 at
+    /// the extractor. To send work back, submit a review with decision
+    /// `request_changes`.
+    pub action: TransitionAction,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
