@@ -2573,3 +2573,421 @@ try {
 }
 process.stdout.write(JSON.stringify(views));
 "#####;
+
+/// One sentence, one action, on an empty board. From docs/UI Design.md:
+/// `emptyChannelHelp()` replaces the lanes with `#board-onboard`. The
+/// primary action is **Connect an agent**. One sentence on how a task
+/// arrives. No `POST /channels/…` path. No "pick a channel." No "New
+/// thread in the sidebar." While `#first-run` is visible it is the only
+/// primary, so that Connect button is a ghost. `#create-thread` is
+/// `button.ghost`.
+///
+/// This runs the page's `emptyChannelHelp` and `renderBoard`, and reads
+/// the static `#board`. It fails if the empty board is not exactly one
+/// sentence and one action, if the lanes are still drawn, or if the
+/// action is filled while first-run is on screen.
+#[test]
+fn ui_js_empty_board_is_one_sentence_and_one_action() {
+    assert!(
+        HTML.contains("<button id=\"create-thread\" type=\"button\" class=\"ghost\""),
+        "#create-thread stays a ghost in #new-task"
+    );
+    let drawn = empty_boards_in_page();
+    assert!(
+        drawn.iter().any(|view| view.id == "static"),
+        "the static empty board was read"
+    );
+    assert!(
+        drawn
+            .iter()
+            .any(|view| view.id == "help" && !view.first_run_hidden),
+        "emptyChannelHelp ran while first-run was visible"
+    );
+    assert!(
+        drawn
+            .iter()
+            .any(|view| view.id == "help" && view.first_run_hidden),
+        "emptyChannelHelp ran for an empty channel"
+    );
+    assert!(
+        drawn
+            .iter()
+            .any(|view| view.id == "board" && view.first_run_hidden),
+        "renderBoard painted an empty channel"
+    );
+    for view in &drawn {
+        let prose = view
+            .blocks
+            .iter()
+            .filter(|block| block.tag == "p")
+            .map(|block| block.text.as_str())
+            .collect::<Vec<_>>();
+        let actions = view
+            .blocks
+            .iter()
+            .filter(|block| block.tag == "button")
+            .collect::<Vec<_>>();
+        let other = view
+            .blocks
+            .iter()
+            .filter(|block| block.tag != "p" && block.tag != "button")
+            .map(|block| format!("{} {:?}", block.tag, block.text))
+            .collect::<Vec<_>>();
+        assert!(
+            other.is_empty(),
+            "{}: the empty board has more than one sentence and one action ({})",
+            view.label(),
+            other.join(", ")
+        );
+        assert_eq!(
+            prose.len(),
+            1,
+            "{}: expected one sentence, found {}",
+            view.label(),
+            prose.len()
+        );
+        assert_eq!(
+            actions.len(),
+            1,
+            "{}: expected one action, found {}",
+            view.label(),
+            actions.len()
+        );
+        assert!(
+            is_one_sentence(prose[0]),
+            "{}: {:?} is not one sentence",
+            view.label(),
+            prose[0]
+        );
+        assert!(
+            prose[0].to_lowercase().contains("task"),
+            "{}: the sentence should say how a task arrives ({:?})",
+            view.label(),
+            prose[0]
+        );
+        let action = &actions[0].text;
+        assert_eq!(
+            action.as_str(),
+            "Connect an agent",
+            "{}: the action",
+            view.label()
+        );
+        let class = actions[0].class_name.split_whitespace().collect::<Vec<_>>();
+        if view.first_run_hidden {
+            assert!(
+                class.contains(&"primary") && !class.contains(&"ghost"),
+                "{}: an empty channel's Connect an agent is the filled action, got {:?}",
+                view.label(),
+                actions[0].class_name
+            );
+        } else {
+            assert!(
+                class.contains(&"ghost") && !class.contains(&"primary"),
+                "{}: while first-run is visible Connect an agent is a ghost, got {:?}",
+                view.label(),
+                actions[0].class_name
+            );
+        }
+        let visible = view
+            .blocks
+            .iter()
+            .map(|block| block.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        for banned in [
+            "pick a channel",
+            "New thread in the sidebar",
+            "POST /channels",
+        ] {
+            assert!(
+                !visible.contains(banned),
+                "{}: still says {banned}",
+                view.label()
+            );
+        }
+        assert_eq!(
+            view.lanes,
+            0,
+            "{}: an empty board draws no lanes",
+            view.label()
+        );
+        assert_eq!(
+            view.empty_lanes,
+            0,
+            "{}: an empty board draws no empty lane boxes",
+            view.label()
+        );
+    }
+}
+
+fn is_one_sentence(text: &str) -> bool {
+    let prose = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let marks = prose
+        .chars()
+        .filter(|c| matches!(*c, '.' | '!' | '?'))
+        .count();
+    marks == 1
+        && prose.len() > 1
+        && (prose.ends_with('.') || prose.ends_with('!') || prose.ends_with('?'))
+}
+
+struct EmptyBlock {
+    tag: String,
+    text: String,
+    class_name: String,
+}
+
+struct EmptyBoardView {
+    id: String,
+    first_run_hidden: bool,
+    blocks: Vec<EmptyBlock>,
+    lanes: usize,
+    empty_lanes: usize,
+}
+
+impl EmptyBoardView {
+    fn label(&self) -> String {
+        format!(
+            "{} (first-run {})",
+            self.id,
+            if self.first_run_hidden {
+                "hidden"
+            } else {
+                "visible"
+            }
+        )
+    }
+}
+
+fn empty_boards_in_page() -> Vec<EmptyBoardView> {
+    let payload = serde_json::json!({ "html": HTML });
+    let mut child = std::process::Command::new("node")
+        .arg("-e")
+        .arg(EMPTY_BOARD_HARNESS)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("node is required to run the empty board: {err}"));
+    serde_json::to_writer(child.stdin.take().expect("stdin"), &payload).expect("write html");
+    let out = child.wait_with_output().expect("node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "empty board harness failed\n{stderr}\n{stdout}"
+    );
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|err| panic!("empty board harness returned {err}: {stdout}"));
+    value
+        .as_array()
+        .expect("board list")
+        .iter()
+        .map(|scene| EmptyBoardView {
+            id: scene["id"].as_str().expect("id").to_string(),
+            first_run_hidden: scene["first_run_hidden"]
+                .as_bool()
+                .expect("first_run_hidden"),
+            lanes: scene["lanes"].as_u64().expect("lanes") as usize,
+            empty_lanes: scene["empty_lanes"].as_u64().expect("empty_lanes") as usize,
+            blocks: scene["blocks"]
+                .as_array()
+                .expect("blocks")
+                .iter()
+                .map(|block| EmptyBlock {
+                    tag: block["tag"].as_str().expect("tag").to_string(),
+                    text: block["text"].as_str().expect("text").to_string(),
+                    class_name: block["class_name"]
+                        .as_str()
+                        .expect("class_name")
+                        .to_string(),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+const EMPTY_BOARD_HARNESS: &str = r#####"
+const fs = require("fs");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const html = input.html;
+const start = html.indexOf("<script>") + "<script>".length;
+const js = html.slice(start, html.indexOf("</script>", start));
+function functionSource(name) {
+  const mark = "\n      function " + name + "(";
+  const i = js.indexOf(mark);
+  if (i < 0) throw new Error("missing " + name);
+  const at = i + 1;
+  const open = js.indexOf("{", at);
+  let depth = 0;
+  for (let j = open; j < js.length; j++) {
+    const c = js[j];
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return js.slice(at, j + 1);
+    }
+  }
+  throw new Error("unclosed " + name);
+}
+function makeEl(tag) {
+  const el = {
+    tag: tag,
+    id: "",
+    hidden: false,
+    children: [],
+    className: "",
+    textContent: "",
+    attrs: {},
+  };
+  el.appendChild = (child) => { el.children.push(child); return child; };
+  el.append = (...kids) => {
+    for (const kid of kids) {
+      if (typeof kid === "string") {
+        const text = makeEl("#text");
+        text.textContent = kid;
+        el.children.push(text);
+      } else {
+        el.children.push(kid);
+      }
+    }
+  };
+  el.replaceChildren = (...kids) => {
+    el.children = [];
+    if (kids.length) el.append(...kids);
+  };
+  el.setAttribute = (key, value) => {
+    el.attrs[key] = String(value);
+    if (key === "class") el.className = String(value);
+    if (key === "hidden") el.hidden = true;
+  };
+  el.removeAttribute = (key) => { delete el.attrs[key]; };
+  return el;
+}
+function classHas(el, name) {
+  return (" " + String(el.className || "") + " ").indexOf(" " + name + " ") >= 0;
+}
+function ownText(el) {
+  const raw = !el.children || el.children.length === 0
+    ? String(el.textContent || "")
+    : el.children.filter((child) => child.tag === "#text").map((child) => child.textContent).join("");
+  return raw.replace(/\s+/g, " ").trim();
+}
+function describe(root) {
+  const blocks = [];
+  let lanes = 0;
+  let emptyLanes = 0;
+  function walk(el) {
+    if (!el || el.tag === "#text") return;
+    if (classHas(el, "board-col")) lanes++;
+    if (classHas(el, "board-empty")) emptyLanes++;
+    const text = ownText(el);
+    if (text) blocks.push({ tag: el.tag, text: text, class_name: el.className || "" });
+    for (const child of el.children || []) walk(child);
+  }
+  walk(root);
+  return { blocks: blocks, lanes: lanes, empty_lanes: emptyLanes };
+}
+function parseElementAt(src, i) {
+  if (src[i] !== "<" || src[i + 1] === "/") throw new Error("expected an open tag at " + i);
+  const gt = src.indexOf(">", i);
+  let open = src.slice(i + 1, gt).trim();
+  const selfClose = open.endsWith("/");
+  if (selfClose) open = open.slice(0, -1).trim();
+  const nameEnd = open.search(/\s/);
+  const tag = (nameEnd < 0 ? open : open.slice(0, nameEnd)).toLowerCase();
+  const attrSrc = nameEnd < 0 ? "" : open.slice(nameEnd);
+  const el = makeEl(tag);
+  const attrRe = /([^\s=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  let m;
+  while ((m = attrRe.exec(attrSrc))) {
+    const value = m[2] !== undefined ? m[2] : m[3] !== undefined ? m[3] : m[4] !== undefined ? m[4] : "";
+    el.setAttribute(m[1], value);
+    if (m[1] === "hidden") el.hidden = true;
+  }
+  i = gt + 1;
+  const voidTag = selfClose || ["br", "img", "input", "meta", "link", "hr"].indexOf(tag) >= 0;
+  if (!voidTag) {
+    while (i < src.length) {
+      if (src.startsWith("</", i)) {
+        const close = src.indexOf(">", i);
+        i = close + 1;
+        break;
+      }
+      if (src[i] === "<") {
+        const parsed = parseElementAt(src, i);
+        el.children.push(parsed.el);
+        i = parsed.i;
+      } else {
+        const next = src.indexOf("<", i);
+        const text = src.slice(i, next < 0 ? src.length : next);
+        i = next < 0 ? src.length : next;
+        if (text.length) {
+          const node = makeEl("#text");
+          node.textContent = text;
+          el.children.push(node);
+        }
+      }
+    }
+  }
+  return { el: el, i: i };
+}
+function firstRunStartsHidden(src) {
+  const m = src.match(/<section\b[^>]*\bid="first-run"[^>]*>/);
+  if (!m) throw new Error("no first-run");
+  return /(?:\s|^)hidden(?:\s|=|>)/.test(m[0]);
+}
+const byId = {};
+for (const id of ["board", "board-summary", "board-title", "first-run"]) {
+  byId[id] = makeEl("div");
+  byId[id].id = id;
+}
+byId["first-run"].hidden = false;
+const document = {
+  getElementById(id) {
+    if (!byId[id]) throw new Error("unexpected element " + id);
+    return byId[id];
+  },
+  createElement(tag) { return makeEl(tag); },
+  querySelector() { return null; },
+  querySelectorAll() { return []; },
+};
+let threadsById = new Map();
+let lastGates = null;
+let selectedChannelName = "Desk";
+let selectedThreadId = null;
+let boardSeen = new Map();
+let selectedChannelId = "ch-1";
+function boardRects() { return new Map(); }
+function glideCards() {}
+function renderTeam() {}
+function renderThreadHeader() {}
+function openConnect() {}
+let views;
+try {
+  eval(functionSource("emptyChannelHelp") + "\n" + functionSource("renderBoard"));
+  const out = [];
+  const marker = '<div id="board">';
+  const at = html.indexOf(marker);
+  if (at < 0) throw new Error("no static board");
+  const staticBoard = parseElementAt(html, at).el;
+  out.push(Object.assign({ id: "static", first_run_hidden: firstRunStartsHidden(html) }, describe(staticBoard)));
+  for (const hidden of [false, true]) {
+    byId["first-run"].hidden = hidden;
+    const help = emptyChannelHelp();
+    out.push(Object.assign({ id: "help", first_run_hidden: hidden }, describe(help)));
+  }
+  for (const hidden of [false, true]) {
+    byId["first-run"].hidden = hidden;
+    byId.board.replaceChildren();
+    boardSeen = new Map();
+    renderBoard([], {});
+    out.push(Object.assign({ id: "board", first_run_hidden: hidden }, describe(byId.board)));
+  }
+  views = out;
+} catch (err) {
+  console.error(err && err.stack || err);
+  process.exit(1);
+}
+process.stdout.write(JSON.stringify(views));
+"#####;
