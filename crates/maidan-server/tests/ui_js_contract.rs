@@ -4458,3 +4458,19 @@ fn ui_js_names_a_workspace_with_patch() {
     );
     assert!(!body.contains("POST"), "naming must not create a workspace");
 }
+
+/// A keyboard focus reveals the pin control. Hover-only hides it from
+/// anyone who is not using a pointer. The reaction control already uses
+/// `:focus-within`; the pin toggle follows it.
+#[test]
+fn ui_js_pin_toggle_shows_on_keyboard_focus() {
+    let css = page();
+    assert!(
+        css.contains("#message-list .msg:hover .pin-toggle, #message-list .msg:focus-within .pin-toggle, .pin-toggle.pinned { opacity: 1; }"),
+        "keyboard focus on a message reveals its pin toggle"
+    );
+    assert!(
+        !css.contains("#message-list .msg:hover .pin-toggle, .pin-toggle.pinned { opacity: 1; }"),
+        "the pin toggle is not hover-only"
+    );
+}
