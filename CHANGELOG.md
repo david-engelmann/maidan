@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A linked pull request that closes unmerged is said on the thread
+
+- **Added:** a GitHub `pull_request` `closed` delivery with `merged: false`, for a PR linked to a thread, posts one message on that thread (`GitHub closed {repo}#{n} without merging`) and does not emit `ThreadLanded`. The message carries `metadata.github`, so egress does not copy it back onto the PR. An unlinked PR is still ignored. A merge is still a `ThreadLanded` fact and still does not move the thread's state.
+
 ### Slack channel links are indexed by thread
 
 - **Added:** `idx_slack_links_thread` on `maidan_slack_channel_links (thread_id)`, migration 0137 on both backends. Egress resolves a link by the Maidan thread, and the table was indexed on `workspace_id` only.
