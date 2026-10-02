@@ -4474,3 +4474,85 @@ fn ui_js_pin_toggle_shows_on_keyboard_focus() {
         "the pin toggle is not hover-only"
     );
 }
+
+/// Inputs, selects, and textareas are 16px. The body is 14px, and `font:
+/// inherit` would hand that size to every control. iOS Safari zooms the page
+/// when a focused control is smaller than 16px. A later rule must not set a
+/// smaller size on one of them.
+#[test]
+fn ui_js_form_controls_are_16px() {
+    let css = UI_CSS;
+    // The button rule is `button, input, select, textarea {` on one line.
+    // Matching that substring would treat the inherit rule as the 16px rule.
+    let shared = css
+        .find("input, select, textarea {\n")
+        .expect("shared control rule");
+    let inherit = css
+        .find("button, input, select, textarea { font: inherit; color: inherit; }")
+        .expect("controls inherit the body font");
+    assert!(
+        shared > inherit,
+        "16px has to come after font: inherit, or the body size wins"
+    );
+    let block_end = css[shared..].find('}').expect("rule end") + shared;
+    let block = &css[shared..block_end];
+    assert!(
+        block.contains("font-size: 16px;"),
+        "the shared control rule sets 16px, not the body's 14px"
+    );
+    let mut small = Vec::new();
+    for raw in css.split('}') {
+        let Some((sel, body)) = raw.split_once('{') else {
+            continue;
+        };
+        if !selector_targets_form_control(sel) || !body.contains("font-size:") {
+            continue;
+        }
+        match declared_font_size_px(body) {
+            Some(px) if px >= 16.0 => {}
+            other => small.push(format!(
+                "{} ({})",
+                sel.split_whitespace().next().unwrap_or(sel.trim()),
+                other
+                    .map(|px| format!("{px}px"))
+                    .unwrap_or_else(|| "unparsed".into())
+            )),
+        }
+    }
+    assert!(
+        small.is_empty(),
+        "a form control is under 16px: {}",
+        small.join("; ")
+    );
+}
+
+fn selector_targets_form_control(selector: &str) -> bool {
+    selector.split(',').any(|part| {
+        let part = part.trim();
+        let last = part
+            .rsplit([' ', '>', '+', '~'])
+            .next()
+            .unwrap_or(part)
+            .trim();
+        if last == "#palette-input" {
+            return true;
+        }
+        let type_name = last.split(['.', '#', ':', '[']).next().unwrap_or(last);
+        matches!(type_name, "input" | "select" | "textarea")
+    })
+}
+
+/// `px` as written. `rem` against the browser default root of 16px, which is
+/// what iOS compares. The board sets the body to 14px and does not change the root.
+fn declared_font_size_px(body: &str) -> Option<f64> {
+    let rest = body.split("font-size:").nth(1)?.trim();
+    let value = rest.split([';', '\n']).next()?.trim();
+    if let Some(n) = value.strip_suffix("px") {
+        return n.trim().parse().ok();
+    }
+    if let Some(n) = value.strip_suffix("rem") {
+        let n: f64 = n.trim().parse().ok()?;
+        return Some(n * 16.0);
+    }
+    None
+}
