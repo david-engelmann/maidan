@@ -651,6 +651,8 @@
               <div id="conn-fields">
                 <label>API base <input id="base" /></label>
                 <label>Workspace <input id="workspace" /></label>
+                <label id="workspace-name-label" hidden>Name <input id="workspace-name" autocomplete="off" /></label>
+                <button id="workspace-name-save" type="button" class="ghost" hidden>Save name</button>
                 <label>Token <input id="token" type="password" autocomplete="off" title="Exchanged for a session. This browser does not keep the token" /></label>
               </div>
             </div>
@@ -4652,7 +4654,9 @@
           sessionMemberId = body.member_id;
           tokenSession = Boolean(body.token_id);
           el.hidden = false;
-          el.textContent = `Signed in · ${body.member_id}`;
+          const shown = typeof body.display_name === "string" ? body.display_name.trim() : "";
+          el.textContent = shown ? `Signed in · ${shown}` : `Signed in · ${body.member_id}`;
+          el.title = body.member_id;
           el.className = "ok";
           if (!wid()) document.getElementById("workspace").value = body.workspace_id;
           if (!document.getElementById("token-member").value) {
@@ -5895,6 +5899,40 @@
       });
       document.getElementById("live-toggle").onclick = () => toggleLiveFeed();
       document.getElementById("conn-edit").onclick = () => showConnection(true);
+      document.getElementById("workspace-name-save").onclick = () => saveWorkspaceName();
+
+      // Sets the workspace display name. The id in the workspace field stays.
+      async function saveWorkspaceName() {
+        const name = document.getElementById("workspace-name").value.trim();
+        if (!wid()) {
+          showError("Set a workspace id before naming it.");
+          return;
+        }
+        if (!name) {
+          showError("A workspace name cannot be empty.");
+          return;
+        }
+        let res;
+        try {
+          res = await fetch(apiWritePath(`/workspaces/${wid()}`), {
+            method: "PATCH",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ name }),
+          });
+        } catch (e) {
+          showError(unreachable(e));
+          return;
+        }
+        if (!res.ok) {
+          showError(await responseError(res, "Could not name the workspace"));
+          return;
+        }
+        const ws = await res.json();
+        const saved = ws.name || name;
+        document.getElementById("identity-ws").textContent = saved;
+        document.getElementById("workspace-name").value = saved;
+      }
 
       // Connection chrome. Until this browser holds a working credential (a
       // stored token or a signed-in session) the three inputs sit in the
@@ -5913,6 +5951,9 @@
         fields.hidden = connected && !editing;
         pill.hidden = !connected || editing;
         document.getElementById("logout").hidden = !connected;
+        const canName = connected;
+        document.getElementById("workspace-name-label").hidden = !canName;
+        document.getElementById("workspace-name-save").hidden = !canName;
       }
       async function renderIdentity(memberId) {
         const who = document.getElementById("identity-who");
@@ -5925,7 +5966,14 @@
               headers: headers(),
               credentials: "include",
             });
-            if (res.ok) wsLabel.textContent = (await res.json()).name || wsLabel.textContent;
+            if (res.ok) {
+              const ws = await res.json();
+              if (ws.name) {
+                wsLabel.textContent = ws.name;
+                const nameInput = document.getElementById("workspace-name");
+                if (document.activeElement !== nameInput) nameInput.value = ws.name;
+              }
+            }
           } catch (_e) {
             /* the short id stays */
           }

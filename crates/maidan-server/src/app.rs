@@ -80,6 +80,7 @@ pub fn router(state: AppState) -> Router {
         .route("/mcp/stream", get(mcp_stream::stream))
         .route("/agui/stream", get(agui_stream::stream))
         .route("/workspaces/{id}", get(routes::get_workspace))
+        .route("/workspaces/{id}", patch(routes::rename_workspace))
         .route("/workspaces/{id}/purge", post(routes::purge_workspace))
         .route("/workspaces/{id}", delete(routes::erase_workspace))
         .route("/workspaces/{id}/audit", get(routes::list_workspace_audit))
@@ -1034,6 +1035,7 @@ pub fn router(state: AppState) -> Router {
         ));
 
     let ui_api_write = Router::new()
+        .route("/ui/api/workspaces/{wid}", patch(routes::rename_workspace))
         .route(
             "/ui/api/workspaces/{wid}/channels",
             post(routes::create_channel),

@@ -21,6 +21,16 @@ pub struct CreateWorkspace {
     pub name: String,
 }
 
+/// Body for `PATCH /workspaces/:id`. Sets the display name. The workspace id
+/// stays. Trimmed; 1 to 200 characters.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RenameWorkspace {
+    /// Omitted or blank is a 400 once the caller has `workspace:write`.
+    /// Defaulted so a body of `{}` still reaches the capability check.
+    #[serde(default)]
+    pub name: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct EraseWorkspace {
     pub confirm_workspace_id: uuid::Uuid,
@@ -1519,4 +1529,7 @@ pub struct SessionResponse {
     /// The token a session made by `POST /auth/session/from-token` holds the
     /// authority of; `null` for an OIDC session.
     pub token_id: Option<ApiTokenId>,
+    /// Display name of the signed-in member, when one is set. `null` when the
+    /// member has none. The id stays in `member_id`.
+    pub display_name: Option<String>,
 }

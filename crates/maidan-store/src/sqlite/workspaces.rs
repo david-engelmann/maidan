@@ -101,6 +101,27 @@ pub async fn get(pool: &SqlitePool, id: WorkspaceId) -> Result<Workspace, StoreE
     Ok(row_to_workspace(&row))
 }
 
+pub async fn rename(
+    pool: &SqlitePool,
+    id: WorkspaceId,
+    name: &str,
+) -> Result<Workspace, StoreError> {
+    let now = Utc::now();
+    let row = sqlx::query(
+        "UPDATE maidan_workspaces
+         SET name = ?, updated_at = ?
+         WHERE id = ?
+         RETURNING id, name, created_at, updated_at, tombstoned_at",
+    )
+    .bind(name)
+    .bind(now)
+    .bind(id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    Ok(row_to_workspace(&row))
+}
+
 pub async fn get_mention_webhook_id(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
