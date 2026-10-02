@@ -100,8 +100,7 @@ echoes a secret back in a slash response puts it in `metadata.slash_response`
 first-attempt floods (#1122, documented); the 0124 backfill ordering has no
 test of its own (#1132); `post_message` marks `body` required although its
 description says to omit it with typed content (#1149); `edit_message` lacks
-the content-block `type` enum and REST `TransitionThread.action` lacks an
-OpenAPI enum (#1149); the workspace claim's `readable_by` should become
+the content-block `type` enum (#1149); the workspace claim's `readable_by` should become
 #1137's `thread_access::readable_thread`, now that both are on `main` (#1145); the MCP test
 `a_stateless_subscription_lives_while_any_replica_listens_then_lapses` (#1131)
 fails under load with its 300 ms lifetime, and `crypto_shredding` `blob_reap::sqlite_backend` can fail with `database is locked` in the coverage job (seen on #1155, whose change touches no store code); `remove_channel_member` and

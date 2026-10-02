@@ -269,13 +269,14 @@ pub async fn transition_thread(
     ApiJson(body): ApiJson<TransitionThread>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
-    let action = ThreadAction::parse(&body.action).ok_or_else(|| {
-        ApiError::BadRequest(format!(
-            "unknown action {:?}; expected start_review, close, or archive (to send \
-             work back, submit a review with decision request_changes)",
-            body.action
-        ))
-    })?;
+    // An unknown action never reaches here: `TransitionAction` fails
+    // deserialization and the extractor answers 400. `request_changes` is a
+    // review decision, not one of these three.
+    let action = match body.action {
+        TransitionAction::StartReview => ThreadAction::StartReview,
+        TransitionAction::Close => ThreadAction::Close,
+        TransitionAction::Archive => ThreadAction::Archive,
+    };
     let thread_id = ThreadId(id);
     // One fetch resolves scope + authorizes (was resolve + ws + access).
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;

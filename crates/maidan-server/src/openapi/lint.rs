@@ -278,6 +278,32 @@ fn collect(value: &Value, refs: &mut BTreeSet<String>, nullable: &mut usize) {
     }
 }
 
+/// REST `TransitionThread.action` is the three actions the route accepts.
+/// `cast_vote.kind` is a different field and stays an open string.
+#[test]
+fn transition_action_is_the_three_the_server_accepts() {
+    let doc = document();
+    let schema = &doc["components"]["schemas"]["TransitionThread"]["properties"]["action"];
+    let action = match schema.get("$ref").and_then(Value::as_str) {
+        Some(reference) => doc
+            .pointer(reference.trim_start_matches('#'))
+            .unwrap_or_else(|| panic!("{reference} resolves to nothing")),
+        None => schema,
+    };
+    let mut values: Vec<&str> = action["enum"]
+        .as_array()
+        .unwrap_or_else(|| panic!("action is not an enum: {action}"))
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .unwrap_or_else(|| panic!("non-string enum value"))
+        })
+        .collect();
+    values.sort_unstable();
+    assert_eq!(values, ["archive", "close", "start_review"]);
+}
+
 #[test]
 fn the_document_is_openapi_3_1_with_servers_and_no_unused_components() {
     let doc = document();

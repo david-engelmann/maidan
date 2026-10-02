@@ -1415,6 +1415,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   look only in `./target/debug` after `cargo build`, which writes
   somewhere else when `CARGO_TARGET_DIR` is set.
 
+### A thread transition names its action
+
+- **Fixed:** `POST /threads/{id}` documents `action` as `start_review`,
+  `close`, or `archive`. Those are the only values the route accepts.
+  An unknown action is a 400 from the body extractor. `request_changes`
+  stays a review decision, and `cast_vote.kind` stays an open string.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

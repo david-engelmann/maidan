@@ -191,7 +191,9 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
     let tid = thread.id.0;
     hand_in(tid).await;
 
-    // The transition route does not send work back; it says how.
+    // The transition route does not send work back. An unknown action is a
+    // 400 from the extractor, before the handler, the same way an unknown
+    // delivery mode is. `request_changes` is a review decision.
     let (s, refused) = call(
         &client,
         Method::POST,
@@ -201,7 +203,14 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
     )
     .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
-    assert!(refused.to_string().contains("submit a review"), "{refused}");
+    let detail = refused.to_string();
+    assert!(
+        detail.contains("unknown variant `request_changes`")
+            && detail.contains("`start_review`")
+            && detail.contains("`close`")
+            && detail.contains("`archive`"),
+        "{refused}"
+    );
 
     // The reviewer sends it back with a note.
     let (s, review) = call(

@@ -734,6 +734,7 @@ fn requires_credential(op: &Operation) -> bool {
         ToolCallResult,
         OrphanToolResult,
         TransitionThread,
+        TransitionAction,
         AssignThread,
         SetThreadOwner,
         RenameThread,

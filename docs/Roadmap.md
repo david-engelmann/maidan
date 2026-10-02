@@ -73,7 +73,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    the fuzz job on every target (#1160, whose first night found two real
    decoder bugs). In flight: the review comments left unanswered on merged PRs,
    one of them a cross-tenant rate-limit bug. Next: Kani proofs, and a named
-   regression test per Threat-Model row.
+   regression test per Threat-Model row. REST `POST /threads/{id}` names
+   `action` as `start_review`, `close`, or `archive`.
 4. **A web UI worth showing.** The board is the one thread surface (#1118),
    errors are inline (#1117), a blank page walks to a connected board (#1123),
    attachments show their names and images (#1135), tokens rotate from the page
