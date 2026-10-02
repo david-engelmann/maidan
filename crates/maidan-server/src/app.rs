@@ -30,6 +30,22 @@ use crate::{
     trace_context, trace_redaction, webhooks, ws,
 };
 
+/// Content-Security-Policy for the board (`/ui`, `/ui/`) and `/ui/static/*`.
+///
+/// The document loads one script, `/ui/static/main.js`, which imports the
+/// other modules beside it. Nothing on the page is an inline script and the
+/// modules do not call `eval`, so `script-src` is `'self'` with no
+/// `'unsafe-inline'`. Styles are `/ui/static/board.css` only: the mint banner
+/// is shown with a class, and avatar hues are classes, because `style-src`
+/// does not allow `'unsafe-inline'`.
+///
+/// `img-src` allows `data:` (the favicon) and `blob:` (raster attachment
+/// previews). `connect-src` is `'self'`, `https:` and `wss:`. The API base
+/// defaults to this page's origin, and `'self'` already covers that origin's
+/// `http` and `ws`; another host is reached over TLS. Sign-out posts to that
+/// same default origin, which is what `form-action 'self'` allows.
+pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
 /// Build the axum [`Router`] with all routes wired up.
 ///
 /// Tested in `tests/health_e2e.rs` by binding the router to a TCP port
@@ -868,8 +884,11 @@ pub fn router(state: AppState) -> Router {
             share_consumer::middleware,
         ));
 
-    async fn ui_index() -> axum::response::Html<&'static str> {
-        axum::response::Html(include_str!("../static/index.html"))
+    async fn ui_index() -> impl axum::response::IntoResponse {
+        (
+            [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+            axum::response::Html(include_str!("../static/index.html")),
+        )
     }
 
     // Board modules next to the page. The name must be one of these files.
@@ -878,7 +897,7 @@ pub fn router(state: AppState) -> Router {
         crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
     ) -> Result<
         (
-            [(axum::http::header::HeaderName, &'static str); 1],
+            [(axum::http::header::HeaderName, &'static str); 2],
             &'static str,
         ),
         axum::http::StatusCode,
@@ -950,7 +969,13 @@ pub fn router(state: AppState) -> Router {
             ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
-        Ok(([(axum::http::header::CONTENT_TYPE, content_type)], body))
+        Ok((
+            [
+                (axum::http::header::CONTENT_TYPE, content_type),
+                (axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP),
+            ],
+            body,
+        ))
     }
 
     // The agent-facing index (llmstxt.org): how to connect and the work loop,

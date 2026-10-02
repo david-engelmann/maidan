@@ -57,6 +57,36 @@ async fn ui_index_returns_html_shell() {
         content_type.contains("text/html"),
         "expected html content-type, got {content_type}"
     );
+    let csp = resp
+        .headers()
+        .get("content-security-policy")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert_eq!(csp, maidan_server::app::BOARD_UI_CSP);
+    assert!(
+        csp.split(';').any(|d| d.trim() == "script-src 'self'"),
+        "script-src must be 'self' only, got {csp}"
+    );
+    assert!(
+        !csp.split(';').any(|d| {
+            let d = d.trim();
+            (d.starts_with("script-src") || d.starts_with("style-src")) && d.contains("unsafe-")
+        }),
+        "board CSP must not allow unsafe script or style sources, got {csp}"
+    );
+
+    let bare = client
+        .get(format!("http://{addr}/ui"))
+        .send()
+        .await
+        .expect("GET /ui");
+    assert_eq!(bare.status(), StatusCode::OK);
+    assert_eq!(
+        bare.headers()
+            .get("content-security-policy")
+            .and_then(|v| v.to_str().ok()),
+        Some(maidan_server::app::BOARD_UI_CSP)
+    );
 
     let body = resp.text().await.expect("body");
     assert!(body.contains("<!DOCTYPE html>") || body.contains("<html"));
@@ -66,6 +96,20 @@ async fn ui_index_returns_html_shell() {
     assert!(body.contains(r#"id="live-feed""#));
     assert!(body.contains(r#"/ui/static/main.js"#));
     assert!(body.contains(r#"/ui/static/board.css"#));
+    assert_eq!(
+        body.matches("<script").count(),
+        1,
+        "the board document must keep a single script tag"
+    );
+    assert!(body.contains(r#"<script type="module" src="/ui/static/main.js"></script>"#));
+    assert!(
+        !body.to_ascii_lowercase().contains("javascript:"),
+        "a javascript: URL would need a looser script-src"
+    );
+    assert!(
+        !body.contains("style="),
+        "a style attribute would be ignored under style-src 'self'"
+    );
 
     let js = client
         .get(format!("http://{addr}/ui/static/main.js"))
@@ -81,6 +125,12 @@ async fn ui_index_returns_html_shell() {
     assert!(
         js_type.contains("text/javascript"),
         "expected javascript content-type, got {js_type}"
+    );
+    assert_eq!(
+        js.headers()
+            .get("content-security-policy")
+            .and_then(|v| v.to_str().ok()),
+        Some(maidan_server::app::BOARD_UI_CSP)
     );
     let js_body = js.text().await.expect("main.js body");
     assert!(js_body.contains("start()"));
@@ -99,6 +149,12 @@ async fn ui_index_returns_html_shell() {
     assert!(
         css_type.contains("text/css"),
         "expected css content-type, got {css_type}"
+    );
+    assert_eq!(
+        css.headers()
+            .get("content-security-policy")
+            .and_then(|v| v.to_str().ok()),
+        Some(maidan_server::app::BOARD_UI_CSP)
     );
     let css_body = css.text().await.expect("board.css body");
     assert!(css_body.contains("#f7f5f0"));

@@ -120,12 +120,14 @@
       .cap-list li:first-child { border-top: none; }
       #mint-banner {
         display: none;
-        margin-top: 0.75rem;
+        margin: 0 1rem;
         padding: 0.75rem;
         background: #fef9c3;
         border: 1px solid #ca8a04;
         border-radius: 0.25rem;
       }
+      /* Shown from script via a class. style-src is 'self', so display cannot be set inline. */
+      #mint-banner.on { display: block; }
       #mint-banner code { word-break: break-all; }
       #session-rotate { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin: 0.5rem 0; }
       #session-rotate[hidden] { display: none; }
@@ -518,3 +520,32 @@
         .ny-head { flex-wrap: wrap; }
         #live-toolbar .ghost { padding-inline: 0.45rem; }
       }
+
+      /* Spacing and avatar hues that used to be style attributes. The board CSP
+         allows stylesheets from this origin only. */
+      #session-status { margin: 0.25rem 1rem; }
+      #waiting-sla { width: 8rem; max-width: 8rem; }
+      #token-list, #app-install-list { margin-top: 0.5rem; }
+      #panel-tokens > h3 { margin-top: 1rem; font-size: 0.95rem; }
+      #collab-panel > details { margin-top: 0.5rem; }
+      #collab-panel > details:first-of-type { margin-top: 0.75rem; }
+      #panel-admin > details + details { margin-top: 0.75rem; }
+      #panel-dms > details + details,
+      #panel-group-dms > details + details,
+      #panel-operator > details + details,
+      #panel-slash > details + details { margin-top: 0.5rem; }
+      .break-all { word-break: break-all; }
+      .gap-left { margin-left: 0.5rem; }
+      .token-row { cursor: pointer; }
+      .avatar.hue-0 { --hue: 0; }
+      .avatar.hue-1 { --hue: 30; }
+      .avatar.hue-2 { --hue: 60; }
+      .avatar.hue-3 { --hue: 90; }
+      .avatar.hue-4 { --hue: 120; }
+      .avatar.hue-5 { --hue: 150; }
+      .avatar.hue-6 { --hue: 180; }
+      .avatar.hue-7 { --hue: 210; }
+      .avatar.hue-8 { --hue: 240; }
+      .avatar.hue-9 { --hue: 270; }
+      .avatar.hue-10 { --hue: 300; }
+      .avatar.hue-11 { --hue: 330; }

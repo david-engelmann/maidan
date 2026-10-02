@@ -757,7 +757,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           const li = document.createElement("div");
           const revoked = t.revoked_at ? " (revoked)" : "";
           li.textContent = `${t.id} · ${(t.label || "—")}${revoked} · ${t.capabilities.join(", ")}`;
-          li.style.cursor = "pointer";
+          li.classList.add("token-row");
           li.onclick = () => {
             document.getElementById("token-revoke-id").value = t.id;
           };
