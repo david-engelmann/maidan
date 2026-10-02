@@ -46,7 +46,6 @@ async fn member_display_name(
 /// Creating it is an authority change (D-A): its audit row is written in the
 /// same transaction. `workspace:read` is required because a browser session
 /// exists to show a workspace.
-
 pub async fn session_from_token(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
