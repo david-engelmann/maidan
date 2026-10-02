@@ -1,0 +1,93 @@
+// @ts-check
+import { OPERATIONS } from "./client.js";
+import { showError } from "./feedback.js";
+import { sessionMemberId, tokenSession } from "./session.js";
+import { baseInput, tokenKey, wsKey } from "./state.js";
+
+/**
+ * One fetch for the board. Callers pass the same options as before
+ * (method, headers, credentials, body). The production build does not bundle this.
+ * @param {string} url
+ * @param {RequestInit=} options
+ * @returns {Promise<Response>}
+ */
+      async function api(url, options) {
+        return fetch(url, options);
+      }
+
+
+
+      function base() {
+        return baseInput.value.replace(/\/$/, "");
+      }
+
+      function wsUrl() {
+        return base().replace(/^http/, "ws").replace(/^https/, "wss") + "/ws/subscribe";
+      }
+
+      function wid() {
+        return document.getElementById("workspace").value.trim();
+      }
+
+      // A token in the field is there only until the server has exchanged it
+      // for a session cookie that no script on the page can read.
+      function pastedToken() {
+        return document.getElementById("token").value.trim();
+      }
+
+      // Whether the page acts with a token's authority: one just pasted, or the
+      // session made from it.
+      function token() {
+        return Boolean(pastedToken()) || tokenSession;
+      }
+
+      function persist() {
+        localStorage.removeItem(tokenKey);
+        localStorage.setItem(wsKey, wid());
+      }
+
+      function headers(json) {
+        const h = { Accept: "application/json" };
+        if (json) h["Content-Type"] = "application/json";
+        const t = pastedToken();
+        if (t) h["Authorization"] = "Bearer " + t;
+        return h;
+      }
+
+      function uiReadPath(suffix) {
+        return `${base()}/ui/api${suffix}`;
+      }
+
+      // A read the bearer API and the session proxy both serve. Token
+      // authority goes to the bearer route; a signed-in session goes through
+      // /ui/api. Same split as a write.
+      function apiReadPath(suffix) {
+        return token() ? `${base()}${suffix}` : uiReadPath(suffix);
+      }
+
+      // Writes go straight to the bearer API when a token is set, else through
+      // the session-authed /ui/api proxy (same suffix).
+      function apiWritePath(suffix) {
+        return token() ? `${base()}${suffix}` : uiReadPath(suffix);
+      }
+
+      // Purge, peers, mint and revoke stay on the bearer tree. A session is
+      // told so in a sentence and is not sent there to read a raw error.
+      function requireBearer() {
+        if (token()) return true;
+        showError(
+          sessionMemberId
+            ? "This needs a bearer token. A signed-in session cannot call it."
+            : "Set a bearer token to do this."
+        );
+        return false;
+      }
+
+      // A write is allowed with either a bearer token or a signed-in session.
+      function requireAuthForWrite() {
+        if (token() || sessionMemberId) return true;
+        showError("Sign in (session) or set a bearer token to write.");
+        return false;
+      }
+
+export { OPERATIONS, api, apiReadPath, apiWritePath, base, headers, pastedToken, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid, wsUrl };

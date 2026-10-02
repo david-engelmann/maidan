@@ -169,8 +169,19 @@ async fn ui_shell_exposes_channel_browser_markers() {
         .await
         .expect("html");
     assert!(html.contains(r#"data-ui-version="8""#));
-    assert!(html.contains("apiWritePath"));
-    assert!(html.contains("requireAuthForWrite"));
+    assert!(html.contains("/ui/static/main.js"));
+    // The write helpers moved out of the shell into the module it loads.
+    let api_js = h
+        .client
+        .get(format!("http://{}/ui/static/api.js", h.addr))
+        .send()
+        .await
+        .expect("api.js")
+        .text()
+        .await
+        .expect("api.js body");
+    assert!(api_js.contains("function apiWritePath"));
+    assert!(api_js.contains("function requireAuthForWrite"));
     h.server.abort();
 }
 

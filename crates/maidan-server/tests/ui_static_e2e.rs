@@ -64,6 +64,51 @@ async fn ui_index_returns_html_shell() {
     assert!(body.contains(r#"data-ui-version="8""#));
     assert!(body.contains(r#"id="channel-list""#));
     assert!(body.contains(r#"id="live-feed""#));
+    assert!(body.contains(r#"/ui/static/main.js"#));
+    assert!(body.contains(r#"/ui/static/board.css"#));
+
+    let js = client
+        .get(format!("http://{addr}/ui/static/main.js"))
+        .send()
+        .await
+        .expect("GET /ui/static/main.js");
+    assert_eq!(js.status(), StatusCode::OK);
+    let js_type = js
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        js_type.contains("text/javascript"),
+        "expected javascript content-type, got {js_type}"
+    );
+    let js_body = js.text().await.expect("main.js body");
+    assert!(js_body.contains("start()"));
+
+    let css = client
+        .get(format!("http://{addr}/ui/static/board.css"))
+        .send()
+        .await
+        .expect("GET /ui/static/board.css");
+    assert_eq!(css.status(), StatusCode::OK);
+    let css_type = css
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        css_type.contains("text/css"),
+        "expected css content-type, got {css_type}"
+    );
+    let css_body = css.text().await.expect("board.css body");
+    assert!(css_body.contains("#f7f5f0"));
+
+    let missing = client
+        .get(format!("http://{addr}/ui/static/no-such.js"))
+        .send()
+        .await
+        .expect("GET missing asset");
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 
     server.abort();
 }
