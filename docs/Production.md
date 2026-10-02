@@ -819,13 +819,16 @@ drives the cross-replica REST paths.
 
 **Rolling updates / boot:** every replica runs migrations on boot, serialized by
 a Postgres advisory lock (`v105.0.0`) so concurrent starts against a fresh or
-upgrading database don't race on DDL. Because pre-`v1.0.0` migrations are not
-guaranteed backward-compatible with the previous binary, prefer
-`maxUnavailable: 0` (surge) rolling updates, or run migrations as a pre-deploy
-step; from `v1.0.0` the API is stable but treat schema changes as
-expand-then-contract. `/health/ready` gates traffic on DB + object store +
-indexer + the `LISTEN` bus, so an LB honoring readiness won't route to a replica
-mid-migration.
+upgrading database don't race on DDL. A surge (`maxUnavailable: 0`) starts the
+new binary, which migrates, while the previous binary is still serving. That
+overlap follows [Migrations](Migrations.md): the migration that runs then only
+expands, and a drop, rename, retype, or rewrite is a later contract, after the
+previous binary is gone. A migration that cannot expand is a cutover: stop the
+previous binary before the new one migrates. There is no HTTP or MCP
+compatibility promise before the product's own 1.0 gate (Decisions, F-54).
+`/health/ready` gates traffic on the database, the object store, the indexer,
+and the `LISTEN` bus, so a load balancer that honors readiness does not route
+to a replica mid-migration.
 
 **Not covered:** load/throughput benchmarking (bench harness),
 autoscaling/HPA tuning, multi-region active-active (out of scope).

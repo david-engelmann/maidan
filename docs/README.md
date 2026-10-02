@@ -31,6 +31,7 @@ Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 |---|---|
 | [Production](Production.md) | Every environment variable, probes, metrics, retention, legal holds, crypto-shredding |
 | [Deploy](Deploy.md) | Docker Compose, Kubernetes, Helm |
+| [Migrations](Migrations.md) | Expand, then a later contract, when two server versions share one database |
 | [Providers](Providers.md) | Database hosts, object stores, embedding providers, OIDC, SMTP |
 | [Embeddings](Embeddings.md) | Embedding providers and switching models |
 | [OIDC](OIDC.md) | Human login: configuration and trust model |

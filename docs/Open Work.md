@@ -57,7 +57,6 @@ CI ran.
 | (lane WSW) | Next 6: workspace queue depth and occupancy beside the channel ones, with `claim_next`'s workspace readability rules | **Active** | — |
 | (lane CTX1) | Program C: one canonical context pack (the same bytes on REST and MCP, deterministic ties), stable layers first and the volatile tail last, a split prefix with its sha256, a workspace boot pack, delta packs, and exact `as_of` | **Active** | — |
 | (lane CTX2) | Program C: MCP 2026-07-28 conformance (`server/discover`; `ttlMs` and `cacheScope`, which the schema requires on every cacheable result and Maidan omits), per-endpoint tool profiles with byte-identical lists, and instructions that survive every harness's limits | **Active** | — |
-| #1203 | The signed-in line under the header (lane NAME) shows a member display name when one is set, and does not show the member id there (the id stays on the line title, and is the line only when no display name is set). A workspace is named with `PATCH /workspaces/{id}` (`workspace:write`), and the same call on `/ui/api` from Change. `POST /workspaces` stays closed after bootstrap | **Active** | — |
 | (design) | Hosted console v1: sign-up through the existing OIDC provider, a second workspace without `MAIDAN_BOOTSTRAP`, and an agent invite (#1144 builds the invite's member and worker token); a design note first, then the authorization change in `routes/workspace.rs` | Design (another agent) | — |
 | (lane PW) | Next 9 (#1205): Playwright specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs, and a coverage checklist in `ui-tests/README.md`. Unit tests for the auth-routing helpers and the error parser wait for the module split | Open | — |
 
@@ -126,7 +125,6 @@ One line per item, promoted into Next when it gets acceptance criteria.
 - **Parked evaluations** (revisit on a concrete trigger): OPA/ABAC; Tantivy; compile-time SQL; SOPS; a CI egress allowlist; an in-flight-run drain signal; allocator and zero-copy micro-evaluations; an MCP registry policy.
 - **C — context economics** ([Context Economics](Context%20Economics.md)): after C1 to C4 (Now and Next), C5 warm-then-fan-out for claims that share a prefix; C6 claim timing inside the cache TTL, with affinity for the agent whose cache is warm; C7 a batch lane for threads whose deadline has slack; C8 task fingerprints that link duplicate work and offer exact reuse of accepted results; C9 fleet harness profiles with a conformance check; C10 summarize-once digests served by sha256; C11 routing hints for self-hosted KV-aware routers; C12 model and effort by task class; MCEB-1, the pre-registered cost-per-success benchmark, when the maintainer sets its budget.
 - **L — launch** (the maintainer's call): positioning, the public site and funnel, the in-browser playground, the trust page, comparison and migration pages, and the open-core boundary (the room stays open source; the hosted control plane is the paid tier). A hosted service waits for three things together (thread 52): teams asking for hosted who will not self-host, operations bandwidth, and per-tenant key custody designed before the first stranger's data lands; paid self-hosted tiers (license key, SSO, SCIM, audit exports, support) are the nearer option. The first hosted step, when it comes, is three calls on what exists (the design is in Now): an account through the existing OIDC provider, a second workspace without `MAIDAN_BOOTSTRAP` (`routes/workspace.rs`), and an agent invite (#1144).
-- **Migrations on a live fleet** (thread 51): a written expand/contract policy for schema changes when more than one server version runs at once.
 
 ## Decisions pending the maintainer
 
@@ -148,6 +146,7 @@ Each links its record. Entries roll off after about a month.
 
 | Date | Decision | Record |
 |---|---|---|
+| 2026-10-02 | A schema change while two server versions share a database expands, then contracts in a later release | [Migrations](Migrations.md) |
 | 2026-10-01 | A production chart render refuses the `dev` image, default credentials and `CHANGE_ME`, and `deploy pins` keeps every deploy pin on the newest tagged release | #1156 |
 | 2026-10-01 | Every nightly job fails red; the fuzz job builds and runs every target on the gnu triple, and its first night found two real decoder bugs, fixed with regression tests (an egress URL that percent-encodes past the length limit; an MCP id that lost precision as a float, now parsed with `float_roundtrip`) | #1160 |
 | 2026-10-01 | #1159 and #1160 landed | #1159, #1160 |
@@ -291,7 +290,7 @@ Entries marked done on `main` since the thread's `1e612cf8` snapshot are noted.
 | 48 | UI improvement specs | **Adopt**, one surface per PR, after the in-flight UI stack; first run, Sign out and rotation are already in #1123, #1127 and #1142 | Next, the /ui design contract |
 | 49 | Split as TypeScript from the start | **Adapt**: ES modules with JSDoc types checked by `tsc --noEmit --checkJs`, not TypeScript source compiled by esbuild, so the release build and `cargo install` need no Node; the typed client and the module map stand | Next, split the UI into typed modules |
 | 50 | Playwright and unit gaps | **Adopt**: the `waiting.spec.ts` fix now, the rest with the split | Lane U; Next, Playwright and unit coverage |
-| 51 | SaaS-agnostic hygiene | **Adopt**: per-workspace fairness by default and per-workspace retention; the migration policy goes to Later | Now, lane W, #9; Later |
+| 51 | SaaS-agnostic hygiene | **Adopt**: per-workspace fairness by default and per-workspace retention; the migration policy is expand, then a later contract | Fairness and retention shipped (#1153). The policy is [Migrations](Migrations.md) |
 | 52 | Do not build a hosted service yet | **Adopt** as recorded | Later, L |
 | 53 | Stale token error after a success | **Adopt** | Next, UI fixes from the QA pass |
 | 54 | A failed post is lost silently | **Adopt** | Next, UI fixes from the QA pass |
