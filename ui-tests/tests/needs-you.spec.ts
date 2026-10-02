@@ -1,5 +1,6 @@
 import { test, expect, Page } from "@playwright/test";
 import { fixtures } from "./_fixtures";
+import { callUiExport } from "./_tools";
 
 const fx = fixtures();
 
@@ -10,7 +11,7 @@ test.describe.configure({ retries: 0 });
 
 async function reloadQueue(page: Page) {
   const done = page.waitForResponse((r) => r.url().includes("/waiting"));
-  await page.evaluate(() => (window as unknown as { loadNeedsYou: () => Promise<void> }).loadNeedsYou());
+  await callUiExport(page, "needs.js", "loadNeedsYou");
   await done;
   await page.waitForTimeout(100);
 }
