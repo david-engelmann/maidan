@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Slack channel links are indexed by thread
+
+- **Added:** `idx_slack_links_thread` on `maidan_slack_channel_links (thread_id)`, migration 0137 on both backends. Egress resolves a link by the Maidan thread, and the table was indexed on `workspace_id` only.
+
 ### An operator can open a second workspace
 
 - **Added:** `POST /operator/workspaces` (`operator:global`) creates another workspace, its first human admin, and a one-time admin token. It does not require `MAIDAN_BOOTSTRAP`, and it is present on a build that strips the bootstrap routes. The admin token holds every capability except `operator:global` and `audit:read-global`. A `token:admin` holder can mint those two only when they already hold them. `maidan init` still refuses a database that already has a workspace. Unauthenticated `POST /workspaces` is still one-shot bootstrap.

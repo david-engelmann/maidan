@@ -6,6 +6,7 @@ use maidan_types::{
     MemberKind, NewChannel, NewMember, NewSlackChannelLink, NewThread, NewWorkspace,
 };
 use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::Row;
 
 async fn sqlite() -> SqliteStore {
     let pool = SqlitePoolOptions::new()
@@ -200,6 +201,38 @@ async fn run_suite(store: &dyn Store) {
         .is_none());
 }
 
+/// Egress looks up a link by Maidan thread. That column has its own index;
+/// a workspace-only index made the lookup a scan.
+#[tokio::test]
+async fn slack_link_thread_index_exists_sqlite() {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .expect("connect");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .expect("pragma");
+    run_sqlite_migrations(&pool).await.expect("migrate");
+    let present: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master
+         WHERE type = 'index' AND tbl_name = 'maidan_slack_channel_links'
+           AND name = 'idx_slack_links_thread'",
+    )
+    .fetch_optional(&pool)
+    .await
+    .expect("lookup");
+    assert_eq!(present.as_deref(), Some("idx_slack_links_thread"));
+    let cols: Vec<String> = sqlx::query("PRAGMA index_info('idx_slack_links_thread')")
+        .fetch_all(&pool)
+        .await
+        .expect("index_info")
+        .iter()
+        .map(|row| row.get("name"))
+        .collect();
+    assert_eq!(cols, vec!["thread_id".to_string()]);
+}
+
 #[tokio::test]
 async fn slack_channel_link_crud_sqlite() {
     let store = sqlite().await;
@@ -236,6 +269,16 @@ async fn slack_channel_link_crud_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
+    let indexdef: String = sqlx::query_scalar(
+        "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_slack_links_thread'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("idx_slack_links_thread");
+    assert!(
+        indexdef.contains("maidan_slack_channel_links") && indexdef.contains("(thread_id)"),
+        "egress lookup by thread must be indexed, got {indexdef}"
+    );
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
 }
