@@ -1407,6 +1407,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the `open work` and `changelog (released sections)` checkouts do not keep
   the token.
 
+### Scripts run the binary cargo just built
+
+- **Fixed:** `scripts/sdk-test.sh` and `scripts/lease-demo.sh` run
+  `maidan` and `maidan-server` from `$CARGO_TARGET_DIR/debug` when that
+  variable is set, and from `./target/debug` otherwise. They used to
+  look only in `./target/debug` after `cargo build`, which writes
+  somewhere else when `CARGO_TARGET_DIR` is set.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
