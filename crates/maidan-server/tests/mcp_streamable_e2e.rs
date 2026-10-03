@@ -641,14 +641,18 @@ async fn streamable_get_replays_after_last_event_id() {
 /// `initialize` with a 2025 revision and no `MCP-Protocol-Version` header (it
 /// does not exist until a version is agreed), accepting either JSON or SSE.
 /// Maidan used to answer every one of these with `2026-07-28`, which the SDK
-/// does not accept, so the connection failed before any tool was listed.
+/// does not accept, so the connection failed before any tool was listed. The
+/// same handshake must hold on the plain stateless `POST /mcp`, which the 2026
+/// fields also reach.
 #[tokio::test]
 async fn a_2025_client_negotiates_its_revision_and_is_served_statelessly() {
     let (addr, client, server) = spawn().await;
     let base = format!("http://{addr}");
-    for revision in ["2025-11-25", "2025-06-18", "2025-03-26"] {
+    for (path, revision) in ["/mcp/streamable", "/mcp"].into_iter().flat_map(|path| {
+        ["2025-11-25", "2025-06-18", "2025-03-26"].map(|revision| (path, revision))
+    }) {
         let init = client
-            .post(format!("{base}/mcp/streamable"))
+            .post(format!("{base}{path}"))
             .header("accept", "application/json, text/event-stream")
             .json(&json!({
                 "jsonrpc": "2.0",
@@ -663,13 +667,17 @@ async fn a_2025_client_negotiates_its_revision_and_is_served_statelessly() {
             .send()
             .await
             .unwrap();
-        assert_eq!(init.status(), StatusCode::OK, "{revision}");
+        assert_eq!(init.status(), StatusCode::OK, "{path} {revision}");
         assert!(
             init.headers().get("mcp-session-id").is_none(),
-            "{revision}: sessions are optional from 2025-03-26 on, and Maidan offers none"
+            "{path} {revision}: sessions are optional from 2025-03-26 on, and Maidan offers none"
         );
         let init: Value = init.json().await.unwrap();
         assert_eq!(init["result"]["protocolVersion"], revision);
+        assert_eq!(
+            init["result"]["capabilities"]["resources"]["subscribe"], true,
+            "{path} {revision}: legacy revisions still advertise resources/subscribe"
+        );
 
         // `MCP-Protocol-Version` arrived in 2025-06-18; a 2025-03-26 client sends
         // follow-ups with no version header at all, and must still be served
@@ -683,16 +691,20 @@ async fn a_2025_client_negotiates_its_revision_and_is_served_statelessly() {
         };
 
         // The client acknowledges the handshake with a notification: 202, no body.
-        let initialized = with_version(client.post(format!("{base}/mcp/streamable")))
+        let initialized = with_version(client.post(format!("{base}{path}")))
             .json(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))
             .send()
             .await
             .unwrap();
-        assert_eq!(initialized.status(), StatusCode::ACCEPTED, "{revision}");
+        assert_eq!(
+            initialized.status(),
+            StatusCode::ACCEPTED,
+            "{path} {revision}"
+        );
         assert!(initialized.text().await.unwrap().is_empty());
 
         // Every request gets its response on its own POST.
-        let tools = with_version(client.post(format!("{base}/mcp/streamable")))
+        let tools = with_version(client.post(format!("{base}{path}")))
             .header("accept", "application/json, text/event-stream")
             .json(&json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }))
             .send()
@@ -700,12 +712,59 @@ async fn a_2025_client_negotiates_its_revision_and_is_served_statelessly() {
             .unwrap();
         assert!(
             tools.headers().get("mcp-session-id").is_none(),
-            "{revision}: a follow-up must not open a session"
+            "{path} {revision}: a follow-up must not open a session"
         );
         let tools: Value = tools.json().await.unwrap();
         assert!(tools["result"]["tools"]
             .as_array()
             .is_some_and(|t| !t.is_empty()));
+        // The 2026 cache hints ride along; a 2025 client ignores what it does
+        // not know.
+        assert!(tools["result"]["ttlMs"].is_u64(), "{path} {revision}");
+    }
+    server.abort();
+}
+
+/// `server/discover` is how a `2026-07-28` client, which has no `initialize`,
+/// learns the versions, capabilities and instructions: a cold request on
+/// either POST, answered statelessly with a cache hint.
+#[tokio::test]
+async fn server_discover_answers_a_cold_2026_request_on_both_posts() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+    for path in ["/mcp/streamable", "/mcp"] {
+        let resp = client
+            .post(format!("{base}{path}"))
+            .header("accept", "application/json, text/event-stream")
+            .header("mcp-protocol-version", "2026-07-28")
+            .header("mcp-method", "server/discover")
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "id": "discover-1",
+                "method": "server/discover",
+                "params": { "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {}
+                } }
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path}");
+        assert!(resp.headers().get("mcp-session-id").is_none(), "{path}");
+        let body: Value = resp.json().await.unwrap();
+        let result = &body["result"];
+        assert_eq!(result["instructions"], maidan_mcp::INSTRUCTIONS, "{path}");
+        assert!(result["supportedVersions"]
+            .as_array()
+            .is_some_and(|v| v.contains(&json!("2026-07-28"))));
+        assert_eq!(result["cacheScope"], "public", "{path}");
+        assert!(result["ttlMs"].is_u64(), "{path}");
+        assert_eq!(result["resultType"], "complete", "{path}");
+        assert!(
+            result["capabilities"]["resources"].get("subscribe").is_none(),
+            "{path}: 2026 discover must not advertise resources.subscribe without subscriptions/listen"
+        );
     }
     server.abort();
 }

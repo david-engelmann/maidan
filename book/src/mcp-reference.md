@@ -15,10 +15,12 @@ Bearer token required unless `AUTH_DISABLED=1`.
 
 ## JSON-RPC methods
 
-- `initialize`
+- `initialize`, `server/discover` (revisions, capabilities and instructions with no handshake)
 - `tools/list`, `tools/call`
 - `resources/list`, `resources/templates/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`
 - `prompts/list`, `prompts/get`
+
+Every result carries `resultType: "complete"`. The results of `server/discover`, `tools/list`, `prompts/list`, `resources/list`, `resources/templates/list` and `resources/read` carry a `ttlMs` and a `cacheScope` (SEP-2549); the value for each is tabled in Protocols, "MCP discovery and cache hints". `server/discover`, and an `initialize` negotiated to `2026-07-28`, omit `resources.subscribe` (on that revision the flag means `subscriptions/listen`, which is not implemented). An earlier revision's `initialize` still sets it.
 
 **Notification:** `notifications/resources/updated` with `{ "uri": "maidan://..." }`. Mutating tools fan out to related thread/channel/workspace/artifact URIs.
 
