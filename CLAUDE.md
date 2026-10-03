@@ -62,7 +62,7 @@ change.
   queue, reviews, approval gates and a hash-chained event log, backed by
   Postgres or SQLite and content-addressed artifacts. The name is load-bearing.
 - **Rust 2021**, toolchain pinned in `rust-toolchain.toml` (1.91).
-  Workspace with 14 member crates.
+  Workspace with 15 member crates.
 - **Owner:** `david-engelmann`, solo maintainer. Squash-merge only;
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).
 - **CI:** GitHub Actions. Eight checks are required on `main`:
@@ -116,7 +116,7 @@ Working beside other agents (several PRs are usually open at once):
   the next free migration number on `main` plus the open PRs.
 - **Contracts new code must satisfy:** a route in
   `contracts/http-operation-kinds.json`; a `MAIDAN_*` name in
-  `crates/maidan-server/src/env_registry.rs`; `NewAuditEvent` needs a
+  `crates/maidan-env/src/lib.rs`; `NewAuditEvent` needs a
   `scope: AuditScope`; a spawned task that writes uses
   `maidan_store::attribution::spawn`; a member id from a request goes through
   `Store::get_member_in(workspace, id)` (from #1152).
@@ -275,7 +275,7 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   `auth::READ_ONLY_OPERATIONS`, or the request layer records it as a change.
 - **A new `MAIDAN_*` variable** goes in `SERVER_ENV` (the server reads it) or
   `TOLERATED_ENV` (a script, SDK, test or build arg does) in
-  `crates/maidan-server/src/env_registry.rs`, or boot refuses it as unknown.
+  `crates/maidan-env/src/lib.rs`, or boot refuses it as unknown.
   `env_registry_contract` checks every name the repo mentions.
 - **Spawn with `maidan_store::attribution::spawn`**, not `tokio::spawn`, in
   any server or MCP module that is not a background worker: a plain spawn
@@ -288,7 +288,7 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 - **New v4 UUIDs fail `uuid_v7_contract`.** Entity ids use `Uuid::now_v7()`;
   credentials and random ids (tokens, session ids, trace ids) are allowlisted
   with a reason.
-- **Two strings in this file are read by CI:** `Workspace with 14 member
+- **Two strings in this file are read by CI:** `Workspace with 15 member
   crates.` (`docs_numbers_contract`) and the `latest` release line
   (`check-release-records.sh`). Keep them when editing.
 - **A dependency bump or a new crate needs `cargo vet`.** Every crate in the

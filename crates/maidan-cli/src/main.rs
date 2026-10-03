@@ -92,12 +92,39 @@ enum Commands {
     },
 }
 
+/// Same refusal as the server: a misspelt `MAIDAN_*` variable configures
+/// nothing, so it is named before clap or tracing run. `MAIDAN_ALLOW_UNKNOWN_ENV=1`
+/// starts anyway and the names are logged.
+fn unknown_env() -> anyhow::Result<Vec<maidan_env::UnknownVar>> {
+    let unknown = maidan_env::unknown_vars(
+        std::env::vars_os().map(|(name, _)| name.to_string_lossy().into_owned()),
+        std::env::var_os("KUBERNETES_SERVICE_HOST").is_some(),
+    );
+    let allow = std::env::var(maidan_env::ALLOW_UNKNOWN_ENV).as_deref() == Ok("1");
+    if !unknown.is_empty() && !allow {
+        anyhow::bail!(
+            "unknown environment variable(s): {}. Fix the name, or set {}=1 to start anyway.",
+            maidan_env::describe(&unknown),
+            maidan_env::ALLOW_UNKNOWN_ENV,
+        );
+    }
+    Ok(unknown)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let unknown_env = unknown_env()?;
     tracing_subscriber::fmt()
         .with_env_filter(std::env::var("MAIDAN_LOG").unwrap_or_else(|_| "info,sqlx=warn".into()))
         .with_target(false)
         .init();
+    if !unknown_env.is_empty() {
+        tracing::warn!(
+            unknown = %maidan_env::describe(&unknown_env),
+            "starting with unknown MAIDAN_* environment variables ({}=1)",
+            maidan_env::ALLOW_UNKNOWN_ENV,
+        );
+    }
 
     let cli = Cli::parse();
     match cli.command {

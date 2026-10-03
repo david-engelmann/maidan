@@ -3,10 +3,11 @@
 //! Configuration is read where it is used, across a dozen crates, so a
 //! misspelt variable (`MAIDAN_RATE_LIMT_MAX`) configures nothing and says
 //! nothing: the server boots on the default the operator meant to override.
-//! Listing every name here lets boot refuse any other `MAIDAN_*` variable, with
-//! the nearest known name as a hint, without pulling the reads themselves into
-//! one struct. `env_registry_contract` keeps the list honest: every name the
-//! server's crates read is on it, and nothing is on it that nothing reads.
+//! Listing every name here lets the server and the `maidan` CLI refuse any
+//! other `MAIDAN_*` variable, with the nearest known name as a hint, without
+//! pulling the reads themselves into one struct. `env_registry_contract` keeps
+//! the list honest: every name the server's crates read is on it, and nothing
+//! is on it that nothing reads.
 
 /// Set to `1` to start with unknown `MAIDAN_*` variables, logging them instead.
 pub const ALLOW_UNKNOWN_ENV: &str = "MAIDAN_ALLOW_UNKNOWN_ENV";
