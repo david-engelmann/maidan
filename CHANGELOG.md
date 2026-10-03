@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Opening a group DM selects it and asks for three members
+
+- **Fixed:** The page accepted two members and left the new group DM unselected. It now refuses fewer than three before the request, says that refusal as a sentence, and selects the conversation the server returns, the same way a one-to-one DM is selected. A browser spec opens one and posts in it.
+
 ### A rotated token stays on the connection that asked for it
 
 - **Fixed:** `rotateToken` records the token, the API base, the workspace, and the token id when the request starts. The new secret is exchanged only if those four are still the same when the response arrives. The secret is still shown once, so it is not lost. A network failure is a sentence, not an unhandled rejection. Changing the token field clears the cached token id.
