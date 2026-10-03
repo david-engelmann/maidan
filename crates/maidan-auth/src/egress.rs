@@ -224,6 +224,19 @@ mod tests {
     }
 
     #[test]
+    fn the_nightly_egress_crash_input_is_refused() {
+        // The input the first real nightly run crashed on: 1,541 bytes that
+        // print as 2,150, a soft-hyphenated, punycoded host and an encoded
+        // path. Kept in the fuzz seeds, so each night replays it as well.
+        let raw = include_str!("../../../fuzz/seeds/egress_target/idna_host_encoded_path.txt");
+        assert!(raw.len() <= MAX_EGRESS_URL_LEN);
+        assert!(matches!(
+            parse_egress_target(raw),
+            Err(EgressTargetError::InvalidUrl)
+        ));
+    }
+
+    #[test]
     fn rejects_a_dns_answer_set_if_any_address_is_non_public() {
         let addresses = [
             "8.8.8.8:443".parse().expect("public address"),

@@ -1120,6 +1120,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   effort. The workspace now enables serde_json's `float_roundtrip`, so a
   number reads as the double it names. Found by `mcp_request` the same night.
 
+### The nightly fuzz crashes are replayed every night; the SDK claims say which version is published
+
+- **Added:** the two inputs the first real nightly fuzz run crashed on are in
+  `fuzz/seeds/egress_target/` and `fuzz/seeds/mcp_request/`, so each night
+  starts from them, and each has a unit test that reads the seed file
+  (`egress::tests::the_nightly_egress_crash_input_is_refused`,
+  `protocol::tests::the_nightly_mcp_crash_input_round_trips`). The tests that
+  shipped with the fixes used inputs written to the same shape, not the
+  crashing bytes; `docs/Conventions.md` ("Nightly fuzzing") asks for the input
+  itself.
+- **Docs:** `docs/Claims.md` said the SDKs "are 0.1.0" after the tree moved to
+  0.3.0 (#1159). It now says the published SDKs are 0.1.0 and the typed
+  surface is on `main` as 0.3.0.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

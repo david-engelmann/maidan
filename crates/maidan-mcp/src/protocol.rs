@@ -270,6 +270,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_nightly_mcp_crash_input_round_trips() {
+        // The batch the first real nightly run crashed on, kept in the fuzz
+        // seeds so each night replays it: its 93-digit id printed as a
+        // different number.
+        let body = include_bytes!("../../../fuzz/seeds/mcp_request/long_integer_id.json");
+        let RequestBody::Batch(items) = parse_body(body).expect("parses") else {
+            panic!("a batch");
+        };
+        assert_eq!(items.len(), 1);
+        for item in items {
+            let request = item.expect("a request");
+            let printed = serde_json::to_vec(&request).expect("serializes");
+            assert_eq!(parse_request(&printed).expect("reparses"), request);
+        }
+    }
+
     proptest! {
         /// Fuzz the error envelope: any (code, message, optional data) survives
         /// serialization with its fields intact and `data` omitted iff `None`.

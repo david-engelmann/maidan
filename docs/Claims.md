@@ -36,7 +36,7 @@ post-gate hardening (no new gate tag).
 | "Signed release artifacts" | Keyless cosign bundles on every release and cosign signatures on every image digest (`release.yml`); per-arch tarballs SHA-256-pinned in the quickstart image. A CycloneDX SBOM per image, attested to its digest and published beside the tarballs, starts with the first tag after v412.0.0: no earlier release has one, because the old SBOM step never produced a file. Verify: see [SECURITY.md](https://github.com/david-engelmann/maidan/blob/main/SECURITY.md#verifying-a-release) | Signatures shipped; SBOMs from the next tag |
 | "A2A transport" | A2A v1.0 over **JSON-RPC, REST §11 and gRPC §10**, all complete. The gRPC binding (opt-in) serves the official `lf.a2a.v1.A2AService` from the unmodified v1.0.1 `a2a.proto`, every operation over the same handlers as the other two. Agent Card §4.4.1. The official A2A TCK runs over all three bindings in the non-required `a2a tck` CI job; exclusions are listed in `scripts/a2a-tck/exclusions.txt` | Shipped (all three bindings) |
 | "Off-platform reach: notifications, email, Slack, GitHub" | Per-recipient notification ledger + router + unified inbox; SMTP transport + durable mail retry queue (outbox + worker + DLQ); Slack + GitHub projectors (bidirectional, loop-safe) | **Shipped, config-gated** — inert until you set `MAIDAN_SMTP_*` / `MAIDAN_SLACK_*` / `MAIDAN_GITHUB_*` and create the apps |
-| "Client SDKs" | Four 0.1.0 clients (TypeScript, Python, Go, Rust) to the frozen v1 contract, each black-box-verified (`scripts/sdk-test.sh`) + a report-only `sdk interop` CI job. Typed responses and an error per problem type are on `main` and pass the same script, but are not yet published | Shipped (0.1.0, early); typed surface unreleased |
+| "Client SDKs" | Four clients (TypeScript, Python, Go, Rust), published at 0.1.0, to the frozen v1 contract, each black-box-verified (`scripts/sdk-test.sh`) + a report-only `sdk interop` CI job. Typed responses and an error per problem type are on `main` as 0.3.0 and pass the same script, but are not yet published (`sdk/README.md`) | Shipped (0.1.0, early); typed surface unreleased |
 | The published server image has no HTTP bootstrap routes | `crates/maidan-server/Dockerfile` defaults `MAIDAN_ENABLE_BOOTSTRAP` to `0` and then builds `--no-default-features`. `.github/workflows/release.yml` (`build + push maidan-server`) passes only `MAIDAN_VERSION`, so the published image keeps that default. CI job `bootstrap compile-time strip` fails a default build that still compiles the routes in | Shipped |
 | A production Helm render refuses a development image, and placeholders only where the chart looks | `scripts/helm-template-smoke.sh`. A production render refuses `image.repository: maidan-server`, a `dev`/`latest`/empty tag without `image.digest`, and, unless `existingSecret` is set, an unset or development `DATABASE_URL` or an empty `secrets` value. `config`, `image.tag` and `image.digest` holding `CHANGE_ME` fail every render; `secrets` and `contentKek` holding it fail only when `existingSecret` is unset. `existingSecret` skips those checks and does not prove the Secret exists or holds its keys | Shipped |
 
@@ -122,11 +122,11 @@ outside attribution entirely, listed under "Every other mutation" below.
   set the secrets. We don't claim a running public instance.
 - **OIDC human login is present but maturing.** `MAIDAN_OIDC_*` enables `/auth/oidc/*` +
   session mint; treat it as config-gated, not a polished consumer login.
-- **SDKs are 0.1.0.** Usable against the frozen v1 contract, dependency-light, but early.
-  Typed responses and an error per problem type are on `main`
-  (`scripts/sdk-test.sh`) but not yet tagged, so the published packages return
-  plain JSON and raise one error type; registry-published interop CI is a
-  follow-up.
+- **The published SDKs are 0.1.0.** Usable against the frozen v1 contract,
+  dependency-light, but early. Typed responses and an error per problem type
+  are on `main` as 0.3.0 (`scripts/sdk-test.sh`), which publishes with the next
+  server release, so until then the packages return plain JSON and raise one
+  error type; registry-published interop CI is a follow-up.
 - **Not an orchestration planner or an agent runtime.** Maidan does not run your models
   or decide how an agent reasons. It is the durable place agents coordinate.
 
