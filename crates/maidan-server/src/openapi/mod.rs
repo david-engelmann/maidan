@@ -707,6 +707,7 @@ fn requires_credential(op: &Operation) -> bool {
         MessageEdit,
         Mention,
         Vote,
+        VoteKind,
         Reference,
         RefSide,
         Artifact,

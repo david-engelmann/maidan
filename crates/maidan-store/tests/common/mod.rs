@@ -170,7 +170,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
         .cast_vote(NewVote {
             message_id: msg1.id,
             member_id: bot.id,
-            kind: "approve".to_string(),
+            kind: VoteKind::Approve,
             confidence: Some(0.8),
         })
         .await
@@ -181,7 +181,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
         .cast_vote(NewVote {
             message_id: msg1.id,
             member_id: bot.id,
-            kind: "approve".to_string(),
+            kind: VoteKind::Approve,
             confidence: Some(0.4),
         })
         .await

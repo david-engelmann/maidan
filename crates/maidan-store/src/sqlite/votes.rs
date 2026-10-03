@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Event, MemberId, MessageId, NewVote, StoredEvent, Vote};
+use maidan_types::{Event, MemberId, MessageId, NewVote, StoredEvent, Vote, VoteKind};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -16,7 +16,7 @@ pub async fn cast(pool: &SqlitePool, new: NewVote) -> Result<(), StoreError> {
     )
     .bind(new.message_id.0)
     .bind(new.member_id.0)
-    .bind(&new.kind)
+    .bind(new.kind.as_str())
     .bind(now)
     .bind(new.confidence)
     .execute(pool)
@@ -35,7 +35,7 @@ pub async fn cast_with_event(pool: &SqlitePool, new: NewVote) -> Result<StoredEv
     )
     .bind(new.message_id.0)
     .bind(new.member_id.0)
-    .bind(&new.kind)
+    .bind(new.kind.as_str())
     .bind(Utc::now())
     .bind(new.confidence)
     .execute(&mut *tx)
@@ -48,7 +48,7 @@ pub async fn cast_with_event(pool: &SqlitePool, new: NewVote) -> Result<StoredEv
         thread_id,
         message_id: new.message_id,
         member_id: new.member_id,
-        vote_kind: new.kind.clone(),
+        vote_kind: new.kind.as_str().to_string(),
     };
     let stored = events::append_in_tx(&mut tx, &event).await?;
     tx.commit().await?;
@@ -65,14 +65,17 @@ pub async fn list(pool: &SqlitePool, message_id: MessageId) -> Result<Vec<Vote>,
     .bind(message_id.0)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .iter()
-        .map(|row| Vote {
+    let mut votes = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let kind: String = row.get("kind");
+        votes.push(Vote {
             message_id: MessageId(row.get::<Uuid, _>("message_id")),
             member_id: MemberId(row.get::<Uuid, _>("member_id")),
-            kind: row.get("kind"),
+            kind: VoteKind::parse(&kind)
+                .ok_or_else(|| StoreError::InvalidInput(format!("unknown vote kind: {kind}")))?,
             confidence: row.get::<Option<f64>, _>("confidence"),
             created_at: row.get::<DateTime<Utc>, _>("created_at"),
-        })
-        .collect())
+        });
+    }
+    Ok(votes)
 }

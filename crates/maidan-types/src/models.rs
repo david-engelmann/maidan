@@ -94,7 +94,7 @@ pub enum ArtifactKind {
 }
 
 impl ArtifactKind {
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Screenshot => "screenshot",
             Self::Recording => "recording",
@@ -385,7 +385,7 @@ pub enum BlockedReason {
 }
 
 impl BlockedReason {
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::Dag => "dag",
             Self::Gate => "gate",
@@ -2211,12 +2211,40 @@ pub struct MarkInboxRead {
     pub read_through: DateTime<Utc>,
 }
 
+/// The only vote kinds the server stores. An emoji is a reaction, not a kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum VoteKind {
+    Approve,
+    RequestChanges,
+    Ack,
+}
+
+impl VoteKind {
+    pub const ALL: [Self; 3] = [Self::Approve, Self::RequestChanges, Self::Ack];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Approve => "approve",
+            Self::RequestChanges => "request_changes",
+            Self::Ack => "ack",
+        }
+    }
+
+    /// `None` for every string outside [`ALL`](Self::ALL), including `up`,
+    /// `upvote`, `request-changes`, and an emoji.
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.as_str() == s)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Vote {
     pub message_id: MessageId,
     pub member_id: MemberId,
-    pub kind: String,
+    pub kind: VoteKind,
     /// Optional confidence weight, by convention in `0..=1`, for weighted
     /// consensus. `None` when the voter stated no confidence.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2228,7 +2256,7 @@ pub struct Vote {
 pub struct NewVote {
     pub message_id: MessageId,
     pub member_id: MemberId,
-    pub kind: String,
+    pub kind: VoteKind,
     /// Optional confidence weight, by convention `0..=1`.
     pub confidence: Option<f64>,
 }
@@ -3493,5 +3521,31 @@ mod budget_limits_strictness_tests {
         let explicit = serde_json::json!({ "max_tokens": 100, "max_wall_secs": null });
         let limits: BudgetLimits = serde_json::from_value(explicit).expect("parses");
         assert_eq!(limits.max_wall_secs, None);
+    }
+}
+
+#[cfg(test)]
+mod vote_kind_tests {
+    use super::VoteKind;
+
+    #[test]
+    fn closed_set_parses_and_rejects_strings_outside_it() {
+        assert_eq!(
+            VoteKind::ALL.map(VoteKind::as_str),
+            ["approve", "request_changes", "ack"]
+        );
+        for kind in VoteKind::ALL {
+            assert_eq!(VoteKind::parse(kind.as_str()), Some(kind));
+            let wire = serde_json::to_value(kind).unwrap();
+            assert_eq!(wire, serde_json::json!(kind.as_str()));
+            assert_eq!(serde_json::from_value::<VoteKind>(wire).unwrap(), kind);
+        }
+        for rejected in ["up", "upvote", "request-changes", "ship", ""] {
+            assert_eq!(VoteKind::parse(rejected), None, "{rejected}");
+            assert!(
+                serde_json::from_value::<VoteKind>(serde_json::json!(rejected)).is_err(),
+                "{rejected} parsed"
+            );
+        }
     }
 }

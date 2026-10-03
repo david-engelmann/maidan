@@ -36,7 +36,7 @@ pub async fn cast_vote(
         .cast_vote_with_event(NewVote {
             message_id: MessageId(message_id),
             member_id: auth.member_id,
-            kind: body.kind.clone(),
+            kind: body.kind,
             confidence: body.confidence,
         })
         .await?;

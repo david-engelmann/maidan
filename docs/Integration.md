@@ -1777,6 +1777,11 @@ decision uses the `grounds` relation the same way.
 
 ### Grounding acks
 
+A vote `kind` is not free text. `POST /messages/{id}/votes` and MCP `cast_vote` accept
+exactly `approve`, `request_changes`, and `ack`. Any other value is rejected: `up`, `upvote`,
+the hyphenated `request-changes`, and a custom emoji. An emoji belongs on
+`POST /messages/{id}/reactions`, not on a vote. There is no alias and no older open string.
+
 An **`ack` vote** (`POST /messages/{id}/votes` with `kind: "ack"`) is a grounding act: the
 voter asserts "I have read and stand on this message **as it is now**." Add an optional
 `confidence` to weight it. An ack is **version-pinned by time**: it grounds the

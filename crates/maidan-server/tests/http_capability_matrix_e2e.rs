@@ -473,7 +473,7 @@ fn apply_route_defaults(
         return b.json(&json!({ "emoji": "thumbsup" }));
     }
     if path.contains("/votes") && method == "POST" {
-        return b.json(&json!({ "kind": "upvote" }));
+        return b.json(&json!({ "kind": "approve" }));
     }
     if path.contains("/mentions") && method == "POST" {
         return b.json(&json!({ "member_id": f.member }));

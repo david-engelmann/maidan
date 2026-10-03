@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A vote kind is a closed set
+
+- **Changed:** `cast_vote.kind` is `approve`, `request_changes`, or `ack`. REST `POST /messages/{id}/votes` and MCP `cast_vote` reject every other kind, including `up`, `upvote`, `request-changes`, and a custom emoji. REST returns 400. MCP returns `InvalidParams`. An emoji stays a reaction. There is no alias and no older open string.
+
 ### Opening a group DM selects it and asks for three members
 
 - **Fixed:** The page accepted two members and left the new group DM unselected. It now refuses fewer than three before the request, says that refusal as a sentence, and selects the conversation the server returns, the same way a one-to-one DM is selected. A browser spec opens one and posts in it.
@@ -75,8 +79,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `body` is omitted, and refuses the call when both are omitted.
   `edit_message` content blocks use the same
   `text|code|tool_use|tool_result|resource_link` enum as `post_message`.
-  `cast_vote.kind` stays an open string: the server stores any kind verbatim
-  and has no closed set to enumerate.
 
 ### The local book build, and three doc corrections
 
@@ -1481,7 +1483,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Fixed:** `POST /threads/{id}` documents `action` as `start_review`,
   `close`, or `archive`. Those are the only values the route accepts.
   An unknown action is a 400 from the body extractor. `request_changes`
-  stays a review decision, and `cast_vote.kind` stays an open string.
+  stays a review decision.
 
 ### The operator CLI refuses an unknown MAIDAN_* variable
 

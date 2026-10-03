@@ -4,7 +4,7 @@ use maidan_store::StoreError;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     EventKind, MemberKind, NewChannel, NewMember, NewMessage, NewPin, NewReaction, NewReference,
-    NewThread, NewVote, NewWorkspace, RefSide, RelationKind, TombstoneEntityKind,
+    NewThread, NewVote, NewWorkspace, RefSide, RelationKind, TombstoneEntityKind, VoteKind,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -211,7 +211,7 @@ async fn run_explorer_suite(store: &dyn Store) {
         .cast_vote_with_event(NewVote {
             message_id: target.id,
             member_id: alice.id,
-            kind: "up".into(),
+            kind: VoteKind::Approve,
             confidence: None,
         })
         .await

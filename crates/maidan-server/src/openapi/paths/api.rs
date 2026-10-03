@@ -1584,7 +1584,7 @@ pub fn create_mention() {}
     ))]
 pub fn seed_from_message() {}
 
-/// Vote on a message
+/// Vote on a message. kind is approve, request_changes, or ack. Any other kind is a 400.
 #[utoipa::path(post, path = "/messages/{id}/votes", tag = "messages",
     params(("id" = Uuid, Path, description = "Message id")),
     request_body = CreateVote,
