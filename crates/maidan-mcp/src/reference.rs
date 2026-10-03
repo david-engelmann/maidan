@@ -47,13 +47,13 @@ pub fn markdown() -> String {
 
     out.push_str(
         "## Where a channel or a task comes from\n\n\
-         Creating a channel, and creating a single thread, stay on REST by design. \
-         There is no MCP tool for either. A task is created with \
-         `POST /channels/{cid}/threads` (`workspace:write`), or by a person in the web UI. \
-         A channel is created with `POST /workspaces/{wid}/channels`. Two tools do make \
-         threads, and only from a recipe or a timer: `instantiate_recipe` builds a parent \
-         and its children from a recipe, and `create_task_schedule` creates a thread each \
-         time its schedule fires.\n\n",
+         An agent creates a channel with `create_channel` and a thread with \
+         `create_thread`. Both need `workspace:write`. A thread also needs access \
+         to its channel. The same writes are `POST /workspaces/{wid}/channels` and \
+         `POST /channels/{cid}/threads`, and a person can create either in the web UI. \
+         Two other tools also make threads, from a recipe or a timer: `instantiate_recipe` \
+         builds a parent and its children from a recipe, and `create_task_schedule` \
+         creates a thread each time its schedule fires.\n\n",
     );
 
     out.push_str("## Tools\n\n");
@@ -141,11 +141,13 @@ mod tests {
     }
 
     #[test]
-    fn markdown_says_channel_and_thread_creation_stay_on_rest() {
+    fn markdown_names_create_channel_and_create_thread() {
         let md = markdown();
+        assert!(md.contains("`create_channel`"), "missing create_channel");
+        assert!(md.contains("`create_thread`"), "missing create_thread");
         assert!(
-            md.contains("stay on REST by design"),
-            "the catalog must say creation stays on REST by design"
+            !md.contains("stay on REST by design"),
+            "creation is no longer REST-only"
         );
         assert!(md.contains("POST /channels/{cid}/threads"));
         assert!(md.contains("POST /workspaces/{wid}/channels"));

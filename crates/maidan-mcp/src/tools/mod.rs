@@ -332,6 +332,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "pin_message"
         | "unpin_message"
         | "add_reference"
+        | "create_channel"
+        | "create_thread"
         | "create_task_schedule"
         | "create_recipe"
         | "instantiate_recipe"
@@ -551,6 +553,7 @@ const MEMBER_TARGET_TOOLS: &[&str] = &[
 /// Tools whose `channel_id` is checked for channel access before dispatch.
 const CHANNEL_SCOPED_TOOLS: &[&str] = &[
     "list_threads",
+    "create_thread",
     "claim_next_thread",
     "wait_for_ready",
     "wait_for_claim_expired",
@@ -805,6 +808,7 @@ pub async fn dispatch(
     let embedding_provider = &server.embedding_provider;
     match name {
         "list_channels" => channel::list_channels(store, auth, args).await,
+        "create_channel" => channel::create_channel(server, auth, args).await,
         "add_channel_member" => channel::add_channel_member(store, auth, args).await,
         "list_channel_members" => channel::list_channel_members(store, auth, args).await,
         "remove_channel_member" => channel::remove_channel_member(store, auth, args).await,
@@ -812,6 +816,7 @@ pub async fn dispatch(
         "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
         "post_dm_message" => message::post_dm_message(server, auth, args).await,
         "list_threads" => thread::list_threads(store, args).await,
+        "create_thread" => thread::create_thread(server, auth, args).await,
         "list_child_threads" => thread::list_child_threads(store, args).await,
         "list_recently_active_threads" => thread::list_recently_active_threads(store, args).await,
         "mute_thread" => thread::mute_thread(store, auth, args).await,

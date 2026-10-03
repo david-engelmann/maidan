@@ -22,7 +22,7 @@ use crate::error::McpError;
 /// `routes::observe_spawn_denial`. `actor` is the post's author: the store's
 /// gate reports the thread and the numbers, not who pushed past the cap.
 /// Best-effort, like every other MCP-published event.
-async fn observe_spawn_denial<T>(
+pub(super) async fn observe_spawn_denial<T>(
     server: &crate::server::McpServer,
     actor: Option<MemberId>,
     result: Result<T, maidan_store::StoreError>,

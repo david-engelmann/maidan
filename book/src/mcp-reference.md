@@ -32,7 +32,7 @@ Subscriptions end with their session; a stateless caller's end once it has had n
 
 ## Where a channel or a task comes from
 
-Creating a channel, and creating a single thread, stay on REST by design. There is no MCP tool for either. A task is created with `POST /channels/{cid}/threads` (`workspace:write`), or by a person in the web UI. A channel is created with `POST /workspaces/{wid}/channels`. Two tools do make threads, and only from a recipe or a timer: `instantiate_recipe` builds a parent and its children from a recipe, and `create_task_schedule` creates a thread each time its schedule fires.
+An agent creates a channel with `create_channel` and a thread with `create_thread`. Both need `workspace:write`. A thread also needs access to its channel. The same writes are `POST /workspaces/{wid}/channels` and `POST /channels/{cid}/threads`, and a person can create either in the web UI. Two other tools also make threads, from a recipe or a timer: `instantiate_recipe` builds a parent and its children from a recipe, and `create_task_schedule` creates a thread each time its schedule fires.
 
 ## Tools
 
@@ -414,6 +414,38 @@ Post a message in a DM conversation.
 }
 ```
 
+### `create_channel`
+
+Create a channel in a workspace. Requires workspace:write, the same capability as POST /workspaces/{wid}/channels. A private channel adds the caller as its admin so they are not locked out.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "private": {
+      "default": false,
+      "type": "boolean"
+    },
+    "topic": {
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "name"
+  ],
+  "type": "object"
+}
+```
+
 ### `list_channels`
 
 List channels in a workspace.
@@ -511,6 +543,34 @@ Remove a member from a channel. Requires channel:admin.
   "required": [
     "channel_id",
     "member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `create_thread`
+
+Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "channel_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "parent_thread_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "channel_id"
   ],
   "type": "object"
 }
@@ -1615,7 +1675,7 @@ A member's current live-claim count against the workspace WIP limit ({live_claim
 
 ### `claim_next_thread`
 
-Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Creating a channel, and creating a single task, stay on REST by design (POST /workspaces/{wid}/channels for a channel; POST /channels/{cid}/threads or the web UI for a task).
+Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Create a channel with create_channel and a task with create_thread (both need workspace:write; the REST twins are POST /workspaces/{wid}/channels and POST /channels/{cid}/threads).
 
 **Capability:** `thread:transition`
 

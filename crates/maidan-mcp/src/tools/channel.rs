@@ -1,4 +1,4 @@
-//! Channel and DM-conversation listing/opening tool handlers.
+//! Channel and DM-conversation listing, creation, and opening tool handlers.
 
 use std::sync::Arc;
 
@@ -180,6 +180,66 @@ pub(super) async fn list_channels(
         }
     }
     Ok(content_json(&visible))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateChannelArgs {
+    workspace_id: uuid::Uuid,
+    name: String,
+    #[serde(default)]
+    topic: Option<String>,
+    #[serde(default)]
+    private: bool,
+}
+
+/// Create a channel. `workspace:write`, same as `POST /workspaces/:wid/channels`.
+/// A private channel adds the caller as its admin so they are not locked out.
+/// Bypass callers have no real member, so they are not added.
+pub(super) async fn create_channel(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: CreateChannelArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)?;
+    let (channel, stored) = server
+        .store
+        .create_channel_with_event(NewChannel {
+            workspace_id,
+            name: a.name,
+            topic: a.topic,
+            private: a.private,
+        })
+        .await?;
+    if channel.private && !auth.bypass {
+        let actor = auth.actor_id;
+        server
+            .store
+            .add_channel_member_audited(
+                channel.id,
+                auth.member_id,
+                ChannelMemberRole::Admin,
+                Box::new(move |m| NewAuditEvent {
+                    scope: AuditScope::Workspace(workspace_id),
+                    actor_id: Some(actor),
+                    action: "channel_member.add".into(),
+                    target_kind: Some("channel".into()),
+                    target_id: Some(m.channel_id.0),
+                    metadata: serde_json::json!({
+                        "workspace_id": workspace_id.0,
+                        "subject_member_id": m.member_id.0,
+                        "role": m.role.as_str(),
+                        "reason": "channel_created",
+                        "surface": "mcp",
+                    }),
+                }),
+            )
+            .await?;
+    }
+    server.publish_stored(&stored).await;
+    Ok(content_json(&channel))
 }
 
 #[derive(Deserialize)]

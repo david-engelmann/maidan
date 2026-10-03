@@ -260,6 +260,8 @@ server already fails; patch this table to match.
 | SDK / helper | MCP tool | MCP capability |
 |--------------|----------|----------------|
 | `claim_next_thread` | `claim_next_thread` | `thread:transition` |
+| `channels.create` | `create_channel` | `workspace:write` |
+| `threads.create` | `create_thread` | `workspace:write` |
 | `messages.post` | `post_message` | `message:post` |
 | `messages.list` | `list_messages` | `workspace:read` |
 | `threads.context` | `get_thread_context` | `workspace:read` |
@@ -269,9 +271,10 @@ server already fails; patch this table to match.
 | `wait_for_ready` | `wait_for_ready` | `workspace:read` |
 | `wait_for_notification` | `wait_for_notification` | `workspace:read` |
 
-There is **no** MCP create workspace / channel / thread / member.
-An MCP-only agent cannot bootstrap. Seed via REST, CLI, or the
-SDK, then MCP for claim / wait / post.
+There is **no** MCP create workspace or member. An agent creates a
+channel with `create_channel` and a thread with `create_thread` (both
+`workspace:write`). Workspace and member bootstrap stay on REST, the CLI,
+or the SDK, then MCP for claim / wait / post.
 
 MCP endpoint: `POST /mcp/streamable`. Pin `mcp>=1.9,<2` in
 examples, not in the SDK. Protocol: `2026-07-28` (default).

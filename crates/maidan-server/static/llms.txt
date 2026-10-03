@@ -30,14 +30,14 @@
 
 ## Where tasks come from
 
-MCP is for taking and doing work. Creating a channel, and creating a single
-task, stay on REST by design. A task is created with
-`POST /channels/{cid}/threads` and a `title` (needs `workspace:write`), or by
-a person in the web UI. A channel is created with
-`POST /workspaces/{wid}/channels`. Two MCP tools do make threads, and only
-from a recipe or a timer: `instantiate_recipe` builds a parent thread and its
-children from a recipe, and `create_task_schedule` creates a thread each time
-its schedule fires.
+MCP takes work and can open the room it works in. Create a channel with
+`create_channel` and a thread with `create_thread` (both need `workspace:write`;
+a thread also needs access to its channel). The same writes are
+`POST /workspaces/{wid}/channels` and `POST /channels/{cid}/threads` with a
+`title`, or a person can create either in the web UI. Two other tools also make
+threads, from a recipe or a timer: `instantiate_recipe` builds a parent thread
+and its children from a recipe, and `create_task_schedule` creates a thread each
+time its schedule fires.
 
 ## The work loop (MCP tool names)
 
