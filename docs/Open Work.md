@@ -272,7 +272,7 @@ Entries marked done on `main` since the thread's `1e612cf8` snapshot are noted.
 | 33 | Message click affordance | **Done** in #1224: a pencil and a click open Edit message | #1224 |
 | 34 | TCK numbers disagree | **Adopt**: the two sets come from two checks (the TCK's pytest summary and the walkthrough), and the comment conflated them | Lane U |
 | 35 | MCP has no create-thread tool | **Done** in #1226: `create_thread` and `create_channel`, both `workspace:write` | #1226 |
-| 36 | `llms.txt` says an unleased claim never lapses | **Adopt**: every claim is leased, 600 s by default | Lane U |
+| 36 | `llms.txt` says an unleased claim never lapses | **Done** in #1149: `llms.txt` says every claim is leased, 600 s by default, and a lapse returns the task | #1149 |
 | 37 | Enums on string inputs | **Done**: `transition_thread.action` is `start_review`, `close`, or `archive` (#1201); `set_delivery_mode.mode` is `immediate` or `digest`; `cast_vote.kind` is `approve`, `request_changes`, or `ack` (#1231) | #1201, #1231 |
 | 38 | Wait families look alike | **Adopt**, as see-also sentences | Lane U |
 | 39 | DM and group-DM duplication | **Done** in #1207: DM and group-DM message loads share one function | #1207 |
