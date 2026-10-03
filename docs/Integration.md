@@ -1570,10 +1570,10 @@ without `workspace:read` is refused. An OIDC session keeps its fixed
 
 An unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) on a session, and a
 WebSocket subscribe on one, is refused (`403`, or close `1008`) when the browser
-says it came from another origin: `Sec-Fetch-Site` other than `same-origin`,
-or, without that header, an `Origin` that does not name this host. A request
-with neither header is accepted. Requests
-with a bearer are not checked, since a browser never attaches a bearer on its
+says it came from another origin: `Sec-Fetch-Site` other than `same-origin`
+or `none` (`none` is a request the user started, not a page), or, without that
+header, an `Origin` that does not name this host. A request with neither header
+is accepted. Requests with a bearer are not checked, since a browser never attaches a bearer on its
 own. `POST /auth/logout` ends either kind of session (`303` to `/ui/`, or to the
 identity provider's end-session page for an OIDC session). A server without
 `MAIDAN_SESSION_SECRET` has no sessions and answers the exchange with `404`;

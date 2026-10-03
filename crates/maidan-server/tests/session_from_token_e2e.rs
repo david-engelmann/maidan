@@ -437,19 +437,58 @@ async fn a_cross_origin_socket_cannot_use_a_session() {
                 .unwrap()
                 .unwrap();
             match reply {
-                Message::Text(text) => serde_json::from_str::<Value>(&text).unwrap()["type"]
+                Message::Text(text) => Ok(serde_json::from_str::<Value>(&text).unwrap()["type"]
                     .as_str()
-                    .map(String::from),
-                Message::Close(_) => None,
+                    .map(String::from)),
+                Message::Close(frame) => Err(frame.map(|f| u16::from(f.code))),
                 other => panic!("unexpected {other:?}"),
             }
         }
     };
     assert_eq!(
-        subscribe(w.origin()).await.as_deref(),
-        Some("subscribe_ack")
+        subscribe(w.origin()).await,
+        Ok(Some("subscribe_ack".to_string()))
     );
-    assert_eq!(subscribe("http://evil.example".into()).await, None);
+    assert_eq!(
+        subscribe("http://evil.example".into()).await,
+        Err(Some(1008)),
+        "a cross-origin socket on a session is closed with 1008"
+    );
+}
+
+#[tokio::test]
+async fn a_tokens_session_does_not_reach_mcp() {
+    let w = world(Sessions::Standalone).await;
+    let cookie = w.exchange(&w.a.admin).await;
+    let rpc = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
+    // MCP is an agent protocol and takes a bearer only, whatever the token's
+    // session could do on the REST routes.
+    for path in ["/mcp", "/mcp/streamable"] {
+        let resp = w
+            .client
+            .post(w.url(path))
+            .header(header::COOKIE, &cookie)
+            .header(header::ORIGIN, w.origin())
+            .header(header::ACCEPT, "application/json, text/event-stream")
+            .json(&rpc)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "{path}");
+    }
+    let bearer = w
+        .client
+        .post(w.url("/mcp"))
+        .bearer_auth(&w.a.admin)
+        .json(&rpc)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        bearer.status(),
+        StatusCode::OK,
+        "the same token as a bearer is served"
+    );
 }
 
 #[tokio::test]
@@ -601,6 +640,40 @@ async fn a_delegated_tokens_session_stays_bound_by_its_grant() {
         .await
         .unwrap();
     assert_eq!(post.status(), StatusCode::FORBIDDEN);
+    // The same refusal on the `/ui/api` routes, and a cross-origin one, are
+    // recorded as delegated decisions, as on the bearer routes.
+    let ui_path = format!("POST /ui/api/workspaces/{}/channels", w.a.ws.0);
+    let ui_decisions = || async {
+        w.store
+            .list_audit_for_workspace(w.a.ws, 100)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|row| {
+                row.action == "authorization.decision"
+                    && row.metadata["authorization_action"] == json!(ui_path)
+            })
+            .collect::<Vec<_>>()
+    };
+    let ui_write = w.create_channel(&cookie, w.a.ws, Some(&w.origin())).await;
+    assert_eq!(ui_write.status(), StatusCode::FORBIDDEN);
+    let recorded = ui_decisions().await;
+    assert_eq!(
+        recorded.len(),
+        1,
+        "the delegated /ui/api denial is recorded"
+    );
+    assert_eq!(recorded[0].metadata["outcome"], "denied");
+    assert_eq!(recorded[0].actor_id, Some(delegate));
+    let foreign = w
+        .create_channel(&cookie, w.a.ws, Some("http://evil.example"))
+        .await;
+    assert_eq!(foreign.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        ui_decisions().await.len(),
+        2,
+        "and so is a cross-origin one"
+    );
 
     let session = w
         .store

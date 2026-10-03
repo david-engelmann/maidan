@@ -261,7 +261,7 @@ detail. Summary:
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `MAIDAN_OIDC_ENABLED` | when using OIDC | `1` enables `/auth/oidc/*` and session routes. |
-| `MAIDAN_SESSION_SECRET` | when OIDC is on; optional otherwise | HMAC key for signed `maidan_session` cookies and subscribe `resume_token`s (32+ bytes). Required at startup when OIDC is on; bare session UUIDs in cookies are rejected. Without OIDC it signs the sessions `/ui/` makes from a pasted token (`POST /auth/session/from-token`); unset, there are none and the page keeps a pasted token in the tab only. |
+| `MAIDAN_SESSION_SECRET` | with OIDC; with auth on, unless `MAIDAN_SUBSCRIBE_RESUME_SECRET` is set | HMAC key (32+ bytes) for signed `maidan_session` cookies and subscribe `resume_token`s; a bare session UUID in a cookie is rejected. OIDC refuses to boot without it, and so does a server with auth on and neither this nor `MAIDAN_SUBSCRIBE_RESUME_SECRET`. Without OIDC it signs the sessions `/ui/` makes from a pasted token (`POST /auth/session/from-token`); unset, there are none, and the page keeps a pasted token in the tab only. |
 | `MAIDAN_OIDC_ISSUER` | yes (non-mock) | IdP issuer URL for discovery. |
 | `MAIDAN_OIDC_CLIENT_ID` | yes (non-mock) | OAuth client id. |
 | `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Code exchange secret. |
@@ -308,13 +308,17 @@ rotating the token ends the session.
 
 **Sessions.** A session row (`maidan_sessions`) names its member and workspace
 and, for one made from a token, the token's id. It is checked on every request:
-an expired row, or one whose token is no longer live, is deleted and refused.
-Signing out (`POST /auth/logout`) deletes the row. CSRF is handled by
+an expired row, or one whose token is no longer live, is refused, and its
+deletion is attempted then (a failed delete leaves the row, which the next
+request refuses again). Signing out (`POST /auth/logout`) deletes the row, and
+reports a failure rather than a sign-out that did not happen. CSRF is handled by
 `SameSite=Lax`, JSON request bodies, and refusing an unsafe session request or a
 session WebSocket from another origin; the session keeps no CSRF secret. Behind
 a proxy that rewrites `Host`, browsers still send `Sec-Fetch-Site`, which the
-check prefers. Creating a session writes an audit row in the same transaction
-(`session.from_token`, or `session.create` for an OIDC login).
+check prefers. Creating or ending a session writes an audit row in the same
+transaction: `session.create` for an OIDC sign-in, `session.from_token` for an
+exchange, and `session.delete` for a sign-out, a replaced session, or one whose
+token ended.
 Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 
 ## API discovery

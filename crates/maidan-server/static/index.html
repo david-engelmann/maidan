@@ -4621,6 +4621,9 @@
           const body = await res.json();
           sessionMemberId = body.member_id;
           tokenSession = Boolean(body.token_id);
+          // So rotating this page's own token from the Tokens tab, before the
+          // Session tab has loaded, still exchanges the successor.
+          if (body.token_id) currentTokenId = body.token_id;
           el.hidden = false;
           el.textContent = `Signed in · ${body.member_id}`;
           el.className = "ok";

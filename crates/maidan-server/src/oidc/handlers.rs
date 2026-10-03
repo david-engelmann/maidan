@@ -253,12 +253,10 @@ pub async fn logout(
     // Ending a session is recorded in its own transaction (D-A). A session
     // already gone has nothing to end; any other failure leaves it valid, so
     // the caller is told rather than shown a sign-out that did not happen.
-    // A token's session was never signed in at the identity provider.
+    // A token's session was never signed in at the identity provider; the
+    // deleted row says which kind this was.
     let mut from_token = false;
     if let Some(session_id) = parse_session_cookie(&headers_in, &settings.secret) {
-        if let Ok(session) = state.store.get_session(session_id).await {
-            from_token = session.api_token_id.is_some();
-        }
         let ended = state
             .store
             .delete_session_audited(
@@ -269,12 +267,16 @@ pub async fn logout(
                     action: SESSION_DELETE.into(),
                     target_kind: Some("member".into()),
                     target_id: Some(session.member_id.0),
-                    metadata: serde_json::json!({ "workspace_id": session.workspace_id.0 }),
+                    metadata: serde_json::json!({
+                        "workspace_id": session.workspace_id.0,
+                        "api_token_id": session.api_token_id.map(|t| t.0),
+                    }),
                 }),
             )
             .await;
         match ended {
-            Ok(_) | Err(maidan_store::StoreError::NotFound) => {}
+            Ok(session) => from_token = session.api_token_id.is_some(),
+            Err(maidan_store::StoreError::NotFound) => {}
             Err(err) => return Err(err.into()),
         }
     }
