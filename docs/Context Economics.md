@@ -56,8 +56,8 @@ Nothing below has changed since the audit, except that the tool list grew.
   - The token-budget fold rewrote the pack on every new message.
 - **`as_of` was not exact.** It returned the live thread row.
 - **`tools/list` was large and unstable.**
-  - It carries 235 tools on 2026-10-03 (`contracts/mcp-tool-names.json`, which `docs_numbers_contract` holds `docs/Protocols.md` to; 200 at the audit, and #1226 and #1227 added 35 in two days), about 105 KB or 26 to 30 thousand tokens, in every request of harnesses that do not defer tools.
-  - It was filtered by each token's capabilities, so agents with different capabilities could not share a prefix.
+  - It carries 235 tools on 2026-10-03 (`contracts/mcp-tool-names.json`, which `docs_numbers_contract` holds `docs/Protocols.md` to; 200 at the audit, and #1226 and #1227 added 35 in two days), about 105 KB or an estimated 26 to 30 thousand tokens (bytes at 3.5 to 4 characters a token, not a tokenizer count), in every request of harnesses that do not defer tools.
+  - It was filtered by each token's capabilities, so agents with different capabilities get different lists, which share a prefix only up to the first tool one of them lacks.
   - It changes in most releases: 76 commits touched the catalog in the 30 days before the audit.
 - **Maidan was out of step with MCP 2026-07-28.** It advertised that version but omitted `ttlMs` and `cacheScope`, which the schema requires on every cacheable result, and `server/discover`, which is a MUST.
 - **The usage ledger was half there.**
