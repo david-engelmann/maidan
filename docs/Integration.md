@@ -731,8 +731,10 @@ two per kind (`effective`). `null` means not pruned.
 - **Messages** older than the cutoff are erased as a purge erases them: their
   words, edits, reactions, pins, embeddings and references go, and their content
   keys are destroyed, so the sealed copies in the event log can no longer be
-  opened. The threads stay. The instance never prunes messages, so a workspace
-  policy is the only way they are pruned.
+  opened. The threads stay. With `MAIDAN_RETENTION_MESSAGES_DAYS` unset, the
+  instance has no message cap; when set, a longer workspace `messages_days` is
+  refused and the instance sweep erases messages past its cutoff except in a held
+  workspace.
 - **Events** older than the cutoff go, except any a durable consumer of this
   workspace has not yet received.
 - **Deliveries** are the finished rows the instance's delivery retention prunes;
