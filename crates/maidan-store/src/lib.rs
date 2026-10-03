@@ -103,6 +103,7 @@ pub mod automation_deliveries;
 mod claim_next;
 pub mod content_keyring;
 mod content_keys;
+pub mod context_pack;
 mod delegation_grants;
 #[macro_use]
 mod delegate;

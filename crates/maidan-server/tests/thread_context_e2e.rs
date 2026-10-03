@@ -152,14 +152,15 @@ async fn thread_context_includes_messages_refs_artifacts_and_fsm() {
 
     assert_eq!(body["workspace_id"], ws.id.0.to_string());
     assert_eq!(body["channel_id"], ch.id.0.to_string());
-    assert_eq!(body["thread"]["state"], "in_review");
+    assert_eq!(body["state"], "in_review");
+    assert_eq!(body["thread_id"], thread.id.0.to_string());
     assert_eq!(body["messages"].as_array().unwrap().len(), 1);
     assert_eq!(body["references"].as_array().unwrap().len(), 1);
     assert_eq!(body["artifacts"].as_array().unwrap().len(), 1);
     assert_eq!(body["artifacts"][0]["sha256"], artifact.sha256);
-    assert_eq!(body["fsm"]["state"], "in_review");
-    assert_eq!(body["fsm"]["transitions"].as_array().unwrap().len(), 1);
-    assert_eq!(body["fsm"]["transitions"][0]["to_state"], "in_review");
+    assert_eq!(body["transitions"].as_array().unwrap().len(), 1);
+    assert_eq!(body["transitions"][0]["to_state"], "in_review");
+    assert!(body["prefix_sha256"].as_str().unwrap().len() == 64);
 
     server.abort();
 }
@@ -899,6 +900,275 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
                 .is_some_and(|a| a.is_empty()),
         "DM packs withhold accepted_decisions"
     );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.path()));
+    let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let app = router(AppState::for_tests(store.clone(), artifacts, bus, search));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let base = format!("http://{addr}");
+
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "stable".into(),
+        })
+        .await
+        .unwrap();
+    let alice = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "alice".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let bob = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "bob".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some("stable".into()),
+        })
+        .await
+        .unwrap();
+    store
+        .post_message(NewMessage {
+            thread_id: thread.id,
+            author_id: alice.id,
+            body: "first".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+
+    async fn bearer(
+        store: &dyn Store,
+        ws: maidan_types::WorkspaceId,
+        member: maidan_types::MemberId,
+        label: &str,
+    ) -> String {
+        let secret = TokenSecret::generate();
+        store
+            .create_api_token(NewApiToken {
+                workspace_id: ws,
+                member_id: member,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: Some(label.into()),
+                capabilities: vec!["workspace:read".into()],
+                expires_at: None,
+            })
+            .await
+            .unwrap();
+        format!("Bearer {}", secret.as_str())
+    }
+    let alice_auth = bearer(store.as_ref(), ws.id, alice.id, "alice").await;
+    let bob_auth = bearer(store.as_ref(), ws.id, bob.id, "bob").await;
+
+    let boot_alice = client
+        .get(format!("{base}/channels/{}/boot", ch.id.0))
+        .header("Authorization", &alice_auth)
+        .header("maidan-test-member-id", alice.id.0.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(boot_alice.status(), StatusCode::OK);
+    let boot_bytes = boot_alice.bytes().await.unwrap();
+    let boot_bob = client
+        .get(format!("{base}/channels/{}/boot", ch.id.0))
+        .header("Authorization", &bob_auth)
+        .header("maidan-test-member-id", bob.id.0.to_string())
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(boot_bytes, boot_bob, "two agents share one boot");
+
+    let other = store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap();
+    let eve = store
+        .create_member(NewMember {
+            workspace_id: other.id,
+            handle: "eve".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let eve_auth = bearer(store.as_ref(), other.id, eve.id, "eve").await;
+    let denied = client
+        .get(format!("{base}/channels/{}/boot", ch.id.0))
+        .header("Authorization", &eve_auth)
+        .header("maidan-test-member-id", eve.id.0.to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(denied.status(), StatusCode::OK);
+
+    let pack = client
+        .get(format!("{base}/threads/{}/context", thread.id.0))
+        .header("Authorization", &alice_auth)
+        .header("maidan-test-member-id", alice.id.0.to_string())
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert!(
+        pack.starts_with(&boot_bytes[..boot_bytes.len() - 1]),
+        "the thread prefix starts with the boot"
+    );
+    let needle = b"\"messages\":";
+    let at = pack
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .expect("messages key");
+    let before = pack[..at].to_vec();
+
+    store
+        .post_message(NewMessage {
+            thread_id: thread.id,
+            author_id: alice.id,
+            body: "second".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+    let again = client
+        .get(format!("{base}/threads/{}/context", thread.id.0))
+        .header("Authorization", &alice_auth)
+        .header("maidan-test-member-id", alice.id.0.to_string())
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let at2 = again
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .expect("messages key");
+    assert_eq!(
+        &again[..at2],
+        before.as_slice(),
+        "a new message changes nothing before the messages layer"
+    );
+    assert_ne!(again, pack);
+
+    let split: serde_json::Value = client
+        .get(format!("{base}/threads/{}/context", thread.id.0))
+        .query(&[("split", "true")])
+        .header("Authorization", &alice_auth)
+        .header("maidan-test-member-id", alice.id.0.to_string())
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    client
+        .post(format!("{base}/mcp"))
+        .json(&serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
+        .send()
+        .await
+        .unwrap();
+    let call: serde_json::Value = client
+        .post(format!("{base}/mcp"))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "get_thread_context",
+                "arguments": { "thread_id": thread.id.0 }
+            }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let parts = call["result"]["content"].as_array().unwrap();
+    assert_eq!(parts.len(), 2);
+    assert_eq!(
+        parts[0]["text"].as_str().unwrap(),
+        split["prefix"].as_str().unwrap()
+    );
+    assert_eq!(
+        parts[1]["text"].as_str().unwrap(),
+        split["tail"].as_str().unwrap()
+    );
+    assert_eq!(split["prefix_sha256"].as_str().unwrap().len(), 64);
+
+    let boot_mcp: serde_json::Value = client
+        .post(format!("{base}/mcp"))
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "resources/read",
+            "params": { "uri": format!("maidan://boots/{}", ch.id.0) }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let boot_text = boot_mcp["result"]["contents"][0]["text"].as_str().unwrap();
+    assert_eq!(boot_text.as_bytes(), boot_bytes.as_ref());
 
     server.abort();
 }

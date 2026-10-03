@@ -100,10 +100,9 @@ fn hero_loop_post_list_context() {
         .unwrap();
     let msgs = c.messages().list(&thread.id, &[]).unwrap();
     assert!(msgs.iter().any(|m| m.body == "hello from the rust sdk"));
-    assert_eq!(
-        c.threads().context(&thread.id, &[]).unwrap().thread.id,
-        thread.id
-    );
+    let ctx = c.threads().context(&thread.id, &[]).unwrap();
+    assert_eq!(ctx.thread_id, thread.id);
+    assert!(!ctx.thread.created_at.is_empty());
 }
 
 #[test]
@@ -334,10 +333,14 @@ fn every_documented_operation_returns_its_declared_model() {
     assert_eq!(reviewed.state, ThreadState::InReview);
 
     let ctx = assert_modeled!(c.threads().context(&thread.id, &[]).unwrap());
+    assert_eq!(ctx.thread_id, thread.id);
     assert!(
-        !ctx.fsm.transitions.is_empty(),
+        !ctx.transitions.is_empty(),
         "the start_review transition is in the pack"
     );
+    assert_eq!(ctx.state, ThreadState::InReview);
+    assert_eq!(ctx.prefix_sha256.len(), 64);
+    assert!(ctx.prefix_bytes > 0);
     assert!(ctx.messages.iter().any(|m| m.id == msg.id));
 
     let events = assert_all_modeled(c.list_events(&wid, &[("limit", "50")]).unwrap(), |e| {

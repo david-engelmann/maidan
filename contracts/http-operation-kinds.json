@@ -46,6 +46,7 @@
   {"method":"POST","path":"/channels/{cid}/threads/claim-next","kind":"changes"},
   {"method":"GET","path":"/channels/{cid}/unclaimable","kind":"reads"},
   {"method":"GET","path":"/channels/{id}","kind":"reads"},
+  {"method":"GET","path":"/channels/{id}/boot","kind":"reads"},
   {"method":"GET","path":"/dm/{id}","kind":"reads"},
   {"method":"GET","path":"/dm/{id}/messages","kind":"reads"},
   {"method":"POST","path":"/dm/{id}/messages","kind":"changes"},

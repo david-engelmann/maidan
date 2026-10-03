@@ -1,7 +1,8 @@
 //! MCP resources backed by the store. Resources are addressed by URI:
 //!
 //! - `maidan://workspaces/{id}` — workspace metadata.
-//! - `maidan://channels/{id}` — channel metadata + recent messages count.
+//! - `maidan://channels/{id}` — channel metadata.
+//! - `maidan://boots/{channel_id}` — the workspace boot for a channel.
 //! - `maidan://threads/{id}` — full thread transcript (up to 100 messages).
 
 use std::sync::Arc;
@@ -29,6 +30,11 @@ pub fn templates() -> Vec<Value> {
             "Workspace metadata.",
         ),
         ("channel", "maidan://channels/{id}", "Channel metadata."),
+        (
+            "boot",
+            "maidan://boots/{channel_id}",
+            "Workspace boot for a channel: the bytes a thread pack prefix starts with.",
+        ),
         (
             "thread",
             "maidan://threads/{id}",
@@ -96,6 +102,25 @@ pub async fn read(
                 "byte_length": meta.size_bytes,
             })
         }
+        "boots" => {
+            let id = uuid::Uuid::parse_str(id_str)
+                .map_err(|_| McpError::InvalidParams(format!("invalid uuid in uri: {id_str}")))?;
+            let boot =
+                maidan_store::context_pack::build_channel_boot(store.as_ref(), ChannelId(id))
+                    .await?;
+            // Compact struct JSON, not a Value: key order is the boot's, the
+            // same bytes REST returns.
+            let text = serde_json::to_string(&boot)?;
+            return Ok(json!({
+                "contents": [
+                    {
+                        "uri": uri,
+                        "mimeType": "application/json",
+                        "text": text
+                    }
+                ]
+            }));
+        }
         "workspaces" | "channels" | "threads" => {
             let id = uuid::Uuid::parse_str(id_str)
                 .map_err(|_| McpError::InvalidParams(format!("invalid uuid in uri: {id_str}")))?;
@@ -153,7 +178,7 @@ pub fn validate_uri(uri: &str) -> Result<(), McpError> {
             }
             let _ = Sha256::from_hex(id_str).map_err(|e| McpError::InvalidParams(e.to_string()))?;
         }
-        "workspaces" | "channels" | "threads" => {
+        "boots" | "workspaces" | "channels" | "threads" => {
             let _ = uuid::Uuid::parse_str(id_str)
                 .map_err(|_| McpError::InvalidParams(format!("invalid uuid in uri: {id_str}")))?;
         }

@@ -527,6 +527,19 @@ pub struct ThreadContextQuery {
     /// `false` for the leanest pack. Withheld on DM channels.
     #[serde(default = "default_true")]
     pub include_accepted_decisions: bool,
+    /// Stop eliding once the canonical pack is at most this many bytes.
+    /// Elision grows by fixed blocks. Omit for no cap.
+    pub max_bytes: Option<i64>,
+    /// Return the prefix and the tail as two JSON strings, the same strings
+    /// MCP puts in its two content parts, with the prefix sha256 and length.
+    #[serde(default)]
+    pub split: bool,
+    /// A delta since `message_cursor` or `since_prefix_sha`, instead of the
+    /// whole pack. `since_prefix_sha` requests this on its own.
+    #[serde(default)]
+    pub delta: bool,
+    /// When this equals the current prefix sha256, the delta is only the tail.
+    pub since_prefix_sha: Option<String>,
 }
 
 /// Query for `GET /threads/:id/tool-transcript`.
@@ -666,6 +679,8 @@ pub struct WorkspaceContextQuery {
     /// Token budget applied to **each** nested thread's message page. Omit for
     /// row-only caps.
     pub token_budget: Option<i64>,
+    /// Byte cap applied to each nested thread pack.
+    pub max_bytes: Option<i64>,
 }
 
 fn default_workspace_thread_limit() -> i64 {

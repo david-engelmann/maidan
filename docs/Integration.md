@@ -832,7 +832,8 @@ Fields: `workspace_id` (enables replay), optional `channel_id`, `thread_id`, `me
 
 | Endpoint | Content |
 |----------|---------|
-| `GET /threads/:id/context` | Messages, edits, references, artifacts, FSM history (paginated) |
+| `GET /threads/:id/context` | One canonical pack: stable prefix (boot, brief, messages), volatile tail last. `split=true` returns the two JSON strings MCP returns. `delta=true` or `since_prefix_sha` returns a delta. |
+| `GET /channels/:id/boot` | The workspace boot for a channel. Every agent who can read the channel gets the same bytes, and a thread pack's prefix starts with them. |
 | `GET /workspaces/:id/context` | Workspace summary + packed thread contexts |
 
 Pagination: messages `posted_at ASC, id ASC`; threads `created_at ASC, id ASC`. Query `message_limit`, `message_cursor`, `thread_limit`, `thread_cursor`. MCP tools `get_thread_context` and `get_workspace_context` accept the same fields.
@@ -851,7 +852,15 @@ A context pack is a slice, not a dump: the knobs below are how an agent asks for
 | **Tool-call transcript** | `GET /threads/:id/tool-transcript` (`workspace:read`) | A token-lean projection pairing every `tool_use` block with its `tool_result` by id — the thread's tool history without the prose. |
 | **Accepted decisions** | `include_accepted_decisions=true` (default) on the live thread pack | Token-lean teasers for closed/archived in-channel results so the next `claim_next` claimer sees what the channel already decided. Waiter envelopes (`schema = maidan.waiter.result/1`) appear only when `status` is `reviewed`; `result_kind` is a **namespaced string** (e.g. `example.review.result/1`), not a closed enum. Full payloads stay on `GET /threads/:id/result`. Set `false` to drop. Withheld on DM channels, as-of packs, and workspace-nested packs. |
 
-MCP parity: `get_thread_context` accepts `include_glossary`, `include_edits`, `as_of`, `token_budget`, `include_parent_grounding` and `include_accepted_decisions`; `get_workspace_context` accepts `include_glossary` and `token_budget`; `snapshot_thread_context`, `seed_from_message`, and `get_tool_transcript` are tools too.
+MCP parity: `get_thread_context` accepts `include_glossary`, `include_edits`, `as_of`, `token_budget`, `include_parent_grounding`, `include_accepted_decisions`, `max_bytes`, `delta` and `since_prefix_sha`. It returns two text parts, the stable prefix and the volatile tail, which are the `prefix` and `tail` strings of REST `?split=true`. `get_workspace_context` accepts `include_glossary`, `token_budget` and `max_bytes`. `snapshot_thread_context` freezes the canonical flattened bytes, the same bytes REST returns, so one snapshot sha. `seed_from_message` and `get_tool_transcript` are tools too. The boot is the resource `maidan://boots/{channel_id}`.
+
+### Context packs and prompt caching
+
+A pack is one JSON object, stable fields first and the volatile tail last, and REST and MCP serialize that same object. The prefix is `workspace_id`, the glossary (omitted when empty), `channel_id`, accepted decisions oldest first (omitted when empty), then the thread brief, parent grounding, messages, edits, references, artifacts, transitions and change requests. The tail is state, the lease, `updated_at`, elision, `as_of`, the message cursor, and `prefix_sha256` with `prefix_bytes`. A new message changes no byte before `"messages"`.
+
+`GET /channels/:id/boot` and `maidan://boots/{channel_id}` are that leading object. The thread prefix starts with it, so every agent of the channel shares the cached head.
+
+Elision drops the middle in blocks of 16 messages. `max_bytes` grows that elision until the canonical pack fits, or only the opening message and the newest remain. `as_of=<event_log_id>` rebuilds the thread row from the log at that id, not the live row. `delta=true` with `since_prefix_sha` equal to the current prefix returns only the tail. A message cursor with no `since_prefix_sha` returns the messages after the cursor without checking whether they rebuild the prefix. When `since_prefix_sha` is supplied and does not match, that cursor slice is returned only when appending them rebuilds the prefix that hashes to `prefix_sha256`; otherwise the delta carries the replacement prefix. When a timestamp ties, the list breaks the tie on an id, the same way on both databases.
 
 ### A2A tasks
 
@@ -1118,8 +1127,8 @@ thread again starts a new window. Watch for it on the event stream
 
 ### 3. Read
 
-`get_thread_context {thread_id}` packs the thread's messages, edits, references,
-FSM history, and the workspace glossary. It also lists in-channel
+`get_thread_context {thread_id}` returns two text parts: the stable prefix
+(boot, brief, messages, history) and the volatile tail (state, lease, prefix sha). It also lists in-channel
 **accepted/closed decisions** (`accepted_decisions`) so you see what this channel
 already decided before you start — waiter envelopes (`maidan.waiter.result/1`) only
 when `status` is `reviewed`, with `result_kind` as a namespaced string (e.g.

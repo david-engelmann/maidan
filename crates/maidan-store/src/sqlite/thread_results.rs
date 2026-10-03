@@ -85,7 +85,7 @@ pub async fn list(
          WHERE c.workspace_id = ?1
            AND t.tombstoned_at IS NULL
            AND (?2 IS NULL OR tr.result_kind = ?2)
-         ORDER BY tr.produced_at DESC
+         ORDER BY tr.produced_at DESC, tr.thread_id DESC
          LIMIT ?3",
     )
     .bind(workspace_id.0)
@@ -115,7 +115,7 @@ pub async fn list_closed_in_channel(
            AND t.state IN ('closed', 'archived')
            AND t.tombstoned_at IS NULL
            AND (?2 IS NULL OR t.id <> ?2)
-         ORDER BY tr.produced_at DESC
+         ORDER BY tr.produced_at DESC, tr.thread_id DESC
          LIMIT ?3",
     )
     .bind(channel_id.0)

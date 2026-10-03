@@ -151,6 +151,12 @@
   },
   {
     "method": "GET",
+    "path": "/channels/{id}/boot",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/channels/{cid}/queue-depth",
     "capability": "workspace:read",
     "surface": "http"

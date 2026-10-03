@@ -2319,7 +2319,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_thread_context",
-            "description": "Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent). Pass token_budget=<n> to cap the message page by estimated tokens: the opening message and the recent tail are kept, the middle is folded into an auditable 'elision' marker (Lost-in-the-Middle).",
+            "description": "Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent). Pass token_budget=<n> to cap the message page by estimated tokens: the opening message and the recent tail are kept, the middle is folded into an auditable elision marker in fixed blocks. The result is two text parts: the stable prefix (workspace boot, brief, messages) and the volatile tail (state, lease, cursors, prefix sha256). Those strings are the bytes REST returns with split=true.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2331,7 +2331,11 @@ pub fn catalog() -> Vec<Value> {
                     "as_of": {"type": "integer", "description": "Event-log id: reconstruct the thread as it stood at that point (as-of replay). Omit for the live pack."},
                     "token_budget": {"type": "integer", "minimum": 1, "description": "Cap the message page by estimated tokens (chars/4): keep the opening message and the recent tail, fold the middle into an auditable 'elision' marker. Omit to cap by rows only."},
                     "include_parent_grounding": {"type": "boolean", "default": true, "description": "For a child thread, attach parent grounding (the parent's opening ask + latest decision) so a fresh claimer knows why the thread exists. Absent for root threads / cross-channel / DM parents. Set false for the leanest pack."},
-                    "include_accepted_decisions": {"type": "boolean", "default": true, "description": "Attach in-channel accepted/closed decisions (token-lean teasers) so a fresh claimer sees what the channel already decided. Waiter envelopes appear only when status is reviewed; result_kind is a namespaced string (e.g. example.review.result/1), not a closed enum. Withheld on DM channels. Set false for the leanest pack."}
+                    "include_accepted_decisions": {"type": "boolean", "default": true, "description": "Attach in-channel accepted/closed decisions (token-lean teasers) so a fresh claimer sees what the channel already decided. Waiter envelopes appear only when status is reviewed; result_kind is a namespaced string (e.g. example.review.result/1), not a closed enum. Withheld on DM channels. Set false for the leanest pack."},
+                    "message_cursor": {"type": "string", "format": "uuid", "description": "Page messages after this id. With delta, it is also the delta cursor."},
+                    "max_bytes": {"type": "integer", "minimum": 1, "description": "Cap the canonical pack by bytes. Elision grows by fixed message blocks until the pack fits or only the opener and newest message remain."},
+                    "delta": {"type": "boolean", "default": false, "description": "Return a delta instead of the whole pack. The first content part is always the delta head (delta, prefix_unchanged, prefix_sha256, prefix_bytes), never empty; the second is the volatile tail. When since_prefix_sha matches the current prefix, the head has prefix_unchanged true and no messages or prefix. With message_cursor, the head adds the messages after that cursor when appending them rebuilds the prefix; otherwise it carries the replacement prefix."},
+                    "since_prefix_sha": {"type": "string", "description": "Hex sha256 of a prefix the caller already holds. Requests a delta on its own."}
                 },
                 "required": ["thread_id"]
             }
@@ -2366,7 +2370,8 @@ pub fn catalog() -> Vec<Value> {
                     "message_limit": {"type": "integer", "minimum": 1, "maximum": 500},
                     "transition_limit": {"type": "integer", "minimum": 1, "maximum": 200},
                     "include_glossary": {"type": "boolean", "default": true, "description": "Include the workspace glossary once at the top level (grounding); omitted when empty. Set false to drop it."},
-                    "token_budget": {"type": "integer", "minimum": 1, "description": "Cap each nested thread's message page by estimated tokens (see get_thread_context). Omit to cap by rows only."}
+                    "token_budget": {"type": "integer", "minimum": 1, "description": "Cap each nested thread's message page by estimated tokens (see get_thread_context). Omit to cap by rows only."},
+                    "max_bytes": {"type": "integer", "minimum": 1, "description": "Byte cap applied to each nested thread pack."}
                 },
                 "required": ["workspace_id"]
             }

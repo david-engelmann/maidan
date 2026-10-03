@@ -1093,48 +1093,38 @@ pub async fn dispatch(
         "list_github_issue_links" => projector::list_github_issue_links(server, auth, args).await,
         "unlink_github_issue" => projector::unlink_github_issue(server, auth, args).await,
         "get_thread_context" => {
-            let v = crate::context::get_thread_context(store.as_ref(), args).await?;
-            Ok(content_json(&v))
+            let rendered = crate::context::render_thread_context(store.as_ref(), args).await?;
+            Ok(content_parts(&[&rendered.stable, &rendered.tail]))
         }
         "snapshot_thread_context" => snapshot::snapshot_thread_context(server, auth, args).await,
         "get_workspace_context" => {
-            let mut v = crate::context::get_workspace_context(store.as_ref(), args).await?;
+            let mut packed = crate::context::load_workspace_context(store.as_ref(), args).await?;
             // Drop packed threads in private channels the caller can't access,
             // caching the per-channel decision. Thread-keyed +
-            // DM-participant-aware.
+            // DM-participant-aware. Filter before serialize so the bytes stay
+            // the canonical struct order REST uses.
             if !auth.bypass {
-                if let Some(threads) = v.get("threads").and_then(|t| t.as_array()) {
-                    let mut decision: std::collections::HashMap<maidan_types::ThreadId, bool> =
-                        std::collections::HashMap::new();
-                    let mut kept = Vec::with_capacity(threads.len());
-                    for t in threads {
-                        let tid = t
-                            .get("thread")
-                            .and_then(|th| th.get("id"))
-                            .and_then(|c| c.as_str())
-                            .and_then(|s| s.parse::<uuid::Uuid>().ok())
-                            .map(maidan_types::ThreadId);
-                        let keep = match tid {
-                            Some(id) => match decision.get(&id) {
-                                Some(v) => *v,
-                                None => {
-                                    let ok =
-                                        maidan_auth::can_access_thread(store.as_ref(), auth, id)
-                                            .await?;
-                                    decision.insert(id, ok);
-                                    ok
-                                }
-                            },
-                            None => true,
-                        };
-                        if keep {
-                            kept.push(t.clone());
+                let mut decision: std::collections::HashMap<maidan_types::ThreadId, bool> =
+                    std::collections::HashMap::new();
+                let mut kept = Vec::with_capacity(packed.threads.len());
+                for thread in packed.threads {
+                    let id = thread.thread_id();
+                    let ok = match decision.get(&id) {
+                        Some(v) => *v,
+                        None => {
+                            let allowed =
+                                maidan_auth::can_access_thread(store.as_ref(), auth, id).await?;
+                            decision.insert(id, allowed);
+                            allowed
                         }
+                    };
+                    if ok {
+                        kept.push(thread);
                     }
-                    v["threads"] = Value::Array(kept);
                 }
+                packed.threads = kept;
             }
-            Ok(content_json(&v))
+            Ok(content_json(&packed))
         }
         "request_approval" => approval::request_approval(server, auth, args).await,
         "get_approval_gate" => approval::get_approval_gate(server, auth, args).await,
@@ -1192,6 +1182,19 @@ pub(super) fn content_json<T: serde::Serialize>(value: &T) -> Value {
         "content": [
             { "type": "text", "text": body }
         ],
+        "isError": false
+    })
+}
+
+/// Two or more text parts. `get_thread_context` uses this so the stable prefix
+/// and the volatile tail are separate strings a cache can pin independently.
+pub(super) fn content_parts(parts: &[&str]) -> Value {
+    let content: Vec<Value> = parts
+        .iter()
+        .map(|text| json!({ "type": "text", "text": text }))
+        .collect();
+    json!({
+        "content": content,
         "isError": false
     })
 }

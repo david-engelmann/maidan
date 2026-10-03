@@ -259,9 +259,14 @@ class ThreadTransition(Model):
 
 
 @dataclass(kw_only=True)
-class ThreadFsmContext(Model):
-    state: str
-    transitions: List[ThreadTransition]
+class ThreadBrief(Model):
+    """Stable thread fields. State and the lease are not here."""
+
+    created_at: str
+    title: Optional[str] = None
+    parent_thread_id: Optional[str] = None
+    owner_id: Optional[str] = None
+    required_skills: List[str] = field(default_factory=list)
 
 
 @dataclass(kw_only=True)
@@ -325,17 +330,27 @@ class ThreadContext(Model):
 
     workspace_id: str
     channel_id: str
-    thread: Thread
+    thread_id: str
+    thread: ThreadBrief
     messages: List[Message]
     message_edits: List[MessageEditView]
     references: List[Reference]
     artifacts: List[Artifact]
-    fsm: ThreadFsmContext
+    transitions: List[ThreadTransition]
+    state: str
+    updated_at: str
+    prefix_sha256: str
+    prefix_bytes: int
+    glossary: List[GlossaryTerm] = field(default_factory=list)
     accepted_decisions: List[AcceptedDecision] = field(default_factory=list)
     change_requests: List[ThreadReview] = field(default_factory=list)
-    glossary: List[GlossaryTerm] = field(default_factory=list)
+    assignee_id: Optional[str] = None
+    assignment_expires_at: Optional[str] = None
+    claim_lease_id: Optional[str] = None
+    work_started_at: Optional[str] = None
     elision: Optional[PackElision] = None
     parent_grounding: Optional[ParentGrounding] = None
+    as_of: Optional[int] = None
     next_message_cursor: Optional[str] = None
 
 
@@ -379,7 +394,7 @@ __all__ = [
     "StrongRef",
     "Thread",
     "ThreadContext",
-    "ThreadFsmContext",
+    "ThreadBrief",
     "ThreadResult",
     "ThreadReview",
     "ThreadTransition",

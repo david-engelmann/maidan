@@ -237,9 +237,13 @@ type ThreadTransition struct {
 	OccurredAt time.Time   `json:"occurred_at"`
 }
 
-type ThreadFsmContext struct {
-	State       ThreadState        `json:"state"`
-	Transitions []ThreadTransition `json:"transitions"`
+// ThreadBrief is the stable thread fields. State and the lease are not here.
+type ThreadBrief struct {
+	Title           *string  `json:"title,omitempty"`
+	ParentThreadID  *string  `json:"parent_thread_id,omitempty"`
+	OwnerID         *string  `json:"owner_id,omitempty"`
+	RequiredSkills  []string `json:"required_skills,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type AcceptedDecision struct {
@@ -293,20 +297,30 @@ type ParentGrounding struct {
 
 // ThreadContext is GET /threads/{id}/context: the context pack a claimer reads.
 type ThreadContext struct {
-	WorkspaceID       string             `json:"workspace_id"`
-	ChannelID         string             `json:"channel_id"`
-	Thread            Thread             `json:"thread"`
-	Messages          []Message          `json:"messages"`
-	MessageEdits      []MessageEditView  `json:"message_edits"`
-	References        []Reference        `json:"references"`
-	Artifacts         []Artifact         `json:"artifacts"`
-	Fsm               ThreadFsmContext   `json:"fsm"`
-	AcceptedDecisions []AcceptedDecision `json:"accepted_decisions,omitempty"`
-	ChangeRequests    []ThreadReview     `json:"change_requests,omitempty"`
-	Glossary          []GlossaryTerm     `json:"glossary,omitempty"`
-	Elision           *PackElision       `json:"elision,omitempty"`
-	ParentGrounding   *ParentGrounding   `json:"parent_grounding,omitempty"`
-	NextMessageCursor *string            `json:"next_message_cursor,omitempty"`
+	WorkspaceID         string             `json:"workspace_id"`
+	ChannelID           string             `json:"channel_id"`
+	ThreadID            string             `json:"thread_id"`
+	Thread              ThreadBrief        `json:"thread"`
+	Messages            []Message          `json:"messages"`
+	MessageEdits        []MessageEditView  `json:"message_edits"`
+	References          []Reference        `json:"references"`
+	Artifacts           []Artifact         `json:"artifacts"`
+	Transitions         []ThreadTransition `json:"transitions"`
+	State               ThreadState        `json:"state"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+	PrefixSHA256        string             `json:"prefix_sha256"`
+	PrefixBytes         uint64             `json:"prefix_bytes"`
+	Glossary            []GlossaryTerm     `json:"glossary,omitempty"`
+	AcceptedDecisions   []AcceptedDecision `json:"accepted_decisions,omitempty"`
+	ChangeRequests      []ThreadReview     `json:"change_requests,omitempty"`
+	AssigneeID          *string            `json:"assignee_id,omitempty"`
+	AssignmentExpiresAt *time.Time         `json:"assignment_expires_at,omitempty"`
+	ClaimLeaseID        *string            `json:"claim_lease_id,omitempty"`
+	WorkStartedAt       *time.Time         `json:"work_started_at,omitempty"`
+	Elision             *PackElision       `json:"elision,omitempty"`
+	ParentGrounding     *ParentGrounding   `json:"parent_grounding,omitempty"`
+	AsOf                *int64             `json:"as_of,omitempty"`
+	NextMessageCursor   *string            `json:"next_message_cursor,omitempty"`
 }
 
 // StoredEvent is a row of GET /workspaces/{id}/events. Payload is the event

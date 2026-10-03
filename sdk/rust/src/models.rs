@@ -19,6 +19,7 @@ trait Members {
 impl Members for String {}
 impl Members for bool {}
 impl Members for i64 {}
+impl Members for u64 {}
 impl Members for Value {}
 
 impl<T: Members> Members for Option<T> {
@@ -399,9 +400,14 @@ model! {
 }
 
 model! {
-    ThreadFsmContext {
-        state: ThreadState,
-        transitions: Vec<ThreadTransition>,
+    /// Stable thread fields. State and the lease are not here.
+    ThreadBrief {
+        title: Option<String>,
+        parent_thread_id: Option<String>,
+        owner_id: Option<String>,
+        #[serde(default)]
+        required_skills: Vec<String>,
+        created_at: String,
     }
 }
 
@@ -465,24 +471,34 @@ model! {
 }
 
 model! {
-    /// `GET /threads/{id}/context`: the context pack a claimer reads.
+    /// `GET /threads/{id}/context`: one canonical pack. Stable fields, then the tail.
     ThreadContext {
         workspace_id: String,
         channel_id: String,
-        thread: Thread,
+        thread_id: String,
+        thread: ThreadBrief,
         messages: Vec<Message>,
         message_edits: Vec<MessageEditView>,
         references: Vec<Reference>,
         artifacts: Vec<Artifact>,
-        fsm: ThreadFsmContext,
+        transitions: Vec<ThreadTransition>,
+        state: ThreadState,
+        updated_at: String,
+        prefix_sha256: String,
+        prefix_bytes: u64,
+        #[serde(default)]
+        glossary: Vec<GlossaryTerm>,
         #[serde(default)]
         accepted_decisions: Vec<AcceptedDecision>,
         #[serde(default)]
         change_requests: Vec<ThreadReview>,
-        #[serde(default)]
-        glossary: Vec<GlossaryTerm>,
+        assignee_id: Option<String>,
+        assignment_expires_at: Option<String>,
+        claim_lease_id: Option<String>,
+        work_started_at: Option<String>,
         elision: Option<PackElision>,
         parent_grounding: Option<ParentGrounding>,
+        as_of: Option<i64>,
         next_message_cursor: Option<String>,
     }
 }

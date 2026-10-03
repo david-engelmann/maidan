@@ -431,6 +431,7 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_channel).merge(get(routes::list_channels)),
         )
         .route("/channels/{id}", get(routes::get_channel))
+        .route("/channels/{id}/boot", get(routes::get_channel_boot))
         .route(
             "/channels/{cid}/queue-depth",
             get(routes::get_channel_queue_depth),

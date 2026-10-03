@@ -151,8 +151,8 @@ func TestHeroLoopPostListContext(t *testing.T) {
 	if !found {
 		t.Fatal("posted message not listed")
 	}
-	if ctx := must(c.Threads.Context(thread.ID, nil)); ctx.Thread.ID != thread.ID {
-		t.Fatalf("context is for %s", ctx.Thread.ID)
+	if ctx := must(c.Threads.Context(thread.ID, nil)); ctx.ThreadID != thread.ID {
+		t.Fatalf("context is for %s", ctx.ThreadID)
 	}
 }
 
@@ -350,7 +350,7 @@ func TestEveryDocumentedOperationReturnsItsDeclaredModel(t *testing.T) {
 	}
 
 	ctx := must(c.Threads.Context(thread.ID, nil))
-	if len(ctx.Fsm.Transitions) == 0 || len(ctx.Messages) == 0 {
+	if ctx.ThreadID != thread.ID || len(ctx.Transitions) == 0 || len(ctx.Messages) == 0 || ctx.State != ThreadInReview || len(ctx.PrefixSHA256) != 64 || ctx.PrefixBytes == 0 {
 		t.Fatalf("context %+v", ctx)
 	}
 

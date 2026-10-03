@@ -303,9 +303,12 @@ export interface ThreadTransition {
   occurred_at: string;
 }
 
-export interface ThreadFsmContext {
-  state: ThreadState;
-  transitions: ThreadTransition[];
+export interface ThreadBrief {
+  title?: string | null;
+  parent_thread_id?: ThreadId | null;
+  owner_id?: MemberId | null;
+  required_skills?: string[];
+  created_at: string;
 }
 
 export interface AcceptedDecision {
@@ -357,21 +360,31 @@ export interface ParentGrounding {
   latest_result?: unknown;
 }
 
-/** GET /threads/{id}/context: the context pack a claimer reads. */
+/** GET /threads/{id}/context: one canonical pack. Stable fields, then the tail. */
 export interface ThreadContext {
   workspace_id: WorkspaceId;
   channel_id: ChannelId;
-  thread: Thread;
+  thread_id: ThreadId;
+  thread: ThreadBrief;
   messages: Message[];
   message_edits: MessageEditView[];
   references: Reference[];
   artifacts: Artifact[];
-  fsm: ThreadFsmContext;
+  transitions: ThreadTransition[];
+  state: ThreadState;
+  updated_at: string;
+  prefix_sha256: string;
+  prefix_bytes: number;
+  glossary?: GlossaryTerm[];
   accepted_decisions?: AcceptedDecision[];
   change_requests?: ThreadReview[];
-  glossary?: GlossaryTerm[];
+  assignee_id?: MemberId | null;
+  assignment_expires_at?: string | null;
+  claim_lease_id?: string | null;
+  work_started_at?: string | null;
   elision?: PackElision | null;
   parent_grounding?: ParentGrounding | null;
+  as_of?: number | null;
   next_message_cursor?: string | null;
 }
 

@@ -1,6 +1,8 @@
 //! Thread handlers: create/list/get threads, thread context, and FSM
 //! transitions.
 
+use axum::body::Body;
+use axum::http::{header, Response};
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
     capability::{ARTIFACT_UPLOAD, THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
@@ -107,38 +109,97 @@ pub async fn get_thread(
     Ok(Json(thread))
 }
 
+fn context_limits(q: &ThreadContextQuery) -> crate::thread_context::ThreadContextLimits {
+    crate::thread_context::ThreadContextLimits {
+        message_limit: if q.message_limit > 0 {
+            q.message_limit
+        } else {
+            100
+        },
+        transition_limit: clamp_context_transition_limit(q.transition_limit),
+        message_cursor: q.message_cursor.map(MessageId),
+        include_edits: q.include_edits,
+        include_glossary: q.include_glossary,
+        as_of: q.as_of,
+        token_budget: q.token_budget,
+        include_parent_grounding: q.include_parent_grounding,
+        include_accepted_decisions: q.include_accepted_decisions,
+        max_bytes: q.max_bytes,
+    }
+}
+
+fn json_body(bytes: Vec<u8>) -> Result<Response<Body>, ApiError> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(bytes))
+        .map_err(|e| ApiError::Internal(format!("context response: {e}")))
+}
+
 pub async fn get_thread_context(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiQuery(q): ApiQuery<ThreadContextQuery>,
-) -> ApiResult<Json<crate::thread_context::ThreadContext>> {
+) -> ApiResult<Response<Body>> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
     // Drop the redundant `resolve_thread_context` + `ensure_workspace`;
     // `ensure_thread_access` already resolves + workspace-checks the thread.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    let packed = crate::thread_context::build_thread_context(
-        state.store.as_ref(),
-        thread_id,
-        crate::thread_context::ThreadContextLimits {
-            message_limit: if q.message_limit > 0 {
-                q.message_limit
-            } else {
-                100
-            },
-            transition_limit: clamp_context_transition_limit(q.transition_limit),
-            message_cursor: q.message_cursor.map(MessageId),
-            include_edits: q.include_edits,
-            include_glossary: q.include_glossary,
-            as_of: q.as_of,
-            token_budget: q.token_budget,
-            include_parent_grounding: q.include_parent_grounding,
-            include_accepted_decisions: q.include_accepted_decisions,
-        },
-    )
-    .await?;
-    Ok(Json(packed))
+    let limits = context_limits(&q);
+    let packed =
+        crate::thread_context::build_thread_context(state.store.as_ref(), thread_id, limits)
+            .await?;
+    let want_delta = q.delta || q.since_prefix_sha.is_some();
+    let bytes = if want_delta {
+        let full = if limits.message_cursor.is_some() {
+            let mut unpaged = limits;
+            unpaged.message_cursor = None;
+            crate::thread_context::build_thread_context(state.store.as_ref(), thread_id, unpaged)
+                .await?
+        } else {
+            packed.clone()
+        };
+        let delta = frame_delta(
+            &full,
+            &packed,
+            q.since_prefix_sha.as_deref(),
+            limits.message_cursor,
+        );
+        if q.split {
+            let (prefix, tail) = delta
+                .parts()
+                .map_err(|e| ApiError::Internal(format!("split context: {e}")))?;
+            SplitContext::from_parts(delta.prefix_sha256, delta.prefix_bytes, prefix, tail)
+                .canonical_bytes()
+                .map_err(|e| ApiError::Internal(format!("split context: {e}")))?
+        } else {
+            delta
+                .canonical_bytes()
+                .map_err(|e| ApiError::Internal(format!("delta context: {e}")))?
+        }
+    } else if q.split {
+        let prefix = packed
+            .prefix_json()
+            .map_err(|e| ApiError::Internal(format!("split context: {e}")))?;
+        let tail = packed
+            .tail_json()
+            .map_err(|e| ApiError::Internal(format!("split context: {e}")))?;
+        SplitContext::from_parts(
+            packed.tail.prefix_sha256.clone(),
+            packed.tail.prefix_bytes,
+            prefix,
+            tail,
+        )
+        .canonical_bytes()
+        .map_err(|e| ApiError::Internal(format!("split context: {e}")))?
+    } else {
+        packed
+            .canonical_bytes()
+            .map_err(|e| ApiError::Internal(format!("context pack: {e}")))?
+    };
+    json_body(bytes)
 }
 
 /// `POST /threads/:id/context/snapshot` — freeze the assembled context pack
@@ -175,6 +236,7 @@ pub async fn snapshot_thread_context(
             token_budget: q.token_budget,
             include_parent_grounding: q.include_parent_grounding,
             include_accepted_decisions: q.include_accepted_decisions,
+            max_bytes: q.max_bytes,
         },
     )
     .await?;

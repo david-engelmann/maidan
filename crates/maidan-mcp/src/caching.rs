@@ -104,7 +104,7 @@ pub fn resource_read(uri: &str) -> CacheHint {
         .and_then(|rest| rest.split('/').next())
         .unwrap_or("");
     let ttl_ms = match kind {
-        "artifacts" | "workspaces" | "channels" => RECORD_TTL_MS,
+        "artifacts" | "workspaces" | "channels" | "boots" => RECORD_TTL_MS,
         // A thread's transcript changes with every post, claim and transition.
         _ => 0,
     };
@@ -147,6 +147,7 @@ mod tests {
         for uri in [
             "maidan://workspaces/0198d7a4-0000-7000-8000-000000000000",
             "maidan://channels/0198d7a4-0000-7000-8000-000000000000",
+            "maidan://boots/0198d7a4-0000-7000-8000-000000000000",
         ] {
             assert_eq!(resource_read(uri).ttl_ms, RECORD_TTL_MS, "{uri}");
         }

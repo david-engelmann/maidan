@@ -178,7 +178,7 @@ async fn workspace_context_builds_each_thread_with_its_own_messages() {
     // Each built context carries exactly its own message (no cross-thread mixups
     // from the concurrent build), and the threads are in page order.
     for (i, tc) in threads.iter().enumerate() {
-        let tid = tc["thread"]["id"].as_str().unwrap();
+        let tid = tc["thread_id"].as_str().unwrap();
         let msgs = tc["messages"].as_array().unwrap();
         assert_eq!(msgs.len(), 1, "thread {tid} has its single message");
         assert_eq!(

@@ -217,8 +217,10 @@ async fn mcp_get_thread_context_honors_message_cursor() {
         .await
         .unwrap();
     let result = &body["result"];
-    let text = result["content"][0]["text"].as_str().unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
-    assert_eq!(parsed["messages"].as_array().unwrap().len(), 1);
-    assert!(parsed["next_message_cursor"].is_string());
+    let prefix: serde_json::Value =
+        serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+    let tail: serde_json::Value =
+        serde_json::from_str(result["content"][1]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(prefix["messages"].as_array().unwrap().len(), 1);
+    assert!(tail["next_message_cursor"].is_string());
 }

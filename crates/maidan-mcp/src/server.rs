@@ -830,7 +830,7 @@ impl McpServer {
                         .await?;
                     }
                 }
-                (Some("channels"), Some(id)) => {
+                (Some("channels") | Some("boots"), Some(id)) => {
                     if let Ok(u) = id.parse() {
                         maidan_auth::ensure_channel_access(
                             self.store.as_ref(),
