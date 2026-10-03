@@ -58,6 +58,7 @@ CI ran.
 | (lane CTX1) | Program C: one canonical context pack (the same bytes on REST and MCP, deterministic ties), stable layers first and the volatile tail last, a split prefix with its sha256, a workspace boot pack, delta packs, and exact `as_of` | **Active** | — |
 | (lane CTX2) | Program C: MCP 2026-07-28 conformance (`server/discover`; `ttlMs` and `cacheScope`, which the schema requires on every cacheable result and Maidan omits), per-endpoint tool profiles with byte-identical lists, and instructions that survive every harness's limits | **Active** | — |
 | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
+| (lane ROT) | Next 3: a rotated token is activated only when the token, API base, workspace, and token id are unchanged since the request started. Changing the token field clears the cached id. A network failure is a sentence | Open | — |
 
 ## Next: ranked
 
