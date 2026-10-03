@@ -140,3 +140,60 @@ pub(super) async fn list_thread_required_skills(
         .await?;
     Ok(content_json(&skills))
 }
+
+/// Drop a skill. Twin of `DELETE /members/{id}/skills/{skill}`. A routing tag
+/// is personal state. A governance skill may also be revoked by `channel:admin`
+/// on someone else, matching REST: narrowing who may approve does not wait on
+/// the holder.
+pub(super) async fn remove_member_skill(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberSkillArgs = serde_json::from_value(args.clone())?;
+    if !auth.bypass {
+        let target = MemberId(a.member_id);
+        let admin = maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            CHANNEL_ADMIN,
+        )
+        .is_ok();
+        if !(is_governance_skill(&a.skill) && admin) {
+            if target != auth.member_id {
+                return Err(McpError::Forbidden("member_id is not yours".into()));
+            }
+        } else {
+            let member = store
+                .get_member(target)
+                .await
+                .map_err(|_| McpError::Forbidden("member_id is not yours".to_string()))?;
+            if member.workspace_id != auth.workspace_id {
+                return Err(McpError::Forbidden("member_id is not yours".to_string()));
+            }
+        }
+    }
+    let removed = store
+        .remove_member_skill(MemberId(a.member_id), &a.skill)
+        .await?;
+    if !removed {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&serde_json::json!({ "ok": true })))
+}
+
+/// Remove a required skill from a task. Twin of
+/// `DELETE /threads/{id}/required-skills/{skill}`. `NotFound` when it was not required.
+pub(super) async fn remove_thread_required_skill(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadSkillArgs = serde_json::from_value(args.clone())?;
+    let removed = store
+        .remove_thread_required_skill(ThreadId(a.thread_id), &a.skill)
+        .await?;
+    if !removed {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&serde_json::json!({ "ok": true })))
+}

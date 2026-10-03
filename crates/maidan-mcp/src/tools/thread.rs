@@ -1713,3 +1713,55 @@ pub(super) async fn wait_for_blocked_resolved(
     )
     .await
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RemoveThreadDependencyArgs {
+    thread_id: uuid::Uuid,
+    depends_on_thread_id: uuid::Uuid,
+}
+
+/// Remove one dependency edge. Twin of `DELETE /threads/{id}/dependencies/{dep_id}`.
+/// `NotFound` when the edge does not exist.
+pub(super) async fn remove_thread_dependency(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RemoveThreadDependencyArgs = serde_json::from_value(args.clone())?;
+    let removed = store
+        .remove_thread_dependency(ThreadId(a.thread_id), ThreadId(a.depends_on_thread_id))
+        .await?;
+    if !removed {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&json!({ "removed": true })))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ThreadIdOnlyArgs {
+    thread_id: uuid::Uuid,
+}
+
+/// Tasks blocked by this thread. Twin of `GET /threads/{id}/dependents`.
+pub(super) async fn list_thread_dependents(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdOnlyArgs = serde_json::from_value(args.clone())?;
+    let dependents = store.list_thread_dependents(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&dependents))
+}
+
+/// Clear a thread run lineage. Twin of `DELETE /threads/{id}/lineage`.
+/// `NotFound` when no lineage row exists.
+pub(super) async fn clear_thread_lineage(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdOnlyArgs = serde_json::from_value(args.clone())?;
+    if !store.clear_thread_lineage(ThreadId(a.thread_id)).await? {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&json!({ "cleared": true })))
+}

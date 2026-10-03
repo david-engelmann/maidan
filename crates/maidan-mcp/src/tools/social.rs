@@ -162,3 +162,18 @@ pub(super) async fn list_pins(store: &Arc<dyn Store>, args: &Value) -> Result<Va
     let list = store.list_pins_for_thread(ThreadId(a.thread_id)).await?;
     Ok(content_json(&list))
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListVotesArgs {
+    message_id: uuid::Uuid,
+}
+
+/// Votes on a message. Twin of `GET /messages/{id}/votes`.
+pub(super) async fn list_votes(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
+    let a: ListVotesArgs = serde_json::from_value(args.clone())?;
+    let votes = store
+        .list_votes_for_message(MessageId(a.message_id))
+        .await?;
+    Ok(content_json(&votes))
+}

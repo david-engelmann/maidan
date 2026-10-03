@@ -5600,6 +5600,709 @@ Remove a GitHub issue/PR link in your workspace. Returns {unlinked: bool} (false
 }
 ```
 
+### `tombstone_message`
+
+Withdraw a message. Same store path as DELETE /messages/{id}: message:post, plus channel:admin when the caller is not the author.
+
+**Capability:** `message:post`
+
+```json
+{
+  "properties": {
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message_id"
+  ],
+  "type": "object"
+}
+```
+
+### `open_group_dm`
+
+Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires workspace:read. This writes a conversation.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "member_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "title": {
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "member_ids"
+  ],
+  "type": "object"
+}
+```
+
+### `list_group_dms`
+
+List group DMs for one member. member_id must be the caller. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_group_dm`
+
+Fetch one group DM the caller participates in. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "group_dm_conversation_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "group_dm_conversation_id"
+  ],
+  "type": "object"
+}
+```
+
+### `post_group_dm_message`
+
+Post a message into a group DM the caller participates in. Same store path as POST /group-dms/{id}/messages. Requires message:post.
+
+**Capability:** `message:post`
+
+```json
+{
+  "properties": {
+    "body": {
+      "type": "string"
+    },
+    "group_dm_conversation_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "group_dm_conversation_id",
+    "body"
+  ],
+  "type": "object"
+}
+```
+
+### `remove_thread_dependency`
+
+Remove one dependency edge: thread_id no longer depends on depends_on_thread_id. Requires thread:transition.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "depends_on_thread_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "depends_on_thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_thread_dependents`
+
+List threads that depend on this thread. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `clear_thread_lineage`
+
+Clear the run-lineage row for a thread. NotFound when no row exists. Requires thread:transition.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `remove_member_skill`
+
+Remove a skill from a member. Governance skills follow the REST self-versus-admin split; routing tags are self-only. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "skill": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "member_id",
+    "skill"
+  ],
+  "type": "object"
+}
+```
+
+### `remove_thread_required_skill`
+
+Remove a required skill from a thread. Requires thread:transition.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "skill": {
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "skill"
+  ],
+  "type": "object"
+}
+```
+
+### `delete_memory_block`
+
+Delete a memory block by id. A block in another workspace is NotFound. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "block_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "block_id"
+  ],
+  "type": "object"
+}
+```
+
+### `delete_glossary_term`
+
+Delete a glossary term in the caller workspace. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "term": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "term"
+  ],
+  "type": "object"
+}
+```
+
+### `delete_recipe`
+
+Delete a recipe. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "recipe_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "recipe_id"
+  ],
+  "type": "object"
+}
+```
+
+### `set_task_schedule_active`
+
+Pause or resume a task schedule. Same store path as PUT /task-schedules/{id}. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "active": {
+      "type": "boolean"
+    },
+    "schedule_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schedule_id",
+    "active"
+  ],
+  "type": "object"
+}
+```
+
+### `delete_task_schedule`
+
+Delete a task schedule. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "schedule_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schedule_id"
+  ],
+  "type": "object"
+}
+```
+
+### `revoke_slash_command`
+
+Revoke a slash command. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "command_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "command_id"
+  ],
+  "type": "object"
+}
+```
+
+### `revoke_fsm_hook`
+
+Revoke an FSM hook. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+```json
+{
+  "properties": {
+    "hook_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "hook_id"
+  ],
+  "type": "object"
+}
+```
+
+### `clear_review_requirement`
+
+Clear a thread review requirement. Requires channel:admin.
+
+**Capability:** `channel:admin`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_review_requirement`
+
+Read the review requirement on a thread. NotFound when unset. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_reviewers`
+
+List reviewers on a thread. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `remove_reviewer`
+
+Remove a reviewer from a thread. Requires channel:admin.
+
+**Capability:** `channel:admin`
+
+```json
+{
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_votes`
+
+List votes on a message. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_message_edits`
+
+List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "limit": {
+      "default": 100,
+      "maximum": 500,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message_id"
+  ],
+  "type": "object"
+}
+```
+
+### `mark_all_notifications_read`
+
+Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
+### `advise_land_gate`
+
+Ask the configured advisor for a land-gate recommendation. Read-only: it does not write the gate or the requirement. NotFound when no advisor is configured. Requires thread:transition.
+
+**Capability:** `thread:transition`
+
+```json
+{
+  "properties": {
+    "instructions": {
+      "type": "string"
+    },
+    "state": {
+      "type": "object"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "thresholds": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "thread_id",
+    "state"
+  ],
+  "type": "object"
+}
+```
+
+### `create_secret`
+
+Store a named secret in the caller workspace. Returns metadata only; the plaintext is not echoed. Requires secret:admin.
+
+**Capability:** `secret:admin`
+
+```json
+{
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "value": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "value"
+  ],
+  "type": "object"
+}
+```
+
+### `delete_secret`
+
+Delete a named secret in the caller workspace. Requires secret:admin.
+
+**Capability:** `secret:admin`
+
+```json
+{
+  "properties": {
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "type": "object"
+}
+```
+
+### `get_artifact`
+
+Return artifact metadata and content_base64 bytes for a sha256 the caller workspace can access. A missing access ref is NotFound. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "sha256": {
+      "maxLength": 64,
+      "minLength": 64,
+      "type": "string"
+    }
+  },
+  "required": [
+    "sha256"
+  ],
+  "type": "object"
+}
+```
+
+### `list_members`
+
+List members of a workspace. Same store path as GET /workspaces/{wid}/members. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_member`
+
+Fetch one member in the caller workspace. Another workspace is NotFound, same as an unknown id. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "member_id"
+  ],
+  "type": "object"
+}
+```
+
 ## Resources
 
 ### `workspace` — `maidan://workspaces/{id}`

@@ -334,3 +334,94 @@ mod tests {
         assert!(store.list_reviewers(thread.id).await.unwrap().is_empty());
     }
 }
+
+/// The configured review requirement, or `NotFound` when none is set.
+/// Twin of `GET /threads/{id}/review-requirement`.
+pub(super) async fn get_review_requirement(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let req = store
+        .get_review_requirement(ThreadId(a.thread_id))
+        .await?
+        .ok_or(McpError::NotFound)?;
+    Ok(content_json(&req))
+}
+
+/// Remove the review requirement. Twin of `DELETE /threads/{id}/review-requirement`:
+/// `channel:admin` and `clear_review_requirement_audited`. Deleting the row is a
+/// full waiver, so this is not a `thread:transition` tool.
+pub(super) async fn clear_review_requirement(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let workspace_id = super::thread_workspace(store.as_ref(), thread_id).await?;
+    let cleared = store
+        .clear_review_requirement_audited(
+            thread_id,
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(workspace_id),
+                actor_id: Some(auth.actor_id),
+                action: "review_requirement.clear".into(),
+                target_kind: Some("thread".into()),
+                target_id: Some(thread_id.0),
+                metadata: json!({ "surface": "mcp" }),
+            },
+        )
+        .await?;
+    if !cleared {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&json!({ "cleared": true })))
+}
+
+/// Named reviewers. Twin of `GET /threads/{id}/reviewers`.
+pub(super) async fn list_reviewers(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let reviewers = store.list_reviewers(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&reviewers))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RemoveReviewerArgs {
+    thread_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+}
+
+/// Un-designate a reviewer. Twin of `DELETE /threads/{id}/reviewers/{member_id}`:
+/// `channel:admin` and `remove_reviewer_audited`.
+pub(super) async fn remove_reviewer(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RemoveReviewerArgs = serde_json::from_value(args.clone())?;
+    let thread_id = ThreadId(a.thread_id);
+    let workspace_id = super::thread_workspace(store.as_ref(), thread_id).await?;
+    let removed = store
+        .remove_reviewer_audited(
+            thread_id,
+            MemberId(a.member_id),
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(workspace_id),
+                actor_id: Some(auth.actor_id),
+                action: "reviewer.remove".into(),
+                target_kind: Some("thread".into()),
+                target_id: Some(thread_id.0),
+                metadata: json!({ "member_id": a.member_id, "surface": "mcp" }),
+            },
+        )
+        .await?;
+    if !removed {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&json!({ "removed": true })))
+}

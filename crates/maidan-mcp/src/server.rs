@@ -132,6 +132,13 @@ pub struct McpServer {
     /// What the instance keeps (`MAIDAN_RETENTION_*_DAYS`): the ceiling a
     /// workspace's own retention is held to. REST reads it from here too.
     instance_retention: maidan_types::RetentionDays,
+    /// Drops a slash-command signing secret from the HTTP cache after revoke.
+    slash_secret_forget: std::sync::OnceLock<Arc<dyn Fn(uuid::Uuid) + Send + Sync>>,
+    /// Drops an FSM-hook signing secret from the HTTP cache after revoke.
+    fsm_secret_forget: std::sync::OnceLock<Arc<dyn Fn(uuid::Uuid) + Send + Sync>>,
+    /// Optional land-gate advisor. Unset means `advise_land_gate` is not found
+    /// and no gate row is written.
+    land_gate_advisor: std::sync::OnceLock<Arc<dyn crate::land_gate_advice::LandGateAdvising>>,
 }
 
 impl McpServer {
@@ -162,6 +169,9 @@ impl McpServer {
             presence_reader: Arc::new(std::sync::RwLock::new(None)),
             claim_leases: crate::claim_lease::ClaimLeasePolicy::from_env(),
             instance_retention: maidan_store::retention_policy::instance_retention_from_env(),
+            slash_secret_forget: std::sync::OnceLock::new(),
+            fsm_secret_forget: std::sync::OnceLock::new(),
+            land_gate_advisor: std::sync::OnceLock::new(),
         }
     }
 
@@ -229,6 +239,42 @@ impl McpServer {
 
     pub(crate) fn encryption_key(&self) -> Option<&Arc<[u8; 32]>> {
         self.encryption_key.get()
+    }
+
+    /// Install the HTTP slash-secret cache forget hook. Called once at startup.
+    pub fn set_slash_secret_forget(&self, hook: Arc<dyn Fn(uuid::Uuid) + Send + Sync>) {
+        let _ = self.slash_secret_forget.set(hook);
+    }
+
+    pub(crate) fn forget_slash_secret(&self, id: uuid::Uuid) {
+        if let Some(hook) = self.slash_secret_forget.get() {
+            hook(id);
+        }
+    }
+
+    /// Install the HTTP FSM-hook secret cache forget hook. Called once at startup.
+    pub fn set_fsm_secret_forget(&self, hook: Arc<dyn Fn(uuid::Uuid) + Send + Sync>) {
+        let _ = self.fsm_secret_forget.set(hook);
+    }
+
+    pub(crate) fn forget_fsm_secret(&self, id: uuid::Uuid) {
+        if let Some(hook) = self.fsm_secret_forget.get() {
+            hook(id);
+        }
+    }
+
+    /// Install the land-gate advisor shared with REST. Called once at startup.
+    pub fn set_land_gate_advisor(
+        &self,
+        advisor: Arc<dyn crate::land_gate_advice::LandGateAdvising>,
+    ) {
+        let _ = self.land_gate_advisor.set(advisor);
+    }
+
+    pub(crate) fn land_gate_advisor(
+        &self,
+    ) -> Option<&Arc<dyn crate::land_gate_advice::LandGateAdvising>> {
+        self.land_gate_advisor.get()
     }
 
     /// Set the instance ceiling on secret-egress hosts (lowercase hostnames).

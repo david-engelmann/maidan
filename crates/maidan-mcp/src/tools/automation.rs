@@ -296,3 +296,57 @@ pub(super) async fn list_fsm_hooks(
         .map_err(McpError::from)?;
     Ok(content_json(&hooks))
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RevokeSlashArgs {
+    workspace_id: uuid::Uuid,
+    command_id: uuid::Uuid,
+}
+
+/// Revoke a slash command. Twin of `DELETE /workspaces/{wid}/slash-commands/{cid}`:
+/// `revoke_slash_command`, then drop the in-memory signing secret when the row
+/// belongs to this workspace.
+pub(super) async fn revoke_slash_command(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RevokeSlashArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)
+        .map_err(McpError::from)?;
+    let command_id = SlashCommandId(a.command_id);
+    let command = server.store.revoke_slash_command(command_id).await?;
+    if command.workspace_id != workspace_id {
+        return Err(McpError::NotFound);
+    }
+    server.forget_slash_secret(a.command_id);
+    Ok(content_json(&command))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RevokeFsmArgs {
+    workspace_id: uuid::Uuid,
+    hook_id: uuid::Uuid,
+}
+
+/// Revoke an FSM hook. Twin of `DELETE /workspaces/{wid}/fsm-hooks/{hid}`.
+pub(super) async fn revoke_fsm_hook(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RevokeFsmArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)
+        .map_err(McpError::from)?;
+    let hook_id = FsmHookId(a.hook_id);
+    let hook = server.store.revoke_fsm_hook(hook_id).await?;
+    if hook.workspace_id != workspace_id {
+        return Err(McpError::NotFound);
+    }
+    server.forget_fsm_secret(a.hook_id);
+    Ok(content_json(&hook))
+}

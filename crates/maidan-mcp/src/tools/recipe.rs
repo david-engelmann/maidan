@@ -112,3 +112,29 @@ pub(super) async fn instantiate_recipe(
     }
     Ok(content_json(&run))
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeleteRecipeArgs {
+    recipe_id: uuid::Uuid,
+}
+
+/// Delete a recipe. Twin of `DELETE /workspaces/{wid}/recipes/{id}`:
+/// workspace match, then channel access, then `delete_recipe`.
+pub(super) async fn delete_recipe(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: DeleteRecipeArgs = serde_json::from_value(args.clone())?;
+    let recipe_id = RecipeId(a.recipe_id);
+    let recipe = store.get_recipe(recipe_id).await?;
+    if !auth.bypass && recipe.workspace_id != auth.workspace_id {
+        return Err(McpError::NotFound);
+    }
+    maidan_auth::ensure_channel_access(store.as_ref(), auth, recipe.channel_id).await?;
+    if !store.delete_recipe(recipe_id).await? {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&serde_json::json!({ "deleted": true })))
+}

@@ -1,9 +1,9 @@
-//! Shared-glossary MCP tools: an agent defines and looks up a workspace's
-//! canonical `term -> definition` (+ aliases) — the anti-drift pin. `delete`
-//! stays REST-only (the 220/229 precedent). Workspace-scoped: `set` is
-//! `workspace:write` + `created_by` is the caller; `get`/`list` are
-//! `workspace:read`. No channel/thread arg, so no pre-dispatch access gate —
-//! the workspace cap is the control.
+//! Shared-glossary MCP tools: an agent defines, looks up, lists, and deletes a
+//! workspace canonical `term -> definition` (+ aliases). Workspace-scoped:
+//! `set` and `delete` are `workspace:write`; `get`/`list` are `workspace:read`.
+//! `delete_glossary_term` calls the same store function as REST DELETE.
+//! No channel/thread arg, so no pre-dispatch access gate — the workspace cap
+//! is the control.
 
 use std::sync::Arc;
 
@@ -81,4 +81,27 @@ pub(super) async fn list_glossary_terms(
 ) -> Result<Value, McpError> {
     let terms = store.list_glossary_terms(auth.workspace_id).await?;
     Ok(content_json(&terms))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeleteGlossaryArgs {
+    term: String,
+}
+
+/// Remove a glossary term. Twin of `DELETE /workspaces/{wid}/glossary/{term}`.
+/// `NotFound` when the term is not defined.
+pub(super) async fn delete_glossary_term(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: DeleteGlossaryArgs = serde_json::from_value(args.clone())?;
+    let deleted = store
+        .delete_glossary_term(auth.workspace_id, a.term.trim())
+        .await?;
+    if !deleted {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&serde_json::json!({ "deleted": true })))
 }

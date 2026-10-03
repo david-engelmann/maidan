@@ -17,6 +17,7 @@
 pub mod claim_lease;
 pub mod context;
 pub mod error;
+mod land_gate_advice;
 pub mod prompts;
 pub mod protocol;
 pub mod reference;
@@ -27,9 +28,11 @@ pub mod slash_dispatch;
 pub mod stdio;
 pub mod streamable_session;
 pub mod subscriptions;
+
 pub mod tools;
 
 pub use error::McpError;
+pub use land_gate_advice::{LandGateAdviseError, LandGateAdvising};
 pub use protocol::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 pub use server::{
     is_supported_protocol_version, negotiate_protocol_version, preferred_protocol_version,

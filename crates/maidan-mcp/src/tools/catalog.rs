@@ -2461,6 +2461,353 @@ pub fn catalog() -> Vec<Value> {
                 "required": ["repo", "issue_number"]
             }
         }),
+        json!({
+            "name": "tombstone_message",
+            "description": "Withdraw a message. Same store path as DELETE /messages/{id}: message:post, plus channel:admin when the caller is not the author.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["message_id"]
+            }
+        }),
+        json!({
+            "name": "open_group_dm",
+            "description": "Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires workspace:read. This writes a conversation.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "member_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+                    "title": {"type": "string"}
+                },
+                "required": ["workspace_id", "member_ids"]
+            }
+        }),
+        json!({
+            "name": "list_group_dms",
+            "description": "List group DMs for one member. member_id must be the caller. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "get_group_dm",
+            "description": "Fetch one group DM the caller participates in. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "group_dm_conversation_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["group_dm_conversation_id"]
+            }
+        }),
+        json!({
+            "name": "post_group_dm_message",
+            "description": "Post a message into a group DM the caller participates in. Same store path as POST /group-dms/{id}/messages. Requires message:post.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "group_dm_conversation_id": {"type": "string", "format": "uuid"},
+                    "body": {"type": "string"},
+                    "metadata": {"type": "object"}
+                },
+                "required": ["group_dm_conversation_id", "body"]
+            }
+        }),
+        json!({
+            "name": "remove_thread_dependency",
+            "description": "Remove one dependency edge: thread_id no longer depends on depends_on_thread_id. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "depends_on_thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "depends_on_thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_thread_dependents",
+            "description": "List threads that depend on this thread. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "clear_thread_lineage",
+            "description": "Clear the run-lineage row for a thread. NotFound when no row exists. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "remove_member_skill",
+            "description": "Remove a skill from a member. Governance skills follow the REST self-versus-admin split; routing tags are self-only. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"},
+                    "skill": {"type": "string"}
+                },
+                "required": ["member_id", "skill"]
+            }
+        }),
+        json!({
+            "name": "remove_thread_required_skill",
+            "description": "Remove a required skill from a thread. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "skill": {"type": "string"}
+                },
+                "required": ["thread_id", "skill"]
+            }
+        }),
+        json!({
+            "name": "delete_memory_block",
+            "description": "Delete a memory block by id. A block in another workspace is NotFound. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "block_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["block_id"]
+            }
+        }),
+        json!({
+            "name": "delete_glossary_term",
+            "description": "Delete a glossary term in the caller workspace. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "term": {"type": "string"}
+                },
+                "required": ["term"]
+            }
+        }),
+        json!({
+            "name": "delete_recipe",
+            "description": "Delete a recipe. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "recipe_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["recipe_id"]
+            }
+        }),
+        json!({
+            "name": "set_task_schedule_active",
+            "description": "Pause or resume a task schedule. Same store path as PUT /task-schedules/{id}. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "schedule_id": {"type": "string", "format": "uuid"},
+                    "active": {"type": "boolean"}
+                },
+                "required": ["schedule_id", "active"]
+            }
+        }),
+        json!({
+            "name": "delete_task_schedule",
+            "description": "Delete a task schedule. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "schedule_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["schedule_id"]
+            }
+        }),
+        json!({
+            "name": "revoke_slash_command",
+            "description": "Revoke a slash command. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "command_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id", "command_id"]
+            }
+        }),
+        json!({
+            "name": "revoke_fsm_hook",
+            "description": "Revoke an FSM hook. Requires workspace:write.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "hook_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id", "hook_id"]
+            }
+        }),
+        json!({
+            "name": "clear_review_requirement",
+            "description": "Clear a thread review requirement. Requires channel:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "get_review_requirement",
+            "description": "Read the review requirement on a thread. NotFound when unset. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_reviewers",
+            "description": "List reviewers on a thread. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "remove_reviewer",
+            "description": "Remove a reviewer from a thread. Requires channel:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "list_votes",
+            "description": "List votes on a message. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["message_id"]
+            }
+        }),
+        json!({
+            "name": "list_message_edits",
+            "description": "List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "limit": {"type": "integer", "default": 100, "minimum": 1, "maximum": 500}
+                },
+                "required": ["message_id"]
+            }
+        }),
+        json!({
+            "name": "mark_all_notifications_read",
+            "description": "Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
+        json!({
+            "name": "advise_land_gate",
+            "description": "Ask the configured advisor for a land-gate recommendation. Read-only: it does not write the gate or the requirement. NotFound when no advisor is configured. Requires thread:transition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "state": {"type": "object"},
+                    "instructions": {"type": "string"},
+                    "thresholds": {"type": "object"}
+                },
+                "required": ["thread_id", "state"]
+            }
+        }),
+        json!({
+            "name": "create_secret",
+            "description": "Store a named secret in the caller workspace. Returns metadata only; the plaintext is not echoed. Requires secret:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "value": {"type": "string"}
+                },
+                "required": ["name", "value"]
+            }
+        }),
+        json!({
+            "name": "delete_secret",
+            "description": "Delete a named secret in the caller workspace. Requires secret:admin.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"}
+                },
+                "required": ["name"]
+            }
+        }),
+        json!({
+            "name": "get_artifact",
+            "description": "Return artifact metadata and content_base64 bytes for a sha256 the caller workspace can access. A missing access ref is NotFound. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "sha256": {"type": "string", "minLength": 64, "maxLength": 64}
+                },
+                "required": ["sha256"]
+            }
+        }),
+        json!({
+            "name": "list_members",
+            "description": "List members of a workspace. Same store path as GET /workspaces/{wid}/members. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
+        json!({
+            "name": "get_member",
+            "description": "Fetch one member in the caller workspace. Another workspace is NotFound, same as an unknown id. Requires workspace:read.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["member_id"]
+            }
+        }),
     ]
 }
 

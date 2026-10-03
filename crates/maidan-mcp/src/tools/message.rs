@@ -107,7 +107,7 @@ pub(super) async fn post_dm_message(
 /// `MentionRecorded` event per mentioned member — the MCP analogue of the REST
 /// `publish_routed_mentions`. Best-effort: a routing error is logged and
 /// skipped, never failing the post.
-async fn publish_routed_mentions(
+pub(super) async fn publish_routed_mentions(
     server: &crate::server::McpServer,
     thread_id: ThreadId,
     workspace_id: WorkspaceId,
@@ -438,4 +438,128 @@ mod tests {
             other => panic!("expected invalid params, got {other:?}"),
         }
     }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TombstoneMessageArgs {
+    message_id: uuid::Uuid,
+}
+
+/// Withdraw a message. Twin of `DELETE /messages/{id}`: `message:post`, and
+/// `channel:admin` when the caller is not the author. Uses
+/// `tombstone_message_with_event` plus the same DM conversation id REST attaches.
+pub(super) async fn tombstone_message(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: TombstoneMessageArgs = serde_json::from_value(args.clone())?;
+    let message_id = MessageId(a.message_id);
+    let chain = maidan_auth::authorize_message(server.store.as_ref(), auth, message_id).await?;
+    let message = server.store.get_message(message_id).await?;
+    if message.author_id != auth.member_id {
+        maidan_auth::require_observed_capability(
+            auth,
+            maidan_auth::AuthorizationSurface::Mcp,
+            maidan_auth::capability::CHANNEL_ADMIN,
+        )
+        .map_err(McpError::from)?;
+    }
+    let dm_conversation_id = server
+        .store
+        .dm_conversation_for_thread(chain.thread_id)
+        .await?
+        .map(|dm| dm.id);
+    let stored = server
+        .store
+        .tombstone_message_with_event(message_id, dm_conversation_id)
+        .await?;
+    server.publish_stored(&stored).await;
+    let uris =
+        crate::resource_updates::uris_for_message_tombstone(server.store.as_ref(), message_id)
+            .await;
+    server.publish_resource_uris(uris).await;
+    Ok(content_json(
+        &json!({ "tombstoned": true, "message_id": a.message_id }),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListMessageEditsArgs {
+    message_id: uuid::Uuid,
+    #[serde(default = "default_limit")]
+    limit: i64,
+}
+
+/// Edit history of a message. Twin of `GET /messages/{id}/edits`. A tombstoned
+/// message returns an empty history unless auth is bypassed, matching REST.
+pub(super) async fn list_message_edits(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListMessageEditsArgs = serde_json::from_value(args.clone())?;
+    let message_id = MessageId(a.message_id);
+    if !auth.bypass && store.get_message(message_id).await?.tombstoned_at.is_some() {
+        return Ok(content_json(&Vec::<MessageEdit>::new()));
+    }
+    let edits = store
+        .list_message_edits(message_id, a.limit.clamp(1, 500))
+        .await?;
+    Ok(content_json(&edits))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PostGroupDmMessageArgs {
+    group_dm_conversation_id: uuid::Uuid,
+    body: String,
+    #[serde(default)]
+    metadata: Value,
+}
+
+/// Post into a group DM. Twin of `POST /group-dms/{id}/messages`: `message:post`,
+/// participant check, `post_message_with_event`, then mention routing.
+pub(super) async fn post_group_dm_message(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: PostGroupDmMessageArgs = serde_json::from_value(args.clone())?;
+    let group_id = GroupDmConversationId(a.group_dm_conversation_id);
+    let group = server.store.get_group_dm_conversation(group_id).await?;
+    auth.ensure_workspace(group.workspace_id)
+        .map_err(McpError::from)?;
+    if !server
+        .store
+        .group_dm_has_member(group_id, auth.member_id)
+        .await?
+    {
+        return Err(McpError::Forbidden(
+            "member is not a participant in this group DM".into(),
+        ));
+    }
+    let metadata = if a.metadata.is_null() {
+        json!({})
+    } else {
+        a.metadata
+    };
+    let (msg, stored) = server
+        .store
+        .post_message_with_event(
+            NewMessage {
+                thread_id: group.thread_id,
+                author_id: auth.member_id,
+                body: a.body,
+                metadata,
+                content: None,
+            },
+            None,
+        )
+        .await?;
+    server.publish_stored(&stored).await;
+    publish_routed_mentions(server, group.thread_id, group.workspace_id, &msg).await;
+    Ok(content_json(&msg))
 }

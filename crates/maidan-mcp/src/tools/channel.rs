@@ -396,3 +396,82 @@ mod tests {
             .contains(&admin_a.0.to_string()));
     }
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OpenGroupDmArgs {
+    workspace_id: uuid::Uuid,
+    member_ids: Vec<uuid::Uuid>,
+    #[serde(default)]
+    title: Option<String>,
+}
+
+/// Open a group DM. Twin of `POST /workspaces/{wid}/group-dms`: `workspace:read`
+/// and `open_group_dm_conversation`. At least three distinct members, all in
+/// the workspace, as the store requires.
+pub(super) async fn open_group_dm(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: OpenGroupDmArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)
+        .map_err(McpError::from)?;
+    let member_ids: Vec<MemberId> = a.member_ids.into_iter().map(MemberId).collect();
+    let group = store
+        .open_group_dm_conversation(workspace_id, &member_ids, a.title)
+        .await?;
+    Ok(content_json(&group))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListGroupDmsArgs {
+    workspace_id: uuid::Uuid,
+    member_id: uuid::Uuid,
+}
+
+/// Group DMs for one member. Twin of `GET /workspaces/{wid}/group-dms`.
+/// `member_id` is personal state and is self-scoped before dispatch.
+pub(super) async fn list_group_dms(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListGroupDmsArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)
+        .map_err(McpError::from)?;
+    let groups = store
+        .list_group_dm_conversations_for_member(workspace_id, MemberId(a.member_id))
+        .await?;
+    Ok(content_json(&groups))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GetGroupDmArgs {
+    group_dm_conversation_id: uuid::Uuid,
+}
+
+/// One group DM. Twin of `GET /group-dms/{id}`: workspace match, and only a
+/// participant may read the roster (bypass excluded, as on REST).
+pub(super) async fn get_group_dm(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: GetGroupDmArgs = serde_json::from_value(args.clone())?;
+    let group = store
+        .get_group_dm_conversation(GroupDmConversationId(a.group_dm_conversation_id))
+        .await?;
+    auth.ensure_workspace(group.workspace_id)
+        .map_err(McpError::from)?;
+    if !auth.bypass && !group.member_ids.contains(&auth.member_id) {
+        return Err(McpError::Forbidden(
+            "member is not a participant in this group DM".into(),
+        ));
+    }
+    Ok(content_json(&group))
+}
