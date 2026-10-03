@@ -20,8 +20,8 @@ use axum::{
 };
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressKind, EgressTarget, ExternalRef, GithubIssueLink, GithubReviewComment, NewEgressOutbox,
-    NewGithubIssueLink, ThreadId, WorkspaceId, GITHUB_REVIEW_EVENT_COMMENT,
+    EgressKind, EgressTarget, ExternalRef, GithubCheckRun, GithubIssueLink, GithubReviewComment,
+    NewEgressOutbox, NewGithubIssueLink, ThreadId, WorkspaceId, GITHUB_REVIEW_EVENT_COMMENT,
 };
 
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
@@ -391,6 +391,15 @@ pub trait GithubSender: Send + Sync {
         comments: &[GithubReviewComment],
     ) -> Result<(), GithubError>;
 
+    /// Create a completed check run on `check.head_sha`.
+    ///
+    /// The caller already resolved that sha from the result envelope. This
+    /// method must not look up the pull request's current head. Projector
+    /// egress never calls it. A 403 (a PAT with no `checks:write`) is the
+    /// caller's to record; it must not disable a projector issue link.
+    async fn create_check_run(&self, repo: &str, check: &GithubCheckRun)
+        -> Result<(), GithubError>;
+
     /// The host this sender posts to: its key in the shared retry budget.
     fn host(&self) -> String {
         "api.github.com".to_string()
@@ -586,6 +595,59 @@ impl GithubSender for GithubApiClient {
             rate_limited: is_rate_limited(resp.headers()),
         })
     }
+
+    async fn create_check_run(
+        &self,
+        repo: &str,
+        check: &GithubCheckRun,
+    ) -> Result<(), GithubError> {
+        let url = format!("{}/repos/{repo}/check-runs", self.base_url);
+        let resp = crate::trace_context::stamp(self.http.post(&url))
+            .bearer_auth(&self.token)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "maidan-projector")
+            .json(&check_run_body(check))
+            .send()
+            .await
+            .map_err(|e| GithubError::Http(e.to_string()))?;
+        if resp.status().is_success() {
+            return Ok(());
+        }
+        Err(GithubError::Api {
+            status: resp.status().as_u16(),
+            rate_limited: is_rate_limited(resp.headers()),
+        })
+    }
+}
+
+/// JSON body for `POST /repos/{repo}/check-runs`. `head_sha` is copied from
+/// the check; nothing in this object is a pull-request head looked up live.
+pub(crate) fn check_run_body(check: &GithubCheckRun) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "name": check.name,
+        "head_sha": check.head_sha,
+        "status": "completed",
+        "conclusion": check.conclusion.as_str(),
+        "output": {
+            "title": check.title,
+            "summary": check.summary,
+        },
+    });
+    if let Some(url) = &check.details_url {
+        body["details_url"] = serde_json::json!(url);
+    }
+    body
+}
+
+/// Check-run posts: `sent` (GitHub accepted), `skipped` (no `head_sha`, not a
+/// waiter envelope, or 404/422), `failed` (GitHub rejected; the summary
+/// comment still landed).
+pub(crate) fn record_github_check_run(outcome: &str) {
+    metrics::counter!(
+        "maidan_github_check_run_total",
+        "outcome" => outcome.to_string()
+    )
+    .increment(1);
 }
 
 /// One `comments[]` item. `start_side` is required by GitHub whenever
@@ -821,5 +883,24 @@ mod tests {
         }
         assert!(!api(403, true).is_inline_review_skip());
         assert!(!GithubError::Http("connection reset".into()).is_inline_review_skip());
+    }
+
+    #[test]
+    fn a_check_run_body_is_completed_on_the_envelope_sha() {
+        use maidan_types::GithubCheckConclusion;
+        let check = GithubCheckRun {
+            name: "maidan".into(),
+            head_sha: "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911".into(),
+            conclusion: GithubCheckConclusion::Failure,
+            title: "Maidan found a critical issue".into(),
+            summary: "does not request changes".into(),
+            details_url: None,
+        };
+        let body = check_run_body(&check);
+        assert_eq!(body["status"], "completed");
+        assert_eq!(body["conclusion"], "failure");
+        assert_eq!(body["head_sha"], check.head_sha);
+        assert!(body.get("details_url").is_none());
+        assert!(body.get("pull_number").is_none());
     }
 }

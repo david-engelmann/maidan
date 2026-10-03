@@ -122,6 +122,14 @@ impl GithubSender for RecordingGithub {
             .collect())
     }
 
+    async fn create_check_run(
+        &self,
+        _repo: &str,
+        _check: &maidan_types::GithubCheckRun,
+    ) -> Result<(), GithubError> {
+        Ok(())
+    }
+
     async fn create_review(
         &self,
         _repo: &str,

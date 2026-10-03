@@ -64,6 +64,10 @@ pub const STATUS_REVIEWED: &str = "reviewed";
 /// The result summary is a separate issue comment, not this review's body.
 pub const GITHUB_REVIEW_EVENT_COMMENT: &str = "COMMENT";
 
+/// Check name on `POST /repos/{repo}/check-runs`. One name, so a re-delivery
+/// is another run of the same check rather than a second product.
+pub const GITHUB_CHECK_NAME: &str = "maidan";
+
 /// One entry of the producer's `deliver_to` routing list.
 ///
 /// [`Self::Unknown`] is the load-bearing variant: rule 2 of the pinned grammar
@@ -290,6 +294,115 @@ impl WaiterResult {
             .iter()
             .map(WaiterFinding::to_github_review_comment)
             .collect()
+    }
+}
+
+/// `conclusion` on a completed Maidan check run.
+///
+/// `success` means the result was `reviewed` and no finding was `critical`.
+/// It does **not** approve the pull request. `failure` means the result was
+/// not accepted, or a critical finding is present (including one too incomplete
+/// to post as an inline comment). It does **not** request changes: that remains
+/// a review decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GithubCheckConclusion {
+    Success,
+    Failure,
+}
+
+impl GithubCheckConclusion {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Failure => "failure",
+        }
+    }
+}
+
+/// A completed check run addressed at the envelope `head_sha`.
+///
+/// There is no queued or in-progress variant here: those would fire on claim,
+/// and this value is built only from a result. There is no field for a live
+/// PR head, and there must not be.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubCheckRun {
+    pub name: String,
+    pub head_sha: String,
+    pub conclusion: GithubCheckConclusion,
+    pub title: String,
+    pub summary: String,
+    pub details_url: Option<String>,
+}
+
+/// The check run for this result, or `None` when it has no envelope `head_sha`.
+///
+/// `raw` is the stored envelope, not the parsed findings list: a `critical`
+/// finding with no file or line still fails the check, the same way it arms
+/// the land gate. A `success` conclusion does not approve the pull request.
+pub fn github_check_run(waiter: &WaiterResult, raw: &Value) -> Option<GithubCheckRun> {
+    let head_sha = waiter.review_commit_id()?.to_string();
+    let critical = findings_contain_critical(raw);
+    let failure = !waiter.is_reviewed() || critical;
+    let conclusion = if failure {
+        GithubCheckConclusion::Failure
+    } else {
+        GithubCheckConclusion::Success
+    };
+    let title = if !waiter.is_reviewed() {
+        "Maidan result did not pass"
+    } else if critical {
+        "Maidan found a critical issue"
+    } else {
+        "Maidan result"
+    };
+    Some(GithubCheckRun {
+        name: GITHUB_CHECK_NAME.to_string(),
+        head_sha,
+        conclusion,
+        title: title.to_string(),
+        summary: check_run_summary(waiter, !waiter.is_reviewed(), critical),
+        details_url: waiter.view_url.as_deref().and_then(https_details_url),
+    })
+}
+
+fn check_run_summary(waiter: &WaiterResult, not_reviewed: bool, critical: bool) -> String {
+    let lead = if not_reviewed {
+        format!(
+            "Maidan did not accept this result (status `{}`). This check does not request changes on the pull request.",
+            waiter.status
+        )
+    } else if critical {
+        "Maidan found a critical issue. This check does not request changes on the pull request; the thread records that."
+            .to_string()
+    } else {
+        "Maidan accepted this result. This check does not approve the pull request.".to_string()
+    };
+    match waiter
+        .summary
+        .as_deref()
+        .map(str::trim)
+        .filter(|summary| !summary.is_empty())
+    {
+        Some(summary) => clip_chars(&format!("{lead}\n\n{summary}"), 4_000),
+        None => lead,
+    }
+}
+
+fn clip_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+fn https_details_url(url: &str) -> Option<String> {
+    let url = url.trim();
+    if url.starts_with("https://") && !url.chars().any(char::is_whitespace) && url.len() <= 2_048 {
+        Some(url.to_string())
+    } else {
+        None
     }
 }
 
@@ -923,5 +1036,74 @@ mod tests {
             Some(ReviewDecision::Approve),
             "the adapter never auto-approves; a human resolves"
         );
+    }
+
+    fn reviewed(head_sha: Option<&str>, findings: Value) -> Value {
+        let mut value = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
+            "status": "reviewed",
+            "summary": "auth bypass",
+            "view_url": "https://producer.example.test/r/1",
+            "findings": findings,
+        });
+        if let Some(sha) = head_sha {
+            value["head_sha"] = json!(sha);
+        }
+        value
+    }
+
+    #[test]
+    fn a_check_run_uses_only_the_envelope_sha() {
+        let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
+        let raw = reviewed(Some(sha), json!([]));
+        let waiter = parse_waiter_result(&raw).unwrap();
+        let check = github_check_run(&waiter, &raw).unwrap();
+        assert_eq!(check.head_sha, sha);
+        assert_eq!(check.name, GITHUB_CHECK_NAME);
+        assert_eq!(check.conclusion, GithubCheckConclusion::Success);
+        assert_eq!(check.conclusion.as_str(), "success");
+        assert!(check.summary.contains("does not approve"));
+        assert_eq!(
+            check.details_url.as_deref(),
+            Some("https://producer.example.test/r/1")
+        );
+
+        let raw = reviewed(None, json!([]));
+        let waiter = parse_waiter_result(&raw).unwrap();
+        assert!(
+            github_check_run(&waiter, &raw).is_none(),
+            "no head_sha ⇒ no check; a live PR head must not be fetched"
+        );
+    }
+
+    #[test]
+    fn a_critical_finding_fails_the_check_even_when_it_cannot_be_an_inline_comment() {
+        let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
+        let raw = reviewed(Some(sha), json!([{ "severity": "critical" }]));
+        let waiter = parse_waiter_result(&raw).unwrap();
+        assert!(waiter.findings.is_empty());
+        let check = github_check_run(&waiter, &raw).unwrap();
+        assert_eq!(check.conclusion, GithubCheckConclusion::Failure);
+        assert_eq!(check.title, "Maidan found a critical issue");
+        assert!(check.summary.contains("does not request changes"));
+    }
+
+    #[test]
+    fn a_result_that_was_not_reviewed_fails_the_check() {
+        let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
+        let raw = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": EXAMPLE_REVIEW_RESULT_KIND,
+            "status": "failed",
+            "head_sha": sha,
+            "view_url": "http://insecure.example.test/r",
+        });
+        let waiter = parse_waiter_result(&raw).unwrap();
+        let check = github_check_run(&waiter, &raw).unwrap();
+        assert_eq!(check.conclusion, GithubCheckConclusion::Failure);
+        assert_eq!(check.title, "Maidan result did not pass");
+        assert!(check.summary.contains("status `failed`"));
+        assert_eq!(check.details_url, None, "only https details urls are sent");
     }
 }

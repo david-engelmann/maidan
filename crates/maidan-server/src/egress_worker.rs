@@ -58,6 +58,15 @@
 //! duplicate the issue comment on a first delivery. Review errors never
 //! `disable_link` a projector issue-link. Replay PATCHes the summary and POSTs
 //! another COMMENT review. Projector rows never call `create_review`.
+//!
+//! **Check runs:** after that same successful GitHub summary, the worker
+//! POSTs `POST /repos/{repo}/check-runs` with `head_sha` from the envelope
+//! (never the live PR head) and `status: completed`. A critical finding, or
+//! a result that was not `reviewed`, concludes `failure`. A clean reviewed
+//! result concludes `success`, which does not approve the pull request.
+//! No sha, a vanished envelope, Slack, a projector row, or a GitHub 404/422
+//! skips the check. A 403 or 5xx records `failed` and leaves the summary
+//! delivered. Neither class fails the outbox or disables a projector link.
 
 use std::time::Duration;
 
@@ -257,8 +266,9 @@ async fn github_result(
     let reference =
         deliver_github_result_comment(sender.as_ref(), entry, row, repo, issue_number, body)
             .await?;
-    // Additive: a review skip/failure never undoes a landed summary comment.
+    // Additive: a review or check-run skip/failure never undoes a landed summary.
     post_result_inline_review(state, sender.as_ref(), repo, issue_number, entry.thread_id).await;
+    post_result_check_run(state, sender.as_ref(), repo, entry.thread_id).await;
     Ok(reference)
 }
 
@@ -396,6 +406,67 @@ async fn post_result_inline_review(
                 commit_id = %review.commit_id,
                 outcome,
                 "github inline review: not posted; summary comment still delivered"
+            );
+        }
+    }
+}
+
+/// Post a completed check run for the current waiter envelope.
+///
+/// Never returns an error. Same polarity as [`post_result_inline_review`]:
+/// the summary comment has already landed. `head_sha` comes only from the
+/// envelope. A 404/422 will not recover on replay and is `skipped`; anything
+/// else is `failed` and left for operator replay, which posts another check
+/// on the same sha. Neither path calls `disable_link`.
+async fn post_result_check_run(
+    state: &AppState,
+    sender: &dyn crate::github::GithubSender,
+    repo: &str,
+    thread_id: maidan_types::ThreadId,
+) {
+    let stored = match state.store.get_thread_result(thread_id).await {
+        Ok(stored) => stored,
+        Err(err) => {
+            crate::github::record_github_check_run("skipped");
+            tracing::warn!(error = %err, "github check run: result lookup failed");
+            return;
+        }
+    };
+    let Some(stored) = stored else {
+        crate::github::record_github_check_run("skipped");
+        return;
+    };
+    let Some(waiter) = maidan_types::parse_waiter_result(&stored.result) else {
+        crate::github::record_github_check_run("skipped");
+        return;
+    };
+    let Some(check) = maidan_types::github_check_run(&waiter, &stored.result) else {
+        crate::github::record_github_check_run("skipped");
+        return;
+    };
+    match sender.create_check_run(repo, &check).await {
+        Ok(()) => {
+            crate::github::record_github_check_run("sent");
+            tracing::debug!(
+                %repo,
+                head_sha = %check.head_sha,
+                conclusion = check.conclusion.as_str(),
+                "github check run: posted"
+            );
+        }
+        Err(err) => {
+            let outcome = if err.is_not_found() || err.is_unprocessable() {
+                "skipped"
+            } else {
+                "failed"
+            };
+            crate::github::record_github_check_run(outcome);
+            tracing::warn!(
+                error = %err,
+                %repo,
+                head_sha = %check.head_sha,
+                outcome,
+                "github check run: not posted; summary comment still delivered"
             );
         }
     }
