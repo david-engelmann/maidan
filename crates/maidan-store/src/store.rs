@@ -672,6 +672,32 @@ pub trait NotificationStore: Send + Sync {
         member_id: MemberId,
         id: PushSubscriptionId,
     ) -> Result<bool, StoreError>;
+
+    /// Queue one failed web push for a later retry. The row is due at
+    /// `next_attempt_at` and already counts `attempts` tries.
+    async fn enqueue_web_push(&self, new: NewWebPushOutbox) -> Result<WebPushOutboxId, StoreError>;
+    /// Lease the oldest due pending web push, bumping `attempts` and pushing
+    /// `next_attempt_at` forward by `lease_secs` so a crashed worker retries it.
+    async fn claim_next_due_web_push(
+        &self,
+        now: DateTime<Utc>,
+        lease_secs: i64,
+    ) -> Result<Option<WebPushOutbox>, StoreError>;
+    async fn mark_web_push_delivered(&self, id: WebPushOutboxId) -> Result<(), StoreError>;
+    /// Reschedule (`retry_at = Some`) or dead-letter (`None`).
+    async fn mark_web_push_failed(
+        &self,
+        id: WebPushOutboxId,
+        error: &str,
+        retry_at: Option<DateTime<Utc>>,
+    ) -> Result<(), StoreError>;
+    /// Hand a claimed push back unsent, due again at `until`, and give the
+    /// claim attempt back. Used when the retry budget holds the send.
+    async fn defer_web_push(
+        &self,
+        id: WebPushOutboxId,
+        until: DateTime<Utc>,
+    ) -> Result<(), StoreError>;
 }
 
 #[async_trait]

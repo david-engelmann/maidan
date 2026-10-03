@@ -23,8 +23,8 @@ use std::time::Duration;
 
 use maidan_bus::{BusItem, EventStream};
 use maidan_types::{
-    ChannelId, Event, EventFilter, EventKind, MemberId, MessageId, NewNotification, ReviewDecision,
-    ThreadId, WorkspaceId,
+    ChannelId, Event, EventFilter, EventKind, MemberId, MessageId, NewNotification,
+    NewWebPushOutbox, ReviewDecision, ThreadId, WorkspaceId,
 };
 use tokio::sync::{mpsc, watch};
 use tokio_stream::StreamExt;
@@ -816,8 +816,8 @@ async fn fan_out_message_posted(
                 deliver_notification_email(&st, workspace_id, member_id, kind, log_id).await;
             });
         }
-        // Web Push, only when a sender is configured. Spawned + presence-gated
-        // inside (notify iff no live WS); best-effort.
+        // Web Push, only when a sender is configured. Spawned so a slow push
+        // service never blocks routing. A failed send is queued and retried.
         if state.web_push.is_some() {
             let st = state.clone();
             let (member_id, kind, log_id) = (n.member_id, n.kind, n.source_log_id);
@@ -940,7 +940,7 @@ async fn write_notification(
                 deliver_notification_email(&st, workspace_id, member_id, kind, source_log_id).await;
             });
         }
-        // Web Push: notify iff no live WS (gated inside).
+        // Web Push: notify iff no live WS (gated inside). A failed send is queued.
         if state.web_push.is_some() {
             let st = state.clone();
             tokio::spawn(async move {
@@ -1075,9 +1075,11 @@ fn web_push_live_window_secs() -> i64 {
 
 /// Deliver one notification to a member over Web Push — but only when the
 /// member has **no live WebSocket** (they were not seen within the live
-/// window), so an online member isn't double-notified. Best-effort + spawned so
-/// a slow push service never blocks routing; a `410 Gone`/`404` prunes the dead
-/// subscription. Extracted so a test can await it directly. `pub` for the e2e.
+/// window), so an online member is not double-notified. Spawned so a slow push
+/// service never blocks routing. A `410 Gone`/`404` prunes the dead
+/// subscription. Any other send failure is written to the web push outbox and
+/// retried by [`crate::web_push_worker`]. Extracted so a test can await it
+/// directly. `pub` for the e2e.
 pub async fn deliver_notification_web_push(
     state: &AppState,
     member_id: MemberId,
@@ -1085,6 +1087,9 @@ pub async fn deliver_notification_web_push(
     source_log_id: i64,
 ) {
     let Some(sender) = state.web_push.clone() else {
+        // No VAPID sender is attached. The tested reason is `vapid_unset`
+        // when MAIDAN_VAPID_* is absent; invalid material is the same skip.
+        crate::metrics::record_web_push_delivered("skipped_vapid_unset");
         return;
     };
     // Presence gate: skip when the member is currently connected (seen within the
@@ -1117,15 +1122,14 @@ pub async fn deliver_notification_web_push(
         "kind": kind.as_str(),
         "log_id": source_log_id,
     })
-    .to_string()
-    .into_bytes();
+    .to_string();
     let trace = match state.store.get_stored_event(source_log_id).await {
         Ok(event) => event.trace,
         Err(_) => None,
     };
     maidan_store::trace::maybe_scope(trace, async {
         for sub in subs {
-            match sender.send(&sub, &payload).await {
+            match sender.send(&sub, payload.as_bytes()).await {
                 Ok(()) => crate::metrics::record_web_push_delivered("sent"),
                 Err(err) if err.is_gone() => {
                     crate::metrics::record_web_push_delivered("pruned");
@@ -1138,8 +1142,22 @@ pub async fn deliver_notification_web_push(
                     }
                 }
                 Err(err) => {
-                    warn!(error = %err, "web push: send failed");
+                    warn!(error = %err, "web push: send failed; queueing retry");
                     crate::metrics::record_web_push_delivered("failed");
+                    let queued = NewWebPushOutbox {
+                        member_id,
+                        subscription_id: sub.id,
+                        payload: payload.clone(),
+                        attempts: 1,
+                        next_attempt_at: crate::web_push_worker::next_attempt_at(1),
+                        last_error: err.to_string(),
+                    };
+                    match state.store.enqueue_web_push(queued).await {
+                        Ok(_) => crate::metrics::record_web_push_delivered("queued"),
+                        Err(e) => {
+                            warn!(error = %e, "web push: queueing retry failed");
+                        }
+                    }
                 }
             }
         }

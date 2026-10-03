@@ -352,6 +352,10 @@ pub fn router(state: AppState) -> Router {
             delete(routes::delete_push_subscription),
         )
         .route(
+            "/web-push/vapid-public-key",
+            get(routes::get_vapid_public_key),
+        )
+        .route(
             "/members/{id}/skills",
             post(routes::add_member_skill).merge(get(routes::list_member_skills)),
         )
@@ -967,6 +971,14 @@ pub fn router(state: AppState) -> Router {
                 "text/javascript; charset=utf-8",
                 include_str!("../static/ui/realtime.js"),
             ),
+            "push.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/push.js"),
+            ),
+            "sw.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/sw.js"),
+            ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
         Ok((
@@ -1116,6 +1128,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/ui/api/members/{id}/email", get(routes::get_member_email))
         .route(
+            "/ui/api/web-push/vapid-public-key",
+            get(routes::get_vapid_public_key),
+        )
+        .route(
             "/ui/api/members/{id}/channel-follows",
             get(routes::list_member_channel_follows),
         )
@@ -1223,6 +1239,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/members/{id}/email",
             put(routes::set_member_email).merge(delete(routes::delete_member_email)),
+        )
+        .route(
+            "/ui/api/members/{id}/push-subscriptions",
+            post(routes::register_push_subscription),
         )
         .route(
             "/ui/api/members/{id}/channel-follows",

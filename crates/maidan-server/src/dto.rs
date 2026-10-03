@@ -1017,6 +1017,16 @@ pub struct RegisterPushSubscription {
     pub keys: PushKeys,
 }
 
+/// `GET /web-push/vapid-public-key`. `public_key` is set only when VAPID is
+/// configured. `reason` is `vapid_unset` when `MAIDAN_VAPID_*` is absent.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct VapidPublicKey {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 /// Set a member's email delivery mode. An unknown `mode` fails deserialization
 /// → `400`.
 #[derive(Debug, Deserialize, ToSchema)]

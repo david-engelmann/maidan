@@ -786,6 +786,42 @@ macro_rules! store_delegations {
             ) -> Result<bool, StoreError> {
                 push_subscriptions::delete(self.pool(), member_id, id).await
             }
+
+            async fn enqueue_web_push(
+                &self,
+                new: NewWebPushOutbox,
+            ) -> Result<WebPushOutboxId, StoreError> {
+                web_push_outbox::enqueue(self.pool(), new).await
+            }
+
+            async fn claim_next_due_web_push(
+                &self,
+                now: DateTime<Utc>,
+                lease_secs: i64,
+            ) -> Result<Option<WebPushOutbox>, StoreError> {
+                web_push_outbox::claim_next_due(self.pool(), now, lease_secs).await
+            }
+
+            async fn mark_web_push_delivered(&self, id: WebPushOutboxId) -> Result<(), StoreError> {
+                web_push_outbox::mark_delivered(self.pool(), id).await
+            }
+
+            async fn mark_web_push_failed(
+                &self,
+                id: WebPushOutboxId,
+                error: &str,
+                retry_at: Option<DateTime<Utc>>,
+            ) -> Result<(), StoreError> {
+                web_push_outbox::mark_failed(self.pool(), id, error, retry_at).await
+            }
+
+            async fn defer_web_push(
+                &self,
+                id: WebPushOutboxId,
+                until: DateTime<Utc>,
+            ) -> Result<(), StoreError> {
+                web_push_outbox::defer(self.pool(), id, until).await
+            }
         }
     };
     ($store:ty, FollowStore) => {

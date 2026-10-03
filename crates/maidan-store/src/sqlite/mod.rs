@@ -92,6 +92,7 @@ mod unclaimable;
 mod usage_ledger;
 mod votes;
 mod waits;
+mod web_push_outbox;
 mod webhooks;
 mod wip;
 mod workspace_handles;

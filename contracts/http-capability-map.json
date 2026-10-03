@@ -415,6 +415,12 @@
   },
   {
     "method": "GET",
+    "path": "/web-push/vapid-public-key",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/members/{id}/mentions",
     "capability": "workspace:read",
     "surface": "http"

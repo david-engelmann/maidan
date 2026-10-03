@@ -49,8 +49,28 @@ impl WebPushError {
     }
 }
 
+/// Why Web Push is not sending. `Unset` is the tested skip reason: a missing
+/// `MAIDAN_VAPID_*` value never falls back to a generated key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WebPushConfigError {
+    /// One or more of `MAIDAN_VAPID_PRIVATE_KEY`, `MAIDAN_VAPID_PUBLIC_KEY`,
+    /// and `MAIDAN_VAPID_SUBJECT` is absent or blank.
+    Unset,
+    /// All three are set, but the key material or subject is not usable.
+    Invalid(String),
+}
+
+impl std::fmt::Display for WebPushConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unset => write!(f, "vapid_unset"),
+            Self::Invalid(msg) => write!(f, "vapid_invalid: {msg}"),
+        }
+    }
+}
+
 /// VAPID application-server identity (RFC 8292). Loaded from env; Web Push is
-/// opt-in (like SMTP) — absent config means no sender is attached.
+/// opt-in (like SMTP). Absent config means no sender is attached.
 #[derive(Clone)]
 pub struct WebPushConfig {
     signing_key: SigningKey,
@@ -61,26 +81,40 @@ pub struct WebPushConfig {
 }
 
 impl WebPushConfig {
-    /// `VAPID_PRIVATE_KEY` (base64url 32-byte scalar), `VAPID_PUBLIC_KEY`
-    /// (base64url 65-byte uncompressed point), `VAPID_SUBJECT`. Returns `None`
-    /// unless all three are set and valid.
-    pub fn from_env() -> Option<Self> {
-        let priv_b64 = std::env::var("VAPID_PRIVATE_KEY")
-            .ok()
-            .filter(|s| !s.trim().is_empty())?;
-        let pub_b64 = std::env::var("VAPID_PUBLIC_KEY")
-            .ok()
-            .filter(|s| !s.trim().is_empty())?;
-        let subject = std::env::var("VAPID_SUBJECT")
-            .ok()
-            .filter(|s| !s.trim().is_empty())?;
-        match Self::from_parts(&priv_b64, &pub_b64, subject) {
-            Ok(config) => Some(config),
-            Err(err) => {
-                tracing::error!(%err, "VAPID config invalid; Web Push disabled");
-                None
-            }
-        }
+    /// `MAIDAN_VAPID_PRIVATE_KEY` (base64url 32-byte scalar),
+    /// `MAIDAN_VAPID_PUBLIC_KEY` (base64url 65-byte uncompressed point),
+    /// `MAIDAN_VAPID_SUBJECT`. All three are required. A missing value is
+    /// [`WebPushConfigError::Unset`] and does not invent a key.
+    pub fn from_env() -> Result<Self, WebPushConfigError> {
+        Self::from_values(
+            std::env::var("MAIDAN_VAPID_PRIVATE_KEY").ok(),
+            std::env::var("MAIDAN_VAPID_PUBLIC_KEY").ok(),
+            std::env::var("MAIDAN_VAPID_SUBJECT").ok(),
+        )
+    }
+
+    /// Build a config from explicit values. Blank strings count as unset.
+    pub fn from_values(
+        private_key: Option<String>,
+        public_key: Option<String>,
+        subject: Option<String>,
+    ) -> Result<Self, WebPushConfigError> {
+        let Some(private_key) = private_key.filter(|s| !s.trim().is_empty()) else {
+            return Err(WebPushConfigError::Unset);
+        };
+        let Some(public_key) = public_key.filter(|s| !s.trim().is_empty()) else {
+            return Err(WebPushConfigError::Unset);
+        };
+        let Some(subject) = subject.filter(|s| !s.trim().is_empty()) else {
+            return Err(WebPushConfigError::Unset);
+        };
+        Self::from_parts(&private_key, &public_key, subject)
+            .map_err(|err| WebPushConfigError::Invalid(err.to_string()))
+    }
+
+    /// Base64url uncompressed public key the browser passes to `subscribe`.
+    pub fn public_key_b64(&self) -> String {
+        URL_SAFE_NO_PAD.encode(&self.public_key)
     }
 
     pub fn from_parts(
@@ -277,6 +311,37 @@ mod tests {
         let priv_b64 = URL_SAFE_NO_PAD.encode(sk.to_bytes());
         let pub_b64 = URL_SAFE_NO_PAD.encode(sk.public_key().to_encoded_point(false).as_bytes());
         (priv_b64, pub_b64)
+    }
+
+    fn must_err(result: Result<WebPushConfig, WebPushConfigError>) -> WebPushConfigError {
+        match result {
+            Err(err) => err,
+            Ok(_) => panic!("expected VAPID config to be rejected"),
+        }
+    }
+
+    #[test]
+    fn unset_vapid_skips_without_inventing_a_key() {
+        let err = must_err(WebPushConfig::from_values(None, None, None));
+        assert_eq!(err, WebPushConfigError::Unset);
+        assert_eq!(err.to_string(), "vapid_unset");
+        let err = must_err(WebPushConfig::from_values(
+            Some("  ".into()),
+            Some("x".into()),
+            Some("mailto:ops@example.com".into()),
+        ));
+        assert_eq!(err.to_string(), "vapid_unset");
+    }
+
+    #[test]
+    fn invalid_vapid_material_is_rejected() {
+        let err = must_err(WebPushConfig::from_values(
+            Some("not-a-key".into()),
+            Some("also-not".into()),
+            Some("mailto:ops@example.com".into()),
+        ));
+        assert!(matches!(err, WebPushConfigError::Invalid(_)));
+        assert!(err.to_string().starts_with("vapid_invalid:"));
     }
 
     #[test]

@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
-use maidan_server::web_push::{WebPushError, WebPushSender};
+use maidan_server::web_push::{WebPushConfig, WebPushConfigError, WebPushError, WebPushSender};
+use maidan_server::web_push_worker;
 use maidan_server::{notification_router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -163,4 +164,133 @@ async fn web_push_prunes_a_gone_subscription() {
             .is_empty(),
         "a Gone subscription is pruned"
     );
+}
+
+struct FlakySender {
+    fails_left: Mutex<u32>,
+    sent: Mutex<u32>,
+}
+
+#[async_trait::async_trait]
+impl WebPushSender for FlakySender {
+    async fn send(&self, _sub: &PushSubscription, _payload: &[u8]) -> Result<(), WebPushError> {
+        *self.sent.lock().unwrap() += 1;
+        let mut left = self.fails_left.lock().unwrap();
+        if *left > 0 {
+            *left -= 1;
+            return Err(WebPushError::Endpoint(503));
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn unset_vapid_is_a_named_skip_and_not_a_generated_key() {
+    match WebPushConfig::from_values(None, None, None) {
+        Err(err) => {
+            assert_eq!(err, WebPushConfigError::Unset);
+            assert_eq!(err.to_string(), "vapid_unset");
+        }
+        Ok(_) => panic!("unset VAPID must not become a key"),
+    }
+}
+
+#[tokio::test]
+async fn web_push_without_a_sender_does_not_queue() {
+    let (store, state) = setup().await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    store
+        .add_push_subscription(NewPushSubscription {
+            member_id: member.id,
+            endpoint: "https://push.example.com/a".into(),
+            p256dh: "k".into(),
+            auth: "s".into(),
+        })
+        .await
+        .unwrap();
+    notification_router::deliver_notification_web_push(
+        &state,
+        member.id,
+        EventKind::MentionRecorded,
+        1,
+    )
+    .await;
+    let queued = store
+        .claim_next_due_web_push(chrono::Utc::now() + chrono::Duration::hours(2), 30)
+        .await
+        .unwrap();
+    assert!(queued.is_none(), "no sender means nothing is queued");
+    assert_eq!(
+        state.web_push_disabled_reason.as_deref(),
+        Some("vapid_unset")
+    );
+}
+
+#[tokio::test]
+async fn failed_web_push_is_retried_from_the_outbox() {
+    let (store, mut state) = setup().await;
+    let sender = Arc::new(FlakySender {
+        fails_left: Mutex::new(1),
+        sent: Mutex::new(0),
+    });
+    state.attach_web_push(sender.clone());
+    let ws = store
+        .create_workspace(NewWorkspace { name: "w".into() })
+        .await
+        .unwrap();
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "a".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    store
+        .add_push_subscription(NewPushSubscription {
+            member_id: member.id,
+            endpoint: "https://push.example.com/retry".into(),
+            p256dh: "k".into(),
+            auth: "s".into(),
+        })
+        .await
+        .unwrap();
+
+    notification_router::deliver_notification_web_push(
+        &state,
+        member.id,
+        EventKind::MentionRecorded,
+        11,
+    )
+    .await;
+    assert_eq!(
+        *sender.sent.lock().unwrap(),
+        1,
+        "the first send was attempted"
+    );
+
+    // The failed send is due after backoff. Sweep as of later so the test does
+    // not wait on the wall clock.
+    let stats =
+        web_push_worker::sweep_due(&state, chrono::Utc::now() + chrono::Duration::hours(2)).await;
+    assert_eq!(stats.sent, 1, "the queued push is sent on the next sweep");
+    assert_eq!(*sender.sent.lock().unwrap(), 2);
+    let left = store
+        .claim_next_due_web_push(chrono::Utc::now() + chrono::Duration::hours(2), 30)
+        .await
+        .unwrap();
+    assert!(left.is_none(), "a successful retry leaves the queue");
 }

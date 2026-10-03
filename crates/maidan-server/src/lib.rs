@@ -92,6 +92,7 @@ pub mod trace_redaction;
 pub mod wait_sweeper;
 pub mod wasi_handler;
 pub mod web_push;
+pub mod web_push_worker;
 pub mod webhook_worker;
 pub mod webhooks;
 pub mod ws;

@@ -2,6 +2,7 @@
 // Node has no document, so the stub is installed before the modules load.
 // The modules are the ones the board serves. Nothing here is a copy of them.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 
 function makeEl() {
@@ -112,6 +113,7 @@ Object.defineProperty(globalThis, "navigator", {
 
 const { apiReadPath, apiWritePath, requireBearer } = await import("./api.js");
 const { humanError } = await import("./feedback.js");
+const { registerBrowserPush } = await import("./push.js");
 const { refreshSession, signOutPostsLogout } = await import("./session.js");
 
 const BASE = "http://127.0.0.1:8080";
@@ -257,5 +259,86 @@ describe("board page helpers", { concurrency: 1 }, () => {
       assert.equal(said.includes("raw server body"), false);
       assert.equal(said.includes(String(status)), false);
     }
+  });
+});
+
+
+describe("browser web push registration", { concurrency: 1 }, () => {
+  test("the service worker listens for a push", () => {
+    const sw = readFileSync(new URL("./sw.js", import.meta.url), "utf8");
+    assert.match(sw, /addEventListener\("push"/);
+    assert.match(sw, /showNotification/);
+  });
+
+  test("an unset VAPID key does not register a subscription", async () => {
+    await resetAuth();
+    const calls = [];
+    globalThis.fetch = async (url, opts) => {
+      calls.push({ url: String(url), method: opts && opts.method });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ reason: "vapid_unset" }),
+        text: async () => "",
+      };
+    };
+    const result = await registerBrowserPush("mem_1", {
+      notification: { permission: "granted", requestPermission: async () => "granted" },
+      serviceWorker: { register: async () => { throw new Error("should not register"); } },
+    });
+    assert.deepEqual(result, { registered: false, reason: "vapid_unset" });
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].url, /\/web-push\/vapid-public-key$/);
+  });
+
+  test("the board registers the service worker and stores the subscription", async () => {
+    await resetAuth();
+    document.getElementById("token").value = "sekrit";
+    const posts = [];
+    let registeredPath = "";
+    globalThis.fetch = async (url, opts) => {
+      const u = String(url);
+      if (u.endsWith("/web-push/vapid-public-key")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ public_key: "AQ" }),
+          text: async () => "",
+        };
+      }
+      posts.push({ url: u, body: JSON.parse(opts.body) });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "sub_1" }),
+        text: async () => "",
+      };
+    };
+    const subscription = {
+      endpoint: "https://push.example/device",
+      toJSON() {
+        return { endpoint: this.endpoint, keys: { p256dh: "k", auth: "a" } };
+      },
+    };
+    const result = await registerBrowserPush("mem_1", {
+      notification: { permission: "granted", requestPermission: async () => "granted" },
+      serviceWorker: {
+        async register(path) {
+          registeredPath = path;
+          return {
+            pushManager: {
+              getSubscription: async () => null,
+              subscribe: async () => subscription,
+            },
+          };
+        },
+      },
+    });
+    assert.deepEqual(result, { registered: true, reason: "registered" });
+    assert.equal(registeredPath, "/ui/static/sw.js");
+    assert.equal(posts.length, 1);
+    assert.match(posts[0].url, /\/members\/mem_1\/push-subscriptions$/);
+    assert.equal(posts[0].body.endpoint, "https://push.example/device");
+    assert.deepEqual(posts[0].body.keys, { p256dh: "k", auth: "a" });
   });
 });
