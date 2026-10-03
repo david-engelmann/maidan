@@ -168,7 +168,6 @@ async fn ui_shell_exposes_channel_browser_markers() {
         .text()
         .await
         .expect("html");
-    assert!(html.contains(r#"data-ui-version="8""#));
     assert!(html.contains("/ui/static/main.js"));
     // The write helpers moved out of the shell into the module it loads.
     let api_js = h

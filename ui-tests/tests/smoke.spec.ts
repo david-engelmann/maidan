@@ -11,8 +11,7 @@ const fx = fixtures();
 test("the /ui console loads its JS and renders seeded data", async ({ page }) => {
   await page.goto("/ui/");
 
-  // The page + its script are present (version marker + the tab bar).
-  await expect(page.locator('[data-ui-version="8"]')).toBeAttached();
+  // The page + its script are present (the tab bar).
   await openMoreTools(page);
   await expect(page.locator('.tabs button[data-tab="notifications"]')).toBeVisible();
 

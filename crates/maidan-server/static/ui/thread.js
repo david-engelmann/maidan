@@ -70,6 +70,14 @@ import { loadMessageEdits } from "./tools.js";
       }
 
 
+      function openMessageEdit(message) {
+        document.getElementById("edit-message-id").value = message.id;
+        document.getElementById("edit-message-body").value = message.body;
+        const details = document.getElementById("edit-message-id").closest("details");
+        if (details) details.open = true;
+        loadMessageEdits(message.id);
+      }
+
       function renderMessages(messages, box) {
         box.innerHTML = "";
         artifactObjectUrls.forEach((url) => URL.revokeObjectURL(url));
@@ -94,6 +102,17 @@ import { loadMessageEdits } from "./tools.js";
             : "";
           meta.appendChild(time);
           if (m.edited_at) meta.appendChild(document.createTextNode("edited"));
+          const editBtn = document.createElement("button");
+          editBtn.type = "button";
+          editBtn.className = "edit-toggle";
+          editBtn.textContent = "✎";
+          editBtn.title = "Edit message";
+          editBtn.setAttribute("aria-label", "Edit message");
+          editBtn.onclick = (ev) => {
+            ev.stopPropagation();
+            openMessageEdit(m);
+          };
+          meta.appendChild(editBtn);
           const pinned = pinnedIds.has(m.id);
           const pinBtn = document.createElement("button");
           pinBtn.type = "button";
@@ -112,11 +131,7 @@ import { loadMessageEdits } from "./tools.js";
           div.appendChild(body);
           renderSlashResult(m.metadata, div);
           artifactShasFromMetadata(m.metadata).forEach((sha) => div.appendChild(artifactCard(sha)));
-          div.onclick = () => {
-            document.getElementById("edit-message-id").value = m.id;
-            document.getElementById("edit-message-body").value = m.body;
-            loadMessageEdits(m.id);
-          };
+          div.onclick = () => openMessageEdit(m);
           const reactions = document.createElement("div");
           reactions.className = "reactions";
           div.appendChild(reactions);

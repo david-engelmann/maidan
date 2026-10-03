@@ -4556,3 +4556,92 @@ fn declared_font_size_px(body: &str) -> Option<f64> {
     }
     None
 }
+
+/// Opening a thread from another channel selects that channel. The palette
+/// reaches those threads through selectThread, which has to set the sidebar
+/// highlight, not only the open thread.
+#[test]
+fn ui_js_palette_jump_selects_the_threads_channel() {
+    let js = script(HTML);
+    let select = function_body(js, "selectThread");
+    assert!(
+        select.contains("focusChannel(channelId)") && select.contains("focusChannel(found)"),
+        "selectThread selects the channel a thread lives in"
+    );
+    let focus = function_body(js, "focusChannel");
+    assert!(
+        focus.contains("selectedChannelId = channelId")
+            && focus.contains("n.classList.toggle(\"selected\", n.dataset.id === channelId)"),
+        "the sidebar highlight follows the channel"
+    );
+    assert!(
+        js.contains("selectThread(next.thread_id, title);")
+            && js.contains("selectThread(th.id, th.title || th.id)"),
+        "the palette opens a thread through selectThread"
+    );
+}
+
+/// A message click used to fill the collapsed Edit message fields and leave
+/// them closed. The pencil sits in the meta row, beside the pin toggle, and
+/// both the pencil and the message open that details element.
+#[test]
+fn ui_js_message_click_opens_the_edit_details() {
+    let js = script(HTML);
+    let render = function_body(js, "renderMessages");
+    assert!(
+        render.contains("className = \"edit-toggle\"")
+            && render.contains("openMessageEdit(m)")
+            && render.contains("meta.appendChild(editBtn)"),
+        "a message offers an edit control beside the pin toggle"
+    );
+    let open = function_body(js, "openMessageEdit");
+    assert!(
+        open.contains("getElementById(\"edit-message-id\").value = message.id")
+            && open.contains("details.open = true"),
+        "clicking a message opens the Edit message details"
+    );
+    let css = page();
+    assert!(
+        css.contains("#message-list .msg:hover .edit-toggle, #message-list .msg:focus-within .edit-toggle { opacity: 1; }"),
+        "the edit control shows on hover and on keyboard focus"
+    );
+    assert!(
+        css.contains("#message-list .msg:hover .pin-toggle, #message-list .msg:focus-within .pin-toggle, .pin-toggle.pinned { opacity: 1; }"),
+        "the pin toggle still shows on keyboard focus"
+    );
+}
+
+/// The first-run card says what a workspace id is and where it comes from.
+#[test]
+fn ui_js_first_run_says_what_a_workspace_id_is() {
+    let first_run = HTML
+        .split("id=\"first-run\"")
+        .nth(1)
+        .and_then(|rest| rest.split("</section>").next())
+        .expect("the first-run card");
+    assert!(
+        first_run.contains("A workspace id is the id of one room on this server.")
+            && first_run.contains("maidan init")
+            && first_run.contains("prints it when that room is created"),
+        "the card says what a workspace id is and where it comes from"
+    );
+}
+
+/// `.brand-sub` is unused. The marker `data-ui-version` is not a version.
+#[test]
+fn ui_js_drops_dead_brand_sub_and_the_version_marker() {
+    let html = HTML;
+    let css = page();
+    assert!(
+        !html.contains("data-ui-version"),
+        "the version marker is gone"
+    );
+    assert!(
+        !css.contains(".brand-sub"),
+        "the unused brand-sub rule is gone"
+    );
+    assert!(
+        !html.contains("brand-sub"),
+        "the page does not use brand-sub"
+    );
+}

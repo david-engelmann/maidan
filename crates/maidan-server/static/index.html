@@ -7,7 +7,7 @@
     <link id="favicon" rel="icon" href="data:," />
     <link rel="stylesheet" href="/ui/static/board.css" />
   </head>
-  <body data-ui-version="8">
+  <body>
     <div id="toasts"></div>
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <header>
@@ -126,10 +126,11 @@
           <section class="onboard" id="first-run" aria-labelledby="first-run-title">
             <h3 id="first-run-title">Connect this browser</h3>
             <p>Say which server and workspace, then sign in. Once you are in, these fields fold into the header, behind Change.</p>
+            <p class="first-run-note">A workspace id is the id of one room on this server. <code>maidan init</code> prints it when that room is created, and an admin can copy it from the workspace.</p>
             <div id="first-run-fields">
               <div id="conn-fields">
                 <label>API base <input id="base" /></label>
-                <label>Workspace <input id="workspace" /></label>
+                <label>Workspace id <input id="workspace" /></label>
                 <label id="workspace-name-label" hidden>Name <input id="workspace-name" autocomplete="off" /></label>
                 <button id="workspace-name-save" type="button" class="ghost" hidden>Save name</button>
                 <label>Token <input id="token" type="password" autocomplete="off" title="Exchanged for a session. This browser does not keep the token" /></label>

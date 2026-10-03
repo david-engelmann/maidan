@@ -184,7 +184,7 @@
       .reaction-chip.mine { border-color: #60a5fa; background: #eff6ff; }
       .reaction-add { opacity: 0.55; }
       .reaction-add:hover, .reaction-chip:hover { opacity: 1; border-color: #60a5fa; }
-      .pin-toggle {
+      .pin-toggle, .edit-toggle {
         font-size: 0.7rem; padding: 0 0.3rem; border-radius: 4px; cursor: pointer;
         border: 1px solid var(--border); background: var(--bg); color: var(--muted);
       }
@@ -251,7 +251,6 @@
       input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(20, 83, 45, 0.12); }
       header { padding: 0.55rem 1rem; gap: 0.75rem; }
       header h1 { font-size: 1.15rem; letter-spacing: -0.01em; }
-      header h1 .brand-sub { color: var(--muted); font-weight: 500; font-size: 0.85rem; letter-spacing: 0; }
       #conn-fields { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; }
       #conn-fields[hidden] { display: none; }
       header label { color: var(--muted); font-size: 0.75rem; }
@@ -392,6 +391,8 @@
       #message-list .body { margin-top: 0.1rem; white-space: pre-wrap; word-break: break-word; }
       .pin-toggle { box-shadow: none; opacity: 0; }
       #message-list .msg:hover .pin-toggle, #message-list .msg:focus-within .pin-toggle, .pin-toggle.pinned { opacity: 1; }
+      .edit-toggle { box-shadow: none; opacity: 0; }
+      #message-list .msg:hover .edit-toggle, #message-list .msg:focus-within .edit-toggle { opacity: 1; }
       .reactions:empty { display: none; }
       .reaction-add { box-shadow: none; display: none; }
       #message-list .msg:hover .reaction-add, #message-list .msg:focus-within .reaction-add { display: inline-block; }
