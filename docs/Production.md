@@ -828,6 +828,16 @@ single-replica StatefulSets of its own (`postgresql.enabled`, `minio.enabled`;
   (`postgresql.auth.password`, `minio.auth.rootPassword`) and a Postgres or MinIO image
   without a release tag or digest.
 
+Moving an existing release from the earlier Bitnami subcharts to these StatefulSets is a
+replacement, not an in-place upgrade. The StatefulSet selector labels differ (Kubernetes rejects
+changing them), and MinIO's volume claim is `data-<release>-minio-0`, not Bitnami's
+`<release>-minio`. Dump the database and copy the buckets (`mc mirror`) out, install the new
+release, and restore; keep the old volumes until you have checked the restore. Changing a store
+password does not restart the server: run `kubectl rollout restart deployment/<release>-maidan`
+after the upgrade (MinIO restarts by itself, because its pod template carries a credential
+checksum). Postgres reads `POSTGRES_PASSWORD` only when it first creates the data directory, so
+changing it later does not change the database's password.
+
 The stack's Postgres has no replicas, backups or PITR; for those, run your own (or a managed)
 Postgres, turn `postgresql.enabled` off and set `DATABASE_URL` as for the server chart. The
 install command and the full list are in `helm/maidan-stack/README.md`. The `helm install

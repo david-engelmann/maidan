@@ -65,6 +65,10 @@ spec:
     metadata:
       labels:
         {{- include "maidan-stack.labels" $labels | nindent 8 }}
+      annotations:
+        # Secret-backed env vars are read at container start, so a credential
+        # change must change the pod template to roll MinIO.
+        checksum/credentials: {{ printf "%s:%s" $minio.auth.rootUser $minio.auth.rootPassword | sha256sum }}
     spec:
       # MinIO is configured by MINIO_* variables; keep Kubernetes from adding
       # its own for every Service named minio-*.

@@ -22,6 +22,19 @@ for name in minio minio-client; do
     echo "${stack_values} pins no digest for cgr.dev/chainguard/${name}; if it moved, update this script" >&2
     exit 1
   }
+  # Any reference to the image that is not a full digest (a tag, or none) is
+  # refused before the pins are compared, or it would silently drop out of them.
+  loose="$(rg -oP --no-filename "cgr\.dev/chainguard/${name}(?![-\w])[^\"'\s]*" \
+    compose.yaml compose.dev.yaml k8s | rg -v "^cgr\.dev/chainguard/${name}@sha256:[0-9a-f]{64}$" || true)"
+  if [[ -n "${loose}" ]]; then
+    echo "cgr.dev/chainguard/${name} must be referenced by a full sha256 digest; found:" >&2
+    echo "${loose}" >&2
+    exit 1
+  fi
+  [[ "${chart_pin}" =~ ^cgr\.dev/chainguard/${name}@sha256:[0-9a-f]{64}$ ]] || {
+    echo "${stack_values}: ${chart_pin} is not a full sha256 digest" >&2
+    exit 1
+  }
   pins="$(
     {
       rg -o --no-filename "cgr\.dev/chainguard/${name}@sha256:[0-9a-f]{64}" \

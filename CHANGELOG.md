@@ -1533,13 +1533,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   no longer ask for `maidan.secrets.DATABASE_URL` or the S3 keys, and run the
   server without a volume, since its artifacts are in MinIO.
 - **Added:** stack refusals. `CHANGE_ME` in the store values fails every
-  render, as do a MinIO user or password MinIO would refuse or
-  `MC_HOST_local` cannot carry (a colon) and an empty bucket list. A
-  production render refuses an empty or development password for either
-  store (`maidan`, `minioadmin`) and a Postgres or MinIO image without a
-  release tag or digest. With `extraEnvFrom` set the maidan chart leaves the
-  `DATABASE_URL` checks to the stack, which makes them when it runs no
-  Postgres.
+  render. While `minio.enabled` is true, a MinIO user or password MinIO would
+  refuse or `MC_HOST_local` cannot carry (a colon) and an empty bucket list
+  fail too. A production render refuses an empty or development password for
+  either store (`maidan`, `minioadmin`) and a Postgres or MinIO image without
+  a release tag or digest. With `extraEnvFrom` set the maidan chart leaves
+  the `DATABASE_URL` checks to the stack, which makes them in a production
+  render only when `postgresql.enabled` is false and `maidan.existingSecret`
+  is unset; an `existingSecret` skips the check, and the chart does not
+  verify that the Secret exists or holds its keys.
+- **Changed:** the MinIO pod template carries a checksum of its credentials,
+  so changing them restarts MinIO. Moving an existing release off the Bitnami
+  subcharts is a replacement, not an upgrade (different selector labels and
+  volume claim names); `docs/Production.md` says how.
 - **Changed:** the `helm install (kind)` job also installs the stack with both
   stores on (`helm/maidan-stack/values-ci.yaml`, the job's `maidan-server:dev`
   and a `maidan-postgres:dev` built from `docker/Dockerfile.db`) and waits for
