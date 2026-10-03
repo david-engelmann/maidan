@@ -1045,6 +1045,28 @@ pub fn list_channel_blocked() {}
     ))]
 pub fn get_channel_occupancy() {}
 
+/// Get a workspace's task-queue depth
+#[utoipa::path(get, path = "/workspaces/{wid}/queue-depth", tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = QueueDepth, description = "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants"),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_workspace_queue_depth() {}
+
+/// Get a workspace's occupancy
+#[utoipa::path(get, path = "/workspaces/{wid}/occupancy", tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ChannelOccupancy, description = "The channel occupancy summed over every channel of the workspace the caller may read, under the queue depth's read rule"),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_workspace_occupancy() {}
+
 /// Mute a channel for the caller
 #[utoipa::path(post, path = "/channels/{cid}/mute", tag = "channels",
     params(("cid" = Uuid, Path, description = "Channel id")),

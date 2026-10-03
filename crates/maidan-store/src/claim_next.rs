@@ -1,10 +1,12 @@
 //! The thread `claim_next` hands a member, as one query that both backends and
-//! both scopes (one channel, or a whole workspace) build.
+//! every scope (one channel, a whole workspace, or one named thread) build.
 //!
 //! The rules live here once so the channel route and the workspace route cannot
 //! drift: a filter added to one and forgotten in the other would hand out work
 //! the other refuses. The workspace scope is the channel scope without its
-//! channel predicate, and nothing else.
+//! channel predicate, and nothing else. The thread scope asks whether one
+//! thread would be handed out; `wait_for_ready` uses it so a waiter is woken
+//! only for work it could take.
 //!
 //! A thread is claimable when it is open and live, unheld or its lease lapsed,
 //! every dependency is finished, the claimer holds every skill it requires, it
@@ -19,13 +21,14 @@
 //! exempts the shared `__dm__` channel, so any member of a workspace could be
 //! handed a DM thread between two others.
 
-use maidan_types::{ChannelId, WorkspaceId};
+use maidan_types::{ChannelId, ThreadId, WorkspaceId};
 
 /// Where `claim_next` looks for work.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ClaimScope {
     Channel(ChannelId),
     Workspace(WorkspaceId),
+    Thread(ThreadId),
 }
 
 impl ClaimScope {
@@ -34,6 +37,7 @@ impl ClaimScope {
         match self {
             Self::Channel(id) => id.0,
             Self::Workspace(id) => id.0,
+            Self::Thread(id) => id.0,
         }
     }
 }
@@ -71,6 +75,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
     let in_scope = match scope {
         ClaimScope::Channel(_) => format!("cand.channel_id = {scope_id}"),
         ClaimScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
+        ClaimScope::Thread(_) => format!("cand.id = {scope_id}"),
     };
     let readable = readable_by(member, dm_channel);
     format!(
@@ -126,8 +131,9 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
 /// True when `member` may read `cand` in channel `ch`. The workspace is the
 /// claimer's own, read from its member row rather than trusted from the
 /// caller, so a scope naming another tenant finds nothing. The same SQL runs
-/// on Postgres and SQLite.
-fn readable_by(member: &str, dm_channel: &str) -> String {
+/// on Postgres and SQLite. The queue counts filter with it too, so a count and
+/// a claim agree on whose work a thread is.
+pub(crate) fn readable_by(member: &str, dm_channel: &str) -> String {
     format!(
         "ch.workspace_id = (SELECT claimer.workspace_id FROM maidan_members claimer
                             WHERE claimer.id = {member})

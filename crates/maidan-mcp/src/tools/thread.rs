@@ -21,12 +21,64 @@ const MAX_WAIT_MS: i64 = 300_000;
 /// Page size for the lookback replay over the durable event log.
 const LOOKBACK_BATCH: i64 = 256;
 
+/// Which of the events a wait's filter matches end the wait.
+#[derive(Debug, Clone, Copy)]
+enum Wake {
+    /// Every one: the filter pins a thread the pre-dispatch gate already
+    /// cleared.
+    Matched,
+    /// One on a thread the caller can read, or on no thread.
+    Readable,
+    /// One on a thread the caller could take now: `claim_next` would hand it
+    /// to them, or it is already theirs. Anything else would wake a waiter
+    /// only for its claim to come back empty.
+    Takeable,
+}
+
+/// Whether `event` ends a wait under `wake`. An event that does not is skipped,
+/// not revealed.
+async fn wakes(
+    store: &dyn Store,
+    auth: &AuthContext,
+    wake: Wake,
+    event: &Event,
+) -> Result<bool, McpError> {
+    if auth.bypass {
+        return Ok(true);
+    }
+    match (wake, event.thread_id()) {
+        (Wake::Matched, _) | (Wake::Readable, None) => Ok(true),
+        (Wake::Readable, Some(tid)) => Ok(maidan_auth::can_access_thread(store, auth, tid).await?),
+        (Wake::Takeable, None) => Ok(false),
+        (Wake::Takeable, Some(tid)) => takeable(store, auth, tid).await,
+    }
+}
+
+/// Whether the caller could take `thread_id` now. The thread is theirs if they
+/// hold it, as an assignee waiting on a dependency does; otherwise `claim_next`
+/// must hand it to them and they must be under their WIP limit, which the claim
+/// routes check before claiming.
+async fn takeable(
+    store: &dyn Store,
+    auth: &AuthContext,
+    thread_id: ThreadId,
+) -> Result<bool, McpError> {
+    if store.thread_claimable_by(thread_id, auth.member_id).await? {
+        return Ok(!at_wip_limit(store, auth.workspace_id, auth.member_id).await?);
+    }
+    let thread = store.get_thread(thread_id).await?;
+    let held = thread.assignee_id == Some(auth.member_id)
+        && thread
+            .assignment_expires_at
+            .is_none_or(|deadline| deadline >= Utc::now());
+    Ok(held && maidan_auth::can_access_thread(store, auth, thread_id).await?)
+}
+
 /// Replay the durable event log for the earliest event of one of `kinds` with
 /// `log_id > since`, optionally pinned to `channel_id` and/or `thread_id`, in
-/// the caller's workspace. When `rbac_thread` is set, an event in a thread the
-/// caller can't access is skipped (not revealed) — the live path's rule.
-/// Returns the deserialized `Event`, or `None` if the log has no such event.
-/// Filters on the `StoredEvent` columns before deserializing.
+/// the caller's workspace, that ends a wait under `wake` (the live path's
+/// rule). Returns the deserialized `Event`, or `None` if the log has no such
+/// event. Filters on the `StoredEvent` columns before deserializing.
 async fn lookback_event(
     store: &dyn Store,
     auth: &AuthContext,
@@ -34,7 +86,7 @@ async fn lookback_event(
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     since: i64,
-    rbac_thread: bool,
+    wake: Wake,
 ) -> Result<Option<Event>, McpError> {
     let mut after = since;
     loop {
@@ -60,14 +112,9 @@ async fn lookback_event(
             let event: Event = stored
                 .opened_event()
                 .map_err(|e| McpError::Internal(e.to_string()))?;
-            if rbac_thread && !auth.bypass {
-                if let Some(tid) = event.thread_id() {
-                    if !maidan_auth::can_access_thread(store, auth, tid).await? {
-                        continue;
-                    }
-                }
+            if wakes(store, auth, wake, &event).await? {
+                return Ok(Some(event));
             }
-            return Ok(Some(event));
         }
         if drained {
             return Ok(None);
@@ -992,15 +1039,26 @@ struct QueueDepthArgs {
     channel_id: uuid::Uuid,
 }
 
+/// The member whose read rule a queue count applies: the caller, unless it
+/// bypasses auth and so may count everything.
+fn queue_reader(auth: &AuthContext) -> Option<MemberId> {
+    (!auth.bypass).then_some(auth.member_id)
+}
+
 /// A channel's task-queue depth: `{open, ready, assigned, blocked}` counts of
 /// its open task threads — the MCP twin of `GET /channels/:cid/queue-depth`.
-/// Channel access is enforced pre-dispatch (the `channel_id` arg).
+/// Channel access is enforced pre-dispatch (the `channel_id` arg); the counts
+/// hold only threads the caller may read, which on the `__dm__` channel is its
+/// own DMs.
 pub(super) async fn get_queue_depth(
     store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = serde_json::from_value(args.clone())?;
-    let depth = store.channel_queue_depth(ChannelId(a.channel_id)).await?;
+    let depth = store
+        .channel_queue_depth(ChannelId(a.channel_id), queue_reader(auth))
+        .await?;
     Ok(content_json(&depth))
 }
 
@@ -1010,10 +1068,59 @@ pub(super) async fn get_queue_depth(
 /// /channels/:cid/occupancy`. Channel access is enforced pre-dispatch.
 pub(super) async fn get_channel_occupancy(
     store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = serde_json::from_value(args.clone())?;
-    let occupancy = store.channel_occupancy(ChannelId(a.channel_id)).await?;
+    let occupancy = store
+        .channel_occupancy(ChannelId(a.channel_id), queue_reader(auth))
+        .await?;
+    Ok(content_json(&occupancy))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceQueueArgs {
+    workspace_id: uuid::Uuid,
+}
+
+/// The workspace a workspace-wide count names, which must be the caller's. The
+/// pre-dispatch workspace gate checks it too, but it passes what it cannot
+/// parse, and a required argument deserves its own check.
+fn queue_workspace(auth: &AuthContext, args: &Value) -> Result<WorkspaceId, McpError> {
+    let a: WorkspaceQueueArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)?;
+    Ok(workspace_id)
+}
+
+/// `get_queue_depth` across every channel of the caller's workspace: the sum of
+/// the depths of the channels it may read, counting a DM only for its
+/// participants. The MCP twin of `GET /workspaces/:wid/queue-depth`.
+pub(super) async fn get_workspace_queue_depth(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let workspace_id = queue_workspace(auth, args)?;
+    let depth = store
+        .workspace_queue_depth(workspace_id, queue_reader(auth))
+        .await?;
+    Ok(content_json(&depth))
+}
+
+/// `get_channel_occupancy` across every channel of the caller's workspace, as
+/// `get_workspace_queue_depth` is to the channel depth. The MCP twin of `GET
+/// /workspaces/:wid/occupancy`.
+pub(super) async fn get_workspace_occupancy(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let workspace_id = queue_workspace(auth, args)?;
+    let occupancy = store
+        .workspace_occupancy(workspace_id, queue_reader(auth))
+        .await?;
     Ok(content_json(&occupancy))
 }
 
@@ -1381,9 +1488,17 @@ pub(super) async fn wait_for_result(
     // Subscribe-before-lookback keeps it gapless.
     if let Some(since) = a.since_log_id {
         let kinds = std::collections::HashSet::from([EventKind::ThreadResultSet]);
-        if lookback_event(store, auth, &kinds, None, Some(thread_id), since, false)
-            .await?
-            .is_some()
+        if lookback_event(
+            store,
+            auth,
+            &kinds,
+            None,
+            Some(thread_id),
+            since,
+            Wake::Matched,
+        )
+        .await?
+        .is_some()
         {
             let result = store.get_thread_result(thread_id).await?;
             return Ok(content_json(&result));
@@ -1444,22 +1559,24 @@ pub(super) async fn get_dependency_results(
 }
 
 /// Where a single-kind `wait_for_*` looks: the caller's workspace, narrowed to
-/// a channel and/or a thread when given. Access to a named channel (and, for
-/// the tools that take one, thread) is checked before dispatch.
+/// a channel and/or a thread when given, and which of its events end it.
+/// Access to a named channel (and, for the tools that take one, thread) is
+/// checked before dispatch.
 struct EventWait {
     tool: &'static str,
     kind: EventKind,
+    wake: Wake,
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     timeout_ms: Option<i64>,
     since_log_id: Option<i64>,
 }
 
-/// Block until an event of `wait.kind` the caller may read arrives, or the
-/// window lapses: returns the event, or `null` on timeout. An event in a thread
-/// the caller can't access is skipped, not revealed, on both the lookback and
-/// the live path. The subscription opens before the lookback runs, so an event
-/// written between the two is caught by one or the other.
+/// Block until an event of `wait.kind` that ends the wait under `wait.wake`
+/// arrives, or the window lapses: returns the event, or `null` on timeout. Any
+/// other event is skipped, not revealed, on both the lookback and the live
+/// path. The subscription opens before the lookback runs, so an event written
+/// between the two is caught by one or the other.
 async fn wait_for_event(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -1499,7 +1616,7 @@ async fn wait_for_event(
             wait.channel_id,
             wait.thread_id,
             since,
-            true,
+            wait.wake,
         )
         .await?
         {
@@ -1518,14 +1635,9 @@ async fn wait_for_event(
         let maidan_bus::BusItem::Event(envelope) = item else {
             continue;
         };
-        if !auth.bypass {
-            if let Some(tid) = envelope.event.thread_id() {
-                if !maidan_auth::can_access_thread(store, auth, tid).await? {
-                    continue;
-                }
-            }
+        if wakes(store, auth, wait.wake, &envelope.event).await? {
+            return Ok(content_json(&envelope.event));
         }
-        return Ok(content_json(&envelope.event));
     }
 }
 
@@ -1570,6 +1682,7 @@ async fn channel_wait(
     args: &Value,
     tool: &'static str,
     kind: EventKind,
+    wake: Wake,
 ) -> Result<Value, McpError> {
     let a: ChannelWaitArgs = serde_json::from_value(args.clone())?;
     wait_for_event(
@@ -1578,6 +1691,7 @@ async fn channel_wait(
         EventWait {
             tool,
             kind,
+            wake,
             channel_id: a.channel_id.map(ChannelId),
             thread_id: None,
             timeout_ms: a.timeout_ms,
@@ -1601,6 +1715,7 @@ async fn thread_wait(
         EventWait {
             tool,
             kind,
+            wake: Wake::Readable,
             channel_id: a.channel_id.map(ChannelId),
             thread_id: a.thread_id.map(ThreadId),
             timeout_ms: a.timeout_ms,
@@ -1612,19 +1727,32 @@ async fn thread_wait(
 
 /// Block until a task becomes ready — its last blocking dependency reached a
 /// terminal state, emitting `ThreadReady` — or the timeout lapses. Scoped to
-/// `channel_id` when given, else any thread in the caller's workspace they can
-/// access; returns the `ThreadReady` event or `null` on timeout. This is the
-/// `wait_for_mention` analogue for the DAG. **Live** primitive: it only sees
-/// readiness signalled *after* it subscribes, so pick up already-ready work
-/// first with `claim_next_thread` / `list_assigned_threads` (the `GET
-/// /mcp/stream` SSE transport, `kinds=thread_ready`, is the resumable
-/// alternative when a missed signal is unacceptable).
+/// `channel_id` when given, else the caller's whole workspace; returns the
+/// `ThreadReady` event or `null` on timeout. This is the `wait_for_mention`
+/// analogue for the DAG. It wakes only for a thread the caller could take now
+/// (see [`Wake::Takeable`]), by the rule `claim_next_workspace_thread` applies:
+/// a ready thread in a private channel or DM the caller cannot read, one behind
+/// a pending approval gate, a block or an unclaimable park, one held by someone
+/// else or needing a skill the caller lacks, and any ready thread while the
+/// caller is frozen or at the WIP limit, is skipped. **Live** primitive: it
+/// only sees readiness signalled *after* it subscribes, so pick up
+/// already-ready work first with `claim_next_thread` / `list_assigned_threads`
+/// (the `GET /mcp/stream` SSE transport, `kinds=thread_ready`, is the
+/// resumable alternative when a missed signal is unacceptable).
 pub(super) async fn wait_for_ready(
     server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    channel_wait(server, auth, args, "wait_for_ready", EventKind::ThreadReady).await
+    channel_wait(
+        server,
+        auth,
+        args,
+        "wait_for_ready",
+        EventKind::ThreadReady,
+        Wake::Takeable,
+    )
+    .await
 }
 
 /// Block until a claim's lease lapses and its thread is reclaimed, emitting
@@ -1646,6 +1774,7 @@ pub(super) async fn wait_for_claim_expired(
         args,
         "wait_for_claim_expired",
         EventKind::ClaimExpired,
+        Wake::Readable,
     )
     .await
 }
@@ -1666,6 +1795,7 @@ pub(super) async fn wait_for_claim_failed(
         args,
         "wait_for_claim_failed",
         EventKind::ClaimFailed,
+        Wake::Readable,
     )
     .await
 }

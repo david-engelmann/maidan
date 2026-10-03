@@ -105,6 +105,7 @@ use sqlx::PgPool;
 
 use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingGateQuery};
 use crate::claim_next::ClaimScope;
+use crate::queue_counts::QueueScope;
 use crate::error::StoreError;
 use crate::store::*;
 
