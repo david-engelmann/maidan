@@ -1494,6 +1494,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Fixed:** `maidan` refuses a `MAIDAN_*` name that is not on the server's list, before it parses arguments, and names the nearest known variable. `MAIDAN_ALLOW_UNKNOWN_ENV=1` starts anyway and logs the names. The list lives in `maidan-env`, which the server and the CLI both use.
 
 
+### Program C's research is kept, and its items lead Open Work
+
+- **Added:** `docs/archive/Context Economics research 2026-10/`, the three
+  investigations behind Context Economics (Maidan's context surfaces; provider
+  caching, batch and self-hosted engines; harnesses, the MCP and A2A specs,
+  the market and the MCEB-1 protocol), each claim with its source and access
+  date.
+- **Changed:** `docs/Context Economics.md` is rechecked against `main` on
+  2026-10-03 (the catalog is now 235 tools, about 105 KB) and gains where
+  Maidan's bytes land in each harness, the market and the positions only a
+  coordinator can hold, the open questions, and the research's specifics in
+  each program item. Open Work ranks Program C's items second to sixth, names
+  the `wip/` branches holding partial work for three of them, adds a pending
+  decision on the benchmark budget, and records that a token budget counts
+  fresh tokens while cache reads count only in dollars.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

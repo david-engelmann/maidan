@@ -1981,3 +1981,20 @@ new schema.
 
 **Status.** Written. The runner is unchanged.
 
+### A token budget counts fresh tokens; cache reads count only in dollars (2026-10-03)
+
+**Decision.** A thread's `max_tokens` counts what the model processed fresh:
+uncached input, output and cache writes. Cache reads count toward
+`max_usd_micros` at their own price and are shown in the budget's tier
+breakdown, but do not count toward `max_tokens`.
+
+**Alternative.** Count all four tiers one-for-one, as `TokenUsage::total()`
+does today.
+
+**Why this:** a cache read costs a tenth of an input token or less, and an
+agent that re-reads cached context on every turn would otherwise exhaust its
+token budget ten or more times faster than its spend, which punishes exactly
+the behaviour Program C asks for. The dollar budget already prices reads.
+
+**Status.** Part of Open Work Next 4 (the ledger that can price caching).
+
