@@ -420,6 +420,11 @@
       "max_wall_secs": null,
       "thread_id": "00000000-0000-0000-0000-000000000004",
       "updated_at": "2023-11-14T22:13:20Z",
+      "used_cache_read_tokens": 10,
+      "used_cache_write_1h_tokens": 0,
+      "used_cache_write_5m_tokens": 0,
+      "used_input_tokens": 100,
+      "used_output_tokens": 20,
       "used_tokens": 130,
       "used_turns": 1,
       "used_usd_micros": 2,
@@ -434,14 +439,16 @@
       "payer": "00000000-0000-0000-0000-000000000001",
       "price_snapshot": {
         "cache_read_usd_micros_per_million": 1000,
-        "cache_write_usd_micros_per_million": 5000,
+        "cache_write_1h_usd_micros_per_million": 0,
+        "cache_write_5m_usd_micros_per_million": 5000,
         "input_usd_micros_per_million": 10000,
         "output_usd_micros_per_million": 20000
       },
       "reporter": "00000000-0000-0000-0000-000000000002",
       "tokens": {
         "cache_read": 10,
-        "cache_write": 0,
+        "cache_write_1h": 0,
+        "cache_write_5m": 0,
         "input": 100,
         "output": 20
       },

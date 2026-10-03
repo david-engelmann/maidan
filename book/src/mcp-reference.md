@@ -866,7 +866,7 @@ A thread's budget envelope with accumulated usage, or null if none is set.
 
 ### `report_usage`
 
-Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. Tiered tokens + the immutable price snapshot must calculate to usd_micros. A binding cap atomically stops the run.
+Record one retry-safe usage heartbeat for your active claim. input is uncached input. Cache writes are a 5-minute tier and a 1-hour tier. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. The price snapshot must calculate to usd_micros. A token budget counts fresh tokens only. A binding cap atomically stops the run.
 
 **Capability:** `thread:transition`
 
@@ -878,6 +878,48 @@ Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_
       "description": "active claim fencing token",
       "format": "uuid",
       "type": "string"
+    },
+    "evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "batch": {
+          "type": "boolean"
+        },
+        "cache_key": {
+          "maxLength": 256,
+          "type": "string"
+        },
+        "cache_miss_reason": {
+          "maxLength": 512,
+          "type": "string"
+        },
+        "harness": {
+          "maxLength": 64,
+          "type": "string"
+        },
+        "harness_version": {
+          "maxLength": 64,
+          "type": "string"
+        },
+        "pack_sha256": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 64,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "provider": {
+          "maxLength": 64,
+          "type": "string"
+        },
+        "service_tier": {
+          "maxLength": 64,
+          "type": "string"
+        }
+      },
+      "type": "object"
     },
     "model": {
       "maxLength": 255,
@@ -891,7 +933,11 @@ Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_
           "minimum": 0,
           "type": "integer"
         },
-        "cache_write_usd_micros_per_million": {
+        "cache_write_1h_usd_micros_per_million": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cache_write_5m_usd_micros_per_million": {
           "minimum": 0,
           "type": "integer"
         },
@@ -908,7 +954,8 @@ Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_
         "input_usd_micros_per_million",
         "output_usd_micros_per_million",
         "cache_read_usd_micros_per_million",
-        "cache_write_usd_micros_per_million"
+        "cache_write_5m_usd_micros_per_million",
+        "cache_write_1h_usd_micros_per_million"
       ],
       "type": "object"
     },
@@ -920,10 +967,15 @@ Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_
       "additionalProperties": false,
       "properties": {
         "cache_read": {
+          "description": "cached input; not part of a token budget",
           "minimum": 0,
           "type": "integer"
         },
-        "cache_write": {
+        "cache_write_1h": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cache_write_5m": {
           "minimum": 0,
           "type": "integer"
         },
@@ -940,7 +992,8 @@ Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_
         "input",
         "output",
         "cache_read",
-        "cache_write"
+        "cache_write_5m",
+        "cache_write_1h"
       ],
       "type": "object"
     },
@@ -967,6 +1020,36 @@ Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_
     "tokens",
     "usd_micros",
     "price_snapshot"
+  ],
+  "type": "object"
+}
+```
+
+### `usage_rollup`
+
+Spend, cache hit rate, cache write share, dollars saved against the uncached price, and cost per completed task. Scope is the workspace, or one thread, or one member. A completed task is a closed or archived thread that has not been tombstoned. Rates are parts per million of prompt tokens.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "member_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
   ],
   "type": "object"
 }

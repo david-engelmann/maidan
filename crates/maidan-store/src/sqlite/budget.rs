@@ -11,7 +11,7 @@ use super::{dlq, events, threads, usage_ledger};
 use crate::error::StoreError;
 
 const COLS: &str = "thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-     used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at";
+     used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at, used_input_tokens, used_output_tokens, used_cache_read_tokens, used_cache_write_5m_tokens, used_cache_write_1h_tokens";
 
 /// Set (upsert) a thread's budget maxima. Accumulated usage is preserved.
 /// Timestamps are bound as rfc3339 (not the `datetime('now')` default) so they
@@ -33,7 +33,7 @@ pub async fn set_budget(
              max_wall_secs = excluded.max_wall_secs,
              updated_at = excluded.updated_at
          RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at",
+             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at, used_input_tokens, used_output_tokens, used_cache_read_tokens, used_cache_write_5m_tokens, used_cache_write_1h_tokens",
     )
     .bind(thread_id.0)
     .bind(limits.max_tokens)
@@ -77,7 +77,7 @@ pub async fn add_usage(
              used_turns = maidan_thread_budgets.used_turns + excluded.used_turns,
              updated_at = excluded.updated_at
          RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at",
+             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at, used_input_tokens, used_output_tokens, used_cache_read_tokens, used_cache_write_5m_tokens, used_cache_write_1h_tokens",
     )
     .bind(thread_id.0)
     .bind(delta.tokens)
@@ -87,6 +87,49 @@ pub async fn add_usage(
     .bind(&now)
     .fetch_one(pool)
     .await?;
+    Ok(row_to_budget(&row))
+}
+
+async fn add_accounted_usage_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    new: &NewUsageLedgerEntry,
+) -> Result<ThreadBudget, StoreError> {
+    let fresh = new.tokens.fresh().map_err(StoreError::InvalidInput)?;
+    let now = Utc::now().to_rfc3339();
+    let tokens = new.tokens;
+    let sql = format!(
+        "INSERT INTO maidan_thread_budgets
+             (thread_id, used_tokens, used_usd_micros, used_turns,
+              used_input_tokens, used_output_tokens, used_cache_read_tokens,
+              used_cache_write_5m_tokens, used_cache_write_1h_tokens,
+              created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (thread_id) DO UPDATE SET
+             used_tokens = maidan_thread_budgets.used_tokens + excluded.used_tokens,
+             used_usd_micros = maidan_thread_budgets.used_usd_micros + excluded.used_usd_micros,
+             used_turns = maidan_thread_budgets.used_turns + excluded.used_turns,
+             used_input_tokens = maidan_thread_budgets.used_input_tokens + excluded.used_input_tokens,
+             used_output_tokens = maidan_thread_budgets.used_output_tokens + excluded.used_output_tokens,
+             used_cache_read_tokens = maidan_thread_budgets.used_cache_read_tokens + excluded.used_cache_read_tokens,
+             used_cache_write_5m_tokens = maidan_thread_budgets.used_cache_write_5m_tokens + excluded.used_cache_write_5m_tokens,
+             used_cache_write_1h_tokens = maidan_thread_budgets.used_cache_write_1h_tokens + excluded.used_cache_write_1h_tokens,
+             updated_at = excluded.updated_at
+         RETURNING {COLS}"
+    );
+    let row = sqlx::query(&sql)
+        .bind(new.thread_id.0)
+        .bind(fresh)
+        .bind(new.usd_micros)
+        .bind(new.turns)
+        .bind(tokens.input)
+        .bind(tokens.output)
+        .bind(tokens.cache_read)
+        .bind(tokens.cache_write_5m)
+        .bind(tokens.cache_write_1h)
+        .bind(&now)
+        .bind(&now)
+        .fetch_one(&mut **tx)
+        .await?;
     Ok(row_to_budget(&row))
 }
 
@@ -108,7 +151,7 @@ async fn add_usage_in_tx(
              used_turns = maidan_thread_budgets.used_turns + excluded.used_turns,
              updated_at = excluded.updated_at
          RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at",
+             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at, used_input_tokens, used_output_tokens, used_cache_read_tokens, used_cache_write_5m_tokens, used_cache_write_1h_tokens",
     )
     .bind(thread_id.0)
     .bind(delta.tokens)
@@ -250,17 +293,7 @@ pub async fn report_accounted_usage(
         ));
     }
 
-    let token_total = new.tokens.total().map_err(StoreError::InvalidInput)?;
-    let budget = add_usage_in_tx(
-        &mut tx,
-        new.thread_id,
-        UsageDelta {
-            tokens: token_total,
-            usd_micros: new.usd_micros,
-            turns: new.turns,
-        },
-    )
-    .await?;
+    let budget = add_accounted_usage_in_tx(&mut tx, new).await?;
     let wall = ctx
         .get::<Option<DateTime<Utc>>, _>("work_started_at")
         .map(|started| (Utc::now() - started).num_seconds());
@@ -334,6 +367,7 @@ pub async fn report_accounted_usage(
     )
     .await?;
     tx.commit().await?;
+    crate::usage_metrics::record(&entry);
     let mut emitted = vec![usage_stored];
     if let Some(failed) = failed {
         emitted.push(failed);
@@ -435,6 +469,11 @@ fn row_to_budget(row: &sqlx::sqlite::SqliteRow) -> ThreadBudget {
         used_usd_micros: row.get::<i64, _>("used_usd_micros"),
         used_turns: row.get::<i64, _>("used_turns"),
         used_wall_secs: row.get::<i64, _>("used_wall_secs"),
+        used_input_tokens: row.get::<i64, _>("used_input_tokens"),
+        used_output_tokens: row.get::<i64, _>("used_output_tokens"),
+        used_cache_read_tokens: row.get::<i64, _>("used_cache_read_tokens"),
+        used_cache_write_5m_tokens: row.get::<i64, _>("used_cache_write_5m_tokens"),
+        used_cache_write_1h_tokens: row.get::<i64, _>("used_cache_write_1h_tokens"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
     }
@@ -482,7 +521,7 @@ pub async fn patch_budget(
              max_wall_secs = excluded.max_wall_secs,
              updated_at = excluded.updated_at
          RETURNING thread_id, max_tokens, max_usd_micros, max_turns, max_wall_secs, \
-             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at",
+             used_tokens, used_usd_micros, used_turns, used_wall_secs, created_at, updated_at, used_input_tokens, used_output_tokens, used_cache_read_tokens, used_cache_write_5m_tokens, used_cache_write_1h_tokens",
     )
     .bind(thread_id.0)
     .bind(merged.max_tokens)

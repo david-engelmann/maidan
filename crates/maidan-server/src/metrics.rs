@@ -252,6 +252,26 @@ pub fn init() {
             "maidan_automation_delivery_duration_seconds",
             "Automation HTTP delivery attempt latency"
         );
+        describe_counter!(
+            "maidan_usage_tokens_total",
+            "Accepted usage tokens by tier (input, output, cache_read, cache_write_5m, cache_write_1h)"
+        );
+        describe_counter!(
+            "maidan_usage_usd_micros_total",
+            "Accepted usage charges in micro-USD"
+        );
+        describe_counter!(
+            "maidan_usage_uncached_usd_micros_total",
+            "What the same tokens would have cost with no cache, in micro-USD"
+        );
+        describe_counter!(
+            "maidan_usage_saved_usd_micros_total",
+            "Micro-USD saved against the uncached price"
+        );
+        describe_counter!(
+            "maidan_usage_write_premium_usd_micros_total",
+            "Micro-USD paid above the uncached price"
+        );
     });
 }
 

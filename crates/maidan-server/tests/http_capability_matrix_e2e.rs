@@ -518,6 +518,24 @@ fn apply_route_defaults(
     if path == "/threads/{id}/budget" && method == "PATCH" {
         return b.json(&json!({ "max_tokens": 1000 }));
     }
+    if path == "/threads/{id}/usage/otel" && method == "POST" {
+        return b.json(&json!({
+            "usage_report_id": uuid::Uuid::new_v4(),
+            "claim_lease_id": uuid::Uuid::nil(),
+            "attributes": {
+                "gen_ai.response.model": "capability-matrix/test",
+                "gen_ai.usage.input_tokens": 1,
+                "gen_ai.usage.output_tokens": 0
+            },
+            "price_snapshot": {
+                "input_usd_micros_per_million": 0,
+                "output_usd_micros_per_million": 0,
+                "cache_read_usd_micros_per_million": 0,
+                "cache_write_5m_usd_micros_per_million": 0,
+                "cache_write_1h_usd_micros_per_million": 0
+            }
+        }));
+    }
     if path == "/threads/{id}/usage" && method == "POST" {
         return b.json(&json!({
             "usage_report_id": uuid::Uuid::new_v4(),
@@ -527,14 +545,16 @@ fn apply_route_defaults(
                 "input": 1,
                 "output": 0,
                 "cache_read": 0,
-                "cache_write": 0
+                "cache_write_5m": 0,
+                "cache_write_1h": 0
             },
             "usd_micros": 0,
             "price_snapshot": {
                 "input_usd_micros_per_million": 0,
                 "output_usd_micros_per_million": 0,
                 "cache_read_usd_micros_per_million": 0,
-                "cache_write_usd_micros_per_million": 0
+                "cache_write_5m_usd_micros_per_million": 0,
+                "cache_write_1h_usd_micros_per_million": 0
             },
             "turns": 1
         }));

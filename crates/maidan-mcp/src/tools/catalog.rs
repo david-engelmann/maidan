@@ -358,7 +358,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "report_usage",
-            "description": "Record one retry-safe usage heartbeat for your active claim. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. Tiered tokens + the immutable price snapshot must calculate to usd_micros. A binding cap atomically stops the run.",
+            "description": "Record one retry-safe usage heartbeat for your active claim. input is uncached input. Cache writes are a 5-minute tier and a 1-hour tier. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. The price snapshot must calculate to usd_micros. A token budget counts fresh tokens only. A binding cap atomically stops the run.",
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -373,10 +373,11 @@ pub fn catalog() -> Vec<Value> {
                         "properties": {
                             "input": {"type": "integer", "minimum": 0},
                             "output": {"type": "integer", "minimum": 0},
-                            "cache_read": {"type": "integer", "minimum": 0},
-                            "cache_write": {"type": "integer", "minimum": 0}
+                            "cache_read": {"type": "integer", "minimum": 0, "description": "cached input; not part of a token budget"},
+                            "cache_write_5m": {"type": "integer", "minimum": 0},
+                            "cache_write_1h": {"type": "integer", "minimum": 0}
                         },
-                        "required": ["input", "output", "cache_read", "cache_write"]
+                        "required": ["input", "output", "cache_read", "cache_write_5m", "cache_write_1h"]
                     },
                     "usd_micros": {"type": "integer", "minimum": 0, "description": "validated USD charge in micros ($1 = 1000000)"},
                     "price_snapshot": {
@@ -386,13 +387,42 @@ pub fn catalog() -> Vec<Value> {
                             "input_usd_micros_per_million": {"type": "integer", "minimum": 0},
                             "output_usd_micros_per_million": {"type": "integer", "minimum": 0},
                             "cache_read_usd_micros_per_million": {"type": "integer", "minimum": 0},
-                            "cache_write_usd_micros_per_million": {"type": "integer", "minimum": 0}
+                            "cache_write_5m_usd_micros_per_million": {"type": "integer", "minimum": 0},
+                            "cache_write_1h_usd_micros_per_million": {"type": "integer", "minimum": 0}
                         },
-                        "required": ["input_usd_micros_per_million", "output_usd_micros_per_million", "cache_read_usd_micros_per_million", "cache_write_usd_micros_per_million"]
+                        "required": ["input_usd_micros_per_million", "output_usd_micros_per_million", "cache_read_usd_micros_per_million", "cache_write_5m_usd_micros_per_million", "cache_write_1h_usd_micros_per_million"]
                     },
-                    "turns": {"type": "integer", "default": 0}
+                    "turns": {"type": "integer", "default": 0},
+                    "evidence": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                            "provider": {"type": "string", "maxLength": 64},
+                            "service_tier": {"type": "string", "maxLength": 64},
+                            "batch": {"type": "boolean"},
+                            "harness": {"type": "string", "maxLength": 64},
+                            "harness_version": {"type": "string", "maxLength": 64},
+                            "cache_key": {"type": "string", "maxLength": 256},
+                            "cache_miss_reason": {"type": "string", "maxLength": 512},
+                            "pack_sha256": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 64, "maxLength": 64}}
+                        }
+                    }
                 },
                 "required": ["thread_id", "usage_report_id", "claim_lease_id", "model", "tokens", "usd_micros", "price_snapshot"]
+            }
+        }),
+        json!({
+            "name": "usage_rollup",
+            "description": "Spend, cache hit rate, cache write share, dollars saved against the uncached price, and cost per completed task. Scope is the workspace, or one thread, or one member. A completed task is a closed or archived thread that has not been tombstoned. Rates are parts per million of prompt tokens.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "member_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["workspace_id"]
             }
         }),
         json!({

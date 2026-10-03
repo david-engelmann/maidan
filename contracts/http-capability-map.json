@@ -348,6 +348,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/members/{id}/usage-rollup",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/members/{id}/thread-follows",
     "capability": "workspace:read",
@@ -632,6 +638,18 @@
   {
     "method": "POST",
     "path": "/threads/{id}/usage",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/usage-rollup",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/usage/otel",
     "capability": "thread:transition",
     "surface": "http"
   },
@@ -1016,6 +1034,12 @@
   {
     "method": "GET",
     "path": "/workspaces/{id}/usage",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/usage-rollup",
     "capability": "workspace:read",
     "surface": "http"
   },

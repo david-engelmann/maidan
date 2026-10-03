@@ -573,6 +573,17 @@ pub fn revoke_fsm_hook() {}
     ))]
 pub fn get_member() {}
 
+/// Usage rollup for one member
+#[utoipa::path(get, path = "/members/{id}/usage-rollup", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = UsageRollup),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_member_usage_rollup() {}
+
 /// List a member's mentions
 #[utoipa::path(get, path = "/members/{id}/mentions", tag = "members",
     params(
@@ -1334,6 +1345,31 @@ pub fn get_thread_budget() {}
         (status = 409, response = Conflict),
     ))]
 pub fn report_thread_usage() {}
+
+/// Usage rollup for one thread
+#[utoipa::path(get, path = "/threads/{id}/usage-rollup", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = UsageRollup),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_thread_usage_rollup() {}
+
+/// Report usage from GenAI attributes
+#[utoipa::path(post, path = "/threads/{id}/usage/otel", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = GenAiUsageReport,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = UsageLedgerEntry),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn report_thread_usage_otel() {}
 
 /// Claim a thread
 #[utoipa::path(post, path = "/threads/{id}/assignee/claim", tag = "threads",

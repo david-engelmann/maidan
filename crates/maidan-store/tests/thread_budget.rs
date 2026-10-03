@@ -6,7 +6,7 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     BudgetLimits, BudgetReason, ChannelId, ClaimLeaseId, EventKind, MemberKind, NewChannel,
     NewDlqEntry, NewMember, NewThread, NewUsageLedgerEntry, NewWorkspace, PriceSnapshot, ThreadId,
-    TokenUsage, UsageDelta,
+    TokenUsage, UsageDelta, UsageEvidence, UsageRollupQuery,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -419,6 +419,7 @@ async fn run_accounted_suite(store: &dyn Store) {
         usd_micros: 10,
         price_snapshot: price,
         turns: 1,
+        evidence: Default::default(),
     };
     let (accepted, events) = store
         .report_accounted_usage(&first)
@@ -521,6 +522,7 @@ async fn thread_budget_set_get_accumulate_and_exceed_sqlite() {
     run_patch_suite(&store).await;
     run_enforce_suite(&store).await;
     run_accounted_suite(&store).await;
+    run_cache_pricing_suite(&store).await;
 }
 
 #[tokio::test]
@@ -558,6 +560,7 @@ async fn thread_budget_set_get_accumulate_and_exceed_postgres() {
     run_patch_suite(&store).await;
     run_enforce_suite(&store).await;
     run_accounted_suite(&store).await;
+    run_cache_pricing_suite(&store).await;
 }
 
 /// A patch changes only the dimensions it names.
@@ -668,4 +671,184 @@ async fn run_patch_suite(store: &dyn Store) {
         .expect("first patch");
     assert_eq!(first.max_turns, Some(4));
     assert_eq!(first.max_tokens, None, "unnamed dimensions stay uncapped");
+}
+
+/// Cache reads do not spend a token budget. Evidence stays on the row. A
+/// second workspace cannot read the first workspace's rollup.
+async fn run_cache_pricing_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "priced".into(),
+        })
+        .await
+        .expect("ws");
+    let other = store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .expect("other");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "pricer".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "priced".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("priced".into()),
+        })
+        .await
+        .expect("thread");
+    store
+        .set_thread_budget(
+            thread.id,
+            BudgetLimits {
+                max_tokens: Some(50),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("budget");
+    let claimed = store
+        .claim_thread(thread.id, member.id)
+        .await
+        .expect("claim");
+    let lease = claimed.thread.claim_lease_id.expect("lease");
+    let tokens = TokenUsage {
+        input: 10,
+        output: 5,
+        cache_read: 1_000,
+        cache_write_5m: 3,
+        cache_write_1h: 2,
+    };
+    let price = PriceSnapshot {
+        input_usd_micros_per_million: 1_000_000,
+        output_usd_micros_per_million: 2_000_000,
+        cache_read_usd_micros_per_million: 100_000,
+        cache_write_5m_usd_micros_per_million: 1_250_000,
+        cache_write_1h_usd_micros_per_million: 2_000_000,
+    };
+    let usd = price.charge_usd_micros(tokens).expect("charge");
+    let sha = "ab".repeat(32);
+    let evidence = UsageEvidence {
+        provider: Some("anthropic".into()),
+        service_tier: Some("standard".into()),
+        batch: true,
+        harness: Some("example-harness".into()),
+        harness_version: Some("1.2.3".into()),
+        cache_key: Some("session-1".into()),
+        cache_miss_reason: Some("prefix changed".into()),
+        pack_sha256: vec![sha.clone()],
+    };
+    let report = NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        thread_id: thread.id,
+        reporter: member.id,
+        claim_lease_id: lease,
+        model: "provider/model".into(),
+        tokens,
+        usd_micros: usd,
+        price_snapshot: price,
+        turns: 1,
+        evidence: evidence.clone(),
+    };
+    let (accepted, _) = store.report_accounted_usage(&report).await.expect("report");
+    assert!(!accepted.stopped, "cache reads must not trip max_tokens");
+    assert_eq!(accepted.budget.used_tokens, tokens.fresh().expect("fresh"));
+    assert_eq!(accepted.budget.used_cache_read_tokens, 1_000);
+    assert_eq!(accepted.budget.used_cache_write_5m_tokens, 3);
+    assert_eq!(accepted.budget.used_cache_write_1h_tokens, 2);
+    assert_eq!(accepted.evidence, evidence);
+
+    let stored = store
+        .get_usage_ledger_entry(report.usage_report_id)
+        .await
+        .expect("get")
+        .expect("row");
+    assert_eq!(stored.evidence.pack_sha256, vec![sha]);
+    assert_eq!(stored.stamp.tokens.cache_write_1h, 2);
+
+    store
+        .transition_thread(thread.id, member.id, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .expect("review");
+    store
+        .transition_thread(thread.id, member.id, maidan_fsm::ThreadAction::Close)
+        .await
+        .expect("close");
+
+    let rollup = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: ws.id,
+            thread_id: Some(thread.id),
+            member_id: None,
+        })
+        .await
+        .expect("thread rollup");
+    assert_eq!(rollup.completed_tasks, 1);
+    assert_eq!(rollup.usd_micros, usd);
+    assert_eq!(
+        rollup.uncached_usd_micros,
+        price.uncached_charge_usd_micros(tokens).expect("uncached")
+    );
+    assert_eq!(rollup.cost_per_completed_task_usd_micros, Some(usd));
+    assert!(rollup.hit_rate_ppm.is_some());
+    assert!(rollup.saved_usd_micros > 0);
+
+    let workspace = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: ws.id,
+            thread_id: None,
+            member_id: None,
+        })
+        .await
+        .expect("workspace rollup");
+    assert_eq!(workspace.completed_tasks, 1);
+    assert_eq!(workspace.cost_per_completed_task_usd_micros, Some(usd));
+
+    let member_rollup = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: ws.id,
+            thread_id: None,
+            member_id: Some(member.id),
+        })
+        .await
+        .expect("member rollup");
+    assert_eq!(member_rollup.completed_tasks, 1);
+
+    assert!(matches!(
+        store
+            .usage_rollup(UsageRollupQuery {
+                workspace_id: other.id,
+                thread_id: Some(thread.id),
+                member_id: None,
+            })
+            .await,
+        Err(StoreError::NotFound)
+    ));
+    let foreign = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: other.id,
+            thread_id: None,
+            member_id: None,
+        })
+        .await
+        .expect("other workspace");
+    assert_eq!(foreign.reports, 0);
+    assert_eq!(foreign.usd_micros, 0);
 }

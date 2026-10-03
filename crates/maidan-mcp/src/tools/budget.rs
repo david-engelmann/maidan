@@ -6,8 +6,8 @@ use std::sync::Arc;
 use maidan_auth::AuthContext;
 use maidan_store::Store;
 use maidan_types::{
-    AccountedUsageRequest, BudgetLimits, ChannelId, ClaimLeaseId, PriceSnapshot, ThreadId,
-    TokenUsage,
+    AccountedUsageRequest, BudgetLimits, ChannelId, ClaimLeaseId, MemberId, PriceSnapshot,
+    ThreadId, TokenUsage, UsageEvidence, UsageRollupQuery, WorkspaceId,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -135,6 +135,8 @@ struct ReportUsageArgs {
     price_snapshot: PriceSnapshot,
     #[serde(default)]
     turns: i64,
+    #[serde(default)]
+    evidence: UsageEvidence,
 }
 
 impl ReportUsageArgs {
@@ -147,6 +149,7 @@ impl ReportUsageArgs {
             usd_micros: self.usd_micros,
             price_snapshot: self.price_snapshot,
             turns: self.turns,
+            evidence: self.evidence,
         }
     }
 }
@@ -235,4 +238,43 @@ mod budget_args_tests {
             "a replace would refuse this body"
         );
     }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UsageRollupArgs {
+    workspace_id: uuid::Uuid,
+    #[serde(default)]
+    thread_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    member_id: Option<uuid::Uuid>,
+}
+
+/// Cost of completed work, and the cache shape of the reports behind it.
+pub(super) async fn usage_rollup(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: UsageRollupArgs = serde_json::from_value(args.clone())?;
+    if a.thread_id.is_some() && a.member_id.is_some() {
+        return Err(McpError::InvalidParams(
+            "name thread_id or member_id, not both".into(),
+        ));
+    }
+    if let Some(member_id) = a.member_id {
+        server
+            .store
+            .get_member_in(auth.workspace_id, MemberId(member_id))
+            .await?;
+    }
+    let rollup = server
+        .store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: WorkspaceId(a.workspace_id),
+            thread_id: a.thread_id.map(ThreadId),
+            member_id: a.member_id.map(MemberId),
+        })
+        .await?;
+    Ok(content_json(&rollup))
 }

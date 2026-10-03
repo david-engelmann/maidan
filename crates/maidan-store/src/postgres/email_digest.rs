@@ -4,7 +4,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     BuriedDecision, ChannelId, DigestDue, EmailDeliveryMode, ManagerDigest, ManagerDigestChannel,
-    MemberId, ThreadId,
+    MemberId, ThreadId, UsageRollupQuery, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -169,9 +169,36 @@ pub async fn manager_digest_for_member(
             stuck: r.get::<i64, _>("stuck"),
         })
         .collect();
+    let (spend_usd_micros, cost_per_completed_task_usd_micros) =
+        workspace_spend(pool, member_id).await?;
     Ok(ManagerDigest {
         member_id,
         since,
         channels,
+        spend_usd_micros,
+        cost_per_completed_task_usd_micros,
     })
+}
+
+async fn workspace_spend(
+    pool: &PgPool,
+    member_id: MemberId,
+) -> Result<(i64, Option<i64>), crate::error::StoreError> {
+    let row = sqlx::query("SELECT workspace_id FROM maidan_members WHERE id = $1")
+        .bind(member_id.0)
+        .fetch_optional(pool)
+        .await?;
+    let Some(row) = row else {
+        return Ok((0, None));
+    };
+    let rollup = super::usage_ledger::rollup(
+        pool,
+        UsageRollupQuery {
+            workspace_id: WorkspaceId(row.get("workspace_id")),
+            thread_id: None,
+            member_id: None,
+        },
+    )
+    .await?;
+    Ok((rollup.usd_micros, rollup.cost_per_completed_task_usd_micros))
 }
