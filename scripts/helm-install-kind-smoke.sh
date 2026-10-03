@@ -13,7 +13,7 @@ cluster="${KIND_CLUSTER_NAME:-maidan-helm-smoke}"
 release="${HELM_RELEASE:-maidan}"
 stack_release="${HELM_STACK_RELEASE:-stack}"
 image="${MAIDAN_IMAGE:-maidan-server:dev}"
-postgres_image="${MAIDAN_POSTGRES_IMAGE:-maidan-postgres:dev}"
+postgres_image="${STACK_POSTGRES_IMAGE:-maidan-postgres:dev}"
 local_port="${HELM_SMOKE_LOCAL_PORT:-18080}"
 stack_local_port="${HELM_STACK_SMOKE_LOCAL_PORT:-18081}"
 
@@ -32,7 +32,7 @@ need curl
 command -v jq >/dev/null 2>&1 || need jq
 
 # The installs name the images this script loads, so MAIDAN_IMAGE and
-# MAIDAN_POSTGRES_IMAGE (name:tag) can point at other builds.
+# STACK_POSTGRES_IMAGE (name:tag) can point at other builds.
 for ref in "${image}" "${postgres_image}"; do
   [[ "${ref##*/}" == *:* ]] || { echo "${ref} has no tag" >&2; exit 1; }
 done
