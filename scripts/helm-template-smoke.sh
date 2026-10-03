@@ -138,6 +138,45 @@ if [[ -f "${stack}/Chart.lock" ]]; then
   has "${rendered}" 'image: "cgr.dev/chainguard/minio@sha256:' "MinIO must be Chainguard's, by digest"
   has "${rendered}" '- "local/maidan-artifacts"' "the bucket Job must create minio.defaultBuckets"
   has "${rendered}" '"pg_isready", "-h", "127.0.0.1"' "the Postgres probes must use pg_isready over TCP"
+  # The MinIO annotation is sha256 of Secret key rollout-nonce. It must not be
+  # a hash of the root user or password: a StatefulSet reader could test guesses
+  # against that. helm template has no live Secret, so two renders mint two
+  # nonces; the annotation still has to match its own nonce.
+  RENDERED="${rendered}" python3 -c '
+import hashlib, os, sys
+rendered = os.environ["RENDERED"]
+def one(prefix):
+    found = [line.split(": ", 1)[1].strip().strip(chr(34))
+             for line in rendered.splitlines()
+             if line.startswith(prefix)]
+    if len(found) != 1 or not found[0]:
+        sys.exit("expected one %r, found %r" % (prefix, found))
+    return found[0]
+nonce = one("  rollout-nonce: ")
+digest = one("        checksum/rollout-nonce: ")
+want = hashlib.sha256(nonce.encode()).hexdigest()
+if digest != want:
+    sys.exit("checksum/rollout-nonce is not sha256 of rollout-nonce")
+user, password = "minio", "minioadmin"
+for material in (password, user + ":" + password, user + password):
+    if hashlib.sha256(material.encode()).hexdigest() in rendered:
+        sys.exit("render publishes a hash of the MinIO root credentials")
+if "checksum/credentials" in rendered:
+    sys.exit("render still has checksum/credentials")
+docs = rendered.split("\n---\n")
+sts = [d for d in docs if "kind: StatefulSet" in d and "checksum/rollout-nonce" in d]
+if len(sts) != 1:
+    sys.exit("expected one MinIO StatefulSet, found %d" % len(sts))
+if password in sts[0]:
+    sys.exit("MinIO StatefulSet manifest contains the root password")
+'
+  other="$(helm template "${stores[@]}")"
+  nonce_a="$(sed -n "s/^  rollout-nonce: \"\\([A-Za-z0-9]*\\)\"$/\\1/p" <<<"${rendered}")"
+  nonce_b="$(sed -n "s/^  rollout-nonce: \"\\([A-Za-z0-9]*\\)\"$/\\1/p" <<<"${other}")"
+  if [[ -z "${nonce_a}" || -z "${nonce_b}" || "${nonce_a}" == "${nonce_b}" ]]; then
+    echo "rollout-nonce must not be a pure function of the MinIO password" >&2
+    exit 1
+  fi
   # Credentials are escaped into the URL rather than breaking it.
   has "$(helm template "${stores[@]}" --set 'postgresql.auth.password=p@ss w/rd:+%')" \
     'postgres://maidan:p%40ss%20w%2Frd%3A%2B%25@maidan-stack-postgresql:5432/maidan' \

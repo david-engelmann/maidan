@@ -832,11 +832,13 @@ Moving an existing release from the earlier Bitnami subcharts to these StatefulS
 replacement, not an in-place upgrade. The StatefulSet selector labels differ (Kubernetes rejects
 changing them), and MinIO's volume claim is `data-<release>-minio-0`, not Bitnami's
 `<release>-minio`. Dump the database and copy the buckets (`mc mirror`) out, install the new
-release, and restore; keep the old volumes until you have checked the restore. Changing a store
-password does not restart the server: run `kubectl rollout restart deployment/<release>-maidan`
-after the upgrade (MinIO restarts by itself, because its pod template carries a credential
-checksum). Postgres reads `POSTGRES_PASSWORD` only when it first creates the data directory, so
-changing it later does not change the database's password.
+release, and restore; keep the old volumes until you have checked the restore. Postgres reads
+`POSTGRES_PASSWORD` only when it first creates the data directory, so changing it later does not
+change the database's password: run `ALTER ROLE` on the live role before changing
+`postgresql.auth.password` and upgrading. Changing a store password does not restart the server:
+run `kubectl rollout restart deployment/<release>-maidan` after the upgrade so it reads the new
+`DATABASE_URL` (MinIO restarts by itself when its root user or password changes, because its pod
+template carries a hash of a rollout nonce, not of the password).
 
 The stack's Postgres has no replicas, backups or PITR; for those, run your own (or a managed)
 Postgres, turn `postgresql.enabled` off and set `DATABASE_URL` as for the server chart. The

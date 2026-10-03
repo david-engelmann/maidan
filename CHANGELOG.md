@@ -1542,8 +1542,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   render only when `postgresql.enabled` is false and `maidan.existingSecret`
   is unset; an `existingSecret` skips the check, and the chart does not
   verify that the Secret exists or holds its keys.
-- **Changed:** the MinIO pod template carries a checksum of its credentials,
-  so changing them restarts MinIO. Moving an existing release off the Bitnami
+- **Changed:** the MinIO pod template carries a hash of a rollout nonce from
+  its Secret, not a hash of the root password, so changing the credentials
+  restarts MinIO and a StatefulSet reader cannot test password guesses against
+  the annotation. Moving an existing release off the Bitnami
   subcharts is a replacement, not an upgrade (different selector labels and
   volume claim names); `docs/Production.md` says how.
 - **Changed:** the `helm install (kind)` job also installs the stack with both

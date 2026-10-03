@@ -2,6 +2,26 @@
 {{- $minio := .Values.minio }}
 {{- $name := include "maidan-stack.minio.fullname" . }}
 {{- $labels := dict "ctx" . "name" "minio" "component" "object-store" }}
+{{- /* Rollout nonce, not a password hash. The pod annotation is sha256 of this
+       value. While the live Secret's root user and password still match,
+       reuse its nonce so an unrelated upgrade does not restart MinIO. lookup
+       is empty for `helm template` and for a Secret that is not there yet,
+       which mints a new nonce (a credential change still changes it). */}}
+{{- $nonce := randAlphaNum 32 }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
+{{- if $existing }}
+{{- $data := $existing.data }}
+{{- if $data }}
+{{- $oldUser := index $data "root-user" }}
+{{- $oldPass := index $data "root-password" }}
+{{- $oldNonce := index $data "rollout-nonce" }}
+{{- if and $oldUser $oldPass $oldNonce }}
+{{- if and (eq ($oldUser | b64dec) (toString $minio.auth.rootUser)) (eq ($oldPass | b64dec) (toString $minio.auth.rootPassword)) }}
+{{- $nonce = $oldNonce | b64dec }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -14,6 +34,9 @@ stringData:
   root-password: {{ $minio.auth.rootPassword | quote }}
   # The client image has no shell, so the bucket Job's alias is this variable.
   mc-host: {{ printf "http://%s:%s@%s:9000" $minio.auth.rootUser $minio.auth.rootPassword $name | quote }}
+  # Not a credential. The StatefulSet annotation is a hash of this, so a
+  # credential change rolls MinIO without publishing a password hash.
+  rollout-nonce: {{ $nonce | quote }}
 ---
 apiVersion: v1
 kind: Service
@@ -67,8 +90,9 @@ spec:
         {{- include "maidan-stack.labels" $labels | nindent 8 }}
       annotations:
         # Secret-backed env vars are read at container start, so a credential
-        # change must change the pod template to roll MinIO.
-        checksum/credentials: {{ printf "%s:%s" $minio.auth.rootUser $minio.auth.rootPassword | sha256sum }}
+        # change must change the pod template to roll MinIO. This is sha256 of
+        # the Secret key rollout-nonce, not of the root user or password.
+        checksum/rollout-nonce: {{ $nonce | sha256sum | quote }}
     spec:
       # MinIO is configured by MINIO_* variables; keep Kubernetes from adding
       # its own for every Service named minio-*.
