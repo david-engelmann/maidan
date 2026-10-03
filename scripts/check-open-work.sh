@@ -28,7 +28,7 @@ if ! grep -q '^## Now: in flight' "$doc"; then
   echo "open work: no \"## Now: in flight\" section"; fail=1
 fi
 now=$(awk '/^## Now: in flight/{on=1; next} /^## /{on=0} on' "$doc")
-odd=$(printf '%s\n' "$now" | grep -E '^\| [^|]*#[0-9]+' | grep -vE '^\| #[0-9]+ ' || true)
+odd=$(printf '%s\n' "$now" | grep -E '^\|[^|]*#[0-9]+' | grep -vE '^\| #[0-9]+ ' || true)
 if [[ -n "$odd" ]]; then
   echo "open work: rows under Now name a PR in a form this check does not read (write \`| #NNNN |\`):"
   printf '%s\n' "$odd" | sed 's/^/  /'

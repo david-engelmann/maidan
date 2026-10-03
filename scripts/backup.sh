@@ -32,6 +32,8 @@ set -euo pipefail
 # or `#`), and so must this, or the backup reads a file the server never
 # opens. An escape that is not two hex digits stays as written, as in SQLx.
 # restore.sh has the same function.
+# It assigns to the variable named by $2 rather than printing, because a
+# command substitution would drop a decoded trailing newline (`%0A`).
 percent_decode() {
   local rest="$1" out="" byte
   while [[ "$rest" == *%* ]]; do
@@ -45,7 +47,7 @@ percent_decode() {
       out+="%"
     fi
   done
-  printf '%s' "$out$rest"
+  printf -v "$2" '%s' "$out$rest"
 }
 
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -60,7 +62,7 @@ case "$DATABASE_URL" in
     db="${db#//}"
     db="${db%%\?*}"
     [[ "$db" != ":memory:" && -n "$db" ]] || { echo "backup: $DATABASE_URL is not a file; nothing to back up" >&2; exit 1; }
-    db="$(percent_decode "$db")"
+    percent_decode "$db" db
     [[ -f "$db" ]] || { echo "backup: SQLite database $db not found" >&2; exit 1; }
     command -v sqlite3 >/dev/null || { echo "backup: the sqlite3 CLI is required for a SQLite backup" >&2; exit 1; }
     [[ ! -e "$out/maidan.sqlite" ]] || { echo "backup: $out/maidan.sqlite already exists" >&2; exit 1; }

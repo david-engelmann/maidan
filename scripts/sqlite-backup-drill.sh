@@ -13,7 +13,9 @@
 #     artifact archive round-trips;
 #   - --force replaces a target that is not a database at all, keeping the
 #     replaced file's mode;
-#   - both scripts decode a percent-encoded path as SQLx does.
+#   - both scripts decode a percent-encoded path as SQLx does, a trailing
+#     newline included;
+#   - a restore through a symlink keeps the mode of the database it points at.
 #
 # Usage: scripts/sqlite-backup-drill.sh   (needs bash and the sqlite3 CLI)
 set -euo pipefail
@@ -148,5 +150,31 @@ DATABASE_URL="$encoded_url" bash "$here/backup.sh" "$work/backup-encoded" >/dev/
   || fail "backup.sh did not decode a percent-encoded path"
 [[ "$(sqlite3 "$work/backup-encoded/maidan.sqlite" "SELECT count(*) FROM events")" == "$snap_rows" ]] \
   || fail "backup of a percent-encoded path"
+
+# 5. A decoded `%0A` at the end is part of the name. A command substitution
+# would drop it and land on the sibling without the newline.
+mkdir -p "$work/newline"
+echo "the sibling" > "$work/newline/room.db"
+newline_db="$work/newline/room.db"$'\n'
+DATABASE_URL="sqlite://$work/newline/room.db%0A" ARTIFACT_LOCALFS_ROOT="$work/restored-artifacts-5" \
+  bash "$here/restore.sh" "$work/backup" >/dev/null
+[[ "$(cat "$work/newline/room.db")" == "the sibling" ]] || fail "restore.sh wrote the sibling of a newline-ending path"
+check_restored "$newline_db" "a newline-ending path"
+DATABASE_URL="sqlite://$work/newline/room.db%0A" bash "$here/backup.sh" "$work/backup-newline" >/dev/null 2>&1 \
+  || fail "backup.sh did not read a newline-ending path"
+[[ "$(sqlite3 "$work/backup-newline/maidan.sqlite" "SELECT count(*) FROM events")" == "$snap_rows" ]] \
+  || fail "backup of a newline-ending path"
+
+# 6. A symlink to the database: the restore takes the mode of the file it points
+# at, not the link's (777 on Linux), which would open the database to everyone.
+mkdir -p "$work/linked/real"
+echo "not a database" > "$work/linked/real/maidan.db"
+chmod 600 "$work/linked/real/maidan.db"
+ln -s "$work/linked/real/maidan.db" "$work/linked/maidan.db"
+DATABASE_URL="sqlite://$work/linked/maidan.db" ARTIFACT_LOCALFS_ROOT="$work/restored-artifacts-6" \
+  bash "$here/restore.sh" "$work/backup" --force >/dev/null
+check_restored "$work/linked/maidan.db" "--force through a symlink"
+mode="$(stat -c '%a' "$work/linked/maidan.db" 2>/dev/null || stat -f '%Lp' "$work/linked/maidan.db")"
+[[ "$mode" == 600 ]] || fail "a restore through a symlink took the link's mode ($mode), not the database's (600)"
 
 echo "sqlite-backup-drill: ok ($snap_rows rows snapshotted mid-write of $live_rows, restored exactly)"

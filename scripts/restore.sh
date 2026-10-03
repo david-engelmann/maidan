@@ -31,6 +31,8 @@ force="${2:-}"
 # or `#`), and so must this, or the restore lands beside the file the server
 # opens. An escape that is not two hex digits stays as written, as in SQLx.
 # backup.sh has the same function.
+# It assigns to the variable named by $2 rather than printing, because a
+# command substitution would drop a decoded trailing newline (`%0A`).
 percent_decode() {
   local rest="$1" out="" byte
   while [[ "$rest" == *%* ]]; do
@@ -44,7 +46,7 @@ percent_decode() {
       out+="%"
     fi
   done
-  printf '%s' "$out$rest"
+  printf -v "$2" '%s' "$out$rest"
 }
 
 case "$DATABASE_URL" in
@@ -54,7 +56,7 @@ case "$DATABASE_URL" in
     db="${db#//}"
     db="${db%%\?*}"
     [[ "$db" != ":memory:" && -n "$db" ]] || { echo "restore: $DATABASE_URL is not a file" >&2; exit 1; }
-    db="$(percent_decode "$db")"
+    percent_decode "$db" db
     command -v sqlite3 >/dev/null || { echo "restore: the sqlite3 CLI is required for a SQLite restore" >&2; exit 1; }
     [[ "$(sqlite3 "$src/maidan.sqlite" "PRAGMA integrity_check")" == "ok" ]] \
       || { echo "restore: $src/maidan.sqlite failed its integrity check" >&2; exit 1; }
@@ -67,10 +69,11 @@ case "$DATABASE_URL" in
       fi
     fi
     # A copy made as root would leave a root-owned file the server cannot
-    # write. GNU stat takes -c, BSD stat -f.
+    # write. GNU stat takes -c, BSD stat -f; -L reads the database a symlink
+    # points at, not the link, whose mode (777 on Linux) would open it to all.
     owner_mode=""
     if [[ -e "$db" ]]; then
-      owner_mode="$(stat -c '%u:%g %a' "$db" 2>/dev/null || stat -f '%u:%g %Lp' "$db")"
+      owner_mode="$(stat -L -c '%u:%g %a' "$db" 2>/dev/null || stat -L -f '%u:%g %Lp' "$db")"
     fi
     echo "restore: replacing $db with $src/maidan.sqlite"
     mkdir -p "$(dirname "$db")"
