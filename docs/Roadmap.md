@@ -58,8 +58,9 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    Soundcheck previews it and marks it ready. Replies stay on the surface the
    work started on: a Slack thread is answered in Slack, a PR comment on the
    PR. Maidan's part is Open Work Next 1 (the `github_branch` delivery, a
-   threaded Slack reply, an audited allowlist seed) and Next 2 (GitHub App
-   credentials); the contract is beatgig/soundcheck's
+   threaded Slack reply, an audited allowlist seed, on David's personal PAT)
+   and Next 2 (one instance built from `main` in Pi's dev-tools stack); the
+   contract is beatgig/soundcheck's
    `docs/cross-repo/change-flow.md`.
 2. **Agents coordinate at workspace scale.** A verdict reaches the worker as an
    event (#1132), a hung agent's time is charged against its budget (#1139),
