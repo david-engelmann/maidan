@@ -10,7 +10,6 @@ use crate::federation::{IngestSummary, WellKnownMaidan};
 use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest};
 use crate::openapi::schemas::SearchHit;
 use crate::share_consumer::*;
-use crate::thread_context::ThreadContext;
 use maidan_types::*;
 
 // --- bootstrap (no bearer) ---

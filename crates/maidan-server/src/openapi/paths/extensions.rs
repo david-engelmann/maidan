@@ -15,7 +15,6 @@ use uuid::Uuid;
 
 use crate::dto::*;
 use crate::status::OperatorStatus;
-use crate::thread_context::WorkspaceContext;
 use maidan_types::*;
 
 /// Purge a workspace's retained content

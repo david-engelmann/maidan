@@ -240,7 +240,7 @@ pub async fn list(
         "SELECT id, thread_id, from_state, to_state, actor_id, occurred_at
          FROM maidan_thread_transitions
          WHERE thread_id = $1
-         ORDER BY occurred_at ASC
+         ORDER BY occurred_at ASC, id ASC
          LIMIT $2",
     )
     .bind(thread_id.0)

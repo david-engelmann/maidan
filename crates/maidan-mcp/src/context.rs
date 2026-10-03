@@ -1,102 +1,15 @@
-//! MCP context export — mirrors the HTTP context packs, pagination included.
+//! MCP context export: the same packs as the REST routes, from the same
+//! builder (`maidan_store::context_pack`), so a pack read here is byte for byte
+//! the pack `GET /threads/:id/context` serves for the same state.
 
-use std::collections::{HashMap, HashSet};
-
+use maidan_store::context_pack::{self, ThreadContextLimits};
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::McpError;
-
-/// Thread + message references for a context pack, batched: one thread read +
-/// one `src_id = ANY` read across all messages, replacing the per-message N+1.
-/// Ordered by `created_at`, deduped — mirrors the REST assembler.
-async fn collect_references(
-    store: &dyn Store,
-    thread_id: ThreadId,
-    messages: &[Message],
-) -> Result<Vec<Reference>, McpError> {
-    let msg_ids: Vec<Uuid> = messages.iter().map(|m| m.id.0).collect();
-    let mut refs = store
-        .list_references_from(RefSide::Thread, thread_id.0)
-        .await?;
-    let mut from_msgs = store
-        .list_references_from_many(RefSide::Message, &msg_ids)
-        .await?;
-    refs.append(&mut from_msgs);
-    refs.sort_by_key(|r| r.created_at);
-    refs.dedup_by_key(|r| r.id);
-    Ok(refs)
-}
-
-/// Edit records for a context pack, batched across all messages then re-ordered
-/// by (message position, edited_at, id). Lean by default (id/editor/
-/// timestamp); `include_edits` adds the heavy before/after bodies.
-async fn collect_edit_views(
-    store: &dyn Store,
-    messages: &[Message],
-    include_edits: bool,
-    cutoff: Option<chrono::DateTime<chrono::Utc>>,
-) -> Result<Vec<Value>, McpError> {
-    let msg_ids: Vec<MessageId> = messages.iter().map(|m| m.id).collect();
-    let pos: HashMap<MessageId, usize> =
-        msg_ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
-    let mut edits = store.list_message_edits_for_messages(&msg_ids, 20).await?;
-    if let Some(c) = cutoff {
-        edits.retain(|e| e.edited_at <= c);
-    }
-    edits.sort_by_key(|e| {
-        (
-            pos.get(&e.message_id).copied().unwrap_or(usize::MAX),
-            e.edited_at,
-            e.id,
-        )
-    });
-    let mut out = Vec::with_capacity(edits.len());
-    for edit in edits {
-        if include_edits {
-            out.push(serde_json::to_value(&edit)?);
-        } else {
-            out.push(json!({
-                "id": edit.id,
-                "message_id": edit.message_id,
-                "editor_id": edit.editor_id,
-                "edited_at": edit.edited_at,
-            }));
-        }
-    }
-    Ok(out)
-}
-
-/// Non-tombstoned artifacts referenced by a page's messages' metadata. Ordered
-/// by `created_at`; a missing/tombstoned blob is skipped.
-/// The artifacts `messages` reference, as their workspace sees them. A sha the
-/// workspace holds no ref to is skipped: naming one in a message's metadata is
-/// not access to it.
-async fn collect_artifacts(
-    store: &dyn Store,
-    workspace_id: maidan_types::WorkspaceId,
-    messages: &[Message],
-) -> Vec<Artifact> {
-    let mut shas = HashSet::new();
-    for m in messages {
-        for sha in artifact_shas_from_metadata(&m.metadata) {
-            shas.insert(sha);
-        }
-    }
-    let mut artifacts = Vec::new();
-    for sha in shas {
-        if let Ok(a) = store.get_artifact_for_workspace(workspace_id, &sha).await {
-            if a.tombstoned_at.is_none() {
-                artifacts.push(a);
-            }
-        }
-    }
-    artifacts.sort_by_key(|a| a.created_at);
-    artifacts
-}
 
 #[derive(Debug, Deserialize)]
 struct ThreadContextArgs {
@@ -131,11 +44,26 @@ struct ThreadContextArgs {
     /// for root threads and withheld for a cross-channel or DM parent.
     #[serde(default = "default_true")]
     include_parent_grounding: bool,
-    /// Attach in-channel accepted/closed decisions. Default `true` on a live
-    /// single-thread pack; a workspace-context build sets this `false` on
-    /// nested threads. Withheld on DM channels.
+    /// Attach the channel's accepted decisions. Default `true`. Withheld on DM
+    /// channels.
     #[serde(default = "default_true")]
     include_accepted_decisions: bool,
+}
+
+impl ThreadContextArgs {
+    fn limits(&self) -> ThreadContextLimits {
+        ThreadContextLimits {
+            message_limit: self.message_limit,
+            transition_limit: self.transition_limit,
+            message_cursor: self.message_cursor.map(MessageId),
+            include_edits: self.include_edits,
+            include_glossary: self.include_glossary,
+            as_of: self.as_of,
+            token_budget: self.token_budget,
+            include_parent_grounding: self.include_parent_grounding,
+            include_accepted_decisions: self.include_accepted_decisions,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -157,71 +85,6 @@ struct WorkspaceContextArgs {
     token_budget: Option<i64>,
 }
 
-/// Apply an optional token budget to a message page, the MCP twin of the REST
-/// assembler's `apply_token_budget`. `None` leaves the page untouched.
-fn apply_token_budget(
-    messages: Vec<Message>,
-    token_budget: Option<i64>,
-) -> (Vec<Message>, Option<PackElision>) {
-    match token_budget {
-        Some(budget) => fold_messages_to_budget(messages, budget.max(1) as usize),
-        None => (messages, None),
-    }
-}
-
-/// Parent grounding for a child thread — the MCP twin of the REST assembler's
-/// `build_parent_grounding`. The same-channel + non-DM safety rule lives in
-/// `maidan_types::ParentGrounding::assemble`; this fetches its inputs.
-async fn build_parent_grounding(
-    store: &dyn Store,
-    thread: &Thread,
-    channel: &Channel,
-) -> Option<ParentGrounding> {
-    let parent_id = thread.parent_thread_id?;
-    if channel.name == DM_CHANNEL_NAME {
-        return None;
-    }
-    let parent = store.get_thread(parent_id).await.ok()?;
-    if parent.channel_id != channel.id || parent.tombstoned_at.is_some() {
-        return None;
-    }
-    let opening_message = store
-        .list_messages_after(parent_id, None, 1)
-        .await
-        .ok()
-        .and_then(|mut v| v.drain(..).next());
-    let latest_result = store
-        .get_thread_result(parent_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|r| r.result);
-    ParentGrounding::assemble(
-        parent,
-        channel.id,
-        channel.name == DM_CHANNEL_NAME,
-        opening_message,
-        latest_result,
-    )
-}
-
-/// In-channel accepted decisions for a live MCP pack — twin of the REST
-/// assembler's `build_accepted_decisions`. Skipped on DM: `__dm__` is shared
-/// across unrelated conversations.
-async fn build_accepted_decisions(
-    store: &dyn Store,
-    thread: &Thread,
-    channel: &Channel,
-) -> Result<Vec<AcceptedDecision>, McpError> {
-    if channel.name == DM_CHANNEL_NAME {
-        return Ok(Vec::new());
-    }
-    let rows = store
-        .list_channel_closed_results(channel.id, Some(thread.id), ACCEPTED_DECISIONS_LIMIT)
-        .await?;
-    Ok(assemble_accepted_decisions(rows))
-}
-
 fn default_message_limit() -> i64 {
     100
 }
@@ -235,253 +98,58 @@ fn default_true() -> bool {
     true
 }
 
-pub async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
+/// The thread's context pack, as `GET /threads/:id/context` builds it.
+pub async fn get_thread_context(
+    store: &dyn Store,
+    args: &Value,
+) -> Result<ThreadContext, McpError> {
     let a: ThreadContextArgs =
         serde_json::from_value(args.clone()).map_err(|e| McpError::InvalidParams(e.to_string()))?;
-    if let Some(as_of) = a.as_of {
-        return get_thread_context_as_of(store, &a, as_of).await;
-    }
-    let thread_id = ThreadId(a.thread_id);
-    let thread = store.get_thread(thread_id).await?;
-    if thread.tombstoned_at.is_some() {
-        return Err(McpError::InvalidParams("thread is tombstoned".into()));
-    }
-    let channel = store.get_channel(thread.channel_id).await?;
-    let page_limit = a.message_limit.clamp(1, 500);
-    let messages = store
-        .list_messages_after(thread_id, a.message_cursor.map(MessageId), page_limit + 1)
-        .await?;
-    let next_message_cursor = if messages.len() as i64 > page_limit {
-        messages
-            .get(page_limit as usize - 1)
-            .map(|m| m.id.0.to_string())
-    } else {
-        None
-    };
-    let messages: Vec<Message> = messages.into_iter().take(page_limit as usize).collect();
-    // Token-budget fold: keep the opener + recent tail, elide the middle —
-    // before the refs/edits/artifacts reads, so the whole pack shrinks.
-    let (messages, elision) = apply_token_budget(messages, a.token_budget);
-    let transitions = store
-        .list_thread_transitions(thread_id, a.transition_limit.clamp(1, 200))
-        .await?;
-    // Batched refs/edits (no per-message N+1) + artifacts (previously omitted
-    // from MCP packs) — shared with the REST assembler's behavior.
-    let references = collect_references(store, thread_id, &messages).await?;
-    let message_edits = collect_edit_views(store, &messages, a.include_edits, None).await?;
-    let artifacts = collect_artifacts(store, channel.workspace_id, &messages).await;
-
-    let mut out = json!({
-        "workspace_id": channel.workspace_id.0,
-        "channel_id": thread.channel_id.0,
-        "thread": thread,
-        "messages": messages,
-        "message_edits": message_edits,
-        "references": references,
-        "artifacts": artifacts,
-        "fsm": {
-            "state": thread.state,
-            "transitions": transitions,
-        },
-        "next_message_cursor": next_message_cursor,
-    });
-    if let Some(elision) = elision {
-        out["elision"] = serde_json::to_value(&elision)?;
-    }
-    // Parent grounding for a child thread: the parent's opening ask + latest
-    // decision. Absent for root threads / cross-channel / DM parents.
-    if a.include_parent_grounding {
-        if let Some(grounding) = build_parent_grounding(store, &thread, &channel).await {
-            out["parent_grounding"] = serde_json::to_value(&grounding)?;
-        }
-    }
-    if a.include_accepted_decisions {
-        let decisions = build_accepted_decisions(store, &thread, &channel).await?;
-        if !decisions.is_empty() {
-            out["accepted_decisions"] = serde_json::to_value(&decisions)?;
-        }
-    }
-    // What a reviewer sent this thread back for. A worker that claims a
-    // reopened thread reads the notes here; each stays until its reviewer
-    // reviews again.
-    let change_requests: Vec<_> = store
-        .list_reviews(thread.id)
-        .await?
-        .into_iter()
-        .filter(|r| r.decision == maidan_types::ReviewDecision::RequestChanges)
-        .collect();
-    if !change_requests.is_empty() {
-        out["change_requests"] = serde_json::to_value(&change_requests)?;
-    }
-    // The glossary grounds the pack in the workspace's shared vocabulary.
-    // Attached only when present + requested, so an empty glossary costs no
-    // tokens and a workspace-context pack (which carries it once at the top)
-    // can suppress it per nested thread.
-    if a.include_glossary {
-        let glossary = store.list_glossary_terms(channel.workspace_id).await?;
-        if !glossary.is_empty() {
-            out["glossary"] = serde_json::to_value(&glossary)?;
-        }
-    }
-    Ok(out)
+    Ok(context_pack::build_thread_context(store, ThreadId(a.thread_id), a.limits()).await?)
 }
 
-/// As-of context replay: the MCP twin of the REST assembler's
-/// `build_thread_context_as_of`. The message set is folded from the immutable
-/// event log via `maidan_types::reconstruct_messages_through`; the additive
-/// components are cut by the anchor event's time. Deterministic; no fresh
-/// search; glossary omitted (current vocabulary, not thread history).
-async fn get_thread_context_as_of(
+/// The workspace's context pack, unfiltered: the caller drops the threads the
+/// reader may not see.
+pub async fn get_workspace_context(
     store: &dyn Store,
-    a: &ThreadContextArgs,
-    as_of: i64,
-) -> Result<Value, McpError> {
-    let anchor = store.get_stored_event(as_of).await?;
-    let cutoff = anchor.occurred_at;
-    let thread_id = ThreadId(a.thread_id);
-    let thread = store.get_thread(thread_id).await?;
-    let channel = store.get_channel(thread.channel_id).await?;
-
-    let events = store.list_thread_events_through(thread_id, as_of).await?;
-    let mut all = reconstruct_messages_through(&events);
-    if let Some(cursor) = a.message_cursor {
-        match all.iter().position(|m| m.id.0 == cursor) {
-            Some(pos) => all = all.split_off(pos + 1),
-            None => all.clear(),
-        }
-    }
-    let page_limit = a.message_limit.clamp(1, 500);
-    let next_message_cursor = if all.len() as i64 > page_limit {
-        all.get(page_limit as usize - 1).map(|m| m.id.0.to_string())
-    } else {
-        None
-    };
-    let messages: Vec<Message> = all.into_iter().take(page_limit as usize).collect();
-    // Token-budget fold — same as the live pack, on the reconstructed page
-    // before the additive components are read from it.
-    let (messages, elision) = apply_token_budget(messages, a.token_budget);
-
-    // Batched refs/edits + artifacts (shared with the live path), then cut to
-    // the anchor's time — the additive components as they stood at `as_of`.
-    let message_edits = collect_edit_views(store, &messages, a.include_edits, Some(cutoff)).await?;
-    let mut references = collect_references(store, thread_id, &messages).await?;
-    references.retain(|r| r.created_at <= cutoff);
-    let mut artifacts = collect_artifacts(store, channel.workspace_id, &messages).await;
-    artifacts.retain(|art| art.created_at <= cutoff);
-
-    let mut transitions = store
-        .list_thread_transitions(thread_id, a.transition_limit.clamp(1, 200))
-        .await?;
-    transitions.retain(|t| t.occurred_at <= cutoff);
-    let mut chrono = transitions.clone();
-    chrono.sort_by_key(|t| t.occurred_at);
-    let state = chrono
-        .last()
-        .map(|t| t.to_state)
-        .unwrap_or(ThreadState::Open);
-
-    let mut out = json!({
-        "workspace_id": channel.workspace_id.0,
-        "channel_id": thread.channel_id.0,
-        "as_of": as_of,
-        "thread": thread,
-        "messages": messages,
-        "message_edits": message_edits,
-        "references": references,
-        "artifacts": artifacts,
-        "fsm": { "state": state, "transitions": transitions },
-        "next_message_cursor": next_message_cursor,
-    });
-    if let Some(elision) = elision {
-        out["elision"] = serde_json::to_value(&elision)?;
-    }
-    Ok(out)
-}
-
-pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
+    args: &Value,
+) -> Result<WorkspaceContext, McpError> {
     let a: WorkspaceContextArgs =
         serde_json::from_value(args.clone()).map_err(|e| McpError::InvalidParams(e.to_string()))?;
-    let workspace_id = WorkspaceId(a.workspace_id);
-    let workspace = store.get_workspace(workspace_id).await?;
-    let channels = store.list_channels(workspace_id).await?;
-    let page_limit = a.thread_limit.clamp(1, 50);
-    let mut ordered = Vec::new();
-    for channel in &channels {
-        for thread in store.list_threads(channel.id).await? {
-            if thread.tombstoned_at.is_none() {
-                ordered.push(thread);
-            }
-        }
-    }
-    ordered.sort_by(|x, y| {
-        x.created_at
-            .cmp(&y.created_at)
-            .then_with(|| x.id.0.cmp(&y.id.0))
-    });
-    let start = a
-        .thread_cursor
-        .map(|cursor| {
-            ordered
-                .iter()
-                .position(|t| t.id.0 == cursor)
-                .map(|i| i + 1)
-                .unwrap_or(ordered.len())
-        })
-        .unwrap_or(0);
-    let slice: Vec<Thread> = ordered
-        .into_iter()
-        .skip(start)
-        .take(page_limit as usize + 1)
-        .collect();
-    let next_thread_cursor = if slice.len() > page_limit as usize {
-        slice
-            .get(page_limit as usize - 1)
-            .map(|t| t.id.0.to_string())
-    } else {
-        None
+    let limits = ThreadContextLimits {
+        message_limit: a.message_limit,
+        transition_limit: a.transition_limit,
+        include_glossary: a.include_glossary,
+        token_budget: a.token_budget,
+        ..Default::default()
     };
-    let mut threads = Vec::new();
-    for thread in slice.into_iter().take(page_limit as usize) {
-        let packed = get_thread_context(
-            store,
-            &json!({
-                "thread_id": thread.id.0,
-                "message_limit": a.message_limit,
-                "transition_limit": a.transition_limit,
-                // The glossary rides the workspace level once (below); suppress it
-                // per nested thread so it is not repeated N times.
-                "include_glossary": false,
-                // The token budget applies per nested thread.
-                "token_budget": a.token_budget,
-                // Grounding is the focused single-thread view, not the firehose.
-                "include_parent_grounding": false,
-                "include_accepted_decisions": false,
-            }),
-        )
-        .await?;
-        threads.push(packed);
-    }
-    let mut out = json!({
-        "workspace": workspace,
-        "channels": channels,
-        "threads": threads,
-        "next_thread_cursor": next_thread_cursor,
-    });
-    if a.include_glossary {
-        let glossary = store.list_glossary_terms(workspace_id).await?;
-        if !glossary.is_empty() {
-            out["glossary"] = serde_json::to_value(&glossary)?;
-        }
-    }
-    Ok(out)
+    Ok(context_pack::build_workspace_context(
+        store,
+        WorkspaceId(a.workspace_id),
+        a.thread_limit,
+        a.thread_cursor.map(ThreadId),
+        limits,
+    )
+    .await?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
+    use serde_json::json;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::sync::Arc;
+
+    async fn get_thread_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
+        Ok(serde_json::to_value(super::get_thread_context(store, args).await?)?)
+    }
+
+    async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
+        Ok(serde_json::to_value(
+            super::get_workspace_context(store, args).await?,
+        )?)
+    }
 
     /// Store with a single message that has been edited once, so
     /// `get_thread_context` has exactly one `MessageEdit` to render.

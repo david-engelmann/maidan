@@ -320,7 +320,7 @@ pub async fn list_reviews(
     thread_id: ThreadId,
 ) -> Result<Vec<ThreadReview>, StoreError> {
     let rows = sqlx::query(&format!(
-        "SELECT {REVIEW_COLS} FROM maidan_thread_reviews WHERE thread_id = ? ORDER BY created_at"
+        "SELECT {REVIEW_COLS} FROM maidan_thread_reviews WHERE thread_id = ? ORDER BY created_at, reviewer_id"
     ))
     .bind(thread_id.0)
     .fetch_all(pool)

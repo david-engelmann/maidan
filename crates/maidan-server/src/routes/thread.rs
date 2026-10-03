@@ -1,7 +1,12 @@
 //! Thread handlers: create/list/get threads, thread context, and FSM
 //! transitions.
 
-use axum::{extract::State, http::StatusCode, Extension, Json};
+use axum::{
+    extract::State,
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
+    Extension, Json,
+};
 use maidan_auth::{
     capability::{ARTIFACT_UPLOAD, THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
@@ -112,33 +117,41 @@ pub async fn get_thread_context(
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiQuery(q): ApiQuery<ThreadContextQuery>,
-) -> ApiResult<Json<crate::thread_context::ThreadContext>> {
+) -> ApiResult<Response> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_READ)?;
-    // Drop the redundant `resolve_thread_context` + `ensure_workspace`;
-    // `ensure_thread_access` already resolves + workspace-checks the thread.
+    // `ensure_thread_access` resolves and workspace-checks the thread itself.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    let packed = crate::thread_context::build_thread_context(
+    let packed = maidan_store::context_pack::build_thread_context(
         state.store.as_ref(),
         thread_id,
-        crate::thread_context::ThreadContextLimits {
-            message_limit: if q.message_limit > 0 {
-                q.message_limit
-            } else {
-                100
-            },
-            transition_limit: clamp_context_transition_limit(q.transition_limit),
-            message_cursor: q.message_cursor.map(MessageId),
-            include_edits: q.include_edits,
-            include_glossary: q.include_glossary,
-            as_of: q.as_of,
-            token_budget: q.token_budget,
-            include_parent_grounding: q.include_parent_grounding,
-            include_accepted_decisions: q.include_accepted_decisions,
-        },
+        context_limits(&q),
     )
     .await?;
-    Ok(Json(packed))
+    // The canonical bytes, not a re-serialization: an MCP `get_thread_context`
+    // and a snapshot of the same state are these exact bytes.
+    let body = packed
+        .to_bytes()
+        .map_err(|e| ApiError::Internal(format!("serialize context pack: {e}")))?;
+    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
+}
+
+fn context_limits(q: &ThreadContextQuery) -> maidan_store::context_pack::ThreadContextLimits {
+    maidan_store::context_pack::ThreadContextLimits {
+        message_limit: if q.message_limit > 0 {
+            q.message_limit
+        } else {
+            100
+        },
+        transition_limit: clamp_context_transition_limit(q.transition_limit),
+        message_cursor: q.message_cursor.map(MessageId),
+        include_edits: q.include_edits,
+        include_glossary: q.include_glossary,
+        as_of: q.as_of,
+        token_budget: q.token_budget,
+        include_parent_grounding: q.include_parent_grounding,
+        include_accepted_decisions: q.include_accepted_decisions,
+    }
 }
 
 /// `POST /threads/:id/context/snapshot` — freeze the assembled context pack
@@ -155,30 +168,16 @@ pub async fn snapshot_thread_context(
 ) -> ApiResult<(StatusCode, Json<Artifact>)> {
     let thread_id = ThreadId(id);
     cap(&auth, ARTIFACT_UPLOAD)?;
-    // Drop the redundant `resolve_thread_context` + `ensure_workspace`;
-    // `ensure_thread_access` already resolves + workspace-checks the thread.
+    // `ensure_thread_access` resolves and workspace-checks the thread itself.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    let packed = crate::thread_context::build_thread_context(
+    let packed = maidan_store::context_pack::build_thread_context(
         state.store.as_ref(),
         thread_id,
-        crate::thread_context::ThreadContextLimits {
-            message_limit: if q.message_limit > 0 {
-                q.message_limit
-            } else {
-                100
-            },
-            transition_limit: clamp_context_transition_limit(q.transition_limit),
-            message_cursor: q.message_cursor.map(MessageId),
-            include_edits: q.include_edits,
-            include_glossary: q.include_glossary,
-            as_of: q.as_of,
-            token_budget: q.token_budget,
-            include_parent_grounding: q.include_parent_grounding,
-            include_accepted_decisions: q.include_accepted_decisions,
-        },
+        context_limits(&q),
     )
     .await?;
-    let body: axum::body::Bytes = serde_json::to_vec(&packed)
+    let body: axum::body::Bytes = packed
+        .to_bytes()
         .map_err(|e| ApiError::Internal(format!("serialize context snapshot: {e}")))?
         .into();
     let size_bytes = body.len() as i64;

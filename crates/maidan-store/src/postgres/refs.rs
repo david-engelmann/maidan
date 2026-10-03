@@ -75,7 +75,7 @@ pub async fn list_from(
         "SELECT id, src_kind, src_id, dst_kind, dst_id, relation, created_at
          FROM maidan_references
          WHERE src_kind = $1 AND src_id = $2
-         ORDER BY created_at ASC",
+         ORDER BY created_at ASC, id ASC",
     )
     .bind(src_kind.as_str())
     .bind(src_id)
@@ -85,7 +85,7 @@ pub async fn list_from(
 }
 
 /// References pointing AT one target — the reverse edge. Uses the existing
-/// `idx_references_dst` index. Ordered `created_at ASC`.
+/// `idx_references_dst` index. Ordered `created_at, id`.
 pub async fn list_to(
     pool: &PgPool,
     dst_kind: RefSide,
@@ -95,7 +95,7 @@ pub async fn list_to(
         "SELECT id, src_kind, src_id, dst_kind, dst_id, relation, created_at
          FROM maidan_references
          WHERE dst_kind = $1 AND dst_id = $2
-         ORDER BY created_at ASC",
+         ORDER BY created_at ASC, id ASC",
     )
     .bind(dst_kind.as_str())
     .bind(dst_id)
@@ -116,7 +116,7 @@ pub async fn list_from_many(
         "SELECT id, src_kind, src_id, dst_kind, dst_id, relation, created_at
          FROM maidan_references
          WHERE src_kind = $1 AND src_id = ANY($2)
-         ORDER BY src_id, created_at ASC",
+         ORDER BY src_id, created_at ASC, id ASC",
     )
     .bind(src_kind.as_str())
     .bind(src_ids)

@@ -654,54 +654,38 @@ pub async fn get_workspace_context(
     Extension(auth): Extension<AuthContext>,
     ApiPath(wid): ApiPath<uuid::Uuid>,
     ApiQuery(q): ApiQuery<WorkspaceContextQuery>,
-) -> ApiResult<Json<crate::thread_context::WorkspaceContext>> {
+) -> ApiResult<Json<WorkspaceContext>> {
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
-    let limits = crate::thread_context::ThreadContextLimits {
+    let limits = maidan_store::context_pack::ThreadContextLimits {
         message_limit: if q.message_limit > 0 {
             q.message_limit
         } else {
             100
         },
         transition_limit: clamp_context_transition_limit(q.transition_limit),
-        message_cursor: None,
         include_edits: q.include_edits,
         include_glossary: q.include_glossary,
-        as_of: None, // as-of replay is thread-scoped
         token_budget: q.token_budget,
-        // Overridden to false per nested thread inside build_workspace_context
-        // (grounding / accepted decisions are the focused single-thread view).
-        include_parent_grounding: false,
-        include_accepted_decisions: false,
+        ..Default::default()
     };
-    let mut packed = crate::thread_context::build_workspace_context(
+    let mut packed = maidan_store::context_pack::build_workspace_context(
         state.store.as_ref(),
         workspace_id,
-        q.thread_limit.clamp(1, 50),
+        q.thread_limit,
         q.thread_cursor.map(ThreadId),
         limits,
     )
     .await?;
-    // Drop packed threads in private channels the caller can't access. Cache
-    // the per-channel decision.
+    // Drop packed threads the caller can't read (private channels, DMs it is
+    // not in), deciding once per thread.
     if !auth.bypass {
-        // Thread-keyed + DM-participant-aware.
-        let mut decision: std::collections::HashMap<ThreadId, bool> =
-            std::collections::HashMap::new();
         let mut visible = Vec::with_capacity(packed.threads.len());
         for tc in packed.threads {
-            let ok = match decision.get(&tc.thread.id) {
-                Some(v) => *v,
-                None => {
-                    let v =
-                        maidan_auth::can_access_thread(state.store.as_ref(), &auth, tc.thread.id)
-                            .await?;
-                    decision.insert(tc.thread.id, v);
-                    v
-                }
-            };
-            if ok {
+            if maidan_auth::can_access_thread(state.store.as_ref(), &auth, tc.prefix.thread_id)
+                .await?
+            {
                 visible.push(tc);
             }
         }

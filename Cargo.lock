@@ -2937,6 +2937,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "criterion",
+ "futures",
  "maidan-auth",
  "maidan-fsm",
  "maidan-search",

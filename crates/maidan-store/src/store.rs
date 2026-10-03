@@ -308,8 +308,8 @@ pub trait ThreadResultStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<ThreadResult>, StoreError>;
     /// Closed/archived, non-tombstoned thread results in `channel_id`, newest
-    /// first. `exclude_thread_id` drops the claimer's own thread so the pack
-    /// lists *other* in-channel decisions. `limit` is clamped `1..=50`. The
+    /// first (`produced_at`, then `thread_id`, so `limit` cuts ties the same
+    /// way every time). `exclude_thread_id` drops one thread. `limit` is clamped `1..=50`. The
     /// store does **not** interpret `result_kind` — that is a namespaced string
     /// the pack assembler reads, not a closed enum.
     async fn list_channel_closed_results(
@@ -1287,6 +1287,7 @@ pub trait ThreadStore: Send + Sync {
         action: maidan_fsm::ThreadAction,
     ) -> Result<(ThreadTransitionResult, StoredEvent), StoreError>;
 
+    /// The thread's first `limit` transitions, ordered `occurred_at, id`.
     async fn list_thread_transitions(
         &self,
         thread_id: ThreadId,
@@ -1519,6 +1520,7 @@ pub trait ReviewStore: Send + Sync {
         decision: ReviewDecision,
         note: Option<&str>,
     ) -> Result<ReviewSubmission, StoreError>;
+    /// Each reviewer's current review, ordered `created_at, reviewer_id`.
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
     /// Every review verdict on the thread, oldest first. `submit_review`
     /// appends one per submission, in its transaction; the history is never
@@ -2151,13 +2153,15 @@ pub trait ReferenceStore: Send + Sync {
         &self,
         new: NewReference,
     ) -> Result<(Reference, StoredEvent), StoreError>;
+    /// References from one source, ordered `created_at, id`.
     async fn list_references_from(
         &self,
         src_kind: RefSide,
         src_id: uuid::Uuid,
     ) -> Result<Vec<Reference>, StoreError>;
 
-    /// References pointing AT one target — the reverse edge.
+    /// References pointing AT one target — the reverse edge, ordered
+    /// `created_at, id`.
     async fn list_references_to(
         &self,
         dst_kind: RefSide,
@@ -2166,7 +2170,7 @@ pub trait ReferenceStore: Send + Sync {
 
     /// References from many sources of one kind in a single query. Avoids the
     /// per-message `list_references_from` N+1. Returns a flat list the caller
-    /// groups by `src_id`; ordered by `src_id` then `created_at ASC`.
+    /// groups by `src_id`; ordered by `src_id`, then `created_at, id`.
     async fn list_references_from_many(
         &self,
         src_kind: RefSide,

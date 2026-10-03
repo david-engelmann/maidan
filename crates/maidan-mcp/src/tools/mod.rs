@@ -990,48 +990,30 @@ pub async fn dispatch(
         "list_github_issue_links" => projector::list_github_issue_links(server, auth, args).await,
         "unlink_github_issue" => projector::unlink_github_issue(server, auth, args).await,
         "get_thread_context" => {
-            let v = crate::context::get_thread_context(store.as_ref(), args).await?;
-            Ok(content_json(&v))
+            let pack = crate::context::get_thread_context(store.as_ref(), args).await?;
+            // The pack's canonical bytes as the text, so it matches the REST
+            // body and a snapshot byte for byte.
+            let text = String::from_utf8(pack.to_bytes()?)
+                .map_err(|e| McpError::Internal(format!("context pack is not UTF-8: {e}")))?;
+            Ok(content_text(text))
         }
         "snapshot_thread_context" => snapshot::snapshot_thread_context(server, auth, args).await,
         "get_workspace_context" => {
-            let mut v = crate::context::get_workspace_context(store.as_ref(), args).await?;
-            // Drop packed threads in private channels the caller can't access,
-            // caching the per-channel decision. Thread-keyed +
-            // DM-participant-aware.
+            let mut packed = crate::context::get_workspace_context(store.as_ref(), args).await?;
+            // Drop packed threads the caller can't read (private channels, DMs
+            // it is not in).
             if !auth.bypass {
-                if let Some(threads) = v.get("threads").and_then(|t| t.as_array()) {
-                    let mut decision: std::collections::HashMap<maidan_types::ThreadId, bool> =
-                        std::collections::HashMap::new();
-                    let mut kept = Vec::with_capacity(threads.len());
-                    for t in threads {
-                        let tid = t
-                            .get("thread")
-                            .and_then(|th| th.get("id"))
-                            .and_then(|c| c.as_str())
-                            .and_then(|s| s.parse::<uuid::Uuid>().ok())
-                            .map(maidan_types::ThreadId);
-                        let keep = match tid {
-                            Some(id) => match decision.get(&id) {
-                                Some(v) => *v,
-                                None => {
-                                    let ok =
-                                        maidan_auth::can_access_thread(store.as_ref(), auth, id)
-                                            .await?;
-                                    decision.insert(id, ok);
-                                    ok
-                                }
-                            },
-                            None => true,
-                        };
-                        if keep {
-                            kept.push(t.clone());
-                        }
+                let mut visible = Vec::with_capacity(packed.threads.len());
+                for tc in packed.threads {
+                    if maidan_auth::can_access_thread(store.as_ref(), auth, tc.prefix.thread_id)
+                        .await?
+                    {
+                        visible.push(tc);
                     }
-                    v["threads"] = Value::Array(kept);
                 }
+                packed.threads = visible;
             }
-            Ok(content_json(&v))
+            Ok(content_json(&packed))
         }
         "request_approval" => approval::request_approval(server, auth, args).await,
         "get_approval_gate" => approval::get_approval_gate(server, auth, args).await,
@@ -1070,9 +1052,14 @@ pub(super) async fn thread_workspace(
 /// always return a single `text` part with the JSON-stringified value.
 pub(super) fn content_json<T: serde::Serialize>(value: &T) -> Value {
     let body = serde_json::to_string(value).unwrap_or_else(|_| "null".into());
+    content_text(body)
+}
+
+/// One `text` content part carrying `text` as given.
+pub(super) fn content_text(text: String) -> Value {
     json!({
         "content": [
-            { "type": "text", "text": body }
+            { "type": "text", "text": text }
         ],
         "isError": false
     })

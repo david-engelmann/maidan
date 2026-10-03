@@ -21,7 +21,8 @@ pub(super) async fn snapshot_thread_context(
     let store = &server.store;
     // Build the pack via the shared context builder (honors as_of / include_*).
     let pack = crate::context::get_thread_context(store.as_ref(), args).await?;
-    let raw = serde_json::to_vec(&pack)
+    let raw = pack
+        .to_bytes()
         .map_err(|e| McpError::Internal(format!("serialize context snapshot: {e}")))?;
     let size_bytes = raw.len() as i64;
     let bytes = Bytes::from(raw);

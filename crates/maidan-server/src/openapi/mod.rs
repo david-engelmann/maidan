@@ -26,7 +26,6 @@ use crate::openapi::responses::{
 use crate::openapi::schemas::{LivenessOk, SearchHit};
 use crate::share_consumer::*;
 use crate::status::{OperatorStatus, QueueStatus, ReplicaStatus, SearchProgress, StatusCheck};
-use crate::thread_context::{ThreadContext, ThreadFsmContext, WorkspaceContext};
 use maidan_types::*;
 
 struct SecurityAddon;
@@ -713,8 +712,11 @@ fn requires_credential(op: &Operation) -> bool {
         CreateThread,
         ThreadTransition,
         ThreadContext,
-        crate::thread_context::MessageEditView,
-        ThreadFsmContext,
+        ContextPrefix,
+        ContextTail,
+        ThreadBrief,
+        ThreadStatus,
+        MessageEditView,
         maidan_types::PackElision,
         maidan_types::ParentGrounding,
         maidan_types::AcceptedDecision,
