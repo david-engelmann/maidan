@@ -1,8 +1,8 @@
-# OIDC human login (design spike, v1.4.2)
+# OIDC human login
 
-Status: **implemented** at **`v2.0.0`**. This document remains the design
-reference; runtime routes and env vars are documented in [Production](Production.md) and
-[Retros/Cluster 2.0](Retros/Cluster%202.0.md).
+Status: **implemented**. This document describes the runtime behavior; deployment
+routes and environment variables are also summarized in [Production](Production.md),
+and the implementation history is in [Retros/Cluster 2.0](Retros/Cluster%202.0.md).
 
 Since **`v406.0.0`**, required integration coverage also drives the production
 runtime against a test-only loopback provider with real discovery, authorization,
@@ -16,21 +16,21 @@ bootstrap gating.
 
 ## Problem
 
-Maidan today authenticates **agents and automation** with long-lived **API
+Agents and automation authenticate with long-lived **API
 tokens** (SHA-256 hashed, capability-scoped, workspace-bound). That model fits
 MCP clients and CI.
 
-Operators and humans using **`/ui/`** (or future browser clients) need a
+Operators and humans using **`/ui/`** and other browser clients need a
 **short-lived, browser-safe** login path without pasting bearer secrets into
 localStorage. Industry default: **OpenID Connect (OIDC)** against an IdP
 (Google Workspace, Okta, Keycloak, Azure AD, etc.).
 
-## Goals (v2.0.0 implementation)
+## Implemented behavior
 
 | Goal | Notes |
 |------|-------|
 | Human login via OIDC | Map IdP `sub` (+ `iss`) to a `Member` with `kind: human`. |
-| Issue Maidan API tokens after login | Browser session mints or displays a token once; agents keep using bearer tokens. |
+| First-admin token mint after login | The session endpoint may mint the first `token:admin` when the workspace has none; agents keep using bearer tokens. |
 | Workspace scoping unchanged | OIDC does not replace workspace-scoped capabilities. |
 | Production-safe defaults | No implicit trust of `email` without verified claims; PKCE mandatory for public clients. |
 
@@ -42,7 +42,7 @@ localStorage. Industry default: **OpenID Connect (OIDC)** against an IdP
 | Multi-tenant “orgs” above workspace | Deferred since Cluster F. |
 | SAML 1.x / password store in Maidan | Use IdP; Maidan stores no passwords. |
 | OIDC for federation peers | Peers keep peer bearer secrets (Cluster G). |
-| SQLite-first OIDC session store | v2.0 targets Postgres; SQLite dev may use encrypted cookies only. |
+| Encrypted-cookie-only OIDC session store | OIDC sessions are server-side rows in both Postgres and SQLite; the cookie carries a signed session id. |
 
 ## What signs in today
 
@@ -82,7 +82,7 @@ sequenceDiagram
     Maidan->>IdP: POST token (code + PKCE verifier)
     IdP->>Maidan: id_token + access_token
     Maidan->>Maidan: verify id_token, upsert identity, session cookie
-    Maidan->>Browser: 302 /ui/ or token mint page
+    Maidan->>Browser: 302 /ui/ (optional auto_mint hint)
 ```
 
 ### Why not implicit or resource-owner password?
@@ -97,22 +97,22 @@ Two layers, both needed:
 
 | Layer | Lifetime | Use |
 |-------|----------|-----|
-| **Browser session** | Hours (configurable), HttpOnly cookie | Drive `/ui/`, call session-gated “operator” endpoints. |
+| **Browser session** | Hours (configurable), HttpOnly cookie | Drive `/ui/` and call session-gated UI routes. |
 | **API token** | Long-lived, revocable | MCP, scripts, agents — unchanged. |
 
-**v2.0.0 default:** successful OIDC callback creates or links a `Member`, then
-either (a) redirects to a one-time **token mint** page requiring an existing
-`token:admin` holder, or (b) auto-mints a **narrow UI token** stored server-side
-and referenced by session (no secret in JS). Option (b) is better UX for
-first human in a workspace; gate it behind `MAIDAN_OIDC_AUTO_MINT=1` and
-`token:admin`-equivalent bootstrap policy.
+A successful OIDC callback creates or links a `Member` and creates a server-side
+browser session. When enabled (the default), `POST /auth/session/mint` may mint
+the first `token:admin` for the signed-in member's workspace; it refuses when an
+active `token:admin` already exists. `MAIDAN_OIDC_AUTO_MINT=1` only adds an
+`auto_mint=1` hint to the UI redirect when that mint is available; the UI then
+performs the explicit mint request.
 
-Rejected for v2.0: storing the IdP `access_token` and forwarding it on every
-Maidan API call — couples Maidan to IdP TTL and complicates capability checks.
+The callback does not store the IdP `access_token` or forward it on Maidan API
+calls; Maidan authorizes later requests with its session or API-token model.
 
-## Data model (sketch)
+## Data model
 
-New migration (Postgres + SQLite for dev parity on identity table only):
+Migration 0012 creates these tables in Postgres and SQLite:
 
 ```sql
 -- maidan_oidc_identities
@@ -121,7 +121,7 @@ New migration (Postgres + SQLite for dev parity on identity table only):
 -- UNIQUE (workspace_id, issuer, subject)
 ```
 
-Optional `maidan_sessions` for server-side session rows:
+`maidan_sessions` stores server-side session rows:
 
 ```sql
 -- id, member_id, workspace_id, api_token_id, expires_at, created_at
@@ -131,13 +131,14 @@ Optional `maidan_sessions` for server-side session rows:
 
 **Member linking rules:**
 
-1. First login with `(iss, sub)` in workspace → create `Member { kind: human }`
-   or attach to pre-provisioned member if `MAIDAN_OIDC_LINK_EMAIL` matches a
-   verified `email` claim.
+1. First login with `(iss, sub)` in workspace → when auto-provisioning is enabled,
+   create `Member { kind: human }`, or attach to a pre-provisioned member if
+   `MAIDAN_OIDC_LINK_EMAIL` matches a verified `email` claim; otherwise reject
+   an unprovisioned identity.
 2. Subsequent logins → same `member_id`.
 3. No automatic cross-workspace identity — workspace remains the tenancy boundary.
 
-## HTTP routes (v2.0.0)
+## HTTP routes
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
@@ -145,63 +146,79 @@ Optional `maidan_sessions` for server-side session rows:
 | GET | `/auth/oidc/callback` | none | Code exchange, set session cookie. |
 | POST | `/auth/logout` | session | Clear session + optional IdP end-session redirect. |
 | GET | `/auth/session` | session | JSON `{ member_id, workspace_id, expires_at }` for UI. |
-| POST | `/auth/session/mint` | session | Mint the first `token:admin` for the session's member (gated by `MAIDAN_OIDC_FIRST_ADMIN`). |
+| POST | `/auth/session/mint` | OIDC session | Mint the first `token:admin` for the session's member when `MAIDAN_OIDC_FIRST_ADMIN` is not `0` and the workspace has no active `token:admin`. |
 
-Existing bearer routes unchanged. Session middleware runs **only** on routes
-explicitly marked `session_or_bearer` (UI + operator helpers), not on MCP/A2A.
+Existing bearer routes are unchanged. Session middleware is used on the session
+routes and the `/ui/api` routes (and the UI WebSocket path); MCP and A2A remain
+bearer-token surfaces.
 
 ## Configuration
 
+OIDC is disabled unless `MAIDAN_OIDC_ENABLED=1`. When enabled, boot requires
+`MAIDAN_SESSION_SECRET` and `MAIDAN_OIDC_REDIRECT_URI`; non-mock deployments
+also require `MAIDAN_OIDC_ISSUER` and `MAIDAN_OIDC_CLIENT_ID`. The runtime
+settings are:
+
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `MAIDAN_OIDC_ISSUER` | yes (when enabled) | Issuer URL (discovery `.well-known/openid-configuration`). |
-| `MAIDAN_OIDC_CLIENT_ID` | yes | OAuth client id. |
-| `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Server-side code exchange. |
-| `MAIDAN_OIDC_REDIRECT_URI` | yes | Must match IdP registration (e.g. `https://maidan.example/auth/oidc/callback`). |
-| `MAIDAN_OIDC_SCOPES` | no | Default `openid profile email`. |
-| `MAIDAN_OIDC_ENABLED` | no | `1` enables routes; default off. |
-| `MAIDAN_SESSION_SECRET` | yes (when OIDC on) | Cookie signing / encryption key (32+ bytes). |
-| `MAIDAN_SESSION_TTL_SECS` | no | Default `28800` (8h). |
+| `MAIDAN_OIDC_ENABLED` | no | `1` enables OIDC; default off. |
+| `MAIDAN_OIDC_ISSUER` | non-mock OIDC | Issuer URL used for OpenID discovery. |
+| `MAIDAN_OIDC_CLIENT_ID` | non-mock OIDC | OAuth client id. |
+| `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Optional server-side code-exchange secret. |
+| `MAIDAN_OIDC_REDIRECT_URI` | OIDC | Registered callback, such as `https://maidan.example/auth/oidc/callback`. |
+| `MAIDAN_OIDC_SCOPES` | no | Space-separated scopes; default `openid profile email`. |
+| `MAIDAN_OIDC_MOCK` | no | Deterministic dev/CI provider; rejected with `MAIDAN_ENV=production`. |
+| `MAIDAN_OIDC_AUTO_PROVISION` | no | `1` permits a new OIDC identity to create a human member; otherwise the identity must already be provisioned or linked. |
+| `MAIDAN_OIDC_LINK_EMAIL` | no | `1` permits linking a verified email claim to an existing member handle. |
+| `MAIDAN_OIDC_FIRST_ADMIN` | no | Default on; permits the first-admin session mint. Set `0` to disable. |
+| `MAIDAN_OIDC_AUTO_MINT` | no | `1` adds the UI `auto_mint=1` hint when the workspace has no active `token:admin`; requires first-admin mint. |
+| `MAIDAN_OIDC_PENDING_TTL_SECS` | no | Pending login lifetime (default `600`). |
+| `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered redirect used when the provider exposes `end_session_endpoint`. |
+| `MAIDAN_SESSION_SECRET` | OIDC | HMAC key for signed `maidan_session` cookies and resume tokens. |
+| `MAIDAN_SESSION_TTL_SECS` | no | Browser session lifetime (default `28800`, 8 hours). |
+| `MAIDAN_COOKIE_SECURE` | no | `1` adds `Secure` to session cookies; production also enables it. |
 
-Validate at boot: OIDC enabled ⇒ session secret set; disallow with
-`AUTH_DISABLED` in production (same pattern as `MAIDAN_ENV=production`).
+`MAIDAN_OIDC_MOCK=1` uses a deterministic callback path and must not be used in
+production. For a real provider, boot performs discovery and retains the
+provider's logout endpoint when one is advertised.
 
 ## Security notes
 
 | Topic | Mitigation |
 |-------|------------|
-| CSRF on login | Random `state` in cookie/session, compare on callback. |
+| CSRF on login | Random, one-time `state` is stored with the pending login and consumed on callback. |
 | Replay | `nonce` in id_token; reject if mismatch. |
-| Token leakage | HttpOnly, `Secure`, `SameSite=Lax` session cookie; PKCE required. |
+| Token leakage | HttpOnly, `SameSite=Lax` session cookie; `Secure` in production; PKCE required. |
 | Confused deputy | Bind `workspace_id` into `state`; callback refuses workspace drift. |
-| Email trust | Treat `email` as display only unless IdP marks it verified (`email_verified`). |
-| Session fixation | Rotate session id after successful login. |
+| Email trust | Use `email` for linking only when `email_verified` is true; auto-provision may use it for handle/display. |
+| Session fixation | Create a new server-side session row after successful login. |
 
-Update [Threat model](Threat-Model.md) T1/T3 when implemented: stolen session cookie ≈ stolen
-API token for UI-scoped capabilities.
+[Threat model](Threat-Model.md) T16/T17 cover trace redaction and the risks of a
+stolen or cross-origin browser session.
 
 ## MCP and WebSocket
 
-| Surface | v2.0.0 plan |
-|---------|-------------|
-| MCP | **No OIDC** — clients continue `Authorization: Bearer`. Optional future: device code flow for desktop MCP. |
-| WebSocket | **No OIDC on wire** — `SubscribeFrame.token` stays API token; UI may fetch token via session-gated endpoint. |
-| `/ui/` | Session cookie + same-origin `fetch` to session-gated read APIs or short-lived WS token. |
+| Surface | Current behavior |
+|---------|------------------|
+| MCP | **No OIDC** — clients continue `Authorization: Bearer`. A device-code flow for MCP is future scope, not implemented here. |
+| WebSocket | Bearer clients use `SubscribeFrame.token`; the UI may authenticate the handshake with its same-origin session cookie. |
+| `/ui/` | Uses the session cookie with same-origin `fetch` to session-gated APIs and the WebSocket path. |
 
-## Implementation phases
+## Implementation status
 
-| Phase | Release | Deliverable |
-|-------|---------|---------------|
-| **Spike** | `v1.4.0` doc (this file) | Routes, schema, env, security, defer decision. |
-| **P1** | `v2.0.0` | `openidconnect` crate (or `oauth2` + discovery), login/callback/logout, session cookie, identity table. |
-| **P2** | `v2.0.x` | UI login button, session-gated workspace list, WS token bridge. |
-| **P3** | post-2.0 | Device code for MCP; SCIM/group → capability templates (optional). |
+OIDC human login is implemented: discovery, authorization-code + S256 PKCE,
+token exchange, ID-token validation, workspace-bound identity linking or
+provisioning, server-side sessions, browser logout, and the UI/session routes
+are runtime behavior. The loopback integration coverage exercises discovery,
+authorization, token exchange, ES256 JWKS validation, session creation, and
+provider logout; invalid state, nonce, signature, audience, and issuer inputs
+are rejected without issuing a session.
 
-**Recommendation:** ship **P1 in `v2.0.0`** only after bootstrap + token flows are
-documented for greenfield installs ([Production](Production.md)). Do not add OIDC to `v1.4.0`
-retro scope beyond this spike.
+The only OIDC-related item called out as future scope here is a device-code flow
+for MCP. MCP clients continue to use bearer tokens; this does not make human
+OIDC login unfinished.
 
-## Alternatives considered
+## Historical alternatives considered
 
 | Alternative | Rejected because |
 |-------------|------------------|
@@ -210,13 +227,15 @@ retro scope beyond this spike.
 | Implement in `v1.4.0` | Breaks semver-stable auth surface; needs session cookies, new tables, UI — too large for a minor. |
 | Defer doc to `v2.0.0` | Loses planning window before retro; 1.4.2 explicitly allows doc-only. |
 
-## Open questions (for v2.0.0 kickoff)
+## Current policy decisions
 
-1. **Auto-provision vs invite-only:** may any IdP user create a member in a
-   workspace, or require pre-created member + email match?
-2. **Per-workspace IdP:** single global issuer vs `workspace.oidc_issuer` column.
-3. **Session store:** Postgres rows vs signed encrypted cookie (no server store).
-4. **First human admin:** interaction with `MAIDAN_BOOTSTRAP` and `token:admin`.
+1. Auto-provisioning is controlled by `MAIDAN_OIDC_AUTO_PROVISION`; verified
+   email linking is separately controlled by `MAIDAN_OIDC_LINK_EMAIL`.
+2. The issuer and client are configured per server process; the pending login
+   binds the selected `workspace_id` to its one-time state.
+3. Sessions are server-side rows referenced by signed `maidan_session` cookies.
+4. `POST /auth/session/mint` can create the first workspace `token:admin` only
+   for an OIDC session and only while `MAIDAN_OIDC_FIRST_ADMIN` permits it.
 
 ## References
 
