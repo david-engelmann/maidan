@@ -45,6 +45,25 @@ changes what the server sends, not the database's: `ALTER ROLE` first, then upgr
 password of 8 or more, and neither may hold a colon (`MC_HOST_local` cannot carry one); the render
 refuses otherwise.
 
+A cluster-connected `helm upgrade` restarts MinIO when `minio.auth.rootUser` or
+`minio.auth.rootPassword` changes. The pod annotation `checksum/rollout-nonce` is the SHA-256 of
+the Secret key `rollout-nonce`, not of the password. Helm reuses the nonce already in the Secret
+while the credentials match, and writes a new one when they do not. That needs a cluster
+connection: `helm template` cannot see the Secret, so every offline render uses the same nonce.
+Applying those manifests again does not roll MinIO, and changing the credentials in them does not
+either. After an offline credential change, run `kubectl rollout restart statefulset/<release>-minio`.
+
+`minio.persistence.enabled`, `size` and `storageClass` are fixed once the StatefulSet exists.
+Kubernetes rejects an update that adds, removes or edits `volumeClaimTemplates`, so an in-place
+`helm upgrade` cannot change them. When Helm is connected to the cluster the upgrade fails first
+and names the live claim and the requested one. To change them, copy the buckets out (`mc mirror`
+from `<release>-minio`), delete the StatefulSet without its volume
+(`kubectl delete statefulset <release>-minio --cascade=orphan`), and delete PVC
+`data-<release>-minio-0` when the new pod should get a new volume (turning persistence on or off,
+or another storage class). Upgrade again and copy the buckets back. Growing a volume, when its
+storage class allows expansion, is a patch of that PVC, not of this chart: leave `size` as it is.
+This is not the Bitnami replacement in `docs/Production.md`.
+
 ## Production
 
 `values-prod.yaml` enables both stores, pins the release images (`ghcr.io/david-engelmann/maidan-server`

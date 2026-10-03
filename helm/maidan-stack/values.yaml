@@ -62,6 +62,9 @@ minio:
     rootPassword: minioadmin
   # Comma-separated. The server stores artifacts in the first.
   defaultBuckets: maidan-artifacts
+  # Fixed after install. Kubernetes rejects edits to a StatefulSet's
+  # volumeClaimTemplates, and a cluster-connected upgrade refuses a change of
+  # enabled, size, or storageClass. The chart README says how to replace it.
   persistence:
     enabled: true
     size: 10Gi

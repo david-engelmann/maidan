@@ -837,8 +837,19 @@ release, and restore; keep the old volumes until you have checked the restore. P
 change the database's password: run `ALTER ROLE` on the live role before changing
 `postgresql.auth.password` and upgrading. Changing a store password does not restart the server:
 run `kubectl rollout restart deployment/<release>-maidan` after the upgrade so it reads the new
-`DATABASE_URL` (MinIO restarts by itself when its root user or password changes, because its pod
-template carries a hash of a rollout nonce, not of the password).
+`DATABASE_URL`. A cluster-connected `helm upgrade` restarts MinIO when its root user or password
+changes, because the pod template carries a hash of a rollout nonce from the Secret, not of the
+password, and that nonce changes only when the live credentials do. `helm template` cannot see
+the Secret, so it renders one stable nonce: applying those manifests again does not roll MinIO,
+and a credential change there does not either. Restart it with
+`kubectl rollout restart statefulset/<release>-minio`.
+
+`minio.persistence.enabled`, `size` and `storageClass` cannot change on an existing StatefulSet.
+Kubernetes rejects an update to `volumeClaimTemplates`, and a cluster-connected upgrade refuses
+the change before sending it. Copy the buckets out (`mc mirror`), delete the StatefulSet with
+`--cascade=orphan`, delete PVC `data-<release>-minio-0` when the new pod needs a new volume, and
+upgrade again. The chart README has the steps. Growing a volume, when the storage class allows
+it, is a change to that PVC; leave `size` as it is. This is not the Bitnami replacement above.
 
 The stack's Postgres has no replicas, backups or PITR; for those, run your own (or a managed)
 Postgres, turn `postgresql.enabled` off and set `DATABASE_URL` as for the server chart. The

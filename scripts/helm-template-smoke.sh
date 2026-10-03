@@ -140,8 +140,8 @@ if [[ -f "${stack}/Chart.lock" ]]; then
   has "${rendered}" '"pg_isready", "-h", "127.0.0.1"' "the Postgres probes must use pg_isready over TCP"
   # The MinIO annotation is sha256 of Secret key rollout-nonce. It must not be
   # a hash of the root user or password: a StatefulSet reader could test guesses
-  # against that. helm template has no live Secret, so two renders mint two
-  # nonces; the annotation still has to match its own nonce.
+  # against that. helm template has no live Secret, so every offline render
+  # uses the fixed nonce "stable", including when the password changes.
   RENDERED="${rendered}" python3 -c '
 import hashlib, os, sys
 rendered = os.environ["RENDERED"]
@@ -173,10 +173,26 @@ if password in sts[0]:
   other="$(helm template "${stores[@]}")"
   nonce_a="$(sed -n "s/^  rollout-nonce: \"\\([A-Za-z0-9]*\\)\"$/\\1/p" <<<"${rendered}")"
   nonce_b="$(sed -n "s/^  rollout-nonce: \"\\([A-Za-z0-9]*\\)\"$/\\1/p" <<<"${other}")"
-  if [[ -z "${nonce_a}" || -z "${nonce_b}" || "${nonce_a}" == "${nonce_b}" ]]; then
-    echo "rollout-nonce must not be a pure function of the MinIO password" >&2
+  if [[ "${nonce_a}" != "stable" || "${nonce_b}" != "stable" ]]; then
+    echo "helm template rollout-nonce must be the stable offline value, not a password hash" >&2
     exit 1
   fi
+  changed="$(helm template "${stores[@]}" --set minio.auth.rootPassword=not-the-default)"
+  nonce_c="$(sed -n "s/^  rollout-nonce: \"\\([A-Za-z0-9]*\\)\"$/\\1/p" <<<"${changed}")"
+  if [[ "${nonce_c}" != "stable" ]]; then
+    echo "offline rollout-nonce must not change with the MinIO password" >&2
+    exit 1
+  fi
+  pw_hash="$(printf '%s' 'not-the-default' | sha256sum | awk '{print $1}')"
+  if grep -q "${pw_hash}" <<<"${changed}"; then
+    echo "render publishes a hash of the MinIO root password" >&2
+    exit 1
+  fi
+  # Persistence preflight needs a live StatefulSet. Offline renders still have
+  # to succeed when enabled, size, or storageClass differ from the defaults.
+  helm template "${stores[@]}" --set minio.persistence.enabled=false >/dev/null
+  helm template "${stores[@]}" --set minio.persistence.size=20Gi \
+    --set minio.persistence.storageClass=smoke >/dev/null
   # Credentials are escaped into the URL rather than breaking it.
   has "$(helm template "${stores[@]}" --set 'postgresql.auth.password=p@ss w/rd:+%')" \
     'postgres://maidan:p%40ss%20w%2Frd%3A%2B%25@maidan-stack-postgresql:5432/maidan' \

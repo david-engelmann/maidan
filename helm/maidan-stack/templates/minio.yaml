@@ -2,12 +2,15 @@
 {{- $minio := .Values.minio }}
 {{- $name := include "maidan-stack.minio.fullname" . }}
 {{- $labels := dict "ctx" . "name" "minio" "component" "object-store" }}
-{{- /* Rollout nonce, not a password hash. The pod annotation is sha256 of this
-       value. While the live Secret's root user and password still match,
-       reuse its nonce so an unrelated upgrade does not restart MinIO. lookup
-       is empty for `helm template` and for a Secret that is not there yet,
-       which mints a new nonce (a credential change still changes it). */}}
-{{- $nonce := randAlphaNum 32 }}
+{{- /* Rollout nonce, not a password hash. The pod annotation is sha256 of
+       this value. A cluster-connected upgrade reuses the live Secret's nonce
+       while its root user and password still match, and mints a new one when
+       they do not, which rolls MinIO. lookup is empty for `helm template` and
+       before the Secret exists: those renders use the fixed nonce "stable",
+       so applying the same manifests again does not roll MinIO. An offline
+       credential change does not change it either; restart the StatefulSet,
+       or upgrade with Helm connected to the cluster. */}}
+{{- $nonce := "stable" }}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
 {{- if $existing }}
 {{- $data := $existing.data }}
@@ -15,10 +18,70 @@
 {{- $oldUser := index $data "root-user" }}
 {{- $oldPass := index $data "root-password" }}
 {{- $oldNonce := index $data "rollout-nonce" }}
-{{- if and $oldUser $oldPass $oldNonce }}
+{{- if and $oldUser $oldPass }}
 {{- if and (eq ($oldUser | b64dec) (toString $minio.auth.rootUser)) (eq ($oldPass | b64dec) (toString $minio.auth.rootPassword)) }}
+{{- if $oldNonce }}
 {{- $nonce = $oldNonce | b64dec }}
 {{- end }}
+{{- else }}
+{{- $nonce = randAlphaNum 32 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /* volumeClaimTemplates are immutable. When the StatefulSet is already in
+       the cluster, refuse a change of enabled, size, or storageClass instead
+       of sending an update Kubernetes will reject. helm template has no live
+       object, so it cannot refuse. */}}
+{{- $live := lookup "apps/v1" "StatefulSet" .Release.Namespace $name }}
+{{- if $live }}
+{{- if eq ($live.kind | toString) "StatefulSet" }}
+{{- $claims := $live.spec.volumeClaimTemplates }}
+{{- $persist := dict "on" false "size" "" "class" "" "other" false }}
+{{- if $claims }}
+{{- range $claims }}
+{{- if .metadata }}
+{{- if eq (.metadata.name | toString) "data" }}
+{{- $_ := set $persist "on" true }}
+{{- if .spec }}
+{{- if .spec.resources }}
+{{- if .spec.resources.requests }}
+{{- $stored := index .spec.resources.requests "storage" }}
+{{- if $stored }}
+{{- $_ := set $persist "size" ($stored | toString) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if .spec.storageClassName }}
+{{- $_ := set $persist "class" (.spec.storageClassName | toString) }}
+{{- end }}
+{{- end }}
+{{- else }}
+{{- $_ := set $persist "other" true }}
+{{- end }}
+{{- else }}
+{{- $_ := set $persist "other" true }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $gate := dict "bad" false }}
+{{- if ne ($persist.on | toString) ($minio.persistence.enabled | toString) }}
+{{- $_ := set $gate "bad" true }}
+{{- end }}
+{{- if and $persist.on $minio.persistence.enabled }}
+{{- if or (ne ($persist.size | toString) ($minio.persistence.size | toString)) (ne ($persist.class | toString) ($minio.persistence.storageClass | toString)) }}
+{{- $_ := set $gate "bad" true }}
+{{- end }}
+{{- end }}
+{{- if and $persist.other (not $persist.on) }}
+{{- $_ := set $gate "bad" true }}
+{{- end }}
+{{- if index $gate "bad" }}
+{{- $extra := "" }}
+{{- if and $persist.other (not $persist.on) }}
+{{- $extra = " The live StatefulSet has a volume claim not named data, so this chart will not adopt it." }}
+{{- end }}
+{{- fail (printf "minio.persistence cannot change on StatefulSet %s: Kubernetes rejects updates that add, remove, or edit volumeClaimTemplates (enabled, size, or storageClass). Live persistence=%s size=%q class=%q; this upgrade asks for enabled=%s size=%q class=%q.%s Copy the buckets out with mc mirror, delete the StatefulSet with --cascade=orphan, and delete PVC data-%s-0 when the new pod needs a new volume (persistence on or off, or another storage class). Upgrade again and copy the buckets back. Growing a volume, when the storage class allows expansion, is a change to that PVC: leave size unchanged. Steps: helm/maidan-stack/README.md. Replacing the old Bitnami MinIO chart is separate: docs/Production.md." $name ($persist.on | toString) ($persist.size | toString) ($persist.class | toString) ($minio.persistence.enabled | toString) ($minio.persistence.size | toString) ($minio.persistence.storageClass | toString) $extra $name) }}
 {{- end }}
 {{- end }}
 {{- end }}

@@ -1555,6 +1555,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Postgres tag, and `check-deploy-contract.sh` fails when the Chainguard MinIO
   digests in the stack, compose and `k8s/` differ.
 
+### Offline MinIO renders keep one rollout nonce, and persistence changes are refused
+
+- **Changed:** `helm template` of the stack renders a fixed MinIO `rollout-nonce`
+  instead of a new one every time, so applying those manifests again does not
+  restart MinIO. A cluster-connected `helm upgrade` still restarts MinIO when
+  the root user or password changes, and does not when they stay the same.
+  `helm template` cannot see the live Secret, so an offline credential change
+  does not roll the pod; restart the StatefulSet, or upgrade with Helm
+  connected to the cluster. `docs/Production.md` says which.
+- **Added:** a cluster-connected upgrade refuses a change of
+  `minio.persistence.enabled`, `size` or `storageClass` on the existing MinIO
+  StatefulSet, because Kubernetes rejects updates to `volumeClaimTemplates`.
+  The error and `helm/maidan-stack/README.md` say how to copy the buckets,
+  replace the StatefulSet, and grow a volume without editing the claim
+  template.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
