@@ -1061,4 +1061,389 @@ mod tests {
         assert_eq!(rollup.cost_per_completed_task_usd_micros, Some(100));
         assert_eq!(rollup.scope, "workspace");
     }
+
+    fn attrs(value: serde_json::Value) -> Map<String, Value> {
+        value.as_object().unwrap().clone()
+    }
+
+    fn sha(c: char) -> String {
+        c.to_string().repeat(64)
+    }
+
+    #[test]
+    fn prompt_tokens_include_cache_reads_and_writes() {
+        let tokens = TokenUsage {
+            input: 1,
+            output: 100,
+            cache_read: 2,
+            cache_write_5m: 3,
+            cache_write_1h: 4,
+        };
+        assert_eq!(tokens.prompt(), Ok(10));
+        assert_eq!(tokens.fresh(), Ok(108));
+    }
+
+    #[test]
+    fn token_sums_report_overflow_and_negative_counts() {
+        let big = TokenUsage {
+            input: i64::MAX,
+            output: 1,
+            ..TokenUsage::default()
+        };
+        assert!(big.fresh().unwrap_err().contains("overflow"));
+        let big_prompt = TokenUsage {
+            input: i64::MAX,
+            cache_read: 1,
+            ..TokenUsage::default()
+        };
+        assert!(big_prompt.prompt().unwrap_err().contains("overflow"));
+        let negative = TokenUsage {
+            cache_read: -1,
+            ..TokenUsage::default()
+        };
+        assert!(negative.checked().is_err());
+        assert!(negative.prompt().is_err());
+    }
+
+    #[test]
+    fn uncached_charge_prices_every_prompt_token_at_the_input_rate() {
+        let price = PriceSnapshot {
+            input_usd_micros_per_million: 1_000_000,
+            output_usd_micros_per_million: 2_000_000,
+            cache_read_usd_micros_per_million: 100_000,
+            cache_write_5m_usd_micros_per_million: 1_250_000,
+            cache_write_1h_usd_micros_per_million: 2_000_000,
+        };
+        let tokens = TokenUsage {
+            input: 10,
+            output: 5,
+            cache_read: 20,
+            cache_write_5m: 3,
+            cache_write_1h: 2,
+        };
+        assert_eq!(price.uncached_charge_usd_micros(tokens), Ok(45));
+        assert!(price.charge_usd_micros(tokens).unwrap() < 45);
+    }
+
+    #[test]
+    fn price_snapshot_rejects_negative_rates_and_overflow() {
+        let negative = PriceSnapshot {
+            output_usd_micros_per_million: -1,
+            ..PriceSnapshot::default()
+        };
+        assert!(negative
+            .charge_usd_micros(TokenUsage::default())
+            .unwrap_err()
+            .contains("non-negative"));
+        let steep = PriceSnapshot {
+            input_usd_micros_per_million: i64::MAX,
+            ..PriceSnapshot::default()
+        };
+        let huge = TokenUsage {
+            input: i64::MAX,
+            ..TokenUsage::default()
+        };
+        assert!(steep
+            .charge_usd_micros(huge)
+            .unwrap_err()
+            .contains("overflow"));
+    }
+
+    #[test]
+    fn evidence_validation_rejects_long_blank_and_malformed_fields() {
+        assert!(UsageEvidence::default().validate().is_ok());
+        let long = UsageEvidence {
+            provider: Some("x".repeat(65)),
+            ..UsageEvidence::default()
+        };
+        assert!(long.validate().is_err());
+        let blank = UsageEvidence {
+            cache_key: Some("   ".into()),
+            ..UsageEvidence::default()
+        };
+        assert!(blank.validate().is_err());
+        let too_many = UsageEvidence {
+            pack_sha256: vec![sha('a'); 33],
+            ..UsageEvidence::default()
+        };
+        assert!(too_many.validate().unwrap_err().contains("at most 32"));
+        let bad_hex = UsageEvidence {
+            pack_sha256: vec!["zz".repeat(32)],
+            ..UsageEvidence::default()
+        };
+        assert!(bad_hex.validate().unwrap_err().contains("64 hex"));
+        let short = UsageEvidence {
+            pack_sha256: vec!["ab".into()],
+            ..UsageEvidence::default()
+        };
+        assert!(short.validate().is_err());
+    }
+
+    #[test]
+    fn evidence_overlay_lets_explicit_fields_win_and_keeps_the_rest() {
+        let mut inferred = UsageEvidence {
+            provider: Some("openai".into()),
+            harness: Some("inferred".into()),
+            pack_sha256: vec![sha('a')],
+            ..UsageEvidence::default()
+        };
+        let explicit = UsageEvidence {
+            provider: Some("azure".into()),
+            service_tier: Some("flex".into()),
+            batch: true,
+            harness_version: Some("2".into()),
+            cache_key: Some("key".into()),
+            cache_miss_reason: Some("ttl".into()),
+            pack_sha256: vec![sha('b')],
+            ..UsageEvidence::default()
+        };
+        inferred.overlay(&explicit);
+        assert_eq!(inferred.provider.as_deref(), Some("azure"));
+        assert_eq!(inferred.harness.as_deref(), Some("inferred"));
+        assert_eq!(inferred.service_tier.as_deref(), Some("flex"));
+        assert!(inferred.batch);
+        assert_eq!(inferred.harness_version.as_deref(), Some("2"));
+        assert_eq!(inferred.cache_key.as_deref(), Some("key"));
+        assert_eq!(inferred.cache_miss_reason.as_deref(), Some("ttl"));
+        assert_eq!(inferred.pack_sha256, vec![sha('b')]);
+
+        let mut kept = inferred.clone();
+        kept.overlay(&UsageEvidence::default());
+        assert_eq!(kept, inferred);
+    }
+
+    #[test]
+    fn evidence_serde_omits_empty_fields_and_round_trips() {
+        let empty = serde_json::to_value(UsageEvidence::default()).unwrap();
+        assert_eq!(empty, serde_json::json!({}));
+        let full = UsageEvidence {
+            provider: Some("anthropic".into()),
+            batch: true,
+            pack_sha256: vec![sha('c')],
+            ..UsageEvidence::default()
+        };
+        let back: UsageEvidence =
+            serde_json::from_value(serde_json::to_value(&full).unwrap()).unwrap();
+        assert_eq!(back, full);
+        assert!(serde_json::from_value::<UsageEvidence>(serde_json::json!({"bogus": 1})).is_err());
+    }
+
+    #[test]
+    fn rollup_scope_names_follow_which_id_is_set() {
+        let workspace_id = WorkspaceId::new();
+        let thread = UsageRollupQuery {
+            workspace_id,
+            thread_id: Some(ThreadId::new()),
+            member_id: None,
+        };
+        assert_eq!(thread.scope_name(), Ok("thread"));
+        let member = UsageRollupQuery {
+            workspace_id,
+            thread_id: None,
+            member_id: Some(MemberId::new()),
+        };
+        assert_eq!(member.scope_name(), Ok("member"));
+        let both = UsageRollupQuery {
+            thread_id: Some(ThreadId::new()),
+            ..member
+        };
+        assert!(both.scope_name().is_err());
+    }
+
+    #[test]
+    fn rollup_without_prompt_or_completed_tasks_has_no_rates() {
+        let query = UsageRollupQuery {
+            workspace_id: WorkspaceId::new(),
+            thread_id: None,
+            member_id: None,
+        };
+        let rollup = UsageRollup::from_sums(query, UsageSums::default(), 0, 0).unwrap();
+        assert_eq!(rollup.hit_rate_ppm, None);
+        assert_eq!(rollup.write_share_ppm, None);
+        assert_eq!(rollup.cost_per_completed_task_usd_micros, None);
+        assert!(UsageRollup::from_sums(query, UsageSums::default(), -1, 0).is_err());
+        assert!(UsageRollup::from_sums(query, UsageSums::default(), 0, -1).is_err());
+        let overflow = UsageSums {
+            input_tokens: i64::MAX,
+            cache_read_tokens: 1,
+            ..UsageSums::default()
+        };
+        assert!(UsageRollup::from_sums(query, overflow, 0, 0).is_err());
+        let rate_overflow = UsageSums {
+            input_tokens: i64::MAX / 2,
+            cache_read_tokens: i64::MAX / 2,
+            ..UsageSums::default()
+        };
+        assert!(UsageRollup::from_sums(query, rate_overflow, 0, 0).is_ok());
+    }
+
+    #[test]
+    fn unknown_provider_input_is_reduced_only_when_it_covers_the_cache() {
+        let covers = attrs(serde_json::json!({
+            "gen_ai.response.model": "m",
+            "gen_ai.usage.input_tokens": 100,
+            "gen_ai.usage.cache_read.input_tokens": 30,
+            "gen_ai.usage.cache_creation.input_tokens": 20,
+        }));
+        let (tokens, _, _) = token_usage_from_genai(&covers).unwrap();
+        assert_eq!((tokens.input, tokens.cache_write_5m), (50, 20));
+        let smaller = attrs(serde_json::json!({
+            "gen_ai.response.model": "m",
+            "gen_ai.usage.input_tokens": 10,
+            "gen_ai.usage.cache_read.input_tokens": 30,
+        }));
+        let (tokens, _, _) = token_usage_from_genai(&smaller).unwrap();
+        assert_eq!(tokens.input, 10);
+    }
+
+    #[test]
+    fn inclusive_provider_input_smaller_than_its_cache_tiers_is_rejected() {
+        let bad = attrs(serde_json::json!({
+            "gen_ai.provider.name": "OpenAI",
+            "gen_ai.response.model": "m",
+            "gen_ai.usage.input_tokens": 5,
+            "gen_ai.usage.cache_read.input_tokens": 30,
+        }));
+        assert!(token_usage_from_genai(&bad).is_err());
+    }
+
+    #[test]
+    fn genai_attributes_require_a_model_and_well_typed_values() {
+        assert!(token_usage_from_genai(&Map::new())
+            .unwrap_err()
+            .contains("model"));
+        let blank = attrs(serde_json::json!({"model": "  "}));
+        assert!(token_usage_from_genai(&blank).is_err());
+        let long = attrs(serde_json::json!({"model": "m".repeat(256)}));
+        assert!(token_usage_from_genai(&long).unwrap_err().contains("255"));
+        let bad_type = attrs(serde_json::json!({"model": 7}));
+        assert!(token_usage_from_genai(&bad_type)
+            .unwrap_err()
+            .contains("must be a string"));
+        for (value, needle) in [
+            (serde_json::json!(-1), "non-negative"),
+            (serde_json::json!(1.5), "not an integer"),
+            (serde_json::json!("abc"), "not an integer"),
+            (serde_json::json!(true), "not an integer"),
+        ] {
+            let a = attrs(serde_json::json!({"model": "m", "output_tokens": value}));
+            assert!(token_usage_from_genai(&a).unwrap_err().contains(needle));
+        }
+        let text =
+            attrs(serde_json::json!({"model": "m", "output_tokens": " 12 ", "input_tokens": null}));
+        let (tokens, _, _) = token_usage_from_genai(&text).unwrap();
+        assert_eq!((tokens.output, tokens.input), (12, 0));
+    }
+
+    #[test]
+    fn genai_evidence_reads_batch_tier_harness_cache_and_packs() {
+        let a = attrs(serde_json::json!({
+            "gen_ai.provider.name": "anthropic",
+            "gen_ai.response.model": "m",
+            "gen_ai.request.batch": "Yes",
+            "gen_ai.request.service_tier": " flex ",
+            "gen_ai.agent.name": "goose",
+            "gen_ai.agent.version": "1.2",
+            "session.id": "s1",
+            "cache_miss_reason": "ttl",
+            "maidan.pack.sha256": format!("{}, {}", sha('A'), sha('b')),
+        }));
+        let (_, evidence, model) = token_usage_from_genai(&a).unwrap();
+        assert_eq!(model, "m");
+        assert!(evidence.batch);
+        assert_eq!(evidence.service_tier.as_deref(), Some("flex"));
+        assert_eq!(evidence.harness.as_deref(), Some("goose"));
+        assert_eq!(evidence.harness_version.as_deref(), Some("1.2"));
+        assert_eq!(evidence.cache_key.as_deref(), Some("s1"));
+        assert_eq!(evidence.cache_miss_reason.as_deref(), Some("ttl"));
+        assert_eq!(evidence.pack_sha256, vec![sha('a'), sha('b')]);
+
+        let by_op = attrs(serde_json::json!({"model": "m", "gen_ai.operation.name": "BATCH"}));
+        assert!(token_usage_from_genai(&by_op).unwrap().1.batch);
+        let flag = attrs(serde_json::json!({"model": "m", "batch": true}));
+        assert!(token_usage_from_genai(&flag).unwrap().1.batch);
+        let none = attrs(serde_json::json!({"model": "m", "batch": "no"}));
+        assert!(!token_usage_from_genai(&none).unwrap().1.batch);
+    }
+
+    #[test]
+    fn pack_sha_attribute_accepts_arrays_and_rejects_other_shapes() {
+        let array = attrs(serde_json::json!({"model": "m", "maidan.pack.sha256": [sha('d')]}));
+        assert_eq!(
+            token_usage_from_genai(&array).unwrap().1.pack_sha256,
+            vec![sha('d')]
+        );
+        let null = attrs(serde_json::json!({"model": "m", "maidan.pack.sha256": null}));
+        assert!(token_usage_from_genai(&null)
+            .unwrap()
+            .1
+            .pack_sha256
+            .is_empty());
+        let non_string = attrs(serde_json::json!({"model": "m", "maidan.pack.sha256": [1]}));
+        assert!(token_usage_from_genai(&non_string).is_err());
+        let number = attrs(serde_json::json!({"model": "m", "maidan.pack.sha256": 1}));
+        assert!(token_usage_from_genai(&number).is_err());
+        let malformed = attrs(serde_json::json!({"model": "m", "maidan.pack.sha256": "abc"}));
+        assert!(token_usage_from_genai(&malformed).is_err());
+    }
+
+    #[test]
+    fn genai_report_computes_the_charge_and_lets_explicit_evidence_win() {
+        let report = GenAiUsageReport {
+            usage_report_id: uuid::Uuid::new_v4(),
+            claim_lease_id: ClaimLeaseId::new(),
+            attributes: attrs(serde_json::json!({
+                "gen_ai.provider.name": "anthropic",
+                "gen_ai.response.model": "m",
+                "gen_ai.usage.input_tokens": 1_000_000,
+            })),
+            price_snapshot: PriceSnapshot {
+                input_usd_micros_per_million: 3,
+                ..PriceSnapshot::default()
+            },
+            turns: 2,
+            evidence: UsageEvidence {
+                provider: Some("override".into()),
+                pack_sha256: vec![sha('E')],
+                ..UsageEvidence::default()
+            },
+        };
+        let entry = report.into_new(ThreadId::new(), MemberId::new()).unwrap();
+        assert_eq!(entry.usd_micros, 3);
+        assert_eq!(entry.turns, 2);
+        assert_eq!(entry.model, "m");
+        assert_eq!(entry.evidence.provider.as_deref(), Some("override"));
+        assert_eq!(entry.evidence.pack_sha256, vec![sha('e')]);
+        assert!(entry.validate().is_ok());
+    }
+
+    #[test]
+    fn accounted_request_becomes_an_entry_that_validates_its_charge() {
+        let price = PriceSnapshot {
+            input_usd_micros_per_million: 1_000_000,
+            ..PriceSnapshot::default()
+        };
+        let request = AccountedUsageRequest {
+            usage_report_id: uuid::Uuid::new_v4(),
+            claim_lease_id: ClaimLeaseId::new(),
+            model: "m".into(),
+            tokens: TokenUsage {
+                input: 5,
+                ..TokenUsage::default()
+            },
+            usd_micros: 5,
+            price_snapshot: price,
+            turns: 1,
+            evidence: UsageEvidence::default(),
+        };
+        let mut entry = request.into_new(ThreadId::new(), MemberId::new());
+        assert!(entry.validate().is_ok());
+        entry.usd_micros = 6;
+        assert!(entry.validate().unwrap_err().contains("usd_micros"));
+        entry.usd_micros = -1;
+        assert!(entry.validate().is_err());
+        entry.usd_micros = 5;
+        entry.evidence.cache_key = Some("x".repeat(257));
+        assert!(entry.validate().is_err());
+    }
 }
