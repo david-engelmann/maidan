@@ -213,7 +213,8 @@ import { authorId, loadMembers, memberName } from "./people.js";
           .map((s) => s.trim())
           .filter(Boolean);
         if (!ids.includes(me)) ids.push(me);
-        if (ids.length < 2) return showError("A group DM needs at least 2 members");
+        // The store refuses fewer than three members. Say so here, before the request.
+        if (ids.length < 3) return showError("A group DM needs at least 3 members");
         const title = document.getElementById("gdm-title").value.trim() || null;
         try {
           const res = await api(apiWritePath(`/workspaces/${wid()}/group-dms`), {
@@ -222,11 +223,17 @@ import { authorId, loadMembers, memberName } from "./people.js";
             credentials: "include",
             body: JSON.stringify({ member_ids: ids, title }),
           });
-          if (!res.ok) return setStatus(`HTTP ${res.status}`, "err");
+          if (!res.ok) {
+            showError(await responseError(res, "Could not open that group DM"));
+            return;
+          }
+          const opened = await res.json();
           setStatus("Group DM opened", "ok");
+          await loadMembers();
           await loadGroupDms();
+          selectGroupDm(opened);
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
       }
 

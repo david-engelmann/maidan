@@ -534,6 +534,7 @@ async fn main() {
         "quiet_channel_id": quiet.id.0.to_string(),
         "lab_channel_id": lab.id.0.to_string(),
         "lab_thread_id": lab_thread.id.0.to_string(),
+        "lab_member_id": mallory.id.0.to_string(),
         "admin_token": admin_secret.as_str(),
         "delivery_id": delivery_id,
         "delivery_url": "https://hooks.example.test/maidan",

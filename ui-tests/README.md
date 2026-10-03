@@ -58,6 +58,7 @@ Specs that drive a real page, and what is still missing.
 | Delivery replay | `deliveries.spec.ts` | One seeded dead-letter webhook |
 | Token mint and revoke | `tokens.spec.ts` | `attenuation.spec.ts` only checks the widening warning |
 | DMs | `dms.spec.ts` | Open and post |
+| Group DMs | `group-dms.spec.ts` | Open with three members, select, and post |
 | Connect an agent | `connect.spec.ts` | |
 | Token rotation | `rotate.spec.ts` | |
 

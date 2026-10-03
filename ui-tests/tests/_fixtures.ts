@@ -42,6 +42,8 @@ export interface Fixtures {
   /** The `lab` channel: markup and script URLs in every field, for the injection audit. */
   lab_channel_id: string;
   lab_thread_id: string;
+  /** The lab member. A third person, so a group DM can be opened. */
+  lab_member_id: string;
   /** Admin grant (token:admin and the worker preset). Connect an agent uses it. */
   admin_token: string;
   /** A dead-lettered webhook delivery the Operator tab can replay. */

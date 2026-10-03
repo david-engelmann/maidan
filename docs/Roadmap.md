@@ -96,6 +96,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    not run in CI. Next: the rest of the QA pass, the ten changes of the [UI design
    contract](UI%20Design.md), and screenshots captured by a script.
    In flight (lane ROT): a rotated token is installed only into the connection that requested it.
+   In flight (lane GDM): opening a group DM asks for three members and selects that conversation, and a browser spec posts in it.
 5. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
