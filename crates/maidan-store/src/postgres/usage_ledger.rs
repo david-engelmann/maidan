@@ -79,6 +79,8 @@ async fn scope_filter(
     pool: &PgPool,
     query: UsageRollupQuery,
 ) -> Result<(&'static str, Option<uuid::Uuid>, Option<uuid::Uuid>), StoreError> {
+    // A null bind means that column is not a filter. SQLite spells null-safe
+    // inequality `IS NOT`; Postgres spells it `IS DISTINCT FROM`.
     match (query.thread_id, query.member_id) {
         (Some(thread_id), None) => {
             let row = sqlx::query(
@@ -96,7 +98,7 @@ async fn scope_filter(
                 return Err(StoreError::NotFound);
             }
             Ok((
-                "workspace_id = $1 AND thread_id = $2 AND reporter_id IS NOT $3",
+                "workspace_id = $1 AND thread_id = $2 AND reporter_id IS DISTINCT FROM $3",
                 Some(thread_id.0),
                 None,
             ))
@@ -111,13 +113,13 @@ async fn scope_filter(
                 return Err(StoreError::NotFound);
             }
             Ok((
-                "workspace_id = $1 AND thread_id IS NOT $2 AND reporter_id = $3",
+                "workspace_id = $1 AND thread_id IS DISTINCT FROM $2 AND reporter_id = $3",
                 None,
                 Some(member_id.0),
             ))
         }
         (None, None) => Ok((
-            "workspace_id = $1 AND thread_id IS NOT $2 AND reporter_id IS NOT $3",
+            "workspace_id = $1 AND thread_id IS DISTINCT FROM $2 AND reporter_id IS DISTINCT FROM $3",
             None,
             None,
         )),
