@@ -62,4 +62,4 @@ Specs that drive a real page, and what is still missing.
 | Connect an agent | `connect.spec.ts` | |
 | Token rotation | `rotate.spec.ts` | |
 
-The board modules live in `crates/maidan-server/static/ui`. Check the JSDoc with `npx tsc --noEmit --checkJs -p crates/maidan-server/static/ui`. That check is not in CI yet. Unit tests for the auth-routing helpers (`apiReadPath`, `apiWritePath`, `requireBearer`) and the error parser (`humanError`) are `node --test crates/maidan-server/static/ui/helpers.test.mjs`. That run is local; it is not in CI.
+The board modules live in `crates/maidan-server/static/ui`. `crates/maidan-server/tests/ui_js_checks.rs` runs `node --test crates/maidan-server/static/ui/helpers.test.mjs` and `tsc --noEmit --checkJs` on `crates/maidan-server/static/ui` and on `crates/maidan-server/static/ui/tsconfig.sw.json`. The integration job runs that test, so both checks run in CI. The service worker is a separate project because the board project types `self` as a window.

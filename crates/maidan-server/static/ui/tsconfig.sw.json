@@ -5,11 +5,10 @@
     "noEmit": true,
     "module": "ES2022",
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "WebWorker"],
     "moduleResolution": "bundler",
     "strict": false,
     "skipLibCheck": true
   },
-  "include": ["./*.js", "./ui-types.d.ts"],
-  "exclude": ["./sw.js"]
+  "include": ["./sw.js"]
 }
