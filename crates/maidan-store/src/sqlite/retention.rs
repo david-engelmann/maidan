@@ -342,3 +342,43 @@ pub async fn prune_workspace_messages(
     tx.commit().await?;
     Ok(deleted)
 }
+
+/// SQLite twin of the Postgres `prune_messages`. `julianday` matches
+/// [`prune_workspace_messages`], so a candidate workspace is one that page
+/// can actually erase.
+pub async fn prune_messages(
+    pool: &SqlitePool,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64, StoreError> {
+    if limit <= 0 {
+        return Ok(0);
+    }
+    let workspaces: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT DISTINCT c.workspace_id
+         FROM maidan_messages m
+         INNER JOIN maidan_threads t ON m.thread_id = t.id
+         INNER JOIN maidan_channels c ON t.channel_id = c.id
+         WHERE julianday(m.posted_at) < julianday(?)
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = c.workspace_id
+           )
+         ORDER BY c.workspace_id
+         LIMIT ?",
+    )
+    .bind(cutoff)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    let mut total = 0u64;
+    let mut left = limit;
+    for id in workspaces {
+        if left <= 0 {
+            break;
+        }
+        let n = prune_workspace_messages(pool, WorkspaceId(id), cutoff, left).await?;
+        total += n;
+        left = left.saturating_sub(i64::try_from(n).unwrap_or(i64::MAX));
+    }
+    Ok(total)
+}

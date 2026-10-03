@@ -29,8 +29,10 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
-/// The instance keeps events 30 days; a workspace may keep them less.
+/// The instance keeps events 30 days and messages 14 days; a workspace may
+/// keep either for less time, not more.
 const INSTANCE_EVENTS_DAYS: &str = "30";
+const INSTANCE_MESSAGES_DAYS: &str = "14";
 
 async fn sqlite_store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
     let pool = SqlitePoolOptions::new()
@@ -49,6 +51,7 @@ async fn sqlite_store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
 async fn spawn() -> (String, reqwest::Client, Arc<dyn Store>) {
     unsafe {
         std::env::set_var("MAIDAN_RETENTION_EVENTS_DAYS", INSTANCE_EVENTS_DAYS);
+        std::env::set_var("MAIDAN_RETENTION_MESSAGES_DAYS", INSTANCE_MESSAGES_DAYS);
         std::env::remove_var("MAIDAN_RETENTION_DELIVERIES_DAYS");
     }
     let (store, pool) = sqlite_store().await;
@@ -170,7 +173,9 @@ async fn a_workspace_sets_its_own_retention_within_the_instances_over_rest_and_m
         json!({"messages_days": null, "events_days": null, "deliveries_days": null})
     );
     assert_eq!(read["instance"]["events_days"], 30);
+    assert_eq!(read["instance"]["messages_days"], 14);
     assert_eq!(read["effective"]["events_days"], 30);
+    assert_eq!(read["effective"]["messages_days"], 14);
 
     let as_reader = client
         .put(url(a.ws))
@@ -194,6 +199,20 @@ async fn a_workspace_sets_its_own_retention_within_the_instances_over_rest_and_m
         .unwrap();
     assert_eq!(too_long.status(), StatusCode::BAD_REQUEST);
     assert!(too_long.text().await.unwrap().contains("events_days"));
+
+    let messages_too_long = client
+        .put(url(a.ws))
+        .bearer_auth(&a.admin)
+        .json(&json!({ "messages_days": 15 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(messages_too_long.status(), StatusCode::BAD_REQUEST);
+    assert!(messages_too_long
+        .text()
+        .await
+        .unwrap()
+        .contains("messages_days"));
 
     let unknown = client
         .put(url(a.ws))
@@ -447,6 +466,7 @@ where
 
     // The instance keeps everything; only A's policy prunes.
     let cfg = retention::RetentionConfig {
+        messages_days: None,
         events_days: None,
         audit_days: None,
         deliveries_days: None,
@@ -543,6 +563,115 @@ async fn the_sweeper_prunes_only_the_workspace_whose_policy_says_so_postgres() {
         ] {
             sqlx::query(sql).execute(&pool).await.unwrap();
         }
+    })
+    .await;
+}
+
+/// The instance message ceiling prunes a workspace that set no policy. A
+/// message posted after the cutoff stays, and a held workspace keeps its old
+/// message.
+async fn run_instance_message_ceiling<F, Fut>(store: Arc<dyn Store>, backdate: F)
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let open = room(store.as_ref(), "ceiling-open").await;
+    let held = room(store.as_ref(), "ceiling-held").await;
+    let (open_old, _) = old_rows(store.as_ref(), &open).await;
+    let (held_old, _) = old_rows(store.as_ref(), &held).await;
+    backdate().await;
+    let fresh = store
+        .post_message(NewMessage {
+            thread_id: open.thread,
+            author_id: open.member.id,
+            body: "fresh words".into(),
+            metadata: json!({}),
+            content: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    store
+        .place_legal_hold(held.workspace, "matter", None)
+        .await
+        .unwrap();
+
+    let cfg = retention::RetentionConfig {
+        messages_days: Some(1),
+        events_days: None,
+        audit_days: None,
+        deliveries_days: None,
+        notifications_days: None,
+        sweep: Duration::from_secs(86_400),
+        batch: 100,
+    };
+    retention::sweep_once(&store, &cfg).await;
+
+    assert!(
+        store.get_message(open_old).await.is_err(),
+        "the instance ceiling erased the old message"
+    );
+    assert_eq!(
+        store.get_message(fresh).await.unwrap().body,
+        "fresh words",
+        "a message inside the ceiling stays"
+    );
+    assert_eq!(
+        store.get_message(held_old).await.unwrap().body,
+        "old words",
+        "a held workspace keeps the old message"
+    );
+}
+
+#[tokio::test]
+async fn the_instance_message_ceiling_prunes_without_a_workspace_policy_sqlite() {
+    let (store, pool) = sqlite_store().await;
+    run_instance_message_ceiling(store, || async {
+        sqlx::query(
+            "UPDATE maidan_messages SET posted_at = strftime('%Y-%m-%dT%H:%M:%fZ', posted_at, '-10 days')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn the_instance_message_ceiling_prunes_without_a_workspace_policy_postgres() {
+    use maidan_store::{run_postgres_migrations, PostgresStore};
+    use sqlx::postgres::PgPoolOptions;
+    use testcontainers::{runners::AsyncRunner, ImageExt};
+    use testcontainers_modules::postgres::Postgres;
+
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(c) => c,
+        Err(err) => {
+            maidan_store::test_support::docker::skip_start_failure(err).await;
+            return;
+        }
+    };
+    let host = container.get_host().await.expect("host");
+    let port = container.get_host_port_ipv4(5432).await.expect("port");
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .expect("connect");
+    run_postgres_migrations(&pool).await.expect("migrate");
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
+    run_instance_message_ceiling(store, || async {
+        sqlx::query("UPDATE maidan_messages SET posted_at = posted_at - INTERVAL '10 days'")
+            .execute(&pool)
+            .await
+            .unwrap();
     })
     .await;
 }

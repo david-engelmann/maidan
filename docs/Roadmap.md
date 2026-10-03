@@ -62,7 +62,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    a per-host budget (#1122), every audit row belongs to a workspace (#1134),
    both backends have a tested backup path (#1126), and fairness and retention
    are per workspace by default (#1153). In flight: a legal hold that keeps a
-   workspace's deliveries, and read notifications that age out (#1165). Next:
+   workspace's deliveries, and read notifications that age out (#1165). In flight (lane MSG): `MAIDAN_RETENTION_MESSAGES_DAYS` is an instance ceiling, and the sweep erases messages past it in every workspace that is not held. Next:
    partitioning the append-only tables.
    A schema change while two versions share one database expands, then contracts in a later release ([Migrations](Migrations.md)).
 3. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus

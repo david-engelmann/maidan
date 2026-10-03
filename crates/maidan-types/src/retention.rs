@@ -15,8 +15,9 @@ use crate::WorkspaceId;
 /// The longest retention a workspace may set, in days (ten years).
 pub const MAX_RETENTION_DAYS: i64 = 3650;
 
-/// Days each kind of row is kept. `None` keeps it as long as the instance
-/// does (for messages, which the instance never prunes: forever).
+/// Days each kind of row is kept. `None` means that side did not set a
+/// cutoff. A message ceiling comes from `MAIDAN_RETENTION_MESSAGES_DAYS`;
+/// when that is unset, messages stay until a workspace policy prunes them.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
@@ -132,6 +133,20 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("events_days") && err.contains("30"), "{err}");
         assert!(days(None, None, Some(15)).check_within(&instance).is_err());
+    }
+
+    #[test]
+    fn a_message_ceiling_refuses_a_longer_workspace_policy() {
+        let instance = days(Some(30), None, None);
+        assert!(days(Some(30), None, None).check_within(&instance).is_ok());
+        let err = days(Some(31), None, None)
+            .check_within(&instance)
+            .unwrap_err();
+        assert!(err.contains("messages_days") && err.contains("30"), "{err}");
+        // No instance message ceiling: 3650 is still inside the day range.
+        assert!(days(Some(3650), None, None)
+            .check_within(&RetentionDays::default())
+            .is_ok());
     }
 
     #[test]
