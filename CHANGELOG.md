@@ -1584,6 +1584,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `POST /mcp/worker` and `POST /mcp/reviewer` each serve a fixed `tools/list` (the waiter loop, 14 tools, and review, 12 tools), sorted by name and the same bytes for every caller, with `cacheScope: "public"` and a one-hour TTL. The full catalog on `POST /mcp` and `POST /mcp/streamable` stays filtered to the token and `private`. A byte golden pins each profile.
 - **Changed:** on a profile endpoint, `tools/call` refuses a tool the profile does not name, and refuses a listed tool the token cannot call. `POST /mcp` still filters `tools/list` and still refuses the call. Decisions records why a profile lists tools the token cannot use. The server `instructions` keep the claim loop on the first line, at most 250 characters, and the whole text is at most 2,048.
 
+### Usage ledger that prices caching
+
+- **Added:** `input` is uncached input. Cache writes are a 5-minute tier and a 1-hour tier, each with its own snapshotted rate. A usage row stores the provider, response model id, service tier, batch flag, harness and version, cache key, cache-miss reason, and the sha256 of each pack.
+- **Added:** `GET /threads/{id}/usage-rollup`, `GET /workspaces/{id}/usage-rollup`, `GET /members/{id}/usage-rollup`, and MCP `usage_rollup` report spend, hit rate, write share, dollars saved against the uncached price, and cost per completed task. `POST /threads/{id}/usage/otel` accepts GenAI usage attributes; the caller still supplies the price snapshot.
+- **Added:** Prometheus counters for accepted tokens by tier and model, the charge, the uncached charge, dollars saved, and write premium. The manager digest includes the workspace spend and cost per completed task.
+- **Changed:** `max_tokens` counts fresh tokens only (uncached input, output, and cache writes). Cache reads count toward `max_usd_micros` at their price. The budget shows each tier. Decisions, 2026-10-03.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

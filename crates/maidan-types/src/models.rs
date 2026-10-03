@@ -457,6 +457,20 @@ pub struct ThreadBudget {
     /// claim's working time.
     #[serde(default)]
     pub used_wall_secs: i64,
+    /// Uncached input charged on this thread. `used_tokens` is the fresh sum,
+    /// not this column.
+    #[serde(default)]
+    pub used_input_tokens: i64,
+    #[serde(default)]
+    pub used_output_tokens: i64,
+    /// Cache reads. Counted in `used_usd_micros` at their price, not in
+    /// `used_tokens` / `max_tokens`.
+    #[serde(default)]
+    pub used_cache_read_tokens: i64,
+    #[serde(default)]
+    pub used_cache_write_5m_tokens: i64,
+    #[serde(default)]
+    pub used_cache_write_1h_tokens: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -1493,6 +1507,12 @@ pub struct ManagerDigest {
     pub member_id: MemberId,
     pub since: DateTime<Utc>,
     pub channels: Vec<ManagerDigestChannel>,
+    /// Lifetime workspace spend in micro-USD. Not limited to `since`.
+    #[serde(default)]
+    pub spend_usd_micros: i64,
+    /// Lifetime cost per completed task. Absent when the workspace has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_per_completed_task_usd_micros: Option<i64>,
 }
 
 /// System channel name for DM threads in a workspace.
@@ -3250,6 +3270,11 @@ mod budget_tests {
             used_usd_micros,
             used_turns,
             used_wall_secs: 0,
+            used_input_tokens: 0,
+            used_output_tokens: 0,
+            used_cache_read_tokens: 0,
+            used_cache_write_5m_tokens: 0,
+            used_cache_write_1h_tokens: 0,
             created_at: DateTime::from_timestamp(0, 0).unwrap(),
             updated_at: DateTime::from_timestamp(0, 0).unwrap(),
         }

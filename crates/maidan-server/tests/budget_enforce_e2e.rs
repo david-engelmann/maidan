@@ -122,14 +122,16 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
                 "input": tokens,
                 "output": 0,
                 "cache_read": 0,
-                "cache_write": 0
+                "cache_write_5m": 0,
+                "cache_write_1h": 0
             },
             "usd_micros": 0,
             "price_snapshot": {
                 "input_usd_micros_per_million": 0,
                 "output_usd_micros_per_million": 0,
                 "cache_read_usd_micros_per_million": 0,
-                "cache_write_usd_micros_per_million": 0
+                "cache_write_5m_usd_micros_per_million": 0,
+                "cache_write_1h_usd_micros_per_million": 0
             },
             "turns": 1
         })

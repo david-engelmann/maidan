@@ -39,6 +39,7 @@ mod social;
 mod task_schedule;
 mod thread;
 mod token;
+mod usage;
 mod workspace;
 
 pub use approval_gate::*;
@@ -65,6 +66,7 @@ pub use social::*;
 pub use task_schedule::*;
 pub use thread::*;
 pub use token::*;
+pub use usage::*;
 pub use workspace::*;
 
 pub(crate) type ApiResult<T> = Result<T, ApiError>;
