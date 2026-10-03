@@ -807,6 +807,7 @@ pub async fn claimable_by(
             dm_channel: "$3",
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
+            lapsed_worked_secs: "0",
         },
     );
     Ok(sqlx::query(&sql)

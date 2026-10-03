@@ -1493,6 +1493,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** `maidan` refuses a `MAIDAN_*` name that is not on the server's list, before it parses arguments, and names the nearest known variable. `MAIDAN_ALLOW_UNKNOWN_ENV=1` starts anyway and logs the names. The list lives in `maidan-env`, which the server and the CLI both use.
 
+### Workspace queue depth and occupancy
+
+- **Added:** `GET /workspaces/:wid/queue-depth` and `GET /workspaces/:wid/occupancy`
+  (MCP `get_workspace_queue_depth`, `get_workspace_occupancy`), the channel counts
+  summed over the workspace, so a pool serving `claim_next_workspace_thread` can
+  be sized without polling every channel. Both need `workspace:read`; another
+  workspace's id is refused.
+- **Fixed:** the channel depth and occupancy counted every thread in the
+  channel, so the `__dm__` channel, which passes the channel check for every
+  member, reported everyone's DMs. All four counts now apply `claim_next`'s read
+  rule (a private channel's threads for its members, a DM's for its
+  participants), as one query shared by both backends and both scopes.
+- **Fixed:** `wait_for_ready` woke for any thread readable by the caller, then
+  the claim came back empty. It now wakes only for a thread the caller could take
+  now (not gated, blocked, parked, held, frozen, over the WIP limit or missing a
+  skill), with or without `channel_id`. The MCP tool count is 237.
 
 ## [412.0.0] — 2026-09-28
 

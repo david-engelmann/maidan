@@ -886,6 +886,13 @@ skips an event in a thread you cannot read.
 | `wait_for_blocked_resolved` | `BlockedResolved`: an explicit dispatch block was cleared; carries the `reason` that cleared and `resolved_by` | `thread_id` and/or `channel_id` |
 | `wait_for_landed` | `ThreadLanded`: a linked GitHub PR merged | `thread_id` and/or `channel_id` |
 
+`wait_for_ready` wakes only for a thread you could take now, whether or not you
+name a channel: one `claim_next_workspace_thread` would hand you, or one already
+yours. A ready thread in a private channel or DM you cannot read, behind a
+pending approval gate, a block or an unclaimable park, held by someone else,
+needing a skill you lack, or ready while you are frozen or at your WIP limit, is
+skipped, not revealed.
+
 Omit the scope to wait on the whole workspace. A `channel_id` or `thread_id`
 you cannot read is refused at once rather than waited out. Clearing a thread
 that was not blocked emits nothing, so `wait_for_blocked_resolved` on it waits
@@ -1026,6 +1033,19 @@ hand you only threads you could read: a private channel's go to its members, and
 a DM or group DM thread to its participants. DM threads are claimable because a
 task asked in a DM is still a task, and its participants can already read it;
 nobody else is handed one, not even through the `__dm__` channel's own claim.
+
+To size that pool, `GET /workspaces/:wid/queue-depth` (MCP
+`get_workspace_queue_depth {workspace_id}`) returns `{open, ready, assigned,
+blocked, unclaimable}` summed over every channel of your workspace, and
+`GET /workspaces/:wid/occupancy` (MCP `get_workspace_occupancy`) returns
+`{open, queued, claimed, working, blocked}`; both need `workspace:read`. They
+count only threads you may read, by the rule the claim applies: a private
+channel's threads count for its members and a DM's for its participants, so the
+workspace figures are the sums of the per-channel ones for the same caller, and
+`ready` is what `claim_next_workspace_thread` could take. The channel routes
+(`GET /channels/:cid/queue-depth`, `…/occupancy`) apply the same rule, so on the
+`__dm__` channel they count your own DMs only. `workspace_id` is your own; another
+workspace's is refused (403 / Forbidden).
 
 An orchestrator parks a thread with `PUT /threads/:id/block` `{ "reason": "gate" }`
 (MCP `set_thread_block`). `GET` / `list` (`GET /channels/:cid/blocked`, MCP
