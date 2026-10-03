@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A failed token check drops the previous member
+
+- **Fixed:** Pasting a token drops the member id learned from the previous token when `/me` throws. The page no longer keeps calling routes as that member. An empty token field and a rejected `/me` use the same drop.
+
 ### A vote kind is a closed set
 
 - **Changed:** `cast_vote.kind` is `approve`, `request_changes`, or `ack`. REST `POST /messages/{id}/votes` and MCP `cast_vote` reject every other kind, including `up`, `upvote`, `request-changes`, and a custom emoji. REST returns 400. MCP returns `InvalidParams`. An emoji stays a reaction. There is no alias and no older open string.
