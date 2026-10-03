@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A rotated token stays on the connection that asked for it
+
+- **Fixed:** `rotateToken` records the token, the API base, the workspace, and the token id when the request starts. The new secret is exchanged only if those four are still the same when the response arrives. The secret is still shown once, so it is not lost. A network failure is a sentence, not an unhandled rejection. Changing the token field clears the cached token id.
+
 ### maidan-env has a line-coverage floor
 
 - **Changed:** `maidan-env` line coverage is floored at 98.0. The coverage job measured 136 of 137 lines (99.27%) and failed because the crate had no floor. The floor is one point under that measurement, rounded down to the half point, the same margin as the other crates.

@@ -1062,6 +1062,15 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
 
       let currentTokenId = null;
 
+      // A change to the token field means this id is no longer the one the
+      // page is signed in with. Clear it so a later rotate does not use it.
+      const tokenField = document.getElementById("token");
+      if (tokenField) {
+        tokenField.addEventListener("change", () => {
+          currentTokenId = null;
+        });
+      }
+
 
       async function loadAttenuationCeiling() {
         const span = document.getElementById("attenuation-ceiling");
@@ -1194,17 +1203,38 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
 
       // Rotating the token this page runs on ends the session made from it, so
       // the successor is exchanged before the live socket reconnects.
+      // The connection can change while this request is in flight. Activate
+      // the returned secret only when the token, the API base, the workspace,
+      // and the token id are still the ones this request started with. The
+      // secret is still shown once, so it is not lost, but it does not replace
+      // a different connection.
       async function rotateToken(id) {
-        const res = await api(`${base()}/tokens/${encodeURIComponent(id)}/rotate`, {
-          method: "POST",
-          headers: headers(),
-        });
+        const requestToken = token();
+        const requestBase = base();
+        const requestWorkspace = wid();
+        const requestTokenId = currentTokenId;
+        let res;
+        try {
+          res = await api(`${requestBase}/tokens/${encodeURIComponent(id)}/rotate`, {
+            method: "POST",
+            headers: headers(),
+          });
+        } catch (e) {
+          showError(unreachable(e));
+          return;
+        }
         if (!res.ok) {
           showError(await responseError(res, "Could not rotate that token"));
           return;
         }
         const rotated = await res.json();
-        if (id === currentTokenId) {
+        const sameConnection =
+          id === requestTokenId &&
+          id === currentTokenId &&
+          token() === requestToken &&
+          base() === requestBase &&
+          wid() === requestWorkspace;
+        if (sameConnection) {
           currentTokenId = rotated.id;
           const exchanged = await exchangeToken(rotated.secret);
           if (!exchanged.ok) {

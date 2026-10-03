@@ -95,6 +95,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    landed (#1205). A group-DM spec is still absent, and `helpers.test.mjs` does
    not run in CI. Next: the rest of the QA pass, the ten changes of the [UI design
    contract](UI%20Design.md), and screenshots captured by a script.
+   In flight (lane ROT): a rotated token is installed only into the connection that requested it.
 5. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
