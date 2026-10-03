@@ -1510,6 +1510,67 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   decision on the benchmark budget, and records that a token budget counts
   fresh tokens while cache reads count only in dollars.
 
+### The stack runs its own Postgres and MinIO
+
+- **Fixed:** `helm/maidan-stack` with `postgresql.enabled` or `minio.enabled`
+  could not start Maidan. It vendored the Bitnami `postgresql` 15.5.38 and
+  `minio` 14.8.5 charts, whose default images are gone from Docker Hub, and the
+  Bitnami Postgres has no pgvector, which migration 0003 needs. Both charts are
+  removed; the stack templates a single-replica StatefulSet for each:
+  Postgres on `maidan-postgres` (`docker/Dockerfile.db`, pgvector; dev values
+  use the local `maidan-postgres:dev`, `values-prod.yaml` pins
+  `ghcr.io/david-engelmann/maidan-postgres` to the release), and MinIO on the
+  digest-pinned `cgr.dev/chainguard/minio` that compose and `k8s/` run. A hook
+  Job creates `minio.defaultBuckets` with `cgr.dev/chainguard/minio-client`
+  through `MC_HOST_local`. The Services keep their names
+  (`<release>-postgresql`, `<release>-minio`), and so do the values
+  (`postgresql.auth.*`, `postgresql.primary.persistence`, `minio.auth.*`,
+  `minio.defaultBuckets`, `minio.persistence`).
+- **Changed:** the stack points the server at its stores itself. It renders
+  `<release>-datastores` (`DATABASE_URL`, and `ARTIFACT_BACKEND=s3` with the
+  `S3_*` settings), which the server reads through the maidan chart's new
+  `extraEnvFrom` after its own ConfigMap and Secret. The stack's prod values
+  no longer ask for `maidan.secrets.DATABASE_URL` or the S3 keys, and run the
+  server without a volume, since its artifacts are in MinIO.
+- **Added:** stack refusals. `CHANGE_ME` in the store values fails every
+  render. While `minio.enabled` is true, a MinIO user or password MinIO would
+  refuse or `MC_HOST_local` cannot carry (a colon) and an empty bucket list
+  fail too. A production render refuses an empty or development password for
+  either store (`maidan`, `minioadmin`) and a Postgres or MinIO image without
+  a release tag or digest. With `extraEnvFrom` set the maidan chart leaves
+  the `DATABASE_URL` checks to the stack, which makes them in a production
+  render only when `postgresql.enabled` is false and `maidan.existingSecret`
+  is unset; an `existingSecret` skips the check, and the chart does not
+  verify that the Secret exists or holds its keys.
+- **Changed:** the MinIO pod template carries a hash of a rollout nonce from
+  its Secret, not a hash of the root password, so changing the credentials
+  restarts MinIO and a StatefulSet reader cannot test password guesses against
+  the annotation. Moving an existing release off the Bitnami
+  subcharts is a replacement, not an upgrade (different selector labels and
+  volume claim names); `docs/Production.md` says how.
+- **Changed:** the `helm install (kind)` job also installs the stack with both
+  stores on (`helm/maidan-stack/values-ci.yaml`, the job's `maidan-server:dev`
+  and a `maidan-postgres:dev` built from `docker/Dockerfile.db`) and waits for
+  `/health/ready` to answer 200. `check-deploy-pins.sh` checks the stack's
+  Postgres tag, and `check-deploy-contract.sh` fails when the Chainguard MinIO
+  digests in the stack, compose and `k8s/` differ.
+
+### Offline MinIO renders keep one rollout nonce, and persistence changes are refused
+
+- **Changed:** `helm template` of the stack renders a fixed MinIO `rollout-nonce`
+  instead of a new one every time, so applying those manifests again does not
+  restart MinIO. A cluster-connected `helm upgrade` still restarts MinIO when
+  the root user or password changes, and does not when they stay the same.
+  `helm template` cannot see the live Secret, so an offline credential change
+  does not roll the pod; restart the StatefulSet, or upgrade with Helm
+  connected to the cluster. `docs/Production.md` says which.
+- **Added:** a cluster-connected upgrade refuses a change of
+  `minio.persistence.enabled`, `size` or `storageClass` on the existing MinIO
+  StatefulSet, because Kubernetes rejects updates to `volumeClaimTemplates`.
+  The error and `helm/maidan-stack/README.md` say how to copy the buckets,
+  replace the StatefulSet, and grow a volume without editing the claim
+  template.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

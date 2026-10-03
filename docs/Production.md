@@ -760,7 +760,8 @@ remains for shell/CI. A job runs in-process on the replica that started it; its 
 
 ## Helm (production)
 
-Charts under `helm/maidan` (server) and `helm/maidan-stack` (optional Postgres + MinIO).
+Charts under `helm/maidan` (server) and `helm/maidan-stack` (the server plus an optional
+Postgres and MinIO of its own).
 
 | Values file | Use |
 |-------------|-----|
@@ -807,13 +808,53 @@ and verify its signature first (README, "Prebuilt image").
 
 Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix), or name an
 `existingSecret` that already holds it. Rendering does not check that Secret
-or its keys. For the umbrella chart, `S3_ENDPOINT` names the release's MinIO Service
-itself; `DATABASE_URL` (`postgres://maidan:<password>@<release>-postgresql:5432/maidan`) and
-`S3_SECRET_ACCESS_KEY` are yours to set. Without `maidan.existingSecret` the
-render refuses until those values are nonempty (see `helm/maidan/README.md`,
-"Umbrella stack"). With `maidan.existingSecret`, create that Secret with
-`DATABASE_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and
-`MAIDAN_CONTENT_KEK` before installation; the render does not verify them.
+or its keys.
+
+**The umbrella stack's own stores.** `maidan-stack` can run Postgres and MinIO as
+single-replica StatefulSets of its own (`postgresql.enabled`, `minio.enabled`;
+`values-prod.yaml` enables both):
+
+- Postgres runs `ghcr.io/david-engelmann/maidan-postgres` (`docker/Dockerfile.db`, built on
+  `pgvector/pgvector`, so migration 0003's `CREATE EXTENSION vector` works), pinned to the
+  same release as the server; the Service is `<release>-postgresql`.
+- MinIO runs `cgr.dev/chainguard/minio` by digest, the build compose and `k8s/` use; the
+  Service is `<release>-minio`. A post-install and post-upgrade Job creates
+  `minio.defaultBuckets` with `cgr.dev/chainguard/minio-client`.
+- The server reaches them through a Secret the stack renders, `<release>-datastores`:
+  `DATABASE_URL`, and `ARTIFACT_BACKEND=s3` with the `S3_*` settings, overriding
+  `maidan.secrets` and `maidan.config`. With `maidan.existingSecret`, the Secret you create
+  needs only `MAIDAN_CONTENT_KEK`.
+- A production render refuses an empty or development password for either store
+  (`postgresql.auth.password`, `minio.auth.rootPassword`) and a Postgres or MinIO image
+  without a release tag or digest.
+
+Moving an existing release from the earlier Bitnami subcharts to these StatefulSets is a
+replacement, not an in-place upgrade. The StatefulSet selector labels differ (Kubernetes rejects
+changing them), and MinIO's volume claim is `data-<release>-minio-0`, not Bitnami's
+`<release>-minio`. Dump the database and copy the buckets (`mc mirror`) out, install the new
+release, and restore; keep the old volumes until you have checked the restore. Postgres reads
+`POSTGRES_PASSWORD` only when it first creates the data directory, so changing it later does not
+change the database's password: run `ALTER ROLE` on the live role before changing
+`postgresql.auth.password` and upgrading. Changing a store password does not restart the server:
+run `kubectl rollout restart deployment/<release>-maidan` after the upgrade so it reads the new
+`DATABASE_URL`. A cluster-connected `helm upgrade` restarts MinIO when its root user or password
+changes, because the pod template carries a hash of a rollout nonce from the Secret, not of the
+password, and that nonce changes only when the live credentials do. `helm template` cannot see
+the Secret, so it renders one stable nonce: applying those manifests again does not roll MinIO,
+and a credential change there does not either. Restart it with
+`kubectl rollout restart statefulset/<release>-minio`.
+
+`minio.persistence.enabled`, `size` and `storageClass` cannot change on an existing StatefulSet.
+Kubernetes rejects an update to `volumeClaimTemplates`, and a cluster-connected upgrade refuses
+the change before sending it. Copy the buckets out (`mc mirror`), delete the StatefulSet with
+`--cascade=orphan`, delete PVC `data-<release>-minio-0` when the new pod needs a new volume, and
+upgrade again. The chart README has the steps. Growing a volume, when the storage class allows
+it, is a change to that PVC; leave `size` as it is. This is not the Bitnami replacement above.
+
+The stack's Postgres has no replicas, backups or PITR; for those, run your own (or a managed)
+Postgres, turn `postgresql.enabled` off and set `DATABASE_URL` as for the server chart. The
+install command and the full list are in `helm/maidan-stack/README.md`. The `helm install
+(kind)` CI job installs the stack with both stores and waits for `/health/ready`.
 
 ## Horizontal scaling (`v105.0.0`)
 

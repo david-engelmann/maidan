@@ -102,33 +102,154 @@ helm template "${prod[@]}" -f "${chart}/values-profile-s3.yaml" \
   --set secrets.DATABASE_URL="${db}" --set secrets.S3_ACCESS_KEY_ID=smoke \
   --set secrets.S3_SECRET_ACCESS_KEY=smoke --set contentKek="${kek}" >/dev/null
 if [[ -f "${stack}/Chart.lock" ]]; then
+  # has <rendered> <fixed text, lines included> <why>: the render contains it.
+  has() {
+    [[ "$1" == *"$2"* ]] || {
+      echo "$3 (expected: $2)" >&2
+      exit 1
+    }
+  }
   if helm template maidan-stack "${stack}" >/dev/null 2>&1; then
     echo "the stack rendered without maidan.contentKek; it must refuse" >&2
     exit 1
   fi
-  helm template maidan-stack "${stack}" --set maidan.contentKek="${kek}" >/dev/null
-  helm template maidan-stack "${stack}" \
-    --set postgresql.enabled=true \
-    --set minio.enabled=true --set maidan.contentKek="${kek}" >/dev/null
+  rendered="$(helm template maidan-stack "${stack}" --set maidan.contentKek="${kek}")"
+  if grep -qE '^kind: (StatefulSet|Job)$' <<<"${rendered}"; then
+    echo "the stack rendered a store with postgresql and minio off" >&2
+    exit 1
+  fi
+  # The server reads the stack's connection Secret after its own, so its keys
+  # win; optional, so a stack running neither store still starts.
+  has "${rendered}" "$(printf '%s\n' \
+    "                name: maidan-stack-maidan-secrets" \
+    "            - secretRef:" \
+    "                name: 'maidan-stack-datastores'" \
+    "                optional: true")" "the server must read maidan-stack-datastores after its own Secret"
+  stores=(maidan-stack "${stack}" --set postgresql.enabled=true --set minio.enabled=true
+    --set maidan.contentKek="${kek}")
+  rendered="$(helm template "${stores[@]}")"
+  has "${rendered}" 'DATABASE_URL: "postgres://maidan:maidan@maidan-stack-postgresql:5432/maidan"' \
+    "with postgresql on, the server's DATABASE_URL must name the bundled database"
+  has "${rendered}" 'ARTIFACT_BACKEND: "s3"' "with minio on, the server must store artifacts in S3"
+  has "${rendered}" 'S3_ENDPOINT: "http://maidan-stack-minio:9000"' \
+    "with minio on, S3_ENDPOINT must name the release's MinIO Service"
+  has "${rendered}" 'S3_BUCKET: "maidan-artifacts"' "S3_BUCKET must be the first of minio.defaultBuckets"
+  has "${rendered}" 'image: "maidan-postgres:dev"' "the dev Postgres is the locally built pgvector image"
+  has "${rendered}" 'image: "cgr.dev/chainguard/minio@sha256:' "MinIO must be Chainguard's, by digest"
+  has "${rendered}" '- "local/maidan-artifacts"' "the bucket Job must create minio.defaultBuckets"
+  has "${rendered}" '"pg_isready", "-h", "127.0.0.1"' "the Postgres probes must use pg_isready over TCP"
+  # The MinIO annotation is sha256 of Secret key rollout-nonce. It must not be
+  # a hash of the root user or password: a StatefulSet reader could test guesses
+  # against that. helm template has no live Secret, so every offline render
+  # uses the fixed nonce "stable", including when the password changes.
+  RENDERED="${rendered}" python3 -c '
+import hashlib, os, sys
+rendered = os.environ["RENDERED"]
+def one(prefix):
+    found = [line.split(": ", 1)[1].strip().strip(chr(34))
+             for line in rendered.splitlines()
+             if line.startswith(prefix)]
+    if len(found) != 1 or not found[0]:
+        sys.exit("expected one %r, found %r" % (prefix, found))
+    return found[0]
+nonce = one("  rollout-nonce: ")
+digest = one("        checksum/rollout-nonce: ")
+want = hashlib.sha256(nonce.encode()).hexdigest()
+if digest != want:
+    sys.exit("checksum/rollout-nonce is not sha256 of rollout-nonce")
+user, password = "minio", "minioadmin"
+for material in (password, user + ":" + password, user + password):
+    if hashlib.sha256(material.encode()).hexdigest() in rendered:
+        sys.exit("render publishes a hash of the MinIO root credentials")
+if "checksum/credentials" in rendered:
+    sys.exit("render still has checksum/credentials")
+docs = rendered.split("\n---\n")
+sts = [d for d in docs if "kind: StatefulSet" in d and "checksum/rollout-nonce" in d]
+if len(sts) != 1:
+    sys.exit("expected one MinIO StatefulSet, found %d" % len(sts))
+if password in sts[0]:
+    sys.exit("MinIO StatefulSet manifest contains the root password")
+'
+  other="$(helm template "${stores[@]}")"
+  nonce_a="$(sed -n "s/^  rollout-nonce: \"\\([A-Za-z0-9]*\\)\"$/\\1/p" <<<"${rendered}")"
+  nonce_b="$(sed -n "s/^  rollout-nonce: \"\\([A-Za-z0-9]*\\)\"$/\\1/p" <<<"${other}")"
+  if [[ "${nonce_a}" != "stable" || "${nonce_b}" != "stable" ]]; then
+    echo "helm template rollout-nonce must be the stable offline value, not a password hash" >&2
+    exit 1
+  fi
+  changed="$(helm template "${stores[@]}" --set minio.auth.rootPassword=not-the-default)"
+  nonce_c="$(sed -n "s/^  rollout-nonce: \"\\([A-Za-z0-9]*\\)\"$/\\1/p" <<<"${changed}")"
+  if [[ "${nonce_c}" != "stable" ]]; then
+    echo "offline rollout-nonce must not change with the MinIO password" >&2
+    exit 1
+  fi
+  pw_hash="$(printf '%s' 'not-the-default' | sha256sum | awk '{print $1}')"
+  if grep -q "${pw_hash}" <<<"${changed}"; then
+    echo "render publishes a hash of the MinIO root password" >&2
+    exit 1
+  fi
+  # Persistence preflight needs a live StatefulSet. Offline renders still have
+  # to succeed when enabled, size, or storageClass differ from the defaults.
+  helm template "${stores[@]}" --set minio.persistence.enabled=false >/dev/null
+  helm template "${stores[@]}" --set minio.persistence.size=20Gi \
+    --set minio.persistence.storageClass=smoke >/dev/null
+  # Credentials are escaped into the URL rather than breaking it.
+  has "$(helm template "${stores[@]}" --set 'postgresql.auth.password=p@ss w/rd:+%')" \
+    'postgres://maidan:p%40ss%20w%2Frd%3A%2B%25@maidan-stack-postgresql:5432/maidan' \
+    "DATABASE_URL must percent-encode the password"
+  helm template maidan-stack "${stack}" -f "${stack}/values-ci.yaml" --set maidan.contentKek="${kek}" >/dev/null
+  refuses "postgresql.auth.password still holds the placeholder CHANGE_ME" \
+    "${stores[@]}" --set postgresql.auth.password=CHANGE_ME
+  refuses "minio.auth.rootPassword is shorter than 8 characters" \
+    "${stores[@]}" --set minio.auth.rootPassword=short
+  refuses "which MC_HOST_local cannot carry" \
+    "${stores[@]}" --set minio.auth.rootPassword=has:colon
+  refuses "minio.defaultBuckets is empty" \
+    "${stores[@]}" --set 'minio.defaultBuckets=\ \,'
+  refuses "maidan.extraEnvFrom must keep the secretRef to maidan-stack-datastores" \
+    "${stores[@]}" --set-json 'maidan.extraEnvFrom=[]'
   if [[ -f "${stack}/values-prod.yaml" ]]; then
-    stack_prod=(maidan-stack "${stack}" -f "${stack}/values-prod.yaml")
-    rendered="$(helm template "${stack_prod[@]}" --set maidan.secrets.DATABASE_URL="${db}" \
-      --set maidan.secrets.S3_SECRET_ACCESS_KEY=smoke --set maidan.contentKek="${kek}")"
-    grep -q 'image: "ghcr.io/david-engelmann/maidan-server:v' <<<"${rendered}" || {
-      echo "the stack's prod values must render the release image" >&2
-      exit 1
-    }
-    grep -q 'S3_ENDPOINT: "http://maidan-stack-minio:9000"' <<<"${rendered}" || {
-      echo "the stack's prod S3_ENDPOINT must name the release's MinIO Service" >&2
-      exit 1
-    }
+    stack_prod=(maidan-stack "${stack}" -f "${stack}/values-prod.yaml"
+      --set postgresql.auth.password=smoke-pg-password
+      --set minio.auth.rootPassword=smoke-minio-password)
+    rendered="$(helm template "${stack_prod[@]}" --set maidan.contentKek="${kek}")"
+    has "${rendered}" 'image: "ghcr.io/david-engelmann/maidan-server:v' \
+      "the stack's prod values must render the release image"
+    has "${rendered}" 'image: "ghcr.io/david-engelmann/maidan-postgres:v' \
+      "the stack's prod values must render the release Postgres image"
+    has "${rendered}" 'DATABASE_URL: "postgres://maidan:smoke-pg-password@maidan-stack-postgresql:5432/maidan"' \
+      "the stack's prod DATABASE_URL must name the bundled database"
+    has "${rendered}" 'S3_ENDPOINT: "http://maidan-stack-minio:9000"' \
+      "the stack's prod S3_ENDPOINT must name the release's MinIO Service"
     helm template "${stack_prod[@]}" --set maidan.existingSecret=maidan-secrets >/dev/null
     refuses "set image.tag to a release" \
       "${stack_prod[@]}" --set maidan.image.tag= --set maidan.existingSecret=maidan-secrets
-    refuses "a production install needs its database" \
-      "${stack_prod[@]}" --set maidan.contentKek="${kek}"
-    refuses "secrets.S3_SECRET_ACCESS_KEY is empty" \
-      "${stack_prod[@]}" --set maidan.secrets.DATABASE_URL="${db}" --set maidan.contentKek="${kek}"
+    stack_prod_nopw=(maidan-stack "${stack}" -f "${stack}/values-prod.yaml" --set maidan.contentKek="${kek}")
+    refuses "postgresql.auth.password is empty" "${stack_prod_nopw[@]}"
+    refuses "minio.auth.rootPassword is shorter than 8 characters" \
+      "${stack_prod_nopw[@]}" --set postgresql.auth.password=smoke-pg-password
+    refuses "postgresql.auth.password is the chart's development default" \
+      "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set postgresql.auth.password=maidan
+    refuses "minio.auth.rootPassword is the chart's development default" \
+      "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set minio.auth.rootPassword=minioadmin
+    refuses "postgresql.image.tag \"\" is not a release" \
+      "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set postgresql.image.tag=
+    refuses "postgresql.image.repository is maidan-postgres, the local development image" \
+      "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set postgresql.image.repository=maidan-postgres
+    refuses "minio.image.tag \"\" is not a release" \
+      "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set minio.image.digest=
+    helm template "${stack_prod[@]}" --set maidan.contentKek="${kek}" \
+      --set postgresql.image.tag= --set postgresql.image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+      | grep -q 'image: "ghcr.io/david-engelmann/maidan-postgres@sha256:0000' || {
+      echo "a digest must stand in for the Postgres tag in a production render" >&2
+      exit 1
+    }
+    # Without the bundled database, the server's own DATABASE_URL is checked
+    # here: the maidan chart leaves it to whoever sets extraEnvFrom.
+    refuses "maidan.secrets.DATABASE_URL is the maidan chart's development default" \
+      "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set postgresql.enabled=false
+    helm template "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set postgresql.enabled=false \
+      --set maidan.secrets.DATABASE_URL="${db}" >/dev/null
   fi
 fi
 echo "helm template smoke OK"

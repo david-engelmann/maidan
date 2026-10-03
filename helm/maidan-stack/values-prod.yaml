@@ -1,9 +1,21 @@
 # Umbrella production bundle: Postgres + MinIO + Maidan with TLS ingress.
+# The server connects to both stores by itself (<release>-datastores), so
+# maidan.secrets needs no DATABASE_URL or S3 keys. The render refuses until the
+# two passwords are set (`--set postgresql.auth.password=…
+# --set minio.auth.rootPassword=…`, e.g. from `openssl rand -hex 24`), and
+# until maidan.contentKek or maidan.existingSecret is.
 postgresql:
   enabled: true
+  # The same release as maidan.image (scripts/check-deploy-pins.sh keeps them
+  # equal); release.yml publishes both. Prefer
+  # `--set postgresql.image.digest=sha256:…`.
+  image:
+    repository: ghcr.io/david-engelmann/maidan-postgres
+    tag: v412.0.0
+    pullPolicy: IfNotPresent
   auth:
     username: maidan
-    password: "" # set via --set or external secret
+    password: "" # set via --set or your secret manager
     database: maidan
   primary:
     persistence:
@@ -14,7 +26,7 @@ minio:
   enabled: true
   auth:
     rootUser: minio
-    rootPassword: "" # set via --set or external secret
+    rootPassword: "" # set via --set or your secret manager
   defaultBuckets: maidan-artifacts
   persistence:
     enabled: true
@@ -33,6 +45,10 @@ maidan:
     repository: ghcr.io/david-engelmann/maidan-server
     tag: v412.0.0
     pullPolicy: IfNotPresent
+  # Artifacts live in MinIO, and a ReadWriteOnce volume cannot follow replicas
+  # onto other nodes.
+  persistence:
+    enabled: false
   ingress:
     enabled: true
     className: nginx
@@ -52,21 +68,3 @@ maidan:
     enabled: true
     minReplicas: 2
     maxReplicas: 20
-  config:
-    MAIDAN_BIND: "0.0.0.0:8080"
-    ARTIFACT_BACKEND: s3
-    # The Bitnami MinIO Service is <release>-minio.
-    S3_ENDPOINT: "http://{{ .Release.Name }}-minio:9000"
-    S3_BUCKET: maidan-artifacts
-    S3_REGION: us-east-1
-  # Without `maidan.existingSecret` the render refuses until these are set.
-  # With it, create a Secret holding DATABASE_URL, S3_ACCESS_KEY_ID,
-  # S3_SECRET_ACCESS_KEY and MAIDAN_CONTENT_KEK before install (preferred: it
-  # keeps them out of the release history). The render does not check that
-  # Secret or its keys.
-  secrets:
-    # postgres://maidan:<postgresql.auth.password>@<release>-postgresql:5432/maidan
-    DATABASE_URL: ""
-    S3_ACCESS_KEY_ID: minio
-    # minio.auth.rootPassword
-    S3_SECRET_ACCESS_KEY: ""

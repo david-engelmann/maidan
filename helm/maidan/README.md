@@ -27,7 +27,11 @@ rather than deploy something that only works on a laptop:
   be empty. `existingSecret` names a Secret you create holding
   `DATABASE_URL`, `MAIDAN_CONTENT_KEK` and any other runtime secret, which keeps
   them out of values files and the release history. Setting them inline instead:
-  `--set secrets.DATABASE_URL=… --set contentKek=…`.
+  `--set secrets.DATABASE_URL=… --set contentKek=…`. With `extraEnvFrom` set
+  (more envFrom sources, read after the chart's own, so their keys win), the
+  render leaves the `DATABASE_URL` checks to whoever sets it: it cannot see
+  what those sources hold. maidan-stack uses it to connect the server to its
+  bundled stores.
 
 `config` values, and `image.tag` and `image.digest`, holding the placeholder
 `CHANGE_ME` fail every render, dev included. `secrets` and `contentKek` holding
@@ -68,11 +72,10 @@ helm install maidan ./helm/maidan-stack \
   -n maidan --create-namespace
 ```
 
-`maidan-secrets` holds `DATABASE_URL`
-(`postgres://maidan:$PG_PASSWORD@maidan-postgresql:5432/maidan` for a release
-named `maidan`), `S3_ACCESS_KEY_ID` (`minio`), `S3_SECRET_ACCESS_KEY`
-(`$MINIO_PASSWORD`) and `MAIDAN_CONTENT_KEK`. Without it, set
-`maidan.secrets.DATABASE_URL`, `maidan.secrets.S3_SECRET_ACCESS_KEY` and
-`maidan.contentKek`: the stack's prod values leave them empty, and the render
-refuses until they are set. `S3_ENDPOINT` names the release's MinIO Service by
-itself.
+The stack runs Postgres (pgvector) and MinIO itself and points the server at
+them: `DATABASE_URL` and the S3 settings come from the `<release>-datastores`
+Secret it renders, so `maidan-secrets` needs only `MAIDAN_CONTENT_KEK` (and any
+other runtime secret). Without `maidan.existingSecret`, pass
+`--set maidan.contentKek=…` instead. The render refuses an empty or development
+password for either store; generate them with `openssl rand -hex 24`. See the
+[stack README](../maidan-stack/README.md).

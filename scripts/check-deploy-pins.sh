@@ -8,7 +8,7 @@
 #
 # Pins checked, each against that version:
 #   helm/maidan/values-prod.yaml          image.tag
-#   helm/maidan-stack/values-prod.yaml    maidan.image.tag
+#   helm/maidan-stack/values-prod.yaml    maidan.image.tag and postgresql.image.tag
 #   docker/Dockerfile.quickstart          ARG MAIDAN_VERSION (its tarball SHA-256s
 #                                         move with it; they cannot be checked here)
 #   compose.quickstart.yaml               the MAIDAN_VERSION default
@@ -81,7 +81,8 @@ v='v[0-9]+\.[0-9]+\.[0-9]+'
 image="ghcr\.io/david-engelmann/maidan-(server|cli|postgres):${v}"
 
 pin helm/maidan/values-prod.yaml 1 "^  tag: ${v}$"
-pin helm/maidan-stack/values-prod.yaml 1 "^    tag: ${v}$"
+# maidan.image.tag (the server) and postgresql.image.tag (maidan-postgres).
+pin helm/maidan-stack/values-prod.yaml 2 "^    tag: ${v}$"
 pin docker/Dockerfile.quickstart 1 "^ARG MAIDAN_VERSION=${v}$"
 pin compose.quickstart.yaml 1 "MAIDAN_VERSION: \\$\\{MAIDAN_VERSION:-${v}\\}"
 pin k8s/overlays/prod/kustomization.yaml 2 "^    newTag: ${v}$"

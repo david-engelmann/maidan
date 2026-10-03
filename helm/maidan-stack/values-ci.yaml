@@ -1,0 +1,32 @@
+# Kind / CI smoke: the stack with its own Postgres and MinIO, on the locally
+# built maidan-server:dev and maidan-postgres:dev, auth off for a health-only
+# gate. The content KEK is passed at install time
+# (scripts/helm-install-kind-smoke.sh), which waits for /health/ready: the
+# migrations ran on pgvector and the artifact bucket answers.
+postgresql:
+  enabled: true
+  image:
+    repository: maidan-postgres
+    tag: dev
+    pullPolicy: Never
+  primary:
+    persistence:
+      enabled: true
+      size: 1Gi
+
+minio:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 1Gi
+
+maidan:
+  image:
+    repository: maidan-server
+    tag: dev
+    pullPolicy: Never
+  persistence:
+    enabled: false
+  config:
+    AUTH_DISABLED: "1"
+    MAIDAN_ALLOW_INSECURE_NO_AUTH: "1"

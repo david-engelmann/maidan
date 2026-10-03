@@ -1,0 +1,2 @@
+{{- /* Renders nothing; runs the stack's refusals even when both stores are off. */}}
+{{- include "maidan-stack.validate" . }}
