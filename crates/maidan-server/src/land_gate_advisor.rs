@@ -445,6 +445,31 @@ pub async fn from_env() -> Result<Option<Arc<dyn LandGateAdvisor>>, LandGateAdvi
     )))
 }
 
+/// MCP-facing wrapper around the same advisor REST calls. Advice is JSON in
+/// and JSON out so the MCP crate does not depend on the HTTP request type.
+pub struct McpLandGateBridge(pub Arc<dyn LandGateAdvisor>);
+
+#[async_trait::async_trait]
+impl maidan_mcp::LandGateAdvising for McpLandGateBridge {
+    async fn advise(
+        &self,
+        request: serde_json::Value,
+    ) -> Result<serde_json::Value, maidan_mcp::LandGateAdviseError> {
+        let parsed = serde_json::from_value::<LandGateAdviceRequest>(request)
+            .map_err(|error| maidan_mcp::LandGateAdviseError::Invalid(error.to_string()))?;
+        match self.0.advise(parsed).await {
+            Ok(advice) => serde_json::to_value(advice)
+                .map_err(|error| maidan_mcp::LandGateAdviseError::Unavailable(error.to_string())),
+            Err(LandGateAdvisorError::InvalidRequest(error)) => {
+                Err(maidan_mcp::LandGateAdviseError::Invalid(error))
+            }
+            Err(error) => Err(maidan_mcp::LandGateAdviseError::Unavailable(
+                error.to_string(),
+            )),
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)] // mock servers, not the API
 mod tests {
@@ -593,30 +618,5 @@ mod tests {
             recommended_land(LandColor::Red, 0.99, thresholds),
             LandColor::Red
         );
-    }
-}
-
-/// MCP-facing wrapper around the same advisor REST calls. Advice is JSON in
-/// and JSON out so the MCP crate does not depend on the HTTP request type.
-pub struct McpLandGateBridge(pub Arc<dyn LandGateAdvisor>);
-
-#[async_trait::async_trait]
-impl maidan_mcp::LandGateAdvising for McpLandGateBridge {
-    async fn advise(
-        &self,
-        request: serde_json::Value,
-    ) -> Result<serde_json::Value, maidan_mcp::LandGateAdviseError> {
-        let parsed = serde_json::from_value::<LandGateAdviceRequest>(request)
-            .map_err(|error| maidan_mcp::LandGateAdviseError::Invalid(error.to_string()))?;
-        match self.0.advise(parsed).await {
-            Ok(advice) => serde_json::to_value(advice)
-                .map_err(|error| maidan_mcp::LandGateAdviseError::Unavailable(error.to_string())),
-            Err(LandGateAdvisorError::InvalidRequest(error)) => {
-                Err(maidan_mcp::LandGateAdviseError::Invalid(error))
-            }
-            Err(error) => Err(maidan_mcp::LandGateAdviseError::Unavailable(
-                error.to_string(),
-            )),
-        }
     }
 }
