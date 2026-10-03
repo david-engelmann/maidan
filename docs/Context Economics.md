@@ -56,7 +56,7 @@ Nothing below has changed since the audit, except that the tool list grew.
   - The token-budget fold rewrote the pack on every new message.
 - **`as_of` was not exact.** It returned the live thread row.
 - **`tools/list` was large and unstable.**
-  - It carries 235 tools (200 at the audit; #1226 and #1227 added 35 in two days), about 105 KB or 26 to 30 thousand tokens, in every request of harnesses that do not defer tools.
+  - It carries 235 tools on 2026-10-03 (`contracts/mcp-tool-names.json`, which `docs_numbers_contract` holds `docs/Protocols.md` to; 200 at the audit, and #1226 and #1227 added 35 in two days), about 105 KB or 26 to 30 thousand tokens, in every request of harnesses that do not defer tools.
   - It was filtered by each token's capabilities, so agents with different capabilities could not share a prefix.
   - It changes in most releases: 76 commits touched the catalog in the 30 days before the audit.
 - **Maidan was out of step with MCP 2026-07-28.** It advertised that version but omitted `ttlMs` and `cacheScope`, which the schema requires on every cacheable result, and `server/discover`, which is a MUST.
@@ -80,10 +80,11 @@ never sits at token 0 of a hosted prompt. It can reach three layers (R3 §1):
 |---|---|---|
 | L0, the tools prefix | Tool definitions; Codex also puts the server `instructions` here | Shared by every turn; any change invalidates everything after it |
 | L1, the system prompt | `instructions`, only in Goose (in full) and pi (first line, up to 250 characters) | Stable per session |
-| L2, the conversation | Tool results (packs, search hits), resources; Claude Code's `instructions` (a meta message, up to 2,048 characters) | Cached for that agent's later turns once appended; compaction and trimming rewrite it |
+| L2, the conversation | Tool results (packs, search hits), resources; Claude Code's `instructions` (a meta message, up to 2,048 characters, read from the 2.1.267 binary's strings and unconfirmed in docs) | Cached for that agent's later turns once appended; compaction and trimming rewrite it |
 
-Harnesses differ most on tool loading. Claude Code and the Agent SDK, Codex,
-pi and Cursor defer MCP tools behind search by default. Goose without Code
+Harnesses differ most on tool loading. Claude Code and the Agent SDK, Codex
+and pi defer MCP tool definitions behind tool search by default, and Cursor
+keeps only names in context with descriptions in files. Goose without Code
 Mode, OpenHands, Cline, CrewAI, LangChain without middleware and the OpenAI
 Agents SDK with local MCP resend every tool on every request. Cross-agent
 sharing on hosted APIs is realistic only for a fleet Maidan can configure:
@@ -180,8 +181,11 @@ the full acceptance criteria.
   whose cache is warm for that prefix (`maidan_thread_workers.last_held_seq`
   already records who held a thread last). Keep-alive or 1-hour advice by the
   measured gap between an agent's calls: on Anthropic a 5-minute write breaks
-  even at two requests and a 1-hour write at three, and on Fable 5.1 a
-  `max_tokens: 0` keep-alive usually beats the 1-hour TTL. Claim leases
+  even at two requests and a 1-hour write at three. Anthropic's guidance says
+  a `max_tokens: 0` keep-alive is usually cheaper than the 1-hour TTL on Fable
+  5.1, whose reads cost 0.025x; that holds only if such a request refreshes an
+  existing entry's TTL, which the research could not confirm (R2 §6), so the
+  advice stays conditional until it is measured. Claim leases
   default to 600 s, longer than the 5-minute TTL.
 - **C7. A batch lane.** A thread whose deadline has slack can be marked for
   batch or flex. Agents that use those tiers claim it, and the ledger shows the
@@ -221,7 +225,8 @@ A pre-registered benchmark, protocol dated 2026-10-01:
 - **Workspace and teams:** a seeded workspace from a signed export (its sha256 published), with tasks above and below the providers' cache minimums, and teams of 1, 3 and 8.
 - **Arms:**
   - caching off;
-  - provider best practice without coordination (published even if its hit rate is about 95%);
+  - provider best practice without coordination, agents reading files themselves (published even if its hit rate is about 95%);
+  - the same without coordination but with Maidan's plain packs, so that coordination is measured on its own against the claims arm;
   - Maidan claims;
   - Maidan's cache-stable context;
   - the same bytes re-serialized;
@@ -256,10 +261,11 @@ under a fixed cap, whose variance sizes the full run.
 
 ## Where the market is, and what is open
 
-Every cost claim in the market is per request or per token; none is per
-completed task (R3 §3). Gateways see keys and sessions but not task
+The cost claims the research found are per request or per token; it found
+none that publishes a measured cost per completed task (R3 §3). Gateways see keys and sessions but not task
 completion; semantic caches warn against themselves on agentic traffic; memory
-layers' savings are measured against full context, which often scored higher;
+layers' savings are measured against full context, which in Mem0's own
+LOCOMO table often scored higher;
 one compressor cut tokens 38.4% and raised the bill 6.8%. Nobody has published
 a controlled measurement of coordinated against uncoordinated agents.
 

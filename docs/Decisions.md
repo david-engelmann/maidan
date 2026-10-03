@@ -1991,9 +1991,11 @@ breakdown, but do not count toward `max_tokens`.
 **Alternative.** Count all four tiers one-for-one, as `TokenUsage::total()`
 does today.
 
-**Why this:** a cache read costs a tenth of an input token or less, and an
-agent that re-reads cached context on every turn would otherwise exhaust its
-token budget ten or more times faster than its spend, which punishes exactly
+**Why this:** at Anthropic, OpenAI, Gemini, Bedrock and Mistral a cache read
+costs a tenth of an input token or less (0.05x on Opus 5.5, 0.025x on Fable
+5.1), and at xAI 0.15x to 0.25x, as of 2026-10-01 (R2). An agent that re-reads
+cached context on every turn would otherwise exhaust its token budget four to
+forty times faster than its spend, which punishes exactly
 the behaviour Program C asks for. The dollar budget already prices reads.
 
 **Status.** Part of Open Work Next 4 (the ledger that can price caching).

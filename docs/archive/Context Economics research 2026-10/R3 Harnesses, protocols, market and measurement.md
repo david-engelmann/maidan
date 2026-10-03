@@ -668,20 +668,23 @@ Protocol version 1.0, dated 2026-10-01. Each run is stamped with run dates and a
 |---|---|---|---|
 | A0 | Maidan claims | Plain pack | **Disabled** (Anthropic: no `cache_control`; OpenAI 5.6+: explicit mode with no breakpoints, "does not use prompt caching") |
 | A1 (honest baseline) | **None.** Agents pick from a shared list, so duplicates are possible | Each agent reads files itself | Provider best practice: automatic or implicit caching, stable system prompt, append-only history |
+| A1p | **None**, as A1 | Plain packs, re-fetched in full, as A2 | Provider best practice |
 | A2 | Maidan claims | Plain packs, re-fetched in full | Provider best practice |
 | A3 | Maidan claims | **Cache-stable**: fleet prefix, digests, deltas, stagger, TTL planner (§5) | Provider best practice |
 | A3-perturbed | As A3 | Same bytes, but re-serialized per agent or with a timestamp at the head | As A3 |
 | A4 (optional) | As A3 | As A3 | 1 h TTL with pre-warm (`max_tokens: 0`) |
 | A5 (optional) | As A3 | As A3 | Self-hosted vLLM automatic prefix caching behind round-robin vs llm-d `prefix-cache-scorer` vs SGLang `cache_aware` |
 
-How the comparisons isolate effects:
-- **A2 − A1** isolates coordination.
+How the comparisons isolate effects (corrected 2026-10-03 after review: A1 and A2 differ in how agents get context as well as in coordination, so arm A1p was added):
+- **A2 − A1p** isolates coordination: same context path, claims on or off.
+- **A1p − A1** isolates Maidan's plain packs against agents reading files themselves.
+- **A2 − A1** is the combined effect of the two, not coordination alone.
 - **A3 − A2** isolates cache-stable context.
 - **A3 − A3-perturbed** separates byte stability from information content.
 - **A0** bounds the total effect of caching.
 
 **Isolation.**
-- Each arm runs in its own Anthropic workspace (documented isolation; check the `anthropic-workspace-id` response header) and with its own OpenAI `prompt_cache_key`, which "separates cache reuse between groups of requests". On vLLM, each arm gets its own `cache_salt`.
+- Each arm runs in its own Anthropic workspace (documented isolation; check the `anthropic-workspace-id` response header) and in its own OpenAI organization (caches are documented as scoped per organization). A per-arm `prompt_cache_key` is set as well, but on GPT-5.6 and later the docs describe it as separating cache accounting; whether an identical prefix is reused across keys is **UNVERIFIED** (corrected 2026-10-03 after review), so the key alone is not counted as isolation. On vLLM, each arm gets its own `cache_salt`.
 - Within an arm, agents share a workspace, because cross-agent sharing is the effect being measured.
 - Blocks are task-set × model × repetition, with arms interleaved in randomized order inside the same time windows.
 - Log inter-call gaps.
