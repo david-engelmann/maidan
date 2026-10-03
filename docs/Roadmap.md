@@ -81,17 +81,20 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    attachments show their names and images (#1135), tokens rotate from the page
    (#1127), Connect an agent finishes with a worker token (#1144), a refused
    close shows on the board (#1147), and the first screen leads with the board
-   (#1151). Playwright was red on every recent UI PR for the same stale
-   assertions (the pill, pick a channel, the raw error), so the job was
-   ignored; it is still not a required check, and the specs now fail when
-   the board is wrong and pass when the lanes, the state word, the empty
-   sentence, and the human refusal are right. In flight (lane PW, #1205): specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs, with the coverage checklist. Unit tests for the auth-routing helpers and the error parser still wait. In flight (lane MOD): the board is ES modules in `static/ui`, served from the binary, checked with `tsc --noEmit --checkJs`. CSP is not started. In flight: the token leaving
-   the browser's storage (#1142), the signed-in line showing a display name
-   instead of a member id, and naming a workspace with `PATCH /workspaces/{id}`.
-   Keyboard focus reveals the pin toggle, and inputs, selects, and textareas are 16px so focusing one does not zoom the page.
-   Next:
-   the rest of the QA pass, the ten changes of the [UI design
-   contract](UI%20Design.md), write paths for a signed-in person, a CSP on those modules, and screenshots captured by a script.
+   (#1151). A pasted token becomes an HttpOnly session (#1142). The signed-in
+   line shows a display name, and a workspace can be named with
+   `PATCH /workspaces/{id}` (#1203). A signed-in person can edit, upload, paste,
+   and start a review or close a task (#1176). The board is ES modules in
+   `static/ui`, served from the binary (#1207). `tsc --noEmit --checkJs` can
+   check the JSDoc, and it does not run in CI. `/ui` sends a Content-Security-Policy
+   (#1213). Keyboard focus reveals the pin toggle (#1217). Inputs, selects, and
+   textareas at 16px are in flight (#1219). Playwright is still not a required
+   check. The specs fail when the board is wrong and pass when the lanes, the
+   state word, the empty sentence, and the human refusal are right. Specs for
+   prefs, slash commands, delivery replay, token mint and revoke, and DMs
+   landed (#1205). A group-DM spec is still absent, and `helpers.test.mjs` does
+   not run in CI. Next: the rest of the QA pass, the ten changes of the [UI design
+   contract](UI%20Design.md), and screenshots captured by a script.
 5. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
