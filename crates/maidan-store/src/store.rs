@@ -2859,8 +2859,9 @@ pub trait DeliveryCursorStore: Send + Sync {
     ) -> Result<u64, StoreError>;
 
     /// Delete up to `limit` read notifications with `created_at < cutoff`.
-    /// Unread rows stay, and so does any row with a snooze set. A workspace
-    /// under legal hold keeps its own rows.
+    /// Unread rows stay, and so does any row with a snooze set, lapsed or
+    /// not: nothing clears a snooze, so a lapsed one does not say whether its
+    /// member came back to it. A workspace under legal hold keeps its own rows.
     async fn prune_notifications(
         &self,
         cutoff: chrono::DateTime<chrono::Utc>,

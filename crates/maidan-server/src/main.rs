@@ -697,9 +697,10 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Background data-retention sweeper. Prunes the event log (floored at the
-    // durable delivery watermark), audit trail and delivery tables past the
-    // instance's `MAIDAN_RETENTION_*_DAYS`, then each workspace's rows past its
-    // own, shorter policy. Nothing is pruned unless one of those is set.
+    // durable delivery watermark), audit trail, read notifications and delivery
+    // tables past the instance's `MAIDAN_RETENTION_*_DAYS`, then each
+    // workspace's rows past its own, shorter policy. Nothing is pruned unless
+    // one of those is set.
     {
         let retention_cfg = maidan_server::retention::config_from_env();
         let retention_store = state.store.clone();

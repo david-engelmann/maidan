@@ -37,8 +37,8 @@ pub struct RetentionConfig {
     pub events_days: Option<u32>,
     pub audit_days: Option<u32>,
     pub deliveries_days: Option<u32>,
-    /// Read notifications. Unread and snoozed rows are never pruned. `None`
-    /// keeps every notification.
+    /// Read notifications. Unread rows and any row with a snooze set, lapsed
+    /// or not, are never pruned. `None` keeps every notification.
     pub notifications_days: Option<u32>,
     pub sweep: Duration,
     pub batch: i64,

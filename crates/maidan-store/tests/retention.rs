@@ -1,5 +1,6 @@
 //! Data-retention pruning: age cutoff + the at-least-once delivery-cursor floor
-//! for the event log; audit + deliveries by age.
+//! for the event log; audit + deliveries by age; read notifications by age,
+//! never unread, snoozed or held ones.
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -286,8 +287,7 @@ where
     );
 }
 
-#[tokio::test]
-async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
+async fn sqlite() -> (SqliteStore, sqlx::SqlitePool) {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -297,7 +297,51 @@ async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    let store = SqliteStore::for_tests(pool.clone());
+    (SqliteStore::for_tests(pool.clone()), pool)
+}
+
+/// A migrated Postgres store, with the container that must outlive it. `None`
+/// when Docker is unavailable, after saying so.
+async fn postgres() -> Option<(
+    testcontainers::ContainerAsync<testcontainers_modules::postgres::Postgres>,
+    maidan_store::PostgresStore,
+    sqlx::PgPool,
+)> {
+    use maidan_store::{run_postgres_migrations, PostgresStore};
+    use sqlx::postgres::PgPoolOptions;
+    use std::time::Duration;
+    use testcontainers::{runners::AsyncRunner, ImageExt};
+    use testcontainers_modules::postgres::Postgres;
+
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(c) => c,
+        Err(err) => {
+            maidan_store::test_support::docker::skip_start_failure(err).await;
+            return None;
+        }
+    };
+    let host = container.get_host().await.expect("host");
+    let port = container.get_host_port_ipv4(5432).await.expect("port");
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .expect("connect");
+    run_postgres_migrations(&pool).await.expect("migrate");
+    let store = PostgresStore::for_tests(pool.clone());
+    Some((container, store, pool))
+}
+
+#[tokio::test]
+async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
+    let (store, _pool) = sqlite().await;
     // No cursors yet → None.
     let long_ago = chrono::Utc::now() - chrono::Duration::days(365);
     assert_eq!(
@@ -305,6 +349,19 @@ async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
         None
     );
     run_retention_suite(&store).await;
+}
+
+#[tokio::test]
+async fn retention_prunes_by_age_and_respects_the_delivery_floor_postgres() {
+    let Some((_container, store, _pool)) = postgres().await else {
+        return;
+    };
+    run_retention_suite(&store).await;
+}
+
+#[tokio::test]
+async fn notification_retention_deletes_old_read_unsnoozed_rows_outside_a_hold_sqlite() {
+    let (store, pool) = sqlite().await;
     let aged = chrono::Utc::now() - chrono::Duration::days(100);
     run_notification_retention(&store, |id| {
         let pool = pool.clone();
@@ -321,37 +378,10 @@ async fn retention_prunes_by_age_and_respects_the_delivery_floor_sqlite() {
 }
 
 #[tokio::test]
-async fn retention_prunes_by_age_and_respects_the_delivery_floor_postgres() {
-    use maidan_store::{run_postgres_migrations, PostgresStore};
-    use sqlx::postgres::PgPoolOptions;
-    use std::time::Duration;
-    use testcontainers::{runners::AsyncRunner, ImageExt};
-    use testcontainers_modules::postgres::Postgres;
-
-    let container = match Postgres::default()
-        .with_name("pgvector/pgvector")
-        .with_tag("pg17")
-        .start()
-        .await
-    {
-        Ok(c) => c,
-        Err(err) => {
-            maidan_store::test_support::docker::skip_start_failure(err).await;
-            return;
-        }
+async fn notification_retention_deletes_old_read_unsnoozed_rows_outside_a_hold_postgres() {
+    let Some((_container, store, pool)) = postgres().await else {
+        return;
     };
-    let host = container.get_host().await.expect("host");
-    let port = container.get_host_port_ipv4(5432).await.expect("port");
-    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
-    let pool = PgPoolOptions::new()
-        .max_connections(4)
-        .acquire_timeout(Duration::from_secs(15))
-        .connect(&url)
-        .await
-        .expect("connect");
-    run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::for_tests(pool.clone());
-    run_retention_suite(&store).await;
     let aged = chrono::Utc::now() - chrono::Duration::days(100);
     run_notification_retention(&store, |id| {
         let pool = pool.clone();

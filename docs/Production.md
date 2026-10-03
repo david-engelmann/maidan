@@ -1115,9 +1115,20 @@ since erased) has no workspace: it is instance-level, shown only in
 stand. Count them with
 `SELECT count(*) FROM maidan_audit WHERE workspace_id IS NULL`.
 
-`MAIDAN_RETENTION_NOTIFICATIONS_DAYS` is off when unset. It deletes read
-notifications older than that many days and leaves unread ones, snoozed ones
-and a held workspace's rows. The usage ledger is not pruned.
+A snooze keeps a notification even after it lapses. Nothing clears a snooze,
+and a member can snooze a notification they have already read, so a lapsed
+snooze does not say whether its member came back to it; retention keeps the row
+rather than delete a reminder someone asked for. These rows grow with what
+members snooze, not with every mention. Count them with
+`SELECT count(*) FROM maidan_notifications WHERE snoozed_until IS NOT NULL`.
+The usage ledger (`maidan_usage_ledger`) has no retention knob: it is the
+billing record.
+
+Migration 0135 adds `idx_notifications_prunable`, a partial index on the read,
+unsnoozed notifications this knob may delete, so each batch reads only what it
+deletes. The upgraded server builds it during its boot migrations, and new
+notifications and read marks wait for the build: 1.5 s for 2 million rows in a
+test.
 
 A delivered egress row goes with its dedup key, so the same source event
 could be queued again only if the router replayed an event older than the

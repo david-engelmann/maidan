@@ -73,9 +73,12 @@ pub async fn prune_audit(
     Ok(res.rows_affected())
 }
 
-/// Delete up to `limit` read notifications with `created_at < cutoff`.
-/// Unread rows stay, and so does any row with a snooze set: lapsing does not
-/// make it eligible. A hold keeps its own workspace's rows, as with audit.
+/// Delete up to `limit` read notifications with `created_at < cutoff`, oldest
+/// first, through `idx_notifications_prunable` (migration 0135). Unread rows
+/// stay, and so does any row with a snooze set, even a lapsed one: nothing
+/// clears a snooze, and a member may snooze a notification already read, so a
+/// lapsed snooze does not say whether its member came back to it. A hold
+/// keeps its own workspace's rows, as with audit.
 pub async fn prune_notifications(
     pool: &PgPool,
     cutoff: DateTime<Utc>,
@@ -88,8 +91,7 @@ pub async fn prune_notifications(
              WHERE created_at < $1
                AND read_at IS NOT NULL
                AND snoozed_until IS NULL
-               AND (workspace_id IS NULL
-                    OR workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds))
+               AND workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds)
              ORDER BY created_at ASC, id ASC
              LIMIT $2
          )",
@@ -110,11 +112,13 @@ struct TerminalRows {
     /// When the row became terminal (or, for the older tables, was created).
     age: &'static str,
     terminal: &'static str,
-    /// The workspace a row belongs to, as SQL over alias `d`, so the instance
-    /// sweep can skip a held workspace. NULL (a row whose event or
-    /// subscription is gone, or mail with no workspace) belongs to no tenant's
-    /// hold, and still prunes.
-    hold: &'static str,
+    /// A query that yields a row when row `d` belongs to a workspace under
+    /// legal hold, so the instance sweep can skip it. A row with no workspace
+    /// (a system event's outbox row, mail written before mail carried one)
+    /// matches no hold and still prunes. It joins to the hold rather than
+    /// looking up the row's workspace: Postgres then anti-joins the few held
+    /// rows, where a scalar lookup probed once per candidate, hold or none.
+    held: &'static str,
     /// The workspace a row belongs to, as SQL over the row, for a workspace's
     /// own retention.
     owner: &'static str,
@@ -125,42 +129,46 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         table: "maidan_webhook_deliveries",
         age: "created_at",
         terminal: "(delivered_at IS NOT NULL OR quarantined_at IS NOT NULL)",
-        hold: "(SELECT s.workspace_id FROM maidan_webhook_subscriptions s WHERE s.id = d.subscription_id)",
+        held: "SELECT 1 FROM maidan_webhook_subscriptions s
+               JOIN maidan_legal_holds h ON h.workspace_id = s.workspace_id
+               WHERE s.id = d.subscription_id",
         owner: "(SELECT s.workspace_id FROM maidan_webhook_subscriptions s WHERE s.id = subscription_id)",
     },
     TerminalRows {
         table: "maidan_automation_deliveries",
         age: "created_at",
         terminal: "(delivered_at IS NOT NULL OR quarantined_at IS NOT NULL)",
-        hold: "d.workspace_id",
+        held: "SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = d.workspace_id",
         owner: "workspace_id",
     },
     TerminalRows {
         table: "maidan_outbox",
         age: "published_at",
         terminal: "published_at IS NOT NULL",
-        hold: "(SELECT e.workspace_id FROM maidan_events e WHERE e.id = d.log_id)",
+        held: "SELECT 1 FROM maidan_events e
+               JOIN maidan_legal_holds h ON h.workspace_id = e.workspace_id
+               WHERE e.id = d.log_id",
         owner: "(SELECT e.workspace_id FROM maidan_events e WHERE e.id = log_id)",
     },
     TerminalRows {
         table: "maidan_egress_outbox",
         age: "updated_at",
         terminal: "status = 'delivered'",
-        hold: "d.workspace_id",
+        held: "SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = d.workspace_id",
         owner: "workspace_id",
     },
     TerminalRows {
         table: "maidan_mail_outbox",
         age: "updated_at",
         terminal: "status = 'delivered'",
-        hold: "d.workspace_id",
+        held: "SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = d.workspace_id",
         owner: "workspace_id",
     },
     TerminalRows {
         table: "maidan_agent_work_dlq",
         age: "failed_at",
         terminal: "TRUE",
-        hold: "d.workspace_id",
+        held: "SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = d.workspace_id",
         owner: "workspace_id",
     },
 ];
@@ -180,19 +188,15 @@ pub async fn prune_deliveries(
             table,
             age,
             terminal,
-            hold,
+            held,
             ..
         } = rows;
-        // `hold` is SQL over alias `d`. A NULL workspace matches no hold, so
-        // those rows still prune, as instance-level audit rows do.
         let sql = format!(
             "DELETE FROM {table}
              WHERE id IN (
                  SELECT d.id FROM {table} d
                  WHERE {age} < $1 AND {terminal}
-                   AND NOT EXISTS (
-                       SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = {hold}
-                   )
+                   AND NOT EXISTS ({held})
                  ORDER BY {age} ASC
                  LIMIT $2
              )"

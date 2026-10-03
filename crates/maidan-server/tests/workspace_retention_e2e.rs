@@ -5,8 +5,9 @@
 //! another's. Through the sweeper, on both backends: a workspace with a
 //! one-day policy loses its old messages, events and finished deliveries, a
 //! workspace without one keeps its rows, and a held workspace keeps its rows
-//! whatever its policy says. Its own test binary: it sets the instance's
-//! retention in the environment.
+//! whatever its policy says. The instance's notification knob reaches the
+//! sweeper too. Its own test binary: it sets the instance's retention in the
+//! environment.
 
 use std::{
     future::Future,
@@ -21,9 +22,9 @@ use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{retention, router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    AuditScope, ChannelId, Event, Member, MemberKind, MessageId, NewApiToken, NewAuditEvent,
-    NewChannel, NewDlqEntry, NewMember, NewMessage, NewThread, NewWorkspace, RetentionDays,
-    ThreadId, WorkspaceId,
+    AuditScope, ChannelId, Event, EventKind, Member, MemberKind, MessageId, NewApiToken,
+    NewAuditEvent, NewChannel, NewDlqEntry, NewMember, NewMessage, NewNotification, NewThread,
+    NewWorkspace, RetentionDays, ThreadId, WorkspaceId,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -545,4 +546,65 @@ async fn the_sweeper_prunes_only_the_workspace_whose_policy_says_so_postgres() {
         }
     })
     .await;
+}
+
+/// `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` reaches the sweeper. Unset, a sweep
+/// keeps an old read notification; set, the same sweep deletes it and keeps
+/// the unread one beside it. The store's own suite covers which rows qualify;
+/// this covers the knob's name and its wiring into `sweep_once`.
+#[tokio::test]
+async fn the_sweeper_prunes_read_notifications_only_once_the_instance_sets_a_retention() {
+    const KNOB: &str = "MAIDAN_RETENTION_NOTIFICATIONS_DAYS";
+    unsafe { std::env::remove_var(KNOB) };
+    let off = retention::config_from_env();
+    assert_eq!(off.notifications_days, None, "off by default");
+
+    let (store, pool) = sqlite_store().await;
+    let room = room(store.as_ref(), "inbox").await;
+    let notify = |source_log_id| NewNotification {
+        workspace_id: room.workspace,
+        member_id: room.member.id,
+        kind: EventKind::MemberJoined,
+        source_log_id,
+        channel_id: None,
+        thread_id: None,
+        message_id: None,
+        actor_id: None,
+    };
+    let read = store.create_notification(notify(1)).await.unwrap();
+    let unread = store.create_notification(notify(2)).await.unwrap();
+    assert!(store
+        .mark_notification_read(room.member.id, read.id)
+        .await
+        .unwrap());
+    sqlx::query(
+        "UPDATE maidan_notifications
+         SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-60 days')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let inbox = || async {
+        store
+            .list_notifications(room.member.id, false, 10)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|n| n.id)
+            .collect::<Vec<_>>()
+    };
+
+    retention::sweep_once(&store, &off).await;
+    assert_eq!(inbox().await.len(), 2, "unset keeps every notification");
+
+    unsafe { std::env::set_var(KNOB, "30") };
+    let on = retention::config_from_env();
+    unsafe { std::env::remove_var(KNOB) };
+    assert_eq!(on.notifications_days, Some(30));
+    retention::sweep_once(&store, &on).await;
+    assert_eq!(
+        inbox().await,
+        vec![unread.id],
+        "the old read notification goes; the unread one stays"
+    );
 }

@@ -7,19 +7,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Retention keeps a held workspace's deliveries, and drops read notifications
-
-- **Fixed:** the instance delivery sweep skipped legal holds for webhook
-  deliveries, automation deliveries and the transactional outbox, so a held
-  workspace lost those rows while its egress, mail and agent runs were kept.
-  The sweep now skips a held workspace in every delivery table, as a
-  workspace's own prune already did.
-- **Added:** `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` (unset means keep them)
-  deletes read notifications older than that many days. Unread notifications
-  stay, and so does any notification with a snooze set. A held workspace keeps
-  its notifications. The usage ledger is not pruned.
-- **Docs:** Production.md and Operations.md.
-
 ### `/ui` reports a failure in words
 
 - **Fixed:** posting a message when the server cannot be reached keeps the
@@ -1132,6 +1119,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   id `1.5555555555555558e+92`: serde_json's default float parse is best
   effort. The workspace now enables serde_json's `float_roundtrip`, so a
   number reads as the double it names. Found by `mcp_request` the same night.
+
+### Retention keeps a held workspace's deliveries, and drops read notifications
+
+- **Fixed:** the instance delivery sweep skipped legal holds for webhook
+  deliveries, automation deliveries and the transactional outbox, so a held
+  workspace lost those rows while its egress, mail and agent runs were kept.
+  The sweep now skips a held workspace in every delivery table, as a
+  workspace's own prune already did.
+- **Added:** `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` (unset means keep them)
+  deletes read notifications older than that many days. Unread notifications
+  stay, and so does any notification with a snooze set, even one that has
+  lapsed: nothing clears a snooze, so a lapsed one does not say whether its
+  member came back to it. A held workspace keeps its notifications. The usage
+  ledger is not pruned. Migration 0135 indexes the rows this may delete
+  (`idx_notifications_prunable`), so a batch reads what it deletes instead of
+  scanning and sorting the whole table.
+- **Docs:** Production.md and Operations.md (the sweeper always runs, and
+  prunes nothing until a retention is set).
 
 ## [412.0.0] — 2026-09-28
 
