@@ -695,6 +695,9 @@ pub fn token_usage_from_genai(
             .checked_sub(cache_read)
             .and_then(|n| n.checked_sub(write_5m))
             .and_then(|n| n.checked_sub(write_1h))
+            // checked_sub only reports overflow; a total smaller than its own
+            // cached tiers goes negative instead, which is the error meant here.
+            .filter(|n| *n >= 0)
             .ok_or_else(|| "input_tokens smaller than the cache tiers it includes".to_string())?
     } else if exclusive {
         raw_input
@@ -980,8 +983,8 @@ mod tests {
             assert_eq!(tokens.input, 1_000, "{provider}");
             assert_eq!(tokens.cache_read, 400, "{provider}");
         }
-        // Inclusive and smaller than the cache read. Subtraction goes negative
-        // and the count check rejects it. The fallback would keep the raw total.
+        // Inclusive and smaller than the cache read: refused as a total smaller
+        // than its own cached tiers. The fallback would keep the raw total.
         for provider in [
             "openai",
             "azure",
@@ -1006,7 +1009,10 @@ mod tests {
                 "gen_ai.usage.output_tokens": 1
             });
             let err = token_usage_from_genai(attrs.as_object().unwrap()).unwrap_err();
-            assert!(err.contains("non-negative"), "{provider}: {err}");
+            assert!(
+                err.contains("smaller than the cache tiers"),
+                "{provider}: {err}"
+            );
         }
     }
 
@@ -1304,7 +1310,11 @@ mod tests {
             "gen_ai.usage.input_tokens": 5,
             "gen_ai.usage.cache_read.input_tokens": 30,
         }));
-        assert!(token_usage_from_genai(&bad).is_err());
+        let err = token_usage_from_genai(&bad).unwrap_err();
+        assert!(
+            err.to_string().contains("smaller than the cache tiers"),
+            "names the inconsistency, not a generic negative count: {err}"
+        );
     }
 
     #[test]
