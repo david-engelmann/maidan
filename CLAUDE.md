@@ -62,7 +62,7 @@ change.
   queue, reviews, approval gates and a hash-chained event log, backed by
   Postgres or SQLite and content-addressed artifacts. The name is load-bearing.
 - **Rust 2021**, toolchain pinned in `rust-toolchain.toml` (1.91).
-  Workspace with 14 member crates.
+  Workspace with 15 member crates.
 - **Owner:** `david-engelmann`, solo maintainer. Squash-merge only;
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).
 - **CI:** GitHub Actions. Eight checks are required on `main`:
@@ -288,7 +288,7 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 - **New v4 UUIDs fail `uuid_v7_contract`.** Entity ids use `Uuid::now_v7()`;
   credentials and random ids (tokens, session ids, trace ids) are allowlisted
   with a reason.
-- **Two strings in this file are read by CI:** `Workspace with 14 member
+- **Two strings in this file are read by CI:** `Workspace with 15 member
   crates.` (`docs_numbers_contract`) and the `latest` release line
   (`check-release-records.sh`). Keep them when editing.
 - **A dependency bump or a new crate needs `cargo vet`.** Every crate in the
