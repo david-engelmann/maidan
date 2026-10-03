@@ -144,14 +144,18 @@ test("a gate in needs you names its requester and answers without a channel open
   });
   expect(mcp.ok()).toBeTruthy();
 
-  // A returning visitor: token and workspace are stored, no channel is.
-  await page.goto("/ui/");
-  await page.evaluate(([t, w]) => {
+  // A returning visitor: token and workspace are already stored, and no
+  // channel is. Seed that before the document runs. Writing it into a page
+  // that has already started booting races the boot, which reads the token,
+  // deletes it, and exchanges it; a reload in that window arrives with no
+  // token and no session, and the channel list stays on the refusal.
+  await page.addInitScript(([t, w]) => {
     localStorage.setItem("maidan_token", t);
     localStorage.setItem("maidan_workspace", w);
     localStorage.removeItem("maidan_channel");
   }, [fx.token, fx.workspace_id]);
-  await page.reload();
+  await page.goto("/ui/");
+  await expect(page.locator("#identity-pill")).toBeVisible();
   await expect(page.locator("#channel-list li[data-id]").first()).toBeVisible();
   await expect(page.locator("#channel-list li.selected")).toHaveCount(0);
   const gateRow = page.locator("#needs-you-list .ny-item").filter({ hasText: prompt });
