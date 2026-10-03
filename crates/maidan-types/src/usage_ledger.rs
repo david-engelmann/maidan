@@ -557,8 +557,10 @@ fn ppm(part: i64, whole: i64) -> Result<Option<i64>, String> {
 /// Normalize a GenAI usage attribute map into the ledger's shape.
 ///
 /// `input` in the result is uncached. Providers that include cache reads and
-/// writes in their input total (OpenAI, Gemini, Mistral, xAI, vLLM) have those
-/// subtracted. Anthropic, Bedrock, and DeepSeek already report uncached input.
+/// writes in their input total (OpenAI, Azure, Gemini, Mistral, xAI, vLLM,
+/// and the OpenTelemetry names for those) have those subtracted. Anthropic,
+/// Bedrock (`bedrock`, `aws.bedrock`), and DeepSeek already report uncached
+/// input. `gcp.vertex_ai` is not classified: Vertex serves both shapes.
 /// A write total that is not split by TTL is recorded on the 5-minute tier,
 /// which is Anthropic's default and the 1.25x write the other providers publish.
 pub fn token_usage_from_genai(
@@ -657,11 +659,26 @@ pub fn token_usage_from_genai(
     let provider_key = provider.as_deref().map(str::to_ascii_lowercase);
     let inclusive = matches!(
         provider_key.as_deref(),
-        Some("openai" | "azure" | "openrouter" | "gemini" | "google" | "mistral" | "xai" | "vllm")
+        Some(
+            "openai"
+                | "azure"
+                | "azure.ai.openai"
+                | "azure.ai.inference"
+                | "openrouter"
+                | "gemini"
+                | "google"
+                | "gcp.gemini"
+                | "gcp.gen_ai"
+                | "mistral"
+                | "mistral_ai"
+                | "xai"
+                | "x_ai"
+                | "vllm"
+        )
     );
     let exclusive = matches!(
         provider_key.as_deref(),
-        Some("anthropic" | "bedrock" | "amazon" | "deepseek")
+        Some("anthropic" | "bedrock" | "aws.bedrock" | "amazon" | "deepseek")
     );
     let input = if let Some(miss) = miss {
         cache_read = attr_i64(
@@ -938,6 +955,81 @@ mod tests {
         assert_eq!(tokens.input, 12);
         assert_eq!(tokens.cache_read, 80);
         assert_eq!(tokens.fresh().unwrap(), 15);
+    }
+
+    #[test]
+    fn otel_provider_names_follow_the_short_name_input_rule() {
+        // Exclusive and larger than the cache read. The unclassified fallback
+        // would subtract here and undercount.
+        for provider in [
+            "anthropic",
+            "bedrock",
+            "aws.bedrock",
+            "AWS.Bedrock",
+            "amazon",
+            "deepseek",
+        ] {
+            let attrs = serde_json::json!({
+                "gen_ai.provider.name": provider,
+                "gen_ai.response.model": "m",
+                "gen_ai.usage.input_tokens": 1_000,
+                "gen_ai.usage.cache_read.input_tokens": 400,
+                "gen_ai.usage.output_tokens": 1
+            });
+            let (tokens, _, _) = token_usage_from_genai(attrs.as_object().unwrap()).unwrap();
+            assert_eq!(tokens.input, 1_000, "{provider}");
+            assert_eq!(tokens.cache_read, 400, "{provider}");
+        }
+        // Inclusive and smaller than the cache read. Subtraction goes negative
+        // and the count check rejects it. The fallback would keep the raw total.
+        for provider in [
+            "openai",
+            "azure",
+            "azure.ai.openai",
+            "azure.ai.inference",
+            "openrouter",
+            "gemini",
+            "google",
+            "gcp.gemini",
+            "gcp.gen_ai",
+            "mistral",
+            "mistral_ai",
+            "xai",
+            "x_ai",
+            "vllm",
+        ] {
+            let attrs = serde_json::json!({
+                "gen_ai.provider.name": provider,
+                "gen_ai.response.model": "m",
+                "gen_ai.usage.input_tokens": 100,
+                "gen_ai.usage.cache_read.input_tokens": 400,
+                "gen_ai.usage.output_tokens": 1
+            });
+            let err = token_usage_from_genai(attrs.as_object().unwrap()).unwrap_err();
+            assert!(err.contains("non-negative"), "{provider}: {err}");
+        }
+    }
+
+    #[test]
+    fn vertex_ai_stays_unclassified() {
+        let large = serde_json::json!({
+            "gen_ai.provider.name": "gcp.vertex_ai",
+            "gen_ai.response.model": "m",
+            "gen_ai.usage.input_tokens": 1_000,
+            "gen_ai.usage.cache_read.input_tokens": 400,
+            "gen_ai.usage.output_tokens": 1
+        });
+        let (tokens, _, _) = token_usage_from_genai(large.as_object().unwrap()).unwrap();
+        assert_eq!(tokens.input, 600);
+        let small = serde_json::json!({
+            "gen_ai.provider.name": "gcp.vertex_ai",
+            "gen_ai.response.model": "m",
+            "gen_ai.usage.input_tokens": 100,
+            "gen_ai.usage.cache_read.input_tokens": 400,
+            "gen_ai.usage.output_tokens": 1
+        });
+        let (tokens, _, _) = token_usage_from_genai(small.as_object().unwrap()).unwrap();
+        assert_eq!(tokens.input, 100);
     }
 
     #[test]
