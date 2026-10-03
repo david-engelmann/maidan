@@ -860,7 +860,7 @@ A pack is one JSON object, stable fields first and the volatile tail last, and R
 
 `GET /channels/:id/boot` and `maidan://boots/{channel_id}` are that leading object. The thread prefix starts with it, so every agent of the channel shares the cached head.
 
-Elision drops the middle in blocks of 16 messages. `max_bytes` grows that elision until the canonical pack fits, or only the opening message and the newest remain. `as_of=<event_log_id>` rebuilds the thread row from the log at that id, not the live row. `delta=true` with `since_prefix_sha` equal to the current prefix returns only the tail. A message cursor returns the messages after the cursor when appending them rebuilds the prefix that hashes to `prefix_sha256`; otherwise the delta carries the replacement prefix. When a timestamp ties, the list breaks the tie on an id, the same way on both databases.
+Elision drops the middle in blocks of 16 messages. `max_bytes` grows that elision until the canonical pack fits, or only the opening message and the newest remain. `as_of=<event_log_id>` rebuilds the thread row from the log at that id, not the live row. `delta=true` with `since_prefix_sha` equal to the current prefix returns only the tail. A message cursor with no `since_prefix_sha` returns the messages after the cursor without checking whether they rebuild the prefix. When `since_prefix_sha` is supplied and does not match, that cursor slice is returned only when appending them rebuilds the prefix that hashes to `prefix_sha256`; otherwise the delta carries the replacement prefix. When a timestamp ties, the list breaks the tie on an id, the same way on both databases.
 
 ### A2A tasks
 
