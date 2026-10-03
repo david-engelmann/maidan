@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `23af9c3b` (2026-10-02).
+on a decision. Last reconciled against `main` at `0a719339` (2026-10-03).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -58,8 +58,6 @@ CI ran.
 | (lane CTX1) | Program C: one canonical context pack (the same bytes on REST and MCP, deterministic ties), stable layers first and the volatile tail last, a split prefix with its sha256, a workspace boot pack, delta packs, and exact `as_of` | **Active** | — |
 | (lane CTX2) | Program C: MCP 2026-07-28 conformance (`server/discover`; `ttlMs` and `cacheScope`, which the schema requires on every cacheable result and Maidan omits), per-endpoint tool profiles with byte-identical lists, and instructions that survive every harness's limits | **Active** | — |
 | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
-| (lane ROT) | Next 3: a rotated token is activated only when the token, API base, workspace, and token id are unchanged since the request started. Changing the token field clears the cached id. A network failure is a sentence | Open | — |
-| (lane GDM) | Next 9: opening a group DM asks for three members, selects that conversation, and a browser spec posts in it. `helpers.test.mjs` stays out of CI | Open | — |
 
 ## Next: ranked
 
@@ -71,14 +69,12 @@ whose dispositions are recorded below.
 | # | Item | Size | Acceptance criteria | Open because | Depends on |
 |---|---|---|---|---|---|
 | 1 | **Deploy files that cannot drift, what remains** (B1, B4) | S | One PR bumps every pin `scripts/check-deploy-pins.sh` lists to the release B1 cuts, with the quickstart tarball SHA-256s; `docs/Pi.md` runs that release with auth on and `maidan init`; the stack's Postgres and MinIO come from in-chart StatefulSets on `maidan-postgres` and Chainguard MinIO instead of the dead Bitnami charts, and the `helm install (kind)` job installs the stack with both enabled (B6) | See **Before anyone deploys** | The maintainer's tag |
-| 2 | **Docs and page copy that describe the UI of a week ago** | S | README ("not polished enough to show"), Production (the header token field), Integration (`data-ui-version`), OIDC ("no login" read as current), Architecture, FAQ, Protocols, `ui-tests/README.md` ("never need manual testing", against the PR template's checklist) and Capabilities ("captured docs screenshots", which do not exist) say what the UI is now; in the page, "Bearer token required for writes" (`requireTokenForWrite`) is corrected (the empty board's copy is item 4) | Found on `53a28f61`, file by file; #1157 fixed only the `+` and Add task tooltips | — |
-| 3 | **UI fixes from the 2026-09-30 QA pass and from review, what remains** (thread 30–33, 42, 46, 53, 57) | XS–S each | Two review findings first: Sign out posts `/auth/logout` whenever the server offers sessions, not only when a session member is cached (#1123 comment 4145894002; it matters more once #1142 makes every pasted token a session), and `rotateToken` clears `currentTokenId` when the token changes and activates the new secret only if token, base and workspace are unchanged (#1127 comment 4149903185); then the other 15 review findings in `index.html` and `ui_js_contract.rs`, each answered on its comment (#1093: 4135388438, 4138946441, 4139183337; #1117: 4139451889; #1123: 4141130529, 4139681352, 4141130523; #1127: 4146746037, 4149903171; #1135: 4141486846; #1144: 4150405710, 4150405720; #1147: 4150384344; #1157: 4150794108); and from the QA pass: a palette jump to another channel's thread selects that channel (`selectThread`); the first-run card says what a workspace id is and where it comes from; clicking a message offers an edit affordance that opens the editor; `.chrome-idle` and `.brand-sub` go; `data-ui-version` and its nine assertions (eight `ui_*_e2e` files and `smoke.spec.ts`) are removed | Each checked on `65dbfe26`; #1157 fixed the failed post, the refresh copy, opening a DM, the stale token error and the bearer tooltips | — |
-| 4 | **The /ui design contract** (thread 48, and the final pass's eight) | S each | The ten changes in [UI Design](UI%20Design.md), one surface per PR: More tools starts closed; no thread panel until a card is open; lanes are space, not boxes; state is a word in the card foot, with no badge on every card and no legend; the team strip lists only people holding work; one channel hides the sidebar; no refusal strip above the lanes; an empty board is one sentence and one action; a person never sees a raw error or `(HTTP nnn)`; identity is type, not a chip. Done when the contract's screenshot bar holds for every screen it names | Each checked on `65dbfe26`; the contract doc is on main (#1158, `94836a1c`); already shipped and not to be redone: #1082–#1086, #1117, #1118, #1123, #1127, #1135, #1144, #1146–#1148, #1151, #1157 | — |
+| 2 | **Docs and page copy that describe the UI of a week ago** | S | README ("not polished enough to show"), Production (the header token field), Integration (`data-ui-version`), OIDC ("no login" read as current), Architecture, FAQ, Protocols, `ui-tests/README.md` ("never need manual testing", against the PR template's checklist) and Capabilities ("captured docs screenshots", which do not exist) say what the UI is now; in the page, "Bearer token required for writes" (`requireTokenForWrite`) is corrected (the empty board is one sentence and one action, #1192) | Found on `53a28f61`, file by file; #1157 fixed only the `+` and Add task tooltips | — |
+| 3 | **Review findings still open on the board** | S | The 15 review findings in `index.html` and `ui_js_contract.rs`, each answered on its comment (#1093: 4135388438, 4138946441, 4139183337; #1117: 4139451889; #1123: 4141130529, 4139681352, 4141130523; #1127: 4146746037, 4149903171; #1135: 4141486846; #1144: 4150405710, 4150405720; #1147: 4150384344; #1157: 4150794108) | Not re-checked here. Already on main, and not to be redone: Sign out posts `/auth/logout` when the server offers sessions (#1220); `rotateToken` installs the new secret only into the connection that requested it (#1229); a palette jump selects that channel (`selectThread`, #1224); the first-run card says what a workspace id is (#1224); a message click opens Edit message (#1224); `.chrome-idle`, `.brand-sub`, and `data-ui-version` are gone (#1224); controls are 16px (#1219) | — |
 | 6 | **Workspace-scale queue depth and occupancy** | S | A workspace-scoped queue depth and occupancy view beside the channel ones, with `claim_next`'s workspace readability rules; the workspace-wide `wait_for_ready` (`channel_id` omitted) is checked to apply the same rules | Queue depth and occupancy are per channel only; `wait_for_ready` is already workspace-wide when `channel_id` is omitted (corrected 2026-10-01 from a code audit) | — |
-| 9 | **Playwright and unit coverage, what remains** (thread 50) | S | A group-DM browser spec, and `helpers.test.mjs` running in CI. `tsc --noEmit --checkJs` can check the modules, and it does not run in CI either | Specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs landed in #1205, with the checklist in `ui-tests/README.md`. There is no group-DM spec. `helpers.test.mjs` is not in CI, and neither is `tsc` | — |
-| 10 | **Web push from the browser** (thread 49) | M | The `/ui` registers a push subscription; a failed push is retried durably | No service worker in `static/`; `notification_router.rs` logs a failed send and does not retry | — |
-| 11 | **The money shots** (thread 12, 47) | M | A seeded capture workspace and a Playwright script that captures the screens in the UI Design screenshot bar; images in `docs/assets/` and the README; a retake rule for board-touching PRs | No board screenshot exists. The README hero is the board, not a terminal recording (item 68, rejected 2026-10-02), and `docs/assets/handoff-demo.gif` stays as it is | #4, B1 (so the quickstart shows the same UI) |
-| 12 | **Projector depth, what remains** | M | GitHub App JWT exchange and Check Runs | `github.rs` takes a PAT or installation token. The Slack `thread_id` index landed in #1215, and a linked pull request that closes unmerged is said on the thread (#1216) | — |
+| 9 | **Playwright and unit coverage, what remains** (thread 50) | S | `helpers.test.mjs` running in CI, and `tsc --noEmit --checkJs` in CI | Specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs landed in #1205. A group-DM spec opens a conversation and posts in it (`ui-tests/tests/group-dms.spec.ts`, #1230). `helpers.test.mjs` is not in CI, and neither is `tsc` | — |
+| 11 | **The money shots** (thread 12, 47) | M | A seeded capture workspace and a Playwright script that captures the screens in the UI Design screenshot bar; images in `docs/assets/` and the README; a retake rule for board-touching PRs | No board screenshot exists. The README hero is the board, not a terminal recording (item 68, rejected 2026-10-02), and `docs/assets/handoff-demo.gif` stays as it is. The ten design-contract surfaces are already on main | B1 (so the quickstart shows the same UI) |
+| 12 | **Projector depth, what remains** | M | GitHub App JWT exchange | A delivered result posts a completed check run on the envelope `head_sha` (#1228). `github.rs` still authorizes outbound calls with `MAIDAN_GITHUB_TOKEN`, a PAT or an installation token, and does not exchange a GitHub App JWT. The Slack `thread_id` index landed in #1215, and a linked pull request that closes unmerged is said on the thread (#1216) | — |
 | 13 | **Kani proofs** | M | Kani proofs of capability containment and cursor arithmetic | None exists | — |
 | 14 | **Partition the append-only tables** | L | Per-table autovacuum and range partitioning of the event log, audit and delivery tables, with retention as `DROP PARTITION` | No partitioning; retention is batched `DELETE` (`postgres/retention.rs`) | — |
 | 15 | **Adoption** | S–M each | An OpenHands claimant recipe; provider recipes I2–I6 ([Providers](Providers.md)); the official third-party SDKs run as clients in CI | None of the recipes exists; only the MCP Inspector runs, report-only | — |
@@ -103,7 +99,7 @@ the content-block `type` enum (#1149); the workspace claim's `readable_by` shoul
 #1137's `thread_access::readable_thread`, now that both are on `main` (#1145); the MCP test
 `a_stateless_subscription_lives_while_any_replica_listens_then_lapses` (#1131)
 fails under load with its 300 ms lifetime, and `crypto_shredding` `blob_reap::sqlite_backend` can fail with `database is locked` in the coverage job (seen on #1155, whose change touches no store code); `remove_channel_member` and
-`unfollow_member` answer success for an unknown member (leaks nothing, #1152); the instance has no retention ceiling for messages, so a workspace may keep them up to 3,650 days (#1153).
+`unfollow_member` answer success for an unknown member (leaks nothing, #1152).
 
 ## Later: by program
 
@@ -144,6 +140,7 @@ Each links its record. Entries roll off after about a month.
 
 | Date | Decision | Record |
 |---|---|---|
+| 2026-10-03 | Shipped work is not still in flight: the message retention ceiling, closed vote kinds, group DMs, installing a rotated token only into the connection that asked, GitHub check runs, browser web push with a retry, MCP `create_channel` and `create_thread`, 16px controls, the palette jump, the edit pencil, first-run copy, sign-out, and the ten UI design surfaces | #1232, #1231, #1230, #1229, #1228, #1225, #1226, #1219, #1224, #1220, #1179–#1196 |
 | 2026-10-02 | Item 68 is rejected: the hero is the board, not a terminal recording | README |
 | 2026-10-02 | A schema change while two server versions share a database expands, then contracts in a later release | [Migrations](Migrations.md) |
 | 2026-10-01 | A production chart render refuses the `dev` image, default credentials and `CHANGE_ME`, and `deploy pins` keeps every deploy pin on the newest tagged release | #1156 |
@@ -270,37 +267,37 @@ Entries marked done on `main` since the thread's `1e612cf8` snapshot are noted.
 | 28 | CSP for `/ui` | **Done** in #1213: `/ui` sends the supersession header | #1213 |
 | 29 | Write paths for session users | **Done** in #1176: an OIDC session can edit, upload, and paste, the four proxies exist, and the session carries `thread:transition` | #1176 |
 | 30 | Hover-only controls, 16 px inputs | **Done**: the pin toggle reveals on `:focus-within`, and inputs, selects, and textareas are 16px | CHANGELOG |
-| 31 | Palette jump leaves the sidebar on the old channel | **Adopt** | Next, UI fixes from the QA pass |
-| 32 | First-run copy | **Adapt**: #1123 replaces the "OIDC" label and adds token help; the workspace-id help and the stale "New thread in the sidebar" text remain | Next, UI fixes from the QA pass |
-| 33 | Message click affordance | **Adopt** (same as 7) | Next, UI fixes from the QA pass |
+| 31 | Palette jump leaves the sidebar on the old channel | **Done** in #1224: `selectThread` selects that channel and its sidebar row | #1224 |
+| 32 | First-run copy | **Done** in #1224: the card says a workspace id is the id of one room on this server, and that `maidan init` prints it | #1224 |
+| 33 | Message click affordance | **Done** in #1224: a pencil and a click open Edit message | #1224 |
 | 34 | TCK numbers disagree | **Adopt**: the two sets come from two checks (the TCK's pytest summary and the walkthrough), and the comment conflated them | Lane U |
-| 35 | MCP has no create-thread tool | **Adopt**: agents create threads and channels over MCP with no human. `create_thread` and `create_channel` are being added | In flight |
-| 36 | `llms.txt` says an unleased claim never lapses | **Adopt**: every claim is leased, 600 s by default | Lane U |
-| 37 | Enums on string inputs | **Adapt**: `transition_thread.action` gets one; `set_delivery_mode.mode` already has one; `cast_vote.kind` is the closed set `approve`, `request_changes`, or `ack` | Lane U |
+| 35 | MCP has no create-thread tool | **Done** in #1226: `create_thread` and `create_channel`, both `workspace:write` | #1226 |
+| 36 | `llms.txt` says an unleased claim never lapses | **Done** in #1149: `llms.txt` says every claim is leased, 600 s by default, and a lapse returns the task | #1149 |
+| 37 | Enums on string inputs | **Done**: `transition_thread.action` is `start_review`, `close`, or `archive` (#1201); `set_delivery_mode.mode` is `immediate` or `digest`; `cast_vote.kind` is `approve`, `request_changes`, or `ack` (#1231) | #1201, #1231 |
 | 38 | Wait families look alike | **Adopt**, as see-also sentences | Lane U |
 | 39 | DM and group-DM duplication | **Done** in #1207: DM and group-DM message loads share one function | #1207 |
 | 40 | One fetch wrapper and one feedback surface | **Done** in #1207: calls go through `api()`. `showError` and `setStatus` stay separate | #1207 |
 | 41 | A checked API client for the UI | **Done** in #1207: `scripts/gen-ui-client.mjs` regenerates the typed path catalog. `tsc` does not run in CI | #1207 |
-| 42 | Dead CSS and a lint | **Adapt**: remove `.chrome-idle` and `.brand-sub`. The CSS is a file (#1207). A lint for it is not in CI | Next, UI fixes from the QA pass |
+| 42 | Dead CSS and a lint | **Adapt**: `.chrome-idle` and `.brand-sub` are gone (#1224). A lint for dead CSS is not in CI | Next, review findings |
 | 43 | F-43 and merge order | **Adopt the discipline**, which is written in Process; `strict` stays off (decided 2026-10-01); the "fail any PR whose merge-base is older than 24 h" CI rule is **rejected**, because it would rerun every open PR's full CI after each merge on a runner pool that is already the bottleneck, and the pre-merge build on current `main` catches the same breaks | Process; Decisions pending |
 | 44 | Open Work as a CI contract | **Adapt**: `scripts/check-open-work.sh` fails when a PR under Now has merged or the stamp is not on `main`; a per-row `check:` line is **deferred** until the table is stable enough to be worth scripting | This file; CI `open work` |
 | 45 | `thread:transition` for browser sessions; one owner for the browser-authority chain | **Done** in #1176. An OIDC session carries `thread:transition`, under the separation-of-duties checks; the chain is warn (#1123), rotate (#1127), exchange (#1142, which also drops `csrf_secret`), with one owner (the coordinating agent); on rotation the session ends and the page exchanges the successor, rather than migrating the session row | #1176 |
-| 46 | `data-ui-version` never versions | **Adapt**: delete the marker and its eight test assertions rather than pin it, since a pin would make every UI PR conflict on one line | Next, UI fixes from the QA pass |
-| 47 | The money shots | **Defer** until the UI improvement specs land, so the images show the fixed UI | Next, the money shots |
-| 48 | UI improvement specs | **Adopt**, one surface per PR, after the in-flight UI stack; first run, Sign out and rotation are already in #1123, #1127 and #1142 | Next, the /ui design contract |
+| 46 | `data-ui-version` never versions | **Done** in #1224: the marker and the assertions that required it are removed | #1224 |
+| 47 | The money shots | **Defer**: the ten design surfaces are on main (#1179–#1196); no board screenshot exists yet, and the terminal GIF stays (item 68) | Next, the money shots |
+| 48 | UI improvement specs | **Done**: the ten surfaces landed (#1179, #1181, #1182, #1185, #1187, #1188, #1190, #1192, #1193, #1196). The screenshot bar is Next, the money shots | #1179–#1196 |
 | 49 | Split as TypeScript from the start | **Done** in #1207 as ES modules with JSDoc. `tsc --noEmit --checkJs` does not run in CI | #1207 |
-| 50 | Playwright and unit gaps | **Adopt**: specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs landed in #1205. A group-DM spec is still open, and `helpers.test.mjs` does not run in CI | Next, Playwright and unit coverage |
+| 50 | Playwright and unit gaps | **Adopt**: specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs landed in #1205. A group-DM spec posts in the conversation it opens (#1230). `helpers.test.mjs` does not run in CI | Next, Playwright and unit coverage |
 | 51 | SaaS-agnostic hygiene | **Adopt**: per-workspace fairness by default and per-workspace retention; the migration policy is expand, then a later contract | Fairness and retention shipped (#1153). The policy is [Migrations](Migrations.md) |
 | 52 | Do not build a hosted service yet | **Adopt** as recorded | Later, L |
 | 53 | Stale token error after a success | **Adopt** | Next, UI fixes from the QA pass |
 | 54 | A failed post is lost silently | **Adopt** | Next, UI fixes from the QA pass |
 | 55 | Channel refresh shows `TypeError` | **Adopt** | Next, UI fixes from the QA pass |
 | 56 | No sign-out for a token user | **Done in #1123**: Sign out is offered to a token and forgets it | #1123 |
-| 57 | Opening a DM does not select it | **Adopt** | Next, UI fixes from the QA pass |
+| 57 | Opening a DM does not select it | **Done**: a one-to-one DM selects (#1157); a group DM selects and asks for three members (#1230) | #1157, #1230 |
 | 27 → 49 | Module split | See 49 | #1207 |
 | 28 (superseded) | CSP header and sequencing | See 28 | #1213 |
 | 29 (superseded) | The 19-site table | See 29 | #1176 |
-| 35 (superseded) | MCP `create_thread` and `create_channel` | See 35 | In flight |
+| 35 (superseded) | MCP `create_thread` and `create_channel` | See 35 | #1226 |
 
 Done since `1e612cf8`, per the thread's own list: 3 (#1118), 13, 14a, 19, 20,
 22, 23 (#1113; 23's numbers corrected by lane U). The 2026-09-29 dispositions

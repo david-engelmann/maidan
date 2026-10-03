@@ -61,8 +61,11 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
 2. **Nothing is silently lost, and nothing grows without bound.** Retries share
    a per-host budget (#1122), every audit row belongs to a workspace (#1134),
    both backends have a tested backup path (#1126), and fairness and retention
-   are per workspace by default (#1153). In flight: a legal hold that keeps a
-   workspace's deliveries, and read notifications that age out (#1165). In flight (lane MSG): `MAIDAN_RETENTION_MESSAGES_DAYS` is an instance ceiling, and the sweep erases messages past it in every workspace that is not held. Next:
+   are per workspace by default (#1153). A legal hold keeps that workspace's
+   deliveries, and read notifications age out (#1165). When
+   `MAIDAN_RETENTION_MESSAGES_DAYS` is set, it is the instance ceiling: a
+   longer workspace `messages_days` is refused, and the sweep erases messages
+   past the cutoff in every workspace that is not held (#1232). Next:
    partitioning the append-only tables.
    A schema change while two versions share one database expands, then contracts in a later release ([Migrations](Migrations.md)).
 3. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus
@@ -88,15 +91,17 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    `static/ui`, served from the binary (#1207). `tsc --noEmit --checkJs` can
    check the JSDoc, and it does not run in CI. `/ui` sends a Content-Security-Policy
    (#1213). Keyboard focus reveals the pin toggle (#1217). Inputs, selects, and
-   textareas at 16px are in flight (#1219). Playwright is still not a required
+   textareas are 16px (#1219). Playwright is still not a required
    check. The specs fail when the board is wrong and pass when the lanes, the
    state word, the empty sentence, and the human refusal are right. Specs for
    prefs, slash commands, delivery replay, token mint and revoke, and DMs
-   landed (#1205). A group-DM spec is still absent, and `helpers.test.mjs` does
-   not run in CI. Next: the rest of the QA pass, the ten changes of the [UI design
-   contract](UI%20Design.md), and screenshots captured by a script.
-   In flight (lane ROT): a rotated token is installed only into the connection that requested it.
-   In flight (lane GDM): opening a group DM asks for three members and selects that conversation, and a browser spec posts in it.
+   landed (#1205). A group-DM spec opens a conversation and posts in it (#1230).
+   `helpers.test.mjs` does not run in CI. The ten surfaces of the [UI design
+   contract](UI%20Design.md) are on main (#1179, #1181, #1182, #1185, #1187,
+   #1188, #1190, #1192, #1193, #1196). A rotated token is installed only into
+   the connection that requested it (#1229). Opening a group DM asks for three
+   members and selects that conversation (#1230). Next: the review findings
+   still listed in Open Work, and screenshots captured by a script.
 5. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
