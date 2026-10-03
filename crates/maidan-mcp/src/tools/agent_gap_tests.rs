@@ -115,7 +115,7 @@ async fn server() -> (
 }
 
 fn bearer(member: MemberId, workspace: WorkspaceId, caps: Vec<String>) -> AuthContext {
-    AuthContext::from_token(ApiTokenId(uuid::Uuid::new_v4()), member, workspace, caps)
+    AuthContext::from_token(ApiTokenId::new(), member, workspace, caps)
 }
 
 fn assert_forbidden(err: McpError) {
