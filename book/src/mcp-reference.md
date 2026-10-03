@@ -5266,7 +5266,7 @@ List registered FSM automation hooks in a workspace.
 
 ### `get_thread_context`
 
-Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent). Pass token_budget=<n> to cap the message page by estimated tokens: the opening message and the recent tail are kept, the middle is folded into an auditable 'elision' marker (Lost-in-the-Middle).
+Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent). Pass token_budget=<n> to cap the message page by estimated tokens: the opening message and the recent tail are kept, the middle is folded into an auditable elision marker in fixed blocks. The result is two text parts: the stable prefix (workspace boot, brief, messages) and the volatile tail (state, lease, cursors, prefix sha256). Those strings are the bytes REST returns with split=true.
 
 **Capability:** `workspace:read`
 
@@ -5276,6 +5276,11 @@ Pack thread messages, edits, references, FSM history, and the workspace glossary
     "as_of": {
       "description": "Event-log id: reconstruct the thread as it stood at that point (as-of replay). Omit for the live pack.",
       "type": "integer"
+    },
+    "delta": {
+      "default": false,
+      "description": "Return a delta instead of the whole pack. With since_prefix_sha matching the current prefix, the first content part is empty and the second is the volatile tail. With message_cursor, the first part is messages after that cursor.",
+      "type": "boolean"
     },
     "include_accepted_decisions": {
       "default": true,
@@ -5297,10 +5302,24 @@ Pack thread messages, edits, references, FSM history, and the workspace glossary
       "description": "For a child thread, attach parent grounding (the parent's opening ask + latest decision) so a fresh claimer knows why the thread exists. Absent for root threads / cross-channel / DM parents. Set false for the leanest pack.",
       "type": "boolean"
     },
+    "max_bytes": {
+      "description": "Cap the canonical pack by bytes. Elision grows by fixed message blocks until the pack fits or only the opener and newest message remain.",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "message_cursor": {
+      "description": "Page messages after this id. With delta, it is also the delta cursor.",
+      "format": "uuid",
+      "type": "string"
+    },
     "message_limit": {
       "maximum": 500,
       "minimum": 1,
       "type": "integer"
+    },
+    "since_prefix_sha": {
+      "description": "Hex sha256 of a prefix the caller already holds. Requests a delta on its own.",
+      "type": "string"
     },
     "thread_id": {
       "format": "uuid",
@@ -5395,6 +5414,11 @@ Pack workspace channels, thread contexts (bounded by thread_limit), and the work
       "default": true,
       "description": "Include the workspace glossary once at the top level (grounding); omitted when empty. Set false to drop it.",
       "type": "boolean"
+    },
+    "max_bytes": {
+      "description": "Byte cap applied to each nested thread pack.",
+      "minimum": 1,
+      "type": "integer"
     },
     "message_limit": {
       "maximum": 500,
@@ -6319,6 +6343,10 @@ Workspace metadata.
 ### `channel` — `maidan://channels/{id}`
 
 Channel metadata.
+
+### `boot` — `maidan://boots/{channel_id}`
+
+Workspace boot for a channel: the bytes a thread pack prefix starts with.
 
 ### `thread` — `maidan://threads/{id}`
 
