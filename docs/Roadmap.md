@@ -88,6 +88,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    sentence, and the human refusal are right. In flight (lane PW, #1205): specs for prefs, slash commands, delivery replay, token mint and revoke, and DMs, with the coverage checklist. Unit tests for the auth-routing helpers and the error parser still wait. In flight (lane MOD): the board is ES modules in `static/ui`, served from the binary, checked with `tsc --noEmit --checkJs`. CSP is not started. In flight: the token leaving
    the browser's storage (#1142), the signed-in line showing a display name
    instead of a member id, and naming a workspace with `PATCH /workspaces/{id}`.
+   Keyboard focus reveals the pin toggle, and inputs, selects, and textareas are 16px so focusing one does not zoom the page.
    Next:
    the rest of the QA pass, the ten changes of the [UI design
    contract](UI%20Design.md), write paths for a signed-in person, a CSP on those modules, and screenshots captured by a script.
