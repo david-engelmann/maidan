@@ -27,9 +27,10 @@ use maidan_store::{
     prelude::*, replay_result_delivery, run_sqlite_migrations, ResultDeliveryReplay,
 };
 use maidan_types::{
-    status, EgressSurface, Event, ExternalRef, GithubDiffSide, GithubReviewComment, MemberKind,
-    NewChannel, NewEgressOutbox, NewEgressTarget, NewGithubIssueLink, NewMember, NewThread,
-    NewWorkspace, ThreadId, WAITER_RESULT_SCHEMA,
+    status, EgressSurface, Event, ExternalRef, GithubCheckConclusion, GithubCheckRun,
+    GithubDiffSide, GithubReviewComment, MemberKind, NewChannel, NewEgressOutbox, NewEgressTarget,
+    NewGithubIssueLink, NewMember, NewThread, NewWorkspace, ThreadId, GITHUB_CHECK_NAME,
+    WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -49,7 +50,9 @@ struct RecordingGithub {
     posts: Mutex<Vec<(String, i64, String)>>,
     updates: Mutex<Vec<(i64, String)>>,
     reviews: Mutex<Vec<ReviewCall>>,
+    checks: Mutex<Vec<(String, GithubCheckRun)>>,
     fail_review: Mutex<Option<GithubError>>,
+    fail_check: Mutex<Option<GithubError>>,
 }
 
 impl RecordingGithub {
@@ -59,7 +62,9 @@ impl RecordingGithub {
             posts: Mutex::new(Vec::new()),
             updates: Mutex::new(Vec::new()),
             reviews: Mutex::new(Vec::new()),
+            checks: Mutex::new(Vec::new()),
             fail_review: Mutex::new(None),
+            fail_check: Mutex::new(None),
         })
     }
 }
@@ -115,6 +120,21 @@ impl GithubSender for RecordingGithub {
             comments: comments.to_vec(),
         });
         if let Some(err) = self.fail_review.lock().unwrap().clone() {
+            return Err(err);
+        }
+        Ok(())
+    }
+
+    async fn create_check_run(
+        &self,
+        repo: &str,
+        check: &GithubCheckRun,
+    ) -> Result<(), GithubError> {
+        self.checks
+            .lock()
+            .unwrap()
+            .push((repo.into(), check.clone()));
+        if let Some(err) = self.fail_check.lock().unwrap().clone() {
             return Err(err);
         }
         Ok(())
@@ -443,6 +463,16 @@ async fn a_reviewed_github_result_posts_the_summary_and_a_right_side_inline_revi
         assert_eq!(second.side.as_str(), "RIGHT");
     }
 
+    {
+        let checks = h.github.checks.lock().unwrap();
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].0, "example/repo");
+        assert_eq!(checks[0].1.name, GITHUB_CHECK_NAME);
+        assert_eq!(checks[0].1.head_sha, HEAD_SHA);
+        assert_eq!(checks[0].1.conclusion, GithubCheckConclusion::Failure);
+        assert!(checks[0].1.summary.contains("does not request changes"));
+    }
+
     let delivered = delivered_row(&h).await;
     assert_eq!(delivered.status, status::DELIVERED);
     assert_eq!(delivered.external_ref.as_deref(), Some("1"));
@@ -464,6 +494,10 @@ async fn missing_head_sha_posts_the_summary_and_skips_the_review() {
     assert!(
         h.github.reviews.lock().unwrap().is_empty(),
         "no commit_id ⇒ no review"
+    );
+    assert!(
+        h.github.checks.lock().unwrap().is_empty(),
+        "no head_sha ⇒ no check run, and no live PR head is fetched"
     );
     assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
 }
@@ -494,6 +528,12 @@ async fn unusable_findings_post_the_summary_and_skip_the_review() {
 
     assert_eq!(h.github.posts.lock().unwrap().len(), 1);
     assert!(h.github.reviews.lock().unwrap().is_empty());
+    {
+        let checks = h.github.checks.lock().unwrap();
+        assert_eq!(checks.len(), 1, "a critical finding still fails the check");
+        assert_eq!(checks[0].1.head_sha, HEAD_SHA);
+        assert_eq!(checks[0].1.conclusion, GithubCheckConclusion::Failure);
+    }
     assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
 }
 
@@ -519,6 +559,12 @@ async fn a_mention_in_a_finding_body_is_defused_on_the_inline_comment() {
     assert_eq!(reviews[0].comments[0].body, "bypass `@octocat`");
     assert_eq!(reviews[0].comments[0].side.as_str(), "RIGHT");
     assert_eq!(reviews[0].comments[1].start_line, None);
+    drop(reviews);
+    let checks = h.github.checks.lock().unwrap();
+    assert_eq!(checks.len(), 1);
+    assert_eq!(checks[0].1.conclusion, GithubCheckConclusion::Success);
+    assert_eq!(checks[0].1.head_sha, HEAD_SHA);
+    assert!(checks[0].1.summary.contains("does not approve"));
 }
 
 #[tokio::test]
@@ -541,6 +587,7 @@ async fn slack_only_delivery_never_creates_a_github_review() {
     assert_eq!(h.slack.posts.lock().unwrap().len(), 1);
     assert!(h.github.posts.lock().unwrap().is_empty());
     assert!(h.github.reviews.lock().unwrap().is_empty());
+    assert!(h.github.checks.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -565,6 +612,12 @@ async fn a_non_reviewed_result_posts_a_failure_notice_and_no_review() {
         h.github.reviews.lock().unwrap().is_empty(),
         "findings must not ride a non-reviewed delivery"
     );
+    {
+        let checks = h.github.checks.lock().unwrap();
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].1.conclusion, GithubCheckConclusion::Failure);
+        assert_eq!(checks[0].1.head_sha, HEAD_SHA);
+    }
     assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
 }
 
@@ -863,6 +916,7 @@ async fn a_vanished_envelope_still_posts_the_summary_and_skips_the_review() {
         h.github.reviews.lock().unwrap().is_empty(),
         "no live waiter ⇒ no review, even though the outbox snapshot had findings"
     );
+    assert!(h.github.checks.lock().unwrap().is_empty());
     assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
 }
 
@@ -912,5 +966,63 @@ async fn a_projector_row_after_findings_never_creates_a_review() {
         1,
         "a projector row must not call create_review"
     );
+    assert_eq!(
+        h.github.checks.lock().unwrap().len(),
+        1,
+        "a projector row must not post another check run"
+    );
     assert!(h.github.updates.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_check_run_403_leaves_the_summary_delivered_and_the_link_enabled() {
+    let h = harness("check-403").await;
+    bless_github(&h).await;
+    link_github(&h).await;
+    *h.github.fail_check.lock().unwrap() = Some(GithubError::Api {
+        status: 403,
+        rate_limited: false,
+    });
+    set_result(
+        &h,
+        &envelope(
+            "reviewed",
+            github_target(),
+            Some(HEAD_SHA),
+            usable_findings(),
+        ),
+    )
+    .await;
+    route(&h, 1).await;
+    sweep(&h).await;
+
+    assert_eq!(h.github.posts.lock().unwrap().len(), 1);
+    assert_eq!(h.github.checks.lock().unwrap().len(), 1);
+    assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
+    github_link_is_enabled(&h).await;
+}
+
+#[tokio::test]
+async fn a_check_run_422_leaves_the_summary_delivered() {
+    let h = harness("check-422").await;
+    bless_github(&h).await;
+    *h.github.fail_check.lock().unwrap() = Some(GithubError::Api {
+        status: 422,
+        rate_limited: false,
+    });
+    set_result(
+        &h,
+        &envelope(
+            "reviewed",
+            github_target(),
+            Some(HEAD_SHA),
+            usable_findings(),
+        ),
+    )
+    .await;
+    route(&h, 1).await;
+    sweep(&h).await;
+
+    assert_eq!(h.github.posts.lock().unwrap().len(), 1);
+    assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
 }

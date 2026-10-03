@@ -59,6 +59,14 @@ impl GithubSender for MockSender {
         unreachable!("the projector egress never lists comments; that is result delivery")
     }
 
+    async fn create_check_run(
+        &self,
+        _repo: &str,
+        _check: &maidan_types::GithubCheckRun,
+    ) -> Result<(), GithubError> {
+        unreachable!("the projector egress never creates a check run; that is result delivery")
+    }
+
     async fn create_review(
         &self,
         _repo: &str,

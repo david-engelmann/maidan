@@ -79,6 +79,14 @@ impl GithubSender for RecordingGithub {
         Ok(vec![])
     }
 
+    async fn create_check_run(
+        &self,
+        _repo: &str,
+        _check: &maidan_types::GithubCheckRun,
+    ) -> Result<(), maidan_server::github::GithubError> {
+        Ok(())
+    }
+
     async fn create_review(
         &self,
         _repo: &str,
