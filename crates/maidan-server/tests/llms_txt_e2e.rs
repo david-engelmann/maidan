@@ -46,8 +46,9 @@ async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
         "is for provisioning",
         "/openapi.json",
         "claim_next_thread",
+        "create_channel",
+        "create_thread",
         "POST /channels/{cid}/threads",
-        "stay on REST by design",
         "POST /workspaces/{wid}/channels",
         "set_thread_result",
         "start_review",
@@ -67,6 +68,10 @@ async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
     assert!(
         !body.contains("never lapses"),
         "llms.txt says a claim can go unleased"
+    );
+    assert!(
+        !body.contains("stay on REST by design"),
+        "llms.txt still says channel and thread creation are REST-only"
     );
 
     server.abort();

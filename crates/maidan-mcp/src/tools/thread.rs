@@ -1,4 +1,4 @@
-//! Thread listing, assignment, dependency, and result tool handlers.
+//! Thread creation, listing, assignment, dependency, and result tool handlers.
 
 use std::sync::Arc;
 
@@ -96,6 +96,39 @@ pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result
         .page_threads_for_channel(ChannelId(a.channel_id), after, limit)
         .await?;
     Ok(content_json(&threads))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateThreadArgs {
+    channel_id: uuid::Uuid,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    parent_thread_id: Option<uuid::Uuid>,
+}
+
+/// Create a thread. `workspace:write` plus channel access, same as
+/// `POST /channels/:cid/threads`. The store enforces parent placement and the
+/// spawn budget; a refused spawn is recorded as `ThreadSpawnDenied`.
+pub(super) async fn create_thread(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: CreateThreadArgs = serde_json::from_value(args.clone())?;
+    let actor = (!auth.bypass).then_some(auth.member_id);
+    let created = server
+        .store
+        .create_thread_with_event(NewThread {
+            channel_id: ChannelId(a.channel_id),
+            parent_thread_id: a.parent_thread_id.map(ThreadId),
+            title: a.title,
+        })
+        .await;
+    let (thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
+    server.publish_stored(&stored).await;
+    Ok(content_json(&thread))
 }
 
 #[derive(Deserialize)]

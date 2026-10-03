@@ -162,6 +162,20 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "create_channel",
+            "description": "Create a channel in a workspace. Requires workspace:write, the same capability as POST /workspaces/{wid}/channels. A private channel adds the caller as its admin so they are not locked out.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid"},
+                    "name": {"type": "string"},
+                    "topic": {"type": "string"},
+                    "private": {"type": "boolean", "default": false}
+                },
+                "required": ["workspace_id", "name"]
+            }
+        }),
+        json!({
             "name": "list_channels",
             "description": "List channels in a workspace.",
             "inputSchema": {
@@ -206,6 +220,19 @@ pub fn catalog() -> Vec<Value> {
                     "member_id": {"type": "string", "format": "uuid"}
                 },
                 "required": ["channel_id", "member_id"]
+            }
+        }),
+        json!({
+            "name": "create_thread",
+            "description": "Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {"type": "string", "format": "uuid"},
+                    "title": {"type": "string"},
+                    "parent_thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["channel_id"]
             }
         }),
         json!({
@@ -667,7 +694,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "claim_next_thread",
-            "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Creating a channel, and creating a single task, stay on REST by design (POST /workspaces/{wid}/channels for a channel; POST /channels/{cid}/threads or the web UI for a task).",
+            "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Create a channel with create_channel and a task with create_thread (both need workspace:write; the REST twins are POST /workspaces/{wid}/channels and POST /channels/{cid}/threads).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
