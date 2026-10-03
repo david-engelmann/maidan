@@ -109,8 +109,11 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    out, claims inside the cache TTL, a batch lane for work with slack, and no
    duplicate runs. The claim is measured by a pre-registered benchmark, not a
    hit rate. This is Program C ([Context Economics](Context%20Economics.md)).
-   In flight: the canonical context pack and MCP conformance. Next: the ledger
-   and the SDK normalizers.
+   First, because a spec requires it: Maidan advertises MCP 2026-07-28 and
+   omits the `ttlMs`, `cacheScope` and `server/discover` that version
+   requires. Then the canonical pack, the ledger and the SDK normalizers (Open
+   Work Next 2 to 6; partial work for three of them is on `wip/` branches).
+   The research behind it is kept in the [archive](archive/Context%20Economics%20research%202026-10/README.md).
 6. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
    room itself staying open source. An operator can open a

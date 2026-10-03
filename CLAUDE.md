@@ -81,6 +81,12 @@ change.
   maintainer chooses, not per cluster, so some clusters were never tagged
   (v23–26, v78–100, v311, v350–401, v403, v411); their work ships in the next
   tag. `main` is well ahead of `v412.0.0`. Tagging is the maintainer's call.
+- **Program C, context economics, leads the queue** (Open Work Next 2 to 6;
+  design in [`docs/Context Economics.md`](docs/Context%20Economics.md), research
+  in `docs/archive/Context Economics research 2026-10/`). Partial work for
+  three items is on `wip/context-pack-cache-stable`,
+  `wip/mcp-cache-hints-discover` and `wip/workspace-queue-depth`: unreviewed,
+  based on `bd360306`, rebase before building on them.
 - **Do not point anyone at a deploy yet.** No deploy path runs a release with
   the week's cross-tenant fixes: the release pins name `v412.0.0`, and some
   paths run `dev`, `latest`, `v315.0.0` or `v0.0.1`. Open Work's **Before anyone
