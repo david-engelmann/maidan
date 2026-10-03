@@ -1588,8 +1588,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `input` is uncached input. Cache writes are a 5-minute tier and a 1-hour tier, each with its own snapshotted rate. A usage row stores the provider, response model id, service tier, batch flag, harness and version, cache key, cache-miss reason, and the sha256 of each pack.
 - **Added:** `GET /threads/{id}/usage-rollup`, `GET /workspaces/{id}/usage-rollup`, `GET /members/{id}/usage-rollup`, and MCP `usage_rollup` report spend, hit rate, write share, dollars saved against the uncached price, and cost per completed task. `POST /threads/{id}/usage/otel` accepts GenAI usage attributes; the caller still supplies the price snapshot.
-- **Added:** Prometheus counters for accepted tokens by tier and model, the charge, the uncached charge, dollars saved, and write premium. The manager digest includes the workspace spend and cost per completed task.
+- **Added:** Prometheus counters for accepted tokens by tier, the charge, the uncached charge, dollars saved, and write premium. The model id stays on the ledger row and is not a metric label. The manager digest includes the workspace spend and cost per completed task.
 - **Changed:** `max_tokens` counts fresh tokens only (uncached input, output, and cache writes). Cache reads count toward `max_usd_micros` at their price. The budget shows each tier. Decisions, 2026-10-03.
+- **Fixed:** OpenTelemetry provider names `aws.bedrock`, `azure.ai.openai`, `azure.ai.inference`, `gcp.gemini`, `gcp.gen_ai`, `mistral_ai`, and `x_ai` use the same uncached-input rule as their short names. `gcp.vertex_ai` is not classified, because Vertex serves both inclusive and exclusive usage.
 
 ## [412.0.0] — 2026-09-28
 
