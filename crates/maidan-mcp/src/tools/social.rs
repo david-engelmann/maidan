@@ -14,7 +14,7 @@ use crate::error::McpError;
 #[serde(deny_unknown_fields)]
 struct CastVoteArgs {
     message_id: uuid::Uuid,
-    kind: String,
+    kind: VoteKind,
     #[serde(default)]
     confidence: Option<f64>,
 }

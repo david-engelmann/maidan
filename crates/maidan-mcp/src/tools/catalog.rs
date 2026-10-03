@@ -2036,12 +2036,12 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "cast_vote",
-            "description": "Cast a vote on a message. kind is any string and is stored verbatim; the server has no closed set (conventions include approve, request-changes, ack, and a custom emoji). Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.",
+            "description": "Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "message_id": {"type": "string", "format": "uuid"},
-                    "kind": {"type": "string", "description": "any string, stored verbatim; not a closed set"},
+                    "kind": {"type": "string", "enum": ["approve", "request_changes", "ack"], "description": "approve, request_changes, or ack. Any other kind is rejected"},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "optional confidence weight for weighted consensus"}
                 },
                 "required": ["message_id", "kind"]
@@ -2930,10 +2930,23 @@ mod portability_tests {
             dm["inputSchema"]["properties"]["content"]["items"]["properties"]["type"]["enum"],
             block_enum
         );
-        // A vote kind is not an enum: the server stores whatever string it is
-        // given (TEXT NOT NULL, no parser). A closed list would invent kinds.
+        // cast_vote.kind is a closed enum. The server rejects every other
+        // string; the handler test is mcp_write_tools_emit_domain_events and
+        // the HTTP test is vote_confidence_round_trips_and_validates.
         let kind = &tool("cast_vote")["inputSchema"]["properties"]["kind"];
         assert_eq!(kind["type"], "string");
-        assert!(kind.get("enum").is_none(), "cast_vote.kind must stay open");
+        let mut values: Vec<&str> = kind["enum"]
+            .as_array()
+            .expect("cast_vote.kind must be a closed enum")
+            .iter()
+            .map(|value| value.as_str().expect("non-string enum value"))
+            .collect();
+        values.sort_unstable();
+        assert_eq!(values, ["ack", "approve", "request_changes"]);
+        let description = kind["description"].as_str().unwrap_or("");
+        assert!(
+            description.contains("rejected"),
+            "cast_vote.kind must say an unknown kind is rejected: {description}"
+        );
     }
 }

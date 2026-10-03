@@ -374,7 +374,7 @@ fn sample_event(kind: EventKind) -> Event {
             thread_id,
             message_id,
             member_id,
-            vote_kind: "up".into(),
+            vote_kind: "approve".into(),
         },
         EventKind::ReactionAdded => Event::ReactionAdded {
             occurred_at,

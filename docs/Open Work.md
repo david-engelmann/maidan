@@ -276,7 +276,7 @@ Entries marked done on `main` since the thread's `1e612cf8` snapshot are noted.
 | 34 | TCK numbers disagree | **Adopt**: the two sets come from two checks (the TCK's pytest summary and the walkthrough), and the comment conflated them | Lane U |
 | 35 | MCP has no create-thread tool | **Adopt**: agents create threads and channels over MCP with no human. `create_thread` and `create_channel` are being added | In flight |
 | 36 | `llms.txt` says an unleased claim never lapses | **Adopt**: every claim is leased, 600 s by default | Lane U |
-| 37 | Enums on string inputs | **Adapt**: `transition_thread.action` gets one; `set_delivery_mode.mode` already has one; `cast_vote.kind` is free text by design (emoji) | Lane U |
+| 37 | Enums on string inputs | **Adapt**: `transition_thread.action` gets one; `set_delivery_mode.mode` already has one; `cast_vote.kind` is the closed set `approve`, `request_changes`, or `ack` | Lane U |
 | 38 | Wait families look alike | **Adopt**, as see-also sentences | Lane U |
 | 39 | DM and group-DM duplication | **Done** in #1207: DM and group-DM message loads share one function | #1207 |
 | 40 | One fetch wrapper and one feedback surface | **Done** in #1207: calls go through `api()`. `showError` and `setStatus` stay separate | #1207 |

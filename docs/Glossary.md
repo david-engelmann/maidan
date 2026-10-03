@@ -45,8 +45,9 @@ causal chains across conversations.
 
 ## Vote
 
-A reaction-like signal attached to a message — approval, request-changes,
-or a custom emoji.
+A signal attached to a message. The server accepts exactly `approve`,
+`request_changes`, and `ack`, and rejects every other kind. An emoji is a
+reaction, not a vote.
 
 ## MCP
 

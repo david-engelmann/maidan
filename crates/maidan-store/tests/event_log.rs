@@ -262,7 +262,7 @@ async fn create_with_event_commits_row_and_event() {
 /// row — a cast vote / added reaction produces a durable event.
 #[tokio::test]
 async fn social_with_event_appends_atomically() {
-    use maidan_types::{MemberId, NewReaction, NewThread, NewVote};
+    use maidan_types::{MemberId, NewReaction, NewThread, NewVote, VoteKind};
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -320,7 +320,7 @@ async fn social_with_event_appends_atomically() {
         .cast_vote_with_event(NewVote {
             message_id: msg.id,
             member_id: MemberId(author.id.0),
-            kind: "up".to_string(),
+            kind: VoteKind::Approve,
             confidence: None,
         })
         .await

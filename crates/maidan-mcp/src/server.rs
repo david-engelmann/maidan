@@ -8013,10 +8013,29 @@ mod tests {
             .call_tool(
                 &auth,
                 "cast_vote",
-                &json!({ "message_id": msg.id.0, "kind": "up" }),
+                &json!({ "message_id": msg.id.0, "kind": "approve" }),
             )
             .await
             .unwrap();
+        for kind in ["up", "upvote", "request-changes", "ship", "👍"] {
+            let refused = server
+                .call_tool(
+                    &auth,
+                    "cast_vote",
+                    &json!({ "message_id": msg.id.0, "kind": kind }),
+                )
+                .await;
+            assert!(
+                matches!(
+                    &refused,
+                    Err(crate::error::McpError::InvalidParams(message))
+                        if message.contains("approve")
+                            && message.contains("request_changes")
+                            && message.contains("ack")
+                ),
+                "{kind} was not rejected as an unknown vote kind: {refused:?}"
+            );
+        }
         server
             .call_tool(
                 &auth,

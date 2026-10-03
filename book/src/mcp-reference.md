@@ -4598,7 +4598,7 @@ Mark a member as mentioned in a message.
 
 ### `cast_vote`
 
-Cast a vote on a message. kind is any string and is stored verbatim; the server has no closed set (conventions include approve, request-changes, ack, and a custom emoji). Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.
+Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.
 
 **Capability:** `workspace:write`
 
@@ -4612,7 +4612,12 @@ Cast a vote on a message. kind is any string and is stored verbatim; the server 
       "type": "number"
     },
     "kind": {
-      "description": "any string, stored verbatim; not a closed set",
+      "description": "approve, request_changes, or ack. Any other kind is rejected",
+      "enum": [
+        "approve",
+        "request_changes",
+        "ack"
+      ],
       "type": "string"
     },
     "message_id": {

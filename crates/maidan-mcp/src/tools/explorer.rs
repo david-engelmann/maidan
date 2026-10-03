@@ -129,7 +129,7 @@ mod tests {
     use maidan_store::{run_sqlite_migrations, SqliteStore};
     use maidan_types::{
         MemberKind, NewChannel, NewMember, NewMessage, NewPin, NewReaction, NewReference,
-        NewThread, NewVote, NewWorkspace, RefSide, RelationKind,
+        NewThread, NewVote, NewWorkspace, RefSide, RelationKind, VoteKind,
     };
     use serde_json::json;
     use sqlx::sqlite::SqlitePoolOptions;
@@ -283,7 +283,7 @@ mod tests {
             .cast_vote_with_event(NewVote {
                 message_id: keep.id,
                 member_id: member.id,
-                kind: "up".into(),
+                kind: VoteKind::Approve,
                 confidence: None,
             })
             .await

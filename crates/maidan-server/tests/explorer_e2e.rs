@@ -13,7 +13,7 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewMessage, NewPin, NewReaction,
-    NewReference, NewThread, NewVote, NewWorkspace, RefSide, RelationKind, WorkspaceId,
+    NewReference, NewThread, NewVote, NewWorkspace, RefSide, RelationKind, VoteKind, WorkspaceId,
 };
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -167,7 +167,7 @@ async fn explorer_rest_lists_tombstones_backlinks_and_census() {
         .cast_vote_with_event(NewVote {
             message_id: keep.id,
             member_id: member.id,
-            kind: "up".into(),
+            kind: VoteKind::Approve,
             confidence: None,
         })
         .await

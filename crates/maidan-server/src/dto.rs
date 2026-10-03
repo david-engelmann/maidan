@@ -11,7 +11,7 @@ use maidan_types::{
     EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, Member, MemberFreeze,
     MemberId, MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision, ShareTicket,
     SlashCommandId, SlashHandlerKind, ThreadDependency, ThreadId, TokenPolicy, TokenQuota,
-    WebhookSubscriptionId, Workspace, WorkspaceId,
+    VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -436,7 +436,8 @@ pub struct CreateMention {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateVote {
-    pub kind: String,
+    /// `approve`, `request_changes`, or `ack`. Any other kind is a 400.
+    pub kind: VoteKind,
     /// Optional confidence weight, by convention in `0..=1`, for weighted
     /// consensus. Omit to state no confidence.
     #[serde(default)]

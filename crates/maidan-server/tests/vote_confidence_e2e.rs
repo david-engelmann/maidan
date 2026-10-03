@@ -153,6 +153,16 @@ async fn vote_confidence_round_trips_and_validates() {
         "no confidence -> field omitted"
     );
 
+    // The third closed kind.
+    let changes = client
+        .post(&votes_url)
+        .header("maidan-test-member-id", member.id.0.to_string())
+        .json(&json!({ "kind": "request_changes" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(changes.status(), StatusCode::NO_CONTENT);
+
     // Out of range -> 400.
     let bad = client
         .post(&votes_url)
@@ -162,4 +172,43 @@ async fn vote_confidence_round_trips_and_validates() {
         .await
         .unwrap();
     assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+
+    // Outside the closed set is a 400 and writes no row. up, upvote, the
+    // hyphenated spelling, and an emoji are not kinds.
+    let before: Value = client
+        .get(&votes_url)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let before_len = before.as_array().unwrap().len();
+    for kind in ["up", "upvote", "request-changes", "ship", "👍"] {
+        let refused = client
+            .post(&votes_url)
+            .header("maidan-test-member-id", member.id.0.to_string())
+            .json(&json!({ "kind": kind }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{kind}");
+        let body: Value = refused.json().await.unwrap();
+        let detail = body["detail"].as_str().unwrap_or("");
+        assert!(
+            detail.contains("approve")
+                && detail.contains("request_changes")
+                && detail.contains("ack"),
+            "{kind} detail did not name the closed set: {detail}"
+        );
+    }
+    let after: Value = client
+        .get(&votes_url)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(after.as_array().unwrap().len(), before_len);
 }
