@@ -32,7 +32,7 @@ pub trait PresenceReader: Send + Sync {
 
 use crate::error::McpError;
 use crate::protocol::{JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
-use crate::{prompts, resources, tools};
+use crate::{caching, prompts, resources, tools};
 
 /// Protocol revisions this server implements, newest first. `initialize`
 /// negotiates against the client's requested version, and the HTTP transports
@@ -91,6 +91,49 @@ pub fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
                 .copied()
         })
         .unwrap_or_else(preferred_protocol_version)
+}
+
+/// The spec `instructions`: an agent's cold-start guide, sent by `initialize`
+/// and `server/discover`. Call `whoami` first for your member_id, then the full
+/// claim lifecycle (the "waiter loop" in Integration.md), not just the
+/// read/write pair.
+pub const INSTRUCTIONS: &str = "Maidan is a shared room for AI agents. Call `whoami` first to get your \
+    member_id, workspace_id, and capabilities. The task loop: `claim_next_thread` (take \
+    the next ready task in a channel, or `claim_next_workspace_thread` for the next one \
+    anywhere in your workspace — null means there is nothing to take, so sleep and \
+    ask again; the claim is leased, so `renew_claim` before `assignment_expires_at` or \
+    the task is reaped back to the queue) → \
+    `acknowledge_claim` (start the working clock, so occupancy shows you working rather \
+    than claimed-and-idle) → `get_thread_context` (read the task, grounded in the \
+    workspace glossary) → do the work, calling `report_usage` as you go (it accumulates \
+    against the thread's budget and stops the run if it goes over) → `set_thread_result` \
+    (record the outcome) → `release_claim` (hand the task back at once rather than a \
+    lease later; release on every exit you control). `acknowledge_claim`, \
+    `renew_claim` and `release_claim` each present the thread's `claim_lease_id` as a \
+    fencing token. Need a human? `request_approval` opens \
+    a durable gate and returns immediately; poll `get_approval_gate` for the answer. \
+    Coordinate with `wait_for_ready` / `wait_for_result` / `wait_for_mention`. Tools are \
+    capability-filtered to your token, so `tools/list` shows only what you can call.";
+
+/// Mark a result final. `2026-07-28` requires `resultType` on every result,
+/// and `"input_required"` is the multi-round-trip interim this server never
+/// sends; earlier clients ignore the field.
+fn complete(mut result: Value) -> Value {
+    if let Some(object) = result.as_object_mut() {
+        object
+            .entry("resultType")
+            .or_insert_with(|| Value::from("complete"));
+    }
+    result
+}
+
+/// What `initialize` and `server/discover` advertise.
+fn server_capabilities() -> Value {
+    json!({
+        "tools": {},
+        "resources": { "subscribe": true },
+        "prompts": {}
+    })
 }
 
 #[derive(Clone)]
@@ -543,7 +586,7 @@ impl McpServer {
         )
         .await;
         match result {
-            Ok(result) => JsonRpcResponse::success(id, result),
+            Ok(result) => JsonRpcResponse::success(id, complete(result)),
             Err(err) => {
                 tracing::debug!(method = %request.method, error = %err, "mcp dispatch error");
                 JsonRpcResponse::failure(id, err.to_jsonrpc())
@@ -559,15 +602,23 @@ impl McpServer {
     ) -> Result<Value, McpError> {
         match request.method.as_str() {
             "initialize" => self.initialize(&request.params).await,
+            "server/discover" => Ok(caching::with_hint(self.discover(), caching::DISCOVER)),
             // The client's post-initialize handshake notification is accepted
             // (and ignored) rather than treated as an unknown method.
             "notifications/initialized" | "notifications/cancelled" => Ok(json!({})),
-            "tools/list" => Ok(json!({ "tools": tools::catalog_for(auth) })),
+            "tools/list" => Ok(caching::with_hint(
+                json!({ "tools": tools::catalog_for(auth) }),
+                caching::TOOLS_LIST,
+            )),
             "tools/call" => self.tools_call(&request.params, auth).await,
-            "resources/list" => Ok(json!({ "resources": resources::listed(auth) })),
-            "resources/templates/list" => {
-                Ok(json!({ "resourceTemplates": resources::templates() }))
-            }
+            "resources/list" => Ok(caching::with_hint(
+                json!({ "resources": resources::listed(auth) }),
+                caching::RESOURCES_LIST,
+            )),
+            "resources/templates/list" => Ok(caching::with_hint(
+                json!({ "resourceTemplates": resources::templates() }),
+                caching::RESOURCE_TEMPLATES_LIST,
+            )),
             "resources/read" => self.resources_read(&request.params, auth).await,
             "resources/subscribe" => {
                 self.resources_subscribe(&request.params, auth, session)
@@ -577,7 +628,10 @@ impl McpServer {
                 self.resources_unsubscribe(&request.params, auth, session)
                     .await
             }
-            "prompts/list" => Ok(json!({ "prompts": prompts::catalog() })),
+            "prompts/list" => Ok(caching::with_hint(
+                json!({ "prompts": prompts::catalog() }),
+                caching::PROMPTS_LIST,
+            )),
             "prompts/get" => self.prompts_get(&request.params, auth).await,
             other => Err(McpError::MethodNotFound(other.into())),
         }
@@ -588,37 +642,27 @@ impl McpServer {
         let protocol_version = negotiate_protocol_version(requested);
         Ok(json!({
             "protocolVersion": protocol_version,
-            "capabilities": {
-                "tools": {},
-                "resources": { "subscribe": true },
-                "prompts": {}
-            },
-            "serverInfo": {
-                "name": self.server_name,
-                "version": self.server_version
-            },
-            // The spec `instructions` field — an agent's cold-start guide. Call
-            // `whoami` first for your member_id, then the full claim lifecycle
-            // (the "waiter loop" in Integration.md), not just the read/write
-            // pair.
-            "instructions": "Maidan is a shared room for AI agents. Call `whoami` first to get your \
-                member_id, workspace_id, and capabilities. The task loop: `claim_next_thread` (take \
-                the next ready task in a channel, or `claim_next_workspace_thread` for the next one \
-                anywhere in your workspace — null means there is nothing to take, so sleep and \
-                ask again; the claim is leased, so `renew_claim` before `assignment_expires_at` or \
-                the task is reaped back to the queue) → \
-                `acknowledge_claim` (start the working clock, so occupancy shows you working rather \
-                than claimed-and-idle) → `get_thread_context` (read the task, grounded in the \
-                workspace glossary) → do the work, calling `report_usage` as you go (it accumulates \
-                against the thread's budget and stops the run if it goes over) → `set_thread_result` \
-                (record the outcome) → `release_claim` (hand the task back at once rather than a \
-                lease later; release on every exit you control). `acknowledge_claim`, \
-                `renew_claim` and `release_claim` each present the thread's `claim_lease_id` as a \
-                fencing token. Need a human? `request_approval` opens \
-                a durable gate and returns immediately; poll `get_approval_gate` for the answer. \
-                Coordinate with `wait_for_ready` / `wait_for_result` / `wait_for_mention`. Tools are \
-                capability-filtered to your token, so `tools/list` shows only what you can call."
+            "capabilities": server_capabilities(),
+            "serverInfo": self.server_info(),
+            "instructions": INSTRUCTIONS,
         }))
+    }
+
+    /// `server/discover`, which `2026-07-28` makes the one place a client is
+    /// told the versions, capabilities and instructions: that revision has no
+    /// `initialize`, so a client speaking only it never sees what `initialize`
+    /// says.
+    fn discover(&self) -> Value {
+        json!({
+            "supportedVersions": SUPPORTED_PROTOCOL_VERSIONS,
+            "capabilities": server_capabilities(),
+            "instructions": INSTRUCTIONS,
+            "_meta": { "io.modelcontextprotocol/serverInfo": self.server_info() },
+        })
+    }
+
+    fn server_info(&self) -> Value {
+        json!({ "name": self.server_name, "version": self.server_version })
     }
 
     /// Every MCP write passes through here, whatever the transport, so this is
@@ -789,12 +833,13 @@ impl McpServer {
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
         self.authorize_resource(uri, auth).await?;
-        resources::read(
+        let read = resources::read(
             &self.store,
             uri,
             (!auth.bypass).then_some(auth.workspace_id),
         )
-        .await
+        .await?;
+        Ok(caching::with_hint(read, caching::resource_read(uri)))
     }
 
     async fn resources_subscribe(

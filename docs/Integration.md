@@ -801,6 +801,17 @@ mid-loop" under the waiter loop below.
 
 Tool list and schemas: generated [MCP reference](https://david-engelmann.github.io/maidan/mcp-reference.html) (rebuilt on every docs CI run).
 
+### MCP discovery and cache hints
+
+`server/discover` returns the supported revisions, capabilities, instructions and
+`serverInfo` with no handshake, on `POST /mcp`, `POST /mcp/streamable` and stdio; a
+`2026-07-28` client reads the instructions there. Every cacheable result
+(`server/discover`, `tools/list`, `prompts/list`, `resources/list`,
+`resources/templates/list`, `resources/read`) carries a `ttlMs` and a `cacheScope`, and
+every result carries `resultType: "complete"`. The value chosen for each, and why, is
+tabled in [Protocols: MCP discovery and cache hints](Protocols.md#mcp-discovery-and-cache-hints).
+A cached result never authorizes anything: every call is checked against its token.
+
 ### WebSocket subscribe filter
 
 Fields: `workspace_id` (enables replay), optional `channel_id`, `thread_id`, `member_id`, `kinds[]`, `channel_grants[]` (UUID allow-list for private channels). Private channel events require an explicit grant.
