@@ -1673,14 +1673,18 @@ when the server has one. The card reads that from the `auth` block of
 `GET /.well-known/maidan.json`:
 
 ```json
-"auth": { "bearer": true, "oidc": true, "oidc_login": "/auth/oidc/login" }
+"auth": { "bearer": true, "oidc": true, "sessions": true, "oidc_login": "/auth/oidc/login" }
 ```
 
-`oidc_login` is present only when `oidc` is true. The page exchanges a pasted
+`oidc_login` is present only when `oidc` is true. `sessions` is true when this
+server issues a browser session, through OIDC or through `MAIDAN_SESSION_SECRET`
+alone. The page exchanges a pasted
 token once for the `HttpOnly; SameSite=Lax` `maidan_session` cookie and removes
 it from the field. A token left in `localStorage` by an older page is exchanged
 on the next load and removed. Once connected, the inputs fold into the header
-behind **Change**. **Sign out** ends the session.
+behind **Change**. **Sign out** posts `/auth/logout` when `sessions` is true,
+including when the page has not cached a member id. A server with `sessions`
+false has no cookie to end, so the page only forgets the token in the tab.
 
 The page is a board: a channel list, tasks, and the thread when one is open. More tools holds the other panels (search, tokens, DMs, notifications, admin). A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The page fetches the bytes with the viewer's session cookie or bearer header, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 

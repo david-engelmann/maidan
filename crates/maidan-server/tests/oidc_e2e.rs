@@ -145,6 +145,7 @@ async fn discovery_says_oidc_sign_in_is_available() {
         .await
         .unwrap();
     assert_eq!(body["auth"]["oidc"], true);
+    assert_eq!(body["auth"]["sessions"], true);
     assert_eq!(body["auth"]["oidc_login"], "/auth/oidc/login");
 }
 

@@ -7,13 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Keyboard focus reveals the pin toggle
+### Sign out ends a session the page has not cached
 
-- **Fixed:** the pin control on a message was `opacity: 0` except while the pointer hovered the message, or while the message was already pinned. Tabbing to the button left it invisible. `:focus-within` shows it, the same way the reaction control already does.
+- **Fixed:** Sign out posts `/auth/logout` when `/.well-known/maidan.json` says this server offers browser sessions (`auth.sessions`), not only when a member id is already on the page. A failed session read is not treated as proof that no cookie exists. When discovery never answered, Sign out still posts. A server that says it has no sessions still just forgets the token in the tab, unless this page has already seen a member.
 
 ### Form controls are 16px
 
 - **Fixed:** `input`, `select`, and `textarea` on `/ui` are 16px. They inherited the body's 14px, and six later rules set them smaller still, so iOS Safari zoomed the page on focus. Buttons stay the size they were.
+
+### Keyboard focus reveals the pin toggle
+
+- **Fixed:** the pin control on a message was `opacity: 0` except while the pointer hovered the message, or while the message was already pinned. Tabbing to the button left it invisible. `:focus-within` shows it, the same way the reaction control already does.
 
 ### A linked pull request that closes unmerged is said on the thread
 

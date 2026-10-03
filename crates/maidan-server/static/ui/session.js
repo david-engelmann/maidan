@@ -13,6 +13,10 @@ import { tokenKey, wsResumeKey } from "./state.js";
 
       let oidcLoginPath = null;
 
+      // `true` / `false` from discovery's `auth.sessions`. `null` means the
+      // document never answered, which is not the same as "no sessions".
+      let serverOffersSessions = null;
+
       // The session cookie was made from a pasted token (it holds that token's
       // authority), as opposed to an OIDC sign-in.
       let tokenSession = false;
@@ -106,16 +110,29 @@ import { tokenKey, wsResumeKey } from "./state.js";
       // first-run card never offers an identity provider that is not there.
       async function loadServerAuth() {
         oidcLoginPath = null;
+        serverOffersSessions = null;
         try {
           const res = await api(`${base()}/.well-known/maidan.json`);
           if (res.ok) {
             const auth = (await res.json()).auth;
             if (auth && auth.oidc && auth.oidc_login) oidcLoginPath = auth.oidc_login;
+            if (auth && typeof auth.sessions === "boolean") serverOffersSessions = auth.sessions;
           }
         } catch (_e) {
           /* no discovery document: a token is the only path offered */
         }
         document.getElementById("first-run-oidc").hidden = !oidcLoginPath;
+      }
+
+      // A missing cached member is not proof the cookie is gone: the session
+      // read can fail while the cookie is still live. Post logout when the
+      // server said it offers sessions, or when discovery never answered.
+      // A server that said it has none has no cookie to end, unless this page
+      // has already seen a member.
+      function signOutPostsLogout(sessions, cachedMemberId) {
+        if (sessions === true) return true;
+        if (sessions === false) return Boolean(cachedMemberId);
+        return true;
       }
 
       // Signing out ends the session on the server, whichever kind it is; the
@@ -126,7 +143,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         localStorage.removeItem(wsResumeKey);
         document.getElementById("token").value = "";
         tokenSession = false;
-        if (!sessionMemberId) {
+        if (!signOutPostsLogout(serverOffersSessions, sessionMemberId)) {
           window.location.reload();
           return;
         }
@@ -328,4 +345,4 @@ import { tokenKey, wsResumeKey } from "./state.js";
         showConnection(false);
       }
 
-export { bearerMemberId, exchangeToken, loadServerAuth, oidcLoginPath, refreshBearerIdentity, refreshSession, renderIdentity, saveWorkspaceName, sessionMemberId, showConnection, showSecretOnce, start, tokenSession };
+export { bearerMemberId, exchangeToken, loadServerAuth, oidcLoginPath, refreshBearerIdentity, refreshSession, renderIdentity, saveWorkspaceName, serverOffersSessions, sessionMemberId, showConnection, showSecretOnce, signOutPostsLogout, start, tokenSession };
