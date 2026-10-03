@@ -5279,7 +5279,7 @@ Pack thread messages, edits, references, FSM history, and the workspace glossary
     },
     "delta": {
       "default": false,
-      "description": "Return a delta instead of the whole pack. With since_prefix_sha matching the current prefix, the first content part is empty and the second is the volatile tail. With message_cursor, the first part is messages after that cursor.",
+      "description": "Return a delta instead of the whole pack. The first content part is always the delta head (delta, prefix_unchanged, prefix_sha256, prefix_bytes), never empty; the second is the volatile tail. When since_prefix_sha matches the current prefix, the head has prefix_unchanged true and no messages or prefix. With message_cursor, the head adds the messages after that cursor when appending them rebuilds the prefix; otherwise it carries the replacement prefix.",
       "type": "boolean"
     },
     "include_accepted_decisions": {

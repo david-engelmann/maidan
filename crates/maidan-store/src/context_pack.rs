@@ -2,6 +2,8 @@
 //! REST and MCP both call this, then serialize the same types, so the same
 //! state is the same bytes and one snapshot sha.
 
+use std::collections::HashSet;
+
 use futures::stream::{self, StreamExt, TryStreamExt};
 use maidan_types::*;
 
@@ -234,8 +236,11 @@ async fn fit_page(
         .map(|e| e.elided_message_count)
         .unwrap_or(0);
     let cap = limits.max_bytes.map(|n| n.max(1) as usize);
+    // One read of the page. Each smaller kept set is a filter, not another
+    // round of reference, edit and artifact queries.
+    let held = hold_rows(store, &input, &original).await?;
     loop {
-        let pack = assemble_kept(store, &input, &messages, elision.clone()).await?;
+        let pack = assemble_kept(&input, &messages, elision.clone(), &held)?;
         let size = pack.canonical_bytes()?.len();
         let Some(cap) = cap else {
             return Ok(pack);
@@ -254,12 +259,19 @@ async fn fit_page(
     }
 }
 
-async fn assemble_kept(
+/// References, edits and named artifacts for `messages`, already cut at an
+/// as-of bound. The byte-cap loop filters this; it does not re-read the store.
+struct HeldRows {
+    references: Vec<Reference>,
+    edits: Vec<MessageEdit>,
+    artifacts: Vec<Artifact>,
+}
+
+async fn hold_rows(
     store: &dyn Store,
     input: &FitInput,
     messages: &[Message],
-    elision: Option<PackElision>,
-) -> Result<ThreadContext, StoreError> {
+) -> Result<HeldRows, StoreError> {
     let mut references = collect_references(store, input.thread.id, messages).await?;
     if let Some(cutoff) = input.edits_cutoff {
         references.retain(|r| r.created_at <= cutoff);
@@ -274,6 +286,48 @@ async fn assemble_kept(
     if let Some(cutoff) = input.edits_cutoff {
         artifacts.retain(|a| a.created_at <= cutoff);
     }
+    Ok(HeldRows {
+        references,
+        edits,
+        artifacts,
+    })
+}
+
+fn rows_for(held: &HeldRows, messages: &[Message]) -> HeldRows {
+    let ids: HashSet<MessageId> = messages.iter().map(|m| m.id).collect();
+    let srcs: HashSet<uuid::Uuid> = messages.iter().map(|m| m.id.0).collect();
+    let named: HashSet<String> = artifact_reference_order(messages).into_iter().collect();
+    HeldRows {
+        references: held
+            .references
+            .iter()
+            .filter(|reference| {
+                reference.src_kind != RefSide::Message || srcs.contains(&reference.src_id)
+            })
+            .cloned()
+            .collect(),
+        edits: held
+            .edits
+            .iter()
+            .filter(|edit| ids.contains(&edit.message_id))
+            .cloned()
+            .collect(),
+        artifacts: held
+            .artifacts
+            .iter()
+            .filter(|artifact| named.contains(&artifact.sha256))
+            .cloned()
+            .collect(),
+    }
+}
+
+fn assemble_kept(
+    input: &FitInput,
+    messages: &[Message],
+    elision: Option<PackElision>,
+    held: &HeldRows,
+) -> Result<ThreadContext, StoreError> {
+    let rows = rows_for(held, messages);
     assemble_thread_context(PackParts {
         workspace_id: input.workspace_id,
         thread: input.thread.clone(),
@@ -283,10 +337,10 @@ async fn assemble_kept(
         closed_results: input.closed_results.clone(),
         messages: messages.to_vec(),
         elision,
-        edits,
+        edits: rows.edits,
         include_edit_bodies: input.include_edit_bodies,
-        references,
-        artifacts,
+        references: rows.references,
+        artifacts: rows.artifacts,
         transitions: input.transitions.clone(),
         change_requests: input.change_requests.clone(),
         as_of: input.as_of,

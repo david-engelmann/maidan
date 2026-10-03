@@ -1590,6 +1590,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `GET /channels/:id/boot` and the MCP resource `maidan://boots/{channel_id}` serve the workspace boot. It is the same bytes for every agent of the channel, and a thread pack's prefix starts with it.
 - **Added:** `max_bytes` caps the canonical pack. Elision grows by blocks of 16 messages. `delta=true` or `since_prefix_sha` returns a delta: the tail alone when the prefix sha matches, otherwise the messages after `message_cursor` or the replacement prefix. `as_of` rebuilds the thread row from the log at that event, not the live row. Id ties sort the same on both databases.
 
+### A context delta says when the prefix must be replaced
+
+- **Fixed:** A `message_cursor` delta with `since_prefix_sha` returns the messages after the cursor only when appending them, and their edits, rebuilds a prefix that hashes to `prefix_sha256`. A change outside those messages (a glossary term, an accepted decision, a reference, an artifact, a transition, a change request, an earlier edit, or the elision boundary) returns the replacement prefix instead, so a client cache cannot drift. The first MCP content part of a delta is that head, never an empty string. A cursor with no prefix sha is still the message slice the caller asked for.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

@@ -600,14 +600,18 @@ pub struct ContextDelta {
     pub prefix_bytes: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since_message_cursor: Option<String>,
-    /// Present when the prefix changed and the caller named a message cursor:
-    /// only the messages after that cursor.
+    /// Present when a message cursor's suffix can be appended to the prefix the
+    /// caller already holds and that result hashes to `prefix_sha256`: only
+    /// the messages after that cursor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub messages: Option<Vec<Message>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_edits: Option<Vec<MessageEditView>>,
-    /// Present when the prefix changed and there is no cursor to slice on, so
-    /// the caller has to replace the prefix it held.
+    /// Present when the caller has to replace the prefix it held: the sha
+    /// changed and there is no cursor, or the cursor's suffix would not
+    /// rebuild a prefix that hashes to `prefix_sha256` (a glossary term, an
+    /// accepted decision, a reference, an artifact, a transition, a change
+    /// request, an earlier edit, or the elision boundary moved).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prefix: Option<ContextPrefix>,
     pub tail: ContextTail,
@@ -802,8 +806,10 @@ pub fn assemble_thread_context(parts: PackParts) -> Result<ThreadContext, serde_
 /// `full` is the pack with no message cursor (the prefix a cache would hold).
 /// `paged` is that pack, or the page after `message_cursor` when one was set.
 /// A `since_prefix_sha` that matches `full` returns only the tail. A cursor
-/// with a changed prefix returns the messages after the cursor. A changed
-/// prefix with no cursor returns the whole prefix so the caller can replace it.
+/// returns the messages after the cursor when appending them rebuilds a prefix
+/// that hashes to `prefix_sha256`, and when the caller named no prefix sha
+/// (they asked for the slice, not a cache check). Otherwise the delta carries
+/// the replacement prefix: splicing messages alone would not hash.
 pub fn frame_delta(
     full: &ThreadContext,
     paged: &ThreadContext,
@@ -825,17 +831,21 @@ pub fn frame_delta(
         };
     }
     if let Some(cursor) = message_cursor {
-        return ContextDelta {
-            delta: true,
-            prefix_unchanged: false,
-            prefix_sha256: full.tail.prefix_sha256.clone(),
-            prefix_bytes: full.tail.prefix_bytes,
-            since_message_cursor: Some(cursor.0.to_string()),
-            messages: Some(paged.prefix.messages.clone()),
-            message_edits: Some(paged.prefix.message_edits.clone()),
-            prefix: None,
-            tail: paged.tail.clone(),
-        };
+        let appends =
+            since_prefix_sha.is_none_or(|sha| cursor_suffix_rebuilds(full, paged, cursor, sha));
+        if appends {
+            return ContextDelta {
+                delta: true,
+                prefix_unchanged: false,
+                prefix_sha256: full.tail.prefix_sha256.clone(),
+                prefix_bytes: full.tail.prefix_bytes,
+                since_message_cursor: Some(cursor.0.to_string()),
+                messages: Some(paged.prefix.messages.clone()),
+                message_edits: Some(paged.prefix.message_edits.clone()),
+                prefix: None,
+                tail: paged.tail.clone(),
+            };
+        }
     }
     ContextDelta {
         delta: true,
@@ -848,6 +858,69 @@ pub fn frame_delta(
         prefix: Some(full.prefix.clone()),
         tail: full.tail.clone(),
     }
+}
+
+/// True when `since_prefix_sha` is the prefix of `full` cut at `cursor`
+/// (inclusive) and the messages after that cursor are exactly `paged`, with
+/// no new reference or artifact the message slice cannot carry.
+fn cursor_suffix_rebuilds(
+    full: &ThreadContext,
+    paged: &ThreadContext,
+    cursor: MessageId,
+    since_prefix_sha: &str,
+) -> bool {
+    let Some(pos) = full.prefix.messages.iter().position(|m| m.id == cursor) else {
+        return false;
+    };
+    let mut through = full.prefix.clone();
+    let kept: HashSet<MessageId> = through.messages[..=pos].iter().map(|m| m.id).collect();
+    let kept_src: HashSet<uuid::Uuid> = kept.iter().map(|id| id.0).collect();
+    through.messages.truncate(pos + 1);
+    through
+        .message_edits
+        .retain(|edit| kept.contains(&edit.message_id));
+    through.references.retain(|reference| {
+        reference.src_kind != crate::models::RefSide::Message
+            || kept_src.contains(&reference.src_id)
+    });
+    let named: HashSet<String> = artifact_reference_order(&through.messages)
+        .into_iter()
+        .collect();
+    through
+        .artifacts
+        .retain(|artifact| named.contains(&artifact.sha256));
+    let Ok(raw) = serde_json::to_vec(&through) else {
+        return false;
+    };
+    if sha256_hex(&raw) != since_prefix_sha {
+        return false;
+    }
+    // A new message that names a reference or an artifact changes bytes the
+    // message slice does not carry. The caller would append and miss them.
+    if through.references.len() != full.prefix.references.len()
+        || through.artifacts.len() != full.prefix.artifacts.len()
+    {
+        return false;
+    }
+    let suffix = &full.prefix.messages[pos + 1..];
+    let (Ok(suffix_bytes), Ok(paged_bytes)) = (
+        serde_json::to_vec(suffix),
+        serde_json::to_vec(&paged.prefix.messages),
+    ) else {
+        return false;
+    };
+    if suffix_bytes != paged_bytes {
+        return false;
+    }
+    let suffix_ids: HashSet<MessageId> = suffix.iter().map(|m| m.id).collect();
+    let suffix_edits: Vec<_> = full
+        .prefix
+        .message_edits
+        .iter()
+        .filter(|edit| suffix_ids.contains(&edit.message_id))
+        .cloned()
+        .collect();
+    suffix_edits == paged.prefix.message_edits
 }
 
 /// The artifact shas `messages` name, each once, in first-reference order.
@@ -1223,16 +1296,106 @@ mod tests {
         );
     }
 
+    fn rehash(pack: &mut ThreadContext) {
+        let raw = serde_json::to_vec(&pack.prefix).expect("prefix");
+        pack.tail.prefix_sha256 = sha256_hex(&raw);
+        pack.tail.prefix_bytes = raw.len() as u64;
+    }
+
     #[test]
     fn a_matching_prefix_sha_is_a_tail_only_delta() {
         let packed = pack_with(vec![fixed_message(10, "one")], 5);
         let delta = frame_delta(&packed, &packed, Some(&packed.tail.prefix_sha256), None);
         assert!(delta.prefix_unchanged);
         let (head, tail) = delta.parts().expect("parts");
+        assert!(!head.is_empty());
+        assert!(head.contains("\"prefix_unchanged\":true"));
         assert!(!head.contains("\"messages\""));
         assert!(tail.contains("\"state\""));
         let changed = frame_delta(&packed, &packed, Some("nope"), None);
         assert!(changed.prefix.is_some());
+        assert!(changed.messages.is_none());
+    }
+
+    #[test]
+    fn a_cursor_delta_appends_messages_when_that_rebuilds_the_prefix() {
+        let older = pack_with(vec![fixed_message(10, "one")], 5);
+        let newer = pack_with(vec![fixed_message(10, "one"), fixed_message(11, "two")], 9);
+        let cursor = older.prefix.messages[0].id;
+        let paged = pack_with(vec![fixed_message(11, "two")], 9);
+        let delta = frame_delta(
+            &newer,
+            &paged,
+            Some(&older.tail.prefix_sha256),
+            Some(cursor),
+        );
+        assert!(!delta.prefix_unchanged);
+        assert!(delta.prefix.is_none());
+        let (head, _) = delta.parts().expect("parts");
+        assert!(head.contains("\"messages\""));
+        assert!(!head.contains("\"prefix\":{"));
+        let messages = delta.messages.expect("suffix");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].id, MessageId(uid(11)));
+    }
+
+    #[test]
+    fn a_cursor_delta_replaces_the_prefix_when_stable_layers_changed() {
+        let older = pack_with(vec![fixed_message(10, "one")], 5);
+        let mut newer = pack_with(vec![fixed_message(10, "one"), fixed_message(11, "two")], 9);
+        newer.prefix.thread.title = Some("renamed".into());
+        rehash(&mut newer);
+        let cursor = older.prefix.messages[0].id;
+        let paged = pack_with(vec![fixed_message(11, "two")], 9);
+        let delta = frame_delta(
+            &newer,
+            &paged,
+            Some(&older.tail.prefix_sha256),
+            Some(cursor),
+        );
+        assert!(delta.messages.is_none());
+        assert!(delta.prefix.is_some());
+        assert!(delta.since_message_cursor.is_none());
+    }
+
+    #[test]
+    fn a_cursor_without_a_prefix_sha_is_the_message_slice() {
+        let older = pack_with(vec![fixed_message(10, "one")], 5);
+        let mut newer = pack_with(vec![fixed_message(10, "one"), fixed_message(11, "two")], 9);
+        newer.prefix.thread.title = Some("renamed".into());
+        rehash(&mut newer);
+        let cursor = older.prefix.messages[0].id;
+        let paged = pack_with(vec![fixed_message(11, "two")], 9);
+        let delta = frame_delta(&newer, &paged, None, Some(cursor));
+        assert!(delta.prefix.is_none());
+        assert!(delta.messages.is_some());
+    }
+
+    #[test]
+    fn a_new_reference_on_the_suffix_is_not_an_append() {
+        let older = pack_with(vec![fixed_message(10, "one")], 5);
+        let mut newer = pack_with(vec![fixed_message(10, "one"), fixed_message(11, "two")], 9);
+        newer.prefix.references.push(crate::models::Reference {
+            id: uid(50),
+            src_kind: crate::models::RefSide::Message,
+            src_id: uid(11),
+            dst_kind: crate::models::RefSide::Thread,
+            dst_id: uid(1),
+            relation: crate::models::RelationKind::Supports,
+            created_at: at_secs(11),
+        });
+        rehash(&mut newer);
+        let cursor = older.prefix.messages[0].id;
+        let paged = pack_with(vec![fixed_message(11, "two")], 9);
+        let delta = frame_delta(
+            &newer,
+            &paged,
+            Some(&older.tail.prefix_sha256),
+            Some(cursor),
+        );
+        assert!(delta.messages.is_none());
+        let prefix = delta.prefix.expect("replacement");
+        assert_eq!(prefix.references.len(), 1);
     }
 
     #[test]
