@@ -770,3 +770,48 @@ pub(super) async fn get_member_occupancy(
         assigned_threads: visible,
     }))
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListMembersArgs {
+    workspace_id: uuid::Uuid,
+}
+
+/// Members of a workspace. Twin of `GET /workspaces/{wid}/members`.
+pub(super) async fn list_members(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListMembersArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)
+        .map_err(McpError::from)?;
+    let members = store.list_members(workspace_id).await?;
+    Ok(content_json(&members))
+}
+
+/// One member in the caller workspace. Twin of `GET /members/{id}`.
+/// Another workspace member is not found, same as an unknown id.
+pub(super) async fn get_member(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let member = super::requested_member(store.as_ref(), auth, MemberId(a.member_id)).await?;
+    Ok(content_json(&member))
+}
+
+/// Mark every notification for this member read. Twin of
+/// `POST /members/{id}/notifications/read-all`, named beside `mark_notification_read`.
+pub(super) async fn mark_all_notifications_read(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let cleared = store
+        .mark_all_notifications_read(MemberId(a.member_id))
+        .await? as i64;
+    Ok(content_json(&serde_json::json!({ "cleared": cleared })))
+}

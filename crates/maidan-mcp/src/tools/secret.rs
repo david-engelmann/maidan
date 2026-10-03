@@ -1,8 +1,7 @@
-//! Named-secret MCP tools: an agent lists a workspace's secrets (metadata) and
-//! **resolves** one by name — the "consumer fetches at exec" path, mirroring
-//! the REST surface. Both are `secret:read`; the value crosses the wire
-//! only on resolve (decrypted with the server's key), never in the event log.
-//! Minting/rotating/deleting stay REST-only (`secret:admin`).
+//! Named-secret MCP tools. List and resolve are `secret:read`. Create and
+//! delete are `secret:admin` and call `create_secret_audited` /
+//! `delete_secret_audited`, the same store functions as REST. The value
+//! crosses the wire only on create and resolve, never in the event log.
 //!
 //! The secret-egress allowlist is managed here as over REST: the hosts the
 //! egress broker may substitute this workspace's secret values for. Adding one
@@ -10,7 +9,9 @@
 
 use std::sync::Arc;
 
-use maidan_auth::{capability::SECRET_READ, decrypt_peer_secret_rotating, AuthContext};
+use maidan_auth::{
+    capability::SECRET_READ, decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext,
+};
 use maidan_store::Store;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -161,4 +162,94 @@ pub(super) async fn revoke_secret_egress_host(
         return Err(McpError::NotFound);
     }
     Ok(content_json(&json!({ "host": host, "revoked": true })))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateSecretArgs {
+    name: String,
+    value: String,
+}
+
+/// Store a named secret. Twin of `POST /workspaces/{wid}/secrets` (`secret:admin`).
+/// Returns metadata only; the plaintext is not echoed.
+pub(super) async fn create_secret(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: CreateSecretArgs = serde_json::from_value(args.clone())?;
+    if !maidan_types::is_valid_secret_name(&a.name) {
+        return Err(McpError::InvalidParams(
+            "secret name must be non-empty and use only [A-Za-z0-9_.-]".into(),
+        ));
+    }
+    if a.value.is_empty() {
+        return Err(McpError::InvalidParams(
+            "secret value must not be empty".into(),
+        ));
+    }
+    let Some(key) = server.encryption_key() else {
+        return Err(McpError::Internal(
+            "secret storage requires an encryption key configured on the server".into(),
+        ));
+    };
+    let value_ciphertext =
+        encrypt_peer_secret(&a.value, key).map_err(|e| McpError::Internal(e.to_string()))?;
+    let actor = auth.actor_id;
+    let secret = server
+        .store
+        .create_secret_audited(
+            maidan_types::NewSecret {
+                workspace_id: auth.workspace_id,
+                name: a.name,
+                value_ciphertext,
+                created_by: auth.member_id,
+            },
+            Box::new(move |secret| maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(secret.workspace_id),
+                actor_id: Some(actor),
+                action: "secret.create".into(),
+                target_kind: Some("secret".into()),
+                target_id: Some(secret.id.0),
+                metadata: json!({
+                    "workspace_id": secret.workspace_id.0,
+                    "name": secret.name,
+                    "surface": "mcp",
+                }),
+            }),
+        )
+        .await?;
+    Ok(content_json(&secret))
+}
+
+/// Delete a named secret. Twin of `DELETE /workspaces/{wid}/secrets/{name}`.
+pub(super) async fn delete_secret(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ResolveArgs = serde_json::from_value(args.clone())?;
+    let deleted = store
+        .delete_secret_audited(
+            auth.workspace_id,
+            &a.name,
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(auth.workspace_id),
+                actor_id: Some(auth.actor_id),
+                action: "secret.delete".into(),
+                target_kind: Some("secret".into()),
+                target_id: None,
+                metadata: json!({
+                    "workspace_id": auth.workspace_id.0,
+                    "name": a.name,
+                    "surface": "mcp",
+                }),
+            },
+        )
+        .await?;
+    if !deleted {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&json!({ "name": a.name, "deleted": true })))
 }

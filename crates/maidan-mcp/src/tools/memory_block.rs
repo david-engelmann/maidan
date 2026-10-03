@@ -266,3 +266,29 @@ pub(super) async fn wait_for_memory_block(
         }
     }
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeleteBlockArgs {
+    block_id: uuid::Uuid,
+}
+
+/// Delete a memory block by id. Twin of `DELETE /workspaces/{wid}/memory-blocks/{id}`.
+/// A block in another workspace is `NotFound`, same as a missing id.
+pub(super) async fn delete_memory_block(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: DeleteBlockArgs = serde_json::from_value(args.clone())?;
+    let block_id = MemoryBlockId(a.block_id);
+    let block = store
+        .get_memory_block(block_id)
+        .await?
+        .filter(|b| auth.bypass || b.workspace_id == auth.workspace_id)
+        .ok_or(McpError::NotFound)?;
+    if !store.delete_memory_block(block.id).await? {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&json!({ "deleted": true })))
+}

@@ -235,3 +235,41 @@ pub(super) async fn get_artifact_metadata(
     };
     Ok(content_json(&artifact))
 }
+
+/// Artifact bytes plus the caller workspace metadata. Twin of `GET /artifacts/{sha}`:
+/// the access ref is checked first (missing ref is `NotFound`, not a cross-tenant
+/// oracle), then the blob is loaded. `content_base64` is the raw bytes.
+pub(super) async fn get_artifact(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: GetArtifactMetadataArgs = serde_json::from_value(args.clone())?;
+    let sha = maidan_artifacts::Sha256::from_hex(&a.sha256)
+        .map_err(|e| McpError::InvalidParams(e.to_string()))?;
+    if !auth.bypass
+        && !server
+            .store
+            .artifact_ref_exists(auth.workspace_id, &a.sha256)
+            .await?
+    {
+        return Err(McpError::NotFound);
+    }
+    let artifact = if auth.bypass {
+        server.store.get_artifact_by_sha(&a.sha256).await?
+    } else {
+        server
+            .store
+            .get_artifact_for_workspace(auth.workspace_id, &a.sha256)
+            .await?
+    };
+    let bytes = server
+        .artifacts
+        .get(&sha)
+        .await
+        .map_err(|e| McpError::Internal(e.to_string()))?;
+    Ok(content_json(&json!({
+        "artifact": artifact,
+        "content_base64": STANDARD.encode(bytes),
+    })))
+}

@@ -48,6 +48,9 @@ mod spawn;
 mod thread;
 mod whoami;
 
+#[cfg(test)]
+mod agent_gap_tests;
+
 pub use catalog::{catalog, declared_arguments};
 
 /// The tool catalog filtered to the tools the caller may invoke. Bypass callers
@@ -79,19 +82,23 @@ pub fn catalog_for(auth: &AuthContext) -> Vec<Value> {
 /// Exporting a workspace and resolving a secret are reads that are
 /// deliberately absent — who took the data is part of the record.
 pub const READ_ONLY_TOOLS: &[&str] = &[
+    "advise_land_gate",
     "catch_up_events",
     "get_approval_gate",
+    "get_artifact",
     "get_artifact_metadata",
     "get_channel_occupancy",
     "get_delegation_policy",
     "get_delivery_mode",
     "get_dependency_results",
     "get_glossary_term",
+    "get_group_dm",
     "get_inbox",
     "get_kind_census",
     "get_land_gate",
     "get_log_snapshot",
     "get_manager_digest",
+    "get_member",
     "get_member_email",
     "get_member_occupancy",
     "get_member_wip",
@@ -99,6 +106,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "get_priority",
     "get_queue_depth",
     "get_retention_policy",
+    "get_review_requirement",
     "get_review_status",
     "get_room",
     "get_run_occupancy",
@@ -130,12 +138,15 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_fsm_hooks",
     "list_github_issue_links",
     "list_glossary_terms",
+    "list_group_dms",
     "list_land_gate_history",
     "list_member_follows",
     "list_member_skills",
+    "list_members",
     "list_memory_blocks",
     "list_mentions",
     "list_message_backlinks",
+    "list_message_edits",
     "list_messages",
     "list_notification_prefs",
     "list_notifications",
@@ -147,6 +158,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_references",
     "list_result_deliveries",
     "list_review_history",
+    "list_reviewers",
     "list_reviews",
     "list_run_threads",
     "list_secret_egress_hosts",
@@ -156,6 +168,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_slash_commands",
     "list_task_schedules",
     "list_thread_dependencies",
+    "list_thread_dependents",
     "list_thread_follows",
     "list_thread_memory_blocks",
     "list_thread_required_skills",
@@ -163,6 +176,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_threads",
     "list_tombstones",
     "list_unclaimable",
+    "list_votes",
     "parse_maidan_uri",
     "search_messages",
     "verify_event_chain",
@@ -214,9 +228,13 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_threads"
         | "list_messages"
         | "list_dm_conversations"
+        | "list_group_dms"
+        | "get_group_dm"
+        | "open_group_dm"
         | "list_reactions"
         | "list_pins"
         | "get_artifact_metadata"
+        | "get_artifact"
         | "get_thread_context"
         | "get_tool_transcript"
         | "get_workspace_context"
@@ -249,6 +267,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_wait"
         | "get_priority"
         | "list_thread_dependencies"
+        | "list_thread_dependents"
         | "list_task_schedules"
         | "list_recipes"
         | "list_member_skills"
@@ -266,6 +285,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_manager_digest"
         | "get_unread_count"
         | "mark_notification_read"
+        | "mark_all_notifications_read"
         | "snooze_notification"
         | "wait_for_notification"
         | "list_notification_prefs"
@@ -301,6 +321,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_thread_memory_blocks"
         | "wait_for_memory_block"
         | "get_review_status"
+        | "get_review_requirement"
+        | "list_reviewers"
         | "list_reviews"
         | "list_review_history"
         | "get_land_gate"
@@ -310,6 +332,10 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "verify_event_chain"
         | "list_tombstones"
         | "list_message_backlinks"
+        | "list_message_edits"
+        | "list_votes"
+        | "list_members"
+        | "get_member"
         | "get_kind_census"
         | "list_capability_sets"
         | "get_room"
@@ -322,9 +348,12 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "revoke_delegation_grant"
         | "set_delegation_policy"
         | "set_retention_policy" => Ok(TOKEN_ADMIN),
-        "open_dm_conversation" | "post_dm_message" | "post_message" | "edit_message" => {
-            Ok(MESSAGE_POST)
-        }
+        "open_dm_conversation"
+        | "post_dm_message"
+        | "post_group_dm_message"
+        | "post_message"
+        | "edit_message"
+        | "tombstone_message" => Ok(MESSAGE_POST),
         "record_mention"
         | "cast_vote"
         | "add_reaction"
@@ -347,7 +376,15 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "attach_memory_block"
         | "detach_memory_block"
         | "replay_result_delivery"
-        | "set_workspace_handle" => Ok(WORKSPACE_WRITE),
+        | "set_workspace_handle"
+        | "remove_member_skill"
+        | "delete_memory_block"
+        | "delete_glossary_term"
+        | "delete_recipe"
+        | "set_task_schedule_active"
+        | "delete_task_schedule"
+        | "revoke_slash_command"
+        | "revoke_fsm_hook" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
         | "upload_artifact_multipart_part"
@@ -356,6 +393,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "snapshot_thread_context" => Ok(ARTIFACT_UPLOAD),
         "search_messages" => Ok(SEARCH_QUERY),
         "list_secrets" | "resolve_secret" => Ok(SECRET_READ),
+        "create_secret" | "delete_secret" => Ok(SECRET_ADMIN),
         // `allow_secret_egress_host` also needs `secret:read`, checked in the tool.
         "list_secret_egress_hosts" | "allow_secret_egress_host" | "revoke_secret_egress_host" => {
             Ok(SECRET_ADMIN)
@@ -413,12 +451,18 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_thread_steer"
         | "transition_thread"
         | "set_land_gate"
-        | "require_land_gate" => Ok(maidan_auth::capability::THREAD_TRANSITION),
+        | "require_land_gate"
+        | "remove_thread_dependency"
+        | "remove_thread_required_skill"
+        | "clear_thread_lineage"
+        | "advise_land_gate" => Ok(maidan_auth::capability::THREAD_TRANSITION),
         // A gate ratchets: arming is `thread:transition`, removing it is
         // `channel:admin`. Clearing the row makes the close-gate vacuous, so a
         // clear is as powerful as a close — and `thread:transition` is what a
         // close needs and what `maidan.agent.worker` carries.
-        "clear_land_gate" => Ok(maidan_auth::capability::CHANNEL_ADMIN),
+        "clear_land_gate"
+        | "clear_review_requirement"
+        | "remove_reviewer" => Ok(maidan_auth::capability::CHANNEL_ADMIN),
         other => Err(McpError::MethodNotFound(format!("tools/{other}"))),
     }
 }
@@ -479,6 +523,8 @@ const MEMBER_SCOPED_TOOLS: &[&str] = &[
     "list_notifications_grouped",
     "list_buried_decisions",
     "mark_notification_read",
+    "mark_all_notifications_read",
+    "list_group_dms",
     "snooze_notification",
     "set_notification_pref",
     "list_notification_prefs",
@@ -528,6 +574,7 @@ const MEMBER_WORK_STATE_TOOLS: &[&str] = &[
     "get_member_occupancy",
     "get_member_wip",
     "list_assigned_threads",
+    "get_member",
 ];
 
 /// Tools where `member_id` is the object of an administrative or routing
@@ -538,7 +585,7 @@ const MEMBER_WORK_STATE_TOOLS: &[&str] = &[
 /// own declaration and only they may set it; a governance skill is authority an
 /// operator confers on someone else under `channel:admin`.
 #[cfg(test)]
-const MEMBER_ARGUMENT_SCOPED_TOOLS: &[&str] = &["add_member_skill"];
+const MEMBER_ARGUMENT_SCOPED_TOOLS: &[&str] = &["add_member_skill", "remove_member_skill"];
 
 #[cfg(test)]
 const MEMBER_TARGET_TOOLS: &[&str] = &[
@@ -547,6 +594,7 @@ const MEMBER_TARGET_TOOLS: &[&str] = &[
     "freeze_member",
     "unfreeze_member",
     "add_reviewer",
+    "remove_reviewer",
     "record_mention",
 ];
 
@@ -690,10 +738,14 @@ async fn enforce_channel_access(
         | "release_claim"
         | "add_thread_dependency"
         | "list_thread_dependencies"
+        | "remove_thread_dependency"
+        | "list_thread_dependents"
         | "add_thread_required_skill"
         | "list_thread_required_skills"
+        | "remove_thread_required_skill"
         | "set_thread_result"
         | "set_thread_lineage"
+        | "clear_thread_lineage"
         | "get_thread_result"
         | "get_thread_lineage"
         | "list_result_deliveries"
@@ -726,6 +778,10 @@ async fn enforce_channel_access(
         | "detach_memory_block"
         | "list_thread_memory_blocks"
         | "set_review_requirement"
+        | "get_review_requirement"
+        | "clear_review_requirement"
+        | "list_reviewers"
+        | "remove_reviewer"
         | "add_reviewer"
         | "submit_review"
         | "get_review_status"
@@ -737,6 +793,7 @@ async fn enforce_channel_access(
         | "list_land_gate_history"
         | "require_land_gate"
         | "clear_land_gate"
+        | "advise_land_gate"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -758,7 +815,10 @@ async fn enforce_channel_access(
         | "remove_reaction"
         | "list_reactions"
         | "seed_from_message"
-        | "list_message_backlinks" => {
+        | "list_message_backlinks"
+        | "tombstone_message"
+        | "list_message_edits"
+        | "list_votes" => {
             if let Some(id) = field("message_id") {
                 maidan_auth::ensure_message_access(store, auth, maidan_types::MessageId(id))
                     .await?;
@@ -815,6 +875,10 @@ pub async fn dispatch(
         "open_dm_conversation" => channel::open_dm_conversation(store, auth, args).await,
         "list_dm_conversations" => channel::list_dm_conversations(store, args).await,
         "post_dm_message" => message::post_dm_message(server, auth, args).await,
+        "open_group_dm" => channel::open_group_dm(store, auth, args).await,
+        "list_group_dms" => channel::list_group_dms(store, auth, args).await,
+        "get_group_dm" => channel::get_group_dm(store, auth, args).await,
+        "post_group_dm_message" => message::post_group_dm_message(server, auth, args).await,
         "list_threads" => thread::list_threads(store, args).await,
         "create_thread" => thread::create_thread(server, auth, args).await,
         "list_child_threads" => thread::list_child_threads(store, args).await,
@@ -861,6 +925,8 @@ pub async fn dispatch(
         "release_claim" => thread::release_claim(server, auth, args).await,
         "add_thread_dependency" => thread::add_thread_dependency(store, auth, args).await,
         "list_thread_dependencies" => thread::list_thread_dependencies(store, args).await,
+        "remove_thread_dependency" => thread::remove_thread_dependency(store, args).await,
+        "list_thread_dependents" => thread::list_thread_dependents(store, args).await,
         "list_mentions" => member::list_mentions(store, args).await,
         "get_inbox" => member::get_inbox(store, args).await,
         "mark_inbox_read" => member::mark_inbox_read(store, args).await,
@@ -872,6 +938,9 @@ pub async fn dispatch(
         "list_buried_decisions" => member::list_buried_decisions(store, args).await,
         "get_manager_digest" => member::get_manager_digest(server, auth, args).await,
         "mark_notification_read" => member::mark_notification_read(store, args).await,
+        "mark_all_notifications_read" => member::mark_all_notifications_read(store, args).await,
+        "list_members" => member::list_members(store, auth, args).await,
+        "get_member" => member::get_member(store, auth, args).await,
         "snooze_notification" => member::snooze_notification(store, args).await,
         "wait_for_notification" => member::wait_for_notification(server, auth, args).await,
         "set_notification_pref" => member::set_notification_pref(store, args).await,
@@ -900,6 +969,7 @@ pub async fn dispatch(
         "get_run_occupancy" => thread::get_run_occupancy(store, auth, args).await,
         "set_thread_lineage" => thread::set_thread_lineage(store, args).await,
         "get_thread_lineage" => thread::get_thread_lineage(store, args).await,
+        "clear_thread_lineage" => thread::clear_thread_lineage(store, args).await,
         "list_run_threads" => thread::list_run_threads(store, auth, args).await,
         "set_thread_result" => thread::set_thread_result(server, auth, args).await,
         "get_thread_result" => thread::get_thread_result(store, args).await,
@@ -914,11 +984,16 @@ pub async fn dispatch(
         "get_dependency_results" => thread::get_dependency_results(store, auth, args).await,
         "create_task_schedule" => schedule::create_task_schedule(store, auth, args).await,
         "list_task_schedules" => schedule::list_task_schedules(store, auth, args).await,
+        "set_task_schedule_active" => schedule::set_task_schedule_active(store, auth, args).await,
+        "delete_task_schedule" => schedule::delete_task_schedule(store, auth, args).await,
         "create_recipe" => recipe::create_recipe(store, auth, args).await,
         "list_recipes" => recipe::list_recipes(store, auth, args).await,
+        "delete_recipe" => recipe::delete_recipe(store, auth, args).await,
         "instantiate_recipe" => recipe::instantiate_recipe(server, auth, args).await,
         "list_secrets" => secret::list_secrets(store, auth, args).await,
         "resolve_secret" => secret::resolve_secret(server, auth, args).await,
+        "create_secret" => secret::create_secret(server, auth, args).await,
+        "delete_secret" => secret::delete_secret(store, auth, args).await,
         "list_secret_egress_hosts" => secret::list_secret_egress_hosts(store, auth, args).await,
         "allow_secret_egress_host" => secret::allow_secret_egress_host(server, auth, args).await,
         "revoke_secret_egress_host" => secret::revoke_secret_egress_host(store, auth, args).await,
@@ -943,6 +1018,7 @@ pub async fn dispatch(
         "set_memory_block_value" => memory_block::set_memory_block_value(server, auth, args).await,
         "attach_memory_block" => memory_block::attach_memory_block(store, auth, args).await,
         "detach_memory_block" => memory_block::detach_memory_block(store, auth, args).await,
+        "delete_memory_block" => memory_block::delete_memory_block(store, auth, args).await,
         "list_thread_memory_blocks" => {
             memory_block::list_thread_memory_blocks(store, auth, args).await
         }
@@ -953,27 +1029,38 @@ pub async fn dispatch(
         "get_review_status" => review::get_review_status(store, args).await,
         "list_reviews" => review::list_reviews(store, args).await,
         "list_review_history" => review::list_review_history(store, args).await,
+        "get_review_requirement" => review::get_review_requirement(store, args).await,
+        "clear_review_requirement" => review::clear_review_requirement(store, auth, args).await,
+        "list_reviewers" => review::list_reviewers(store, args).await,
+        "remove_reviewer" => review::remove_reviewer(store, auth, args).await,
         "set_land_gate" => land_gate::set_land_gate(store, auth, args).await,
         "get_land_gate" => land_gate::get_land_gate(store, args).await,
         "list_land_gate_history" => land_gate::list_land_gate_history(store, args).await,
         "require_land_gate" => land_gate::require_land_gate(store, args).await,
         "clear_land_gate" => land_gate::clear_land_gate(store, auth, args).await,
+        "advise_land_gate" => land_gate::advise_land_gate(server, args).await,
         "set_glossary_term" => glossary::set_glossary_term(store, auth, args).await,
         "get_glossary_term" => glossary::get_glossary_term(store, auth, args).await,
         "list_glossary_terms" => glossary::list_glossary_terms(store, auth, args).await,
+        "delete_glossary_term" => glossary::delete_glossary_term(store, auth, args).await,
         "add_member_skill" => skill::add_member_skill(store, auth, args).await,
         "list_member_skills" => skill::list_member_skills(store, args).await,
+        "remove_member_skill" => skill::remove_member_skill(store, auth, args).await,
         "add_thread_required_skill" => skill::add_thread_required_skill(store, args).await,
         "list_thread_required_skills" => skill::list_thread_required_skills(store, args).await,
+        "remove_thread_required_skill" => skill::remove_thread_required_skill(store, args).await,
         "list_messages" => message::list_messages(store, args).await,
         "post_message" => message::post_message(server, auth, args).await,
         "edit_message" => message::edit_message(server, auth, args).await,
+        "tombstone_message" => message::tombstone_message(server, auth, args).await,
+        "list_message_edits" => message::list_message_edits(store, auth, args).await,
         "seed_from_message" => seed::seed_from_message(server, auth, args).await,
         "record_mention" => message::record_mention(server, args).await,
         "cast_vote" => social::cast_vote(server, auth, args).await,
         "add_reaction" => social::add_reaction(server, auth, args).await,
         "remove_reaction" => social::remove_reaction(server, auth, args).await,
         "list_reactions" => social::list_reactions(store, args).await,
+        "list_votes" => social::list_votes(store, args).await,
         "pin_message" => social::pin_message(server, auth, args).await,
         "unpin_message" => social::unpin_message(server, auth, args).await,
         "list_pins" => social::list_pins(store, args).await,
@@ -989,6 +1076,7 @@ pub async fn dispatch(
         }
         "abort_artifact_multipart" => artifact::abort_artifact_multipart(artifacts, args).await,
         "get_artifact_metadata" => artifact::get_artifact_metadata(store, auth, args).await,
+        "get_artifact" => artifact::get_artifact(server, auth, args).await,
         "search_messages" => {
             search::search_messages(search, embedding_provider, store, auth, args).await
         }
@@ -996,6 +1084,8 @@ pub async fn dispatch(
         "list_slash_commands" => automation::list_slash_commands(store, auth, args).await,
         "register_fsm_hook" => automation::register_fsm_hook(store, auth, args).await,
         "list_fsm_hooks" => automation::list_fsm_hooks(store, auth, args).await,
+        "revoke_slash_command" => automation::revoke_slash_command(server, auth, args).await,
+        "revoke_fsm_hook" => automation::revoke_fsm_hook(server, auth, args).await,
         "link_slack_channel" => projector::link_slack_channel(server, auth, args).await,
         "list_slack_channel_links" => projector::list_slack_channel_links(server, auth, args).await,
         "unlink_slack_channel" => projector::unlink_slack_channel(server, auth, args).await,

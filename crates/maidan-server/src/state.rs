@@ -243,6 +243,20 @@ impl AppState {
             embedding_provider.clone(),
         ));
         mcp.attach_presence_reader(presence.clone());
+        let slash = SlashRuntime::new(None);
+        let fsm_hooks = FsmHookRuntime::new(None);
+        let slash_secrets = slash.secrets.clone();
+        let fsm_secrets = fsm_hooks.secrets.clone();
+        mcp.set_slash_secret_forget(Arc::new(move |id| {
+            if let Ok(mut guard) = slash_secrets.write() {
+                guard.remove(&SlashCommandId(id));
+            }
+        }));
+        mcp.set_fsm_secret_forget(Arc::new(move |id| {
+            if let Ok(mut guard) = fsm_secrets.write() {
+                guard.remove(&FsmHookId(id));
+            }
+        }));
         Self {
             store,
             artifacts,
@@ -255,8 +269,8 @@ impl AppState {
             bootstrap_enabled,
             federation,
             webhooks: WebhookRuntime::new(None),
-            slash: SlashRuntime::new(None),
-            fsm_hooks: FsmHookRuntime::new(None),
+            slash,
+            fsm_hooks,
             indexer_last_event_unix_ms,
             indexer_last_error: Arc::new(AsyncRwLock::new(None)),
             bus_listener_health,
@@ -303,6 +317,10 @@ impl AppState {
         &mut self,
         advisor: Arc<dyn crate::land_gate_advisor::LandGateAdvisor>,
     ) {
+        self.mcp
+            .set_land_gate_advisor(Arc::new(crate::land_gate_advisor::McpLandGateBridge(
+                advisor.clone(),
+            )));
         self.land_gate_advisor = Some(advisor);
     }
 

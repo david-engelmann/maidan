@@ -20,8 +20,8 @@ REST → 229 MCP).
 ## Design decisions
 
 - **Two tools, mirroring 220.** `create` + `list` — what an agent needs to
-  self-schedule and introspect. Delete / pause-resume stay REST-only (operator
-  actions; keeping the catalog lean, like 220 shipped add+list without remove).
+  self-schedule and introspect. This cluster shipped create and list. Delete and
+  pause-resume are now `delete_task_schedule` and `set_task_schedule_active`.
 - **`create` is channel-gated pre-dispatch** (the `channel_id` arg joins the
   channel-gate arm), and `list` filters its result by `can_access_channel` (a
   workspace-scoped aggregate the gate can't cover — same shape as

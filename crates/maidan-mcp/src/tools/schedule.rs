@@ -10,7 +10,7 @@ use maidan_router::resolve_channel_context;
 use maidan_store::Store;
 use maidan_types::*;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::content_json;
 use crate::error::McpError;
@@ -103,4 +103,58 @@ pub(super) async fn list_task_schedules(
         }
     }
     Ok(content_json(&visible))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScheduleIdArgs {
+    schedule_id: uuid::Uuid,
+}
+
+async fn authorize_schedule(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    id: TaskScheduleId,
+) -> Result<TaskSchedule, McpError> {
+    let schedule = store.get_task_schedule(id).await?;
+    auth.ensure_workspace(schedule.workspace_id)
+        .map_err(McpError::from)?;
+    maidan_auth::ensure_channel_access(store.as_ref(), auth, schedule.channel_id).await?;
+    Ok(schedule)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetScheduleActiveArgs {
+    schedule_id: uuid::Uuid,
+    active: bool,
+}
+
+/// Pause or resume a schedule. Twin of `PUT /task-schedules/{id}`:
+/// `set_task_schedule_active` after the same workspace and channel checks.
+pub(super) async fn set_task_schedule_active(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetScheduleActiveArgs = serde_json::from_value(args.clone())?;
+    let id = TaskScheduleId(a.schedule_id);
+    authorize_schedule(store, auth, id).await?;
+    let updated = store.set_task_schedule_active(id, a.active).await?;
+    Ok(content_json(&updated))
+}
+
+/// Delete a schedule. Twin of `DELETE /task-schedules/{id}`.
+pub(super) async fn delete_task_schedule(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ScheduleIdArgs = serde_json::from_value(args.clone())?;
+    let id = TaskScheduleId(a.schedule_id);
+    authorize_schedule(store, auth, id).await?;
+    if !store.delete_task_schedule(id).await? {
+        return Err(McpError::NotFound);
+    }
+    Ok(content_json(&json!({ "deleted": true })))
 }

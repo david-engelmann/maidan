@@ -44,8 +44,8 @@ pre-dispatch gate's `thread_id` list, `catalog.rs` schemas, and both
 - `tools_catalog_contract` + `mcp_capability_map_contract` (catalog ↔ contracts
   sync) + `mcp_capability_matrix_e2e` (each tool denies the wrong capability) green.
 - Store behaviour is already proven (217/218 store suites; 219 REST e2e).
-- **Limits:** dependents-listing + remove stay REST-only for now (add/list are the
-  agent-facing essentials). Transitive cycle prevention + a "task ready" event remain
+- **Limits:** this cluster shipped add and list. Dependents listing and remove are now
+  `list_thread_dependents` and `remove_thread_dependency`. Transitive cycle prevention + a "task ready" event remain
   later items. With 220, the DAG's read/write surface is complete over REST + MCP.
 
 ## References

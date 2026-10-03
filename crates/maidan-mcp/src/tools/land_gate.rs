@@ -98,3 +98,47 @@ pub(super) async fn clear_land_gate(
         .await?;
     Ok(content_json(&serde_json::json!({ "cleared": cleared })))
 }
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AdviseArgs {
+    thread_id: uuid::Uuid,
+    state: Value,
+    #[serde(default)]
+    instructions: Option<String>,
+    #[serde(default)]
+    thresholds: Option<Value>,
+}
+
+/// Ask the optional advisor for a land-gate recommendation. Twin of
+/// `POST /threads/{id}/land-gate/advice`. Read-only: it does not write the
+/// pointer or the requirement. `NotFound` when no advisor is configured.
+pub(super) async fn advise_land_gate(
+    server: &crate::server::McpServer,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: AdviseArgs = serde_json::from_value(args.clone())?;
+    let thread_id = a.thread_id;
+    let Some(advisor) = server.land_gate_advisor() else {
+        return Err(McpError::NotFound);
+    };
+    let mut request = serde_json::json!({ "state": a.state });
+    if let Some(instructions) = a.instructions {
+        request["instructions"] = Value::String(instructions);
+    }
+    if let Some(thresholds) = a.thresholds {
+        request["thresholds"] = thresholds;
+    }
+    match advisor.advise(request).await {
+        Ok(advice) => Ok(content_json(&advice)),
+        Err(crate::land_gate_advice::LandGateAdviseError::Invalid(error)) => {
+            Err(McpError::InvalidParams(error))
+        }
+        Err(crate::land_gate_advice::LandGateAdviseError::Unavailable(error)) => {
+            tracing::warn!(%error, %thread_id, "land-gate advisor request failed");
+            Err(McpError::Internal(
+                "land-gate advisor unavailable; the authoritative gate is unchanged".into(),
+            ))
+        }
+    }
+}
