@@ -660,7 +660,55 @@ import { loadMessages } from "./thread.js";
       }
 
 
+      // A thread in another channel selects that channel and its sidebar row.
+      // The palette opens threads through selectThread, including one that is
+      // not on the board currently showing.
+      function focusChannel(channelId) {
+        if (!channelId || channelId === selectedChannelId) return;
+        selectedChannelId = channelId;
+        const li = document.querySelector(`#channel-list li[data-id="${CSS.escape(channelId)}"]`);
+        if (li) {
+          const raw = (li.textContent || "").split(" · ")[0].trim();
+          selectedChannelName = raw.replace(/^🔒\s*/, "").replace(/^#\s*/, "").trim();
+        }
+        localStorage.setItem(channelKey, channelId);
+        const input = document.getElementById("channel-id");
+        if (input) input.value = channelId;
+        const sc = document.getElementById("search-channel");
+        if (sc && !sc.value.trim()) sc.value = channelId;
+        document.querySelectorAll("#channel-list li").forEach((n) => {
+          n.classList.toggle("selected", n.dataset.id === channelId);
+        });
+        boardSeen = new Map();
+        loadThreads();
+      }
+
+      async function channelIdForThread(id) {
+        const known = threadsById.get(id);
+        if (known && known.channel_id) return known.channel_id;
+        try {
+          const url = token()
+            ? `${base()}/threads/${id}`
+            : uiReadPath(`/threads/${id}`);
+          const res = await api(url, { headers: headers(), credentials: "include" });
+          if (!res.ok) return null;
+          const full = await res.json();
+          return full.channel_id || null;
+        } catch (_e) {
+          return null;
+        }
+      }
+
       function selectThread(id, label) {
+        const known = threadsById.get(id);
+        const channelId = known && known.channel_id;
+        if (channelId && channelId !== selectedChannelId) {
+          focusChannel(channelId);
+        } else if (!channelId) {
+          channelIdForThread(id).then((found) => {
+            if (found && found !== selectedChannelId) focusChannel(found);
+          });
+        }
         selectedThreadId = id;
         syncCollabPanel();
         document.getElementById("thread-id").value = id;
