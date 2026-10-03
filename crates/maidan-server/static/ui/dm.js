@@ -1,6 +1,5 @@
 // @ts-check
 import { api, apiWritePath, base, headers, requireAuthForWrite, token, uiReadPath, wid } from "./api.js";
-import { escapeHtml } from "./artifacts.js";
 import { renderState, responseError, setStatus, showError, unreachable } from "./feedback.js";
 import { authorId, loadMembers, memberName } from "./people.js";
 
@@ -30,7 +29,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
         try {
           const res = await api(url, { headers: headers(), credentials: "include" });
           if (!res.ok) {
-            list.innerHTML = `<li>HTTP ${res.status}</li>`;
+            renderState(list, await responseError(res), "err");
             return;
           }
           const convos = await res.json();
@@ -75,7 +74,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
         try {
           const res = await api(url, { headers: headers(), credentials: "include" });
           if (!res.ok) {
-            box.textContent = `HTTP ${res.status}`;
+            box.textContent = await responseError(res);
             return;
           }
           const msgs = await res.json();
@@ -90,7 +89,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
             box.appendChild(div);
           });
         } catch (e) {
-          box.textContent = String(e);
+          box.textContent = unreachable(e);
         }
       }
       async function loadDmMessages(threadId) {
@@ -144,11 +143,14 @@ import { authorId, loadMembers, memberName } from "./people.js";
             credentials: "include",
             body: JSON.stringify({ body }),
           });
-          if (!res.ok) return setStatus(`HTTP ${res.status}`, "err");
+          if (!res.ok) {
+            setStatus(await responseError(res), "err");
+            return;
+          }
           document.getElementById("dm-body").value = "";
           await loadDmMessages(selectedDm.thread_id);
         } catch (e) {
-          setStatus(String(e), "err");
+          setStatus(unreachable(e), "err");
         }
       }
 
@@ -166,7 +168,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
         try {
           const res = await api(url, { headers: headers(), credentials: "include" });
           if (!res.ok) {
-            list.innerHTML = `<li>HTTP ${res.status}</li>`;
+            renderState(list, await responseError(res), "err");
             return;
           }
           const convos = await res.json();
@@ -187,7 +189,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
             list.appendChild(li);
           });
         } catch (e) {
-          list.innerHTML = `<li>${escapeHtml(String(e))}</li>`;
+          renderState(list, unreachable(e), "err");
         }
       }
 
@@ -252,11 +254,14 @@ import { authorId, loadMembers, memberName } from "./people.js";
             credentials: "include",
             body: JSON.stringify({ body }),
           });
-          if (!res.ok) return setStatus(`HTTP ${res.status}`, "err");
+          if (!res.ok) {
+            setStatus(await responseError(res), "err");
+            return;
+          }
           document.getElementById("gdm-body").value = "";
           await loadGroupDmMessages(selectedGdm.thread_id);
         } catch (e) {
-          setStatus(String(e), "err");
+          setStatus(unreachable(e), "err");
         }
       }
 
