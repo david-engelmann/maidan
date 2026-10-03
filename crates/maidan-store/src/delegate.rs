@@ -572,6 +572,13 @@ macro_rules! store_delegations {
             ) -> Result<Vec<UsageLedgerEntry>, StoreError> {
                 usage_ledger::list_for_thread(self.read_pool(), thread_id, limit).await
             }
+
+            async fn usage_rollup(
+                &self,
+                query: UsageRollupQuery,
+            ) -> Result<UsageRollup, StoreError> {
+                usage_ledger::rollup(self.read_pool(), query).await
+            }
         }
     };
     ($store:ty, ApprovalGateStore) => {

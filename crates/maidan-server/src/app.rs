@@ -110,6 +110,10 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/import", post(routes::import_workspace))
         .route("/workspaces/{id}/usage", get(routes::get_workspace_usage))
         .route(
+            "/workspaces/{id}/usage-rollup",
+            get(routes::get_workspace_usage_rollup),
+        )
+        .route(
             "/workspaces/{id}/tombstones",
             get(routes::list_workspace_tombstones),
         )
@@ -264,6 +268,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/members/{id}/wip", get(routes::get_member_wip))
         .route("/members/{id}/occupancy", get(routes::get_member_occupancy))
+        .route(
+            "/members/{id}/usage-rollup",
+            get(routes::get_member_usage_rollup),
+        )
         .route(
             "/members/{id}/mentions",
             get(routes::list_mentions_for_member),
@@ -509,6 +517,14 @@ pub fn router(state: AppState) -> Router {
                 .merge(get(routes::get_thread_budget)),
         )
         .route("/threads/{id}/usage", post(routes::report_thread_usage))
+        .route(
+            "/threads/{id}/usage-rollup",
+            get(routes::get_thread_usage_rollup),
+        )
+        .route(
+            "/threads/{id}/usage/otel",
+            post(routes::report_thread_usage_otel),
+        )
         .route("/threads/{id}/assignee/claim", post(routes::claim_thread))
         .route(
             "/threads/{id}/unclaimable",
