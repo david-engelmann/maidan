@@ -11,13 +11,13 @@ pub fn parse_days(raw: Option<&str>) -> Option<u32> {
         .filter(|&d| d > 0)
 }
 
-/// What the instance keeps, from `MAIDAN_RETENTION_EVENTS_DAYS` and
-/// `MAIDAN_RETENTION_DELIVERIES_DAYS`. The instance never prunes messages, so
-/// their ceiling is always `None`.
+/// What the instance keeps, from `MAIDAN_RETENTION_MESSAGES_DAYS`,
+/// `MAIDAN_RETENTION_EVENTS_DAYS` and `MAIDAN_RETENTION_DELIVERIES_DAYS`.
+/// Unset means the instance does not prune that kind of row.
 pub fn instance_retention_from_env() -> RetentionDays {
     let days = |var: &str| parse_days(std::env::var(var).ok().as_deref()).map(i64::from);
     RetentionDays {
-        messages_days: None,
+        messages_days: days("MAIDAN_RETENTION_MESSAGES_DAYS"),
         events_days: days("MAIDAN_RETENTION_EVENTS_DAYS"),
         deliveries_days: days("MAIDAN_RETENTION_DELIVERIES_DAYS"),
     }

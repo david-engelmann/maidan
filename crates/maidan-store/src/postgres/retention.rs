@@ -338,3 +338,45 @@ pub async fn prune_workspace_messages(
     tx.commit().await?;
     Ok(res.rows_affected())
 }
+
+/// Erase up to `limit` messages posted before `cutoff` across workspaces that
+/// are not under a legal hold. Each workspace page reuses
+/// [`prune_workspace_messages`], so embeddings, references and content keys go
+/// with the messages. A hold placed between the candidate read and the erase
+/// drops that workspace for this page.
+pub async fn prune_messages(
+    pool: &PgPool,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64, StoreError> {
+    if limit <= 0 {
+        return Ok(0);
+    }
+    let workspaces: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT DISTINCT c.workspace_id
+         FROM maidan_messages m
+         INNER JOIN maidan_threads t ON m.thread_id = t.id
+         INNER JOIN maidan_channels c ON t.channel_id = c.id
+         WHERE m.posted_at < $1
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = c.workspace_id
+           )
+         ORDER BY c.workspace_id
+         LIMIT $2",
+    )
+    .bind(cutoff)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    let mut total = 0u64;
+    let mut left = limit;
+    for id in workspaces {
+        if left <= 0 {
+            break;
+        }
+        let n = prune_workspace_messages(pool, WorkspaceId(id), cutoff, left).await?;
+        total += n;
+        left = left.saturating_sub(i64::try_from(n).unwrap_or(i64::MAX));
+    }
+    Ok(total)
+}

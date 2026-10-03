@@ -34,6 +34,9 @@ use maidan_types::{RetentionDays, WorkspaceId};
 /// table.
 #[derive(Debug, Clone)]
 pub struct RetentionConfig {
+    /// From `MAIDAN_RETENTION_MESSAGES_DAYS`. `None` does not prune messages
+    /// at the instance cutoff.
+    pub messages_days: Option<u32>,
     pub events_days: Option<u32>,
     pub audit_days: Option<u32>,
     pub deliveries_days: Option<u32>,
@@ -52,7 +55,7 @@ impl RetentionConfig {
     /// What the instance keeps, the ceiling a workspace policy is held to.
     pub fn instance(&self) -> RetentionDays {
         RetentionDays {
-            messages_days: None,
+            messages_days: self.messages_days.map(i64::from),
             events_days: self.events_days.map(i64::from),
             deliveries_days: self.deliveries_days.map(i64::from),
         }
@@ -63,6 +66,7 @@ impl RetentionConfig {
 /// workspace can set its own retention at any time; with nothing set, a sweep
 /// is one read of the (empty) policy table.
 pub fn config_from_env() -> RetentionConfig {
+    let messages_days = parse_days(std::env::var("MAIDAN_RETENTION_MESSAGES_DAYS").ok());
     let events_days = parse_days(std::env::var("MAIDAN_RETENTION_EVENTS_DAYS").ok());
     let audit_days = parse_days(std::env::var("MAIDAN_RETENTION_AUDIT_DAYS").ok());
     let deliveries_days = parse_days(std::env::var("MAIDAN_RETENTION_DELIVERIES_DAYS").ok());
@@ -78,6 +82,7 @@ pub fn config_from_env() -> RetentionConfig {
         .filter(|&b| b > 0)
         .unwrap_or(5_000);
     RetentionConfig {
+        messages_days,
         events_days,
         audit_days,
         deliveries_days,
@@ -136,6 +141,14 @@ pub async fn sweep_once(store: &Arc<dyn Store>, cfg: &RetentionConfig) {
         })
         .await;
         record("deliveries", deleted);
+    }
+
+    if let Some(days) = cfg.messages_days {
+        let deleted = prune_loop("messages", cfg.batch, |limit| {
+            store.prune_messages(cutoff(now, days), limit)
+        })
+        .await;
+        record("messages", deleted);
     }
 
     match store.list_retention_policies().await {

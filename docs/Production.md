@@ -1170,7 +1170,7 @@ knob is an age in days; the sweeper runs every `MAIDAN_RETENTION_SWEEP_SECS`
 (default 86400) and deletes in batches of `MAIDAN_RETENTION_BATCH` (default
 5000), so a first sweep over a long-unpruned table does not lock it. Each sweep
 counts what it deleted in `maidan_retention_pruned_total{table}` (`events`,
-`audit`, `notifications`, `deliveries`, and `messages` for workspace policies).
+`audit`, `notifications`, `deliveries`, and `messages`).
 
 | Variable | What it prunes | What it never prunes |
 |---|---|---|
@@ -1178,6 +1178,7 @@ counts what it deleted in `maidan_retention_pruned_total{table}` (`events`,
 | `MAIDAN_RETENTION_AUDIT_DAYS` | Audit rows older than the cutoff, including instance-level rows (no `workspace_id`) | A held workspace's audit rows |
 | `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` | Read notifications older than the cutoff | Unread notifications; any notification with a snooze set, including one whose snooze has lapsed; a held workspace's notifications |
 | `MAIDAN_RETENTION_DELIVERIES_DAYS` | Finished delivery rows: delivered or quarantined webhook and automation deliveries, published transactional-outbox rows, delivered projector and result egress, delivered notification mail, and dead-lettered agent runs | Pending or retrying rows, whatever their age; egress and mail **dead letters**, which leave when an operator requeues them (`MaidanEgressDeadLettered` and `MaidanMailDeadLettered` fire while any exist); a held workspace's rows in every one of these tables |
+| `MAIDAN_RETENTION_MESSAGES_DAYS` | Messages posted before the cutoff, erased the way a purge erases them (words, embeddings, references, content keys) in every workspace | Messages in a held workspace; a message newer than the cutoff. Off when unset |
 
 Audit rows belong to the workspace stamped on them when they were written. On
 upgrade, migration 0123 backfilled older rows from what they reference: a
@@ -1208,12 +1209,15 @@ messages, events and finished deliveries with `PUT /workspaces/{wid}/retention`
 (`token:admin`, audited; see [Integration](Integration.md#workspace-retention)).
 The instance knobs above are the ceiling: a workspace value longer than the
 instance's for that kind is refused, and if you later lower an instance knob
-below a workspace's value, the instance's applies. Messages have no instance
-knob, so the instance never prunes them and a workspace may set any value up to
-3650 days. After the instance sweep, each sweep prunes every workspace that set
-a policy past its own cutoff; a held workspace keeps everything. Message
-pruning erases a message the way a purge does, including its embeddings,
-references and content key. Policies are stored in
+below a workspace's value, the instance's applies. `MAIDAN_RETENTION_MESSAGES_DAYS`
+is that ceiling for messages. When it is set, the instance sweep erases messages
+past it in every workspace that is not held, whether or not the workspace set a
+policy. When it is unset, only a workspace policy prunes messages, and that
+policy may be any value from 1 to 3650 days. A workspace may set a shorter
+`messages_days` and not a longer one. After the instance sweep, each sweep prunes
+every workspace that set a stricter policy past its own cutoff; a held workspace
+keeps everything. Message pruning erases a message the way a purge does, including
+its embeddings, references and content key. Policies are stored in
 `maidan_retention_policies` (migration 0134) and removed with their workspace.
 
 ## Event-log hash chain

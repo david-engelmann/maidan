@@ -3002,6 +3002,15 @@ pub trait DeliveryCursorStore: Send + Sync {
         limit: i64,
     ) -> Result<u64, StoreError>;
 
+    /// Erase up to `limit` messages posted before `cutoff` in every workspace
+    /// that is not under a legal hold. A held workspace keeps its messages.
+    /// One page; the caller loops until a short page.
+    async fn prune_messages(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<u64, StoreError>;
+
     /// [`Self::prune_deliveries`] for one workspace's rows in every delivery
     /// table. Nothing while the workspace is held.
     async fn prune_workspace_deliveries(

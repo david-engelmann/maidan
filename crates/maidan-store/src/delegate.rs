@@ -3671,6 +3671,14 @@ macro_rules! store_delegations {
                 retention::prune_workspace_messages(self.pool(), workspace_id, cutoff, limit).await
             }
 
+            async fn prune_messages(
+                &self,
+                cutoff: chrono::DateTime<chrono::Utc>,
+                limit: i64,
+            ) -> Result<u64, StoreError> {
+                retention::prune_messages(self.pool(), cutoff, limit).await
+            }
+
             async fn prune_workspace_deliveries(
                 &self,
                 workspace_id: WorkspaceId,
