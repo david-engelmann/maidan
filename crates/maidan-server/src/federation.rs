@@ -901,6 +901,10 @@ pub struct WellKnownAuth {
     pub bearer: bool,
     /// Whether browser sign-in through OIDC is configured.
     pub oidc: bool,
+    /// Whether this server issues a browser session (OIDC, or a pasted token
+    /// exchanged for a cookie). Sign out posts `/auth/logout` when this is
+    /// true, even if the page has not cached a member id.
+    pub sessions: bool,
     /// Where OIDC sign-in starts (with `?workspace_id=`), when it is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_login: Option<String>,
@@ -915,6 +919,7 @@ pub struct WellKnownA2a {
 
 pub async fn well_known(State(state): State<AppState>) -> impl IntoResponse {
     let oidc = state.oidc.is_some();
+    let sessions = state.browser_sessions().is_some();
     Json(WellKnownMaidan {
         name: "maidan".to_string(),
         version: crate::version().to_string(),
@@ -935,6 +940,7 @@ pub async fn well_known(State(state): State<AppState>) -> impl IntoResponse {
         auth: WellKnownAuth {
             bearer: true,
             oidc,
+            sessions,
             oidc_login: oidc.then(|| "/auth/oidc/login".to_string()),
         },
     })

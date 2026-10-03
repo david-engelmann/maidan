@@ -194,6 +194,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 enum Sessions {
     /// `MAIDAN_SESSION_SECRET` without OIDC.
     Standalone,
@@ -279,6 +280,30 @@ async fn world(sessions: Sessions) -> World {
         a,
         b,
         _dir: dir,
+    }
+}
+
+/// Sign out needs to know whether a cookie can exist. OIDC and a standalone
+/// session secret both offer one; a server with neither does not.
+#[tokio::test]
+async fn discovery_says_whether_the_server_offers_browser_sessions() {
+    for (kind, expect) in [
+        (Sessions::None, false),
+        (Sessions::Standalone, true),
+        (Sessions::Oidc, true),
+    ] {
+        let w = world(kind).await;
+        let body: Value = w
+            .client
+            .get(w.url("/.well-known/maidan.json"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(body["auth"]["bearer"], true);
+        assert_eq!(body["auth"]["sessions"], expect, "{kind:?}");
     }
 }
 

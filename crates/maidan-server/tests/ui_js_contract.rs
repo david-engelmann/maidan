@@ -1065,6 +1065,39 @@ fn ui_js_first_run_offers_only_the_sign_in_paths_the_server_has() {
     );
 }
 
+/// Sign out posts `/auth/logout` when discovery says this server offers
+/// browser sessions, not only when a member id is already cached. A failed
+/// session read leaves the cookie in place if the page only reloads.
+#[test]
+fn ui_js_sign_out_posts_logout_when_the_server_offers_sessions() {
+    let s = script(HTML);
+    assert!(
+        s.contains("function signOutPostsLogout("),
+        "the decision is a function the page and the unit test share"
+    );
+    assert!(
+        s.contains("auth.sessions"),
+        "the page reads whether the server offers sessions from discovery"
+    );
+    assert!(
+        s.contains("if (!signOutPostsLogout(serverOffersSessions, sessionMemberId))"),
+        "sign out does not treat a missing cached member as no session"
+    );
+    let logout = s
+        .split("document.getElementById(\"logout\").onclick")
+        .nth(1)
+        .expect("logout handler");
+    let logout = logout.split("function showSecretOnce").next().unwrap();
+    assert!(
+        logout.contains("signOutPostsLogout(serverOffersSessions, sessionMemberId)"),
+        "the handler uses the discovery decision"
+    );
+    assert!(
+        !logout.contains("if (!sessionMemberId)"),
+        "the old member-id gate is gone"
+    );
+}
+
 /// A token acts as exactly one member (Cluster 411), so the Session tab must
 /// not say a bearer acts as any member, and it rotates the token it runs on
 /// through `POST /tokens/{id}/rotate`, the id coming from `/me`.

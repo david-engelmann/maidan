@@ -74,6 +74,10 @@ async fn well_known_and_workspace_context_respond() {
         "this harness configures no OIDC"
     );
     assert!(body["auth"].get("oidc_login").is_none());
+    assert_eq!(
+        body["auth"]["sessions"], false,
+        "this harness configures no browser sessions"
+    );
 
     let card = client
         .get(format!("{base}/.well-known/agent-card.json"))

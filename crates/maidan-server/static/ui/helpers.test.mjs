@@ -112,7 +112,7 @@ Object.defineProperty(globalThis, "navigator", {
 
 const { apiReadPath, apiWritePath, requireBearer } = await import("./api.js");
 const { humanError } = await import("./feedback.js");
-const { refreshSession } = await import("./session.js");
+const { refreshSession, signOutPostsLogout } = await import("./session.js");
 
 const BASE = "http://127.0.0.1:8080";
 
@@ -205,6 +205,18 @@ describe("board page helpers", { concurrency: 1 }, () => {
     assert.deepEqual(toastMessages(), [
       "This needs a bearer token. A signed-in session cannot call it.",
     ]);
+  });
+
+  test("sign out posts logout when the server offers sessions, even with no cached member", () => {
+    assert.equal(signOutPostsLogout(true, null), true);
+    assert.equal(signOutPostsLogout(true, ""), true);
+    assert.equal(signOutPostsLogout(true, "mem_1"), true);
+    assert.equal(signOutPostsLogout(false, null), false);
+    assert.equal(signOutPostsLogout(false, ""), false);
+    assert.equal(signOutPostsLogout(false, "mem_1"), true);
+    // Discovery never answered: a missing cache is not proof there is no cookie.
+    assert.equal(signOutPostsLogout(null, null), true);
+    assert.equal(signOutPostsLogout(undefined, null), true);
   });
 
   test("humanError names the capability and never the status or the raw body", () => {
