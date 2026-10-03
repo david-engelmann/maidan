@@ -128,6 +128,7 @@ async fn run_suite(store: &impl Store) {
             source_log_id: stored.id,
             target: EgressTarget::Slack {
                 channel_id: "C0123ABCDEF".into(),
+                thread_ts: None,
             },
             body: "hello".into(),
             kind: EgressKind::Projector,

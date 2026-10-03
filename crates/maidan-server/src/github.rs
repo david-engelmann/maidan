@@ -33,10 +33,20 @@ use crate::state::AppState;
 /// GitHub App / webhook credentials. `webhook_secret` verifies inbound deliveries;
 /// `api_token` (optional here) authorizes outbound comment posts in the egress
 /// cluster (312) — an installation token or a PAT.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GithubConfig {
     pub webhook_secret: String,
     pub api_token: Option<String>,
+}
+
+// Both fields are credentials; `{:?}` must never print them.
+impl std::fmt::Debug for GithubConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GithubConfig")
+            .field("webhook_secret", &"[redacted]")
+            .field("api_token", &self.api_token.as_ref().map(|_| "[redacted]"))
+            .finish()
+    }
 }
 
 impl GithubConfig {
@@ -272,6 +282,10 @@ async fn route_github_issue_comment(state: &AppState, payload: &serde_json::Valu
 pub enum GithubError {
     #[error("github http error: {0}")]
     Http(String),
+    /// A write this client will not make, whatever the caller asked: a ref
+    /// that is not an agent branch.
+    #[error("github write refused: {0}")]
+    Refused(String),
     #[error("github api error: status {status}")]
     Api {
         status: u16,
@@ -295,6 +309,7 @@ impl GithubError {
     pub fn is_misconfiguration(&self) -> bool {
         match self {
             Self::Http(_) => false,
+            Self::Refused(_) => true,
             Self::Api {
                 rate_limited: true, ..
             } => false,
@@ -404,6 +419,98 @@ pub trait GithubSender: Send + Sync {
     fn host(&self) -> String {
         "api.github.com".to_string()
     }
+
+    /// The Git Data API behind this sender, for the change flow. `None` (the
+    /// default) means this sender can comment but cannot commit, and a
+    /// `github_branch` delivery dead-letters saying so.
+    fn git(&self) -> Option<&dyn GithubGit> {
+        None
+    }
+}
+
+/// A commit as the Git Data API returns it: enough to find its tree and to
+/// recognise a commit Maidan already made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitCommit {
+    pub sha: String,
+    pub tree_sha: String,
+    pub parents: Vec<String>,
+    pub message: String,
+}
+
+/// One entry of `POST /repos/{repo}/git/trees`. `blob_sha: None` deletes
+/// `path` from the base tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitTreeEntry {
+    pub path: String,
+    pub mode: String,
+    pub blob_sha: Option<String>,
+}
+
+/// An open pull request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubPull {
+    pub number: i64,
+    pub html_url: String,
+    /// The branch it merges into.
+    pub base: String,
+}
+
+/// The GitHub calls the change flow makes: read a branch and the files a diff
+/// touches, write blobs, a tree and a commit, move the branch, and find or
+/// open its draft pull request. Nothing here approves, merges, marks a pull
+/// request ready, requests a review, comments, deletes a branch, force-pushes
+/// or touches repository settings, and there is deliberately no method that
+/// could.
+#[async_trait::async_trait]
+pub trait GithubGit: Send + Sync {
+    /// `GET /repos/{repo}/git/ref/heads/{branch}`: the branch head, or `None`
+    /// when the branch does not exist.
+    async fn branch_head(&self, repo: &str, branch: &str) -> Result<Option<String>, GithubError>;
+    /// `POST /repos/{repo}/git/refs`: create `branch` at `sha`.
+    async fn create_branch(&self, repo: &str, branch: &str, sha: &str) -> Result<(), GithubError>;
+    /// `GET /repos/{repo}/git/commits/{sha}`.
+    async fn commit(&self, repo: &str, sha: &str) -> Result<GitCommit, GithubError>;
+    /// `GET /repos/{repo}/contents/{path}?ref={sha}` as raw bytes, or `None`
+    /// when the path does not exist at that commit.
+    async fn file_at(
+        &self,
+        repo: &str,
+        path: &str,
+        sha: &str,
+    ) -> Result<Option<Vec<u8>>, GithubError>;
+    /// `POST /repos/{repo}/git/blobs`; returns the blob sha.
+    async fn create_blob(&self, repo: &str, content: &[u8]) -> Result<String, GithubError>;
+    /// `POST /repos/{repo}/git/trees` on top of `base_tree`; returns the tree sha.
+    async fn create_tree(
+        &self,
+        repo: &str,
+        base_tree: &str,
+        entries: &[GitTreeEntry],
+    ) -> Result<String, GithubError>;
+    /// `POST /repos/{repo}/git/commits`; returns the commit sha.
+    async fn create_commit(
+        &self,
+        repo: &str,
+        message: &str,
+        tree: &str,
+        parents: &[String],
+    ) -> Result<String, GithubError>;
+    /// `PATCH /repos/{repo}/git/refs/heads/{branch}` with `force: false`, so
+    /// GitHub refuses (422) a move that is not a fast-forward.
+    async fn update_branch(&self, repo: &str, branch: &str, sha: &str) -> Result<(), GithubError>;
+    /// `GET /repos/{repo}/pulls?head={owner}:{branch}&state=open`: the open
+    /// pull request for this head branch, if any.
+    async fn open_pull(&self, repo: &str, branch: &str) -> Result<Option<GithubPull>, GithubError>;
+    /// `POST /repos/{repo}/pulls` with `draft: true`.
+    async fn create_draft_pull(
+        &self,
+        repo: &str,
+        branch: &str,
+        base: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<GithubPull, GithubError>;
 }
 
 /// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
@@ -449,6 +556,10 @@ impl GithubSender for GithubApiClient {
         crate::retry_budget::host_of(&self.base_url).unwrap_or_else(|| "api.github.com".to_string())
     }
 
+    fn git(&self) -> Option<&dyn GithubGit> {
+        Some(self)
+    }
+
     async fn post_comment(
         &self,
         repo: &str,
@@ -466,7 +577,7 @@ impl GithubSender for GithubApiClient {
             .json(&serde_json::json!({ "body": text }))
             .send()
             .await
-            .map_err(|e| GithubError::Http(e.to_string()))?;
+            .map_err(|e| self.http_error(e))?;
         if !resp.status().is_success() {
             return Err(GithubError::Api {
                 status: resp.status().as_u16(),
@@ -504,7 +615,7 @@ impl GithubSender for GithubApiClient {
             .json(&serde_json::json!({ "body": text }))
             .send()
             .await
-            .map_err(|e| GithubError::Http(e.to_string()))?;
+            .map_err(|e| self.http_error(e))?;
         if resp.status().is_success() {
             return Ok(());
         }
@@ -534,17 +645,15 @@ impl GithubSender for GithubApiClient {
                 .header("User-Agent", "maidan-projector")
                 .send()
                 .await
-                .map_err(|e| GithubError::Http(e.to_string()))?;
+                .map_err(|e| self.http_error(e))?;
             if !resp.status().is_success() {
                 return Err(GithubError::Api {
                     status: resp.status().as_u16(),
                     rate_limited: is_rate_limited(resp.headers()),
                 });
             }
-            let batch: Vec<serde_json::Value> = resp
-                .json()
-                .await
-                .map_err(|e| GithubError::Http(e.to_string()))?;
+            let batch: Vec<serde_json::Value> =
+                resp.json().await.map_err(|e| self.http_error(e))?;
             let n = batch.len();
             for c in batch {
                 let Some(id) = c.get("id").and_then(|i| i.as_i64()).filter(|id| *id > 0) else {
@@ -586,7 +695,7 @@ impl GithubSender for GithubApiClient {
             }))
             .send()
             .await
-            .map_err(|e| GithubError::Http(e.to_string()))?;
+            .map_err(|e| self.http_error(e))?;
         if resp.status().is_success() {
             return Ok(());
         }
@@ -609,7 +718,7 @@ impl GithubSender for GithubApiClient {
             .json(&check_run_body(check))
             .send()
             .await
-            .map_err(|e| GithubError::Http(e.to_string()))?;
+            .map_err(|e| self.http_error(e))?;
         if resp.status().is_success() {
             return Ok(());
         }
@@ -617,6 +726,259 @@ impl GithubSender for GithubApiClient {
             status: resp.status().as_u16(),
             rate_limited: is_rate_limited(resp.headers()),
         })
+    }
+}
+
+impl GithubApiClient {
+    fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        crate::trace_context::stamp(
+            self.http
+                .request(method, format!("{}{path}", self.base_url)),
+        )
+        .bearer_auth(&self.token)
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "maidan-projector")
+    }
+
+    /// A transport error, with the token cut out in case anything echoed it.
+    fn http_error(&self, err: impl std::fmt::Display) -> GithubError {
+        GithubError::Http(redact(&err.to_string(), &self.token))
+    }
+
+    async fn send_json(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<serde_json::Value, GithubError> {
+        let resp = request.send().await.map_err(|e| self.http_error(e))?;
+        if !resp.status().is_success() {
+            return Err(GithubError::Api {
+                status: resp.status().as_u16(),
+                rate_limited: is_rate_limited(resp.headers()),
+            });
+        }
+        resp.json().await.map_err(|e| self.http_error(e))
+    }
+}
+
+/// `text` with every occurrence of `secret` replaced.
+fn redact(text: &str, secret: &str) -> String {
+    if secret.is_empty() {
+        return text.to_string();
+    }
+    text.replace(secret, "[redacted]")
+}
+
+/// The client-side half of the branch guard: no ref other than an agent
+/// branch is ever created or moved, whatever the caller passed.
+fn guard_ref(branch: &str) -> Result<(), GithubError> {
+    if maidan_types::is_change_branch(branch) {
+        Ok(())
+    } else {
+        Err(GithubError::Refused(format!(
+            "`{branch}` is not an agent branch"
+        )))
+    }
+}
+
+/// A string field of a GitHub response, or an error naming it: a response
+/// without it cannot be acted on.
+fn field(value: &serde_json::Value, pointer: &str) -> Result<String, GithubError> {
+    value
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| GithubError::Http(format!("github response has no {pointer}")))
+}
+
+fn pull_from(value: &serde_json::Value) -> Result<GithubPull, GithubError> {
+    let number = value
+        .get("number")
+        .and_then(serde_json::Value::as_i64)
+        .filter(|n| *n > 0)
+        .ok_or_else(|| GithubError::Http("github pull has no number".into()))?;
+    Ok(GithubPull {
+        number,
+        html_url: field(value, "/html_url")?,
+        base: field(value, "/base/ref")?,
+    })
+}
+
+/// Percent-encode each segment of a path or branch, keeping its slashes.
+fn encode_path(path: &str) -> String {
+    path.split('/')
+        .map(|part| urlencoding::encode(part).into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+#[async_trait::async_trait]
+impl GithubGit for GithubApiClient {
+    async fn branch_head(&self, repo: &str, branch: &str) -> Result<Option<String>, GithubError> {
+        let path = format!("/repos/{repo}/git/ref/heads/{}", encode_path(branch));
+        match self
+            .send_json(self.request(reqwest::Method::GET, &path))
+            .await
+        {
+            Ok(value) => field(&value, "/object/sha").map(Some),
+            Err(err) if err.is_not_found() => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
+    async fn create_branch(&self, repo: &str, branch: &str, sha: &str) -> Result<(), GithubError> {
+        guard_ref(branch)?;
+        let request = self
+            .request(reqwest::Method::POST, &format!("/repos/{repo}/git/refs"))
+            .json(&serde_json::json!({ "ref": format!("refs/heads/{branch}"), "sha": sha }));
+        self.send_json(request).await.map(|_| ())
+    }
+
+    async fn commit(&self, repo: &str, sha: &str) -> Result<GitCommit, GithubError> {
+        let path = format!("/repos/{repo}/git/commits/{sha}");
+        let value = self
+            .send_json(self.request(reqwest::Method::GET, &path))
+            .await?;
+        let parents = value
+            .get("parents")
+            .and_then(serde_json::Value::as_array)
+            .map(|parents| {
+                parents
+                    .iter()
+                    .filter_map(|p| p.get("sha").and_then(serde_json::Value::as_str))
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(GitCommit {
+            sha: field(&value, "/sha")?,
+            tree_sha: field(&value, "/tree/sha")?,
+            parents,
+            message: field(&value, "/message").unwrap_or_default(),
+        })
+    }
+
+    async fn file_at(
+        &self,
+        repo: &str,
+        path: &str,
+        sha: &str,
+    ) -> Result<Option<Vec<u8>>, GithubError> {
+        let url = format!(
+            "/repos/{repo}/contents/{}?ref={}",
+            encode_path(path),
+            urlencoding::encode(sha)
+        );
+        // The raw media type returns the bytes, and works past the 1 MB limit
+        // of the JSON form.
+        let resp = self
+            .request(reqwest::Method::GET, &url)
+            .header("Accept", "application/vnd.github.raw+json")
+            .send()
+            .await
+            .map_err(|e| self.http_error(e))?;
+        if resp.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        if !resp.status().is_success() {
+            return Err(GithubError::Api {
+                status: resp.status().as_u16(),
+                rate_limited: is_rate_limited(resp.headers()),
+            });
+        }
+        resp.bytes()
+            .await
+            .map(|b| Some(b.to_vec()))
+            .map_err(|e| self.http_error(e))
+    }
+
+    async fn create_blob(&self, repo: &str, content: &[u8]) -> Result<String, GithubError> {
+        use base64::Engine as _;
+        let request = self
+            .request(reqwest::Method::POST, &format!("/repos/{repo}/git/blobs"))
+            .json(&serde_json::json!({
+                "content": base64::engine::general_purpose::STANDARD.encode(content),
+                "encoding": "base64",
+            }));
+        field(&self.send_json(request).await?, "/sha")
+    }
+
+    async fn create_tree(
+        &self,
+        repo: &str,
+        base_tree: &str,
+        entries: &[GitTreeEntry],
+    ) -> Result<String, GithubError> {
+        let tree: Vec<serde_json::Value> = entries
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "path": e.path,
+                    "mode": e.mode,
+                    "type": "blob",
+                    "sha": e.blob_sha,
+                })
+            })
+            .collect();
+        let request = self
+            .request(reqwest::Method::POST, &format!("/repos/{repo}/git/trees"))
+            .json(&serde_json::json!({ "base_tree": base_tree, "tree": tree }));
+        field(&self.send_json(request).await?, "/sha")
+    }
+
+    async fn create_commit(
+        &self,
+        repo: &str,
+        message: &str,
+        tree: &str,
+        parents: &[String],
+    ) -> Result<String, GithubError> {
+        let request = self
+            .request(reqwest::Method::POST, &format!("/repos/{repo}/git/commits"))
+            .json(&serde_json::json!({ "message": message, "tree": tree, "parents": parents }));
+        field(&self.send_json(request).await?, "/sha")
+    }
+
+    async fn update_branch(&self, repo: &str, branch: &str, sha: &str) -> Result<(), GithubError> {
+        guard_ref(branch)?;
+        let path = format!("/repos/{repo}/git/refs/heads/{}", encode_path(branch));
+        let request = self
+            .request(reqwest::Method::PATCH, &path)
+            .json(&serde_json::json!({ "sha": sha, "force": false }));
+        self.send_json(request).await.map(|_| ())
+    }
+
+    async fn open_pull(&self, repo: &str, branch: &str) -> Result<Option<GithubPull>, GithubError> {
+        let owner = repo.split('/').next().unwrap_or_default();
+        let head = urlencoding::encode(&format!("{owner}:{branch}")).into_owned();
+        let path = format!("/repos/{repo}/pulls?head={head}&state=open&per_page=1");
+        let value = self
+            .send_json(self.request(reqwest::Method::GET, &path))
+            .await?;
+        value
+            .as_array()
+            .and_then(|pulls| pulls.first())
+            .map(pull_from)
+            .transpose()
+    }
+
+    async fn create_draft_pull(
+        &self,
+        repo: &str,
+        branch: &str,
+        base: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<GithubPull, GithubError> {
+        let request = self
+            .request(reqwest::Method::POST, &format!("/repos/{repo}/pulls"))
+            .json(&serde_json::json!({
+                "title": title,
+                "body": body,
+                "head": branch,
+                "base": base,
+                "draft": true,
+            }));
+        pull_from(&self.send_json(request).await?)
     }
 }
 
@@ -883,6 +1245,40 @@ mod tests {
         }
         assert!(!api(403, true).is_inline_review_skip());
         assert!(!GithubError::Http("connection reset".into()).is_inline_review_skip());
+    }
+
+    #[test]
+    fn the_token_never_reaches_debug_output_or_an_error() {
+        let cfg = GithubConfig {
+            webhook_secret: "whsec-value".into(),
+            api_token: Some("ghp_secretvalue".into()),
+        };
+        let shown = format!("{cfg:?}");
+        assert!(
+            !shown.contains("ghp_secretvalue") && !shown.contains("whsec-value"),
+            "{shown}"
+        );
+        let client = GithubApiClient::new("ghp_secretvalue".into());
+        let err = client.http_error("request to https://x/?t=ghp_secretvalue failed");
+        assert!(!err.to_string().contains("ghp_secretvalue"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn the_client_refuses_to_write_any_ref_but_an_agent_branch() {
+        // No server: a refused write must not reach the network at all.
+        let client = GithubApiClient::with_base_url("t".into(), "http://127.0.0.1:9".into());
+        let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
+        for branch in ["main", "prod", "dev", "feature/x", "feature/agent-X"] {
+            let created = client.create_branch("o/r", branch, sha).await.unwrap_err();
+            let moved = client.update_branch("o/r", branch, sha).await.unwrap_err();
+            for err in [created, moved] {
+                assert!(matches!(err, GithubError::Refused(_)), "{branch}: {err}");
+                assert!(
+                    err.is_misconfiguration(),
+                    "a refused write is never retried"
+                );
+            }
+        }
     }
 
     #[test]

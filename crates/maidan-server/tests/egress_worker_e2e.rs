@@ -128,6 +128,7 @@ fn queued(ws: WorkspaceId, thread: ThreadId, log_id: i64) -> NewEgressOutbox {
         source_log_id: log_id,
         target: EgressTarget::Slack {
             channel_id: "C1".into(),
+            thread_ts: None,
         },
         body: "hi from maidan".into(),
         kind: maidan_types::EgressKind::Projector,

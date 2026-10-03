@@ -29,7 +29,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::egress::EgressTarget;
+use crate::egress::{is_branch_name, is_git_sha, is_github_repo, is_slack_ts, EgressTarget};
 use crate::review::ReviewDecision;
 
 /// The frozen envelope discriminator. A different value is inert, not an error.
@@ -85,9 +85,19 @@ pub enum DeliverTarget {
         pr: i64,
     },
     /// A channel **id** (`C…`/`G…`), never a `#name`: a name is mutable, and the
-    /// channel it points at can change under a delivery.
+    /// channel it points at can change under a delivery. `thread_ts` replies in
+    /// that Slack thread; the allowlist still blesses the channel.
     Slack {
         channel: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        thread_ts: Option<String>,
+    },
+    /// Commit a [`PI_CHANGE_RESULT_KIND`] diff to `branch` of `repo` and open a
+    /// draft PR against `base` when none is open for the branch.
+    GithubBranch {
+        repo: String,
+        branch: String,
+        base: String,
     },
     Unknown(String),
 }
@@ -98,6 +108,7 @@ impl DeliverTarget {
         match self {
             Self::Github { .. } => "github",
             Self::Slack { .. } => "slack",
+            Self::GithubBranch { .. } => "github_branch",
             Self::Unknown(surface) => surface,
         }
     }
@@ -120,12 +131,41 @@ impl DeliverTarget {
                     },
                 )
             }
-            Self::Slack { channel } => {
-                (!channel.is_empty() && !channel.starts_with('#')).then(|| EgressTarget::Slack {
-                    channel_id: channel.clone(),
-                })
+            Self::Slack { channel, thread_ts } => {
+                // A thread id that is not a Slack ts is unusable rather than
+                // dropped: posting top-level would answer in the wrong place.
+                let thread_ok = thread_ts.as_deref().is_none_or(is_slack_ts);
+                (!channel.is_empty()
+                    && !channel.starts_with('#')
+                    && !channel.contains('/')
+                    && thread_ok)
+                    .then(|| EgressTarget::Slack {
+                        channel_id: channel.clone(),
+                        thread_ts: thread_ts.clone(),
+                    })
             }
+            Self::GithubBranch { repo, branch, base } => (is_github_repo(repo)
+                && is_branch_name(branch)
+                && is_branch_name(base))
+            .then(|| EgressTarget::GithubBranch {
+                repo: repo.clone(),
+                branch: branch.clone(),
+            }),
             Self::Unknown(_) => None,
+        }
+    }
+
+    /// The selector the workspace allowlist must hold for this target, or
+    /// `None` when the target does not project. A branch target is blessed
+    /// with its base (`owner/name@base`), so a repository blessed for one base
+    /// cannot take a pull request into another.
+    pub fn allowlist_selector(&self) -> Option<String> {
+        match self {
+            Self::GithubBranch { repo, base, .. } => {
+                self.to_egress_target()?;
+                Some(change_allowlist_selector(repo, base))
+            }
+            other => other.to_egress_target().map(|t| t.allowlist_selector()),
         }
     }
 
@@ -140,7 +180,17 @@ impl DeliverTarget {
     pub fn skip_fingerprint(&self) -> (String, String) {
         match self {
             Self::Github { repo, pr } => ("github".into(), format!("{repo}#{pr}")),
-            Self::Slack { channel } => ("slack".into(), channel.clone()),
+            Self::Slack {
+                channel,
+                thread_ts: None,
+            } => ("slack".into(), channel.clone()),
+            Self::Slack {
+                channel,
+                thread_ts: Some(ts),
+            } => ("slack".into(), format!("{channel}/{ts}")),
+            Self::GithubBranch { repo, branch, .. } => {
+                ("github_branch".into(), format!("{repo}@{branch}"))
+            }
             Self::Unknown(surface) => (surface.clone(), String::new()),
         }
     }
@@ -441,6 +491,127 @@ fn findings_contain_critical(value: &Value) -> bool {
         })
 }
 
+/// The producer shape for a coding result that becomes a commit: Pi's
+/// `pi.change.result/1`. Same rule as [`EXAMPLE_REVIEW_RESULT_KIND`]: compare
+/// the string, do not close the set.
+pub const PI_CHANGE_RESULT_KIND: &str = "pi.change.result/1";
+
+/// The only change status that writes to GitHub. `no_change`, `seat_error`
+/// and `content_blocked` are recorded and answered in Slack, never committed.
+pub const CHANGE_STATUS_CHANGED: &str = "changed";
+
+/// Every branch the change flow may write starts with this.
+pub const CHANGE_BRANCH_PREFIX: &str = "feature/agent-";
+
+/// Branches the change flow never writes and never targets as a base,
+/// whatever the allowlist says. Hard-coded on purpose: the token the flow
+/// runs with can push to all of them, so the guard has to be in this code,
+/// not in configuration or in GitHub's settings.
+pub const PROTECTED_BRANCHES: [&str; 5] = ["prod", "main", "master", "staging", "dev"];
+
+/// The base no change is ever opened against, whatever the allowlist says.
+pub const FORBIDDEN_CHANGE_BASE: &str = "prod";
+
+/// Whether `branch` is `feature/agent-[a-z0-9][a-z0-9-]*`.
+pub fn is_change_branch(branch: &str) -> bool {
+    let Some(slug) = branch.strip_prefix(CHANGE_BRANCH_PREFIX) else {
+        return false;
+    };
+    let mut chars = slug.chars();
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// The hard-coded rules for a `github_branch` target, checked before the
+/// allowlist and again before any GitHub write. `Err` is the reason recorded
+/// on the delivery.
+pub fn check_change_target(branch: &str, base: &str) -> Result<(), String> {
+    let protected = |name: &str| {
+        PROTECTED_BRANCHES
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case(name))
+    };
+    if protected(branch) {
+        return Err(format!(
+            "branch `{branch}` is protected; the change flow writes only `{CHANGE_BRANCH_PREFIX}…` branches"
+        ));
+    }
+    if !is_change_branch(branch) {
+        return Err(format!(
+            "branch `{branch}` does not match `{CHANGE_BRANCH_PREFIX}[a-z0-9][a-z0-9-]*`"
+        ));
+    }
+    if base.eq_ignore_ascii_case(FORBIDDEN_CHANGE_BASE) {
+        return Err(format!(
+            "base `{base}` is never allowed for a change pull request"
+        ));
+    }
+    if !is_branch_name(base) {
+        return Err(format!("base `{base}` is not a branch name"));
+    }
+    if branch == base {
+        return Err(format!("branch `{branch}` is its own base"));
+    }
+    Ok(())
+}
+
+/// The allowlist selector that blesses change pull requests into `base` of
+/// `repo`: `owner/name@base`. One row per repository and base.
+pub fn change_allowlist_selector(repo: &str, base: &str) -> String {
+    format!("{repo}@{base}")
+}
+
+/// The fields of a [`PI_CHANGE_RESULT_KIND`] envelope that a commit is built
+/// from. Read straight off the envelope, like `head_sha`: the base commit is
+/// the producer's, never one looked up from the thread or the branch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangeResult {
+    pub status: String,
+    /// The commit the diff applies to, captured before any edit. `None` when
+    /// absent or not a full SHA: a short prefix could name another commit.
+    pub base_sha: Option<String>,
+    /// The branch the producer worked on, echoed verbatim; it must equal the
+    /// `github_branch` target's `branch`.
+    pub branch: Option<String>,
+    /// A git diff that applies with `git apply`.
+    pub diff: Option<String>,
+    pub title: Option<String>,
+    pub summary: Option<String>,
+}
+
+impl ChangeResult {
+    pub fn is_changed(&self) -> bool {
+        self.status == CHANGE_STATUS_CHANGED
+    }
+}
+
+/// Read a change result. `None` unless this is a waiter envelope whose
+/// `result_kind` is [`PI_CHANGE_RESULT_KIND`]; past that, every field is
+/// optional here and the delivery decides what it needs.
+pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
+    let waiter = parse_waiter_result(value)?;
+    if waiter.result_kind != PI_CHANGE_RESULT_KIND {
+        return None;
+    }
+    let obj = value.as_object()?;
+    let text = |key: &str| {
+        obj.get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string)
+    };
+    Some(ChangeResult {
+        status: waiter.status,
+        base_sha: text("base_sha").filter(|s| is_git_sha(s)),
+        branch: text("branch"),
+        diff: text("diff"),
+        title: text("title"),
+        summary: text("summary"),
+    })
+}
+
 /// Whether this object is a `maidan.waiter.result/1` envelope.
 ///
 /// `$type` is an alias of `schema` (same NSID). Either field matching
@@ -577,9 +748,22 @@ fn parse_deliver_target(entry: &Value) -> Option<DeliverTarget> {
         "slack" => match obj.get("channel").and_then(Value::as_str) {
             Some(channel) => Some(DeliverTarget::Slack {
                 channel: channel.to_string(),
+                thread_ts: obj
+                    .get("thread_ts")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
             }),
             None => unknown(),
         },
+        "github_branch" => {
+            let field = |key: &str| obj.get(key).and_then(Value::as_str).map(str::to_string);
+            match (field("repo"), field("branch"), field("base")) {
+                (Some(repo), Some(branch), Some(base)) => {
+                    Some(DeliverTarget::GithubBranch { repo, branch, base })
+                }
+                _ => unknown(),
+            }
+        }
         other => Some(DeliverTarget::Unknown(other.to_string())),
     }
 }
@@ -723,11 +907,13 @@ mod tests {
         );
         assert_eq!(
             DeliverTarget::Slack {
-                channel: "C0123ABCDEF".into()
+                channel: "C0123ABCDEF".into(),
+                thread_ts: None
             }
             .to_egress_target(),
             Some(EgressTarget::Slack {
-                channel_id: "C0123ABCDEF".into()
+                channel_id: "C0123ABCDEF".into(),
+                thread_ts: None
             })
         );
         assert_eq!(
@@ -741,7 +927,8 @@ mod tests {
         );
         assert_eq!(
             DeliverTarget::Slack {
-                channel: "#general".into()
+                channel: "#general".into(),
+                thread_ts: None
             }
             .skip_fingerprint(),
             ("slack".into(), "#general".into()),
@@ -780,9 +967,11 @@ mod tests {
             // A mutable name is not an addressable channel.
             DeliverTarget::Slack {
                 channel: "#general".into(),
+                thread_ts: None,
             },
             DeliverTarget::Slack {
                 channel: String::new(),
+                thread_ts: None,
             },
         ] {
             assert_eq!(
@@ -1105,5 +1294,141 @@ mod tests {
         assert_eq!(check.title, "Maidan result did not pass");
         assert!(check.summary.contains("status `failed`"));
         assert_eq!(check.details_url, None, "only https details urls are sent");
+    }
+
+    const SHA: &str = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
+
+    fn change_envelope(deliver_to: Value) -> Value {
+        json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": PI_CHANGE_RESULT_KIND,
+            "status": "changed",
+            "base_sha": SHA,
+            "branch": "feature/agent-fix-1a2b",
+            "diff": "diff --git a/a b/a\n",
+            "title": "Fix the thing",
+            "summary": "It was broken.",
+            "deliver_to": deliver_to,
+        })
+    }
+
+    #[test]
+    fn a_github_branch_target_parses_and_projects_onto_its_own_surface() {
+        let value = change_envelope(json!([
+            {"surface":"github_branch","repo":"beatgig/bgv3","branch":"feature/agent-fix-1a2b","base":"dev"},
+            {"surface":"slack","channel":"C0123ABCDEF","thread_ts":"1699999999.001200"},
+        ]));
+        let parsed = parse_waiter_result(&value).expect("parses");
+        let branch = &parsed.deliver_to[0];
+        assert_eq!(
+            branch,
+            &DeliverTarget::GithubBranch {
+                repo: "beatgig/bgv3".into(),
+                branch: "feature/agent-fix-1a2b".into(),
+                base: "dev".into(),
+            }
+        );
+        let egress = branch.to_egress_target().expect("usable");
+        assert_eq!(
+            egress.to_string(),
+            "github_branch:beatgig/bgv3@feature/agent-fix-1a2b"
+        );
+        assert_eq!(egress.allowlist_selector(), "beatgig/bgv3");
+        assert_eq!(egress.surface().as_str(), "github_branch");
+
+        let slack = parsed.deliver_to[1].to_egress_target().expect("usable");
+        assert_eq!(
+            slack,
+            EgressTarget::Slack {
+                channel_id: "C0123ABCDEF".into(),
+                thread_ts: Some("1699999999.001200".into()),
+            }
+        );
+        assert_eq!(
+            slack.allowlist_selector(),
+            "C0123ABCDEF",
+            "a thread rides its channel's blessing"
+        );
+    }
+
+    #[test]
+    fn an_unusable_branch_or_thread_target_is_skipped_not_delivered() {
+        for entry in [
+            json!({"surface":"github_branch","repo":"beatgig","branch":"feature/x","base":"dev"}),
+            json!({"surface":"github_branch","repo":"beatgig/bgv3","branch":"feature/../x","base":"dev"}),
+            json!({"surface":"github_branch","repo":"beatgig/bgv3","branch":"feature/x","base":"de v"}),
+            json!({"surface":"github_branch","repo":"beatgig/bgv3","branch":"x.lock","base":"dev"}),
+            json!({"surface":"slack","channel":"C0123ABCDEF","thread_ts":"yesterday"}),
+        ] {
+            let target = parse_deliver_target(&entry).expect("recorded");
+            assert!(
+                target.to_egress_target().is_none(),
+                "expected {entry} to be unusable"
+            );
+        }
+        assert_eq!(
+            parse_deliver_target(&json!({"surface":"github_branch","repo":"beatgig/bgv3"})),
+            Some(DeliverTarget::Unknown("github_branch".into())),
+            "a branch target missing its detail is still recorded"
+        );
+    }
+
+    #[test]
+    fn a_change_result_reads_its_commit_fields_and_refuses_a_short_sha() {
+        let change = parse_change_result(&change_envelope(json!([]))).expect("a change result");
+        assert!(change.is_changed());
+        assert_eq!(change.base_sha.as_deref(), Some(SHA));
+        assert_eq!(change.branch.as_deref(), Some("feature/agent-fix-1a2b"));
+        assert_eq!(change.title.as_deref(), Some("Fix the thing"));
+
+        let mut short = change_envelope(json!([]));
+        short["base_sha"] = json!("b5e54f9");
+        assert_eq!(parse_change_result(&short).unwrap().base_sha, None);
+
+        let mut review = change_envelope(json!([]));
+        review["result_kind"] = json!(EXAMPLE_REVIEW_RESULT_KIND);
+        assert!(parse_change_result(&review).is_none());
+    }
+
+    #[test]
+    fn the_change_branch_rules_are_hard_coded_and_name_their_reason() {
+        assert!(check_change_target("feature/agent-fix-greeting-1a2b", "dev").is_ok());
+        assert!(check_change_target("feature/agent-9", "main").is_ok());
+        for (branch, base, why) in [
+            ("main", "dev", "protected"),
+            ("prod", "dev", "protected"),
+            ("dev", "main", "protected"),
+            ("Master", "dev", "protected"),
+            ("feature/fix-greeting", "dev", "does not match"),
+            ("feature/agent-", "dev", "does not match"),
+            ("feature/agent--x", "dev", "does not match"),
+            ("feature/agent-Fix", "dev", "does not match"),
+            ("feature/agent-x/y", "dev", "does not match"),
+            ("feature/agent-x", "prod", "never allowed"),
+            ("feature/agent-x", "PROD", "never allowed"),
+            ("feature/agent-x", "de v", "not a branch name"),
+            ("feature/agent-x", "feature/agent-x", "its own base"),
+        ] {
+            let err = check_change_target(branch, base).unwrap_err();
+            assert!(err.contains(why), "{branch} -> {base}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_branch_target_is_blessed_with_its_base() {
+        let target = DeliverTarget::GithubBranch {
+            repo: "beatgig/bgv3".into(),
+            branch: "feature/agent-x".into(),
+            base: "dev".into(),
+        };
+        assert_eq!(
+            target.allowlist_selector().as_deref(),
+            Some("beatgig/bgv3@dev")
+        );
+        let slack = DeliverTarget::Slack {
+            channel: "C0123ABCDEF".into(),
+            thread_ts: Some("1.2".into()),
+        };
+        assert_eq!(slack.allowlist_selector().as_deref(), Some("C0123ABCDEF"));
     }
 }

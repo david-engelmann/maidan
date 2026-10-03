@@ -26,6 +26,10 @@ use crate::ids::{EgressOutboxId, EgressTargetId, ThreadId, WorkspaceId};
 pub enum EgressSurface {
     Slack,
     Github,
+    /// Commits to a branch and opens a draft PR. Its own surface, so its own
+    /// allowlist rows: a repository blessed for comments is not thereby
+    /// writable.
+    GithubBranch,
 }
 
 impl EgressSurface {
@@ -33,6 +37,7 @@ impl EgressSurface {
         match self {
             Self::Slack => "slack",
             Self::Github => "github",
+            Self::GithubBranch => "github_branch",
         }
     }
 
@@ -42,6 +47,7 @@ impl EgressSurface {
         match s {
             "slack" => Some(Self::Slack),
             "github" => Some(Self::Github),
+            "github_branch" => Some(Self::GithubBranch),
             _ => None,
         }
     }
@@ -95,11 +101,19 @@ impl fmt::Display for EgressKind {
 pub enum EgressTarget {
     /// A Slack channel id (`C…`/`G…` in practice — the projector takes whatever
     /// the operator linked, so the id is not re-validated here; the `deliver_to`
-    /// reader is where a producer-supplied channel is checked).
-    Slack { channel_id: String },
+    /// reader is where a producer-supplied channel is checked). `thread_ts`
+    /// replies inside that Slack thread; the projector never sets it.
+    Slack {
+        channel_id: String,
+        thread_ts: Option<String>,
+    },
     /// A GitHub issue or PR comment. `repo` is `owner/name`; issue and PR numbers
     /// share one namespace, so a PR links exactly like an issue.
     Github { repo: String, issue_number: i64 },
+    /// A commit on `branch` of `repo` and a draft PR for it. The PR's base
+    /// branch and the commit's parent are read from the result envelope at
+    /// send time, so they are not part of the stored destination.
+    GithubBranch { repo: String, branch: String },
 }
 
 impl EgressTarget {
@@ -107,14 +121,24 @@ impl EgressTarget {
         match self {
             Self::Slack { .. } => EgressSurface::Slack,
             Self::Github { .. } => EgressSurface::Github,
+            Self::GithubBranch { .. } => EgressSurface::GithubBranch,
         }
     }
 
-    /// The persisted per-surface detail: a Slack channel id, or `owner/name#123`.
+    /// The persisted per-surface detail: a Slack channel id (with `/<thread_ts>`
+    /// for a threaded reply), `owner/name#123`, or `owner/name@branch`.
     pub fn selector(&self) -> String {
         match self {
-            Self::Slack { channel_id } => channel_id.clone(),
+            Self::Slack {
+                channel_id,
+                thread_ts: None,
+            } => channel_id.clone(),
+            Self::Slack {
+                channel_id,
+                thread_ts: Some(ts),
+            } => format!("{channel_id}/{ts}"),
             Self::Github { repo, issue_number } => format!("{repo}#{issue_number}"),
+            Self::GithubBranch { repo, branch } => format!("{repo}@{branch}"),
         }
     }
 
@@ -122,11 +146,17 @@ impl EgressTarget {
     /// deliberately coarser than [`Self::selector`] on GitHub: an operator
     /// blesses the **repository**, not each issue, because per-issue blessing
     /// would mean an operator ticket per PR. Slack has no such split — a
-    /// channel id is already the unit an operator thinks in.
+    /// channel id is already the unit an operator thinks in, and a thread
+    /// inside a blessed channel needs no blessing of its own.
+    ///
+    /// A branch row always names a base (`owner/name@base`, see
+    /// [`crate::change_allowlist_selector`]), and the base is not part of this
+    /// target, so the bare repository returned here matches no branch row:
+    /// authorizing a branch goes through the result's base, and fails closed.
     pub fn allowlist_selector(&self) -> String {
         match self {
-            Self::Slack { channel_id } => channel_id.clone(),
-            Self::Github { repo, .. } => repo.clone(),
+            Self::Slack { channel_id, .. } => channel_id.clone(),
+            Self::Github { repo, .. } | Self::GithubBranch { repo, .. } => repo.clone(),
         }
     }
 
@@ -135,9 +165,26 @@ impl EgressTarget {
     /// rather than retry it forever.
     pub fn parse(surface: EgressSurface, selector: &str) -> Option<Self> {
         match surface {
-            EgressSurface::Slack => (!selector.is_empty()).then(|| Self::Slack {
-                channel_id: selector.to_string(),
-            }),
+            EgressSurface::Slack => match selector.split_once('/') {
+                Some((channel_id, ts)) => {
+                    (!channel_id.is_empty() && is_slack_ts(ts)).then(|| Self::Slack {
+                        channel_id: channel_id.to_string(),
+                        thread_ts: Some(ts.to_string()),
+                    })
+                }
+                None => (!selector.is_empty()).then(|| Self::Slack {
+                    channel_id: selector.to_string(),
+                    thread_ts: None,
+                }),
+            },
+            EgressSurface::GithubBranch => {
+                // A repository name cannot hold `@`; a branch name can.
+                let (repo, branch) = selector.split_once('@')?;
+                (is_github_repo(repo) && is_branch_name(branch)).then(|| Self::GithubBranch {
+                    repo: repo.to_string(),
+                    branch: branch.to_string(),
+                })
+            }
             EgressSurface::Github => {
                 let (repo, number) = selector.rsplit_once('#')?;
                 let issue_number: i64 = number.parse().ok()?;
@@ -177,6 +224,13 @@ pub enum ExternalRef {
     /// hangs under is deliberately absent: it is not needed to edit the comment,
     /// and carrying it would invite keying an update on the wrong thing.
     Github { repo: String, comment_id: i64 },
+    /// The commit a change landed as and the pull request that carries it.
+    /// Stored as `<commit_sha>#<pull_number>`.
+    GithubBranch {
+        repo: String,
+        commit_sha: String,
+        pull_number: i64,
+    },
 }
 
 impl ExternalRef {
@@ -184,15 +238,21 @@ impl ExternalRef {
         match self {
             Self::Slack { .. } => EgressSurface::Slack,
             Self::Github { .. } => EgressSurface::Github,
+            Self::GithubBranch { .. } => EgressSurface::GithubBranch,
         }
     }
 
-    /// The part a delivery row has to remember: the Slack `ts`, or the GitHub
-    /// comment id as text.
+    /// The part a delivery row has to remember: the Slack `ts`, the GitHub
+    /// comment id as text, or a change's `<commit_sha>#<pull_number>`.
     pub fn handle(&self) -> String {
         match self {
             Self::Slack { ts, .. } => ts.clone(),
             Self::Github { comment_id, .. } => comment_id.to_string(),
+            Self::GithubBranch {
+                commit_sha,
+                pull_number,
+                ..
+            } => format!("{commit_sha}#{pull_number}"),
         }
     }
 
@@ -202,7 +262,7 @@ impl ExternalRef {
     /// GitHub) rather than issuing an update against a guess.
     pub fn for_target(target: &EgressTarget, handle: &str) -> Option<Self> {
         match target {
-            EgressTarget::Slack { channel_id } => (!handle.is_empty()).then(|| Self::Slack {
+            EgressTarget::Slack { channel_id, .. } => (!handle.is_empty()).then(|| Self::Slack {
                 channel_id: channel_id.clone(),
                 ts: handle.to_string(),
             }),
@@ -213,8 +273,69 @@ impl ExternalRef {
                     comment_id,
                 })
             }
+            EgressTarget::GithubBranch { repo, .. } => {
+                let (commit_sha, number) = handle.split_once('#')?;
+                let pull_number: i64 = number.parse().ok()?;
+                (is_git_sha(commit_sha) && pull_number > 0).then(|| Self::GithubBranch {
+                    repo: repo.clone(),
+                    commit_sha: commit_sha.to_string(),
+                    pull_number,
+                })
+            }
         }
     }
+}
+
+/// A full git object id: SHA-1 (40 hex) or SHA-256 (64 hex). A short prefix is
+/// refused, because a commit named by a prefix can become ambiguous.
+pub fn is_git_sha(s: &str) -> bool {
+    (s.len() == 40 || s.len() == 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// A Slack message timestamp, `1699999999.001200`: the id of the message a
+/// threaded reply hangs under.
+pub fn is_slack_ts(s: &str) -> bool {
+    let Some((secs, frac)) = s.split_once('.') else {
+        return false;
+    };
+    !secs.is_empty()
+        && !frac.is_empty()
+        && secs.bytes().all(|b| b.is_ascii_digit())
+        && frac.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// `owner/name` in GitHub's own alphabet (letters, digits, `-`, `_`, `.`), so
+/// the pair can be put in an API path as it is.
+pub fn is_github_repo(s: &str) -> bool {
+    let Some((owner, name)) = s.split_once('/') else {
+        return false;
+    };
+    let part = |p: &str| {
+        !p.is_empty()
+            && p != "."
+            && p != ".."
+            && p.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
+    part(owner) && part(name)
+}
+
+/// A branch name git would accept (`git check-ref-format --branch`), less
+/// anything that could reach a URL path as something other than a name.
+pub fn is_branch_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 255
+        && !s.starts_with(['/', '-', '.'])
+        && !s.ends_with(['/', '.'])
+        && !s.ends_with(".lock")
+        && !s.contains("..")
+        && !s.contains("//")
+        && !s.contains("@{")
+        && !s.contains("/.")
+        && s != "@"
+        && !s
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || "~^:?*[\\#%".contains(c))
 }
 
 /// A destination a workspace's operator has blessed for egress.
@@ -271,11 +392,32 @@ pub fn validate_allowlist_selector(
             }
             Ok(())
         }
+        EgressSurface::GithubBranch => {
+            let Some((repo, base)) = selector.split_once('@') else {
+                return Err("github_branch selector is `owner/name@base`: the repository and the one base change pull requests may target");
+            };
+            if !is_github_repo(repo) {
+                return Err("github_branch selector must start with a repository `owner/name`");
+            }
+            if !is_branch_name(base) {
+                return Err("github_branch selector must end with a base branch name");
+            }
+            if base.eq_ignore_ascii_case(crate::FORBIDDEN_CHANGE_BASE) {
+                return Err("`prod` is never an allowed base for change pull requests");
+            }
+            if crate::is_change_branch(base) {
+                return Err("an agent branch cannot be a base");
+            }
+            Ok(())
+        }
         EgressSurface::Github => {
             if selector.contains('#') {
                 return Err(
                     "github selector is a repository `owner/name`, without an issue number",
                 );
+            }
+            if selector.contains('@') {
+                return Err("github selector is a repository `owner/name`, without a branch");
             }
             let Some((owner, name)) = selector.split_once('/') else {
                 return Err("github selector must be `owner/name`");
@@ -365,6 +507,7 @@ mod tests {
         for target in [
             EgressTarget::Slack {
                 channel_id: "C0123ABCDEF".into(),
+                thread_ts: None,
             },
             EgressTarget::Github {
                 repo: "example/repo".into(),
@@ -455,6 +598,7 @@ mod tests {
     fn a_slack_target_is_authorized_by_the_same_channel_id_it_delivers_to() {
         let target = EgressTarget::Slack {
             channel_id: "C0123ABCDEF".into(),
+            thread_ts: None,
         };
         assert_eq!(target.selector(), target.allowlist_selector());
         assert!(
@@ -500,6 +644,7 @@ mod tests {
     fn an_external_ref_round_trips_through_its_target_and_stored_handle() {
         let slack_target = EgressTarget::Slack {
             channel_id: "C0123ABCDEF".into(),
+            thread_ts: None,
         };
         let slack_ref = ExternalRef::Slack {
             channel_id: "C0123ABCDEF".into(),
@@ -545,7 +690,8 @@ mod tests {
         assert_eq!(
             ExternalRef::for_target(
                 &EgressTarget::Slack {
-                    channel_id: "C1".into()
+                    channel_id: "C1".into(),
+                    thread_ts: None
                 },
                 ""
             ),
@@ -566,9 +712,85 @@ mod tests {
         assert_eq!(
             EgressTarget::Slack {
                 channel_id: "C0123ABCDEF".into(),
+                thread_ts: None
             }
             .to_string(),
             "slack:C0123ABCDEF"
+        );
+    }
+
+    #[test]
+    fn branch_and_thread_targets_round_trip_through_their_stored_pair() {
+        for target in [
+            EgressTarget::GithubBranch {
+                repo: "beatgig/bgv3".into(),
+                branch: "feature/agent-x@y-1a2b".into(),
+            },
+            EgressTarget::Slack {
+                channel_id: "C0123ABCDEF".into(),
+                thread_ts: Some("1699999999.001200".into()),
+            },
+        ] {
+            assert_eq!(round_trip(&target).as_ref(), Some(&target));
+        }
+        assert_eq!(
+            EgressTarget::parse(EgressSurface::Slack, "C0123ABCDEF/not-a-ts"),
+            None
+        );
+        assert_eq!(
+            EgressTarget::parse(EgressSurface::GithubBranch, "beatgig/bgv3"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_change_ref_round_trips_and_needs_a_full_sha() {
+        let target = EgressTarget::GithubBranch {
+            repo: "beatgig/bgv3".into(),
+            branch: "feature/x".into(),
+        };
+        let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
+        let reference = ExternalRef::GithubBranch {
+            repo: "beatgig/bgv3".into(),
+            commit_sha: sha.into(),
+            pull_number: 12,
+        };
+        assert_eq!(reference.handle(), format!("{sha}#12"));
+        assert_eq!(
+            ExternalRef::for_target(&target, &reference.handle()),
+            Some(reference)
+        );
+        assert_eq!(ExternalRef::for_target(&target, "b5e54f9#12"), None);
+        assert_eq!(ExternalRef::for_target(&target, &format!("{sha}#0")), None);
+    }
+
+    #[test]
+    fn a_branch_blessing_names_a_repository_and_its_base() {
+        for selector in ["beatgig/bgv3@dev", "beatgig/agent-skills@main"] {
+            assert!(validate_allowlist_selector(EgressSurface::GithubBranch, selector).is_ok());
+        }
+        for selector in [
+            "beatgig/bgv3",
+            "beatgig/bgv3@prod",
+            "beatgig/bgv3@PROD",
+            "beatgig/bgv3@",
+            "beatgig/bgv3@feature/agent-x",
+            "beatgig/bgv3#1@dev",
+            "bgv3@dev",
+            "",
+        ] {
+            assert!(
+                validate_allowlist_selector(EgressSurface::GithubBranch, selector).is_err(),
+                "expected {selector:?} to be rejected"
+            );
+        }
+        assert_eq!(
+            EgressSurface::parse("github_branch"),
+            Some(EgressSurface::GithubBranch)
+        );
+        assert!(
+            validate_allowlist_selector(EgressSurface::Github, "beatgig/bgv3@dev").is_err(),
+            "a comment row never names a base"
         );
     }
 }

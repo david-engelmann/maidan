@@ -186,13 +186,16 @@ An array of target objects. Each names a `surface` plus per-surface detail:
 ```json
 [
   { "surface": "github", "repo": "example/repo", "pr": 3915 },
-  { "surface": "slack",  "channel": "C0123ABCDEF" }
+  { "surface": "slack",  "channel": "C0123ABCDEF" },
+  { "surface": "slack",  "channel": "C0123ABCDEF", "thread_ts": "1759500000.000100" },
+  { "surface": "github_branch", "repo": "example/repo", "branch": "feature/agent-fix-1a2b", "base": "dev" }
 ]
 ```
 
 ### Rules
 
-1. **`surface` is a lowercase identifier.** Known values today: `github`, `slack`.
+1. **`surface` is a lowercase identifier.** Known values today: `github`,
+   `slack`, `github_branch`.
 2. **An unknown `surface` is skipped with a recorded warning, never an error.**
    Partial delivery is the model: one target failing or being unroutable must not
    sink the others.
@@ -200,10 +203,20 @@ An array of target objects. Each names a `surface` plus per-surface detail:
    number).** Delivery is a PR/issue comment.
 4. **`slack` requires `channel`, and it MUST be a channel ID** (`C…`/`G…`), not a
    `#name`. Names are mutable and ambiguous, and an allowlist keyed on a mutable
-   name is not an allowlist.
-5. **An empty or absent list delivers nowhere.** This is a valid, supported
+   name is not an allowlist. An optional `thread_ts` (a Slack message
+   timestamp, `1759500000.000100`) posts the delivery as a reply in that
+   thread; the allowlist still blesses the channel. A `thread_ts` that is not a
+   Slack timestamp makes the target unusable (a recorded skip), rather than
+   posting top-level.
+5. **`github_branch` requires `repo` (`owner/name`), `branch` and `base`.** It
+   commits a [`pi.change.result/1`](#the-change-flow-pichangeresult1--github_branch)
+   to `branch` and opens a draft pull request against `base`. It is logged as
+   `github_branch:<repo>@<branch>`. `branch` must match
+   `feature/agent-[a-z0-9][a-z0-9-]*`; `base` must be blessed for the
+   repository, and is never `prod`.
+6. **An empty or absent list delivers nowhere.** This is a valid, supported
    outcome — not a misconfiguration.
-6. **New surfaces add new object shapes.** Rule 2 makes that backward-compatible:
+7. **New surfaces add new object shapes.** Rule 2 makes that backward-compatible:
    an older Maidan skips a surface it does not know.
 
 ### Where the producer gets it
@@ -259,18 +272,25 @@ curl -sS -X POST "$MAIDAN/workspaces/$WORKSPACE_ID/egress-targets" \
   -d '{"surface":"slack","selector":"C0123ABCDEF"}'
 ```
 
+For the change flow, bless each repository and its base under
+`github_branch`, as `owner/name@base` (its own rows; a `github` comment
+blessing does not allow commits), and the Slack channel the replies go to. The full seed for the Soundcheck repositories is in
+[Production](Production.md#result-delivery-to-github-and-slack).
+
 `GET` the same path lists what is blessed; `DELETE …/egress-targets/:tid` revokes.
 Blessing is idempotent — a re-bless returns the existing entry with its original
 `created_at`, so the list stays "what may we post to" with nothing to reconcile.
 
 **The selector is two fields, not one string.** There is no `github:owner/repo`
-target syntax at this boundary: `surface` is the enum (`github` | `slack`) and
+target syntax at this boundary: `surface` is the enum (`github` | `slack` |
+`github_branch`) and
 `selector` is the per-surface id. The rules, enforced on every write path
 (`400` with the reason on a violation):
 
 | Surface | `selector` | Rejected |
 |---|---|---|
 | `github` | a repository, `owner/name` | anything containing `#` — the blessing is the **repo**, not the issue, so one call covers every PR in it |
+| `github_branch` | a repository and the one base change pull requests may target, `owner/name@base` (one row per base) | a selector without a base, a `prod` base, an agent branch as a base. A separate surface with its own rows: a repository blessed for `github` comments is **not** writable by the change flow |
 | `slack` | a channel id, `C…` or `G…` | `#channel-name` — a name is mutable, and the channel a name points at can change under the blessing |
 
 Leading/trailing whitespace is refused on both. The authorization key is coarser
@@ -283,6 +303,79 @@ authorized by the `example/repo` blessing.
 producer bug and must not be reported as a failure. Treat "delivered nowhere" as
 a normal outcome; the per-target disposition is readable from the delivery-status
 API below, and an operator — not the agent — fixes an unblessed target.
+
+---
+
+## The change flow (`pi.change.result/1` → `github_branch`)
+
+A coding seat (Pi) edits a checkout but holds no GitHub write credential. It
+returns the commit it started from and a diff; Maidan, holding the operator's
+token, makes the commit and opens a **draft** pull request, and answers in the
+Slack thread the work started in. The cross-repo contract is
+`beatgig/soundcheck` `docs/cross-repo/change-flow.md`.
+
+**The envelope.** `result_kind` is `pi.change.result/1`. Besides the usual
+envelope fields, Maidan reads:
+
+| Field | How Maidan uses it |
+|---|---|
+| `status` | `changed`, `no_change`, `seat_error` or `content_blocked` (Pi found a secret in the diff, title or summary, and sent none of it). Only `changed` writes to GitHub. Any other status records the `github_branch` target as skipped, with the status in the reason, makes no GitHub call, and the Slack reply says the status. |
+| `base_sha` | The full SHA (40 or 64 hex) the diff applies to, captured before any edit. The commit's parent. **Never** taken from thread metadata or the branch. |
+| `branch` | `pi.branch`, echoed verbatim. Must equal the target's `branch`, or the delivery is refused. |
+| `diff` | A git diff that applies with `git apply` to `base_sha`. |
+| `title`, `summary` | Optional. The commit subject and the draft pull request's title, and the commit and pull request body; mentions in `summary` are defused. Without `title`, Maidan uses the thread's opening message (the `!change` instructions), first line, cut at a word to 72 characters (the branch name if there is none). Without `summary`, the body names the Maidan thread and the commit SHA. Missing text never stops a delivery. |
+
+**What a `changed` result does**, per `github_branch` target the workspace has
+blessed:
+
+0. Checks the hard-coded rules, at routing and again before any write: the
+   branch matches `feature/agent-[a-z0-9][a-z0-9-]*` and is not `prod`,
+   `main`, `master`, `staging` or `dev`; the base is not `prod` and not the
+   branch; `owner/name@base` is on the workspace allowlist; and no pull request
+   for the branch is open into another base. Each refusal is recorded with its
+   reason and nothing is written. See
+   [Production](Production.md#result-delivery-to-github-and-slack) for the
+   full list of what Maidan never does with the token.
+1. Reads the branch. When it is missing, it is created at `base_sha` — after
+   the diff has been applied in memory, so a diff that does not apply leaves no
+   branch behind.
+2. Refuses when the branch head is not `base_sha`, or when the result's
+   `branch` is not the target's `branch`.
+3. Fetches only the files the diff touches, at `base_sha`
+   (`GET /repos/{repo}/contents/{path}?ref={base_sha}`), applies the hunks, and
+   refuses when one does not match. Supported: modified, added, deleted and
+   renamed text files (a rename may arrive as a delete plus an add, which is
+   how Pi sends it, or as a git rename), `100644`/`100755` modes, `\ No newline at end of file`,
+   hunks that moved. Refused: binary patches, copies, symlinks, submodules,
+   quoted paths, paths outside the repository or under `.git`.
+4. Commits through the Git Data API: one blob per changed file, a tree on the
+   base tree, a commit whose only parent is `base_sha`, and a fast-forward of
+   the branch (`force: false`).
+5. Opens a **draft** pull request against `base` with the title and summary
+   when none is open for the branch. Maidan posts no other comment, requests no
+   review, and never marks the pull request ready, approves or merges it.
+6. Replies in the Slack target's thread with the commit SHA and the pull
+   request link. The reply waits for the branch delivery; a target that was
+   refused or skipped is reported with its reason.
+
+**Refusals are recorded, not retried.** A refused target is `skipped` with the
+reason in `last_error` on the delivery-status API (`GET
+/threads/:id/deliveries`). A GitHub 5xx or rate limit retries with backoff
+like any delivery; a 401/403/404 dead-letters the target.
+
+**Idempotent per thread and result.** The commit message carries a trailer
+`Maidan-Change: <thread_id>/<digest>`, the digest covering `base_sha` and the
+diff. A retried or replayed delivery that finds the branch head is that commit,
+on top of `base_sha`, reuses it; the pull request is looked up before one is
+opened. A retry makes neither a second commit nor a second pull request.
+
+**A follow-up** is a new result whose `base_sha` is the branch head the last
+change left: it commits on top and finds the pull request already open.
+
+**Credentials.** The commit and the pull request are made with
+`MAIDAN_GITHUB_TOKEN` (see [Production](Production.md#result-delivery-to-github-and-slack)),
+so they are authored by that token's owner. The token needs `contents:write`
+and `pull_requests:write` on each repository.
 
 ---
 

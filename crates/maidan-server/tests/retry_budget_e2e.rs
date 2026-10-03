@@ -375,6 +375,7 @@ async fn egress_suite(backend: &Backend) {
         source_log_id: log_id,
         target: EgressTarget::Slack {
             channel_id: "C1".into(),
+            thread_ts: None,
         },
         body: "hi".into(),
         kind: EgressKind::Projector,
