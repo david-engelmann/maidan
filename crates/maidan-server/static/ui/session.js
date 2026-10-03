@@ -23,6 +23,13 @@ import { tokenKey, wsResumeKey } from "./state.js";
 
       let bearerMemberId = null;
 
+      // A /me check that throws never confirmed the secret just pasted.
+      // Drop the member learned from the previous token so later reads
+      // do not keep calling routes as that member.
+      function forgetBearerMember() {
+        bearerMemberId = null;
+      }
+
       // Trade a token for an HttpOnly session with its authority, and drop it
       // from the page. A server with no session key (404) cannot hold one, so
       // the token stays in this tab only, never in storage.
@@ -173,7 +180,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         const status = document.getElementById("session-status");
         const secret = pastedToken();
         if (!secret) {
-          bearerMemberId = null;
+          forgetBearerMember();
           showConnection(false);
           return;
         }
@@ -190,13 +197,14 @@ import { tokenKey, wsResumeKey } from "./state.js";
         try {
           res = await api(`${base()}/me`, { headers: headers() });
         } catch (e) {
+          forgetBearerMember();
           status.hidden = false;
           status.className = "err";
           status.textContent = unreachable(e);
           return;
         }
         if (!res.ok) {
-          bearerMemberId = null;
+          forgetBearerMember();
           status.hidden = false;
           status.className = "err";
           status.textContent =
@@ -345,4 +353,4 @@ import { tokenKey, wsResumeKey } from "./state.js";
         showConnection(false);
       }
 
-export { bearerMemberId, exchangeToken, loadServerAuth, oidcLoginPath, refreshBearerIdentity, refreshSession, renderIdentity, saveWorkspaceName, serverOffersSessions, sessionMemberId, showConnection, showSecretOnce, signOutPostsLogout, start, tokenSession };
+export { bearerMemberId, exchangeToken, forgetBearerMember, loadServerAuth, oidcLoginPath, refreshBearerIdentity, refreshSession, renderIdentity, saveWorkspaceName, serverOffersSessions, sessionMemberId, showConnection, showSecretOnce, signOutPostsLogout, start, tokenSession };
