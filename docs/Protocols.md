@@ -69,8 +69,12 @@ MCP tool count is **235**. There is **no** MCP create workspace or member. An ag
 supports (`supportedVersions`), its capabilities, the server instructions, and
 `serverInfo` under `_meta["io.modelcontextprotocol/serverInfo"]`. MCP
 `2026-07-28` has no `initialize`, so a client that speaks only that revision
-reads the instructions here. `initialize` still answers every 2025 revision and
-`2024-11-05` with the same capabilities and instructions, on `POST /mcp` and on
+reads the instructions here. That discover result, and an `initialize` that
+negotiates `2026-07-28`, omit `resources.subscribe`: on that revision the flag
+means per-resource updates through `subscriptions/listen`, which Maidan does
+not implement. `initialize` for every 2025 revision and `2024-11-05` still
+sets `resources.subscribe` and still serves `resources/subscribe` and
+`resources/unsubscribe`, with the same instructions, on `POST /mcp` and on
 `POST /mcp/streamable`. Every result carries `resultType: "complete"`; Maidan
 never answers `input_required`.
 
@@ -91,7 +95,7 @@ against it.
 | `prompts/list` | 3600000 | `public` | The same for every caller; changes only with a release. |
 | `resources/templates/list` | 3600000 | `public` | The same for every caller; changes only with a release. |
 | `resources/list` | 3600000 | `private` | Lists the caller's own workspace, which its token fixes. |
-| `resources/read` of `maidan://artifacts/{sha256}` | 86400000 | `private` | The URI names the bytes, so the record does not go stale; 24 hours is the most the TypeScript client honours. Private because access is per workspace and the record carries that workspace's own filename. |
+| `resources/read` of `maidan://artifacts/{sha256}` | 60000 | `private` | The URI names the bytes, but the read returns the workspace ref (`kind`, `mime_type`, `filename`), which a later upload of the same SHA updates. A minute, the same as a workspace or channel record. Private because access is per workspace. |
 | `resources/read` of `maidan://workspaces/{id}`, `maidan://channels/{id}` | 60000 | `private` | Changes on a rename, a topic edit or an archive. A subscriber hears `notifications/resources/updated` and drops its copy at once. |
 | `resources/read` of `maidan://threads/{id}` | 0 | `private` | Changes with every post, claim and transition. |
 

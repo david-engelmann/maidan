@@ -674,6 +674,10 @@ async fn a_2025_client_negotiates_its_revision_and_is_served_statelessly() {
         );
         let init: Value = init.json().await.unwrap();
         assert_eq!(init["result"]["protocolVersion"], revision);
+        assert_eq!(
+            init["result"]["capabilities"]["resources"]["subscribe"], true,
+            "{path} {revision}: legacy revisions still advertise resources/subscribe"
+        );
 
         // `MCP-Protocol-Version` arrived in 2025-06-18; a 2025-03-26 client sends
         // follow-ups with no version header at all, and must still be served
@@ -757,6 +761,10 @@ async fn server_discover_answers_a_cold_2026_request_on_both_posts() {
         assert_eq!(result["cacheScope"], "public", "{path}");
         assert!(result["ttlMs"].is_u64(), "{path}");
         assert_eq!(result["resultType"], "complete", "{path}");
+        assert!(
+            result["capabilities"]["resources"].get("subscribe").is_none(),
+            "{path}: 2026 discover must not advertise resources.subscribe without subscriptions/listen"
+        );
     }
     server.abort();
 }

@@ -805,7 +805,11 @@ Tool list and schemas: generated [MCP reference](https://david-engelmann.github.
 
 `server/discover` returns the supported revisions, capabilities, instructions and
 `serverInfo` with no handshake, on `POST /mcp`, `POST /mcp/streamable` and stdio; a
-`2026-07-28` client reads the instructions there. Every cacheable result
+`2026-07-28` client reads the instructions there. That capabilities object
+omits `resources.subscribe`, and so does an `initialize` negotiated to
+`2026-07-28`: on that revision the flag means `subscriptions/listen`, which is
+not implemented. A 2025 or `2024-11-05` `initialize` still advertises it.
+Every cacheable result
 (`server/discover`, `tools/list`, `prompts/list`, `resources/list`,
 `resources/templates/list`, `resources/read`) carries a `ttlMs` and a `cacheScope`, and
 every result carries `resultType: "complete"`. The value chosen for each, and why, is

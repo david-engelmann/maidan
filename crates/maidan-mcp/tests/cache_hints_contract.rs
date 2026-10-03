@@ -182,7 +182,7 @@ async fn every_cacheable_result_carries_a_ttl_and_a_cache_scope() {
 }
 
 #[tokio::test]
-async fn a_content_addressed_read_outlives_a_thread_read() {
+async fn an_artifact_read_uses_the_record_ttl_and_a_thread_read_is_stale() {
     let (server, store) = mk_server().await;
     let tenant = mk_tenant(&store, "ttl").await;
     let sha = shared_artifact(&store, &[&tenant]).await;
@@ -201,10 +201,7 @@ async fn a_content_addressed_read_outlives_a_thread_read() {
         json!({ "uri": format!("maidan://threads/{}", tenant.thread.0) }),
     )
     .await;
-    assert_eq!(
-        artifact["ttlMs"].as_u64(),
-        Some(caching::CONTENT_ADDRESSED_TTL_MS)
-    );
+    assert_eq!(artifact["ttlMs"].as_u64(), Some(caching::RECORD_TTL_MS));
     assert_eq!(thread["ttlMs"].as_u64(), Some(0));
 }
 
@@ -224,7 +221,29 @@ async fn server_discover_returns_the_instructions_capabilities_and_versions() {
 
     assert_eq!(discover["instructions"], INSTRUCTIONS);
     assert_eq!(discover["instructions"], initialize["instructions"]);
-    assert_eq!(discover["capabilities"], initialize["capabilities"]);
+    // 2026 `resources.subscribe` means `subscriptions/listen`, which is not
+    // implemented. A 2025 handshake still advertises the legacy RPC.
+    assert!(discover["capabilities"]["resources"]
+        .get("subscribe")
+        .is_none());
+    assert_eq!(initialize["capabilities"]["resources"]["subscribe"], true);
+    assert_eq!(
+        discover["capabilities"]["tools"],
+        initialize["capabilities"]["tools"]
+    );
+    assert_eq!(
+        discover["capabilities"]["prompts"],
+        initialize["capabilities"]["prompts"]
+    );
+    let negotiated_2026 = call(
+        &server,
+        &auth,
+        "initialize",
+        json!({ "protocolVersion": "2026-07-28" }),
+    )
+    .await;
+    assert_eq!(negotiated_2026["protocolVersion"], "2026-07-28");
+    assert_eq!(negotiated_2026["capabilities"], discover["capabilities"]);
     assert_eq!(
         discover["supportedVersions"],
         json!(SUPPORTED_PROTOCOL_VERSIONS)
@@ -258,6 +277,7 @@ async fn a_2025_client_still_initializes() {
         .await;
         assert_eq!(init["protocolVersion"], revision);
         assert_eq!(init["instructions"], INSTRUCTIONS);
+        assert_eq!(init["capabilities"]["resources"]["subscribe"], true);
         assert_eq!(init["serverInfo"]["name"], "maidan");
         assert!(
             init.get("ttlMs").is_none(),

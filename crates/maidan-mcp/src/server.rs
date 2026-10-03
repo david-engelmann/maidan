@@ -128,11 +128,22 @@ fn complete(mut result: Value) -> Value {
     result
 }
 
-/// What `initialize` and `server/discover` advertise.
-fn server_capabilities() -> Value {
+/// What `initialize` and `server/discover` advertise for `protocol_version`.
+///
+/// On `2026-07-28`, `resources.subscribe` means per-resource updates through
+/// `subscriptions/listen` (`notifications.resourceSubscriptions`), which
+/// replaced `resources/subscribe`. That method is not implemented, so a 2026
+/// advertisement omits the flag. Earlier revisions still subscribe with
+/// `resources/subscribe`, and those handshakes keep it.
+fn server_capabilities(protocol_version: &str) -> Value {
+    let resources = if protocol_version == "2026-07-28" {
+        json!({})
+    } else {
+        json!({ "subscribe": true })
+    };
     json!({
         "tools": {},
-        "resources": { "subscribe": true },
+        "resources": resources,
         "prompts": {}
     })
 }
@@ -643,7 +654,7 @@ impl McpServer {
         let protocol_version = negotiate_protocol_version(requested);
         Ok(json!({
             "protocolVersion": protocol_version,
-            "capabilities": server_capabilities(),
+            "capabilities": server_capabilities(protocol_version),
             "serverInfo": self.server_info(),
             "instructions": INSTRUCTIONS,
         }))
@@ -656,7 +667,7 @@ impl McpServer {
     fn discover(&self) -> Value {
         json!({
             "supportedVersions": SUPPORTED_PROTOCOL_VERSIONS,
-            "capabilities": server_capabilities(),
+            "capabilities": server_capabilities("2026-07-28"),
             "instructions": INSTRUCTIONS,
             "_meta": { "io.modelcontextprotocol/serverInfo": self.server_info() },
         })

@@ -49,14 +49,12 @@ pub struct CacheHint {
 /// TypeScript client's cap.
 pub const RELEASE_TTL_MS: u64 = 60 * 60 * 1000;
 
-/// The longest TTL the official TypeScript client honours (`MAX_CACHE_TTL_MS`,
-/// 24 h). A content-addressed URI names its bytes, so
-/// nothing shorter is needed.
-pub const CONTENT_ADDRESSED_TTL_MS: u64 = 24 * 60 * 60 * 1000;
-
 /// Workspace and channel records change on a rename, a topic edit or an
-/// archive, which are rare. A subscriber hears `notifications/resources/updated`
-/// and drops its copy at once; anyone else is at most a minute behind.
+/// archive, which are rare. An artifact URI names the bytes, but
+/// `resources/read` returns the workspace ref (`kind`, `mime_type`,
+/// `filename`), and a later upload of the same SHA updates that ref.
+/// A subscriber hears `notifications/resources/updated` and drops its copy
+/// at once; anyone else is at most a minute behind.
 pub const RECORD_TTL_MS: u64 = 60 * 1000;
 
 pub const DISCOVER: CacheHint = CacheHint {
@@ -89,15 +87,16 @@ pub const RESOURCES_LIST: CacheHint = CacheHint {
 
 /// The hint for a `resources/read` of `uri`. Every read is private: access is
 /// checked per caller, and an artifact's record carries the caller's own
-/// filename for the shared bytes.
+/// filename for the shared bytes. That filename, and the ref's kind and MIME
+/// type, can change when the same SHA is uploaded again, so an artifact read
+/// uses the short record TTL.
 pub fn resource_read(uri: &str) -> CacheHint {
     let kind = uri
         .strip_prefix("maidan://")
         .and_then(|rest| rest.split('/').next())
         .unwrap_or("");
     let ttl_ms = match kind {
-        "artifacts" => CONTENT_ADDRESSED_TTL_MS,
-        "workspaces" | "channels" => RECORD_TTL_MS,
+        "artifacts" | "workspaces" | "channels" => RECORD_TTL_MS,
         // A thread's transcript changes with every post, claim and transition.
         _ => 0,
     };
@@ -122,9 +121,9 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn a_content_addressed_read_is_fresh_for_the_longest_ttl_clients_honour() {
+    fn an_artifact_read_uses_the_short_record_ttl() {
         let hint = resource_read(&format!("maidan://artifacts/{}", "a".repeat(64)));
-        assert_eq!(hint.ttl_ms, CONTENT_ADDRESSED_TTL_MS);
+        assert_eq!(hint.ttl_ms, RECORD_TTL_MS);
         assert_eq!(hint.scope, CacheScope::Private);
     }
 
