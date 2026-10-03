@@ -27,7 +27,7 @@ Ranked by what an agent or a person relying on the room loses without it.
 | 4 | ~~**Load shedding, catch-panic and header redaction**~~ **✅ shipped (#1092)** — an in-flight ceiling outside auth (`MAIDAN_MAX_CONCURRENT_REQUESTS`, default 1024) answers `503` + `Retry-After` at once; a handler panic answers a `500` problem with its `X-Request-Id`; request spans print `Authorization`, cookies, `Mcp-Session-Id` and webhook signatures as `Sensitive` and leave out the query. `overload_e2e`, `trace_redaction_e2e`; alerts `MaidanHandlerPanics`, `MaidanLoadShedding` | Program R's `tower-load-shed` row: no `LoadShed` or `ConcurrencyLimit` below auth, a handler panic drops the connection instead of answering a problem, and nothing marks `Authorization` or cookies sensitive in traces. Cheap insurance for every client | S–M | none |
 | 5 | **Decisions keep their history** | The attribution row records that a review verdict or an approval-gate answer changed, not what it was; the earlier value is overwritten (411.10). An owner auditing why work landed needs the sequence of verdicts | M | none |
 | 6 | **Trace context across REST, WS, MCP and A2A** | Program O's `trace-context-propagation`: OTLP export exists but no `traceparent` is accepted or carried, so an agent's request cannot be followed from its own trace into Maidan and out through a webhook or projector | M | none |
-| 7 | ~~**F-48 Tier 1: one `store_impl!` for both backends**~~ **✅ shipped (#1100)** — `store_delegations!` is the one list. Both backends' trait impls are expanded from it, so a method missing on one side does not compile. `write_lsn` stays per backend (Postgres has a WAL position, SQLite does not). Tiers 2 and 3 are unchanged | 6,079 lines of byte-identical `Store` delegation in `{postgres,sqlite}/mod.rs` become about 429; a method wired on one backend and forgotten on the other stops compiling. The measured plan above calls this the first and largest win | M | none |
+| 7 | **F-48 Tier 1: one `store_impl!` for both backends** | 6,079 lines of byte-identical `Store` delegation in `{postgres,sqlite}/mod.rs` become about 429; a method wired on one backend and forgotten on the other stops compiling. The measured plan above calls this the first and largest win | M | none |
 | 8 | **Workspace-wide `claim_next`** | `claim_next` is channel-scoped, so an agent serving a workspace polls every channel. One workspace pull with the same fairness, skill and DAG rules | M | 3 (shares the reaper and default lease) |
 | 9 | **CI jobs for the loom and TLA+ models** | The models found real bugs (#1073, #1074) but run only locally, so they rot. A non-required job each (the NOTIFY floor simulation, #1075, already runs in the unit tests). The workflow change needs a maintainer push (agents' tokens lack the `workflow` scope) | S | none |
 
@@ -1746,7 +1746,7 @@ similarity:
 SQLite): 429 `Store` trait methods whose signatures are byte-identical across
 backends and whose bodies are a one-line delegation to the module fn. The only
 difference is the pool accessor (`self.read_pool()` vs `&self.pool`). A
-declarative `store_delegations!` macro taking the method→module mapping replaces those
+declarative `store_impl!` macro taking the method→module mapping replaces those
 ~6,079 lines with ~429 invocation lines.
 
 **`mod.rs` scores 0.50 similarity, which lands it in the least-similar band —
@@ -1758,7 +1758,7 @@ one on large repetitive ones, so the band table needs this exception stated
 rather than applied mechanically.
 No behaviour change, no dialect reasoning, and it removes the file most likely
 to drift silently — a method wired on one backend and forgotten on the other.
-**Do this one first; it is worth more than the other two combined.** ~~Open.~~ **✅ #1100** — `store_delegations!` in `crates/maidan-store/src/delegate.rs`.
+**Do this one first; it is worth more than the other two combined.**
 
 **Tier 2 — a dialect layer for the near-identical band.** The 90–98% pairs
 differ in exactly two ways: `$n` vs `?` placeholders, and timestamp origin
