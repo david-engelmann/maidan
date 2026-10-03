@@ -1571,6 +1571,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   replace the StatefulSet, and grow a volume without editing the claim
   template.
 
+### MCP `server/discover` and cache hints
+
+- **Fixed:** Maidan advertised MCP `2026-07-28` without what that revision requires of a cacheable result. It had no `server/discover`, which servers must implement and which is where a `2026-07-28` client reads the instructions (`initialize` is not in that schema; SEP-2567). Its cacheable results carried no `ttlMs` or `cacheScope` (`CacheableResult` in schema `2026-07-28`, SEP-2549), and no result carried `resultType`.
+- **Added:** `server/discover` returns the supported revisions, the capabilities, the instructions and `serverInfo` under `_meta["io.modelcontextprotocol/serverInfo"]`, on `POST /mcp`, `POST /mcp/streamable` and stdio. Every result carries `resultType: "complete"`.
+- **Added:** each cacheable result (`server/discover`, `tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`, `resources/read`) carries a `ttlMs` and a `cacheScope` chosen for it (`crates/maidan-mcp/src/caching.rs`, tabled in Protocols, "MCP discovery and cache hints"): an hour for what only a release changes, `private` for the capability-filtered `tools/list` and the caller's `resources/list`, `public` only for results that are the same bytes for every caller, 24 hours for a content-addressed artifact read, a minute for workspace and channel records, and 0 for a thread. A test checks that each public result is byte-identical for two tenants holding different capabilities.
+- **Unchanged:** `initialize` answers every 2025 revision and `2024-11-05` as before, on `POST /mcp` and `POST /mcp/streamable`, with the same capabilities and instructions and no cache hint; the new fields are additive.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

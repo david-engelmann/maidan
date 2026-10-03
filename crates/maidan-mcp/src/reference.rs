@@ -23,10 +23,14 @@ pub fn markdown() -> String {
 
     out.push_str(
         "## JSON-RPC methods\n\n\
-         - `initialize`\n\
+         - `initialize`, `server/discover` (revisions, capabilities and instructions with no handshake)\n\
          - `tools/list`, `tools/call`\n\
          - `resources/list`, `resources/templates/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe`\n\
          - `prompts/list`, `prompts/get`\n\n\
+         Every result carries `resultType: \"complete\"`. The results of `server/discover`, `tools/list`, \
+         `prompts/list`, `resources/list`, `resources/templates/list` and `resources/read` carry a \
+         `ttlMs` and a `cacheScope` (SEP-2549); the value for each is tabled in Protocols, \
+         \"MCP discovery and cache hints\".\n\n\
          **Notification:** `notifications/resources/updated` with `{ \"uri\": \"maidan://...\" }`. \
          Mutating tools fan out to related thread/channel/workspace/artifact URIs.\n\n\
          A subscription belongs to the caller that made it, in the session it made it in, and an \
