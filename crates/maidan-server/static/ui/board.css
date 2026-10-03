@@ -388,7 +388,7 @@
       #message-list .meta .time { color: var(--muted); }
       #message-list .body { margin-top: 0.1rem; white-space: pre-wrap; word-break: break-word; }
       .pin-toggle { box-shadow: none; opacity: 0; }
-      #message-list .msg:hover .pin-toggle, .pin-toggle.pinned { opacity: 1; }
+      #message-list .msg:hover .pin-toggle, #message-list .msg:focus-within .pin-toggle, .pin-toggle.pinned { opacity: 1; }
       .reactions:empty { display: none; }
       .reaction-add { box-shadow: none; display: none; }
       #message-list .msg:hover .reaction-add, #message-list .msg:focus-within .reaction-add { display: inline-block; }
