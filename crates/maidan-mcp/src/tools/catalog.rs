@@ -750,7 +750,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_queue_depth",
-            "description": "A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked}, for deciding whether to scale workers. ready is what claim_next_thread could take now.",
+            "description": "A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked, unclaimable}, for deciding whether to scale workers. ready is what claim_next_thread could take now. Counts only threads you may read: on the DM channel, your own DMs. For the whole workspace, use get_workspace_queue_depth.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -768,6 +768,28 @@ pub fn catalog() -> Vec<Value> {
                     "channel_id": {"type": "string", "format": "uuid"}
                 },
                 "required": ["channel_id"]
+            }
+        }),
+        json!({
+            "name": "get_workspace_queue_depth",
+            "description": "get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id)"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
+        json!({
+            "name": "get_workspace_occupancy",
+            "description": "get_channel_occupancy across every channel of the workspace you may read, as {open, queued, claimed, working, blocked}: the sum of those channels' occupancy. A private channel's threads count only for its members and a DM's only for its participants.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id)"}
+                },
+                "required": ["workspace_id"]
             }
         }),
         json!({
@@ -1485,7 +1507,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "wait_for_ready",
-            "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first). To put a deadline on a thread instead, use set_wait.",
+            "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready) that you could take now, or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else the whole workspace. It wakes only for a thread claim_next would hand you (open, dependencies finished, skills held, no pending approval gate, not blocked or parked, not held by someone else, readable by you, you neither frozen nor at your WIP limit) or one already yours; other ready threads are skipped. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first). To put a deadline on a thread instead, use set_wait.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

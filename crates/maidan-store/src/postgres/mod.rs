@@ -104,6 +104,7 @@ use sqlx::PgPool;
 
 use crate::a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingGateQuery};
 use crate::claim_next::ClaimScope;
+use crate::queue_counts::QueueScope;
 use crate::error::StoreError;
 use crate::store::*;
 
@@ -1729,14 +1730,33 @@ impl ThreadStore for PostgresStore {
         thread_transitions::list(self.read_pool(), thread_id, limit).await
     }
 
-    async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError> {
-        threads::channel_queue_depth(self.read_pool(), channel_id).await
+    async fn channel_queue_depth(
+        &self,
+        channel_id: ChannelId,
+        readable_by: Option<MemberId>,
+    ) -> Result<QueueDepth, StoreError> {
+        threads::queue_depth(self.read_pool(), QueueScope::Channel(channel_id), readable_by).await
+    }
+    async fn workspace_queue_depth(
+        &self,
+        workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
+    ) -> Result<QueueDepth, StoreError> {
+        threads::queue_depth(self.read_pool(), QueueScope::Workspace(workspace_id), readable_by).await
     }
     async fn channel_occupancy(
         &self,
         channel_id: ChannelId,
+        readable_by: Option<MemberId>,
     ) -> Result<ChannelOccupancy, StoreError> {
-        threads::channel_occupancy(self.read_pool(), channel_id).await
+        threads::occupancy(self.read_pool(), QueueScope::Channel(channel_id), readable_by).await
+    }
+    async fn workspace_occupancy(
+        &self,
+        workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
+    ) -> Result<ChannelOccupancy, StoreError> {
+        threads::occupancy(self.read_pool(), QueueScope::Workspace(workspace_id), readable_by).await
     }
 }
 
@@ -2164,6 +2184,13 @@ impl AssignmentStore for PostgresStore {
             lease_secs,
         )
         .await
+    }
+    async fn thread_claimable_by(
+        &self,
+        thread_id: ThreadId,
+        member_id: MemberId,
+    ) -> Result<bool, StoreError> {
+        threads::claimable_by(&self.pool, thread_id, member_id).await
     }
     async fn reap_expired_claims(
         &self,

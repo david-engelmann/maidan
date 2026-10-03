@@ -424,6 +424,8 @@ fn requires_credential(op: &Operation) -> bool {
         paths::list_channel_unclaimable,
         paths::list_channel_blocked,
         paths::get_channel_occupancy,
+        paths::get_workspace_queue_depth,
+        paths::get_workspace_occupancy,
         paths::mute_channel,
         paths::unmute_channel,
         paths::list_channel_dlq,

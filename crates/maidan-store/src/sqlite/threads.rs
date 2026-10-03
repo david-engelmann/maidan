@@ -8,6 +8,7 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::claim_next::{self, ClaimScope, ClaimSql};
+use crate::queue_counts::{self, QueueScope, QueueSql};
 use crate::sqlite::budget;
 use crate::sqlite::events;
 use crate::sqlite::thread_workers;
@@ -418,17 +419,9 @@ async fn claim_next_candidate(
     member_id: MemberId,
     now: DateTime<Utc>,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, StoreError> {
-    let sql = claim_next::candidate_select(
+    let sql = candidate_sql(
         scope,
         "cand.id, cand.assignee_id, cand.assignment_expires_at, cand.work_started_at",
-        &ClaimSql {
-            member: "?1",
-            scope: "?2",
-            now: "?3",
-            dm_channel: "?4",
-            hours_waiting:
-                "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
-        },
     );
     Ok(sqlx::query(&sql)
         .bind(member_id.0)
@@ -437,6 +430,43 @@ async fn claim_next_candidate(
         .bind(DM_CHANNEL_NAME)
         .fetch_optional(&mut **tx)
         .await?)
+}
+
+/// `claim_next`'s candidate query on SQLite: `?1` the claimer, `?2` the scope,
+/// `?3` now, `?4` the DM channel name.
+fn candidate_sql(scope: ClaimScope, columns: &str) -> String {
+    claim_next::candidate_select(
+        scope,
+        columns,
+        &ClaimSql {
+            member: "?1",
+            scope: "?2",
+            now: "?3",
+            dm_channel: "?4",
+            hours_waiting:
+                "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
+        },
+    )
+}
+
+/// Whether `claim_next` would hand `member_id` the thread `thread_id` now:
+/// its candidate query pinned to that thread, so the answer cannot drift from
+/// what a claim does. The WIP limit is the caller's to check.
+pub async fn claimable_by(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    member_id: MemberId,
+) -> Result<bool, StoreError> {
+    Ok(
+        sqlx::query(&candidate_sql(ClaimScope::Thread(thread_id), "cand.id"))
+            .bind(member_id.0)
+            .bind(thread_id.0)
+            .bind(Utc::now().to_rfc3339())
+            .bind(DM_CHANNEL_NAME)
+            .fetch_optional(pool)
+            .await?
+            .is_some(),
+    )
 }
 
 /// Give `candidate` to `member_id` under a new fencing token. The caller
@@ -658,55 +688,34 @@ pub async fn claim_next(
     Ok(Some(thread))
 }
 
-/// Task-queue depth for a channel. `not_live` (unassigned or lease expired) and
-/// the deps / explicit-block `NOT EXISTS` clauses mirror the `claim_next`
-/// claimability predicate, so `ready` here is precisely what `claim_next` would
-/// take. `blocked` folds an explicit [`BlockedReason`] in alongside unfinished
-/// DAG deps — they stay distinct *causes*.
-pub async fn channel_queue_depth(
+/// The placeholders the queue counts bind on SQLite: `?1` the scope, `?2` the
+/// reader, `?3` the DM channel name, `?4` now.
+const QUEUE_SQL: QueueSql<'static> = QueueSql {
+    scope: "?1",
+    reader: "?2",
+    dm_channel: "?3",
+    now: "?4",
+};
+
+/// Task-queue depth for a channel or a workspace — see
+/// [`queue_counts`](crate::queue_counts). Its `available` test and the
+/// dependency and explicit-block clauses mirror the `claim_next` claimability
+/// predicate. `blocked` folds an explicit [`BlockedReason`] in alongside
+/// unfinished DAG deps — they stay distinct *causes*.
+///
+/// [`BlockedReason`]: maidan_types::BlockedReason
+pub async fn queue_depth(
     pool: &SqlitePool,
-    channel_id: ChannelId,
+    scope: QueueScope,
+    readable_by: Option<MemberId>,
 ) -> Result<QueueDepth, StoreError> {
-    let now = Utc::now().to_rfc3339();
-    let row = sqlx::query(
-        "SELECT
-             COUNT(*) AS open_count,
-             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
-                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= ?)
-                     THEN 1 ELSE 0 END), 0) AS assigned_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
-                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                       AND NOT EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                     THEN 1 ELSE 0 END), 0) AS ready_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
-                       AND (
-                           EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                           OR EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                       )
-                     THEN 1 ELSE 0 END), 0) AS blocked_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
-                     THEN 1 ELSE 0 END), 0) AS unclaimable_count
-         FROM maidan_threads t
-         WHERE t.channel_id = ?
-           AND t.state = 'open'
-           AND t.tombstoned_at IS NULL",
-    )
-    .bind(&now)
-    .bind(&now)
-    .bind(&now)
-    .bind(&now)
-    .bind(channel_id.0)
-    .fetch_one(pool)
-    .await?;
+    let row = sqlx::query(&queue_counts::queue_depth_select(scope, &QUEUE_SQL))
+        .bind(scope.id())
+        .bind(readable_by.map(|m| m.0))
+        .bind(DM_CHANNEL_NAME)
+        .bind(Utc::now().to_rfc3339())
+        .fetch_one(pool)
+        .await?;
     Ok(QueueDepth {
         open: row.get::<i64, _>("open_count"),
         ready: row.get::<i64, _>("ready_count"),
@@ -716,53 +725,21 @@ pub async fn channel_queue_depth(
     })
 }
 
-/// Channel occupancy — the two-clocks refinement of `channel_queue_depth`,
-/// splitting the held threads by the working clock. See the Postgres twin. The
-/// four sub-counts partition `open`.
-pub async fn channel_occupancy(
+/// Occupancy of a channel or a workspace — the two-clocks refinement of
+/// [`queue_depth`], splitting the held threads by the working clock. See the
+/// Postgres twin. The four sub-counts partition `open`.
+pub async fn occupancy(
     pool: &SqlitePool,
-    channel_id: ChannelId,
+    scope: QueueScope,
+    readable_by: Option<MemberId>,
 ) -> Result<ChannelOccupancy, StoreError> {
-    let now = Utc::now().to_rfc3339();
-    let row = sqlx::query(
-        "SELECT
-             COUNT(*) AS open_count,
-             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
-                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= ?)
-                       AND t.work_started_at IS NULL
-                     THEN 1 ELSE 0 END), 0) AS claimed_count,
-             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
-                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= ?)
-                       AND t.work_started_at IS NOT NULL
-                     THEN 1 ELSE 0 END), 0) AS working_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                       AND NOT EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                     THEN 1 ELSE 0 END), 0) AS queued_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND (
-                           EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                           OR EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                       )
-                     THEN 1 ELSE 0 END), 0) AS blocked_count
-         FROM maidan_threads t
-         WHERE t.channel_id = ?
-           AND t.state = 'open'
-           AND t.tombstoned_at IS NULL",
-    )
-    .bind(&now)
-    .bind(&now)
-    .bind(&now)
-    .bind(&now)
-    .bind(channel_id.0)
-    .fetch_one(pool)
-    .await?;
+    let row = sqlx::query(&queue_counts::occupancy_select(scope, &QUEUE_SQL))
+        .bind(scope.id())
+        .bind(readable_by.map(|m| m.0))
+        .bind(DM_CHANNEL_NAME)
+        .bind(Utc::now().to_rfc3339())
+        .fetch_one(pool)
+        .await?;
     Ok(ChannelOccupancy {
         open: row.get::<i64, _>("open_count"),
         queued: row.get::<i64, _>("queued_count"),

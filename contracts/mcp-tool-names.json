@@ -70,6 +70,8 @@
   "get_waiting_inbox",
   "get_wip_limit",
   "get_workspace_context",
+  "get_workspace_occupancy",
+  "get_workspace_queue_depth",
   "import_workspace",
   "instantiate_recipe",
   "link_github_issue",

@@ -450,6 +450,14 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{wid}/threads/claim-next",
             post(routes::claim_next_workspace_thread),
         )
+        .route(
+            "/workspaces/{wid}/queue-depth",
+            get(routes::get_workspace_queue_depth),
+        )
+        .route(
+            "/workspaces/{wid}/occupancy",
+            get(routes::get_workspace_occupancy),
+        )
         .route("/threads/{id}/claim/renew", post(routes::renew_claim))
         .route(
             "/threads/{id}/claim/acknowledge",
