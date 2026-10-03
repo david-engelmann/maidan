@@ -62,11 +62,19 @@ pub const DISCOVER: CacheHint = CacheHint {
     scope: CacheScope::Public,
 };
 
-/// The full catalog is filtered to what the token may call, so two tokens get
-/// two lists.
+/// The full catalog on `/mcp` and `/mcp/streamable` is filtered to what the
+/// token may call, so two tokens get two lists.
 pub const TOOLS_LIST: CacheHint = CacheHint {
     ttl_ms: RELEASE_TTL_MS,
     scope: CacheScope::Private,
+};
+
+/// A profile's `tools/list` is a fixed, sorted subset of the catalog. It does
+/// not depend on the token, so every caller shares one cached copy. The hint
+/// does not authorize a call: a tool the token cannot call is refused then.
+pub const PROFILE_TOOLS_LIST: CacheHint = CacheHint {
+    ttl_ms: RELEASE_TTL_MS,
+    scope: CacheScope::Public,
 };
 
 pub const PROMPTS_LIST: CacheHint = CacheHint {

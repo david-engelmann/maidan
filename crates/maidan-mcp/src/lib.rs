@@ -10,17 +10,19 @@
 //!   caller and session ([`subscriptions`])
 //! - `prompts/list` + `prompts/get`
 //! - a `ttlMs` and `cacheScope` on every cacheable result ([`caching`])
+//! - worker and reviewer tool profiles on their own endpoints ([`profiles`])
 //!
 //! Transport-agnostic: the [`McpServer`] takes JSON-RPC requests and
-//! returns responses. `maidan-server` wraps it behind an HTTP POST
-//! endpoint (`POST /mcp`). Stdio transport: [`stdio::run_stdio`] via
-//! `maidan-cli mcp-stdio`.
+//! returns responses. `maidan-server` wraps it behind HTTP POST
+//! endpoints (`POST /mcp`, `POST /mcp/worker`, `POST /mcp/reviewer`).
+//! Stdio transport: [`stdio::run_stdio`] via `maidan-cli mcp-stdio`.
 
 pub mod caching;
 pub mod claim_lease;
 pub mod context;
 pub mod error;
 mod land_gate_advice;
+pub mod profiles;
 pub mod prompts;
 pub mod protocol;
 pub mod reference;
@@ -36,6 +38,7 @@ pub mod tools;
 
 pub use error::McpError;
 pub use land_gate_advice::{LandGateAdviseError, LandGateAdvising};
+pub use profiles::Profile;
 pub use protocol::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 pub use server::{
     is_supported_protocol_version, negotiate_protocol_version, preferred_protocol_version,

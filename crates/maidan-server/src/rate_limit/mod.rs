@@ -24,7 +24,11 @@ use crate::error::ApiError;
 /// a JSON-RPC error envelope so an agent's JSON-RPC layer gets a typed
 /// backpressure signal instead of an opaque transport 429.
 pub(crate) fn is_mcp_jsonrpc_path(path: &str) -> bool {
-    path == "/mcp" || path == "/mcp/streamable"
+    path == "/mcp"
+        || path == "/mcp/streamable"
+        || maidan_mcp::Profile::ALL
+            .iter()
+            .any(|profile| path == profile.path())
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -555,6 +559,9 @@ mod tests {
             "/workspaces/abc/search"
         ));
         assert!(bearer_resolved_later(&Method::POST, "/mcp"));
+        assert!(is_mcp_jsonrpc_path("/mcp/worker"));
+        assert!(is_mcp_jsonrpc_path("/mcp/reviewer"));
+        assert!(!is_mcp_jsonrpc_path("/mcp/notifications"));
         assert!(bearer_resolved_later(
             &Method::GET,
             "/ui/api/workspaces/abc/channels"

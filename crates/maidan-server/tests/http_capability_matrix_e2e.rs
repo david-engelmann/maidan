@@ -714,6 +714,20 @@ fn apply_route_defaults(
     if path == "/artifacts" && method == "POST" {
         return b.query(&[("kind", "attachment")]).body("bytes");
     }
+    // A JSON-RPC body, so a later probe is not refused by the parser before
+    // the capability check. The matrix skips the MCP surface today.
+    if matches!(
+        path,
+        "/mcp" | "/mcp/worker" | "/mcp/reviewer" | "/mcp/streamable"
+    ) && method == "POST"
+    {
+        return b.json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list",
+            "params": {}
+        }));
+    }
     if method == "POST" || method == "PUT" || method == "PATCH" {
         b.json(&json!({}))
     } else {

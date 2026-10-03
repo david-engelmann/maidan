@@ -357,6 +357,10 @@ fn the_documented_cache_hints_are_the_servers() {
             "`tools/list` on `/mcp`, `/mcp/streamable`",
             caching::TOOLS_LIST,
         ),
+        (
+            "`tools/list` on `/mcp/worker`, `/mcp/reviewer`",
+            caching::PROFILE_TOOLS_LIST,
+        ),
         ("`prompts/list`", caching::PROMPTS_LIST),
         (
             "`resources/templates/list`",

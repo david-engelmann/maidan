@@ -13,7 +13,7 @@ pub fn markdown() -> String {
          `cargo run -p maidan-mcp --bin gen-mcp-reference`.\n\n\
          ## Transport\n\n\
          - **Protocol revisions:** `2026-07-28` (default), `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`. `initialize` echoes the revision you request if it is one of these\n\
-         - **HTTP:** `POST /mcp` (JSON-RPC 2.0)\n\
+         - **HTTP:** `POST /mcp` (JSON-RPC 2.0). `POST /mcp/worker` and `POST /mcp/reviewer` serve a fixed tool profile: `tools/list` is sorted and the same bytes for every caller (`cacheScope: \"public\"`), and a tool the token cannot call is refused at `tools/call`\n\
          - **HTTP notifications:** `GET /mcp/notifications` (SSE JSON-RPC notifications)\n\
          - **Streamable HTTP:** `POST /mcp/streamable` — every revision from `2025-03-26` on is stateless: one JSON-RPC response per POST, no `Mcp-Session-Id`, a notification answered `202`; optional SEP-2243 `Mcp-Method`/`Mcp-Name` routing headers. Only a `2024-11-05` client (by `initialize` or `MCP-Protocol-Version`) gets the SSE-session model (the first request opens the SSE + `Mcp-Session-Id`; follow-ups with that id are pushed to the session). Server→client messages ride `GET /mcp/streamable` or `GET /mcp/stream`\n\
          - **SSE:** `GET /mcp/stream` for workspace event stream replay/live\n\

@@ -1812,6 +1812,18 @@
     "surface": "mcp"
   },
   {
+    "method": "POST",
+    "path": "/mcp/reviewer",
+    "capability": "per-tool",
+    "surface": "mcp"
+  },
+  {
+    "method": "POST",
+    "path": "/mcp/worker",
+    "capability": "per-tool",
+    "surface": "mcp"
+  },
+  {
     "method": "GET",
     "path": "/mcp/notifications",
     "capability": "workspace:read",
