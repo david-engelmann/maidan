@@ -1,8 +1,9 @@
 //! HTTP transport for the MCP server: `POST /mcp` accepts a single JSON-RPC 2.0
 //! request **or a batch** (a top-level array) and returns the corresponding
-//! response(s). Notifications (requests without an `id`) are executed for effect
-//! and answered with `202 Accepted` and no body. The `MCP-Protocol-Version`
-//! header is validated against the supported set.
+//! response(s). `POST /mcp/worker` and `POST /mcp/reviewer` are the same
+//! transport with a fixed tool profile. Notifications (requests without an
+//! `id`) are executed for effect and answered with `202 Accepted` and no body.
+//! The `MCP-Protocol-Version` header is validated against the supported set.
 //! Resource subscription notifications also stream on `GET /mcp/notifications`.
 
 use axum::{
@@ -115,6 +116,50 @@ pub async fn handler(
     headers: HeaderMap,
     ApiBytes(body): ApiBytes,
 ) -> Response {
+    json_rpc(state, auth, headers, body, None).await
+}
+
+/// `POST /mcp/worker`: the worker profile's fixed tool list.
+pub async fn worker(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    headers: HeaderMap,
+    ApiBytes(body): ApiBytes,
+) -> Response {
+    json_rpc(
+        state,
+        auth,
+        headers,
+        body,
+        Some(maidan_mcp::Profile::Worker),
+    )
+    .await
+}
+
+/// `POST /mcp/reviewer`: the reviewer profile's fixed tool list.
+pub async fn reviewer(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    headers: HeaderMap,
+    ApiBytes(body): ApiBytes,
+) -> Response {
+    json_rpc(
+        state,
+        auth,
+        headers,
+        body,
+        Some(maidan_mcp::Profile::Reviewer),
+    )
+    .await
+}
+
+async fn json_rpc(
+    state: AppState,
+    auth: AuthContext,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+    profile: Option<maidan_mcp::Profile>,
+) -> Response {
     if let Err(err) = validate_protocol_version(&headers) {
         return err.into_response();
     }
@@ -122,8 +167,10 @@ pub async fn handler(
         Err(rejected) => Json(JsonRpcResponse::rejected(rejected)).into_response(),
         // Routing headers describe a single op; a batch names many, so they are
         // validated per single request, not against an array.
-        Ok(RequestBody::Batch(items)) => batch_response(&state, &auth, items).await,
-        Ok(RequestBody::Single(request)) => single_response(&state, &auth, &headers, request).await,
+        Ok(RequestBody::Batch(items)) => batch_response(&state, &auth, items, profile).await,
+        Ok(RequestBody::Single(request)) => {
+            single_response(&state, &auth, &headers, request, profile).await
+        }
     }
 }
 
@@ -132,25 +179,39 @@ async fn single_response(
     auth: &AuthContext,
     headers: &HeaderMap,
     request: JsonRpcRequest,
+    profile: Option<maidan_mcp::Profile>,
 ) -> Response {
     if let Err(err) = validate_routing_headers(headers, &request) {
         return err.into_response();
     }
     // A notification (no `id`) is executed for effect and returns no body.
     if request.id.is_none() {
-        let _ = state.mcp.handle(request, auth).await;
+        let _ = answer(state, auth, request, profile).await;
         return StatusCode::ACCEPTED.into_response();
     }
     if let Err(resp) = crate::mcp_quota::enforce_mcp_quota(state, auth, &request).await {
         return Json(resp).into_response();
     }
-    Json(state.mcp.handle(request, auth).await).into_response()
+    Json(answer(state, auth, request, profile).await).into_response()
+}
+
+async fn answer(
+    state: &AppState,
+    auth: &AuthContext,
+    request: JsonRpcRequest,
+    profile: Option<maidan_mcp::Profile>,
+) -> JsonRpcResponse {
+    match profile {
+        Some(profile) => state.mcp.handle_profile(request, auth, profile).await,
+        None => state.mcp.handle(request, auth).await,
+    }
 }
 
 async fn batch_response(
     state: &AppState,
     auth: &AuthContext,
     items: Vec<Result<JsonRpcRequest, JsonRpcError>>,
+    profile: Option<maidan_mcp::Profile>,
 ) -> Response {
     let mut responses = Vec::new();
     for item in items {
@@ -168,7 +229,7 @@ async fn batch_response(
             }
             continue;
         }
-        let resp = state.mcp.handle(request, auth).await;
+        let resp = answer(state, auth, request, profile).await;
         if !is_notification {
             responses.push(resp);
         }

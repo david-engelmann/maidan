@@ -975,3 +975,80 @@ async fn published_enums_are_the_values_the_server_accepts() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn profile_endpoints_serve_a_fixed_tool_list() {
+    let (addr, client, server, _dir) = spawn().await;
+    let base = format!("http://{addr}");
+
+    async fn listed(client: &reqwest::Client, base: &str, path: &str) -> Value {
+        client
+            .post(format!("{base}{path}"))
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+                "params": {}
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    }
+
+    for (path, names) in [
+        ("/mcp/worker", maidan_mcp::Profile::Worker.tool_names()),
+        ("/mcp/reviewer", maidan_mcp::Profile::Reviewer.tool_names()),
+    ] {
+        let first = listed(&client, &base, path).await;
+        let second = listed(&client, &base, path).await;
+        assert!(first["error"].is_null(), "{path}: {first}");
+        assert_eq!(first["result"]["cacheScope"], "public", "{path}");
+        assert_eq!(
+            serde_json::to_vec(&first).unwrap(),
+            serde_json::to_vec(&second).unwrap(),
+            "{path}"
+        );
+        let got: Vec<&str> = first["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(got, names);
+    }
+
+    let refused = client
+        .post(format!("{base}/mcp/worker"))
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": { "name": "list_channels", "arguments": {} }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    assert_eq!(refused["error"]["code"], -32003, "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("not on the worker profile"),
+        "{refused}"
+    );
+
+    let full = rpc(&client, &base, 3, "tools/list", json!({})).await;
+    assert_eq!(full["result"]["cacheScope"], "private");
+    assert!(
+        full["result"]["tools"].as_array().unwrap().len()
+            > maidan_mcp::Profile::Worker.tool_names().len()
+    );
+
+    server.abort();
+}

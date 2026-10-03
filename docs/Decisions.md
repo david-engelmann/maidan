@@ -2000,3 +2000,25 @@ the behaviour Program C asks for. The dollar budget already prices reads.
 
 **Status.** Part of Open Work Next 4 (the ledger that can price caching).
 
+
+### A profile lists tools the token cannot call; the call is refused (2026-10-03)
+
+**Decision.** `POST /mcp/worker` and `POST /mcp/reviewer` serve a fixed
+`tools/list`, sorted by name and byte-identical for every caller, with
+`cacheScope: "public"`. The list is not filtered by the token. A tool the
+token lacks the capability for is refused at `tools/call`, the same check
+`POST /mcp` makes. A tool that is not in the profile is refused on that
+endpoint. The full catalog on `POST /mcp` stays filtered and `private`.
+
+**Alternative.** Filter each profile by the token, as `/mcp` does. Then two
+workers with different tokens cannot share a cached tool prefix.
+
+**Why this:** the profile exists so a fleet can cache one tool list. A list
+that changes with the token cannot be `public`, and two tokens share a prefix
+only up to the first tool one of them lacks. Authorization stays at call time,
+where it already is for a client that cached a list. A token sees names it
+cannot use. That is the cost of a shared list, and a hint never authorizes
+the call.
+
+**To revisit:** if a profile grows large enough that showing unusable tools
+costs more than the shared cache saves.

@@ -1,5 +1,6 @@
 //! MCP dispatcher. Takes JSON-RPC requests and returns responses.
-//! Transport-agnostic; `maidan-server` wraps it behind `POST /mcp`.
+//! Transport-agnostic; `maidan-server` wraps it behind `POST /mcp` and the
+//! profile endpoints `POST /mcp/worker` and `POST /mcp/reviewer`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -94,27 +95,13 @@ pub fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
 }
 
 /// The spec `instructions`: an agent's cold-start guide, sent by `initialize`
-/// and `server/discover`. Call `whoami` first for your member_id, then the full
-/// claim lifecycle (the "waiter loop" in Integration.md), not just the
-/// read/write pair.
-pub const INSTRUCTIONS: &str =
-    "Maidan is a shared room for AI agents. Call `whoami` first to get your \
-    member_id, workspace_id, and capabilities. The task loop: `claim_next_thread` (take \
-    the next ready task in a channel, or `claim_next_workspace_thread` for the next one \
-    anywhere in your workspace — null means there is nothing to take, so sleep and \
-    ask again; the claim is leased, so `renew_claim` before `assignment_expires_at` or \
-    the task is reaped back to the queue) → \
-    `acknowledge_claim` (start the working clock, so occupancy shows you working rather \
-    than claimed-and-idle) → `get_thread_context` (read the task, grounded in the \
-    workspace glossary) → do the work, calling `report_usage` as you go (it accumulates \
-    against the thread's budget and stops the run if it goes over) → `set_thread_result` \
-    (record the outcome) → `release_claim` (hand the task back at once rather than a \
-    lease later; release on every exit you control). `acknowledge_claim`, \
-    `renew_claim` and `release_claim` each present the thread's `claim_lease_id` as a \
-    fencing token. Need a human? `request_approval` opens \
-    a durable gate and returns immediately; poll `get_approval_gate` for the answer. \
-    Coordinate with `wait_for_ready` / `wait_for_result` / `wait_for_mention`. Tools are \
-    capability-filtered to your token, so `tools/list` shows only what you can call.";
+/// and `server/discover`. The first line is what a client keeps when it stores
+/// only that line, at most 250 characters, and the whole text is at most 2048.
+/// Call `whoami` first, then the claim lifecycle (the "waiter loop" in
+/// Integration.md), not just the read/write pair.
+pub const INSTRUCTIONS: &str = "Call `whoami` first. Then `claim_next_thread` or `claim_next_workspace_thread`, `acknowledge_claim`, `get_thread_context`, `report_usage`, `set_thread_result`, `transition_thread`, and `release_claim`.\n\
+A claim is leased: `renew_claim` before `assignment_expires_at`, or the task returns to the queue. `acknowledge_claim`, `renew_claim`, and `release_claim` each send `claim_lease_id`, and you release on every exit you control. A claim that returns null has nothing ready; sleep and ask again, or call `wait_for_ready`. `request_approval` opens a gate and returns; poll `get_approval_gate`.\n\
+On `POST /mcp`, `tools/list` includes only tools your token can call. `POST /mcp/worker` and `POST /mcp/reviewer` each serve one fixed list, the same bytes for every caller. A tool your token cannot call is refused when you call it, on every endpoint.";
 
 /// Mark a result final. `2026-07-28` requires `resultType` on every result,
 /// and `"input_required"` is the multi-round-trip interim this server never
@@ -544,7 +531,7 @@ impl McpServer {
         args: &Value,
     ) -> Result<Value, McpError> {
         let params = json!({ "name": name, "arguments": args });
-        let result = self.tools_call(&params, auth).await;
+        let result = self.tools_call(&params, auth, None).await;
         maidan_auth::record_delegated_authorization(
             self.store.as_ref(),
             auth,
@@ -565,6 +552,18 @@ impl McpServer {
         self.handle_in(request, auth, &McpSession::Stateless).await
     }
 
+    /// Handle a request on a profile endpoint. `tools/list` is that profile's
+    /// fixed list; `tools/call` refuses a tool the profile does not name.
+    pub async fn handle_profile(
+        &self,
+        request: JsonRpcRequest,
+        auth: &AuthContext,
+        profile: crate::profiles::Profile,
+    ) -> JsonRpcResponse {
+        self.respond(request, auth, &McpSession::Stateless, Some(profile))
+            .await
+    }
+
     /// Handle a request that arrived in `session`; a `resources/subscribe`
     /// belongs to that session.
     pub async fn handle_in(
@@ -572,6 +571,16 @@ impl McpServer {
         request: JsonRpcRequest,
         auth: &AuthContext,
         session: &McpSession,
+    ) -> JsonRpcResponse {
+        self.respond(request, auth, session, None).await
+    }
+
+    async fn respond(
+        &self,
+        request: JsonRpcRequest,
+        auth: &AuthContext,
+        session: &McpSession,
+        profile: Option<crate::profiles::Profile>,
     ) -> JsonRpcResponse {
         let id = request.id.clone().unwrap_or(Value::Null);
         let action = if request.method == "tools/call" {
@@ -584,7 +593,7 @@ impl McpServer {
         } else {
             request.method.clone()
         };
-        let result = self.dispatch(&request, auth, session).await;
+        let result = self.dispatch(&request, auth, session, profile).await;
         maidan_auth::record_delegated_authorization(
             self.store.as_ref(),
             auth,
@@ -611,6 +620,7 @@ impl McpServer {
         request: &JsonRpcRequest,
         auth: &AuthContext,
         session: &McpSession,
+        profile: Option<crate::profiles::Profile>,
     ) -> Result<Value, McpError> {
         match request.method.as_str() {
             "initialize" => self.initialize(&request.params).await,
@@ -618,11 +628,14 @@ impl McpServer {
             // The client's post-initialize handshake notification is accepted
             // (and ignored) rather than treated as an unknown method.
             "notifications/initialized" | "notifications/cancelled" => Ok(json!({})),
-            "tools/list" => Ok(caching::with_hint(
-                json!({ "tools": tools::catalog_for(auth) }),
-                caching::TOOLS_LIST,
-            )),
-            "tools/call" => self.tools_call(&request.params, auth).await,
+            "tools/list" => {
+                let (tools, hint) = match profile {
+                    Some(profile) => (profile.catalog(), caching::PROFILE_TOOLS_LIST),
+                    None => (tools::catalog_for(auth), caching::TOOLS_LIST),
+                };
+                Ok(caching::with_hint(json!({ "tools": tools }), hint))
+            }
+            "tools/call" => self.tools_call(&request.params, auth, profile).await,
             "resources/list" => Ok(caching::with_hint(
                 json!({ "resources": resources::listed(auth) }),
                 caching::RESOURCES_LIST,
@@ -686,11 +699,16 @@ impl McpServer {
     /// something without writing an event or audit row of its own gets one
     /// here: the tool, the ids it was called with, and who acted for whom.
     /// Only ids are kept from the arguments; the rest can carry secrets.
-    async fn tools_call(&self, params: &Value, auth: &AuthContext) -> Result<Value, McpError> {
+    async fn tools_call(
+        &self,
+        params: &Value,
+        auth: &AuthContext,
+        profile: Option<crate::profiles::Profile>,
+    ) -> Result<Value, McpError> {
         let attribution = auth.attribution();
         let (result, recorded) = maidan_store::attribution::with_attribution_tracked(
             attribution,
-            self.tools_call_unscoped(params, auth),
+            self.tools_call_unscoped(params, auth, profile),
         )
         .await;
         let name = params.get("name").and_then(Value::as_str).unwrap_or("");
@@ -734,8 +752,17 @@ impl McpServer {
         &self,
         params: &Value,
         auth: &AuthContext,
+        profile: Option<crate::profiles::Profile>,
     ) -> Result<Value, McpError> {
         let (name, args) = tools::tool_call(params)?;
+        if let Some(profile) = profile {
+            if !profile.contains(name) {
+                return Err(McpError::Forbidden(format!(
+                    "{name} is not on the {} profile",
+                    profile.name()
+                )));
+            }
+        }
         if !auth.bypass {
             let cap = tools::required_capability(name)?;
             maidan_auth::require_observed_capability(

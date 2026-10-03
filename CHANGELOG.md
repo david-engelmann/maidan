@@ -1579,6 +1579,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Unchanged:** `initialize` answers every 2025 revision and `2024-11-05` as before, on `POST /mcp` and `POST /mcp/streamable`, with the same capabilities and instructions and no cache hint; the new fields are additive.
 - **Fixed:** `server/discover`, and an `initialize` that negotiates `2026-07-28`, omit `resources.subscribe`. On that revision the flag means per-resource updates through `subscriptions/listen`, which is not implemented. `initialize` for the 2025 revisions and `2024-11-05` still sets it, and `resources/subscribe` / `resources/unsubscribe` still work there.
 
+### Worker and reviewer MCP tool profiles
+
+- **Added:** `POST /mcp/worker` and `POST /mcp/reviewer` each serve a fixed `tools/list` (the waiter loop, 14 tools, and review, 12 tools), sorted by name and the same bytes for every caller, with `cacheScope: "public"` and a one-hour TTL. The full catalog on `POST /mcp` and `POST /mcp/streamable` stays filtered to the token and `private`. A byte golden pins each profile.
+- **Changed:** on a profile endpoint, `tools/call` refuses a tool the profile does not name, and refuses a listed tool the token cannot call. `POST /mcp` still filters `tools/list` and still refuses the call. Decisions records why a profile lists tools the token cannot use. The server `instructions` keep the claim loop on the first line, at most 250 characters, and the whole text is at most 2,048.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

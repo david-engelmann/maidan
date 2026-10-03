@@ -750,6 +750,8 @@ two per kind (`effective`). `null` means not pruned.
 |-----------|----------|------|
 | REST | Paths in OpenAPI | `Authorization: Bearer {api_token}` |
 | MCP JSON-RPC | `POST /mcp` | Bearer |
+| MCP worker profile | `POST /mcp/worker` | Bearer |
+| MCP reviewer profile | `POST /mcp/reviewer` | Bearer |
 | MCP streamable HTTP | `POST /mcp/streamable` | Bearer (`Mcp-Session-Id` only on the `2024-11-05` path) |
 | MCP streamable session close | `DELETE /mcp/streamable` | Bearer + `Mcp-Session-Id` (sessions exist only on the `2024-11-05` path) |
 | MCP notifications SSE | `GET /mcp/notifications` | Bearer |
@@ -815,6 +817,12 @@ Every cacheable result
 every result carries `resultType: "complete"`. The value chosen for each, and why, is
 tabled in [Protocols: MCP discovery and cache hints](Protocols.md#mcp-discovery-and-cache-hints).
 A cached result never authorizes anything: every call is checked against its token.
+
+`POST /mcp/worker` and `POST /mcp/reviewer` serve a fixed `tools/list` (the
+waiter loop, and review), sorted by name and the same bytes for every caller,
+with `cacheScope: "public"`. A tool the token cannot call is still listed and
+is refused at `tools/call`. A tool that is not in the profile is refused on
+that endpoint. The full catalog stays on `POST /mcp`.
 
 ### WebSocket subscribe filter
 

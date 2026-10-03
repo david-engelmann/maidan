@@ -84,7 +84,10 @@ official TypeScript client caches on them by default and caps a TTL at 24
 hours (`MAX_CACHE_TTL_MS`). `public` means a shared gateway may hand the result to
 any caller, so Maidan uses it only for a result that is the same bytes whoever
 asks. A hint never stands in for authorization: every call is checked against
-its token, whatever a client has cached. The choices live in
+its token, whatever a client has cached. `POST /mcp/worker` and
+`POST /mcp/reviewer` are the exception to the filtered list: each serves one
+profile, and a tool the token cannot call is refused when it is called. The
+choices live in
 `crates/maidan-mcp/src/caching.rs`, and `cache_hints_contract` checks this table
 against it.
 
@@ -92,6 +95,7 @@ against it.
 |--------|---------|--------------|-----|
 | `server/discover` | 3600000 | `public` | Versions, capabilities and instructions are the same for every caller and change only with a release. |
 | `tools/list` on `/mcp`, `/mcp/streamable` | 3600000 | `private` | Filtered to the token's capabilities, so two tokens get two lists. The catalog changes only with a release, and Maidan cannot announce a deploy (`notifications/tools/list_changed` never fires), so the TTL bounds how long a client keeps a list from before one. |
+| `tools/list` on `/mcp/worker`, `/mcp/reviewer` | 3600000 | `public` | A fixed profile, sorted by name, the same bytes for every caller, so a shared cache can keep it (SEP-2567). A tool the token cannot call stays in the list and is refused at `tools/call`. |
 | `prompts/list` | 3600000 | `public` | The same for every caller; changes only with a release. |
 | `resources/templates/list` | 3600000 | `public` | The same for every caller; changes only with a release. |
 | `resources/list` | 3600000 | `private` | Lists the caller's own workspace, which its token fixes. |
