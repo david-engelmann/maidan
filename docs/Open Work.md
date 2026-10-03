@@ -51,7 +51,7 @@ CI ran.
 
 | PR | What it does | State (2026-10-03) | Merge after |
 |---|---|---|---|
-| #1172 | B6: the stack runs its own Postgres (`maidan-postgres`, with pgvector) and Chainguard MinIO instead of the dead Bitnami charts, pinned like the server image, and `helm install (kind)` installs the stack with both enabled | Conflicts with `main`; needs a rebase before its CI can run | — |
+| #1172 | B6: the stack runs its own Postgres (`maidan-postgres`, with pgvector) and Chainguard MinIO instead of the dead Bitnami charts, pinned like the server image, and `helm install (kind)` installs the stack with both enabled | Rebased onto `main` on 2026-10-03 (`check-deploy-pins.sh` and `helm-template-smoke.sh` pass); six CodeRabbit comments to answer before it can merge | — |
 | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
 
 ## Next: ranked
