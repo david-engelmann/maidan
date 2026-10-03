@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### maidan-env has a line-coverage floor
+
+- **Changed:** `maidan-env` line coverage is floored at 98.0. The coverage job measured 136 of 137 lines (99.27%) and failed because the crate had no floor. The floor is one point under that measurement, rounded down to the half point, the same margin as the other crates.
+
 ### Sign out ends a session the page has not cached
 
 - **Fixed:** Sign out posts `/auth/logout` when `/.well-known/maidan.json` says this server offers browser sessions (`auth.sessions`), not only when a member id is already on the page. A failed session read is not treated as proof that no cookie exists. When discovery never answered, Sign out still posts. A server that says it has no sessions still just forgets the token in the tab, unless this page has already seen a member.

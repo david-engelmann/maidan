@@ -22,6 +22,7 @@ maidan-artifacts = 61.5     # 62.50 on run 36461416048, once the MinIO tests ran
 maidan-auth = 92.5          # 93.92
 maidan-bus = 86.0           # 87.46
 maidan-cli = 86.5           # 87.72
+maidan-env = 98.0           # 99.27
 maidan-fsm = 97.0           # 98.08
 maidan-mcp = 92.5           # 93.57
 maidan-observability = 54.5 # 55.91; OTLP init runs in the otlp smoke job, outside coverage
