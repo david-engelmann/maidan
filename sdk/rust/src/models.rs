@@ -19,6 +19,7 @@ trait Members {
 impl Members for String {}
 impl Members for bool {}
 impl Members for i64 {}
+impl Members for u64 {}
 impl Members for Value {}
 
 impl<T: Members> Members for Option<T> {

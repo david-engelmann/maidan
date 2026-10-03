@@ -16,6 +16,7 @@ from maidan import (
     NotFoundError,
     OverloadedError,
     Thread,
+    ThreadBrief,
     ThreadContext,
     UnknownProblemError,
     problem_error,
@@ -124,21 +125,28 @@ def test_members_a_model_does_not_declare_are_kept_in_extra():
 
 def test_nested_models_decode_and_missing_required_members_fail_loud():
     ts = "2026-09-29T00:00:00Z"
-    th = {"id": "t1", "channel_id": "c1", "state": "open", "created_at": ts, "updated_at": ts}
     ctx = ThreadContext.from_dict(
         {
             "workspace_id": "w",
             "channel_id": "c1",
-            "thread": th,
+            "thread_id": "t1",
+            "thread": {"created_at": ts},
             "messages": [{"id": "m", "thread_id": "t1", "author_id": "a", "body": "b", "posted_at": ts}],
             "message_edits": [],
             "references": [],
             "artifacts": [],
-            "fsm": {"state": "open", "transitions": []},
+            "transitions": [],
+            "state": "open",
+            "updated_at": ts,
+            "prefix_sha256": "ab",
+            "prefix_bytes": 1,
         }
     )
-    assert isinstance(ctx.thread, Thread)
+    assert isinstance(ctx.thread, ThreadBrief)
+    assert ctx.thread_id == "t1"
     assert ctx.messages[0].body == "b"
     assert ctx.glossary == []
+    assert ctx.transitions == []
+    assert ctx.prefix_bytes == 1
     with pytest.raises(ValueError, match="Thread"):
         Thread.from_dict({"id": "t1"})

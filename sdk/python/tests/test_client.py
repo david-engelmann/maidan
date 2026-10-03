@@ -69,7 +69,8 @@ def test_hero_loop_post_list_context():
     msgs = c.messages.list(thread.id)
     assert any(m.body == "hello from the py sdk" for m in msgs)
     ctx = c.threads.context(thread.id)
-    assert ctx.thread.id == thread.id
+    assert ctx.thread_id == thread.id
+    assert ctx.thread.created_at
 
 
 def test_get_result_unset_is_404():
@@ -234,7 +235,11 @@ def test_every_documented_operation_returns_its_declared_model():
     assert reviewed.state == "in_review"
 
     ctx = assert_modeled(c.threads.context(thread.id), ThreadContext)
-    assert ctx.fsm.transitions, "the start_review transition is in the pack"
+    assert ctx.thread_id == thread.id
+    assert ctx.transitions, "the start_review transition is in the pack"
+    assert ctx.state == "in_review"
+    assert len(ctx.prefix_sha256) == 64
+    assert ctx.prefix_bytes > 0
     assert any(m.id == msg.id for m in ctx.messages)
 
     events = assert_modeled(c.list_events(WORKSPACE, {"limit": 50}), [StoredEvent])
