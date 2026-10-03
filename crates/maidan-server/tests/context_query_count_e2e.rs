@@ -180,9 +180,9 @@ async fn thread_context_query_count_is_independent_of_message_count() {
         small_queries >= 5,
         "expected several queries per context build, got {small_queries}"
     );
-    assert_eq!(small_ctx.messages.len(), 3);
-    assert_eq!(large_ctx.messages.len(), 40);
-    assert_eq!(large_ctx.references.len(), 40);
+    assert_eq!(small_ctx.prefix.messages.len(), 3);
+    assert_eq!(large_ctx.prefix.messages.len(), 40);
+    assert_eq!(large_ctx.prefix.references.len(), 40);
 
     // The regression guard: a 13× larger thread must not issue more queries.
     //

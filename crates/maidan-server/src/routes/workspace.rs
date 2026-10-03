@@ -789,6 +789,7 @@ pub async fn get_workspace_context(
         // (grounding / accepted decisions are the focused single-thread view).
         include_parent_grounding: false,
         include_accepted_decisions: false,
+        max_bytes: q.max_bytes,
     };
     let mut packed = crate::thread_context::build_workspace_context(
         state.store.as_ref(),
@@ -806,13 +807,13 @@ pub async fn get_workspace_context(
             std::collections::HashMap::new();
         let mut visible = Vec::with_capacity(packed.threads.len());
         for tc in packed.threads {
-            let ok = match decision.get(&tc.thread.id) {
+            let ok = match decision.get(&tc.thread_id()) {
                 Some(v) => *v,
                 None => {
                     let v =
-                        maidan_auth::can_access_thread(state.store.as_ref(), &auth, tc.thread.id)
+                        maidan_auth::can_access_thread(state.store.as_ref(), &auth, tc.thread_id())
                             .await?;
-                    decision.insert(tc.thread.id, v);
+                    decision.insert(tc.thread_id(), v);
                     v
                 }
             };

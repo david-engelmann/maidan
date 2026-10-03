@@ -376,6 +376,10 @@ fn the_documented_cache_hints_are_the_servers() {
             caching::resource_read("maidan://channels/x"),
         ),
         (
+            "`resources/read` of `maidan://boots/{channel_id}`",
+            caching::resource_read("maidan://boots/x"),
+        ),
+        (
             "`resources/read` of `maidan://threads/{id}`",
             caching::resource_read("maidan://threads/x"),
         ),

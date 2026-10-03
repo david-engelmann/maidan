@@ -1290,6 +1290,34 @@ pub fn reconstruct_messages_through(events: &[StoredEvent]) -> Vec<Message> {
         .collect()
 }
 
+/// The thread row as the last event in `events` that carries one recorded it
+/// (creation, a state change, an assignment, a lapsed, unacknowledged or failed
+/// claim). Pass the thread's events with `id <= as_of`. A lease renewal that
+/// writes no event stays as it was last logged. `None` when no event carries
+/// the row.
+pub fn reconstruct_thread_through(events: &[StoredEvent]) -> Option<Thread> {
+    let mut thread = None;
+    for stored in events {
+        let Ok(payload) = stored.opened_payload() else {
+            continue;
+        };
+        let Ok(ev) = serde_json::from_value::<Event>(payload) else {
+            continue;
+        };
+        match ev {
+            Event::ThreadCreated { thread: row, .. }
+            | Event::ThreadStateChanged { thread: row, .. }
+            | Event::ThreadAssignmentChanged { thread: row, .. }
+            | Event::ThreadReady { thread: row, .. }
+            | Event::ClaimExpired { thread: row, .. }
+            | Event::ClaimUnacknowledged { thread: row, .. }
+            | Event::ClaimFailed { thread: row, .. } => thread = Some(row),
+            _ => {}
+        }
+    }
+    thread
+}
+
 #[cfg(test)]
 mod filter_tests {
     use super::*;

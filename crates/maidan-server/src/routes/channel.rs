@@ -101,6 +101,21 @@ pub async fn get_channel(
     Ok(Json(channel))
 }
 
+/// The workspace boot every agent of this channel shares. The bytes are
+/// `BootPack` and a thread pack's prefix starts with them.
+pub async fn get_channel_boot(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<BootPack>> {
+    let channel = state.store.get_channel(ChannelId(id)).await?;
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, channel.workspace_id)?;
+    maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
+    let boot = crate::thread_context::build_channel_boot(state.store.as_ref(), channel.id).await?;
+    Ok(Json(boot))
+}
+
 /// Task-queue depth for a channel: ready / assigned / blocked counts of its
 /// open task threads, for an orchestrator deciding whether to scale workers.
 /// `workspace:read` + channel access.

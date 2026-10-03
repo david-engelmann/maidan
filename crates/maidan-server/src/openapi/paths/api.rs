@@ -1001,6 +1001,17 @@ pub fn delete_push_subscription() {}
     ))]
 pub fn get_channel() {}
 
+/// The workspace boot shared by every agent of a channel
+#[utoipa::path(get, path = "/channels/{id}/boot", tag = "channels",
+    params(("id" = Uuid, Path, description = "Channel id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Canonical boot JSON. A thread pack prefix starts with these bytes.", body = BootPack),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_channel_boot() {}
+
 /// Get a channel's task-queue depth
 #[utoipa::path(get, path = "/channels/{cid}/queue-depth", tag = "channels",
     params(("cid" = Uuid, Path, description = "Channel id")),

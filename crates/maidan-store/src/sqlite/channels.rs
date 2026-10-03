@@ -80,7 +80,7 @@ pub async fn list(
 ) -> Result<Vec<Channel>, StoreError> {
     let rows = sqlx::query(
         "SELECT id, workspace_id, name, topic, private, created_at, updated_at, tombstoned_at
-         FROM maidan_channels WHERE workspace_id = ? ORDER BY name ASC",
+         FROM maidan_channels WHERE workspace_id = ? ORDER BY name ASC, id ASC",
     )
     .bind(workspace_id.0)
     .fetch_all(pool)

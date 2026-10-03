@@ -106,12 +106,17 @@ fn unknown_members_are_found_in_nested_models_and_missing_required_ones_fail() {
     let ctx: ThreadContext = serde_json::from_value(json!({
         "workspace_id": "w",
         "channel_id": "c1",
-        "thread": { "id": "t1", "channel_id": "c1", "state": "open", "created_at": ts, "updated_at": ts },
+        "thread_id": "t1",
+        "thread": { "created_at": ts },
         "messages": [{ "id": "m", "thread_id": "t1", "author_id": "a", "body": "b", "posted_at": ts, "later": 1 }],
         "message_edits": [],
         "references": [],
         "artifacts": [],
-        "fsm": { "state": "open", "transitions": [] }
+        "transitions": [],
+        "state": "open",
+        "updated_at": ts,
+        "prefix_sha256": "ab",
+        "prefix_bytes": 1
     }))
     .unwrap();
     assert!(ctx.glossary.is_empty());

@@ -101,6 +101,7 @@ against it.
 | `resources/list` | 3600000 | `private` | Lists the caller's own workspace, which its token fixes. |
 | `resources/read` of `maidan://artifacts/{sha256}` | 60000 | `private` | The URI names the bytes, but the read returns the workspace ref (`kind`, `mime_type`, `filename`), which a later upload of the same SHA updates. A minute, the same as a workspace or channel record. Private because access is per workspace. |
 | `resources/read` of `maidan://workspaces/{id}`, `maidan://channels/{id}` | 60000 | `private` | Changes on a rename, a topic edit or an archive. A subscriber hears `notifications/resources/updated` and drops its copy at once. |
+| `resources/read` of `maidan://boots/{channel_id}` | 60000 | `private` | The workspace boot for a channel. It changes when the glossary or an accepted decision changes, not when a thread is claimed. Private because access is per caller. |
 | `resources/read` of `maidan://threads/{id}` | 0 | `private` | Changes with every post, claim and transition. |
 
 ---

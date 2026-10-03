@@ -59,7 +59,7 @@ pub async fn list(
 ) -> Result<Vec<GlossaryTerm>, StoreError> {
     let rows = sqlx::query(
         "SELECT id, workspace_id, term, definition, aliases, created_by, created_at, updated_at
-         FROM maidan_glossary_terms WHERE workspace_id = ? ORDER BY term",
+         FROM maidan_glossary_terms WHERE workspace_id = ? ORDER BY term, id",
     )
     .bind(workspace_id.0)
     .fetch_all(pool)

@@ -1584,6 +1584,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `POST /mcp/worker` and `POST /mcp/reviewer` each serve a fixed `tools/list` (the waiter loop, 14 tools, and review, 12 tools), sorted by name and the same bytes for every caller, with `cacheScope: "public"` and a one-hour TTL. The full catalog on `POST /mcp` and `POST /mcp/streamable` stays filtered to the token and `private`. A byte golden pins each profile.
 - **Changed:** on a profile endpoint, `tools/call` refuses a tool the profile does not name, and refuses a listed tool the token cannot call. `POST /mcp` still filters `tools/list` and still refuses the call. Decisions records why a profile lists tools the token cannot use. The server `instructions` keep the claim loop on the first line, at most 250 characters, and the whole text is at most 2,048.
 
+### One cache-stable context pack
+
+- **Changed:** REST `GET /threads/:id/context` and MCP `get_thread_context` build one pack. The stable prefix leads (workspace boot, brief, messages) and the volatile tail is last (state, lease, cursors, the prefix sha256). MCP returns those as two text parts. REST `split=true` returns the same two strings. A snapshot stores the flattened bytes, so the sha matches.
+- **Added:** `GET /channels/:id/boot` and the MCP resource `maidan://boots/{channel_id}` serve the workspace boot. It is the same bytes for every agent of the channel, and a thread pack's prefix starts with it.
+- **Added:** `max_bytes` caps the canonical pack. Elision grows by blocks of 16 messages. `delta=true` or `since_prefix_sha` returns a delta: the tail alone when the prefix sha matches, otherwise the messages after `message_cursor` or the replacement prefix. `as_of` rebuilds the thread row from the log at that event, not the live row. Id ties sort the same on both databases.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

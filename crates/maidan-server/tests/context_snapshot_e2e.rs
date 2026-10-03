@@ -151,7 +151,7 @@ async fn context_snapshot_freezes_the_pack_as_an_artifact() {
         pack["messages"].as_array().unwrap()[0]["body"],
         serde_json::json!("context to freeze")
     );
-    assert_eq!(pack["thread"]["id"], serde_json::json!(thread.id.0));
+    assert_eq!(pack["thread_id"], serde_json::json!(thread.id.0));
 
     // Deduped: an identical snapshot yields the same sha (same bytes, one blob).
     let snap2: Value = client

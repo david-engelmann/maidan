@@ -231,14 +231,15 @@ test("every documented operation returns its declared model", async () => {
   assert.equal(reviewed.state, "in_review");
 
   const ctx = assertShape(await client.threads.context(thread.id), "ThreadContext");
-  assertShape(ctx.thread, "Thread");
+  assertShape(ctx.thread, "ThreadBrief");
   eachShape(ctx.messages, "Message");
   eachShape(ctx.message_edits, "MessageEditView");
   eachShape(ctx.references, "Reference");
   eachShape(ctx.artifacts, "Artifact");
-  assertShape(ctx.fsm, "ThreadFsmContext");
-  assert.ok(ctx.fsm.transitions.length > 0, "the start_review transition is in the pack");
-  eachShape(ctx.fsm.transitions, "ThreadTransition");
+  assert.equal(ctx.state, "in_review");
+  assert.ok(ctx.transitions.length > 0, "the start_review transition is in the pack");
+  eachShape(ctx.transitions, "ThreadTransition");
+  assert.equal(ctx.prefix_sha256.length, 64);
   assert.ok(ctx.messages.some((m) => m.id === msg.id));
 
   const events = eachShape(await client.workspaces.events(WORKSPACE, { limit: 50 }), "StoredEvent");

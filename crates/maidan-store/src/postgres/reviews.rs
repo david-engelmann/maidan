@@ -154,7 +154,7 @@ pub async fn list_reviewers(
     thread_id: ThreadId,
 ) -> Result<Vec<MemberId>, StoreError> {
     let rows = sqlx::query(
-        "SELECT member_id FROM maidan_thread_reviewers WHERE thread_id = $1 ORDER BY created_at",
+        "SELECT member_id FROM maidan_thread_reviewers WHERE thread_id = $1 ORDER BY created_at, member_id",
     )
     .bind(thread_id.0)
     .fetch_all(pool)
@@ -324,7 +324,7 @@ pub async fn list_reviews(
     thread_id: ThreadId,
 ) -> Result<Vec<ThreadReview>, StoreError> {
     let rows = sqlx::query(&format!(
-        "SELECT {REVIEW_COLS} FROM maidan_thread_reviews WHERE thread_id = $1 ORDER BY created_at"
+        "SELECT {REVIEW_COLS} FROM maidan_thread_reviews WHERE thread_id = $1 ORDER BY created_at, reviewer_id"
     ))
     .bind(thread_id.0)
     .fetch_all(pool)
