@@ -957,6 +957,15 @@ pub fn get_member_delivery_mode() {}
     ))]
 pub fn register_push_subscription() {}
 
+/// VAPID public key for a browser push subscription
+#[utoipa::path(get, path = "/web-push/vapid-public-key", tag = "members",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = VapidPublicKey, description = "The application server public key, or a reason Web Push is off"),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn get_vapid_public_key() {}
+
 /// List a member's Web Push subscriptions
 #[utoipa::path(get, path = "/members/{id}/push-subscriptions", tag = "members",
     params(("id" = Uuid, Path, description = "Member id")),

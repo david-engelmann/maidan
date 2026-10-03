@@ -619,13 +619,32 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Web Push sender: built from VAPID_* when configured. The router delivers
-    // to a member's subscriptions when they have no live WS.
-    if let Some(config) = maidan_server::web_push::WebPushConfig::from_env() {
-        state.attach_web_push(std::sync::Arc::new(
-            maidan_server::web_push::VapidWebPushSender::new(config),
-        ));
-        tracing::info!("web push (VAPID) configured");
+    // Web Push sender: built from MAIDAN_VAPID_* when configured. The router
+    // delivers to a member subscription when they have no live WS. A failed
+    // send is retried by the worker below. Unset or invalid config skips
+    // sending and does not invent a key.
+    match maidan_server::web_push::WebPushConfig::from_env() {
+        Ok(config) => {
+            let public_key = config.public_key_b64();
+            state.attach_web_push(std::sync::Arc::new(
+                maidan_server::web_push::VapidWebPushSender::new(config),
+            ));
+            state.attach_web_push_public_key(public_key);
+            tracing::info!("web push (VAPID) configured");
+            let push_state = state.clone();
+            let push_cfg = maidan_server::web_push_worker::config_from_env();
+            tokio::spawn(async move {
+                maidan_server::web_push_worker::run(push_state, push_cfg).await;
+            });
+        }
+        Err(err) => {
+            let reason = match &err {
+                maidan_server::web_push::WebPushConfigError::Unset => "vapid_unset",
+                maidan_server::web_push::WebPushConfigError::Invalid(_) => "vapid_invalid",
+            };
+            state.set_web_push_disabled(reason);
+            tracing::info!(reason = %err, "web push skipped");
+        }
     }
 
     // Background mail-outbox worker: drains the durable mail queue with

@@ -238,7 +238,7 @@ pub fn init() {
         );
         describe_counter!(
             "maidan_web_push_delivered_total",
-            "Web Push notifications by outcome (sent/failed/pruned/skipped_present)"
+            "Web Push notifications by outcome (sent/failed/queued/retry/dead/pruned/skipped_present/skipped_vapid_unset)"
         );
         describe_counter!(
             "maidan_result_deliveries_total",

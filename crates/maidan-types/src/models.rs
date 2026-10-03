@@ -1347,6 +1347,28 @@ pub struct NewPushSubscription {
     pub auth: String,
 }
 
+/// A claimed web push retry. `attempts` includes the current claim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebPushOutbox {
+    pub id: WebPushOutboxId,
+    pub member_id: MemberId,
+    pub subscription_id: PushSubscriptionId,
+    pub payload: String,
+    pub attempts: i64,
+}
+
+/// A failed web push to retry. `attempts` counts tries already made, including
+/// the send that just failed. `next_attempt_at` is when the worker may claim it.
+#[derive(Debug, Clone)]
+pub struct NewWebPushOutbox {
+    pub member_id: MemberId,
+    pub subscription_id: PushSubscriptionId,
+    pub payload: String,
+    pub attempts: i64,
+    pub next_attempt_at: DateTime<Utc>,
+    pub last_error: String,
+}
+
 /// SCIM 2.0 provisioning link for a member. Holds the SCIM-specific fields —
 /// the IdP's `externalId` and the `active` flag — while `userName`/`id` map to
 /// the member's handle/id. Deactivation revokes the member's tokens.

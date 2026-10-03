@@ -5,7 +5,8 @@ import { loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChann
 import { loadDms, loadGroupDms, openDm, openGroupDm, sendDmMessage, sendGroupDmMessage } from "./dm.js";
 import { humanError, responseError, setOut, setStatus, showError, toggleLiveFeed, unreachable } from "./feedback.js";
 import { openConnect, openPalette, openTool } from "./palette.js";
-import { loadMembers } from "./people.js";
+import { authorId, loadMembers } from "./people.js";
+import { registerBrowserPush } from "./push.js";
 import { connectWs, disconnectWs, reconnectNowIfWanted, setPresence } from "./realtime.js";
 import { loadServerAuth, oidcLoginPath, saveWorkspaceName, sessionMemberId, showConnection, showSecretOnce, start } from "./session.js";
 import { WORKER_PRESET, baseInput, onMac } from "./state.js";
@@ -814,6 +815,6 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
 
       document.getElementById("workspace-name-save").onclick = () => saveWorkspaceName();
 
-      start();
+      start().then(() => registerBrowserPush(authorId()));
 
     

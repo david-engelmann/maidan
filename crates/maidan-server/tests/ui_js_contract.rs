@@ -34,6 +34,7 @@ fn script(_html: &str) -> &'static str {
             include_str!("../static/ui/tools.js"),
             include_str!("../static/ui/palette.js"),
             include_str!("../static/ui/realtime.js"),
+            include_str!("../static/ui/push.js"),
             include_str!("../static/ui/main.js"),
         ];
         let mut out = String::new();

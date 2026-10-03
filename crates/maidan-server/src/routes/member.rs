@@ -706,7 +706,30 @@ pub async fn register_push_subscription(
     Ok(Json(sub))
 }
 
-/// A member's Web Push subscriptions. Self-only for a session.
+/// The VAPID public key the board passes to `PushManager.subscribe`.
+/// `workspace:read`. When VAPID is not configured the body carries `reason`
+/// `vapid_unset` and no key is invented.
+pub async fn get_vapid_public_key(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+) -> ApiResult<Json<VapidPublicKey>> {
+    cap(&auth, WORKSPACE_READ)?;
+    if let Some(public_key) = state.web_push_public_key.clone() {
+        return Ok(Json(VapidPublicKey {
+            public_key: Some(public_key),
+            reason: None,
+        }));
+    }
+    Ok(Json(VapidPublicKey {
+        public_key: None,
+        reason: state
+            .web_push_disabled_reason
+            .clone()
+            .or_else(|| Some("vapid_unset".into())),
+    }))
+}
+
+/// A member Web Push subscriptions. Self-only for a session.
 pub async fn list_push_subscriptions(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

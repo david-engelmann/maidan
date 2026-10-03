@@ -161,11 +161,18 @@ pub struct AppState {
     /// email. Set only by the server binary via [`AppState::attach_mail`], so
     /// tests/embedders (which build via [`AppState::new`]) never send email.
     pub mail: Option<Arc<dyn crate::mail::MailTransport>>,
-    /// Web Push sender, built from `VAPID_*` at startup. `None` when VAPID
-    /// isn't configured — the config gate: no sender, no web push. Set only by
-    /// the server binary via [`AppState::attach_web_push`], so tests/embedders
-    /// (which build via [`AppState::new`]) never send.
+    /// Web Push sender, built from `MAIDAN_VAPID_*` at startup. `None` when
+    /// VAPID is not configured: no sender, no web push. Set only by the server
+    /// binary via [`AppState::attach_web_push`], so tests and embedders (which
+    /// build via [`AppState::new`]) never send.
     pub web_push: Option<Arc<dyn crate::web_push::WebPushSender>>,
+    /// Uncompressed VAPID public key (base64url) for the board to subscribe.
+    /// `None` when Web Push is not configured.
+    pub web_push_public_key: Option<String>,
+    /// Why [`Self::web_push_public_key`] is absent. `vapid_unset` when the
+    /// `MAIDAN_VAPID_*` values are missing; `vapid_invalid` when they are set
+    /// but unusable. No default key is invented.
+    pub web_push_disabled_reason: Option<String>,
     /// Slack projector config, built from `MAIDAN_SLACK_*` at startup. `None`
     /// when unset — the config gate: the `/integrations/slack/events` route
     /// then returns `404`. Set only by the server binary via
@@ -298,6 +305,8 @@ impl AppState {
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
             mail: None,
             web_push: None,
+            web_push_public_key: None,
+            web_push_disabled_reason: Some("vapid_unset".into()),
             slack: None,
             slack_sender: None,
             github: None,
@@ -335,10 +344,25 @@ impl AppState {
         self.export_verify_keys = keys;
     }
 
-    /// Wire the Web Push sender. Called by the server binary when `VAPID_*` is
-    /// configured; left `None` (no web push) otherwise and in tests.
+    /// Wire the Web Push sender. Called by the server binary when
+    /// `MAIDAN_VAPID_*` is configured; left `None` (no web push) otherwise
+    /// and in tests.
     pub fn attach_web_push(&mut self, sender: Arc<dyn crate::web_push::WebPushSender>) {
         self.web_push = Some(sender);
+    }
+
+    /// Publish the VAPID public key the board uses to subscribe.
+    pub fn attach_web_push_public_key(&mut self, public_key: String) {
+        self.web_push_public_key = Some(public_key);
+        self.web_push_disabled_reason = None;
+    }
+
+    /// Record why Web Push is not sending. `reason` is `vapid_unset` or
+    /// `vapid_invalid`.
+    pub fn set_web_push_disabled(&mut self, reason: &str) {
+        self.web_push_public_key = None;
+        self.web_push = None;
+        self.web_push_disabled_reason = Some(reason.to_string());
     }
 
     /// Wire the email transport. Called by the server binary when
