@@ -51,14 +51,24 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    next tag, and the stack's bundled Postgres and MinIO images no longer exist
    (in flight). This is the **Before anyone deploys** section of Open Work, and
    it comes first.
-1. **Agents coordinate at workspace scale.** A verdict reaches the worker as an
+1. **A Slack message becomes a reviewed PR.** David's agent loop, decided on
+   2026-10-03: a `!change` in Slack opens a Maidan thread, Pi does the coding
+   without holding any GitHub credential, Maidan commits Pi's diff to the
+   named branch at the base commit Pi reports and opens a draft PR, and
+   Soundcheck previews it and marks it ready. Replies stay on the surface the
+   work started on: a Slack thread is answered in Slack, a PR comment on the
+   PR. Maidan's part is Open Work Next 1 (the `github_branch` delivery, a
+   threaded Slack reply, an audited allowlist seed) and Next 2 (GitHub App
+   credentials); the contract is beatgig/soundcheck's
+   `docs/cross-repo/change-flow.md`.
+2. **Agents coordinate at workspace scale.** A verdict reaches the worker as an
    event (#1132), a hung agent's time is charged against its budget (#1139),
    the SDKs return typed results and errors (#1129), and stateless MCP
    subscriptions work across replicas (#1131), and an agent can claim the next
    ready thread anywhere in its workspace (#1145). In flight: every way a claim
    ends charges its worked time, and a thread over budget is not handed out.
    Next: workspace-wide waits and queue depth.
-2. **Nothing is silently lost, and nothing grows without bound.** Retries share
+3. **Nothing is silently lost, and nothing grows without bound.** Retries share
    a per-host budget (#1122), every audit row belongs to a workspace (#1134),
    both backends have a tested backup path (#1126), and fairness and retention
    are per workspace by default (#1153). A legal hold keeps that workspace's
@@ -68,7 +78,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    past the cutoff in every workspace that is not held (#1232). Next:
    partitioning the append-only tables.
    A schema change while two versions share one database expands, then contracts in a later release ([Migrations](Migrations.md)).
-3. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus
+4. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus
    tests are mutation-checked (#1125), the release workflow attests image SBOMs
    from the next tag on (#1119), and
    every HTTP operation is classified as reading or changing state (#1121).
@@ -79,7 +89,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    one of them a cross-tenant rate-limit bug. Next: Kani proofs, and a named
    regression test per Threat-Model row. REST `POST /threads/{id}` names
    `action` as `start_review`, `close`, or `archive`.
-4. **A web UI worth showing.** The board is the one thread surface (#1118),
+5. **A web UI worth showing.** The board is the one thread surface (#1118),
    errors are inline (#1117), a blank page walks to a connected board (#1123),
    attachments show their names and images (#1135), tokens rotate from the page
    (#1127), Connect an agent finishes with a worker token (#1144), a refused
@@ -102,19 +112,19 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    the connection that requested it (#1229). Opening a group DM asks for three
    members and selects that conversation (#1230). Next: the review findings
    still listed in Open Work, and screenshots captured by a script.
-5. **Agents pay for what changed.** Maidan's context is byte-stable and
+6. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
    cost per completed task. Then it coordinates for the cache: warm then fan
    out, claims inside the cache TTL, a batch lane for work with slack, and no
    duplicate runs. The claim is measured by a pre-registered benchmark, not a
    hit rate. This is Program C ([Context Economics](Context%20Economics.md)).
-   First, because a spec requires it: Maidan advertises MCP 2026-07-28 and
-   omits the `ttlMs`, `cacheScope` and `server/discover` that version
-   requires. Then the canonical pack, the ledger and the SDK normalizers (Open
-   Work Next 2 to 6; partial work for three of them is on `wip/` branches).
+   MCP 2026-07-28 conformance and the worker and reviewer tool profiles are
+   on `main` (#1239, #1240). In flight: the canonical pack (#1241) and the
+   ledger (#1242). Next: workspace queue depth and the SDK normalizers (Open
+   Work Next 6 and 7).
    The research behind it is kept in the [archive](archive/Context%20Economics%20research%202026-10/README.md).
-6. **Launch** (the maintainer's call): the public site, an in-browser
+7. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
    room itself staying open source. An operator can open a
    second workspace with `POST /operator/workspaces`, without `MAIDAN_BOOTSTRAP` (#1208).
