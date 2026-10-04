@@ -10,6 +10,14 @@ pub mod attribution;
 /// transaction (D-A), built from what the call produced — a new token's id,
 /// say — so the row commits or rolls back with the change it records.
 pub type AuditFor<T> = Box<dyn FnOnce(&T) -> maidan_types::NewAuditEvent + Send>;
+
+/// An app installation and whether its bot member was carried over from the
+/// app's earlier, revoked installation in the same workspace.
+#[derive(Debug, Clone)]
+pub struct InstalledApp {
+    pub installation: maidan_types::AppInstallation,
+    pub bot_member_reused: bool,
+}
 /// Why a destructive call refused a workspace under legal hold. The store
 /// checks inside the destroying transaction, so every caller is bound by it.
 pub const LEGAL_HOLD_REFUSAL: &str =

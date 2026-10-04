@@ -47,6 +47,7 @@ const UNAUDITED: &[&str] = &[
     ".clear_land_gate(",
     ".allow_egress_target(",
     ".revoke_egress_target(",
+    ".create_app_installation(",
     ".revoke_app_installation(",
     ".create_secret(",
     ".delete_secret(",

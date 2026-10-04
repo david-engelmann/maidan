@@ -153,6 +153,16 @@ The response carries `secret` once and `bot_member_id`, the agent's member.
 does exactly this. An app that other workspaces install uses the OAuth flow
 instead: see [Installed apps](#installed-apps-oauth-style).
 
+**Changing an installation's grants.** `granted_capabilities` is fixed for the
+life of an installation. To change it, revoke the installation
+(`DELETE /workspaces/{workspace_id}/app-installations/{installation_id}`, which
+also revokes its tokens) and install the app again with the new list. The
+re-install reuses the agent's member, so its id, its `app:<slug>` handle and
+everything it wrote stay; mint its tokens again under the new installation.
+Installing while an installation is still active is `409`. Each install writes
+an `app_installation.install` audit row (`bot_member_reused` says which kind it
+was) in the same transaction.
+
 **A token for an existing member** (the admin, or a person SCIM provisioned):
 
 ```http
@@ -1007,6 +1017,8 @@ error type for every problem
 ### Installed apps (OAuth-style)
 
 Register app → install → `POST .../oauth/authorize` → `POST /oauth/app/token` for app-scoped bearer. See OpenAPI `apps` and `oauth` tags.
+
+A code exchange for an app with no active installation installs it with the default capabilities, reusing the bot member of a revoked installation the same way, and writes the same audit row.
 
 ---
 

@@ -131,24 +131,35 @@ pub async fn exchange_app_code(
     {
         Some(row) => row,
         None => {
-            let bot = state
-                .store
-                .create_member(NewMember {
-                    workspace_id: pending.workspace_id,
-                    handle: format!("app:{}", app.slug),
-                    display_name: Some(app.name.clone()),
-                    kind: MemberKind::Agent,
-                })
-                .await?;
+            let (app_id, slug) = (app.id, app.slug.clone());
             state
                 .store
-                .create_app_installation(NewAppInstallation {
-                    app_id: app.id,
-                    workspace_id: pending.workspace_id,
-                    bot_member_id: bot.id,
-                    granted_capabilities: capability::default_minted(),
-                })
+                .install_app_audited(
+                    pending.workspace_id,
+                    app.id,
+                    capability::default_minted(),
+                    Box::new(move |installed| {
+                        let installation = &installed.installation;
+                        maidan_types::NewAuditEvent {
+                            scope: maidan_types::AuditScope::Workspace(installation.workspace_id),
+                            actor_id: None,
+                            action: "app_installation.install".into(),
+                            target_kind: Some("app_installation".into()),
+                            target_id: Some(installation.id.0),
+                            metadata: serde_json::json!({
+                                "workspace_id": installation.workspace_id.0,
+                                "app_id": app_id.0,
+                                "app_slug": slug,
+                                "bot_member_id": installation.bot_member_id.0,
+                                "bot_member_reused": installed.bot_member_reused,
+                                "granted_capabilities": installation.granted_capabilities.clone(),
+                                "source": "oauth_code_exchange",
+                            }),
+                        }
+                    }),
+                )
                 .await?
+                .installation
         }
     };
 
