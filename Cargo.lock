@@ -2771,6 +2771,10 @@ dependencies = [
 [[package]]
 name = "maidan-env"
 version = "0.0.0"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "maidan-fsm"

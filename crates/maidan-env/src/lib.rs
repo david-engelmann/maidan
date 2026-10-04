@@ -9,6 +9,10 @@
 //! the list honest: every name the server's crates read is on it, and nothing
 //! is on it that nothing reads.
 
+mod secret_files;
+
+pub use secret_files::{load_secret_files, resolve_secret_files, SecretFileError, SECRET_FILE_ENV};
+
 /// Set to `1` to start with unknown `MAIDAN_*` variables, logging them instead.
 pub const ALLOW_UNKNOWN_ENV: &str = "MAIDAN_ALLOW_UNKNOWN_ENV";
 
@@ -32,6 +36,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_CLAIM_DEFAULT_LEASE_SECS",
     "MAIDAN_CLAIM_REAP_TICK_SECS",
     "MAIDAN_CONTENT_KEK",
+    "MAIDAN_CONTENT_KEK_FILE",
     "MAIDAN_CONTENT_KEK_PREVIOUS",
     "MAIDAN_COOKIE_SECURE",
     "MAIDAN_DB_ACQUIRE_TIMEOUT_SECS",
@@ -58,7 +63,9 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_EXPORT_SIGNING_KEY",
     "MAIDAN_EXPORT_VERIFY_KEYS",
     "MAIDAN_GITHUB_TOKEN",
+    "MAIDAN_GITHUB_TOKEN_FILE",
     "MAIDAN_GITHUB_WEBHOOK_SECRET",
+    "MAIDAN_GITHUB_WEBHOOK_SECRET_FILE",
     "MAIDAN_HNSW_EF_CONSTRUCTION",
     "MAIDAN_HNSW_EF_SEARCH",
     "MAIDAN_HNSW_M",
@@ -112,10 +119,13 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_SCHEDULER_TICK_SECS",
     "MAIDAN_SECRET_EGRESS_ALLOWLIST",
     "MAIDAN_SESSION_SECRET",
+    "MAIDAN_SESSION_SECRET_FILE",
     "MAIDAN_SESSION_TTL_SECS",
     "MAIDAN_SHUTDOWN_DRAIN_SECS",
     "MAIDAN_SLACK_BOT_TOKEN",
+    "MAIDAN_SLACK_BOT_TOKEN_FILE",
     "MAIDAN_SLACK_SIGNING_SECRET",
+    "MAIDAN_SLACK_SIGNING_SECRET_FILE",
     "MAIDAN_SMTP_FROM",
     "MAIDAN_SMTP_HOST",
     "MAIDAN_SMTP_PASSWORD",
@@ -367,5 +377,16 @@ mod tests {
             assert!(!SERVER_ENV.contains(name), "{name} is on both lists");
         }
         assert!(SERVER_ENV.contains(&ALLOW_UNKNOWN_ENV));
+    }
+
+    #[test]
+    fn every_maidan_secret_file_variable_passes_the_boot_check() {
+        let file_vars: Vec<String> = SECRET_FILE_ENV
+            .iter()
+            .map(|(_, file_var)| file_var.to_string())
+            .collect();
+        assert!(file_vars.iter().any(|v| v.starts_with("MAIDAN_")));
+        let unknown = unknown_vars(file_vars, false);
+        assert!(unknown.is_empty(), "{unknown:?}");
     }
 }

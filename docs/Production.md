@@ -47,6 +47,7 @@ period is cut, and clients retry.
 |-----------------|----------|------------------------------------------------------|
 | `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite.                    |
 |                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
+| `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for `DATABASE_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN` and `MAIDAN_SLACK_SIGNING_SECRET` (a Docker or Kubernetes secret mount), so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8; the error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED` outright.       |
 | `AUTH_DISABLED` | no       | Serve every request unauthenticated. **Fail-closed:** takes effect only when `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` is *also* set, and never when `MAIDAN_ENV=production` (either violation refuses boot). A stray `AUTH_DISABLED=1` alone now fails startup loudly instead of silently serving an open workspace. Dev/test/CI only. |
 | `MAIDAN_ALLOW_INSECURE_NO_AUTH` | no | Explicit acknowledgement required to honor `AUTH_DISABLED`. Never set in production. |
@@ -338,6 +339,235 @@ a proxy that rewrites `Host`, browsers still send `Sec-Fetch-Site`, which the
 check prefers. Creating a session writes an audit row in the same transaction
 (`session.from_token`, or `session.create` for an OIDC login).
 Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
+
+## One instance built from `main`
+
+The quickstart and the release images run a tagged release. A shared instance
+that tracks `main` is built from the repository at a pinned commit instead. The stack that runs it
+lives outside this repository; this section is what it needs from here.
+
+**1. Build the images at one commit.** Record the full commit SHA where the
+stack is defined, and rebuild only by changing it. The server, the database
+image and the CLI come from the same commit, because `maidan init` applies that
+commit's migrations.
+
+```sh
+git clone https://github.com/david-engelmann/maidan.git && cd maidan
+git checkout "$COMMIT"            # a full SHA on main
+export MAIDAN_TAG="main-$(git rev-parse --short=12 HEAD)"
+
+docker build -f crates/maidan-server/Dockerfile --build-arg MAIDAN_VERSION="$MAIDAN_TAG" \
+  -t "maidan-server:$MAIDAN_TAG" .
+docker build -f docker/Dockerfile.db -t "maidan-postgres:$MAIDAN_TAG" .   # pgvector
+
+# The CLI image wraps a binary built for Debian bookworm, like CI's release CLI image.
+docker run --rm -v "$PWD":/src -w /src -e CARGO_TARGET_DIR=/src/target-cli \
+  rust:1.91-slim-bookworm sh -c \
+  'apt-get update -qq && apt-get install -y -qq pkg-config libssl-dev >/dev/null \
+   && cargo build --release -p maidan-cli'
+mkdir -p cli-image && cp target-cli/release/maidan cli-image/maidan
+cp docker/Dockerfile.cli cli-image/Dockerfile
+docker build --build-arg MAIDAN_VERSION="$MAIDAN_TAG" -t "maidan-cli:$MAIDAN_TAG" cli-image
+```
+
+Put `MAIDAN_TAG` in the stack's `.env` so compose runs these images. The
+server image is built without the `bootstrap` feature, so it has no
+unauthenticated seed routes and `MAIDAN_BOOTSTRAP` does nothing.
+
+**2. Choose the database.**
+
+| | Postgres (`maidan-postgres`) | SQLite |
+|---|---|---|
+| Containers | one more | none |
+| Writers | a pool of 16 connections; replicas can share it | one connection; every write waits its turn |
+| Live events across processes | `LISTEN`/`NOTIFY`, so a second replica works | in memory, one process only |
+| Semantic search | pgvector with an HNSW index | cosine over stored vectors, no index |
+| Backup | `pg_dump`, point-in-time recovery | `scripts/backup.sh` (`VACUUM INTO`, needs the `sqlite3` CLI beside the file) |
+
+Use Postgres for an instance several agents write to at once. SQLite suits one
+operator and a few agents, and is one file to copy away (with the server
+stopped, or through `scripts/backup.sh`).
+
+**3. Write the secrets to files.** Each secret-bearing variable is read from
+the file `<NAME>_FILE` names when it is set (see [Environment](#environment)),
+so the container's config holds paths and `docker inspect` shows no secret. The
+server runs as uid `65532`; give it the files:
+
+```sh
+mkdir -p secrets
+openssl rand -hex 32 > secrets/content_kek          # back this up apart from the data
+openssl rand -hex 32 > secrets/session_secret
+openssl rand -hex 24 > secrets/postgres_password
+echo "postgres://maidan:$(cat secrets/postgres_password)@maidan-postgres:5432/maidan" \
+  > secrets/database_url
+# secrets/github_token, github_webhook_secret, slack_bot_token, slack_signing_secret:
+# paste each value, one per file.
+sudo chown 65532:65532 secrets/* && sudo chmod 600 secrets/*
+```
+
+`MAIDAN_GITHUB_TOKEN` is a **personal access token** with exactly two
+repository permissions, `contents:write` and `pull_requests:write`
+(fine-grained: Contents and Pull requests, read and write), on exactly the
+repositories the change flow may write to; [Result delivery to GitHub and
+Slack](#result-delivery-to-github-and-slack) says why nothing else. Postgres's
+own password goes through the Postgres image's `POSTGRES_PASSWORD_FILE`.
+
+**4. The services.** Auth is on: nothing sets `AUTH_DISABLED`, and
+`MAIDAN_ENV=production` refuses it and the development KEK outright. With
+`production` the session cookie is `Secure`, so reach the board over HTTPS or
+on `localhost`; bearer tokens work either way.
+
+```yaml
+services:
+  maidan-postgres:
+    image: maidan-postgres:${MAIDAN_TAG}
+    environment:
+      POSTGRES_USER: maidan
+      POSTGRES_DB: maidan
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [maidan_pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maidan -d maidan"]
+      interval: 2s
+      retries: 30
+
+  # The image has no /data, so a new named volume belongs to root; hand it to
+  # the server's uid before anything writes artifacts (or SQLite) there.
+  maidan-volume-init:
+    image: busybox:1.36
+    command: ["chown", "65532:65532", "/data"]
+    volumes: [maidan_data:/data]
+
+  maidan:
+    image: maidan-server:${MAIDAN_TAG}
+    depends_on:
+      maidan-postgres: { condition: service_healthy }
+      maidan-volume-init: { condition: service_completed_successfully }
+    environment:
+      MAIDAN_ENV: production
+      MAIDAN_BIND: 0.0.0.0:8080
+      ARTIFACT_BACKEND: localfs
+      ARTIFACT_LOCALFS_ROOT: /data/artifacts
+      DATABASE_URL_FILE: /run/secrets/database_url
+      MAIDAN_CONTENT_KEK_FILE: /run/secrets/content_kek
+      MAIDAN_SESSION_SECRET_FILE: /run/secrets/session_secret
+      MAIDAN_GITHUB_TOKEN_FILE: /run/secrets/github_token
+      MAIDAN_GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
+      MAIDAN_SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
+      MAIDAN_SLACK_SIGNING_SECRET_FILE: /run/secrets/slack_signing_secret
+    secrets:
+      - database_url
+      - content_kek
+      - session_secret
+      - github_token
+      - github_webhook_secret
+      - slack_bot_token
+      - slack_signing_secret
+    volumes: [maidan_data:/data]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/maidan-server", "--health-check"]
+      interval: 5s
+      retries: 30
+      start_period: 10s
+
+  # One-shot, run once by hand: `docker compose run --rm maidan-init`.
+  maidan-init:
+    image: maidan-cli:${MAIDAN_TAG}
+    profiles: [init]
+    depends_on:
+      maidan-postgres: { condition: service_healthy }
+      maidan-volume-init: { condition: service_completed_successfully }
+    command: ["init", "--workspace", "my-team", "--admin-handle", "ops"]
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+      MAIDAN_CONTENT_KEK_FILE: /run/secrets/content_kek
+    secrets: [database_url, content_kek]
+    volumes: [maidan_data:/data]
+
+secrets:
+  postgres_password: { file: ./secrets/postgres_password }
+  database_url: { file: ./secrets/database_url }
+  content_kek: { file: ./secrets/content_kek }
+  session_secret: { file: ./secrets/session_secret }
+  github_token: { file: ./secrets/github_token }
+  github_webhook_secret: { file: ./secrets/github_webhook_secret }
+  slack_bot_token: { file: ./secrets/slack_bot_token }
+  slack_signing_secret: { file: ./secrets/slack_signing_secret }
+
+volumes:
+  maidan_pg:
+  maidan_data:
+```
+
+For SQLite, drop `maidan-postgres`, its volume and password, and the
+`depends_on` entries that name it, and in both `maidan` and `maidan-init`
+replace `DATABASE_URL_FILE` and its secret with
+`DATABASE_URL: sqlite:///data/maidan.db?mode=rwc` (a path is not a secret).
+The two then share the database file through `maidan_data`.
+
+A variable set both ways (`MAIDAN_GITHUB_TOKEN` and `MAIDAN_GITHUB_TOKEN_FILE`)
+or a file that cannot be read refuses boot and names the variable. The server
+logs which variables came from files, never their values.
+
+**5. The first workspace and token.** Run init once, then start the server:
+
+```sh
+docker compose run --rm maidan-init
+docker compose up -d --wait maidan
+```
+
+Init migrates the database, creates the workspace and its admin member, and
+prints the workspace id and an admin bearer token holding every
+capability, once. Keep the token in the stack's secret store; it is the
+`token:admin` the next step needs, and the one to mint narrower agent tokens
+from. A second run refuses. No `MAIDAN_BOOTSTRAP` and no unauthenticated route
+is involved.
+
+**6. Seed the egress allowlist.** Nothing is allowed by default. Each row is
+one audited call, `POST /workspaces/{wid}/egress-targets` with
+`{surface, selector}` and a `token:admin` bearer, and writes an
+`egress_target.allow` audit row. A `github_branch` row (`owner/name@base`)
+lets the change flow commit to an agent branch of that repository and open a
+draft pull request into that base, one row per base; a `github` row
+(`owner/name`) allows result comments only; a `slack` row is a channel id. With
+example repositories:
+
+```bash
+MAIDAN=http://maidan:8080; WID=<workspace id from init>; ADMIN_TOKEN=<token from init>
+URL="$MAIDAN/workspaces/$WID/egress-targets"
+H1="Authorization: Bearer $ADMIN_TOKEN"; H2='Content-Type: application/json'
+
+curl -fsS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"example/app@dev"}'
+curl -fsS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"example/skills@main"}'
+curl -fsS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"example/app"}'
+curl -fsS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"example/skills"}'
+curl -fsS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"slack","selector":"C0123456789"}'
+```
+
+`GET "$URL"` lists the rows; `DELETE "$URL/<id>"` revokes one.
+
+**7. Smoke check.** From any container on the stack's network (the server image
+has no shell or `curl`; its own probe is `maidan-server --health-check`):
+
+```bash
+curl -fsS "$MAIDAN/health/ready"                                   # 200: database, artifacts, bus
+test "$(curl -s -o /dev/null -w '%{http_code}' "$MAIDAN/me")" = 401  # auth is on
+curl -fsS "$MAIDAN/me" -H "$H1" | jq -e --arg w "$WID" '.workspace_id == $w'
+curl -fsS "$URL" -H "$H1" | jq -e 'length >= 5'                    # the seed is in place
+```
+
+And on the Docker host, that the container's config carries paths and no
+secret (with SQLite, take `DATABASE_URL|` out of the pattern):
+
+```bash
+docker inspect "$(docker compose ps -q maidan)" --format '{{json .Config.Env}}' | jq -e \
+  'map(select(test("^(DATABASE_URL|MAIDAN_(CONTENT_KEK|SESSION_SECRET|GITHUB_TOKEN|GITHUB_WEBHOOK_SECRET|SLACK_BOT_TOKEN|SLACK_SIGNING_SECRET))="))) | length == 0'
+```
+
+**Upgrading.** Change `COMMIT`, rebuild the three images and restart the
+server; it migrates forward on boot. Back up first (see [Backup & disaster
+recovery](#backup--disaster-recovery-v26000)). Do not run init again.
 
 ## API discovery
 
@@ -690,9 +920,10 @@ take N times the rate, and a restart starts every host's budget full.
 Result delivery and the GitHub projector post with `MAIDAN_GITHUB_TOKEN`, and
 the egress worker runs only when a Slack or GitHub sender is configured: the
 GitHub sender needs `MAIDAN_GITHUB_WEBHOOK_SECRET` and `MAIDAN_GITHUB_TOKEN`,
-the Slack sender its bot token. They are read only from the server's
-environment; set them through your platform's secret mechanism like every
-other secret. Maidan never logs the token, and cuts it out of any error text
+the Slack sender its bot token. They are read from the server's environment,
+or from the files `MAIDAN_GITHUB_TOKEN_FILE` and the rest name (see
+[Environment](#environment)); set them through your platform's secret
+mechanism like every other secret. Maidan never logs the token, and cuts it out of any error text
 it records on a delivery or an audit row.
 
 **The change flow** ([Result Delivery](Result%20Delivery.md#the-change-flow-pichangeresult1--github_branch))

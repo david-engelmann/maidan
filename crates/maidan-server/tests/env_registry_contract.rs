@@ -18,6 +18,7 @@ const SERVER_CRATES: &[&str] = &[
     "maidan-artifacts",
     "maidan-auth",
     "maidan-bus",
+    "maidan-env",
     "maidan-fsm",
     "maidan-mcp",
     "maidan-observability",
