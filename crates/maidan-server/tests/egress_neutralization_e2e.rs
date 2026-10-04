@@ -124,6 +124,7 @@ fn a_hostile_status_cannot_broadcast_through_the_failure_notice() {
         ThreadId::new(),
         &EgressTarget::Slack {
             channel_id: "C0123ABCDEF".into(),
+            thread_ts: None,
         },
         &waiter,
     );

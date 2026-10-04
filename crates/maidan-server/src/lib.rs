@@ -20,6 +20,8 @@ pub mod automation_worker;
 #[cfg(feature = "bootstrap")]
 pub mod bootstrap;
 pub mod chain_verify;
+pub mod change_flow;
+pub mod change_patch;
 pub mod claim_reaper;
 pub mod config;
 pub mod consistency;

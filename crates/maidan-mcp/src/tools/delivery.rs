@@ -125,6 +125,8 @@ async fn snapshot_body(
                 .summary
                 .clone()
                 .unwrap_or_else(|| waiter.result_kind.clone()),
+            // Built from the envelope at send time.
+            EgressTarget::GithubBranch { .. } => String::new(),
         }
     } else {
         format!(

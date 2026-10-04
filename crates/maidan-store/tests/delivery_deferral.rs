@@ -269,6 +269,7 @@ async fn egress_suite(store: &dyn Store) {
             source_log_id: 1,
             target: EgressTarget::Slack {
                 channel_id: "C0123ABCDEF".into(),
+                thread_ts: None,
             },
             body: "hi".into(),
             kind: EgressKind::Projector,

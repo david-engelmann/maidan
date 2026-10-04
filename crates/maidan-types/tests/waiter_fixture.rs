@@ -119,6 +119,7 @@ fn the_authoritative_fixture_routes_to_both_surfaces() {
             },
             DeliverTarget::Slack {
                 channel: "C0123ABCDEF".into(),
+                thread_ts: None
             },
         ],
         "the producer's routing intent, parsed exactly"
@@ -150,6 +151,7 @@ fn every_fixture_target_projects_onto_a_deliverable_egress_target() {
             },
             EgressTarget::Slack {
                 channel_id: "C0123ABCDEF".into(),
+                thread_ts: None
             },
         ]
     );
@@ -169,7 +171,7 @@ fn every_fixture_target_projects_onto_a_deliverable_egress_target() {
 #[test]
 fn the_fixtures_slack_channel_is_an_id_not_a_name() {
     let r = parsed();
-    let DeliverTarget::Slack { channel } = &r.deliver_to[1] else {
+    let DeliverTarget::Slack { channel, .. } = &r.deliver_to[1] else {
         panic!("expected the second target to be slack");
     };
     assert!(

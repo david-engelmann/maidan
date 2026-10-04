@@ -413,6 +413,7 @@ pub async fn route_message_to_slack(
             source_log_id: log_id,
             target: EgressTarget::Slack {
                 channel_id: link.slack_channel_id,
+                thread_ts: None,
             },
             body: message.body.clone(),
             kind: EgressKind::Projector,

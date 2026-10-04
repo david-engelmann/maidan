@@ -685,6 +685,84 @@ take N times the rate, and a restart starts every host's budget full.
 |--------|---------|
 | `maidan_egress_retry_deferred_total{worker}` | Retries the budget deferred, by worker (`webhook`, `automation`, `egress`, `mail`). A sustained rate means a destination is getting retries as fast as the budget allows; it is not a failure count. |
 
+### Result delivery to GitHub and Slack
+
+Result delivery and the GitHub projector post with `MAIDAN_GITHUB_TOKEN`, and
+the egress worker runs only when a Slack or GitHub sender is configured: the
+GitHub sender needs `MAIDAN_GITHUB_WEBHOOK_SECRET` and `MAIDAN_GITHUB_TOKEN`,
+the Slack sender its bot token. They are read only from the server's
+environment; set them through your platform's secret mechanism like every
+other secret. Maidan never logs the token, and cuts it out of any error text
+it records on a delivery or an audit row.
+
+**The change flow** ([Result Delivery](Result%20Delivery.md#the-change-flow-pichangeresult1--github_branch))
+commits a coding result to a branch and opens a draft pull request with this
+token, so commits and pull requests are authored by the token's owner. For the
+Soundcheck flow the token is a **personal access token** with exactly two
+repository permissions, `contents:write` and `pull_requests:write` (in a
+fine-grained token: **Contents** and **Pull requests**, read and write), on
+exactly `beatgig/bgv3`, `beatgig/relay`, `beatgig/dawn`,
+`beatgig/wax` and `beatgig/agent-skills`. Grant nothing else. The flow stops at
+a draft pull request: it requests no review and needs no approval (a token
+owner cannot approve their own pull request), and Soundcheck marks the pull
+request ready. The comment and check-run paths use the same token; a check run
+needs `checks:write`, which a personal access token does not carry, so the
+check run fails and the comment still posts.
+
+**Guards in Maidan's code, whatever the token can do.** The token may be able
+to push anywhere in those repositories, so the limits are enforced by Maidan,
+not by GitHub settings, and none of them is configurable:
+
+- The only ref Maidan creates or moves is the target branch, and it must match
+  `feature/agent-[a-z0-9][a-z0-9-]*`. `prod`, `main`, `master`, `staging` and
+  `dev` are never written. A branch is never its own base.
+- `prod` is never a base, for any repository; the allowlist refuses to bless it.
+- A pull request is opened only into the base the allowlist names for that
+  repository. An open pull request for the branch into any other base refuses
+  the change before anything is written.
+- Branch moves are fast-forwards (`force: false`). Maidan has no code that
+  merges, marks a pull request ready, requests a review, deletes a branch or
+  changes repository settings or protection.
+
+A refused change is recorded as `skipped` with the reason on the delivery
+(`GET /threads/:id/deliveries`) and said in the Slack thread.
+
+**Seed the allowlist.** Nothing is blessed by default, and nothing seeds it in
+code. Each blessing is one audited `token:admin` call,
+`POST /workspaces/:wid/egress-targets`, made by an operator per workspace. A
+`github_branch` selector is `owner/name@base`: the repository and the one base
+change pull requests into it may target (one row per base). A `github` row is
+the repository alone and allows result comments only, never commits. For the
+Soundcheck workspace, with `$SLACK_CHANNEL` the channel id (`C…`) the
+`!change` command runs in, the seed is these eleven calls:
+
+```bash
+H1="Authorization: Bearer $ADMIN_TOKEN"; H2='Content-Type: application/json'
+URL="$MAIDAN/workspaces/$WORKSPACE_ID/egress-targets"
+
+# Commits and draft pull requests: agent-skills into main, the rest into dev.
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/agent-skills@main"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/bgv3@dev"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/relay@dev"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/dawn@dev"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/wax@dev"}'
+
+# Result comments on a pull request (the review loop). These allow no commits.
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/agent-skills"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/bgv3"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/relay"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/dawn"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/wax"}'
+
+# The Slack channel the replies go to; a thread_ts needs no row of its own.
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d "{\"surface\":\"slack\",\"selector\":\"$SLACK_CHANNEL\"}"
+```
+
+Each call writes an `egress_target.allow` audit row. `GET
+/workspaces/$WORKSPACE_ID/egress-targets` lists the blessings and `DELETE
+…/egress-targets/:tid` revokes one; a revoked branch row stops a change that
+is already queued, because the allowlist is checked again before the write.
+
 ### Agent observability (`v76.0.0`)
 
 Scrape `GET /metrics` for agent-substrate health (see [Integration](Integration.md)). Gate e2e: `agent_substrate_gate_e2e.rs`.

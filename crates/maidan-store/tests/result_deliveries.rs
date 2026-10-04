@@ -64,6 +64,7 @@ fn github() -> EgressTarget {
 fn slack() -> EgressTarget {
     EgressTarget::Slack {
         channel_id: "C0123ABCDEF".into(),
+        thread_ts: None,
     }
 }
 

@@ -30,6 +30,7 @@ fn slack(ws: WorkspaceId, thread: ThreadId, log_id: i64, body: &str) -> NewEgres
         source_log_id: log_id,
         target: EgressTarget::Slack {
             channel_id: "C0123ABCDEF".into(),
+            thread_ts: None,
         },
         body: body.into(),
         kind: EgressKind::Projector,
@@ -80,7 +81,8 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(
         claimed.target(),
         Some(EgressTarget::Slack {
-            channel_id: "C0123ABCDEF".into()
+            channel_id: "C0123ABCDEF".into(),
+            thread_ts: None
         }),
         "the stored (surface, selector) pair decodes back to the enqueued target"
     );
@@ -385,6 +387,7 @@ async fn run_dlq_scope_suite(store: &dyn Store) {
                 source_log_id: 900_100 + i as i64,
                 target: EgressTarget::Slack {
                     channel_id: channel_id.into(),
+                    thread_ts: None,
                 },
                 body: "b".into(),
                 kind: EgressKind::Projector,
