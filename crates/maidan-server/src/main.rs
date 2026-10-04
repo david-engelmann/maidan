@@ -76,8 +76,7 @@ async fn run_health_check() -> anyhow::Result<()> {
     anyhow::bail!("{url} returned {}", response.status())
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     // Before anything is loaded: this invocation talks to an already-running
     // server rather than becoming one.
     //
@@ -86,15 +85,34 @@ async fn main() -> anyhow::Result<()> {
     // is how a container health check running `maidan-server --health-check`
     // against an older binary bound the port a second time and reported the
     // container unhealthy forever.
-    match classify_args(std::env::args().skip(1)) {
-        Invocation::HealthCheck => return run_health_check().await,
-        Invocation::Unknown(arg) => anyhow::bail!(
+    let invocation = classify_args(std::env::args().skip(1));
+    if let Invocation::Unknown(arg) = &invocation {
+        anyhow::bail!(
             "unrecognised argument `{arg}`. maidan-server takes no arguments \
              except --health-check; it is configured through the environment."
-        ),
-        Invocation::Serve => {}
+        );
     }
+    // Secret files become plain variables here, before the runtime starts a
+    // thread that could read the environment while it is written. The probe
+    // reads no secret, so a missing secret file cannot fail a health check.
+    let from_files = if invocation == Invocation::Serve {
+        maidan_env::load_secret_files().context("read secret files")?
+    } else {
+        Vec::new()
+    };
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("start the async runtime")?
+        .block_on(async {
+            match invocation {
+                Invocation::Serve => serve(from_files).await,
+                _ => run_health_check().await,
+            }
+        })
+}
 
+async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // A misspelt variable would otherwise configure nothing and say nothing.
     let unknown_env = maidan_env::unknown_vars(
         std::env::vars_os().map(|(name, _)| name.to_string_lossy().into_owned()),
@@ -128,6 +146,9 @@ async fn main() -> anyhow::Result<()> {
         bind = %config.bind,
         "maidan-server starting"
     );
+    if !from_files.is_empty() {
+        tracing::info!(variables = ?from_files, "secrets read from *_FILE paths");
+    }
 
     maidan_server::metrics::init();
 

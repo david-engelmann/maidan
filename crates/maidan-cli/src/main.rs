@@ -111,8 +111,18 @@ fn unknown_env() -> anyhow::Result<Vec<maidan_env::UnknownVar>> {
     Ok(unknown)
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    // Before the runtime starts a thread that could read the environment while
+    // it is written, and before clap reads `DATABASE_URL` from it.
+    maidan_env::load_secret_files().context("read secret files")?;
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("start the async runtime")?
+        .block_on(run())
+}
+
+async fn run() -> anyhow::Result<()> {
     let unknown_env = unknown_env()?;
     tracing_subscriber::fmt()
         .with_env_filter(std::env::var("MAIDAN_LOG").unwrap_or_else(|_| "info,sqlx=warn".into()))
