@@ -96,7 +96,8 @@ fn main() -> anyhow::Result<()> {
     // thread that could read the environment while it is written. The probe
     // reads no secret, so a missing secret file cannot fail a health check.
     let from_files = if invocation == Invocation::Serve {
-        maidan_env::load_secret_files().context("read secret files")?
+        // SAFETY: no runtime or other thread has started yet.
+        unsafe { maidan_env::load_secret_files() }.context("read secret files")?
     } else {
         Vec::new()
     };

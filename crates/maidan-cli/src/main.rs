@@ -114,7 +114,8 @@ fn unknown_env() -> anyhow::Result<Vec<maidan_env::UnknownVar>> {
 fn main() -> anyhow::Result<()> {
     // Before the runtime starts a thread that could read the environment while
     // it is written, and before clap reads `DATABASE_URL` from it.
-    maidan_env::load_secret_files().context("read secret files")?;
+    // SAFETY: no runtime or other thread has started yet.
+    unsafe { maidan_env::load_secret_files() }.context("read secret files")?;
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

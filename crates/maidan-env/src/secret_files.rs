@@ -92,10 +92,14 @@ pub fn resolve_secret_files(
 }
 
 /// Resolve every `_FILE` variable in this process's environment into its plain
-/// variable and return the plain names that were filled. Call it first thing in
-/// `main`, before a runtime or any other thread starts: setting a variable is
-/// only sound while nothing else can be reading the environment.
-pub fn load_secret_files() -> Result<Vec<&'static str>, SecretFileError> {
+/// variable and return the plain names that were filled.
+///
+/// # Safety
+///
+/// No other thread may read or write the process environment while this runs,
+/// since it calls `std::env::set_var`. Calling it first thing in `main`, before
+/// an async runtime or any other thread starts, meets this.
+pub unsafe fn load_secret_files() -> Result<Vec<&'static str>, SecretFileError> {
     let resolved = resolve_secret_files(|name| std::env::var_os(name))?;
     Ok(resolved
         .into_iter()

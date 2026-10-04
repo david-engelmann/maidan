@@ -343,8 +343,7 @@ Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 ## One instance built from `main`
 
 The quickstart and the release images run a tagged release. A shared instance
-that tracks `main`, such as the one in a team's dev-tools compose stack, is
-built from the repository at a pinned commit instead. The stack that runs it
+that tracks `main` is built from the repository at a pinned commit instead. The stack that runs it
 lives outside this repository; this section is what it needs from here.
 
 **1. Build the images at one commit.** Record the full commit SHA where the
@@ -479,7 +478,7 @@ services:
     depends_on:
       maidan-postgres: { condition: service_healthy }
       maidan-volume-init: { condition: service_completed_successfully }
-    command: ["init", "--workspace", "dev-tools", "--admin-handle", "ops"]
+    command: ["init", "--workspace", "my-team", "--admin-handle", "ops"]
     environment:
       DATABASE_URL_FILE: /run/secrets/database_url
       MAIDAN_CONTENT_KEK_FILE: /run/secrets/content_kek
