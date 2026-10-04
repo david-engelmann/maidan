@@ -1593,6 +1593,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### A context delta says when the prefix must be replaced
 
 - **Fixed:** A `message_cursor` delta with `since_prefix_sha` returns the messages after the cursor only when appending them, and their edits, rebuilds a prefix that hashes to `prefix_sha256`. A change outside those messages (a glossary term, an accepted decision, a reference, an artifact, a transition, a change request, an earlier edit, or the elision boundary) returns the replacement prefix instead, so a client cache cannot drift. The first MCP content part of a delta is that head, never an empty string. A cursor with no prefix sha is still the message slice the caller asked for.
+### Usage ledger that prices caching
+
+- **Added:** `input` is uncached input. Cache writes are a 5-minute tier and a 1-hour tier, each with its own snapshotted rate. A usage row stores the provider, response model id, service tier, batch flag, harness and version, cache key, cache-miss reason, and the sha256 of each pack.
+- **Added:** `GET /threads/{id}/usage-rollup`, `GET /workspaces/{id}/usage-rollup`, `GET /members/{id}/usage-rollup`, and MCP `usage_rollup` report spend, hit rate, write share, dollars saved against the uncached price, and cost per completed task. `POST /threads/{id}/usage/otel` accepts GenAI usage attributes; the caller still supplies the price snapshot.
+- **Added:** Prometheus counters for accepted tokens by tier, the charge, the uncached charge, dollars saved, and write premium. The model id stays on the ledger row and is not a metric label. The manager digest includes the workspace spend and cost per completed task.
+- **Changed:** `max_tokens` counts fresh tokens only (uncached input, output, and cache writes). Cache reads count toward `max_usd_micros` at their price. The budget shows each tier. Decisions, 2026-10-03.
+- **Fixed:** OpenTelemetry provider names `aws.bedrock`, `azure.ai.openai`, `azure.ai.inference`, `gcp.gemini`, `gcp.gen_ai`, `mistral_ai`, and `x_ai` use the same uncached-input rule as their short names. `gcp.vertex_ai` is not classified, because Vertex serves both inclusive and exclusive usage.
 
 ### Re-installing a revoked app reuses its bot member
 

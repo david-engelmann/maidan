@@ -179,6 +179,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_votes",
     "parse_maidan_uri",
     "search_messages",
+    "usage_rollup",
     "verify_event_chain",
     "verify_workspace_export",
     "wait_for_blocked_resolved",
@@ -311,6 +312,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "mute_channel"
         | "unmute_channel"
         | "get_thread_budget"
+        | "usage_rollup"
         | "list_dlq"
         | "get_glossary_term"
         | "list_glossary_terms"
@@ -575,6 +577,7 @@ const MEMBER_WORK_STATE_TOOLS: &[&str] = &[
     "get_member_wip",
     "list_assigned_threads",
     "get_member",
+    "usage_rollup",
 ];
 
 /// Tools where `member_id` is the object of an administrative or routing
@@ -758,6 +761,7 @@ async fn enforce_channel_access(
         | "update_thread_budget"
         | "get_thread_budget"
         | "report_usage"
+        | "usage_rollup"
         | "list_child_threads"
         | "mute_thread"
         | "unmute_thread"
@@ -891,6 +895,7 @@ pub async fn dispatch(
         "update_thread_budget" => budget::update_thread_budget(store, args).await,
         "get_thread_budget" => budget::get_thread_budget(store, args).await,
         "report_usage" => budget::report_usage(server, auth, args).await,
+        "usage_rollup" => budget::usage_rollup(server, auth, args).await,
         "list_dlq" => budget::list_dlq(store, args).await,
         "get_tool_transcript" => thread::get_tool_transcript(store, args).await,
         "assign_thread" => thread::assign_thread(server, auth, args).await,

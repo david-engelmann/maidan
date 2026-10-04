@@ -1988,8 +1988,8 @@ uncached input, output and cache writes. Cache reads count toward
 `max_usd_micros` at their own price and are shown in the budget's tier
 breakdown, but do not count toward `max_tokens`.
 
-**Alternative.** Count all four tiers one-for-one, as `TokenUsage::total()`
-does today.
+**Alternative.** Count every tier one-for-one, which is what the removed
+`TokenUsage::total()` did.
 
 **Why this:** at Anthropic, OpenAI, Gemini, Bedrock and Mistral a cache read
 costs a tenth of an input token or less (0.05x on Opus 5.5, 0.025x on Fable
@@ -1998,7 +1998,9 @@ cached context on every turn would otherwise exhaust its token budget four to
 forty times faster than its spend, which punishes exactly
 the behaviour Program C asks for. The dollar budget already prices reads.
 
-**Status.** Part of Open Work Next 4 (the ledger that can price caching).
+**Status.** Enforced. `TokenUsage::fresh` is what `max_tokens` counts.
+Cache reads are stored on the budget's tier breakdown and priced only into
+`max_usd_micros`.
 
 
 ### A profile lists tools the token cannot call; the call is refused (2026-10-03)

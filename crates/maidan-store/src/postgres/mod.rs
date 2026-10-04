@@ -86,7 +86,7 @@ mod threads;
 mod token_quotas;
 mod tokens;
 mod unclaimable;
-mod usage_ledger;
+pub(super) mod usage_ledger;
 mod votes;
 mod waits;
 mod web_push_outbox;

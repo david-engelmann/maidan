@@ -222,6 +222,7 @@
   "update_thread_budget",
   "upload_artifact",
   "upload_artifact_multipart_part",
+  "usage_rollup",
   "verify_event_chain",
   "verify_workspace_export",
   "wait_for_blocked_resolved",

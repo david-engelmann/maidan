@@ -113,6 +113,14 @@ fn manager_body(
             channel.results, channel.gates, channel.stuck
         ));
     }
+    let cost = digest
+        .cost_per_completed_task_usd_micros
+        .map(|micros| micros.to_string())
+        .unwrap_or_else(|| "n/a".to_string());
+    body.push_str(&format!(
+        "\nWorkspace spend: {} micro-USD. Cost per completed task: {cost} micro-USD.\n",
+        digest.spend_usd_micros
+    ));
     if !decisions.is_empty() {
         body.push('\n');
         body.push_str(&decisions_body(decisions, unread_count));
@@ -163,9 +171,13 @@ pub async fn sweep_once(state: &AppState) -> u32 {
                 member_id: member.member_id,
                 since,
                 channels: Vec::new(),
+                spend_usd_micros: 0,
+                cost_per_completed_task_usd_micros: None,
             });
         let subject = digest_subject();
-        let body = if !manager.channels.is_empty() {
+        let has_spend =
+            manager.spend_usd_micros > 0 || manager.cost_per_completed_task_usd_micros.is_some();
+        let body = if !manager.channels.is_empty() || has_spend {
             manager_body(&manager, &decisions, member.unread_count)
         } else if decisions.is_empty() {
             digest_body(member.unread_count)

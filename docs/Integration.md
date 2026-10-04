@@ -1164,12 +1164,24 @@ partial merge is atomic, so two callers changing different dimensions do not
 need a read-modify-write sequence.
 
 `report_usage` takes `thread_id`, a globally unique `usage_report_id`, the
-current `claim_lease_id`, `model`, four explicit token tiers (`input`, `output`,
-`cache_read`, `cache_write`), their four snapshotted micro-USD-per-million
-rates, the resulting `usd_micros`, and optional `turns`. Maidan verifies
-`usd_micros = ceil(sum(tokens × rate) / 1_000_000)`. It derives the reporter
-from authentication and the payer from the thread; neither identity is a caller
-field.
+current `claim_lease_id`, `model`, and five token tiers. `input` is uncached
+input. Cache writes are `cache_write_5m` and `cache_write_1h`. Each tier has
+its own snapshotted micro-USD-per-million rate. The call also takes the
+resulting `usd_micros`, optional `turns`, and optional evidence (provider,
+service tier, batch, harness and version, cache key, cache-miss reason, and
+the sha256 of each pack). Maidan verifies
+`usd_micros = ceil(sum(tokens × rate) / 1_000_000)`. A token budget counts
+fresh tokens only: uncached input, output, and both write tiers. Cache reads
+are priced into the dollar budget and do not count toward `max_tokens`. It
+derives the reporter from authentication and the payer from the thread;
+neither identity is a caller field.
+
+`usage_rollup` (and `GET /threads/{id}/usage-rollup`,
+`GET /workspaces/{id}/usage-rollup`, `GET /members/{id}/usage-rollup`) reports
+spend, hit rate, write share, dollars saved against the uncached price, and
+cost per completed task. `POST /threads/{id}/usage/otel` accepts the same
+heartbeat with token counts taken from GenAI usage attributes; the price
+snapshot is still the caller's, and Maidan computes `usd_micros`.
 
 Keep `usage_report_id` stable across a transport retry. The exact same request
 returns its original ledger outcome without charging or emitting again; reuse

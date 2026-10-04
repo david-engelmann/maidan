@@ -111,6 +111,21 @@ pub fn import_workspace() {}
 )]
 pub fn get_workspace_usage() {}
 
+/// Usage rollup for one workspace
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/usage-rollup",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = UsageRollup),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn get_workspace_usage_rollup() {}
+
 /// List a workspace's withdrawn messages
 #[utoipa::path(
     get,

@@ -496,6 +496,9 @@ pub trait UsageLedgerStore: Send + Sync {
         thread_id: ThreadId,
         limit: i64,
     ) -> Result<Vec<UsageLedgerEntry>, StoreError>;
+    /// Spend, cache shape, and cost per completed task. A thread or member
+    /// outside the named workspace is `NotFound`.
+    async fn usage_rollup(&self, query: UsageRollupQuery) -> Result<UsageRollup, StoreError>;
 }
 
 #[async_trait]
