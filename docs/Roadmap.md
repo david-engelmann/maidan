@@ -59,8 +59,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    work started on: a Slack thread is answered in Slack, a PR comment on the
    PR. Maidan's `github_branch` delivery, the threaded Slack reply and the
    audited allowlist seed, on David's personal PAT, are on `main` (#1245).
-   What remains is Open Work Next 1, one instance built from `main` in Pi's
-   dev-tools stack. The contract is beatgig/soundcheck's
+   One instance built from `main` in Pi's dev-tools stack is documented, with
+   secrets read from files (#1247) and app re-install (#1248). The contract is beatgig/soundcheck's
    `docs/cross-repo/change-flow.md`.
 2. **Agents coordinate at workspace scale.** A verdict reaches the worker as an
    event (#1132), a hung agent's time is charged against its budget (#1139),
@@ -115,8 +115,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    dive of 2026-10-03: the human supervising agents is the user, and silence
    is a state. Needs-you tells the truth when it fails, sign-in is honest,
    review and blocked work always reach a person, agents declare their own
-   status, and an approval binds the evidence it showed (Open Work Next 2 to
-   13). Then the review findings and screenshots captured by a script.
+   status, and an approval binds the evidence it showed (Open Work Next 1 to
+   12). Then the review findings and screenshots captured by a script.
 6. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
@@ -127,14 +127,14 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    MCP 2026-07-28 conformance and the worker and reviewer tool profiles are
    on `main` (#1239, #1240). The canonical pack is on `main` (#1241); the
    ledger is in flight (#1242). Next: workspace queue depth and the SDK normalizers (Open
-   Work Next 24 and 25).
+   Work Next 23 and 24).
    The research behind it is kept in the [archive](archive/Context%20Economics%20research%202026-10/README.md).
 7. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
    room itself staying open source. An operator can open a
    second workspace with `POST /operator/workspaces`, without `MAIDAN_BOOTSTRAP` (#1208).
    Signup and a hosted console are not started.
-   The connected-apps program is the discovery half. The maintainer chose its fast track on 2026-10-03, lanes 1 to 7 with no authorization server (a Gemini CLI extension, a Copilot CLI plugin, the MCP registries and catalogs, a listing asset pack with a demo instance for reviewers, connect recipes, Muse behind the Dawn outcome, and Cursor). Nothing is submitted until the maintainer says go, and every submission is validated first. Self-hosting stays the product, the authorization server and the ChatGPT and full-OAuth Claude listings are parked, and no enterprise track starts until the consumer lanes measure (Open Work Next 15 to Next 22 and Later CA).
+   The connected-apps program is the discovery half. The maintainer chose its fast track on 2026-10-03, lanes 1 to 7 with no authorization server (a Gemini CLI extension, a Copilot CLI plugin, the MCP registries and catalogs, a listing asset pack with a demo instance for reviewers, connect recipes, Muse behind the Dawn outcome, and Cursor). Nothing is submitted until the maintainer says go, and every submission is validated first. Self-hosting stays the product, the authorization server and the ChatGPT and full-OAuth Claude listings are parked, and no enterprise track starts until the consumer lanes measure (Open Work Next 14 to Next 21 and Later CA).
 
 ## What Maidan will not become
 
