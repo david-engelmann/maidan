@@ -29,8 +29,9 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    parse_waiter_result, status, DeliverTarget, EgressKind, EgressTarget, GithubReviewComment,
-    NewEgressOutbox, ResultDelivery, ThreadId, WaiterResult, WorkspaceId,
+    parse_change_result, parse_waiter_result, status, DeliverTarget, EgressKind, EgressTarget,
+    ExternalRef, GithubReviewComment, NewEgressOutbox, ResultDelivery, ThreadId, WaiterResult,
+    WorkspaceId, PI_CHANGE_RESULT_KIND,
 };
 use tracing::{debug, warn};
 
@@ -84,12 +85,21 @@ pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &Waiter
             // truncates either way, reserving the marker in the budget.
             github_result_comment_body(thread_id, &inner, backlink)
         }
-        EgressTarget::Slack { .. } => crate::egress_body::truncate_with_tail(
-            &crate::egress_body::neutralize_slack_mentions(&inner),
-            crate::egress_body::SLACK_BODY_MAX_CHARS,
-            None,
-        ),
+        EgressTarget::Slack { .. } => slack_body(&inner),
+        // The commit and pull request are built from the envelope at send
+        // time; this is only what the outbox row says it carries.
+        EgressTarget::GithubBranch { repo, branch } => {
+            format!("{} for {repo}@{branch}", waiter.result_kind)
+        }
     }
+}
+
+fn slack_body(text: &str) -> String {
+    crate::egress_body::truncate_with_tail(
+        &crate::egress_body::neutralize_slack_mentions(text),
+        crate::egress_body::SLACK_BODY_MAX_CHARS,
+        None,
+    )
 }
 
 fn reviewed_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
@@ -121,6 +131,7 @@ fn reviewed_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
                 .unwrap_or_default();
             slack_message_body(summary, &digest, backlink)
         }
+        EgressTarget::GithubBranch { .. } => String::new(),
     }
 }
 
@@ -156,7 +167,13 @@ pub async fn route_thread_result(
     if waiter.deliver_to.is_empty() {
         return Ok(());
     }
-    for target in &waiter.deliver_to {
+    // Branch targets arm first: a change's Slack reply reads their rows, so
+    // they must exist before the reply can be claimed.
+    let (branches, others): (Vec<&DeliverTarget>, Vec<&DeliverTarget>) = waiter
+        .deliver_to
+        .iter()
+        .partition(|t| matches!(t, DeliverTarget::GithubBranch { .. }));
+    for target in branches.into_iter().chain(others) {
         if let Err(err) = route_one(
             state,
             log_id,
@@ -228,16 +245,24 @@ async fn route_one(
             skip_unroutable(state, thread_id, &surface, &selector, revision, &reason).await
         }
         Some(egress) => {
+            // The hard-coded branch rules come before the allowlist: no
+            // blessing can make `main` or a `prod` base writable.
+            if let DeliverTarget::GithubBranch { branch, base, .. } = target {
+                if let Err(reason) = maidan_types::check_change_target(branch, base) {
+                    return skip_routable(state, thread_id, &egress, revision, &reason).await;
+                }
+            }
+            let selector = target
+                .allowlist_selector()
+                .unwrap_or_else(|| egress.allowlist_selector());
             let allowed = state
                 .store
-                .is_egress_target_allowed(
-                    workspace_id,
-                    egress.surface(),
-                    &egress.allowlist_selector(),
-                )
+                .is_egress_target_allowed(workspace_id, egress.surface(), &selector)
                 .await
                 .map_err(|e| e.to_string())?;
-            if allowed {
+            if let Some(reason) = allowed.then(|| no_change_reason(&egress, waiter)).flatten() {
+                skip_routable(state, thread_id, &egress, revision, &reason).await
+            } else if allowed {
                 enqueue_routable(
                     state,
                     log_id,
@@ -260,6 +285,131 @@ async fn route_one(
             }
         }
     }
+}
+
+/// Why a blessed `github_branch` target still gets no GitHub write: only a
+/// [`PI_CHANGE_RESULT_KIND`] with status `changed` is committed.
+fn no_change_reason(target: &EgressTarget, waiter: &WaiterResult) -> Option<String> {
+    if !matches!(target, EgressTarget::GithubBranch { .. }) {
+        return None;
+    }
+    if waiter.result_kind != PI_CHANGE_RESULT_KIND {
+        return Some(format!(
+            "result kind `{}` carries no change to commit",
+            waiter.result_kind
+        ));
+    }
+    (waiter.status != maidan_types::CHANGE_STATUS_CHANGED).then(|| {
+        format!(
+            "status `{}`: nothing to commit, so no GitHub write",
+            waiter.status
+        )
+    })
+}
+
+/// The Slack reply to a change result, which reports what happened on GitHub.
+pub enum ChangeReply {
+    /// Not a change result: the ordinary body applies.
+    NotAChange,
+    /// A branch delivery for this result has not finished yet.
+    Waiting,
+    Ready(String),
+}
+
+/// How long a change's Slack reply waits for its branch delivery. The branch's
+/// own retries give up within about two hours (eight attempts, backoff capped
+/// at an hour); past this the reply says the commit has not landed rather
+/// than waiting on a row that may never settle.
+pub const CHANGE_REPLY_MAX_WAIT: chrono::Duration = chrono::Duration::hours(6);
+
+/// Build the Slack reply to a [`PI_CHANGE_RESULT_KIND`] from its
+/// `github_branch` deliveries: the commit and pull request when one landed,
+/// the recorded reason when it did not, and the status alone when Pi reported
+/// anything other than `changed`.
+pub async fn change_reply(state: &AppState, thread_id: ThreadId) -> ChangeReply {
+    change_reply_at(state, thread_id, Utc::now()).await
+}
+
+/// [`change_reply`] as of `now`, which bounds the wait.
+pub async fn change_reply_at(
+    state: &AppState,
+    thread_id: ThreadId,
+    now: DateTime<Utc>,
+) -> ChangeReply {
+    let Ok(Some(stored)) = state.store.get_thread_result(thread_id).await else {
+        return ChangeReply::NotAChange;
+    };
+    let (Some(waiter), Some(change)) = (
+        parse_waiter_result(&stored.result),
+        parse_change_result(&stored.result),
+    ) else {
+        return ChangeReply::NotAChange;
+    };
+    let mut lines = Vec::new();
+    if !change.is_changed() {
+        lines.push(format!(
+            "Pi finished with status `{}`, so nothing was committed.",
+            change.status
+        ));
+        if let Some(summary) = &change.summary {
+            lines.push(summary.clone());
+        }
+        return ChangeReply::Ready(slack_body(&lines.join("\n")));
+    }
+    let gave_up = now - stored.produced_at > CHANGE_REPLY_MAX_WAIT;
+    let unsettled = |repo: &str, branch: &str| {
+        format!(
+            "Nothing has landed on `{branch}` in {repo} after {} hours; the delivery status has the latest.",
+            CHANGE_REPLY_MAX_WAIT.num_hours()
+        )
+    };
+    for target in &waiter.deliver_to {
+        let DeliverTarget::GithubBranch { repo, branch, .. } = target else {
+            continue;
+        };
+        let Some(egress) = target.to_egress_target() else {
+            lines.push(format!(
+                "Nothing was committed to `{branch}` in {repo}: the target is not usable."
+            ));
+            continue;
+        };
+        let row = match state.store.get_result_delivery(thread_id, &egress).await {
+            Ok(Some(row)) if row.armed_revision >= stored.produced_at => row,
+            Ok(_) => {
+                lines.push(format!(
+                    "Nothing was committed to `{branch}` in {repo}: the delivery was not recorded."
+                ));
+                continue;
+            }
+            Err(_) if gave_up => {
+                lines.push(unsettled(repo, branch));
+                continue;
+            }
+            Err(_) => return ChangeReply::Waiting,
+        };
+        match (row.status.as_str(), row.reference()) {
+            (status::PENDING, _) if gave_up => lines.push(unsettled(repo, branch)),
+            (status::PENDING, _) => return ChangeReply::Waiting,
+            (
+                status::DELIVERED,
+                Some(ExternalRef::GithubBranch {
+                    commit_sha,
+                    pull_number,
+                    ..
+                }),
+            ) => lines.push(format!(
+                "Committed {commit_sha} to `{branch}` in {repo}. Draft PR: https://github.com/{repo}/pull/{pull_number}"
+            )),
+            _ => lines.push(format!(
+                "Nothing was committed to `{branch}` in {repo}: {}",
+                row.last_error.as_deref().unwrap_or("the delivery did not land")
+            )),
+        }
+    }
+    if lines.is_empty() {
+        lines.push("The result named no `github_branch` target, so nothing was committed.".into());
+    }
+    ChangeReply::Ready(slack_body(&lines.join("\n")))
 }
 
 async fn skip_routable(
@@ -473,6 +623,7 @@ mod tests {
     fn slack() -> EgressTarget {
         EgressTarget::Slack {
             channel_id: "C0123ABCDEF".into(),
+            thread_ts: None,
         }
     }
 

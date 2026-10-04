@@ -130,9 +130,28 @@ pub struct EgressSweepStats {
     pub retried: u32,
     pub dead: u32,
     pub disabled: u32,
-    /// Retries the retry budget held back: rescheduled, not attempted.
+    /// Retries the retry budget held back, and change replies still waiting
+    /// on their branch delivery: rescheduled, not attempted.
     pub deferred: u32,
+    /// Changes the flow refused (recorded as skipped, never retried).
+    pub refused: u32,
 }
+
+/// What a delivery attempt that did not fail came to.
+enum Sent {
+    /// It reached the surface; the handle (if any) is how to edit it later.
+    Landed(Option<ExternalRef>),
+    /// A change the flow refused (the branch moved, the diff does not apply):
+    /// final, recorded as a skip with the reason, and never retried.
+    Refused(String),
+    /// A change's Slack reply whose branch delivery has not finished: handed
+    /// back unsent, without costing an attempt.
+    Waiting,
+}
+
+/// How long a change's Slack reply waits before looking at its branch
+/// delivery again.
+const WAITING_RECHECK_SECS: i64 = 5;
 
 /// A failed delivery attempt: what to record, and whether retrying could ever
 /// help. A `misconfiguration` is a wrong token, a revoked scope, a channel that
@@ -152,11 +171,13 @@ async fn deliver(
     state: &AppState,
     entry: &EgressOutbox,
     target: &EgressTarget,
-) -> Result<Option<ExternalRef>, DeliveryFailure> {
+) -> Result<Sent, DeliveryFailure> {
     if entry.kind == EgressKind::Result {
         return deliver_result(state, entry, target).await;
     }
-    deliver_projector(state, target, &entry.body).await
+    deliver_projector(state, target, &entry.body)
+        .await
+        .map(Sent::Landed)
 }
 
 /// Linked-thread projector egress: always a fresh post. Update-in-place is a
@@ -168,7 +189,7 @@ async fn deliver_projector(
     body: &str,
 ) -> Result<Option<ExternalRef>, DeliveryFailure> {
     match target {
-        EgressTarget::Slack { channel_id } => {
+        EgressTarget::Slack { channel_id, .. } => {
             let Some(sender) = state.slack_sender.as_ref() else {
                 return Err(DeliveryFailure {
                     message: "no slack sender configured".into(),
@@ -213,6 +234,12 @@ async fn deliver_projector(
                 }
             }
         }
+        // Only a result can aim at a branch; a projector row naming one is
+        // corrupt, and no retry fixes that.
+        EgressTarget::GithubBranch { .. } => Err(DeliveryFailure {
+            message: "github_branch is not a projector surface".into(),
+            misconfiguration: true,
+        }),
     }
 }
 
@@ -220,7 +247,10 @@ async fn deliver_result(
     state: &AppState,
     entry: &EgressOutbox,
     target: &EgressTarget,
-) -> Result<Option<ExternalRef>, DeliveryFailure> {
+) -> Result<Sent, DeliveryFailure> {
+    if let EgressTarget::GithubBranch { repo, branch } = target {
+        return github_branch_result(state, entry, repo, branch).await;
+    }
     let row = match state
         .store
         .get_result_delivery(entry.thread_id, target)
@@ -241,10 +271,156 @@ async fn deliver_result(
         .unwrap_or_else(|| entry.body.clone());
     match target {
         EgressTarget::Github { repo, issue_number } => {
-            github_result(state, entry, row.as_ref(), repo, *issue_number, &body).await
+            github_result(state, entry, row.as_ref(), repo, *issue_number, &body)
+                .await
+                .map(Sent::Landed)
         }
-        EgressTarget::Slack { channel_id } => {
-            slack_result(state, row.as_ref(), channel_id, &body).await
+        EgressTarget::Slack {
+            channel_id,
+            thread_ts,
+        } => {
+            let body = match crate::result_delivery::change_reply(state, entry.thread_id).await {
+                crate::result_delivery::ChangeReply::Waiting => return Ok(Sent::Waiting),
+                crate::result_delivery::ChangeReply::Ready(reply) => reply,
+                crate::result_delivery::ChangeReply::NotAChange => body,
+            };
+            slack_result(state, row.as_ref(), channel_id, thread_ts.as_deref(), &body)
+                .await
+                .map(Sent::Landed)
+        }
+        EgressTarget::GithubBranch { .. } => Err(DeliveryFailure {
+            message: "github_branch is delivered by the change flow".into(),
+            misconfiguration: true,
+        }),
+    }
+}
+
+/// Commit a change result to its branch and open its draft pull request.
+///
+/// The commit is built from the envelope as it is now: `base_sha`, the diff
+/// and the PR's `base` all come from the result, never from the outbox
+/// snapshot or the thread. A result that is gone, or no longer a change for
+/// this branch, is refused rather than retried.
+async fn github_branch_result(
+    state: &AppState,
+    entry: &EgressOutbox,
+    repo: &str,
+    branch: &str,
+) -> Result<Sent, DeliveryFailure> {
+    let Some(sender) = state.github_sender.as_ref() else {
+        return Err(DeliveryFailure {
+            message: "no github sender configured".into(),
+            misconfiguration: false,
+        });
+    };
+    let Some(git) = sender.git() else {
+        return Err(DeliveryFailure {
+            message: "the github sender cannot write branches".into(),
+            misconfiguration: true,
+        });
+    };
+    let stored = match state.store.get_thread_result(entry.thread_id).await {
+        Ok(Some(stored)) => stored,
+        Ok(None) => {
+            return Ok(Sent::Refused(
+                "the result is no longer on the thread".into(),
+            ))
+        }
+        Err(err) => {
+            return Err(DeliveryFailure {
+                message: err.to_string(),
+                misconfiguration: false,
+            })
+        }
+    };
+    let Some(change) = maidan_types::parse_change_result(&stored.result) else {
+        return Ok(Sent::Refused(
+            "the result on the thread is not a change result".into(),
+        ));
+    };
+    let base = maidan_types::parse_waiter_result(&stored.result).and_then(|waiter| {
+        waiter
+            .deliver_to
+            .into_iter()
+            .find_map(|target| match target {
+                maidan_types::DeliverTarget::GithubBranch {
+                    repo: r,
+                    branch: b,
+                    base,
+                } if r == repo && b == branch => Some(base),
+                _ => None,
+            })
+    });
+    let Some(base) = base else {
+        return Ok(Sent::Refused(
+            "the result no longer targets this branch".into(),
+        ));
+    };
+    // Checked again at send time, against the allowlist as it is now: a
+    // blessing revoked after the result was routed stops the write.
+    if let Err(reason) = maidan_types::check_change_target(branch, &base) {
+        return Ok(Sent::Refused(reason));
+    }
+    let selector = maidan_types::change_allowlist_selector(repo, &base);
+    match state
+        .store
+        .is_egress_target_allowed(
+            entry.workspace_id,
+            maidan_types::EgressSurface::GithubBranch,
+            &selector,
+        )
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(Sent::Refused(format!(
+                "`{selector}` is not in the workspace egress allowlist"
+            )))
+        }
+        Err(err) => {
+            return Err(DeliveryFailure {
+                message: err.to_string(),
+                misconfiguration: false,
+            })
+        }
+    }
+    // Only read when the result has no title; a failed read falls back to
+    // the branch name rather than holding the delivery.
+    let opening = if change.title.is_none() {
+        state
+            .store
+            .list_messages_after(entry.thread_id, None, 1)
+            .await
+            .ok()
+            .and_then(|messages| messages.into_iter().next())
+            .map(|m| m.body)
+    } else {
+        None
+    };
+    let request = crate::change_flow::ChangeRequest {
+        repo,
+        branch,
+        base: &base,
+        thread_id: entry.thread_id,
+        change: &change,
+        opening_message: opening.as_deref(),
+    };
+    match crate::change_flow::deliver_change(git, &request).await {
+        Ok(crate::change_flow::ChangeOutcome::Committed { commit_sha, pull }) => {
+            crate::metrics::record_github_egress("sent");
+            Ok(Sent::Landed(Some(ExternalRef::GithubBranch {
+                repo: repo.to_string(),
+                commit_sha,
+                pull_number: pull.number,
+            })))
+        }
+        Ok(crate::change_flow::ChangeOutcome::Refused(reason)) => Ok(Sent::Refused(reason)),
+        Err(err) => {
+            crate::metrics::record_github_egress("failed");
+            Err(DeliveryFailure {
+                message: err.to_string(),
+                misconfiguration: err.is_misconfiguration(),
+            })
         }
     }
 }
@@ -496,6 +672,7 @@ async fn slack_result(
     state: &AppState,
     row: Option<&ResultDelivery>,
     channel_id: &str,
+    thread_ts: Option<&str>,
     body: &str,
 ) -> Result<Option<ExternalRef>, DeliveryFailure> {
     let Some(sender) = state.slack_sender.as_ref() else {
@@ -526,7 +703,7 @@ async fn slack_result(
             }
         }
     }
-    match sender.post_message(channel_id, body, None).await {
+    match sender.post_message(channel_id, body, thread_ts).await {
         Ok(reference) => {
             crate::metrics::record_slack_egress("sent");
             Ok(reference)
@@ -584,12 +761,18 @@ async fn record_failure(state: &AppState, entry: &EgressOutbox, error: &str) -> 
 async fn disable_link(state: &AppState, entry: &EgressOutbox, target: &EgressTarget, error: &str) {
     dead_letter(state, entry, error).await;
     let disabled = match target {
-        EgressTarget::Slack { channel_id } => state.store.disable_slack_channel_link(channel_id),
-        EgressTarget::Github { repo, issue_number } => {
-            state.store.disable_github_issue_link(repo, *issue_number)
+        EgressTarget::Slack { channel_id, .. } => {
+            state.store.disable_slack_channel_link(channel_id).await
         }
-    }
-    .await;
+        EgressTarget::Github { repo, issue_number } => {
+            state
+                .store
+                .disable_github_issue_link(repo, *issue_number)
+                .await
+        }
+        // No link backs a branch target; the dead letter is the whole story.
+        EgressTarget::GithubBranch { .. } => return,
+    };
     match disabled {
         // Already disabled — another delivery in flight got there first, and the
         // event has already been emitted. Don't announce it twice.
@@ -659,6 +842,38 @@ async fn record_result_landed(
         return;
     }
     crate::metrics::record_result_delivery("delivered");
+}
+
+/// A change refused for a reason no retry fixes: recorded as a skip, the
+/// reason in `last_error`, so the producer and the Slack reply can read it.
+async fn record_result_refused(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+    reason: &str,
+) {
+    let Ok(Some(row)) = state
+        .store
+        .get_result_delivery(entry.thread_id, target)
+        .await
+    else {
+        return;
+    };
+    if let Err(err) = state
+        .store
+        .mark_result_delivery_skipped(row.id, reason)
+        .await
+    {
+        tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-refused failed");
+        return;
+    }
+    tracing::warn!(
+        thread_id = %entry.thread_id,
+        selector = %entry.selector,
+        reason,
+        "change flow: refused"
+    );
+    crate::metrics::record_result_delivery(maidan_types::status::SKIPPED);
 }
 
 /// The transport gave up. Leave `external_ref` / `delivered_revision` alone —
@@ -732,7 +947,9 @@ async fn audit_result_attempt(
 fn egress_host(state: &AppState, target: &EgressTarget) -> String {
     match target {
         EgressTarget::Slack { .. } => state.slack_sender.as_ref().map(|s| s.host()),
-        EgressTarget::Github { .. } => state.github_sender.as_ref().map(|s| s.host()),
+        EgressTarget::Github { .. } | EgressTarget::GithubBranch { .. } => {
+            state.github_sender.as_ref().map(|s| s.host())
+        }
     }
     .unwrap_or_else(|| target.surface().as_str().to_string())
 }
@@ -792,7 +1009,24 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
         match maidan_store::trace::maybe_scope(entry.trace.clone(), deliver(state, &entry, &target))
             .await
         {
-            Ok(reference) => {
+            Ok(Sent::Waiting) => {
+                let until = chrono::Utc::now() + chrono::Duration::seconds(WAITING_RECHECK_SECS);
+                if let Err(err) = state.store.defer_egress(entry.id, until).await {
+                    tracing::warn!(error = %err, id = %entry.id, "egress worker: deferral failed");
+                }
+                stats.deferred += 1;
+            }
+            Ok(Sent::Refused(reason)) => {
+                // The transport's part is done; the refusal is the result's.
+                if let Err(err) = state.store.mark_egress_delivered(entry.id).await {
+                    tracing::warn!(error = %err, id = %entry.id, "egress worker: mark-delivered failed");
+                }
+                record_result_refused(state, &entry, &target, &reason).await;
+                audit_result_attempt(state, &entry, Some(&target), "refused", Some(&reason)).await;
+                crate::metrics::record_egress_delivery(surface, "refused");
+                stats.refused += 1;
+            }
+            Ok(Sent::Landed(reference)) => {
                 if let Err(err) = state.store.mark_egress_delivered(entry.id).await {
                     tracing::warn!(error = %err, id = %entry.id, "egress worker: mark-delivered failed");
                 }

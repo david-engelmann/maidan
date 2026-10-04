@@ -51,13 +51,15 @@ pub async fn replay_result_delivery(
     let Some(target) = row.target() else {
         return Ok(Some(ResultDeliveryReplay::Unroutable(row)));
     };
-    let allowed = store
-        .is_egress_target_allowed(workspace_id, target.surface(), &target.allowlist_selector())
-        .await?;
-    if !allowed {
-        store
-            .mark_result_delivery_skipped(row.id, "target not in the workspace egress allowlist")
-            .await?;
+    let refusal = match replay_selector(store, thread_id, &target).await? {
+        Err(reason) => Some(reason),
+        Ok(selector) => (!store
+            .is_egress_target_allowed(workspace_id, target.surface(), &selector)
+            .await?)
+            .then(|| "target not in the workspace egress allowlist".to_string()),
+    };
+    if let Some(reason) = refusal {
+        store.mark_result_delivery_skipped(row.id, &reason).await?;
         let skipped = store
             .get_result_delivery_by_id(thread_id, id)
             .await?
@@ -69,6 +71,41 @@ pub async fn replay_result_delivery(
     };
     enqueue_replay(store, workspace_id, thread_id, &target, body).await?;
     Ok(Some(ResultDeliveryReplay::Enqueued(pending)))
+}
+
+/// The allowlist selector a replay is authorized by. A branch target is
+/// blessed with its base, which lives in the current result rather than in
+/// the delivery row, so it is read back from there, and the hard-coded branch
+/// rules are checked again. `Err` is the recorded reason for not replaying.
+async fn replay_selector(
+    store: &dyn Store,
+    thread_id: ThreadId,
+    target: &maidan_types::EgressTarget,
+) -> Result<Result<String, String>, StoreError> {
+    let maidan_types::EgressTarget::GithubBranch { repo, branch } = target else {
+        return Ok(Ok(target.allowlist_selector()));
+    };
+    let base = store
+        .get_thread_result(thread_id)
+        .await?
+        .and_then(|stored| maidan_types::parse_waiter_result(&stored.result))
+        .and_then(|waiter| {
+            waiter.deliver_to.into_iter().find_map(|t| match t {
+                maidan_types::DeliverTarget::GithubBranch {
+                    repo: r,
+                    branch: b,
+                    base,
+                } if &r == repo && &b == branch => Some(base),
+                _ => None,
+            })
+        });
+    let Some(base) = base else {
+        return Ok(Err("the result no longer targets this branch".into()));
+    };
+    if let Err(reason) = maidan_types::check_change_target(branch, &base) {
+        return Ok(Err(reason));
+    }
+    Ok(Ok(maidan_types::change_allowlist_selector(repo, &base)))
 }
 
 async fn enqueue_replay(
