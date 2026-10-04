@@ -182,8 +182,14 @@ pub async fn install_app(
     granted_capabilities: Vec<String>,
     audit_for: AuditFor<InstalledApp>,
 ) -> Result<InstalledApp, StoreError> {
-    audited!(pool, |tx| apps::install_on(&mut tx, workspace_id, app_id, &granted_capabilities).await?,
-        installed => Some(audit_for(&installed)))
+    // BEGIN IMMEDIATE takes the write lock before the active-installation
+    // check, so two installs cannot both pass it; a deferred transaction
+    // would let the second fail its lock upgrade with SQLITE_BUSY.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let installed = apps::install_on(&mut tx, workspace_id, app_id, &granted_capabilities).await?;
+    audit::append_counted(&mut tx, audit_for(&installed)).await?;
+    tx.commit().await?;
+    Ok(installed)
 }
 
 /// Store a workspace credential. The record names it; the value never enters

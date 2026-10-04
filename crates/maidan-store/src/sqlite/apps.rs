@@ -112,8 +112,8 @@ pub(crate) async fn install_on(
     app_id: AppId,
     granted_capabilities: &[String],
 ) -> Result<InstalledApp, StoreError> {
-    // SQLite runs one writer at a time, so the check below and the insert
-    // cannot interleave with another install.
+    // The caller holds the write lock (`BEGIN IMMEDIATE`), so the check below
+    // and the insert cannot interleave with another install.
     let app = sqlx::query("SELECT slug, name FROM maidan_apps WHERE id = ? AND workspace_id = ?")
         .bind(app_id.0)
         .bind(workspace_id.0)
