@@ -125,8 +125,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    duplicate runs. The claim is measured by a pre-registered benchmark, not a
    hit rate. This is Program C ([Context Economics](Context%20Economics.md)).
    MCP 2026-07-28 conformance and the worker and reviewer tool profiles are
-   on `main` (#1239, #1240). In flight: the canonical pack (#1241) and the
-   ledger (#1242). Next: workspace queue depth and the SDK normalizers (Open
+   on `main` (#1239, #1240). The canonical pack is on `main` (#1241); the
+   ledger is in flight (#1242). Next: workspace queue depth and the SDK normalizers (Open
    Work Next 6 and 7).
    The research behind it is kept in the [archive](archive/Context%20Economics%20research%202026-10/README.md).
 7. **Launch** (the maintainer's call): the public site, an in-browser

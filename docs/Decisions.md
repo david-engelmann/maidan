@@ -2025,22 +2025,26 @@ costs more than the shared cache saves.
 
 ### The change flow runs on the maintainer's PAT, behind hard guards in code (2026-10-03)
 
-**Decision.** A Slack `!change` becomes a draft PR: Pi codes without any
-GitHub credential, and Maidan commits the diff to the named branch and opens
-the PR, using David's personal PAT as `MAIDAN_GITHUB_TOKEN` (`contents:write`
-and `pull_requests:write` on the allowed repos). Because that token is an
-admin's, the guards live in Maidan's code, not in GitHub settings: the branch
-must match `^feature/agent-[a-z0-9][a-z0-9-]*$` and is never `prod`, `main`,
-`master`, `staging` or `dev`; the base must be the repo's allowed base, and
-`prod` is refused for every repo regardless of configuration; Maidan never
-merges, marks ready, changes settings, deletes a branch or force-pushes; and
-the token is never logged. Agent PRs are authored as David, so nothing may
-depend on his approval: the flow stops at a draft PR, and Soundcheck marks it
-ready. The shared Maidan runs in Pi's dev-tools compose stack, built from
-`main`, not on a hosted platform.
+**Decision.** A Slack `!change` becomes a draft PR.
+- Pi codes without any GitHub credential.
+- Maidan commits the diff to the named branch and opens the draft PR.
+- The credential is David's personal PAT, as `MAIDAN_GITHUB_TOKEN`, with `contents:write` and `pull_requests:write` on the allowed repos.
+
+The token is an admin's, so the guards live in Maidan's code, not in GitHub settings:
+- The branch must match `^feature/agent-[a-z0-9][a-z0-9-]*$`.
+- The branch is never `prod`, `main`, `master`, `staging` or `dev`.
+- The base must be the repo's allowed base.
+- `prod` is refused for every repo, whatever the configuration.
+- Maidan never merges, marks ready, changes settings, deletes a branch or force-pushes.
+- The token is never logged.
+
+Agent PRs are authored as David, so nothing may depend on his approval. The
+flow stops at a draft PR, and Soundcheck marks it ready. The shared Maidan
+runs in Pi's dev-tools compose stack, built from `main`, not on a hosted
+platform.
 
 **Alternatives.** A GitHub App installation token (kept as optional Open Work
-Next 26); credentials in Pi's sandbox (refused: Pi holds no write credential
+Next 25); credentials in Pi's sandbox (refused: Pi holds no write credential
 by design).
 
 **Status.** Open Work Next 1 (the delivery) and Next 2 (the from-`main`
