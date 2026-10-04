@@ -40,7 +40,7 @@ use maidan_types::{
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
-const REPO: &str = "beatgig/bgv3";
+const REPO: &str = "example/app";
 const BRANCH: &str = "feature/agent-fix-greeting-1a2b";
 const CHANNEL: &str = "C0SOUNDCHK";
 const THREAD_TS: &str = "1759500000.000100";
@@ -574,7 +574,7 @@ fn change_into(
         "branch": result_branch,
         "diff": diff,
         "title": "Greet the world",
-        "summary": "Changes the greeting. cc @beatgig/eng",
+        "summary": "Changes the greeting. cc @example/eng",
         "deliver_to": [
             {"surface": "slack", "channel": CHANNEL, "thread_ts": THREAD_TS},
             {"surface": "github_branch", "repo": REPO, "branch": branch, "base": base},
@@ -615,7 +615,7 @@ async fn a_change_creates_the_branch_commits_once_and_opens_one_draft_pr() {
     assert_eq!((pull.head.as_str(), pull.base.as_str()), (BRANCH, "dev"));
     assert_eq!(pull.title, "Greet the world");
     assert!(
-        pull.body.contains("`@beatgig/eng`"),
+        pull.body.contains("`@example/eng`"),
         "mentions in the summary are defused: {}",
         pull.body
     );

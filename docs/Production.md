@@ -697,14 +697,13 @@ it records on a delivery or an audit row.
 
 **The change flow** ([Result Delivery](Result%20Delivery.md#the-change-flow-pichangeresult1--github_branch))
 commits a coding result to a branch and opens a draft pull request with this
-token, so commits and pull requests are authored by the token's owner. For the
-Soundcheck flow the token is a **personal access token** with exactly two
+token, so commits and pull requests are authored by the token's owner. Use a
+**personal access token** with exactly two
 repository permissions, `contents:write` and `pull_requests:write` (in a
 fine-grained token: **Contents** and **Pull requests**, read and write), on
-exactly `beatgig/bgv3`, `beatgig/relay`, `beatgig/dawn`,
-`beatgig/wax` and `beatgig/agent-skills`. Grant nothing else. The flow stops at
+exactly the repositories the change flow may write to. Grant nothing else. The flow stops at
 a draft pull request: it requests no review and needs no approval (a token
-owner cannot approve their own pull request), and Soundcheck marks the pull
+owner cannot approve their own pull request), and the producer marks the pull
 request ready. The comment and check-run paths use the same token; a check run
 needs `checks:write`, which a personal access token does not carry, so the
 check run fails and the comment still posts.
@@ -732,27 +731,22 @@ code. Each blessing is one audited `token:admin` call,
 `POST /workspaces/:wid/egress-targets`, made by an operator per workspace. A
 `github_branch` selector is `owner/name@base`: the repository and the one base
 change pull requests into it may target (one row per base). A `github` row is
-the repository alone and allows result comments only, never commits. For the
-Soundcheck workspace, with `$SLACK_CHANNEL` the channel id (`C…`) the
-`!change` command runs in, the seed is these eleven calls:
+the repository alone and allows result comments only, never commits. For
+example, with two repositories, one whose change pull requests target `main`
+and one that targets `dev`, and `$SLACK_CHANNEL` the channel id (`C…`) the
+replies go to, the seed is:
 
 ```bash
 H1="Authorization: Bearer $ADMIN_TOKEN"; H2='Content-Type: application/json'
 URL="$MAIDAN/workspaces/$WORKSPACE_ID/egress-targets"
 
-# Commits and draft pull requests: agent-skills into main, the rest into dev.
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/agent-skills@main"}'
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/bgv3@dev"}'
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/relay@dev"}'
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/dawn@dev"}'
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"beatgig/wax@dev"}'
+# Commits and draft pull requests, one row per repository and base.
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"example/skills@main"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github_branch","selector":"example/app@dev"}'
 
 # Result comments on a pull request (the review loop). These allow no commits.
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/agent-skills"}'
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/bgv3"}'
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/relay"}'
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/dawn"}'
-curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"beatgig/wax"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"example/skills"}'
+curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d '{"surface":"github","selector":"example/app"}'
 
 # The Slack channel the replies go to; a thread_ts needs no row of its own.
 curl -sS -X POST "$URL" -H "$H1" -H "$H2" -d "{\"surface\":\"slack\",\"selector\":\"$SLACK_CHANNEL\"}"

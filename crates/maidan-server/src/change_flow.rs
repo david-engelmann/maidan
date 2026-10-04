@@ -313,7 +313,7 @@ mod tests {
 
     fn request<'a>(change: &'a ChangeResult, opening: Option<&'a str>) -> ChangeRequest<'a> {
         ChangeRequest {
-            repo: "beatgig/bgv3",
+            repo: "example/app",
             branch: "feature/agent-x",
             base: "dev",
             thread_id: ThreadId::new(),
