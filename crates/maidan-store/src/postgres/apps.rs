@@ -2,13 +2,15 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    App, AppId, AppInstallation, AppInstallationId, MemberId, NewApp, NewAppInstallation,
-    WorkspaceId,
+    App, AppId, AppInstallation, AppInstallationId, MemberId, MemberKind, NewApp,
+    NewAppInstallation, NewMember, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use super::members;
 use crate::error::StoreError;
+use crate::InstalledApp;
 
 pub async fn create_app(pool: &PgPool, new: NewApp) -> Result<App, StoreError> {
     let id = Uuid::now_v7();
@@ -58,6 +60,14 @@ pub async fn create_installation(
     pool: &PgPool,
     new: NewAppInstallation,
 ) -> Result<AppInstallation, StoreError> {
+    let mut conn = pool.acquire().await?;
+    insert_installation_on(&mut conn, new).await
+}
+
+async fn insert_installation_on(
+    conn: &mut sqlx::PgConnection,
+    new: NewAppInstallation,
+) -> Result<AppInstallation, StoreError> {
     let id = Uuid::now_v7();
     let caps = serde_json::to_string(&new.granted_capabilities)?;
     let row = sqlx::query(
@@ -72,9 +82,94 @@ pub async fn create_installation(
     .bind(new.workspace_id.0)
     .bind(new.bot_member_id.0)
     .bind(&caps)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     row_to_installation(&row)
+}
+
+/// Install `app_id` in `workspace_id` on `conn` (the caller's transaction).
+/// The bot member is the one the app's latest revoked installation in this
+/// workspace used, when there is one and it is not tombstoned; otherwise a new
+/// `app:<slug>` agent member, which a hand-made member holding that handle
+/// refuses rather than being taken over.
+pub(crate) async fn install_on(
+    conn: &mut sqlx::PgConnection,
+    workspace_id: WorkspaceId,
+    app_id: AppId,
+    granted_capabilities: &[String],
+) -> Result<InstalledApp, StoreError> {
+    // The app row's lock serializes installs of one app, so two cannot both
+    // find no active installation and both proceed.
+    let app = sqlx::query(
+        "SELECT slug, name FROM maidan_apps WHERE id = $1 AND workspace_id = $2
+         FOR UPDATE",
+    )
+    .bind(app_id.0)
+    .bind(workspace_id.0)
+    .fetch_optional(&mut *conn)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let slug: String = app.get("slug");
+    let name: String = app.get("name");
+
+    let active = sqlx::query(
+        "SELECT 1 FROM maidan_app_installations
+         WHERE app_id = $1 AND workspace_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(app_id.0)
+    .bind(workspace_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if active.is_some() {
+        return Err(StoreError::Conflict(
+            "app is already installed in this workspace; revoke the installation to change its grants".into(),
+        ));
+    }
+
+    let previous: Option<Uuid> = sqlx::query_scalar(
+        "SELECT i.bot_member_id
+         FROM maidan_app_installations i
+         JOIN maidan_members m ON m.id = i.bot_member_id
+         WHERE i.app_id = $1 AND i.workspace_id = $2
+           AND m.workspace_id = i.workspace_id AND m.tombstoned_at IS NULL
+         ORDER BY i.installed_at DESC, i.id DESC
+         LIMIT 1",
+    )
+    .bind(app_id.0)
+    .bind(workspace_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let (bot_member_id, bot_member_reused) = match previous {
+        Some(id) => (MemberId(id), true),
+        None => {
+            let bot = members::create_on(
+                &mut *conn,
+                NewMember {
+                    workspace_id,
+                    handle: format!("app:{slug}"),
+                    display_name: Some(name),
+                    kind: MemberKind::Agent,
+                },
+            )
+            .await?;
+            (bot.id, false)
+        }
+    };
+
+    let installation = insert_installation_on(
+        conn,
+        NewAppInstallation {
+            app_id,
+            workspace_id,
+            bot_member_id,
+            granted_capabilities: granted_capabilities.to_vec(),
+        },
+    )
+    .await?;
+    Ok(InstalledApp {
+        installation,
+        bot_member_reused,
+    })
 }
 
 pub async fn get_installation(

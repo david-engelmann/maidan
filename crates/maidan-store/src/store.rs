@@ -3434,6 +3434,19 @@ pub trait GovernanceAuditStore: Send + Sync {
         id: AppInstallationId,
         audit: crate::AuditFor<AppInstallation>,
     ) -> Result<AppInstallation, StoreError>;
+    /// Install `app_id` in `workspace_id` with `granted_capabilities`. The bot
+    /// member of the app's latest revoked installation in that workspace is
+    /// reused (same id, handle and history), so revoke-and-reinstall is how an
+    /// installation's grants change; with none, an `app:<slug>` agent member is
+    /// created in the same transaction. `Conflict` while an installation of
+    /// the app is active; `NotFound` when the app is not in the workspace.
+    async fn install_app_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        app_id: AppId,
+        granted_capabilities: Vec<String>,
+        audit: crate::AuditFor<crate::InstalledApp>,
+    ) -> Result<crate::InstalledApp, StoreError>;
 }
 
 pub trait Store:

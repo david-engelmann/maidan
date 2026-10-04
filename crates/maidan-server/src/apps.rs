@@ -77,26 +77,33 @@ pub async fn install_app(
         body.granted_capabilities
     };
 
-    let handle = format!("app:{}", app.slug);
-    let bot = state
+    let (actor, audited_capabilities) = (auth.actor_id, granted.clone());
+    let installed = state
         .store
-        .create_member(NewMember {
+        .install_app_audited(
             workspace_id,
-            handle,
-            display_name: Some(app.name.clone()),
-            kind: MemberKind::Agent,
-        })
+            app.id,
+            granted,
+            Box::new(move |installed| {
+                let installation = &installed.installation;
+                NewAuditEvent {
+                    scope: AuditScope::Workspace(installation.workspace_id),
+                    actor_id: Some(actor),
+                    action: "app_installation.install".into(),
+                    target_kind: Some("app_installation".into()),
+                    target_id: Some(installation.id.0),
+                    metadata: serde_json::json!({
+                        "workspace_id": installation.workspace_id.0,
+                        "app_id": installation.app_id.0,
+                        "bot_member_id": installation.bot_member_id.0,
+                        "bot_member_reused": installed.bot_member_reused,
+                        "granted_capabilities": audited_capabilities,
+                    }),
+                }
+            }),
+        )
         .await?;
-
-    let installation = state
-        .store
-        .create_app_installation(NewAppInstallation {
-            app_id: app.id,
-            workspace_id,
-            bot_member_id: bot.id,
-            granted_capabilities: granted,
-        })
-        .await?;
+    let installation = installed.installation;
 
     Ok((
         StatusCode::CREATED,

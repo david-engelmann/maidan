@@ -5,7 +5,7 @@
 //! Where a call can remove nothing, it records nothing.
 
 use maidan_types::{
-    AllowedEgressTarget, AppInstallation, AppInstallationId, ChannelId, ChannelMember,
+    AllowedEgressTarget, AppId, AppInstallation, AppInstallationId, ChannelId, ChannelMember,
     ChannelMemberRole, EgressTargetId, MemberFreeze, MemberId, NewAuditEvent, NewEgressTarget,
     NewSecret, NewSecretEgressHost, Secret, SecretEgressHost, StoredEvent, ThreadId,
     ThreadReviewRequirement, WorkspaceId,
@@ -16,7 +16,7 @@ use super::{
     apps, audit, channel_members, egress_targets, land_gate, member_freezes, member_skills,
     reviews, secret_egress_hosts, secrets,
 };
-use crate::{error::StoreError, AuditFor};
+use crate::{error::StoreError, AuditFor, InstalledApp};
 
 /// Run `change`'s result through `audit` only when `recorded(result)` holds,
 /// in the same transaction.
@@ -172,6 +172,24 @@ pub async fn revoke_app_installation(
 ) -> Result<AppInstallation, StoreError> {
     audited!(pool, |tx| apps::revoke_installation_on(&mut tx, id).await?,
         installation => Some(audit_for(&installation)))
+}
+
+/// Install an app, creating or reusing its bot member, with its audit row.
+pub async fn install_app(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    app_id: AppId,
+    granted_capabilities: Vec<String>,
+    audit_for: AuditFor<InstalledApp>,
+) -> Result<InstalledApp, StoreError> {
+    // BEGIN IMMEDIATE takes the write lock before the active-installation
+    // check, so two installs cannot both pass it; a deferred transaction
+    // would let the second fail its lock upgrade with SQLITE_BUSY.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    let installed = apps::install_on(&mut tx, workspace_id, app_id, &granted_capabilities).await?;
+    audit::append_counted(&mut tx, audit_for(&installed)).await?;
+    tx.commit().await?;
+    Ok(installed)
 }
 
 /// Store a workspace credential. The record names it; the value never enters

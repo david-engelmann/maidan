@@ -4313,6 +4313,23 @@ macro_rules! store_delegations {
             ) -> Result<AppInstallation, StoreError> {
                 governance_audited::revoke_app_installation(self.pool(), id, audit).await
             }
+
+            async fn install_app_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                app_id: AppId,
+                granted_capabilities: Vec<String>,
+                audit: crate::AuditFor<crate::InstalledApp>,
+            ) -> Result<crate::InstalledApp, StoreError> {
+                governance_audited::install_app(
+                    self.pool(),
+                    workspace_id,
+                    app_id,
+                    granted_capabilities,
+                    audit,
+                )
+                .await
+            }
         }
     };
 }

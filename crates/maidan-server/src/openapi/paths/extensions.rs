@@ -670,6 +670,11 @@ pub fn register_app() {}
 pub fn list_apps() {}
 
 /// Install an app
+///
+/// Re-installing an app whose installation was revoked reuses its bot member
+/// (same id, handle and history) with the new `granted_capabilities`; revoke
+/// and re-install is how an installation's grants change. Writes an
+/// `app_installation.install` audit row in the same transaction.
 #[utoipa::path(
     post,
     path = "/workspaces/{wid}/apps/{app_id}/install",
@@ -682,6 +687,7 @@ pub fn list_apps() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
     )
 )]
 pub fn install_app() {}
