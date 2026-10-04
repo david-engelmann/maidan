@@ -127,13 +127,14 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    MCP 2026-07-28 conformance and the worker and reviewer tool profiles are
    on `main` (#1239, #1240). The canonical pack is on `main` (#1241); the
    ledger is in flight (#1242). Next: workspace queue depth and the SDK normalizers (Open
-   Work Next 6 and 7).
+   Work Next 25 and 26).
    The research behind it is kept in the [archive](archive/Context%20Economics%20research%202026-10/README.md).
 7. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
    room itself staying open source. An operator can open a
    second workspace with `POST /operator/workspaces`, without `MAIDAN_BOOTSTRAP` (#1208).
    Signup and a hosted console are not started.
+   The connected-apps program is the discovery half. The maintainer chose its fast track on 2026-10-03, lanes 1 to 7 with no authorization server (a Gemini CLI extension, a Copilot CLI plugin, the MCP registries and catalogs, a listing asset pack with a demo instance for reviewers, connect recipes, Muse behind the Dawn outcome, and Cursor). Nothing is submitted until the maintainer says go, and every submission is validated first. Self-hosting stays the product, the authorization server and the ChatGPT and full-OAuth Claude listings are parked, and no enterprise track starts until the consumer lanes measure (Open Work Next 16 to Next 23 and Later CA).
 
 ## What Maidan will not become
 
