@@ -274,7 +274,7 @@ curl -sS -X POST "$MAIDAN/workspaces/$WORKSPACE_ID/egress-targets" \
 
 For the change flow, bless each repository and its base under
 `github_branch`, as `owner/name@base` (its own rows; a `github` comment
-blessing does not allow commits), and the Slack channel the replies go to. The full seed for the Soundcheck repositories is in
+blessing does not allow commits), and the Slack channel the replies go to. A full seed, as the audited calls, is in
 [Production](Production.md#result-delivery-to-github-and-slack).
 
 `GET` the same path lists what is blessed; `DELETE …/egress-targets/:tid` revokes.
@@ -311,8 +311,7 @@ API below, and an operator — not the agent — fixes an unblessed target.
 A coding seat (Pi) edits a checkout but holds no GitHub write credential. It
 returns the commit it started from and a diff; Maidan, holding the operator's
 token, makes the commit and opens a **draft** pull request, and answers in the
-Slack thread the work started in. The cross-repo contract is
-`beatgig/soundcheck` `docs/cross-repo/change-flow.md`.
+Slack thread the work started in.
 
 **The envelope.** `result_kind` is `pi.change.result/1`. Besides the usual
 envelope fields, Maidan reads:

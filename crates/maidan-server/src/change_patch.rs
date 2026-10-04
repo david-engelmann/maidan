@@ -119,15 +119,28 @@ fn apply_hunks(base: &[u8], hunks: &[Hunk]) -> Result<Vec<u8>, PatchError> {
     let mut out: Vec<u8> = Vec::with_capacity(base.len());
     let mut pos = 0usize;
     for (n, hunk) in hunks.iter().enumerate() {
-        // `-0,0` means "before the first line"; otherwise the start is 1-based.
-        let wanted = hunk.old_start.saturating_sub(1).max(pos);
-        let at = find_block(&lines, &hunk.old, wanted, pos).ok_or_else(|| {
-            PatchError(format!(
-                "hunk {} (at line {}) does not match the base content",
-                n + 1,
-                hunk.old_start
-            ))
-        })?;
+        // A hunk with no old lines (`git diff -U0`) inserts *after* line
+        // `old_start` (`-0,0` is before the first line). Nothing anchors an
+        // empty old side, so it goes exactly there or nowhere.
+        let at = if hunk.old.is_empty() {
+            if hunk.old_start < pos || hunk.old_start > lines.len() {
+                return refuse(format!(
+                    "hunk {} inserts after line {}, outside the base content left to patch",
+                    n + 1,
+                    hunk.old_start
+                ));
+            }
+            hunk.old_start
+        } else {
+            let wanted = hunk.old_start.saturating_sub(1).max(pos);
+            find_block(&lines, &hunk.old, wanted, pos).ok_or_else(|| {
+                PatchError(format!(
+                    "hunk {} (at line {}) does not match the base content",
+                    n + 1,
+                    hunk.old_start
+                ))
+            })?
+        };
         for line in &lines[pos..at] {
             out.extend_from_slice(line);
         }
@@ -504,6 +517,18 @@ mod tests {
         let added = patches[1].apply(None).unwrap();
         assert_eq!(added[0].path, "new/place.txt");
         assert_eq!(text(&added[0]), "a\nB\n");
+    }
+
+    #[test]
+    fn a_context_free_insertion_lands_after_its_line() {
+        let diff = "--- a/f\n+++ b/f\n@@ -2,0 +3 @@\n+x\n";
+        let changes = apply_one(diff, Some("1\n2\n3\n")).unwrap();
+        assert_eq!(text(&changes[0]), "1\n2\nx\n3\n");
+        let at_top = "--- a/f\n+++ b/f\n@@ -0,0 +1 @@\n+x\n";
+        let changes = apply_one(at_top, Some("1\n2\n")).unwrap();
+        assert_eq!(text(&changes[0]), "x\n1\n2\n");
+        let past_end = "--- a/f\n+++ b/f\n@@ -9,0 +10 @@\n+x\n";
+        assert!(apply_one(past_end, Some("1\n2\n")).is_err());
     }
 
     #[test]

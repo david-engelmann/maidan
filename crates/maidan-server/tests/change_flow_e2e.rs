@@ -18,7 +18,7 @@ use std::{
 
 use axum::{
     extract::State,
-    http::{Method, StatusCode, Uri},
+    http::{HeaderMap, Method, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::any,
     Json, Router,
@@ -137,6 +137,7 @@ async fn github(
     State(fake): State<Shared>,
     method: Method,
     uri: Uri,
+    headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
     let mut fake = fake.lock().unwrap();
@@ -204,9 +205,20 @@ async fn github(
                 .query()
                 .and_then(|q| q.strip_prefix("ref="))
                 .unwrap_or_default();
+            // Raw bytes only for a request that asks for nothing else; any
+            // other `Accept` gets the JSON envelope, as GitHub may send it.
+            let raw_only = headers
+                .get_all("accept")
+                .iter()
+                .map(|v| v.to_str().unwrap_or_default())
+                .eq(["application/vnd.github.raw+json"]);
             match fake.commits.get(at).map(|c| c.tree.clone()) {
                 Some(tree) => match fake.trees[&tree].get(file) {
-                    Some((_, blob)) => fake.blobs[blob].clone().into_response(),
+                    Some((_, blob)) if raw_only => fake.blobs[blob].clone().into_response(),
+                    Some((_, blob)) => reply(
+                        StatusCode::OK,
+                        json!({"type": "file", "encoding": "base64", "sha": blob}),
+                    ),
                     None => not_found(),
                 },
                 None => not_found(),
@@ -1128,4 +1140,37 @@ async fn the_token_reaches_no_delivery_record_or_audit_row_when_github_fails() {
     for row in h.deliveries(&h.a).await {
         assert!(!format!("{row:?}").contains(TOKEN), "{row:?}");
     }
+}
+
+#[tokio::test]
+async fn a_change_reply_stops_waiting_on_a_branch_delivery_that_never_settles() {
+    use maidan_server::result_delivery::{change_reply_at, ChangeReply, CHANGE_REPLY_MAX_WAIT};
+    let h = harness().await;
+    h.allow_change().await;
+    // Routed but never sent: the branch row stays pending.
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    let produced_at = h
+        .store
+        .get_thread_result(h.a.thread_id)
+        .await
+        .unwrap()
+        .unwrap()
+        .produced_at;
+    assert_eq!(
+        h.delivery(&h.a, "github_branch").await.status,
+        status::PENDING
+    );
+
+    let soon = produced_at + chrono::Duration::hours(1);
+    assert!(matches!(
+        change_reply_at(&h.state, h.a.thread_id, soon).await,
+        ChangeReply::Waiting
+    ));
+    let late = produced_at + CHANGE_REPLY_MAX_WAIT + chrono::Duration::minutes(1);
+    let ChangeReply::Ready(text) = change_reply_at(&h.state, h.a.thread_id, late).await else {
+        panic!("the reply must stop waiting");
+    };
+    assert!(text.contains("Nothing has landed"), "{text}");
+    assert!(text.contains(BRANCH), "{text}");
 }

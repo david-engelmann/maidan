@@ -731,12 +731,23 @@ impl GithubSender for GithubApiClient {
 
 impl GithubApiClient {
     fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        self.request_accepting(method, path, "application/vnd.github+json")
+    }
+
+    /// `.header` appends, so a second `Accept` would be sent beside the
+    /// default rather than replace it: the media type is chosen once, here.
+    fn request_accepting(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        accept: &str,
+    ) -> reqwest::RequestBuilder {
         crate::trace_context::stamp(
             self.http
                 .request(method, format!("{}{path}", self.base_url)),
         )
         .bearer_auth(&self.token)
-        .header("Accept", "application/vnd.github+json")
+        .header("Accept", accept)
         .header("User-Agent", "maidan-projector")
     }
 
@@ -885,8 +896,11 @@ impl GithubGit for GithubApiClient {
         // The raw media type returns the bytes, and works past the 1 MB limit
         // of the JSON form.
         let resp = self
-            .request(reqwest::Method::GET, &url)
-            .header("Accept", "application/vnd.github.raw+json")
+            .request_accepting(
+                reqwest::Method::GET,
+                &url,
+                "application/vnd.github.raw+json",
+            )
             .send()
             .await
             .map_err(|e| self.http_error(e))?;

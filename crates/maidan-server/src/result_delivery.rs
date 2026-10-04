@@ -316,11 +316,26 @@ pub enum ChangeReply {
     Ready(String),
 }
 
+/// How long a change's Slack reply waits for its branch delivery. The branch's
+/// own retries give up within about two hours (eight attempts, backoff capped
+/// at an hour); past this the reply says the commit has not landed rather
+/// than waiting on a row that may never settle.
+pub const CHANGE_REPLY_MAX_WAIT: chrono::Duration = chrono::Duration::hours(6);
+
 /// Build the Slack reply to a [`PI_CHANGE_RESULT_KIND`] from its
 /// `github_branch` deliveries: the commit and pull request when one landed,
 /// the recorded reason when it did not, and the status alone when Pi reported
 /// anything other than `changed`.
 pub async fn change_reply(state: &AppState, thread_id: ThreadId) -> ChangeReply {
+    change_reply_at(state, thread_id, Utc::now()).await
+}
+
+/// [`change_reply`] as of `now`, which bounds the wait.
+pub async fn change_reply_at(
+    state: &AppState,
+    thread_id: ThreadId,
+    now: DateTime<Utc>,
+) -> ChangeReply {
     let Ok(Some(stored)) = state.store.get_thread_result(thread_id).await else {
         return ChangeReply::NotAChange;
     };
@@ -341,6 +356,13 @@ pub async fn change_reply(state: &AppState, thread_id: ThreadId) -> ChangeReply 
         }
         return ChangeReply::Ready(slack_body(&lines.join("\n")));
     }
+    let gave_up = now - stored.produced_at > CHANGE_REPLY_MAX_WAIT;
+    let unsettled = |repo: &str, branch: &str| {
+        format!(
+            "Nothing has landed on `{branch}` in {repo} after {} hours; the delivery status has the latest.",
+            CHANGE_REPLY_MAX_WAIT.num_hours()
+        )
+    };
     for target in &waiter.deliver_to {
         let DeliverTarget::GithubBranch { repo, branch, .. } = target else {
             continue;
@@ -359,9 +381,14 @@ pub async fn change_reply(state: &AppState, thread_id: ThreadId) -> ChangeReply 
                 ));
                 continue;
             }
+            Err(_) if gave_up => {
+                lines.push(unsettled(repo, branch));
+                continue;
+            }
             Err(_) => return ChangeReply::Waiting,
         };
         match (row.status.as_str(), row.reference()) {
+            (status::PENDING, _) if gave_up => lines.push(unsettled(repo, branch)),
             (status::PENDING, _) => return ChangeReply::Waiting,
             (
                 status::DELIVERED,
