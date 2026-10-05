@@ -5,7 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, DeclaredStatus, Event, MemberId, StoredEvent, ThreadId, ThreadStatusDeclaration,
+    DeclaredStatus, Event, MemberId, StoredEvent, ThreadId, ThreadStatusDeclaration,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -94,28 +94,4 @@ pub async fn get(
     .fetch_optional(pool)
     .await?;
     row.as_ref().map(row_to_declaration).transpose()
-}
-
-/// Active declarations in a channel, for the board chip. Returns
-/// (thread_id, declaration) ordered by declaration time.
-pub async fn list_for_channel(
-    pool: &PgPool,
-    channel_id: ChannelId,
-) -> Result<Vec<(ThreadId, ThreadStatusDeclaration)>, StoreError> {
-    let rows = sqlx::query(
-        "SELECT s.thread_id, s.status, s.note, s.declared_by, s.declared_at
-         FROM maidan_thread_status s
-         JOIN maidan_threads t ON t.id = s.thread_id
-         WHERE t.channel_id = $1 AND t.tombstoned_at IS NULL
-         ORDER BY s.declared_at DESC, s.thread_id",
-    )
-    .bind(channel_id.0)
-    .fetch_all(pool)
-    .await?;
-    rows.iter()
-        .map(|row| {
-            let d = row_to_declaration(row)?;
-            Ok((d.thread_id, d))
-        })
-        .collect()
 }

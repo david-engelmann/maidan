@@ -1543,6 +1543,7 @@ mod kind_tests {
             EventKind::MemberUnfrozen,
             EventKind::MemoryBlockUpdated,
             EventKind::UsageReported,
+            EventKind::StatusDeclared,
         ];
         for &kind in EventKind::ALL {
             let expected = !non_federatable.contains(&kind);

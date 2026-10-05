@@ -7,11 +7,11 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, BlockedReason, ChannelId,
-    ChannelMemberRole, ContentBlock, DelegationGrantId, EgressSurface, EmailDeliveryMode,
-    EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, Member, MemberFreeze,
-    MemberId, MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision, ShareTicket,
-    SlashCommandId, SlashHandlerKind, ThreadDependency, ThreadId, TokenPolicy, TokenQuota,
-    VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
+    ChannelMemberRole, ContentBlock, DeclaredStatus, DelegationGrantId, EgressSurface,
+    EmailDeliveryMode, EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, Member,
+    MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision,
+    ShareTicket, SlashCommandId, SlashHandlerKind, ThreadDependency, ThreadId, TokenPolicy,
+    TokenQuota, VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};

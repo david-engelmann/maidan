@@ -348,6 +348,7 @@ import { loadMessages } from "./thread.js";
             s.textContent = th.status.status.replace(/_/g, " ");
             s.title = th.status.note || `Agent status: ${th.status.status}`;
             foot.appendChild(s);
+          }
           if (th.block) {
             const b = document.createElement("span");
             b.className = "card-blocked";
