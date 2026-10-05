@@ -139,7 +139,15 @@ pub async fn list_for_channel(
 pub async fn list_human_gate_blocked(
     pool: &PgPool,
     workspace_id: maidan_types::WorkspaceId,
-) -> Result<Vec<(maidan_types::ThreadId, Option<String>, Option<maidan_types::MemberId>, ThreadBlock)>, StoreError> {
+) -> Result<
+    Vec<(
+        maidan_types::ThreadId,
+        Option<String>,
+        Option<maidan_types::MemberId>,
+        ThreadBlock,
+    )>,
+    StoreError,
+> {
     let rows = sqlx::query(
         "SELECT t.id AS t_id, t.title AS t_title, t.owner_id AS t_owner,
                 b.thread_id, b.reason, b.set_by, b.set_at, b.note

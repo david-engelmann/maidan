@@ -2208,7 +2208,11 @@ pub fn assemble_waiting_inbox(
             Some(*tid),
             None,
             None,
-            title.clone().unwrap_or_else(|| "(untitled thread)".to_string()) + " — " + &summary,
+            title
+                .clone()
+                .unwrap_or_else(|| "(untitled thread)".to_string())
+                + " — "
+                + &summary,
             block.set_at,
             now,
             sla_secs,

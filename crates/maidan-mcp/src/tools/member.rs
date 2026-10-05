@@ -324,9 +324,7 @@ pub(super) async fn get_waiting_inbox(
             let for_owner = owner == Some(member_id);
             let for_admin = owner.is_none() && is_admin;
             if for_owner || for_admin {
-                if auth.bypass
-                    || maidan_auth::can_access_thread(store.as_ref(), auth, tid).await?
-                {
+                if auth.bypass || maidan_auth::can_access_thread(store.as_ref(), auth, tid).await? {
                     blocked.push((tid, title, owner, block));
                 }
             }

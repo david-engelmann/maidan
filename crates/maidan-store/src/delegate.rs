@@ -2386,7 +2386,8 @@ macro_rules! store_delegations {
             async fn list_human_gate_blocked_threads(
                 &self,
                 workspace_id: WorkspaceId,
-            ) -> Result<Vec<(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)>, StoreError> {
+            ) -> Result<Vec<(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)>, StoreError>
+            {
                 blocks::list_human_gate_blocked(self.read_pool(), workspace_id).await
             }
 
