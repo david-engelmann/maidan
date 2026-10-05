@@ -74,6 +74,7 @@ mod tests {
                     created_at: now,
                     updated_at: now,
                     tombstoned_at: None,
+                    block: None,
                 },
                 Thread {
                     id: child,
@@ -89,6 +90,7 @@ mod tests {
                     created_at: now,
                     updated_at: now,
                     tombstoned_at: None,
+                    block: None,
                 },
             ],
             messages: vec![Message {

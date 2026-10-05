@@ -1245,6 +1245,7 @@ mod tests {
             updated_at: at_secs(updated),
             tombstoned_at: None,
             block: None,
+            block: None,
         }
     }
 

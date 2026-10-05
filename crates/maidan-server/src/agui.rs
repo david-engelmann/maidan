@@ -193,6 +193,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             tombstoned_at: None,
+            block: None,
         }
     }
 
