@@ -262,7 +262,12 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
 }
 
 /// A server on in-memory SQLite with auth on, for the tests below.
-async fn spawn() -> (Arc<dyn Store>, String, reqwest::Client, tokio::task::JoinHandle<()>) {
+async fn spawn() -> (
+    Arc<dyn Store>,
+    String,
+    reqwest::Client,
+    tokio::task::JoinHandle<()>,
+) {
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -481,8 +486,15 @@ async fn a_review_nobody_was_named_for_reaches_its_owner_or_an_admin_and_no_one_
         .await
         .unwrap();
     let text = mcp.to_string();
-    assert!(text.contains("unassigned_review") && text.contains("ownerless: the cache header"), "{text}");
-    for hidden in ["owned: the retry budget", "private: the acquisition", "tenant b: the audit"] {
+    assert!(
+        text.contains("unassigned_review") && text.contains("ownerless: the cache header"),
+        "{text}"
+    );
+    for hidden in [
+        "owned: the retry budget",
+        "private: the acquisition",
+        "tenant b: the audit",
+    ] {
         assert!(!text.contains(hidden), "MCP must not list {hidden}: {text}");
     }
 
