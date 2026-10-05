@@ -174,8 +174,24 @@ import { tokenKey, wsResumeKey } from "./state.js";
 
       // Pasting a token signs in: exchange it for a session, check it against
       // /me, then load the channels and what waits on you, or say in words why
-      // it was not accepted.
-      document.getElementById("token").addEventListener("change", async () => {
+      // it was not accepted. Enter, Sign in and leaving the field all land
+      // here; a second trigger while one is running joins it rather than
+      // spending the token twice.
+      let signingIn = null;
+
+      function signInWithToken() {
+        if (!signingIn)
+          signingIn = trySignIn().finally(() => {
+            signingIn = null;
+            document.getElementById("token").disabled = false;
+            document.getElementById("token-signin").disabled = false;
+          });
+        return signingIn;
+      }
+
+      async function trySignIn() {
+        document.getElementById("token").disabled = true;
+        document.getElementById("token-signin").disabled = true;
         persist();
         const status = document.getElementById("session-status");
         const secret = pastedToken();
@@ -225,6 +241,27 @@ import { tokenKey, wsResumeKey } from "./state.js";
         await renderIdentity(identity.member_id);
         showConnection(false);
         loadNeedsYou();
+      }
+
+      document.getElementById("token").addEventListener("change", () => signInWithToken());
+
+      document.getElementById("token").addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        if (e.isComposing) return;
+        e.preventDefault();
+        signInWithToken();
+      });
+
+      document.getElementById("token-signin").addEventListener("click", () => {
+        // Leaving the field for the button already started the sign-in.
+        if (signingIn) return;
+        if (!pastedToken()) {
+          if (authorId()) return;
+          document.getElementById("token-hint").textContent = "Paste your token to connect.";
+          document.getElementById("token").focus();
+          return;
+        }
+        signInWithToken();
       });
 
 

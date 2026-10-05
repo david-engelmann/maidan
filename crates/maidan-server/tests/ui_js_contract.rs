@@ -2060,10 +2060,7 @@ fn ui_js_reports_qa_failures_in_words_and_opens_the_dm() {
         "a refused search is words, not the raw problem body"
     );
 
-    let token = js
-        .split("getElementById(\"token\").addEventListener(\"change\"")
-        .nth(1)
-        .expect("token change");
+    let token = function_body(js, "trySignIn");
     assert!(
         token.contains("status.hidden = true;\n        status.textContent = \"\";"),
         "an accepted token clears the earlier rejection"
@@ -2287,7 +2284,8 @@ const loadChannels = new Function(
     let selectedThreadId = null;
     let boardSeen = new Map();
     let headerGen = 0;
-    let sessionMemberId = null;
+    // Signed in: with no credential loadChannels asks the server nothing.
+    let sessionMemberId = "member-1";
     const channelKey = "maidan_channel";
     function wid() { return "ws"; }
     function renderState() {}
@@ -4704,4 +4702,31 @@ fn ui_js_drops_dead_brand_sub_and_the_version_marker() {
         !html.contains("brand-sub"),
         "the page does not use brand-sub"
     );
+}
+
+/// Signing in is something a person can see and do: Enter in the token field
+/// and a Sign in button run the same sign-in, and a second trigger joins the
+/// one in flight. With no credential, loadChannels asks the server nothing and
+/// says what to do, so no "not accepted" sentence reaches someone who has not
+/// pasted a token.
+#[test]
+fn ui_js_signs_in_on_enter_or_button_and_asks_nothing_without_a_credential() {
+    let js = script(HTML);
+    assert!(HTML.contains("id=\"token-signin\""), "a Sign in button");
+    assert!(
+        js.contains("if (!signingIn)") && js.contains("signingIn = trySignIn()"),
+        "one sign-in at a time"
+    );
+    assert!(
+        js.contains("if (e.key !== \"Enter\") return;")
+            && js.contains("getElementById(\"token-signin\").addEventListener(\"click\""),
+        "Enter and the button both sign in"
+    );
+    let load = function_body(js, "loadChannels");
+    let guard = load
+        .find("if (!token() && !sessionMemberId)")
+        .expect("a no-credential guard");
+    let request = load.find("await api(").expect("the channels request");
+    assert!(guard < request, "the guard comes before any request");
+    assert!(load.contains("\"Paste your token to connect.\""));
 }
