@@ -4,7 +4,7 @@ import { fetchPendingGatesByThread, pendingGateViews, renderResult, renderTeam, 
 import { keyActivates, responseError, setStatus } from "./feedback.js";
 import { ago, authorId, personEl } from "./people.js";
 import { sessionMemberId } from "./session.js";
-import { NY_KINDS } from "./state.js";
+import { NY_KINDS, NY_RETRY_MAX_MS, NY_RETRY_MIN_MS } from "./state.js";
 import { answerGate } from "./tools.js";
 
 
@@ -18,11 +18,19 @@ import { answerGate } from "./tools.js";
 
       let needsYouGen = 0;
 
+      // When the last good load landed, so a stale queue can say how stale.
+      let needsYouLoadedAt = null;
+
+      let needsYouRetryTimer = null;
+
+      let needsYouRetryMs = NY_RETRY_MIN_MS;
+
       async function loadNeedsYou() {
         const gen = ++needsYouGen;
         const box = document.getElementById("needs-you");
         const me = authorId();
         if (!me || !wid()) {
+          stopNeedsYouRetry();
           box.hidden = true;
           setAttention(0);
           return;
@@ -34,12 +42,12 @@ import { answerGate } from "./tools.js";
             credentials: "include",
           });
           if (!res.ok) {
-            // A refused token has nothing waiting that it may see: clear the
-            // queue and the count in the tab title, unless a newer load won.
+            // A refused load is not an empty queue. The rows and the count in
+            // the tab title stay as last seen, under a sentence naming the fix.
+            const why = await responseError(res, "Could not load what is waiting on you");
             if (gen !== needsYouGen) return;
-            box.hidden = true;
-            needsYou = [];
-            setAttention(0);
+            stopNeedsYouRetry();
+            showNeedsYouTrouble(why, "err");
             return;
           }
           items = (await res.json()).items.filter((i) => NY_KINDS.has(i.kind));
@@ -61,11 +69,48 @@ import { answerGate } from "./tools.js";
             await fetchPendingGatesByThread();
           }
         } catch (_e) {
+          if (gen !== needsYouGen) return;
+          // The server was not reached, so nothing is known to have changed:
+          // the rows stay, marked stale, and the load retries on its own.
+          const since = needsYouLoadedAt
+            ? `Stale since ${needsYouLoadedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}: could not reach the server. `
+            : "Could not reach the server. ";
+          showNeedsYouTrouble(`${since}Reconnecting…`, "stale");
+          scheduleNeedsYouRetry();
           return;
         }
         if (gen !== needsYouGen) return;
+        stopNeedsYouRetry();
+        needsYouLoadedAt = new Date();
         needsYou = items;
         renderNeedsYou();
+      }
+
+      function scheduleNeedsYouRetry() {
+        clearTimeout(needsYouRetryTimer);
+        needsYouRetryTimer = setTimeout(loadNeedsYou, needsYouRetryMs);
+        needsYouRetryMs = Math.min(needsYouRetryMs * 2, NY_RETRY_MAX_MS);
+      }
+
+      function stopNeedsYouRetry() {
+        clearTimeout(needsYouRetryTimer);
+        needsYouRetryTimer = null;
+        needsYouRetryMs = NY_RETRY_MIN_MS;
+      }
+
+      // The panel stays up with its head, so a failure never reads as
+      // "nothing is waiting on you".
+      function showNeedsYouTrouble(message, cls) {
+        const box = document.getElementById("needs-you");
+        const state = document.getElementById("needs-you-state");
+        state.textContent = message;
+        state.className = `ny-state ${cls}`;
+        state.hidden = false;
+        box.hidden = false;
+        box.classList.remove("clear");
+        document.getElementById("needs-you-quiet").hidden = true;
+        document.getElementById("needs-you-head").hidden = false;
+        box.setAttribute("aria-labelledby", "needs-you-title");
       }
 
       function renderNeedsYou() {
@@ -74,6 +119,7 @@ import { answerGate } from "./tools.js";
         const count = document.getElementById("needs-you-count");
         const hint = document.getElementById("needs-you-hint");
         box.hidden = false;
+        document.getElementById("needs-you-state").hidden = true;
         // A row the human is using (typing a change note, or approved and
         // about to close) survives a reload, even if its request has left the
         // inbox: rebuilding it would drop the note or the Close task button.
