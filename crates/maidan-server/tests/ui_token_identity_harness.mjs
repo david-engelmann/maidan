@@ -169,8 +169,11 @@ assert.equal(status.hidden, false);
 assert.equal(status.className, "err");
 assert.match(status.textContent, /^Could not reach the server at /);
 
-// Token A is pasted, then token B before A's check answers. B is accepted.
-// A's late rejection must not sign B out or put A's error over B.
+// Token A is pasted and its check is held. While it runs, the field and the
+// Sign in button are locked, so token B cannot race it (#1257 serializes
+// sign-in). A second change while A is in flight joins A's attempt rather
+// than starting another. A's rejection is shown, then B signs in cleanly
+// and clears it.
 meThrows = false;
 let releaseA;
 heldMe.set(
@@ -182,11 +185,19 @@ heldMe.set(
 document.getElementById("token").value = "secret-a";
 const pastedA = Promise.all(change.map((fn) => fn()));
 await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(document.getElementById("token").disabled, true, "the token field is locked while a sign-in runs");
+assert.equal(document.getElementById("token-signin").disabled, true, "Sign in is locked while a sign-in runs");
+releaseA();
+await pastedA;
+assert.equal(document.getElementById("token").disabled, false, "the field unlocks when the attempt ends");
+assert.equal(status.className, "err", "token A's rejection is shown");
+assert.equal(session.bearerMemberId, null);
 document.getElementById("token").value = "secret-b";
 await Promise.all(change.map((fn) => fn()));
 assert.equal(session.bearerMemberId, "mem_b");
-releaseA();
-await pastedA;
-assert.equal(session.bearerMemberId, "mem_b", "a stale rejection of token A kept token B's member");
 assert.equal(authorId(), "mem_b");
-assert.notEqual(status.className, "err", "a stale rejection of token A overwrote the status for token B");
+assert.notEqual(status.className, "err", "token B's success clears token A's rejection");
+
+// The page keeps retrying its live socket by design, and Node has no socket
+// server here, so end once every assertion has passed.
+process.exit(0);
