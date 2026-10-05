@@ -3146,7 +3146,11 @@ pub trait SlashCommandStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<SlashCommand>, StoreError>;
-    async fn revoke_slash_command(&self, id: SlashCommandId) -> Result<SlashCommand, StoreError>;
+    async fn revoke_slash_command(
+        &self,
+        workspace_id: WorkspaceId,
+        id: SlashCommandId,
+    ) -> Result<SlashCommand, StoreError>;
     async fn get_slash_command(
         &self,
         id: SlashCommandId,
@@ -3162,7 +3166,11 @@ pub trait SlashCommandStore: Send + Sync {
 pub trait FsmHookStore: Send + Sync {
     async fn create_fsm_hook(&self, new: NewFsmHook) -> Result<FsmHook, StoreError>;
     async fn list_fsm_hooks(&self, workspace_id: WorkspaceId) -> Result<Vec<FsmHook>, StoreError>;
-    async fn revoke_fsm_hook(&self, id: FsmHookId) -> Result<FsmHook, StoreError>;
+    async fn revoke_fsm_hook(
+        &self,
+        workspace_id: WorkspaceId,
+        id: FsmHookId,
+    ) -> Result<FsmHook, StoreError>;
     async fn get_fsm_hook(&self, id: FsmHookId) -> Result<FsmHookWithSecret, StoreError>;
     async fn list_matching_fsm_hooks(
         &self,
