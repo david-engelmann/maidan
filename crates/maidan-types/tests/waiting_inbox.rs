@@ -103,7 +103,16 @@ fn a_requested_review_waits_since_the_thread_last_changed() {
     review.updated_at = now - Duration::seconds(600);
     let closed = thread(ThreadState::Closed, false, 9000);
 
-    let inbox = assemble_waiting_inbox(&[], &[review.clone(), closed], &[], &[], &[], &[], now, 3600);
+    let inbox = assemble_waiting_inbox(
+        &[],
+        &[review.clone(), closed],
+        &[],
+        &[],
+        &[],
+        &[],
+        now,
+        3600,
+    );
 
     assert_eq!(inbox.total, 1, "a closed thread's review waits on nobody");
     let item = &inbox.items[0];
