@@ -2347,8 +2347,9 @@ macro_rules! store_delegations {
                 thread_id: ThreadId,
                 reason: BlockedReason,
                 set_by: MemberId,
-            ) -> Result<ThreadBlock, StoreError> {
-                blocks::set(self.pool(), thread_id, reason, set_by).await
+                note: Option<String>,
+            ) -> Result<(ThreadBlock, StoredEvent), StoreError> {
+                blocks::set(self.pool(), thread_id, reason, set_by, note).await
             }
 
             async fn clear_thread_block(
@@ -2380,6 +2381,13 @@ macro_rules! store_delegations {
                 channel_id: ChannelId,
             ) -> Result<Vec<ThreadBlock>, StoreError> {
                 blocks::list_for_channel(self.read_pool(), channel_id).await
+            }
+
+            async fn list_human_gate_blocked_threads(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)>, StoreError> {
+                blocks::list_human_gate_blocked(self.read_pool(), workspace_id).await
             }
 
             async fn set_thread_wait(

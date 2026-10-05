@@ -199,7 +199,7 @@ async fn run_suite(store: &dyn Store) {
     // thread here has no dependency edge at all — only a block row — which is
     // exactly the case the DAG-only clause missed.
     store
-        .set_thread_block(parent.id, maidan_types::BlockedReason::Human, member)
+        .set_thread_block(parent.id, maidan_types::BlockedReason::Human, member, None)
         .await
         .expect("block the parent");
     let occ_blocked = store.run_occupancy(ws, PI_RUN_ID).await.expect("blocked");

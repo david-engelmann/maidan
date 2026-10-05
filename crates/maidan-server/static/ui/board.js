@@ -338,6 +338,13 @@ import { loadMessages } from "./thread.js";
           stateWord.className = "card-state";
           stateWord.textContent = chrome.label;
           foot.appendChild(stateWord);
+          if (th.block) {
+            const b = document.createElement("span");
+            b.className = "card-blocked";
+            b.textContent = `blocked: ${th.block.reason}`;
+            b.title = th.block.note || `Blocked (${th.block.reason})`;
+            foot.appendChild(b);
+          }
           if (th.assignee_id) {
             foot.appendChild(personEl(th.assignee_id));
             if (chrome.column === "working") agents.add(th.assignee_id);

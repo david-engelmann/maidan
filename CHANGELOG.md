@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A blocked agent reaches a human
+
+- **Added:** `set_thread_block` takes an optional `note` explaining why the thread is blocked. Setting a block emits `ThreadBlocked` (non-federatable, like `BlockedResolved`).
+- **Added:** `WaitingKind::Blocked` — a `human` or `gate` block is a Needs-you row for the thread's owner, or workspace admins when it has no owner. The row shows the reason and note, with an Unblock button. Clearing the block removes the row.
+- **Added:** The thread DTO carries `block: Option<ThreadBlock>`. Board cards show `blocked: reason` with the note as a tooltip.
+- **Changed:** `set_thread_block` store API returns `(ThreadBlock, StoredEvent)`.
+
 ### A failed token check drops the previous member
 
 - **Fixed:** Pasting a token drops the member id learned from the previous token when `/me` throws. The page no longer keeps calling routes as that member. An empty token field and a rejected `/me` use the same drop.

@@ -960,12 +960,11 @@ pub async fn set_thread_block(
     let thread_id = ThreadId(id);
     cap(&auth, THREAD_TRANSITION)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    Ok(Json(
-        state
-            .store
-            .set_thread_block(thread_id, body.reason, auth.member_id)
-            .await?,
-    ))
+    let (block, _event) = state
+        .store
+        .set_thread_block(thread_id, body.reason, auth.member_id, body.note)
+        .await?;
+    Ok(Json(block))
 }
 
 /// `GET /threads/:id/block` — the thread's explicit block, or `404` when

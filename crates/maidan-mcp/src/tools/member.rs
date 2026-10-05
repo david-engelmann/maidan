@@ -301,11 +301,43 @@ pub(super) async fn get_waiting_inbox(
         .into_iter()
         .filter(|m| m.created_at > last_read)
         .collect();
+    // Human/gate-blocked threads need owner or admin attention.
+    let mut blocked = Vec::new();
+    {
+        let now = chrono::Utc::now();
+        let is_admin = auth.bypass
+            || (auth.member_id == member_id && auth.has_capability(maidan_auth::TOKEN_ADMIN))
+            || (auth.delegation_grant_id.is_none()
+                && store
+                    .list_api_tokens_for_member(member.workspace_id, member_id)
+                    .await?
+                    .iter()
+                    .any(|t| {
+                        t.revoked_at.is_none()
+                            && t.expires_at.is_none_or(|at| at > now)
+                            && t.capabilities.iter().any(|c| c == maidan_auth::TOKEN_ADMIN)
+                    }));
+        for (tid, title, owner, block) in store
+            .list_human_gate_blocked_threads(member.workspace_id)
+            .await?
+        {
+            let for_owner = owner == Some(member_id);
+            let for_admin = owner.is_none() && is_admin;
+            if for_owner || for_admin {
+                if auth.bypass
+                    || maidan_auth::can_access_thread(store.as_ref(), auth, tid).await?
+                {
+                    blocked.push((tid, title, owner, block));
+                }
+            }
+        }
+    }
     let inbox = maidan_types::assemble_waiting_inbox(
         &assigned,
         &reviews,
         &gates,
         &unread,
+        &blocked,
         chrono::Utc::now(),
         sla,
     );

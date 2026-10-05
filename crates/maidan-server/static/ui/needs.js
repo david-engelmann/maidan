@@ -172,7 +172,7 @@ import { answerGate } from "./tools.js";
         if (item.primary) li.classList.add("ny-primary");
         const kind = document.createElement("span");
         kind.className = `ny-kind${item.kind === "open_gate" ? " gate" : ""}`;
-        kind.textContent = item.kind === "open_gate" ? "Approval" : "Review";
+        kind.textContent = item.kind === "open_gate" ? "Approval" : item.kind === "blocked" ? "Blocked" : "Review";
         const main = document.createElement("div");
         main.className = "ny-main";
         const title = document.createElement("div");
@@ -208,6 +208,22 @@ import { answerGate } from "./tools.js";
           changes.textContent = "Request changes";
           changes.onclick = () => askForChanges(item, li);
           actions.append(approve, changes);
+        } else if (item.kind === "blocked") {
+          // A human/gate block: show the note, offer to clear it.
+          sub.appendChild(when);
+          const clear = document.createElement("button");
+          clear.type = "button";
+          clear.className = "primary";
+          clear.textContent = "Unblock";
+          clear.onclick = async () => {
+            try {
+              await api(`threads/${item.thread_id}/block`, { method: "DELETE" });
+              li.remove();
+            } catch (e) {
+              toast(`Could not unblock: ${e.message}`);
+            }
+          };
+          actions.append(clear);
         } else {
           const view = pendingGateViews.get(item.gate_id);
           if (view && view.gate.requested_by) sub.append("asked by ", personEl(view.gate.requested_by));
