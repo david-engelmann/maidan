@@ -979,6 +979,69 @@ fn ui_js_needs_you_clears_on_refusal_and_keeps_rows_in_use() {
     );
 }
 
+/// Byte offsets of `alert`, `confirm` or `prompt` called bare or on
+/// `window`/`globalThis`/`self`, with any whitespace before the `(`.
+fn blocking_dialog_calls(js: &str) -> Vec<usize> {
+    let bytes = js.as_bytes();
+    let mut found = Vec::new();
+    for dialog in ["alert", "confirm", "prompt"] {
+        let mut from = 0;
+        while let Some(offset) = js[from..].find(dialog) {
+            let at = from + offset;
+            from = at + dialog.len();
+            if !js[from..]
+                .trim_start_matches(char::is_whitespace)
+                .starts_with('(')
+            {
+                continue;
+            }
+            let prev = if at == 0 { None } else { Some(bytes[at - 1]) };
+            let blocking = match prev {
+                None => true,
+                Some(b'.') => {
+                    let before = js[..at - 1].trim_end_matches(char::is_whitespace);
+                    ["window", "globalThis", "self"].iter().any(|g| {
+                        before.ends_with(g)
+                            && before[..before.len() - g.len()]
+                                .chars()
+                                .next_back()
+                                .is_none_or(|c| !is_ident(c) && c != '.')
+                    })
+                }
+                Some(c) => !is_ident(c as char),
+            };
+            if blocking {
+                found.push(at);
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn the_dialog_check_sees_spaced_and_window_calls() {
+    for call in [
+        "alert(1)",
+        "x; alert (1)",
+        "confirm\n  (\"sure?\")",
+        "window.prompt(\"name\")",
+        "globalThis.alert (\"x\")",
+    ] {
+        assert_eq!(blocking_dialog_calls(call).len(), 1, "missed: {call}");
+    }
+    for fine in [
+        "showAlert(1)",
+        "toast.alert(1)",
+        "const alerted = 1",
+        "alertness (1)",
+        "promptText(1)",
+        "mywindow.alert(1)",
+        "\"no alert here\"",
+    ] {
+        assert!(blocking_dialog_calls(fine).is_empty(), "false hit: {fine}");
+    }
+}
+
 /// A blocking `alert()`, `confirm()` or `prompt()` stops the page and cannot
 /// be styled, dismissed or read by a screen reader as part of it. The `/ui`
 /// reports a user's mistake with `showError`, a toast in a `role="alert"`
@@ -987,19 +1050,8 @@ fn ui_js_needs_you_clears_on_refusal_and_keeps_rows_in_use() {
 #[test]
 fn ui_js_reports_errors_without_blocking_dialogs() {
     let js = script(HTML);
-    let bytes = js.as_bytes();
-    for dialog in ["alert(", "confirm(", "prompt("] {
-        let mut from = 0;
-        while let Some(offset) = js[from..].find(dialog) {
-            let at = from + offset;
-            let called_bare =
-                at == 0 || !(is_ident(bytes[at - 1] as char) || bytes[at - 1] == b'.');
-            assert!(
-                !called_bare,
-                "a blocking {dialog}) at byte {at}: use showError or an inline confirmation"
-            );
-            from = at + dialog.len();
-        }
+    for at in blocking_dialog_calls(js) {
+        panic!("a blocking dialog call at byte {at}: use showError or an inline confirmation");
     }
     assert!(
         page().contains(r#"<div id="toasts"></div>"#),

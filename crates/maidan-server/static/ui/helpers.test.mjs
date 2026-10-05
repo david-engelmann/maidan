@@ -12,6 +12,7 @@ function makeEl() {
     hidden: false,
     className: "",
     textContent: "",
+    innerHTML: "",
     title: "",
     tabIndex: 0,
     open: false,
@@ -38,6 +39,8 @@ function makeEl() {
     append(...nodes) {
       children.push(...nodes);
     },
+    after() {},
+    prepend() {},
     appendChild(child) {
       children.push(child);
       return child;
@@ -112,9 +115,11 @@ Object.defineProperty(globalThis, "navigator", {
 });
 
 const { apiReadPath, apiWritePath, requireBearer } = await import("./api.js");
-const { humanError } = await import("./feedback.js");
+const { humanError, showError } = await import("./feedback.js");
+const { trimImageCache } = await import("./artifacts.js");
 const { registerBrowserPush } = await import("./push.js");
-const { refreshSession, signOutPostsLogout } = await import("./session.js");
+const session = await import("./session.js");
+const { loadServerAuth, refreshSession, signOutPostsLogout } = session;
 
 const BASE = "http://127.0.0.1:8080";
 
@@ -124,8 +129,25 @@ function toastMessages() {
 
 function clearToasts() {
   const region = document.getElementById("toasts");
-  for (const toast of region.children) clearTimeout(Number(toast.dataset.timer));
+  for (const toast of region.children) {
+    clearTimeout(Number(toast.dataset.timer));
+    clearTimeout(Number(toast.dataset.restore));
+  }
   region.children.length = 0;
+}
+
+function jsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  };
+}
+
+// Lets the awaits inside a page function run to the end.
+function settle() {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 // A failed session read is how the page itself clears a signed-in session.
@@ -259,6 +281,120 @@ describe("board page helpers", { concurrency: 1 }, () => {
       assert.equal(said.includes("raw server body"), false);
       assert.equal(said.includes(String(status)), false);
     }
+  });
+});
+
+
+describe("toasts, discovery, and the image cache", { concurrency: 1 }, () => {
+  test("the same error again is cleared and put back, so a screen reader says it again", (t) => {
+    // Cleared before the mock, so a real timer left by an earlier test is
+    // really cancelled.
+    clearToasts();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    showError("Channel name required");
+    const region = document.getElementById("toasts");
+    const text = region.children[0].children[0];
+    assert.equal(text.textContent, "Channel name required");
+    showError("Channel name required");
+    assert.equal(region.children.length, 1, "one toast, not a stack");
+    assert.equal(text.textContent, "", "the text is cleared first");
+    t.mock.timers.tick(100);
+    assert.equal(text.textContent, "Channel name required", "then put back in a later task");
+    showError("Channel name required");
+    showError("Channel name required");
+    t.mock.timers.tick(100);
+    assert.equal(text.textContent, "Channel name required", "a pending restore is replaced, not stacked");
+    clearToasts();
+  });
+
+  test("an older discovery answer never overrides the API base set after it", async () => {
+    let releaseOld;
+    globalThis.fetch = async (url) => {
+      if (String(url).startsWith("http://old.test")) {
+        return new Promise((resolve) => {
+          releaseOld = () =>
+            resolve(jsonResponse({ auth: { oidc: true, oidc_login: "/auth/oidc/login", sessions: true } }));
+        });
+      }
+      return jsonResponse({ auth: { oidc: false, sessions: false } });
+    };
+    document.getElementById("base").value = "http://old.test";
+    const older = loadServerAuth();
+    document.getElementById("base").value = BASE;
+    await loadServerAuth();
+    releaseOld();
+    await older;
+    assert.equal(session.oidcLoginPath, null);
+    assert.equal(session.serverOffersSessions, false);
+    assert.equal(document.getElementById("first-run-oidc").hidden, true);
+  });
+
+  test("a discovery read that got no answer is tried again; a 404 is an answer", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    document.getElementById("base").value = BASE;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      if (calls === 1) throw new TypeError("Failed to fetch");
+      return jsonResponse({ auth: { oidc: true, oidc_login: "/auth/oidc/login", sessions: true } });
+    };
+    await loadServerAuth();
+    assert.equal(session.oidcLoginPath, null);
+    assert.equal(document.getElementById("first-run-oidc").hidden, true);
+    t.mock.timers.tick(2000);
+    await settle();
+    assert.equal(calls, 2);
+    assert.equal(session.oidcLoginPath, "/auth/oidc/login");
+    assert.equal(document.getElementById("first-run-oidc").hidden, false);
+
+    calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return jsonResponse({}, 404);
+    };
+    await loadServerAuth();
+    t.mock.timers.tick(60000);
+    await settle();
+    assert.equal(calls, 1, "no discovery document is not retried");
+    assert.equal(session.oidcLoginPath, null);
+  });
+
+  test("a stalled discovery read does not hold up signing in", async () => {
+    document.getElementById("base").value = BASE;
+    document.getElementById("token").value = "";
+    const seen = [];
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      seen.push(u);
+      if (u.endsWith("/.well-known/maidan.json")) return new Promise(() => {});
+      return jsonResponse({}, 401);
+    };
+    const started = session.start().then(() => "started");
+    let timer;
+    const stalled = new Promise((resolve) => (timer = setTimeout(() => resolve("stalled"), 1000)));
+    const first = await Promise.race([started, stalled]);
+    clearTimeout(timer);
+    assert.equal(first, "started");
+    assert.ok(seen.some((u) => u.endsWith("/auth/session")), "the session was checked");
+  });
+
+  test("the image cache evicts the least recently used past its byte budget", () => {
+    const images = new Map([["a", 1], ["b", 2], ["c", 3]]);
+    const sizes = new Map([["a", 40], ["b", 40], ["c", 40]]);
+    trimImageCache(images, sizes, 100, 10, "c");
+    assert.deepEqual([...images.keys()], ["b", "c"]);
+    assert.deepEqual([...sizes.keys()], ["b", "c"]);
+
+    // The image being drawn stays even when it alone is over the budget.
+    images.set("huge", 4);
+    sizes.set("huge", 500);
+    trimImageCache(images, sizes, 100, 10, "huge");
+    assert.deepEqual([...images.keys()], ["huge"]);
+
+    // The entry limit still holds when nothing has a size yet.
+    const pending = new Map([["x", 1], ["y", 2], ["z", 3]]);
+    trimImageCache(pending, new Map(), 100, 2, "z");
+    assert.deepEqual([...pending.keys()], ["y", "z"]);
   });
 });
 
