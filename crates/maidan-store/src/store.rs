@@ -1970,6 +1970,29 @@ pub trait AssignmentStore: Send + Sync {
         channel_id: ChannelId,
     ) -> Result<Vec<ThreadBlock>, StoreError>;
 
+    /// Declare (or supersede) the agent's self-reported status on a thread.
+    /// The declaration is by the claim holder or owner; `stalled` is refused
+    /// (system-computed only). Appends `StatusDeclared` atomically.
+    async fn declare_thread_status(
+        &self,
+        thread_id: ThreadId,
+        status: DeclaredStatus,
+        note: String,
+        declared_by: MemberId,
+    ) -> Result<(ThreadStatusDeclaration, StoredEvent), StoreError>;
+    /// Clear a thread's status declaration. Used when a human responds —
+    /// the declaration is superseded by human activity. Returns the cleared
+    /// declaration; `None` if there was none (idempotent).
+    async fn clear_thread_status(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadStatusDeclaration>, StoreError>;
+    /// The thread's active status declaration, or `None` if cleared.
+    async fn get_thread_status(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadStatusDeclaration>, StoreError>;
+
     /// Set (upsert) a thread's wait timer: the thread is waiting until
     /// `wait_until`, escalating via `on_timeout` on lapse. Re-setting resets
     /// `fired_at` (a fresh timer). One wait per thread.

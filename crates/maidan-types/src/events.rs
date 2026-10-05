@@ -167,6 +167,7 @@ pub enum EventKind {
     ThreadResultSet,
     ApprovalRequested,
     BlockedResolved,
+    StatusDeclared,
     ClaimExpired,
     ClaimUnacknowledged,
     ClaimFailed,
@@ -206,6 +207,7 @@ impl EventKind {
             Self::ThreadResultSet => "thread_result_set",
             Self::ApprovalRequested => "approval_requested",
             Self::BlockedResolved => "blocked_resolved",
+            Self::StatusDeclared => "status_declared",
             Self::ClaimExpired => "claim_expired",
             Self::ClaimUnacknowledged => "claim_unacknowledged",
             Self::ClaimFailed => "claim_failed",
@@ -245,6 +247,7 @@ impl EventKind {
             "thread_result_set" => Some(Self::ThreadResultSet),
             "approval_requested" => Some(Self::ApprovalRequested),
             "blocked_resolved" => Some(Self::BlockedResolved),
+            "status_declared" => Some(Self::StatusDeclared),
             "claim_expired" => Some(Self::ClaimExpired),
             "claim_unacknowledged" => Some(Self::ClaimUnacknowledged),
             "claim_failed" => Some(Self::ClaimFailed),
@@ -309,6 +312,7 @@ impl EventKind {
         Self::ThreadResultSet,
         Self::ApprovalRequested,
         Self::BlockedResolved,
+        Self::StatusDeclared,
         Self::ClaimExpired,
         Self::ClaimUnacknowledged,
         Self::ClaimFailed,
@@ -376,6 +380,9 @@ impl EventKind {
             // An unblock is *this* deployment's dispatch decision; a peer must
             // not inject one.
             Self::BlockedResolved => false,
+            // A status declaration is *this* deployment's agent state; a peer
+            // must not inject one.
+            Self::StatusDeclared => false,
             // A lease expiry is detected locally (this deployment's clock + reclaim);
             // a peer must not inject a claim of one.
             Self::ClaimExpired => false,
@@ -511,6 +518,17 @@ pub enum Event {
         thread_id: ThreadId,
         reason: BlockedReason,
         resolved_by: MemberId,
+    },
+    /// An agent declared its status on a thread. Carries the status and the
+    /// one-sentence note. Locally derived: not federatable.
+    StatusDeclared {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        status: DeclaredStatus,
+        note: String,
+        declared_by: MemberId,
     },
     /// A claim's lease lapsed and the thread went back to the queue. Emitted by
     /// the claim reaper within a tick of the deadline, or by `claim_next` when
@@ -841,6 +859,7 @@ impl Event {
             Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
             Self::ApprovalRequested { .. } => EventKind::ApprovalRequested,
             Self::BlockedResolved { .. } => EventKind::BlockedResolved,
+            Self::StatusDeclared { .. } => EventKind::StatusDeclared,
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
             Self::ClaimUnacknowledged { .. } => EventKind::ClaimUnacknowledged,
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
@@ -880,6 +899,7 @@ impl Event {
             | Self::ThreadResultSet { occurred_at, .. }
             | Self::ApprovalRequested { occurred_at, .. }
             | Self::BlockedResolved { occurred_at, .. }
+            | Self::StatusDeclared { occurred_at, .. }
             | Self::ClaimExpired { occurred_at, .. }
             | Self::ClaimUnacknowledged { occurred_at, .. }
             | Self::ClaimFailed { occurred_at, .. }
@@ -919,6 +939,7 @@ impl Event {
             | Self::ThreadResultSet { workspace_id, .. }
             | Self::ApprovalRequested { workspace_id, .. }
             | Self::BlockedResolved { workspace_id, .. }
+            | Self::StatusDeclared { workspace_id, .. }
             | Self::ClaimExpired { workspace_id, .. }
             | Self::ClaimUnacknowledged { workspace_id, .. }
             | Self::ClaimFailed { workspace_id, .. }

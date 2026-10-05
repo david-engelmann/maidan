@@ -2382,6 +2382,30 @@ macro_rules! store_delegations {
                 blocks::list_for_channel(self.read_pool(), channel_id).await
             }
 
+            async fn declare_thread_status(
+                &self,
+                thread_id: ThreadId,
+                status: DeclaredStatus,
+                note: String,
+                declared_by: MemberId,
+            ) -> Result<(ThreadStatusDeclaration, StoredEvent), StoreError> {
+                status::declare(self.pool(), thread_id, status, note, declared_by).await
+            }
+
+            async fn clear_thread_status(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadStatusDeclaration>, StoreError> {
+                status::clear(self.pool(), thread_id).await
+            }
+
+            async fn get_thread_status(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ThreadStatusDeclaration>, StoreError> {
+                status::get(self.read_pool(), thread_id).await
+            }
+
             async fn set_thread_wait(
                 &self,
                 thread_id: ThreadId,

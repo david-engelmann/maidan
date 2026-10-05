@@ -984,6 +984,50 @@ pub async fn get_thread_block(
     }
 }
 
+/// `PUT /threads/:id/status` — declare the agent's self-reported status.
+/// `working`, `needs_input`, `needs_review`, `blocked`, or `done` with a
+/// one-sentence note. By the claim holder or owner; `stalled` is refused
+/// (system-computed only). Supersedes any prior declaration.
+/// `thread:transition` + thread access.
+pub async fn declare_thread_status(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<DeclareStatusRequest>,
+) -> ApiResult<Json<ThreadStatusDeclaration>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, THREAD_TRANSITION)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let note = body.note.trim();
+    if note.is_empty() {
+        return Err(ApiError::BadRequest("note must be a non-empty one-sentence description".into()));
+    }
+    if note.contains('\n') {
+        return Err(ApiError::BadRequest("note must be a single sentence (no newlines)".into()));
+    }
+    let (declaration, _event) = state
+        .store
+        .declare_thread_status(thread_id, body.status, note.to_string(), auth.member_id)
+        .await?;
+    Ok(Json(declaration))
+}
+
+/// `GET /threads/:id/status` — the thread's active status declaration, or
+/// `404` when cleared. `workspace:read` + thread access.
+pub async fn get_thread_status(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<ThreadStatusDeclaration>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    match state.store.get_thread_status(thread_id).await? {
+        Some(status) => Ok(Json(status)),
+        None => Err(ApiError::NotFound),
+    }
+}
+
 /// `DELETE /threads/:id/block` — clear the explicit block and emit
 /// `BlockedResolved` (bus-notify via `publish_stored`). `204` when it was
 /// blocked, `404` when it was not. `thread:transition` + thread access.

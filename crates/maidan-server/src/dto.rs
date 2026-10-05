@@ -582,6 +582,16 @@ pub struct SetThreadBlock {
     pub reason: BlockedReason,
 }
 
+/// Body for `PUT /threads/:id/status` — declare the agent's self-reported
+/// status. `status` is the closed `DeclaredStatus` enum
+/// (`working|needs_input|needs_review|blocked|done`); `stalled` is refused.
+/// `note` is a one-sentence description.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DeclareStatusRequest {
+    pub status: DeclaredStatus,
+    pub note: String,
+}
+
 /// Body for `PUT /threads/:id/wait` — set a wait timer. On `wait_until` the
 /// sweeper escalates via `on_timeout` (default `notify`); an optional `reason`
 /// records why the thread is waiting.

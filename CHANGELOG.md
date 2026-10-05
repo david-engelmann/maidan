@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Agent self-reported status (`declare_status`)
+
+- **Added:** Agents can now declare what they're doing via `declare_status`: `working`, `needs_input`, `needs_review`, `blocked`, or `done`, with a one-sentence note. By the claim holder or owner. `stalled` is refused (system-computed only). Supersedes any prior declaration; cleared on human response.
+- **Added:** `StatusDeclared` event appended on declaration (non-federatable).
+- **Added:** MCP `declare_status` and `get_thread_status` tools; REST `PUT /threads/:id/status` and `GET /threads/:id/status`.
+- **Added:** Board card chip showing the agent's declared status with color-coded badge and note tooltip.
+- **Added:** `declare_status` and `get_thread_status` to the worker tool profile.
+
+Refs #1253
+
 ### A failed token check drops the previous member
 
 - **Fixed:** Pasting a token drops the member id learned from the previous token when `/me` throws. The page no longer keeps calling routes as that member. An empty token field and a rejected `/me` use the same drop.

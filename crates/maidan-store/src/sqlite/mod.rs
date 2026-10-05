@@ -73,6 +73,7 @@ mod secret_egress_hosts;
 mod secrets;
 mod sessions;
 mod share_tickets;
+mod status;
 mod slack_links;
 mod slash_commands;
 mod spawn;

@@ -84,6 +84,7 @@ fn sample() -> WorkspaceImport {
             created_at: now,
             updated_at: now,
             tombstoned_at: None,
+            status: None,
         }],
         messages: vec![
             Message {

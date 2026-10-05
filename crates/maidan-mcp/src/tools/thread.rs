@@ -629,6 +629,57 @@ pub(super) async fn get_thread_block(
     Ok(content_json(&block))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeclareStatusArgs {
+    thread_id: uuid::Uuid,
+    status: DeclaredStatus,
+    note: String,
+}
+
+/// Declare the agent's self-reported status on a thread: `working`,
+/// `needs_input`, `needs_review`, `blocked`, or `done`, with a one-sentence
+/// note. By the claim holder or owner; `stalled` is refused (system-computed
+/// only). Supersedes any prior declaration. Appends `StatusDeclared`.
+/// `thread:transition`; thread access enforced pre-dispatch.
+pub(super) async fn declare_status(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: DeclareStatusArgs = serde_json::from_value(args.clone())?;
+    // `stalled` is system-computed only; DeclaredStatus::parse refuses it,
+    // and the type has no Stalled variant, so this is enforced by construction.
+    // Validate the note is one sentence (non-empty, no newlines).
+    let note = a.note.trim();
+    if note.is_empty() {
+        return Err(McpError::invalid_params("note must be a non-empty one-sentence description"));
+    }
+    if note.contains('\n') {
+        return Err(McpError::invalid_params("note must be a single sentence (no newlines)"));
+    }
+    let (declaration, _event) = store
+        .declare_thread_status(
+            ThreadId(a.thread_id),
+            a.status,
+            note.to_string(),
+            auth.member_id,
+        )
+        .await?;
+    Ok(content_json(&declaration))
+}
+
+/// The thread's active status declaration, or null. `workspace:read`; thread
+/// access enforced.
+pub(super) async fn get_thread_status(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let status = store.get_thread_status(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&status))
+}
+
 /// Clear an explicit dispatch block and emit `BlockedResolved`. `{cleared}` is
 /// `false` when it was not blocked. `thread:transition`.
 pub(super) async fn clear_thread_block(

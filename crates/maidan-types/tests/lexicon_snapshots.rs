@@ -74,6 +74,7 @@ fn thread() -> Thread {
         created_at: ts(),
         updated_at: ts(),
         tombstoned_at: None,
+        status: None,
     }
 }
 

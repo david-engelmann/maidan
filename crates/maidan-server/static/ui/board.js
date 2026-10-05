@@ -338,6 +338,15 @@ import { loadMessages } from "./thread.js";
           stateWord.className = "card-state";
           stateWord.textContent = chrome.label;
           foot.appendChild(stateWord);
+          // Agent self-reported status chip (declare_status). Shows the
+          // status and note when the agent has declared what it's doing.
+          if (th.status) {
+            const s = document.createElement("span");
+            s.className = `card-status card-status-${th.status.status}`;
+            s.textContent = th.status.status.replace(/_/g, " ");
+            s.title = th.status.note || `Agent status: ${th.status.status}`;
+            foot.appendChild(s);
+          }
           if (th.assignee_id) {
             foot.appendChild(personEl(th.assignee_id));
             if (chrome.column === "working") agents.add(th.assignee_id);

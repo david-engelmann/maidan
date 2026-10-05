@@ -537,6 +537,10 @@ pub fn router(state: AppState) -> Router {
                 .merge(delete(routes::clear_thread_block)),
         )
         .route(
+            "/threads/{id}/status",
+            put(routes::declare_thread_status).merge(get(routes::get_thread_status)),
+        )
+        .route(
             "/threads/{id}/wait",
             put(routes::set_thread_wait)
                 .merge(delete(routes::cancel_thread_wait))

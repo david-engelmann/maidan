@@ -971,6 +971,7 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             tombstoned_at: tombstoned.then(Utc::now),
+            status: None,
         }
     }
 
@@ -1243,6 +1244,7 @@ mod tests {
             created_at: at_secs(1),
             updated_at: at_secs(updated),
             tombstoned_at: None,
+            status: None,
         }
     }
 
