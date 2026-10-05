@@ -126,8 +126,9 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    hit rate. This is Program C ([Context Economics](Context%20Economics.md)).
    MCP 2026-07-28 conformance and the worker and reviewer tool profiles are
    on `main` (#1239, #1240). The canonical pack is on `main` (#1241); the
-   ledger is in flight (#1242). Next: workspace queue depth and the SDK normalizers (Open
-   Work Next 23 and 24).
+   ledger prices every cache tier and rolls up cost per completed task
+   (#1242). Next: workspace queue depth and the SDK normalizers (Open
+   Work Next 22 and 23).
    The research behind it is kept in the [archive](archive/Context%20Economics%20research%202026-10/README.md).
 7. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
