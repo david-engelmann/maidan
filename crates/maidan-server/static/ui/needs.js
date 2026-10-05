@@ -209,19 +209,39 @@ import { answerGate } from "./tools.js";
           changes.onclick = () => askForChanges(item, li);
           actions.append(approve, changes);
         } else if (item.kind === "blocked") {
-          // A human/gate block: show the note, offer to clear it.
+          // A human/gate block: show the reason and note, offer to clear it.
+          // The item.summary already carries "title — blocked (reason): note".
+          const ctx = document.createElement("span");
+          ctx.textContent = item.summary;
+          sub.appendChild(ctx);
           sub.appendChild(when);
           const clear = document.createElement("button");
           clear.type = "button";
           clear.className = "primary";
           clear.textContent = "Unblock";
           clear.onclick = async () => {
+            let res;
             try {
-              await api(`threads/${item.thread_id}/block`, { method: "DELETE" });
-              li.remove();
+              res = await api(apiWritePath(`/threads/${item.thread_id}/block`), {
+                method: "DELETE",
+                headers: headers(true),
+                credentials: "include",
+              });
             } catch (e) {
               toast(`Could not unblock: ${e.message}`);
+              return;
             }
+            if (!res.ok) {
+              const body = await res.text().catch(() => "");
+              toast(`Could not unblock: ${res.status} ${body}`);
+              return;
+            }
+            // Remove from state and re-render; schedule a board refresh so
+            // the card loses its blocked marker.
+            const idx = needsYou.findIndex((i) => i === item);
+            if (idx >= 0) needsYou.splice(idx, 1);
+            renderNeedsYou();
+            if (typeof scheduleBoardRefresh === "function") scheduleBoardRefresh();
           };
           actions.append(clear);
         } else {
