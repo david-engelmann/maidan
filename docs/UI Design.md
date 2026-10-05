@@ -71,9 +71,9 @@ Selectors today: `#shell`, `aside`, `#channel-list`, `#live-panel`, `#ws-status`
 
 Primary action: **Approve** on the first row (review) or the gate. **Request changes** and **Decline** are ghosts. While the change note is open, **Send back** is the only filled button. After approval, **Close task** replaces Approve as the only filled button. This button behavior is already on main. Do not rebuild it.
 
-Selectors: `#needs-you`, `#needs-you-quiet`, `#needs-you-head`, `#needs-you-title`, `#needs-you-count`, `#needs-you-list`, `.ny-item`, `.ny-kind`, `.ny-title`, `.ny-actions`, `.ny-note`, `.ny-err`. Built by `renderNeedsYou` / `needsYouRow`.
+Selectors: `#needs-you`, `#needs-you-quiet`, `#needs-you-head`, `#needs-you-state`, `#needs-you-title`, `#needs-you-count`, `#needs-you-list`, `.ny-item`, `.ny-kind`, `.ny-title`, `.ny-actions`, `.ny-note`, `.ny-err`. Built by `renderNeedsYou` / `needsYouRow`.
 
-The count may stay a number beside the title. It is not a badge on each row. The warm head shows only when the list is non-empty.
+The count may stay a number beside the title. It is not a badge on each row. The warm head shows only when the list is non-empty. A load that fails is never an empty or hidden queue: `#needs-you-state` under the head says what to fix (a refusal, in `--err`) or "Stale since HH:MM: could not reach the server. Reconnecting…" (muted), the last rows and the tab count stay, and the next good load hides the line.
 
 ### Thread
 

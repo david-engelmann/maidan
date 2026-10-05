@@ -962,12 +962,38 @@ fn ui_js_thread_pages_have_no_cap_but_stop_on_a_stuck_cursor() {
     );
 }
 
+/// A failed Needs you load is never an empty queue: a refusal says what to
+/// fix, a dropped connection keeps the rows under a stale line and retries,
+/// and neither zeroes the count in the tab title.
 #[test]
-fn ui_js_needs_you_clears_on_refusal_and_keeps_rows_in_use() {
+fn ui_js_needs_you_reports_failed_loads_and_keeps_rows_in_use() {
     let s = script(HTML);
+    let load = function_body(s, "loadNeedsYou");
+    let refused = &load[load.find("if (!res.ok)").expect("a refused load")
+        ..load
+            .find("items = (await res.json())")
+            .expect("the good path")];
     assert!(
-        s.contains("needsYou = [];\n            setAttention(0);"),
-        "a refused inbox load clears the queue and the tab count"
+        refused.contains("showNeedsYouTrouble(why, \"err\")"),
+        "a refused inbox load names the fix in the panel"
+    );
+    assert!(
+        !refused.contains("setAttention(0)")
+            && !refused.contains("needsYou = []")
+            && !refused.contains("box.hidden = true"),
+        "a refused inbox load neither clears the queue, zeroes the tab count, nor hides the panel"
+    );
+    let thrown = &load[load.find("catch (_e)").expect("a thrown load")..];
+    assert!(
+        thrown.contains("showNeedsYouTrouble(")
+            && thrown.contains("\"stale\"")
+            && thrown.contains("scheduleNeedsYouRetry()"),
+        "an unreachable server keeps the rows under a stale line and retries"
+    );
+    assert!(
+        function_body(s, "renderNeedsYou")
+            .contains("document.getElementById(\"needs-you-state\").hidden = true;"),
+        "the next good load clears the error and stale line"
     );
     assert!(
         s.contains("list.appendChild(keep.get(k) || needsYouRow(item));"),

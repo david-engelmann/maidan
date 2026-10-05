@@ -114,6 +114,18 @@ impl Indexer {
 
     /// Like [`spawn`](Self::spawn) but exposes `last_event_unix_ms` for health probes.
     pub fn spawn_with_heartbeat(self, last_event_unix_ms: Arc<AtomicI64>) -> IndexerHandle {
+        self.spawn_with_probes(last_event_unix_ms, Arc::new(AtomicI64::new(0)))
+    }
+
+    /// Like [`spawn_with_heartbeat`](Self::spawn_with_heartbeat) and also
+    /// publishes `processed_log_id`: the highest event-log id the indexer has
+    /// handed to its handler. Readiness compares it with the log to tell an
+    /// indexer that is behind from one with nothing to index.
+    pub fn spawn_with_probes(
+        self,
+        last_event_unix_ms: Arc<AtomicI64>,
+        processed_log_id: Arc<AtomicI64>,
+    ) -> IndexerHandle {
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
         let heartbeat = last_event_unix_ms.clone();
         let rebuild_needed = Arc::new(AtomicBool::new(false));
@@ -144,6 +156,7 @@ impl Indexer {
                     self.log.as_deref(),
                     &mut shutdown_rx,
                     &heartbeat,
+                    &processed_log_id,
                     &rebuild_flag,
                 )
                 .await;
@@ -243,12 +256,22 @@ async fn project_row(
     Ok(())
 }
 
+/// Readiness reads this as "handled". A workspace the tap faulted on was not
+/// projected, so once a rebuild is owed the mark stops advancing and any
+/// indexable event past it keeps counting as backlog.
+fn publish_progress(processed_log_id: &AtomicI64, rebuild_flag: &AtomicBool, log_id: i64) {
+    if !rebuild_flag.load(Ordering::Relaxed) {
+        processed_log_id.fetch_max(log_id, Ordering::Relaxed);
+    }
+}
+
 async fn consume(
     mut stream: EventStream,
     handler: &dyn EventHandler,
     log: Option<&dyn Store>,
     shutdown_rx: &mut mpsc::Receiver<()>,
     last_event_unix_ms: &AtomicI64,
+    processed_log_id: &AtomicI64,
     rebuild_flag: &AtomicBool,
 ) -> ConsumeOutcome {
     let mut tap = SearchTap::new();
@@ -276,6 +299,10 @@ async fn consume(
                 // old teardown retried the full log walk forever.
                 report_workspace_faults(&tap, rebuild_flag);
                 persist_cursor(store, &tap, hw).await;
+                // A finished backfill is progress: without it an instance that
+                // restarts and then stalls shows no heartbeat at all.
+                publish_progress(processed_log_id, rebuild_flag, hw);
+                last_event_unix_ms.store(chrono::Utc::now().timestamp_millis(), Ordering::Relaxed);
             }
             Err(fault) => {
                 error!(?fault, "search projector backfill failed closed");
@@ -311,6 +338,7 @@ async fn consume(
                         })
                         .instrument(span)
                         .await;
+                        publish_progress(processed_log_id, rebuild_flag, watermark);
                         last_event_unix_ms.store(
                             chrono::Utc::now().timestamp_millis(),
                             Ordering::Relaxed,
@@ -343,6 +371,7 @@ async fn consume(
                                 watermark = hw;
                                 report_workspace_faults(&tap, rebuild_flag);
                                 persist_cursor(store, &tap, hw).await;
+                                publish_progress(processed_log_id, rebuild_flag, hw);
                             }
                             Err(fault) => {
                                 error!(?fault, "search projector lag rebuild failed closed");

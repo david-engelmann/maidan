@@ -54,6 +54,7 @@ Specs that drive a real page, and what is still missing.
 | --- | --- | --- |
 | Board lanes, empty board, human refusal | `board.spec.ts`, `needs-you.spec.ts`, `refused-close.spec.ts`, `calm.spec.ts` | The board as it is |
 | First-run sign-in (Enter, Sign in, no credential yet) | `first-run-sign-in.spec.ts` | |
+| Needs you when a load fails (refused, unreachable, recovery) | `needs-you-truth.spec.ts` | |
 | Prefs (delivery mode, email, mute, follow) | `prefs.spec.ts` | |
 | Slash commands (register, revoke) | `slash.spec.ts` | MCP tool handler. An http handler needs an encryption key the harness does not set |
 | Delivery replay | `deliveries.spec.ts` | One seeded dead-letter webhook |

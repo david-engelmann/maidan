@@ -21,6 +21,7 @@ pub async fn link(pool: &PgPool, new: NewSlackChannelLink) -> Result<SlackChanne
            SET workspace_id = EXCLUDED.workspace_id, channel_id = EXCLUDED.channel_id,
                thread_id = EXCLUDED.thread_id, member_id = EXCLUDED.member_id,
                disabled_at = NULL
+           WHERE maidan_slack_channel_links.workspace_id = EXCLUDED.workspace_id
          RETURNING {COLS}"
     ))
     .bind(&new.slack_channel_id)
@@ -28,9 +29,11 @@ pub async fn link(pool: &PgPool, new: NewSlackChannelLink) -> Result<SlackChanne
     .bind(new.channel_id.0)
     .bind(new.thread_id.0)
     .bind(new.member_id.0)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await?;
-    Ok(row_to_link(&row))
+    row.as_ref()
+        .map(row_to_link)
+        .ok_or_else(|| StoreError::Conflict("already linked by another workspace".into()))
 }
 
 pub async fn get(
