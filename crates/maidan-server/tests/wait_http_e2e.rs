@@ -7,11 +7,7 @@
 
 mod common;
 
-use std::{
-    net::SocketAddr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::{EventBus, InMemoryBus, PostgresBus};
@@ -43,8 +39,7 @@ async fn spawn_sqlite() -> (Harness, Arc<dyn EventBus>) {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> =
-        Arc::new(maidan_search::SqliteSearch::new(pool));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus: Arc<dyn EventBus> = Arc::new(InMemoryBus::new());
@@ -219,7 +214,7 @@ async fn http_wait_for_result_wakes_when_the_result_is_set() {
         .expect("waiter finishes")
         .expect("waiter joins");
     assert!(wait_resp.get("error").is_none(), "{wait_resp}");
-    assert_eq!(tool_text(&wait_resp), json!({"answer": 42}));
+    assert_eq!(tool_text(&wait_resp)["result"], json!({"answer": 42}));
 }
 
 #[tokio::test]
@@ -266,7 +261,10 @@ async fn http_wait_for_result_wakes_across_two_replicas() {
         .expect("waiter finishes")
         .expect("waiter joins");
     assert!(wait_resp.get("error").is_none(), "{wait_resp}");
-    assert_eq!(tool_text(&wait_resp), json!({"from": "replica-b"}));
+    assert_eq!(
+        tool_text(&wait_resp)["result"],
+        json!({"from": "replica-b"})
+    );
     drop(container);
 }
 
