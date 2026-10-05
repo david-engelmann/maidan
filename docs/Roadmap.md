@@ -113,10 +113,10 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    the connection that requested it (#1229). Opening a group DM asks for three
    members and selects that conversation (#1230). Next, from the UI deep
    dive of 2026-10-03: the human supervising agents is the user, and silence
-   is a state. Needs-you tells the truth when it fails, sign-in is honest,
-   review and blocked work always reach a person, agents declare their own
-   status, and an approval binds the evidence it showed (Open Work Next 1 to
-   12). Then the review findings and screenshots captured by a script.
+   is a state. Needs-you says when it could not load (#1251). Next, sign-in
+   is honest, review and blocked work always reach a person, agents declare
+   their own status, and an approval binds the evidence it showed (Open Work
+   Next 2 to 12). Then the review findings and screenshots captured by a script.
 6. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
