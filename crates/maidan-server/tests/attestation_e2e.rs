@@ -298,6 +298,14 @@ impl World {
                 .json(&json!({ "action": action }))
                 .send()
         };
+        // A gated thread needs a posted result before it can go to review.
+        self.client
+            .put(format!("{}/threads/{}/result", self.base, thread.0))
+            .bearer_auth(&self.worker_tok)
+            .json(&json!({ "result": { "status": "done" } }))
+            .send()
+            .await
+            .unwrap();
         let _ = transition("start_review").await.unwrap();
         transition("close").await.unwrap().status()
     }

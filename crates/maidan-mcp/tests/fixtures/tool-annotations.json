@@ -1660,6 +1660,44 @@
         "reason": "reads Maidan's database only"
       }
     },
+    "get_workspace_occupancy": {
+      "title": "Get workspace occupancy",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs counts via store.workspace_occupancy"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "get_workspace_queue_depth": {
+      "title": "Get workspace queue depth",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs counts via store.workspace_queue_depth"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
     "import_workspace": {
       "title": "Import workspace",
       "readOnlyHint": {

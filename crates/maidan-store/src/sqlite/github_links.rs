@@ -24,6 +24,7 @@ pub async fn link(
            SET workspace_id = excluded.workspace_id, channel_id = excluded.channel_id,
                thread_id = excluded.thread_id, member_id = excluded.member_id,
                disabled_at = NULL
+           WHERE maidan_github_issue_links.workspace_id = excluded.workspace_id
          RETURNING {COLS}"
     ))
     .bind(&new.repo)
@@ -33,10 +34,12 @@ pub async fn link(
     .bind(new.thread_id.0)
     .bind(new.member_id.0)
     .bind(&now)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
     .map_err(map_link_err)?;
-    Ok(row_to_link(&row))
+    row.as_ref()
+        .map(row_to_link)
+        .ok_or_else(|| StoreError::Conflict("already linked by another workspace".into()))
 }
 
 /// See the Postgres twin: the only uniqueness this upsert can violate is the

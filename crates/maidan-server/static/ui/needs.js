@@ -4,7 +4,7 @@ import { fetchPendingGatesByThread, pendingGateViews, renderResult, renderTeam, 
 import { keyActivates, responseError, setStatus } from "./feedback.js";
 import { ago, authorId, personEl } from "./people.js";
 import { sessionMemberId } from "./session.js";
-import { NY_KINDS } from "./state.js";
+import { NY_KINDS, NY_RETRY_MAX_MS, NY_RETRY_MIN_MS } from "./state.js";
 import { answerGate } from "./tools.js";
 
 
@@ -18,11 +18,19 @@ import { answerGate } from "./tools.js";
 
       let needsYouGen = 0;
 
+      // When the last good load landed, so a stale queue can say how stale.
+      let needsYouLoadedAt = null;
+
+      let needsYouRetryTimer = null;
+
+      let needsYouRetryMs = NY_RETRY_MIN_MS;
+
       async function loadNeedsYou() {
         const gen = ++needsYouGen;
         const box = document.getElementById("needs-you");
         const me = authorId();
         if (!me || !wid()) {
+          stopNeedsYouRetry();
           box.hidden = true;
           setAttention(0);
           return;
@@ -34,12 +42,12 @@ import { answerGate } from "./tools.js";
             credentials: "include",
           });
           if (!res.ok) {
-            // A refused token has nothing waiting that it may see: clear the
-            // queue and the count in the tab title, unless a newer load won.
+            // A refused load is not an empty queue. The rows and the count in
+            // the tab title stay as last seen, under a sentence naming the fix.
+            const why = await responseError(res, "Could not load what is waiting on you");
             if (gen !== needsYouGen) return;
-            box.hidden = true;
-            needsYou = [];
-            setAttention(0);
+            stopNeedsYouRetry();
+            showNeedsYouTrouble(why, "err");
             return;
           }
           items = (await res.json()).items.filter((i) => NY_KINDS.has(i.kind));
@@ -61,11 +69,48 @@ import { answerGate } from "./tools.js";
             await fetchPendingGatesByThread();
           }
         } catch (_e) {
+          if (gen !== needsYouGen) return;
+          // The server was not reached, so nothing is known to have changed:
+          // the rows stay, marked stale, and the load retries on its own.
+          const since = needsYouLoadedAt
+            ? `Stale since ${needsYouLoadedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}: could not reach the server. `
+            : "Could not reach the server. ";
+          showNeedsYouTrouble(`${since}Reconnecting…`, "stale");
+          scheduleNeedsYouRetry();
           return;
         }
         if (gen !== needsYouGen) return;
+        stopNeedsYouRetry();
+        needsYouLoadedAt = new Date();
         needsYou = items;
         renderNeedsYou();
+      }
+
+      function scheduleNeedsYouRetry() {
+        clearTimeout(needsYouRetryTimer);
+        needsYouRetryTimer = setTimeout(loadNeedsYou, needsYouRetryMs);
+        needsYouRetryMs = Math.min(needsYouRetryMs * 2, NY_RETRY_MAX_MS);
+      }
+
+      function stopNeedsYouRetry() {
+        clearTimeout(needsYouRetryTimer);
+        needsYouRetryTimer = null;
+        needsYouRetryMs = NY_RETRY_MIN_MS;
+      }
+
+      // The panel stays up with its head, so a failure never reads as
+      // "nothing is waiting on you".
+      function showNeedsYouTrouble(message, cls) {
+        const box = document.getElementById("needs-you");
+        const state = document.getElementById("needs-you-state");
+        state.textContent = message;
+        state.className = `ny-state ${cls}`;
+        state.hidden = false;
+        box.hidden = false;
+        box.classList.remove("clear");
+        document.getElementById("needs-you-quiet").hidden = true;
+        document.getElementById("needs-you-head").hidden = false;
+        box.setAttribute("aria-labelledby", "needs-you-title");
       }
 
       function renderNeedsYou() {
@@ -74,6 +119,7 @@ import { answerGate } from "./tools.js";
         const count = document.getElementById("needs-you-count");
         const hint = document.getElementById("needs-you-hint");
         box.hidden = false;
+        document.getElementById("needs-you-state").hidden = true;
         // A row the human is using (typing a change note, or approved and
         // about to close) survives a reload, even if its request has left the
         // inbox: rebuilding it would drop the note or the Close task button.
@@ -148,8 +194,14 @@ import { answerGate } from "./tools.js";
         const actions = document.createElement("div");
         actions.className = "ny-actions";
         li.append(kind, main, actions);
-        if (item.kind === "review_request") {
+        if (item.kind === "review_request" || item.kind === "unassigned_review") {
           sub.appendChild(when);
+          if (item.kind === "unassigned_review") {
+            const none = document.createElement("span");
+            none.className = "ny-unnamed";
+            none.textContent = "no reviewer named";
+            sub.insertBefore(none, when);
+          }
           fillReviewContext(item.thread_id, sub, when);
           const approve = document.createElement("button");
           approve.type = "button";
@@ -162,6 +214,7 @@ import { answerGate } from "./tools.js";
           changes.textContent = "Request changes";
           changes.onclick = () => askForChanges(item, li);
           actions.append(approve, changes);
+          if (item.kind === "unassigned_review") ownerActions(item, li, sub, approve, changes);
         } else {
           const view = pendingGateViews.get(item.gate_id);
           if (view && view.gate.requested_by) sub.append("asked by ", personEl(view.gate.requested_by));
@@ -201,13 +254,22 @@ import { answerGate } from "./tools.js";
         return li;
       }
 
-      // Who handed the work off and what they reported, from the result.
+      // Who handed the work off and what they reported, from the result. A
+      // review can start with no result on a thread with no review gate; the
+      // row says so, so nobody approves an empty hand-off without knowing.
       async function fillReviewContext(tid, sub, before) {
         try {
           const res = await api(uiReadPath(`/threads/${tid}/result`), {
             headers: headers(),
             credentials: "include",
           });
+          if (res.status === 404) {
+            const warn = document.createElement("span");
+            warn.className = "ny-warn";
+            warn.textContent = "No result was posted";
+            sub.insertBefore(warn, before);
+            return;
+          }
           if (!res.ok) return;
           const r = await res.json();
           const who = personEl(r.produced_by);
@@ -215,6 +277,56 @@ import { answerGate } from "./tools.js";
           sub.insertBefore(renderResult(r.result), before);
         } catch (_e) {
           /* the title alone still identifies the review */
+        }
+      }
+
+      // The owner hears about a review nobody was named for, but its own
+      // approval does not count (separation of duties). With no review
+      // requirement it may close the task itself, which the board then shows
+      // as closed without review. With one, sending the work back is the
+      // owner's move, and naming a reviewer is how it gets approved.
+      async function ownerActions(item, li, sub, approve, changes) {
+        if (!(await viewerOwns(item.thread_id))) return;
+        approve.remove();
+        const rs = await reviewStatus(item.thread_id);
+        if (rs && rs.required_count === 0) {
+          const close = document.createElement("button");
+          close.type = "button";
+          close.className = "primary";
+          close.textContent = "Close without review";
+          close.onclick = async () => {
+            close.disabled = true;
+            const done = await closeThread(item.thread_id);
+            if (!done.ok) {
+              close.disabled = false;
+              return showRowError(rowOnScreen(item, li), done.why);
+            }
+            dropRow(item, li);
+            scheduleBoardRefresh();
+          };
+          changes.before(close);
+          return;
+        }
+        changes.className = "primary";
+        const why = document.createElement("span");
+        why.className = "ny-unnamed";
+        why.textContent = "your approval does not count: name a reviewer";
+        sub.appendChild(why);
+      }
+
+      async function viewerOwns(tid) {
+        const me = authorId();
+        const known = threadsById.get(tid);
+        if (known) return Boolean(me) && known.owner_id === me;
+        try {
+          const res = await api(uiReadPath(`/threads/${tid}`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) return false;
+          return Boolean(me) && (await res.json()).owner_id === me;
+        } catch (_e) {
+          return false;
         }
       }
 
@@ -387,7 +499,11 @@ import { answerGate } from "./tools.js";
         const box = document.getElementById("thread-actions");
         box.replaceChildren();
         if (th.state !== "in_review" || (!token() && !sessionMemberId)) return;
-        const mine = needsYou.find((i) => i.kind === "review_request" && i.thread_id === th.id);
+        const mine = needsYou.find(
+          (i) =>
+            i.thread_id === th.id &&
+            (i.kind === "review_request" || (i.kind === "unassigned_review" && th.owner_id !== authorId()))
+        );
         if (mine) {
           const approve = document.createElement("button");
           approve.type = "button";

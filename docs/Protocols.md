@@ -61,7 +61,7 @@ One model, one capability map, four primary transports plus the IT surfaces.
 | App OAuth | `/oauth/app/token` | Production | Installed apps, not MCP resource-server OAuth (RFC 8707). |
 | Metrics | `GET /metrics` + OTLP smoke in CI | Production | Prometheus text. Plug into the scrape they already run. |
 
-MCP tool count is **236**. There is **no** MCP create workspace or member. An agent creates a channel with `create_channel` and a thread with `create_thread` (both `workspace:write`). Workspace and member bootstrap stay on REST or the CLI; then MCP for claim / wait / post / `transition_thread`.
+MCP tool count is **238**. There is **no** MCP create workspace or member. An agent creates a channel with `create_channel` and a thread with `create_thread` (both `workspace:write`). Workspace and member bootstrap stay on REST or the CLI; then MCP for claim / wait / post / `transition_thread`.
 
 Every tool in `tools/list` carries `annotations`: a `title` and explicit `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, the same on `/mcp`, `/mcp/streamable`, `/mcp/worker` and `/mcp/reviewer`. `openWorldHint` is true only for a tool that itself reaches outside Maidan, such as `post_message` running a slash command's HTTP receiver or `search_messages` calling a remote embedding provider. The reason for each value is in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`, and `tool_annotations_contract` fails when a tool lacks a hint or disagrees with that table.
 

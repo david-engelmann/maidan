@@ -750,7 +750,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "transition_thread",
-            "description": "Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. Returns the updated thread.",
+            "description": "Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. On a thread with a review requirement, start_review is refused until a result is posted (set_thread_result). Returns the updated thread.",
             "annotations": {
                 "title": "Transition thread",
                 "readOnlyHint": false,
@@ -1282,7 +1282,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_queue_depth",
-            "description": "A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked}, for deciding whether to scale workers. ready is what claim_next_thread could take now.",
+            "description": "A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked, unclaimable}, for deciding whether to scale workers. ready is what claim_next_thread could take now. Counts only threads you may read: on the DM channel, your own DMs. For the whole workspace, use get_workspace_queue_depth.",
             "annotations": {
                 "title": "Get queue depth",
                 "readOnlyHint": true,
@@ -1314,6 +1314,42 @@ pub fn catalog() -> Vec<Value> {
                     "channel_id": {"type": "string", "format": "uuid"}
                 },
                 "required": ["channel_id"]
+            }
+        }),
+        json!({
+            "name": "get_workspace_queue_depth",
+            "description": "get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants.",
+            "annotations": {
+                "title": "Get workspace queue depth",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id)"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
+        json!({
+            "name": "get_workspace_occupancy",
+            "description": "get_channel_occupancy across every channel of the workspace you may read, as {open, queued, claimed, working, blocked}: the sum of those channels' occupancy. A private channel's threads count only for its members and a DM's only for its participants.",
+            "annotations": {
+                "title": "Get workspace occupancy",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id)"}
+                },
+                "required": ["workspace_id"]
             }
         }),
         json!({
@@ -2717,7 +2753,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_waiting_inbox",
-            "description": "The waiting-on-you inbox, everything needing a member's attention: their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the workspace's pending approval gates, and their unread mentions. Oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone. For mentions alone, with a read-cursor you advance with mark_inbox_read, use get_inbox.",
+            "description": "The waiting-on-you inbox, everything needing a member's attention: their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the reviews that name no reviewer and fall to them (unassigned_review: a thread in review with no named reviewer that they own, or that nobody owns when they are a workspace admin), the workspace's pending approval gates, and their unread mentions. Oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone. For mentions alone, with a read-cursor you advance with mark_inbox_read, use get_inbox.",
             "annotations": {
                 "title": "Get waiting inbox",
                 "readOnlyHint": true,

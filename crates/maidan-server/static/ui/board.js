@@ -324,7 +324,9 @@ import { loadMessages } from "./thread.js";
           card.dataset.chrome = chrome.label;
           card.tabIndex = 0;
           card.setAttribute("role", "button");
-          card.setAttribute("aria-label", `${title}: ${chrome.label}`);
+          // The review gate is opt-in: a close with no approval says so.
+          const stateLabel = th.closed_without_review ? "closed without review" : chrome.label;
+          card.setAttribute("aria-label", `${title}: ${stateLabel}`);
           if (th.id === selectedThreadId) card.classList.add("selected");
           const sig = `${chrome.label}|${th.assignee_id || ""}`;
           if (boardSeen.size && boardSeen.get(th.id) !== sig) card.classList.add("fresh");
@@ -336,7 +338,7 @@ import { loadMessages } from "./thread.js";
           foot.className = "card-foot";
           const stateWord = document.createElement("span");
           stateWord.className = "card-state";
-          stateWord.textContent = chrome.label;
+          stateWord.textContent = stateLabel;
           foot.appendChild(stateWord);
           if (th.assignee_id) {
             foot.appendChild(personEl(th.assignee_id));
@@ -549,7 +551,9 @@ import { loadMessages } from "./thread.js";
         document.getElementById("thread-actions").replaceChildren();
         if (!th) return;
         const tid = th.id;
-        badgeBox.textContent = sessionChrome(th, lastGates[tid]).label;
+        badgeBox.textContent = th.closed_without_review
+          ? "closed without review"
+          : sessionChrome(th, lastGates[tid]).label;
         const fact = (label, node) => {
           const f = document.createElement("span");
           f.className = "fact";
@@ -758,6 +762,14 @@ import { loadMessages } from "./thread.js";
         if (!wid()) {
           aside.hidden = false;
           renderState(list, "Set a workspace ID to load channels.");
+          return;
+        }
+        // Before any credential there is nothing to ask the server: a request
+        // could only come back refused, and "not accepted" would blame a token
+        // nobody has pasted yet.
+        if (!token() && !sessionMemberId) {
+          aside.hidden = false;
+          renderState(list, "Paste your token to connect.");
           return;
         }
         setLoading(list, "Loading channels…");

@@ -6,8 +6,9 @@
 //! `__dm__` thread needs the caller in its DM or group DM, a private channel
 //! needs a `channel_members` row, and any other channel is open. Filtering a
 //! page after the query costs a batch per hidden row and makes page size
-//! depend on what the caller cannot see. `tests/thread_access.rs` checks the
-//! two against each other on both backends.
+//! depend on what the caller cannot see. `claim_next` and the queue counts
+//! read through it too (`claim_next::readable_by`). `tests/thread_access.rs`
+//! checks the two against each other on both backends.
 
 /// A condition true when `member` may read the thread `thread` names.
 /// `thread` is a SQL expression; `workspace`, `member` and `dm_channel` are

@@ -72,6 +72,10 @@ async fn run_suite(store: &dyn Store) {
     store.set_review_requirement(t.id, 1).await.unwrap();
     // Open -> InReview (not terminal, ungated).
     store
+        .set_thread_result(t.id, owner.id, &serde_json::json!({"status": "done"}))
+        .await
+        .expect("a gated thread needs a result before review");
+    store
         .transition_thread(t.id, owner.id, ThreadAction::StartReview)
         .await
         .expect("start review");
@@ -110,6 +114,10 @@ async fn run_suite(store: &dyn Store) {
     let t2 = mk_thread().await;
     store.set_thread_owner(t2.id, Some(owner.id)).await.unwrap();
     store.assign_thread(t2.id, assignee.id).await.unwrap();
+    store
+        .set_thread_result(t2.id, owner.id, &serde_json::json!({"status": "done"}))
+        .await
+        .expect("a gated thread needs a result before review");
     store
         .transition_thread(t2.id, owner.id, ThreadAction::StartReview)
         .await

@@ -1680,15 +1680,53 @@ macro_rules! store_delegations {
             async fn channel_queue_depth(
                 &self,
                 channel_id: ChannelId,
+                readable_by: Option<MemberId>,
             ) -> Result<QueueDepth, StoreError> {
-                threads::channel_queue_depth(self.read_pool(), channel_id).await
+                threads::queue_depth(
+                    self.read_pool(),
+                    QueueScope::Channel(channel_id),
+                    readable_by,
+                )
+                .await
+            }
+
+            async fn workspace_queue_depth(
+                &self,
+                workspace_id: WorkspaceId,
+                readable_by: Option<MemberId>,
+            ) -> Result<QueueDepth, StoreError> {
+                threads::queue_depth(
+                    self.read_pool(),
+                    QueueScope::Workspace(workspace_id),
+                    readable_by,
+                )
+                .await
             }
 
             async fn channel_occupancy(
                 &self,
                 channel_id: ChannelId,
+                readable_by: Option<MemberId>,
             ) -> Result<ChannelOccupancy, StoreError> {
-                threads::channel_occupancy(self.read_pool(), channel_id).await
+                threads::occupancy(
+                    self.read_pool(),
+                    QueueScope::Channel(channel_id),
+                    readable_by,
+                )
+                .await
+            }
+
+            async fn workspace_occupancy(
+                &self,
+                workspace_id: WorkspaceId,
+                readable_by: Option<MemberId>,
+            ) -> Result<ChannelOccupancy, StoreError> {
+                threads::occupancy(
+                    self.read_pool(),
+                    QueueScope::Workspace(workspace_id),
+                    readable_by,
+                )
+                .await
             }
         }
     };
@@ -2213,6 +2251,21 @@ macro_rules! store_delegations {
                 member_id: MemberId,
             ) -> Result<Vec<Thread>, StoreError> {
                 threads::list_review_requests(self.read_pool(), workspace_id, member_id).await
+            }
+
+            async fn list_unassigned_reviews(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                include_ownerless: bool,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::list_unassigned_reviews(
+                    self.read_pool(),
+                    workspace_id,
+                    member_id,
+                    include_ownerless,
+                )
+                .await
             }
 
             async fn claim_next_thread(
@@ -2985,6 +3038,14 @@ macro_rules! store_delegations {
 
             async fn max_event_id(&self) -> Result<i64, StoreError> {
                 events::max_event_id(self.pool()).await
+            }
+
+            async fn oldest_event_after_of_kinds(
+                &self,
+                after_id: i64,
+                kinds: &[EventKind],
+            ) -> Result<Option<(i64, DateTime<Utc>)>, StoreError> {
+                events::oldest_event_after_of_kinds(self.pool(), after_id, kinds).await
             }
 
             async fn workspace_ids_with_events(&self) -> Result<Vec<WorkspaceId>, StoreError> {
@@ -3934,9 +3995,10 @@ macro_rules! store_delegations {
 
             async fn revoke_slash_command(
                 &self,
+                workspace_id: WorkspaceId,
                 id: SlashCommandId,
             ) -> Result<SlashCommand, StoreError> {
-                slash_commands::revoke(self.pool(), id).await
+                slash_commands::revoke(self.pool(), workspace_id, id).await
             }
 
             async fn get_slash_command(
@@ -3969,8 +4031,12 @@ macro_rules! store_delegations {
                 fsm_hooks::list(self.pool(), workspace_id).await
             }
 
-            async fn revoke_fsm_hook(&self, id: FsmHookId) -> Result<FsmHook, StoreError> {
-                fsm_hooks::revoke(self.pool(), id).await
+            async fn revoke_fsm_hook(
+                &self,
+                workspace_id: WorkspaceId,
+                id: FsmHookId,
+            ) -> Result<FsmHook, StoreError> {
+                fsm_hooks::revoke(self.pool(), workspace_id, id).await
             }
 
             async fn get_fsm_hook(&self, id: FsmHookId) -> Result<FsmHookWithSecret, StoreError> {

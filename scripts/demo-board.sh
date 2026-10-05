@@ -117,10 +117,13 @@ HT=$(token "$david" "$human_caps")
 channel=$(rest "$ADMIN" POST "/workspaces/$WS/channels" '{"name":"build","topic":"demo data"}' | jq -r .id)
 [ -n "${DEMO_CHANNEL_FILE:-}" ] && printf '%s\n' "$channel" > "$DEMO_CHANNEL_FILE"
 
-task() { # task <title> <brief> -> thread id, filed by the planner
+task() { # task <title> <brief> -> thread id, filed and owned by the planner
   local tid
   tid=$(rest "$PT" POST "/channels/$channel/threads" "$(jq -nc --arg t "$1" '{title:$t}')" | jq -r .id)
   mcp "$PT" post_message "$(jq -nc --arg t "$tid" --arg b "$2" '{thread_id:$t,body:$b}')" >/dev/null
+  # An owner makes separation of duties live (a coder cannot land its own
+  # work) and gives a review that names nobody someone to reach.
+  mcp "$PT" set_thread_owner "$(jq -nc --arg t "$tid" --arg o "$planner" '{thread_id:$t,owner_id:$o}')" >/dev/null
   printf '%s\n' "$tid"
 }
 claim() { # claim <token> -> the claimed thread JSON (oldest open task)
@@ -155,8 +158,9 @@ t_rate=$(task "Rate-limit /api/upload" "Cap uploads at 10/min per token; 429 wit
 t_load=$(task "Load-test the upload path" "p99 under 200 ms at 50 rps, or tell me where it breaks.")
 t_notes=$(task "Write upgrade notes for 2.0" "Breaking changes, in the order an operator hits them.")
 t_cache=$(task "Cache the OpenAPI document" "Serve /openapi.json from memory; it never changes at runtime.")
-# David is the reviewer of the login task only. The rate-limit card can sit
-# in review without joining Needs you, so the queue has one obvious row.
+# David is the reviewer of the login task only, so his queue has one obvious
+# row. The rate-limit card goes to review with no reviewer named: it reaches
+# the planner, its owner, as a review nobody was asked for.
 for t in "$t_sqlx" "$t_reqid" "$t_rate" "$t_load" "$t_notes" "$t_cache"; do gate "$t"; done
 needs_you "$t_login"
 
@@ -187,7 +191,7 @@ state=$(report "$AT" "$t_login" "Race: session save wasn't awaited before redire
   '{"status":"fixed","runs":500,"failures":0}')
 line coder-a "MCP set_thread_result {runs: 500, failures: 0} · transition_thread start_review → $state"
 sleep "$PAUSE"
-why=$(mcp_refused "$AT" transition_thread "{\"thread_id\":\"$t_login\",\"action\":\"close\"}" "review requirement not met")
+why=$(mcp_refused "$AT" transition_thread "{\"thread_id\":\"$t_login\",\"action\":\"close\"}" "separation of duties")
 line refused "coder-a MCP transition_thread close → refused: $why"
 sleep "$PAUSE"
 # Two agents ask for the next task at the same moment; each gets a different one.
@@ -213,6 +217,14 @@ if [ "$count" != 1 ] || [[ "$title" != *"Fix the flaky login test"* ]]; then
   exit 1
 fi
 line needs "Needs you: 1 · $title"
+# The review nobody was named for reaches its owner.
+owner_inbox=$(mcp "$PT" get_waiting_inbox "$(jq -nc --arg m "$planner" '{member_id:$m}')")
+unassigned=$(jq -r '[.items[] | select(.kind=="unassigned_review") | .summary] | join(", ")' <<<"$owner_inbox")
+if [[ "$unassigned" != *"Rate-limit /api/upload"* ]]; then
+  echo "the rate-limit review should reach its owner, got $owner_inbox" >&2
+  exit 1
+fi
+line needs "planner (owner), review with no reviewer: $unassigned"
 if [ -n "${DEMO_HUMAN_DONE_FILE:-}" ]; then
   line prompt "david: Approve, then Close task, in the Needs you row"
   while [ ! -e "$DEMO_HUMAN_DONE_FILE" ]; do sleep 0.1; done

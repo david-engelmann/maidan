@@ -215,15 +215,17 @@ spec:
               maidan_bus_listener_ok is 0. Subscribers may rely on replay; fix DB/LISTEN.
 
         - alert: MaidanIndexerStale
-          expr: maidan_indexer_last_event_age_seconds > 600
+          # Pending age, not last-event age: an idle instance has no events and
+          # would alert forever. The gauge is 0 whenever the indexer is caught up.
+          expr: maidan_indexer_pending_age_seconds > 600
           for: 5m
           labels:
             severity: warning
             slo: search_index
           annotations:
-            summary: Embedding indexer silent
+            summary: Embedding indexer behind
             description: |
-              No indexer events for {{ $value | humanizeDuration }}.
+              The oldest unindexed message event is {{ $value | humanizeDuration }} old.
               Set INDEXER_STALE_SECS in readiness; check embedding provider.
 
         - alert: MaidanIndexerQueueSaturated

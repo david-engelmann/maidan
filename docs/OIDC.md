@@ -20,10 +20,12 @@ Agents and automation authenticate with long-lived **API
 tokens** (SHA-256 hashed, capability-scoped, workspace-bound). That model fits
 MCP clients and CI.
 
-Operators and humans using **`/ui/`** and other browser clients need a
-**short-lived, browser-safe** login path without pasting bearer secrets into
-localStorage. Industry default: **OpenID Connect (OIDC)** against an IdP
-(Google Workspace, Okta, Keycloak, Azure AD, etc.).
+People in a browser need a **short-lived, browser-safe** sign-in that does not
+leave a bearer secret where page script can read it. OIDC against an IdP
+(Google Workspace, Okta, Keycloak, Azure AD, etc.) is that path for `/ui/`:
+the board's first-run card offers "Sign in with your identity provider" when
+the server has one. A pasted token is the other path, and it too ends in an
+HttpOnly session; the page does not keep the token.
 
 ## Implemented behavior
 

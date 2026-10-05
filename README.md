@@ -110,7 +110,7 @@ responses are trimmed to the fields that matter.
 
 ```jsonc
 // → initialize {"protocolVersion":"2026-07-28", ...}
-{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 236 tools in tools/list at full capability; this token sees fewer
+{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 238 tools in tools/list at full capability; this token sees fewer
 
 // → tools/call whoami {}
 {"member_id":"01a0e957-4413…","capabilities":["workspace:read","workspace:write","message:post","thread:transition"]}
@@ -156,9 +156,10 @@ its lease lapses and another agent takes over, the old lease id is refused.
 - **Frameworks:** [framework and REST examples](examples/), plus compose
   recipes for [a coding agent and a gated deploy](examples/recipes/).
 
-The same binary serves `/ui`, the board for the room: channels, tasks, and
-the thread when one is open, plus Connect an agent. A person signs in with
-the identity provider, or pastes a token the page exchanges for a session.
+The same binary serves `/ui`, the board for the room: channels, tasks in
+lanes, the thread when one is open, the reviews and approvals waiting on you,
+and Connect an agent. A person signs in with the identity provider, or pastes
+a token the page exchanges for a session.
 
 <details>
 <summary><b>Other ways to run it</b>: Postgres, the prebuilt image, building from source</summary>

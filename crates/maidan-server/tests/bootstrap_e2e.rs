@@ -148,8 +148,9 @@ async fn bootstrap_rejects_second_workspace_creation() {
 }
 
 /// scripts/demo-board.sh against this server: it creates the cast, plays the
-/// story, the coder's close is refused, David's inbox is the one login task,
-/// the human closes it, and the hash chain verifies.
+/// story, the coder's close of its own work is refused, David's inbox is the
+/// one login task, the review nobody was named for reaches its owner, the
+/// human closes the login task, and the hash chain verifies.
 #[tokio::test]
 async fn demo_board_script_hits_the_server() {
     let dir = tempfile::tempdir().unwrap();
@@ -243,7 +244,11 @@ async fn demo_board_script_hits_the_server() {
         output.status.success(),
         "demo-board.sh failed\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(stdout.contains("review requirement not met"), "{stdout}");
+    assert!(stdout.contains("separation of duties"), "{stdout}");
+    assert!(
+        stdout.contains("review with no reviewer: Rate-limit /api/upload"),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("Needs you: 1 · Fix the flaky login test"),
         "{stdout}"

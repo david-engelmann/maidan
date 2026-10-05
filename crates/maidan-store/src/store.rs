@@ -1369,15 +1369,42 @@ pub trait ThreadStore: Send + Sync {
     /// Point-in-time task-queue depth for a channel: counts of its open task
     /// threads partitioned into ready / assigned / blocked, using the same
     /// claimability predicate as `claim_next`. One aggregate query.
-    async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError>;
+    /// `readable_by` counts only the threads that member may read, by
+    /// `claim_next`'s read rule (on the `__dm__` channel, only its own DMs);
+    /// `None` counts every thread, for a caller that bypasses auth.
+    async fn channel_queue_depth(
+        &self,
+        channel_id: ChannelId,
+        readable_by: Option<MemberId>,
+    ) -> Result<QueueDepth, StoreError>;
+
+    /// [`channel_queue_depth`](Self::channel_queue_depth) across every channel
+    /// of `workspace_id`: the sum of its channels' counts for the same reader.
+    /// A reader from another workspace counts nothing.
+    async fn workspace_queue_depth(
+        &self,
+        workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
+    ) -> Result<QueueDepth, StoreError>;
 
     /// Channel occupancy: the two-clocks refinement of `channel_queue_depth` —
     /// the held threads split into `claimed` (not yet acknowledged) and
     /// `working` (acknowledged), so an orchestrator sees how much held work is
-    /// actually underway. One aggregate query.
+    /// actually underway. One aggregate query. `readable_by` as for
+    /// [`channel_queue_depth`](Self::channel_queue_depth).
     async fn channel_occupancy(
         &self,
         channel_id: ChannelId,
+        readable_by: Option<MemberId>,
+    ) -> Result<ChannelOccupancy, StoreError>;
+
+    /// [`channel_occupancy`](Self::channel_occupancy) across every channel of
+    /// `workspace_id`, as [`workspace_queue_depth`](Self::workspace_queue_depth)
+    /// is to the channel depth.
+    async fn workspace_occupancy(
+        &self,
+        workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
     ) -> Result<ChannelOccupancy, StoreError>;
 }
 
@@ -1784,6 +1811,16 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         member_id: MemberId,
+    ) -> Result<Vec<Thread>, StoreError>;
+    /// Threads under review in `workspace_id` that name no reviewer, so no
+    /// review request reaches anyone: those `member_id` owns, plus, when
+    /// `include_ownerless`, those with no owner. Oldest first, by when review
+    /// began. Access is the caller's to filter.
+    async fn list_unassigned_reviews(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        include_ownerless: bool,
     ) -> Result<Vec<Thread>, StoreError>;
 
     /// Atomically claim the oldest claimable live thread in `channel_id` for
@@ -2450,6 +2487,16 @@ pub trait EventStore: Send + Sync {
     /// `log_id`. **Not** a Postgres WAL [`maidan_types::Lsn`]
     /// (`Maidan-Consistency-Token`).
     async fn max_event_id(&self) -> Result<i64, StoreError>;
+
+    /// The oldest event with `id > after_id` whose kind is in `kinds`, as
+    /// `(id, inserted_at)`; `None` when there is none. `inserted_at` is the
+    /// store's own clock, not the caller-supplied `occurred_at`. Readiness uses
+    /// this to tell a projector that is behind from one with nothing to do.
+    async fn oldest_event_after_of_kinds(
+        &self,
+        after_id: i64,
+        kinds: &[EventKind],
+    ) -> Result<Option<(i64, DateTime<Utc>)>, StoreError>;
 
     /// Where a tap projector last finished. `0` = never run.
     ///
@@ -3146,7 +3193,11 @@ pub trait SlashCommandStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<SlashCommand>, StoreError>;
-    async fn revoke_slash_command(&self, id: SlashCommandId) -> Result<SlashCommand, StoreError>;
+    async fn revoke_slash_command(
+        &self,
+        workspace_id: WorkspaceId,
+        id: SlashCommandId,
+    ) -> Result<SlashCommand, StoreError>;
     async fn get_slash_command(
         &self,
         id: SlashCommandId,
@@ -3162,7 +3213,11 @@ pub trait SlashCommandStore: Send + Sync {
 pub trait FsmHookStore: Send + Sync {
     async fn create_fsm_hook(&self, new: NewFsmHook) -> Result<FsmHook, StoreError>;
     async fn list_fsm_hooks(&self, workspace_id: WorkspaceId) -> Result<Vec<FsmHook>, StoreError>;
-    async fn revoke_fsm_hook(&self, id: FsmHookId) -> Result<FsmHook, StoreError>;
+    async fn revoke_fsm_hook(
+        &self,
+        workspace_id: WorkspaceId,
+        id: FsmHookId,
+    ) -> Result<FsmHook, StoreError>;
     async fn get_fsm_hook(&self, id: FsmHookId) -> Result<FsmHookWithSecret, StoreError>;
     async fn list_matching_fsm_hooks(
         &self,
