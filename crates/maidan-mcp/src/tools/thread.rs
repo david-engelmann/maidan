@@ -653,10 +653,14 @@ pub(super) async fn declare_status(
     // Validate the note is one sentence (non-empty, no newlines).
     let note = a.note.trim();
     if note.is_empty() {
-        return Err(McpError::InvalidParams("note must be a non-empty one-sentence description".into()));
+        return Err(McpError::InvalidParams(
+            "note must be a non-empty one-sentence description".into(),
+        ));
     }
     if note.contains('\n') {
-        return Err(McpError::InvalidParams("note must be a single sentence (no newlines)".into()));
+        return Err(McpError::InvalidParams(
+            "note must be a single sentence (no newlines)".into(),
+        ));
     }
     let (declaration, _event) = store
         .declare_thread_status(

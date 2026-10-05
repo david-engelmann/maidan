@@ -1000,10 +1000,14 @@ pub async fn declare_thread_status(
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     let note = body.note.trim();
     if note.is_empty() {
-        return Err(ApiError::BadRequest("note must be a non-empty one-sentence description".into()));
+        return Err(ApiError::BadRequest(
+            "note must be a non-empty one-sentence description".into(),
+        ));
     }
     if note.contains('\n') {
-        return Err(ApiError::BadRequest("note must be a single sentence (no newlines)".into()));
+        return Err(ApiError::BadRequest(
+            "note must be a single sentence (no newlines)".into(),
+        ));
     }
     let (declaration, _event) = state
         .store

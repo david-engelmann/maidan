@@ -13,7 +13,9 @@ use uuid::Uuid;
 use crate::error::StoreError;
 use crate::sqlite::events;
 
-fn row_to_declaration(row: &sqlx::sqlite::SqliteRow) -> Result<ThreadStatusDeclaration, StoreError> {
+fn row_to_declaration(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<ThreadStatusDeclaration, StoreError> {
     let raw: String = row.get("status");
     let status = DeclaredStatus::parse(&raw)
         .ok_or_else(|| StoreError::InvalidInput(format!("unknown declared status: {raw}")))?;
