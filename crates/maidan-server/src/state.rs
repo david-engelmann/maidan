@@ -245,12 +245,15 @@ impl AppState {
         bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
         let presence = Arc::new(PresenceHub::default());
-        let mcp = Arc::new(McpServer::new(
-            store.clone(),
-            artifacts.clone(),
-            search.clone(),
-            embedding_provider.clone(),
-        ));
+        let mcp = Arc::new(
+            McpServer::new(
+                store.clone(),
+                artifacts.clone(),
+                search.clone(),
+                embedding_provider.clone(),
+            )
+            .with_event_bus(bus.clone()),
+        );
         mcp.attach_presence_reader(presence.clone());
         let slash = SlashRuntime::new(None);
         let fsm_hooks = FsmHookRuntime::new(None);
@@ -416,6 +419,7 @@ impl AppState {
                 self.search.clone(),
                 self.embedding_provider.clone(),
             )
+            .with_event_bus(self.bus.clone())
             .with_resource_notifier(notifier),
         );
         self.mcp.attach_presence_reader(self.presence.clone());
