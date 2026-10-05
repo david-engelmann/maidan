@@ -4714,7 +4714,7 @@ fn ui_js_signs_in_on_enter_or_button_and_asks_nothing_without_a_credential() {
     let js = script(HTML);
     assert!(HTML.contains("id=\"token-signin\""), "a Sign in button");
     assert!(
-        js.contains("if (!signingIn) signingIn = trySignIn()"),
+        js.contains("if (!signingIn)") && js.contains("signingIn = trySignIn()"),
         "one sign-in at a time"
     );
     assert!(

@@ -180,11 +180,18 @@ import { tokenKey, wsResumeKey } from "./state.js";
       let signingIn = null;
 
       function signInWithToken() {
-        if (!signingIn) signingIn = trySignIn().finally(() => (signingIn = null));
+        if (!signingIn)
+          signingIn = trySignIn().finally(() => {
+            signingIn = null;
+            document.getElementById("token").disabled = false;
+            document.getElementById("token-signin").disabled = false;
+          });
         return signingIn;
       }
 
       async function trySignIn() {
+        document.getElementById("token").disabled = true;
+        document.getElementById("token-signin").disabled = true;
         persist();
         const status = document.getElementById("session-status");
         const secret = pastedToken();
@@ -240,6 +247,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
 
       document.getElementById("token").addEventListener("keydown", (e) => {
         if (e.key !== "Enter") return;
+        if (e.isComposing) return;
         e.preventDefault();
         signInWithToken();
       });
