@@ -209,6 +209,31 @@ describe("board page helpers", { concurrency: 1 }, () => {
     ]);
   });
 
+  test("a write with no credential points at Connect this browser, not at a header token", async () => {
+    const { requireAuthForWrite } = await import("./api.js");
+    const { loadServerAuth } = await import("./session.js");
+    await resetAuth();
+    assert.equal(requireAuthForWrite(), false);
+    assert.deepEqual(toastMessages(), ["Sign in first: paste a token under Connect this browser."]);
+
+    clearToasts();
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ auth: { bearer: true, oidc: true, oidc_login: "/auth/oidc/login", sessions: true } }),
+      text: async () => "",
+    });
+    await loadServerAuth();
+    assert.equal(requireAuthForWrite(), false);
+    assert.deepEqual(toastMessages(), [
+      "Sign in first: paste a token under Connect this browser, or sign in with your identity provider.",
+    ]);
+    clearToasts();
+    document.getElementById("token").value = "sekrit";
+    assert.equal(requireAuthForWrite(), true);
+    await resetAuth();
+  });
+
   test("sign out posts logout when the server offers sessions, even with no cached member", () => {
     assert.equal(signOutPostsLogout(true, null), true);
     assert.equal(signOutPostsLogout(true, ""), true);

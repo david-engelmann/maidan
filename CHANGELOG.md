@@ -118,6 +118,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   a nameserver that never answers held every tenant's webhooks. The lookup now
   gives up after 5 s (`EGRESS_RESOLUTION_TIMEOUT`).
 
+### The docs and the page's sign-in sentences match the board as it is
+
+- **Docs:** Integration no longer mentions `data-ui-version`, which the page dropped in #1224, and says the markup is not an interface; it names Needs you, the header (Change, Search or jump with Ctrl-K or ⌘K, Connect an agent, Sign out) and More tools. README and FAQ name the reviews and approvals waiting on you; FAQ says DMs, notifications and presence are under More tools. OIDC's opening section says how a person signs in now (the identity provider on the first-run card when there is one, or a pasted token that also ends in an HttpOnly session) instead of reading as a login that is missing. Pi calls `/ui/` the board, not the operator shell.
+- **Fixed:** a write with no credential said "Sign in (session) or set a bearer token to write.", from when the token sat in a header field. It now says to paste a token under Connect this browser, and names the identity provider only when the server has one. Connecting live updates with no credential says the same instead of "Bearer token or OIDC session required for WebSocket subscribe".
+
 ### The docs describe the board at `/ui`
 
 - **Docs:** the README, Production, Integration, OIDC, Architecture, FAQ,
