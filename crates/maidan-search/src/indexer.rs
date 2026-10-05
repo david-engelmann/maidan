@@ -256,6 +256,15 @@ async fn project_row(
     Ok(())
 }
 
+/// Readiness reads this as "handled". A workspace the tap faulted on was not
+/// projected, so once a rebuild is owed the mark stops advancing and any
+/// indexable event past it keeps counting as backlog.
+fn publish_progress(processed_log_id: &AtomicI64, rebuild_flag: &AtomicBool, log_id: i64) {
+    if !rebuild_flag.load(Ordering::Relaxed) {
+        processed_log_id.fetch_max(log_id, Ordering::Relaxed);
+    }
+}
+
 async fn consume(
     mut stream: EventStream,
     handler: &dyn EventHandler,
@@ -292,7 +301,7 @@ async fn consume(
                 persist_cursor(store, &tap, hw).await;
                 // A finished backfill is progress: without it an instance that
                 // restarts and then stalls shows no heartbeat at all.
-                processed_log_id.store(hw, Ordering::Relaxed);
+                publish_progress(processed_log_id, rebuild_flag, hw);
                 last_event_unix_ms.store(chrono::Utc::now().timestamp_millis(), Ordering::Relaxed);
             }
             Err(fault) => {
@@ -329,7 +338,7 @@ async fn consume(
                         })
                         .instrument(span)
                         .await;
-                        processed_log_id.fetch_max(watermark, Ordering::Relaxed);
+                        publish_progress(processed_log_id, rebuild_flag, watermark);
                         last_event_unix_ms.store(
                             chrono::Utc::now().timestamp_millis(),
                             Ordering::Relaxed,
@@ -362,7 +371,7 @@ async fn consume(
                                 watermark = hw;
                                 report_workspace_faults(&tap, rebuild_flag);
                                 persist_cursor(store, &tap, hw).await;
-                                processed_log_id.fetch_max(hw, Ordering::Relaxed);
+                                publish_progress(processed_log_id, rebuild_flag, hw);
                             }
                             Err(fault) => {
                                 error!(?fault, "search projector lag rebuild failed closed");
