@@ -323,6 +323,30 @@ pub async fn max_event_id(pool: &PgPool) -> Result<i64, StoreError> {
     Ok(row.get::<i64, _>("max_id"))
 }
 
+/// The oldest event after `after_id` of one of `kinds`; see
+/// [`crate::Store::oldest_event_after_of_kinds`].
+pub async fn oldest_event_after_of_kinds(
+    pool: &PgPool,
+    after_id: i64,
+    kinds: &[maidan_types::EventKind],
+) -> Result<Option<(i64, chrono::DateTime<chrono::Utc>)>, StoreError> {
+    if kinds.is_empty() {
+        return Ok(None);
+    }
+    let names: Vec<String> = kinds.iter().map(|k| k.as_str().to_string()).collect();
+    let row = sqlx::query(
+        "SELECT id, inserted_at FROM maidan_events
+         WHERE id > $1 AND kind = ANY($2)
+         ORDER BY id ASC
+         LIMIT 1",
+    )
+    .bind(after_id)
+    .bind(names)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| (r.get("id"), r.get("inserted_at"))))
+}
+
 /// Build a [`StoredEvent`], unwrapping its joined content key when `keys` is
 /// given. A row selected without the key columns (an append's `RETURNING`)
 /// gets `content_key: None`.

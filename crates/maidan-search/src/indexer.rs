@@ -114,6 +114,18 @@ impl Indexer {
 
     /// Like [`spawn`](Self::spawn) but exposes `last_event_unix_ms` for health probes.
     pub fn spawn_with_heartbeat(self, last_event_unix_ms: Arc<AtomicI64>) -> IndexerHandle {
+        self.spawn_with_probes(last_event_unix_ms, Arc::new(AtomicI64::new(0)))
+    }
+
+    /// Like [`spawn_with_heartbeat`](Self::spawn_with_heartbeat) and also
+    /// publishes `processed_log_id`: the highest event-log id the indexer has
+    /// handed to its handler. Readiness compares it with the log to tell an
+    /// indexer that is behind from one with nothing to index.
+    pub fn spawn_with_probes(
+        self,
+        last_event_unix_ms: Arc<AtomicI64>,
+        processed_log_id: Arc<AtomicI64>,
+    ) -> IndexerHandle {
         let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
         let heartbeat = last_event_unix_ms.clone();
         let rebuild_needed = Arc::new(AtomicBool::new(false));
@@ -144,6 +156,7 @@ impl Indexer {
                     self.log.as_deref(),
                     &mut shutdown_rx,
                     &heartbeat,
+                    &processed_log_id,
                     &rebuild_flag,
                 )
                 .await;
@@ -249,6 +262,7 @@ async fn consume(
     log: Option<&dyn Store>,
     shutdown_rx: &mut mpsc::Receiver<()>,
     last_event_unix_ms: &AtomicI64,
+    processed_log_id: &AtomicI64,
     rebuild_flag: &AtomicBool,
 ) -> ConsumeOutcome {
     let mut tap = SearchTap::new();
@@ -276,6 +290,10 @@ async fn consume(
                 // old teardown retried the full log walk forever.
                 report_workspace_faults(&tap, rebuild_flag);
                 persist_cursor(store, &tap, hw).await;
+                // A finished backfill is progress: without it an instance that
+                // restarts and then stalls shows no heartbeat at all.
+                processed_log_id.store(hw, Ordering::Relaxed);
+                last_event_unix_ms.store(chrono::Utc::now().timestamp_millis(), Ordering::Relaxed);
             }
             Err(fault) => {
                 error!(?fault, "search projector backfill failed closed");
@@ -311,6 +329,7 @@ async fn consume(
                         })
                         .instrument(span)
                         .await;
+                        processed_log_id.fetch_max(watermark, Ordering::Relaxed);
                         last_event_unix_ms.store(
                             chrono::Utc::now().timestamp_millis(),
                             Ordering::Relaxed,
@@ -343,6 +362,7 @@ async fn consume(
                                 watermark = hw;
                                 report_workspace_faults(&tap, rebuild_flag);
                                 persist_cursor(store, &tap, hw).await;
+                                processed_log_id.fetch_max(hw, Ordering::Relaxed);
                             }
                             Err(fault) => {
                                 error!(?fault, "search projector lag rebuild failed closed");

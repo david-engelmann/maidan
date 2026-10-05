@@ -15,7 +15,7 @@ fn prometheus_slo_rules_reference_exported_metrics() {
         "maidan_outbox_oldest_pending_seconds",
         "maidan_outbox_quarantined",
         "maidan_bus_listener_ok",
-        "maidan_indexer_last_event_age_seconds",
+        "maidan_indexer_pending_age_seconds",
         "maidan_subscribe_replay_total",
         // Batched-embed indexer gauges.
         "maidan_indexer_queue_depth",

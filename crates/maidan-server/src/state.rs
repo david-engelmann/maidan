@@ -103,6 +103,8 @@ pub struct AppState {
     pub fsm_hooks: FsmHookRuntime,
     /// Milliseconds since Unix epoch when the indexer last handled an event (0 = never).
     pub indexer_last_event_unix_ms: Arc<AtomicI64>,
+    /// Highest event-log id the indexer has handled (0 = none yet).
+    pub indexer_processed_log_id: Arc<AtomicI64>,
     /// Most recent indexer-side embedding failure, if any.
     pub indexer_last_error: Arc<AsyncRwLock<Option<String>>>,
     /// Postgres `LISTEN` task health; `None` when using [`maidan_bus::InMemoryBus`].
@@ -279,6 +281,7 @@ impl AppState {
             slash,
             fsm_hooks,
             indexer_last_event_unix_ms,
+            indexer_processed_log_id: Arc::new(AtomicI64::new(0)),
             indexer_last_error: Arc::new(AsyncRwLock::new(None)),
             bus_listener_health,
             bus_hydrate_stats: None,

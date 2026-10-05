@@ -2987,6 +2987,14 @@ macro_rules! store_delegations {
                 events::max_event_id(self.pool()).await
             }
 
+            async fn oldest_event_after_of_kinds(
+                &self,
+                after_id: i64,
+                kinds: &[EventKind],
+            ) -> Result<Option<(i64, DateTime<Utc>)>, StoreError> {
+                events::oldest_event_after_of_kinds(self.read_pool(), after_id, kinds).await
+            }
+
             async fn workspace_ids_with_events(&self) -> Result<Vec<WorkspaceId>, StoreError> {
                 events::workspace_ids_with_events(self.read_pool()).await
             }
