@@ -1526,8 +1526,10 @@ fn ui_js_state_is_a_word_not_a_pill() {
     );
     let row = function_body(js, "needsYouRow");
     assert!(
-        row.contains("kind.textContent = item.kind === \"open_gate\" ? \"Approval\" : \"Review\""),
-        "a needs-you row says Review or Approval"
+        row.contains(
+            "kind.textContent = item.kind === \"open_gate\" ? \"Approval\" : item.kind === \"blocked\" ? \"Blocked\" : \"Review\""
+        ),
+        "a needs-you row says Review, Approval or Blocked"
     );
 }
 
