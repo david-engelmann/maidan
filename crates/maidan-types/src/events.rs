@@ -1446,7 +1446,8 @@ mod kind_tests {
                 | EventKind::MessageUnpinned
                 | EventKind::ReferenceAdded
                 | EventKind::ArtifactUpserted
-                | EventKind::MemoryBlockUpdated => {}
+                | EventKind::MemoryBlockUpdated
+                | EventKind::StatusDeclared => {}
             }
             assert_eq!(
                 EventKind::parse(kind.as_str()),
