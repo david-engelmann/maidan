@@ -6,9 +6,10 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     catalog, event_schema, event_wire, inject_type, normalize, normalized_event_wire, pack_files,
-    schema_filename, waiter_result_schema, Artifact, ArtifactKind, BlockedReason, Channel, Event,
-    EventKind, Member, MemberKind, Message, RefSide, Reference, RelationKind, Thread, ThreadState,
-    Workspace, EXAMPLE_PLAN_RESULT_KIND, EXAMPLE_REVIEW_RESULT_KIND, WAITER_RESULT_SCHEMA,
+    schema_filename, waiter_result_schema, Artifact, ArtifactKind, BlockedReason, Channel,
+    DeclaredStatus, Event, EventKind, Member, MemberKind, Message, RefSide, Reference,
+    RelationKind, Thread, ThreadState, Workspace, EXAMPLE_PLAN_RESULT_KIND,
+    EXAMPLE_REVIEW_RESULT_KIND, WAITER_RESULT_SCHEMA,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -197,6 +198,15 @@ fn sample_event(kind: EventKind) -> Event {
             thread_id,
             reason: BlockedReason::Human,
             resolved_by: member_id,
+        },
+        EventKind::StatusDeclared => Event::StatusDeclared {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            status: DeclaredStatus::Working,
+            note: "working on it".into(),
+            declared_by: member_id,
         },
         EventKind::ClaimExpired => Event::ClaimExpired {
             occurred_at,
@@ -470,6 +480,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadResultSet
             | EventKind::ApprovalRequested
             | EventKind::BlockedResolved
+            | EventKind::StatusDeclared
             | EventKind::ClaimExpired
             | EventKind::ClaimUnacknowledged
             | EventKind::ClaimFailed
