@@ -1785,6 +1785,16 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         member_id: MemberId,
     ) -> Result<Vec<Thread>, StoreError>;
+    /// Threads under review in `workspace_id` that name no reviewer, so no
+    /// review request reaches anyone: those `member_id` owns, plus, when
+    /// `include_ownerless`, those with no owner. Oldest first, by when review
+    /// began. Access is the caller's to filter.
+    async fn list_unassigned_reviews(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        include_ownerless: bool,
+    ) -> Result<Vec<Thread>, StoreError>;
 
     /// Atomically claim the oldest claimable live thread in `channel_id` for
     /// `member_id` — the "pull the next task" primitive. Claimable = unassigned
