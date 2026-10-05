@@ -129,7 +129,7 @@ async fn another_tenants_admin_cannot_revoke_by_id_via_rest_or_mcp() {
         json!({ "workspace_id": b.ws.0, "command_id": command.id.0 }),
     )
     .await;
-    assert!(refused(&res), "{res}");
+    assert_eq!(res["error"]["code"].as_i64(), Some(-32004), "{res}");
     let res = mcp_call(
         &h,
         &b.bearer,
@@ -137,7 +137,7 @@ async fn another_tenants_admin_cannot_revoke_by_id_via_rest_or_mcp() {
         json!({ "workspace_id": b.ws.0, "hook_id": hook.id.0 }),
     )
     .await;
-    assert!(refused(&res), "{res}");
+    assert_eq!(res["error"]["code"].as_i64(), Some(-32004), "{res}");
 
     assert!(
         h.store
