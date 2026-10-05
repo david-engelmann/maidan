@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `a270a3cb` (2026-10-05).
+on a decision. Last reconciled against `main` at `349e57ef` (2026-10-05).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -52,8 +52,6 @@ CI ran.
 
 | PR | What it does | State (2026-10-05) | Merge after |
 |---|---|---|---|
-| #1252 | Revokes and link upserts scoped to the caller's workspace. A slash command or FSM hook could be revoked across tenants, and a Slack or GitHub link re-pointed | Affected tests pass, including two-tenant tests on both backends. Review not yet answered. In a merge loop | None, merge first |
-| #1250 | An idle indexer is ready, and only a lagging one degrades (reported from the dev-tools stack) | Review answered. In a merge loop | None |
 | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
 
 ## Next: ranked
