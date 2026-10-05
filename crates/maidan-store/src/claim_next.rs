@@ -14,12 +14,14 @@
 //! It goes only to a member who may read it:
 //! the channel is in the member's workspace, a `__dm__` thread needs the member
 //! in its DM or group DM, a private channel needs a `channel_members` row. The
-//! read rule is `maidan_auth::authorize_thread`'s, in SQL, and must agree with
-//! it. The channel route used to lean on the route's channel check alone, which
+//! read rule is `maidan_auth::authorize_thread`'s, in SQL
+//! ([`crate::thread_access`]), and must agree with it. The channel route used to lean on the route's channel check alone, which
 //! exempts the shared `__dm__` channel, so any member of a workspace could be
 //! handed a DM thread between two others.
 
 use maidan_types::{ChannelId, WorkspaceId};
+
+use crate::thread_access::readable_thread;
 
 /// Where `claim_next` looks for work.
 #[derive(Debug, Clone, Copy)]
@@ -123,28 +125,14 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
     )
 }
 
-/// True when `member` may read `cand` in channel `ch`. The workspace is the
-/// claimer's own, read from its member row rather than trusted from the
-/// caller, so a scope naming another tenant finds nothing. The same SQL runs
-/// on Postgres and SQLite.
-fn readable_by(member: &str, dm_channel: &str) -> String {
-    format!(
-        "ch.workspace_id = (SELECT claimer.workspace_id FROM maidan_members claimer
-                            WHERE claimer.id = {member})
-           AND CASE
-                 WHEN ch.name = {dm_channel} THEN
-                      EXISTS (SELECT 1 FROM maidan_dm_conversations dm
-                              WHERE dm.thread_id = cand.id
-                                AND {member} IN (dm.member_low_id, dm.member_high_id))
-                   OR EXISTS (SELECT 1 FROM maidan_group_dm_conversations gdm
-                              JOIN maidan_group_dm_members gdm_member
-                                   ON gdm_member.group_dm_id = gdm.id
-                              WHERE gdm.thread_id = cand.id
-                                AND gdm_member.member_id = {member})
-                 WHEN ch.private THEN
-                      EXISTS (SELECT 1 FROM maidan_channel_members cm
-                              WHERE cm.channel_id = ch.id AND cm.member_id = {member})
-                 ELSE TRUE
-               END"
-    )
+/// True when `member` may read `cand`: [`readable_thread`], the one SQL form
+/// of the thread read rule, with the workspace read from the member's own row
+/// rather than trusted from the caller, so a scope naming another tenant finds
+/// nothing. The queue counts filter with it too, so a count and a claim agree
+/// on whose work a thread is.
+pub(crate) fn readable_by(member: &str, dm_channel: &str) -> String {
+    let own_workspace = format!(
+        "(SELECT claimer.workspace_id FROM maidan_members claimer WHERE claimer.id = {member})"
+    );
+    readable_thread("cand.id", &own_workspace, member, dm_channel)
 }

@@ -1680,15 +1680,53 @@ macro_rules! store_delegations {
             async fn channel_queue_depth(
                 &self,
                 channel_id: ChannelId,
+                readable_by: Option<MemberId>,
             ) -> Result<QueueDepth, StoreError> {
-                threads::channel_queue_depth(self.read_pool(), channel_id).await
+                threads::queue_depth(
+                    self.read_pool(),
+                    QueueScope::Channel(channel_id),
+                    readable_by,
+                )
+                .await
+            }
+
+            async fn workspace_queue_depth(
+                &self,
+                workspace_id: WorkspaceId,
+                readable_by: Option<MemberId>,
+            ) -> Result<QueueDepth, StoreError> {
+                threads::queue_depth(
+                    self.read_pool(),
+                    QueueScope::Workspace(workspace_id),
+                    readable_by,
+                )
+                .await
             }
 
             async fn channel_occupancy(
                 &self,
                 channel_id: ChannelId,
+                readable_by: Option<MemberId>,
             ) -> Result<ChannelOccupancy, StoreError> {
-                threads::channel_occupancy(self.read_pool(), channel_id).await
+                threads::occupancy(
+                    self.read_pool(),
+                    QueueScope::Channel(channel_id),
+                    readable_by,
+                )
+                .await
+            }
+
+            async fn workspace_occupancy(
+                &self,
+                workspace_id: WorkspaceId,
+                readable_by: Option<MemberId>,
+            ) -> Result<ChannelOccupancy, StoreError> {
+                threads::occupancy(
+                    self.read_pool(),
+                    QueueScope::Workspace(workspace_id),
+                    readable_by,
+                )
+                .await
             }
         }
     };
@@ -2213,6 +2251,21 @@ macro_rules! store_delegations {
                 member_id: MemberId,
             ) -> Result<Vec<Thread>, StoreError> {
                 threads::list_review_requests(self.read_pool(), workspace_id, member_id).await
+            }
+
+            async fn list_unassigned_reviews(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                include_ownerless: bool,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::list_unassigned_reviews(
+                    self.read_pool(),
+                    workspace_id,
+                    member_id,
+                    include_ownerless,
+                )
+                .await
             }
 
             async fn claim_next_thread(

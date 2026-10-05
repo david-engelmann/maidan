@@ -123,6 +123,8 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "get_waiting_inbox",
     "get_wip_limit",
     "get_workspace_context",
+    "get_workspace_occupancy",
+    "get_workspace_queue_depth",
     "list_assigned_threads",
     "list_blocked_threads",
     "list_buried_decisions",
@@ -252,6 +254,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_blocked_resolved"
         | "get_queue_depth"
         | "get_channel_occupancy"
+        | "get_workspace_queue_depth"
+        | "get_workspace_occupancy"
         | "get_run_occupancy"
         | "get_thread_lineage"
         | "list_run_threads"
@@ -969,8 +973,10 @@ pub async fn dispatch(
         "wait_for_claim_failed" => thread::wait_for_claim_failed(server, auth, args).await,
         "wait_for_blocked_resolved" => thread::wait_for_blocked_resolved(server, auth, args).await,
         "wait_for_landed" => thread::wait_for_landed(server, auth, args).await,
-        "get_queue_depth" => thread::get_queue_depth(store, args).await,
-        "get_channel_occupancy" => thread::get_channel_occupancy(store, args).await,
+        "get_queue_depth" => thread::get_queue_depth(store, auth, args).await,
+        "get_channel_occupancy" => thread::get_channel_occupancy(store, auth, args).await,
+        "get_workspace_queue_depth" => thread::get_workspace_queue_depth(store, auth, args).await,
+        "get_workspace_occupancy" => thread::get_workspace_occupancy(store, auth, args).await,
         "get_run_occupancy" => thread::get_run_occupancy(store, auth, args).await,
         "set_thread_lineage" => thread::set_thread_lineage(store, args).await,
         "get_thread_lineage" => thread::get_thread_lineage(store, args).await,

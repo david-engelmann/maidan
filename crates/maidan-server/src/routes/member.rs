@@ -608,7 +608,8 @@ pub async fn get_member_delivery_mode(
 
 /// The waiting-on-you inbox: everything that needs this member's attention —
 /// their assigned non-terminal threads, the reviews requested from them, the
-/// workspace's pending approval gates,
+/// reviews that name no reviewer and fall to them (owned by them, or ownerless
+/// when they are a workspace admin), the workspace's pending approval gates,
 /// and their unread mentions — oldest-waiting first, each aged against
 /// `?sla_secs` (default 24h). `workspace:read` + self-only for a session (a
 /// bearer orchestrator may query any member).
@@ -640,6 +641,13 @@ pub async fn get_member_waiting(
             reviews.push(thread);
         }
     }
+    let unassigned = maidan_auth::visible_unassigned_reviews(
+        state.store.as_ref(),
+        &auth,
+        member.workspace_id,
+        MemberId(id),
+    )
+    .await?;
     let gates = state
         .store
         .list_pending_approval_gates(member.workspace_id, 200)
@@ -693,6 +701,7 @@ pub async fn get_member_waiting(
     Ok(Json(assemble_waiting_inbox(
         &assigned,
         &reviews,
+        &unassigned,
         &gates,
         &unread,
         &blocked,

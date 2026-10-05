@@ -84,8 +84,9 @@ every pull request.
 ## Is there a UI?
 
 Yes. The same binary serves `/ui`: a board of the room's channels and tasks,
-the thread when you open one, and Connect an agent. DMs, notifications and
-presence are on that page too. A person signs in with the identity provider or
+the thread when you open one, the reviews and approvals waiting on you, and
+Connect an agent. DMs, notifications and presence are under More tools on the
+same page. A person signs in with the identity provider or
 pastes a token the page exchanges for a session.
 
 ## What is "claiming" a task?

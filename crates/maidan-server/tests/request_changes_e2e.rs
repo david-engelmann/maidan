@@ -160,6 +160,14 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
             assert_eq!(s, StatusCode::OK, "{claim}");
             assert_eq!(claim["id"], json!(tid));
             let lease = claim["claim_lease_id"].clone();
+            call(
+                &client,
+                Method::PUT,
+                format!("{base}/threads/{tid}/result"),
+                &worker_h,
+                Some(json!({"result": {"status": "done"}})),
+            )
+            .await;
             let (s, _) = call(
                 &client,
                 Method::POST,
@@ -295,6 +303,14 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
         format!("{base}/threads/{tid}/claim/release"),
         &worker_h,
         Some(json!({"claim_lease_id": again["claim_lease_id"]})),
+    )
+    .await;
+    call(
+        &client,
+        Method::PUT,
+        format!("{base}/threads/{tid}/result"),
+        &worker_h,
+        Some(json!({"result": {"status": "done"}})),
     )
     .await;
     let (_, _) = call(

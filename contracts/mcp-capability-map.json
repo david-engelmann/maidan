@@ -86,6 +86,8 @@
   "get_waiting_inbox": "workspace:read",
   "get_wip_limit": "workspace:read",
   "get_workspace_context": "workspace:read",
+  "get_workspace_occupancy": "workspace:read",
+  "get_workspace_queue_depth": "workspace:read",
   "import_workspace": "token:admin",
   "instantiate_recipe": "workspace:write",
   "link_github_issue": "workspace:write",

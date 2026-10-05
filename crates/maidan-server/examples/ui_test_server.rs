@@ -22,7 +22,7 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewMessage, NewThread,
-    NewWebhookSubscription, NewWorkspace,
+    NewWebhookSubscription, NewWorkspace, ReviewDecision,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -167,6 +167,12 @@ async fn main() {
         .transition_thread(done_thread.id, member.id, ThreadAction::StartReview)
         .await
         .expect("review before close");
+    // Approved before it closed, so the card is plain "done" and not "closed
+    // without review".
+    store
+        .submit_review(done_thread.id, requester.id, ReviewDecision::Approve, None)
+        .await
+        .expect("approve before close");
     store
         .transition_thread(done_thread.id, member.id, ThreadAction::Close)
         .await
@@ -257,6 +263,56 @@ async fn main() {
         .claim_thread(floor_threads[0].id, requester.id)
         .await
         .expect("floor claim");
+
+    // Triage: reviews that name no reviewer. The operator owns one, which has
+    // a result and no review requirement, so it may close it without review.
+    // Nobody owns the other, which has no result: it falls to the workspace's
+    // admins, and the operator holds a token:admin token.
+    let triage = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "triage".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("triage channel");
+    let mut triage_threads = Vec::new();
+    for (title, owned, result) in [
+        (
+            "Nobody named: the retry budget",
+            true,
+            Some(serde_json::json!({ "status": "done" })),
+        ),
+        ("Nobody named, nobody owns: the cache header", false, None),
+    ] {
+        let t = store
+            .create_thread(NewThread {
+                channel_id: triage.id,
+                parent_thread_id: None,
+                title: Some(title.into()),
+            })
+            .await
+            .expect("triage thread");
+        store.claim_thread(t.id, requester.id).await.expect("claim");
+        if owned {
+            store
+                .set_thread_owner(t.id, Some(member.id))
+                .await
+                .expect("owner");
+        }
+        if let Some(result) = result {
+            store
+                .set_thread_result(t.id, requester.id, &result)
+                .await
+                .expect("triage result");
+        }
+        store
+            .transition_thread(t.id, requester.id, ThreadAction::StartReview)
+            .await
+            .expect("triage review");
+        triage_threads.push(t);
+    }
 
     // An empty channel, for the onboarding state a channel shows before its
     // first task.
@@ -527,6 +583,9 @@ async fn main() {
         "desk_approve_thread_id": desk_threads[0].id.0.to_string(),
         "desk_send_back_thread_id": desk_threads[1].id.0.to_string(),
         "desk_waiting_thread_id": desk_threads[2].id.0.to_string(),
+        "triage_channel_id": triage.id.0.to_string(),
+        "triage_owned_thread_id": triage_threads[0].id.0.to_string(),
+        "triage_ownerless_thread_id": triage_threads[1].id.0.to_string(),
         "floor_channel_id": floor.id.0.to_string(),
         "floor_held_thread_id": floor_threads[0].id.0.to_string(),
         "floor_glide_thread_id": floor_threads[1].id.0.to_string(),

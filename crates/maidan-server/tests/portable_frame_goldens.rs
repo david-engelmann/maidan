@@ -85,6 +85,7 @@ fn sample_export() -> WorkspaceExport {
             updated_at: at,
             tombstoned_at: None,
             block: None,
+            closed_without_review: false,
         }],
         messages: vec![Message {
             id: MessageId(uuid(5)),
