@@ -144,7 +144,11 @@ pub fn init() {
         );
         describe_gauge!(
             "maidan_indexer_last_event_age_seconds",
-            "Seconds since the background indexer last observed an event (0 if never)"
+            "Seconds since the background indexer last made progress (0 if never); an idle instance ages here, so alert on maidan_indexer_pending_age_seconds"
+        );
+        describe_gauge!(
+            "maidan_indexer_pending_age_seconds",
+            "Seconds since the oldest indexable event the indexer has not handled was stored (0 when caught up)"
         );
         describe_gauge!(
             "maidan_bus_listener_ok",
@@ -481,6 +485,11 @@ async fn refresh_runtime_gauges(state: &AppState) {
         ((Utc::now().timestamp_millis() - ms).max(0) as f64) / 1000.0
     };
     gauge!("maidan_indexer_last_event_age_seconds").set(age_secs);
+    let pending_age_secs = match crate::health::indexer_backlog(state).await {
+        Ok(Some(at)) if ms != 0 => ((Utc::now() - at).num_milliseconds().max(0) as f64) / 1000.0,
+        _ => 0.0,
+    };
+    gauge!("maidan_indexer_pending_age_seconds").set(pending_age_secs);
 
     // Live embedding pipeline: queue depth is hard-capped by capacity, so the
     // lag this gauge reports is bounded.

@@ -2451,6 +2451,16 @@ pub trait EventStore: Send + Sync {
     /// (`Maidan-Consistency-Token`).
     async fn max_event_id(&self) -> Result<i64, StoreError>;
 
+    /// The oldest event with `id > after_id` whose kind is in `kinds`, as
+    /// `(id, inserted_at)`; `None` when there is none. `inserted_at` is the
+    /// store's own clock, not the caller-supplied `occurred_at`. Readiness uses
+    /// this to tell a projector that is behind from one with nothing to do.
+    async fn oldest_event_after_of_kinds(
+        &self,
+        after_id: i64,
+        kinds: &[EventKind],
+    ) -> Result<Option<(i64, DateTime<Utc>)>, StoreError>;
+
     /// Where a tap projector last finished. `0` = never run.
     ///
     /// The search tap re-walked the whole log from genesis on every start,

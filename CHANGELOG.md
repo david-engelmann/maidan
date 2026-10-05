@@ -27,6 +27,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** `maidan-env` line coverage is floored at 98.0. The coverage job measured 136 of 137 lines (99.27%) and failed because the crate had no floor. The floor is one point under that measurement, rounded down to the half point, the same margin as the other crates.
 
+### Readiness no longer fails an idle indexer
+
+- **Fixed:** With `INDEXER_STALE_SECS` set, `/health/ready` returned 503 ("no indexer activity for 14163s") on a healthy instance that simply had no messages to index, because it compared the clock with the indexer's last event. It now degrades only when the indexer is behind: the log holds a message event it has not handled, that event is older than the threshold, and the indexer has made no progress for as long. The indexer publishes the highest log id it has handled (`AppState::indexer_processed_log_id`, set by `Indexer::spawn_with_probes`), and readiness compares it with the log through a new `Store::oldest_event_after_of_kinds`, after one `MAX(id)` read that answers the caught-up case. An indexer error still degrades readiness. The default (`0`, disabled) is unchanged.
+- **Added:** `maidan_indexer_pending_age_seconds` (0 when caught up). The `MaidanIndexerStale` alert and the operator dashboard use it, because `maidan_indexer_last_event_age_seconds` grows on any quiet instance.
+
 ### Sign out ends a session the page has not cached
 
 - **Fixed:** Sign out posts `/auth/logout` when `/.well-known/maidan.json` says this server offers browser sessions (`auth.sessions`), not only when a member id is already on the page. A failed session read is not treated as proof that no cookie exists. When discovery never answered, Sign out still posts. A server that says it has no sessions still just forgets the token in the tab, unless this page has already seen a member.
