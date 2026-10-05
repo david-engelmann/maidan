@@ -1952,7 +1952,7 @@ List a task's dependencies plus whether it is ready to run (true when every depe
 
 ### `get_queue_depth`
 
-A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked}, for deciding whether to scale workers. ready is what claim_next_thread could take now.
+A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked, unclaimable}, for deciding whether to scale workers. ready is what claim_next_thread could take now. Counts only threads you may read: on the DM channel, your own DMs. For the whole workspace, use get_workspace_queue_depth.
 
 **Capability:** `workspace:read`
 
@@ -1987,6 +1987,50 @@ A channel's occupancy as {open, queued, claimed, working, blocked}: the two-cloc
   },
   "required": [
     "channel_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_workspace_queue_depth`
+
+get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id)",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
+### `get_workspace_occupancy`
+
+get_channel_occupancy across every channel of the workspace you may read, as {open, queued, claimed, working, blocked}: the sum of those channels' occupancy. A private channel's threads count only for its members and a DM's only for its participants.
+
+**Capability:** `workspace:read`
+
+```json
+{
+  "properties": {
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id)",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
   ],
   "type": "object"
 }

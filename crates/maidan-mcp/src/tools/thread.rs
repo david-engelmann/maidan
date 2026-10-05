@@ -992,15 +992,26 @@ struct QueueDepthArgs {
     channel_id: uuid::Uuid,
 }
 
+/// The member whose read rule a queue count applies: the caller, unless it
+/// bypasses auth and so may count everything.
+fn queue_reader(auth: &AuthContext) -> Option<MemberId> {
+    (!auth.bypass).then_some(auth.member_id)
+}
+
 /// A channel's task-queue depth: `{open, ready, assigned, blocked}` counts of
 /// its open task threads — the MCP twin of `GET /channels/:cid/queue-depth`.
-/// Channel access is enforced pre-dispatch (the `channel_id` arg).
+/// Channel access is enforced pre-dispatch (the `channel_id` arg); the counts
+/// hold only threads the caller may read, which on the `__dm__` channel is its
+/// own DMs.
 pub(super) async fn get_queue_depth(
     store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = serde_json::from_value(args.clone())?;
-    let depth = store.channel_queue_depth(ChannelId(a.channel_id)).await?;
+    let depth = store
+        .channel_queue_depth(ChannelId(a.channel_id), queue_reader(auth))
+        .await?;
     Ok(content_json(&depth))
 }
 
@@ -1010,10 +1021,59 @@ pub(super) async fn get_queue_depth(
 /// /channels/:cid/occupancy`. Channel access is enforced pre-dispatch.
 pub(super) async fn get_channel_occupancy(
     store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: QueueDepthArgs = serde_json::from_value(args.clone())?;
-    let occupancy = store.channel_occupancy(ChannelId(a.channel_id)).await?;
+    let occupancy = store
+        .channel_occupancy(ChannelId(a.channel_id), queue_reader(auth))
+        .await?;
+    Ok(content_json(&occupancy))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceQueueArgs {
+    workspace_id: uuid::Uuid,
+}
+
+/// The workspace a workspace-wide count names, which must be the caller's. The
+/// pre-dispatch workspace gate checks it too, but it passes what it cannot
+/// parse, and a required argument deserves its own check.
+fn queue_workspace(auth: &AuthContext, args: &Value) -> Result<WorkspaceId, McpError> {
+    let a: WorkspaceQueueArgs = serde_json::from_value(args.clone())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)?;
+    Ok(workspace_id)
+}
+
+/// `get_queue_depth` across every channel of the caller's workspace: the sum of
+/// the depths of the channels it may read, counting a DM only for its
+/// participants. The MCP twin of `GET /workspaces/:wid/queue-depth`.
+pub(super) async fn get_workspace_queue_depth(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let workspace_id = queue_workspace(auth, args)?;
+    let depth = store
+        .workspace_queue_depth(workspace_id, queue_reader(auth))
+        .await?;
+    Ok(content_json(&depth))
+}
+
+/// `get_channel_occupancy` across every channel of the caller's workspace, as
+/// `get_workspace_queue_depth` is to the channel depth. The MCP twin of `GET
+/// /workspaces/:wid/occupancy`.
+pub(super) async fn get_workspace_occupancy(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let workspace_id = queue_workspace(auth, args)?;
+    let occupancy = store
+        .workspace_occupancy(workspace_id, queue_reader(auth))
+        .await?;
     Ok(content_json(&occupancy))
 }
 

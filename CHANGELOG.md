@@ -1502,7 +1502,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** `maidan` refuses a `MAIDAN_*` name that is not on the server's list, before it parses arguments, and names the nearest known variable. `MAIDAN_ALLOW_UNKNOWN_ENV=1` starts anyway and logs the names. The list lives in `maidan-env`, which the server and the CLI both use.
 
-
 ### Program C's research is kept, and its items lead Open Work
 
 - **Added:** `docs/archive/Context Economics research 2026-10/`, the three
@@ -1643,6 +1642,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** each secret-bearing variable (`DATABASE_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`) can be given as a file path in `<NAME>_FILE`, so a container's config, and `docker inspect`, carries no secret. The server and `maidan` read each file once, at the start of `main` before the async runtime starts, trim trailing newlines and set the plain variable, so every reader of the plain name is unchanged (`crates/maidan-env/src/secret_files.rs`). Setting both forms refuses boot naming the variable; so does a file that cannot be read, is empty, or is not UTF-8. No error or log line carries a value; the server logs which variables came from files. The `MAIDAN_*_FILE` names are registered, so the unknown-variable check accepts them. `maidan-server --health-check` reads no secret file.
 - **Docs:** Production, "One instance built from `main`": the server, `maidan-postgres` and CLI images built at one pinned commit; Postgres against SQLite; auth on with `MAIDAN_ENV=production`; secrets through `_FILE`, owned by the image's uid; the first workspace and token from `maidan init` with no `MAIDAN_BOOTSTRAP`; the egress allowlist seed as audited `POST /workspaces/{wid}/egress-targets` calls; `MAIDAN_GITHUB_TOKEN` as a PAT with `contents:write` and `pull_requests:write`; and a smoke check (`/health/ready`, anonymous `/me` refused, the init token's `/me`, the seed listed, no secret in `docker inspect`).
+
+### Workspace queue depth and occupancy
+
+- **Added:** `GET /workspaces/{wid}/queue-depth` and `GET /workspaces/{wid}/occupancy` (MCP `get_workspace_queue_depth`, `get_workspace_occupancy`) return the channel counts summed over the workspace, so a pool serving `claim_next_workspace_thread` can be sized without polling every channel. Both need `workspace:read`; another workspace's id is refused (403 over REST, an error over MCP). The MCP tool count is 238.
+- **Fixed:** the channel depth and occupancy counted every thread in the channel, so on the `__dm__` channel, which passes the channel check for every member, they reported everyone's DMs. All four counts now apply `claim_next`'s read rule (a private channel's threads for its members, a DM's for its participants, nothing outside the reader's workspace), built once in `queue_counts.rs` for both backends and both scopes.
+- **Changed:** `claim_next`'s read rule is now `thread_access::readable_thread`, the SQL form the A2A and gate listings already used, with the workspace taken from the claimer's member row; the claim and the counts and the listings share one copy of the rule.
+- **Tests:** the workspace-wide `wait_for_ready` (no `channel_id`) skips a thread that becomes ready in a private channel or DM the caller cannot read, or in another workspace, on the live path and on the `since_log_id` replay.
 
 ## [412.0.0] — 2026-09-28
 
