@@ -23,6 +23,8 @@ fn thread(state: ThreadState, tombstoned: bool, age_secs: i64) -> Thread {
         updated_at: now,
         tombstoned_at: if tombstoned { Some(now) } else { None },
         status: None,
+        block: None,
+        closed_without_review: false,
     }
 }
 
@@ -66,7 +68,7 @@ fn assembles_excludes_terminal_sorts_and_flags_overdue() {
     let gates = vec![gate(200)];
     let mentions = vec![mention(50)];
 
-    let inbox = assemble_waiting_inbox(&assigned, &[], &gates, &mentions, now, sla);
+    let inbox = assemble_waiting_inbox(&assigned, &[], &[], &gates, &mentions, &[], now, sla);
 
     // 2 live threads + 1 gate + 1 mention = 4 items (the 3 excluded threads drop).
     assert_eq!(inbox.total, 4);
@@ -87,7 +89,7 @@ fn assembles_excludes_terminal_sorts_and_flags_overdue() {
 
 #[test]
 fn empty_sources_yield_an_empty_inbox() {
-    let inbox = assemble_waiting_inbox(&[], &[], &[], &[], Utc::now(), 3600);
+    let inbox = assemble_waiting_inbox(&[], &[], &[], &[], &[], &[], Utc::now(), 3600);
     assert_eq!(inbox.total, 0);
     assert_eq!(inbox.overdue, 0);
     assert!(inbox.items.is_empty());
@@ -102,7 +104,7 @@ fn a_requested_review_waits_since_the_thread_last_changed() {
     review.updated_at = now - Duration::seconds(600);
     let closed = thread(ThreadState::Closed, false, 9000);
 
-    let inbox = assemble_waiting_inbox(&[], &[review.clone(), closed], &[], &[], now, 3600);
+    let inbox = assemble_waiting_inbox(&[], &[review.clone(), closed], &[], &[], &[], &[], now, 3600);
 
     assert_eq!(inbox.total, 1, "a closed thread's review waits on nobody");
     let item = &inbox.items[0];
@@ -118,5 +120,56 @@ fn a_requested_review_waits_since_the_thread_last_changed() {
     assert_eq!(
         serde_json::to_value(item.kind).unwrap(),
         serde_json::json!("review_request")
+    );
+}
+
+#[test]
+fn a_human_blocked_thread_waits_as_blocked_with_its_note() {
+    let now = Utc::now();
+    let tid = ThreadId(Uuid::new_v4());
+    let owner = MemberId(Uuid::new_v4());
+    let block = ThreadBlock {
+        thread_id: tid,
+        reason: BlockedReason::Human,
+        set_by: MemberId(Uuid::new_v4()),
+        set_at: now - Duration::seconds(300),
+        note: Some("waiting on security review".into()),
+    };
+    let blocked = vec![(tid, Some("Deploy to prod".into()), Some(owner), block)];
+
+    let inbox = assemble_waiting_inbox(&[], &[], &[], &[], &[], &blocked, now, 3600);
+
+    assert_eq!(inbox.total, 1);
+    let item = &inbox.items[0];
+    assert_eq!(item.kind, WaitingKind::Blocked);
+    assert_eq!(item.thread_id, Some(tid));
+    assert!(item.summary.contains("Deploy to prod"));
+    assert!(item.summary.contains("human"));
+    assert!(item.summary.contains("waiting on security review"));
+    assert_eq!(
+        serde_json::to_value(item.kind).unwrap(),
+        serde_json::json!("blocked")
+    );
+}
+
+#[test]
+fn a_review_with_no_reviewer_waits_as_an_unassigned_review() {
+    let now = Utc::now();
+    let mut review = thread(ThreadState::InReview, false, 9000);
+    review.title = Some("Rate-limit /api/upload".into());
+    review.updated_at = now - Duration::seconds(120);
+    let closed = thread(ThreadState::Closed, false, 9000);
+
+    let inbox = assemble_waiting_inbox(&[], &[], &[review.clone(), closed], &[], &[], &[], now, 60);
+
+    assert_eq!(inbox.total, 1, "a closed thread waits on nobody");
+    let item = &inbox.items[0];
+    assert_eq!(item.kind, WaitingKind::UnassignedReview);
+    assert_eq!(item.thread_id, Some(review.id));
+    assert_eq!(item.summary, "Rate-limit /api/upload");
+    assert!(item.overdue, "aged from when review began, against the SLA");
+    assert_eq!(
+        serde_json::to_value(item.kind).unwrap(),
+        serde_json::json!("unassigned_review")
     );
 }

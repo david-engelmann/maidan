@@ -27,6 +27,7 @@
     "maidan.event.review_submitted/1",
     "maidan.event.schedule_skipped/1",
     "maidan.event.thread_assignment_changed/1",
+    "maidan.event.thread_blocked/1",
     "maidan.event.thread_created/1",
     "maidan.event.thread_landed/1",
     "maidan.event.thread_ready/1",

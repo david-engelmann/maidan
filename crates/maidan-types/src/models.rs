@@ -492,6 +492,10 @@ pub struct ThreadBlock {
     pub reason: BlockedReason,
     pub set_by: MemberId,
     pub set_at: DateTime<Utc>,
+    /// Human-readable note explaining why the thread is blocked. Set by
+    /// `set_thread_block`; empty when the blocker gave no note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// A per-thread budget envelope. An orchestrator sets any of the optional
@@ -1673,6 +1677,18 @@ pub struct Thread {
     /// cleared on human response. `None` = no active declaration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<ThreadStatusDeclaration>,
+    /// The thread's explicit dispatch block, if any. Populated by the API
+    /// layer when returning thread details; `None` in store-level queries
+    /// that do not JOIN the blocks table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block: Option<ThreadBlock>,
+    /// The thread is closed (or archived) and no approval stands on it. The
+    /// review gate is opt-in, so a close can need none; the board says so
+    /// rather than showing a plain "done". Read by a single-thread read and a
+    /// channel's thread page, the reads a board makes; `false` on the other
+    /// list reads.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub closed_without_review: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -2114,6 +2130,13 @@ pub enum WaitingKind {
     /// A thread under review that names the member as a reviewer and does not
     /// have their approval yet.
     ReviewRequest,
+    /// A thread blocked with reason `human` or `gate`, waiting on its owner
+    /// (or workspace admins when it has no owner) to unblock it.
+    Blocked,
+    /// A thread under review that names no reviewer, so no review request
+    /// reaches anyone. It waits on the thread's owner, or, when it has none,
+    /// on the workspace's admins.
+    UnassignedReview,
 }
 
 /// One thing waiting on a member — with its age and whether it has breached the
@@ -2179,16 +2202,19 @@ fn waiting_item(
     }
 }
 
-/// Assemble a member's waiting-on-you inbox from the three sources: their
-/// assigned **non-terminal** threads, the workspace's pending approval gates
-/// (they need a human), and their unread mentions. Pure — the caller fetches
-/// the sources and the unread-mention filter; items come back oldest-waiting
-/// first, each aged against `sla_secs`.
+/// Assemble a member's waiting-on-you inbox from its sources: their
+/// assigned **non-terminal** threads, the reviews requested from them, the
+/// reviews that name no reviewer and fall to them, the workspace's pending
+/// approval gates (they need a human), and their unread mentions. Pure — the
+/// caller fetches the sources and filters them by access and read state; items
+/// come back oldest-waiting first, each aged against `sla_secs`.
 pub fn assemble_waiting_inbox(
     assigned: &[Thread],
     review_requests: &[Thread],
+    unassigned_reviews: &[Thread],
     pending_gates: &[ApprovalGate],
     unread_mentions: &[Mention],
+    blocked: &[(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)],
     now: DateTime<Utc>,
     sla_secs: i64,
 ) -> WaitingInbox {
@@ -2227,6 +2253,23 @@ pub fn assemble_waiting_inbox(
             sla_secs,
         ));
     }
+    for t in unassigned_reviews {
+        if t.state.is_terminal() || t.tombstoned_at.is_some() {
+            continue;
+        }
+        items.push(waiting_item(
+            WaitingKind::UnassignedReview,
+            Some(t.id),
+            None,
+            None,
+            t.title
+                .clone()
+                .unwrap_or_else(|| "(untitled thread)".to_string()),
+            t.updated_at,
+            now,
+            sla_secs,
+        ));
+    }
     for g in pending_gates {
         items.push(waiting_item(
             WaitingKind::OpenGate,
@@ -2247,6 +2290,26 @@ pub fn assemble_waiting_inbox(
             Some(m.message_id),
             format!("mention in message {}", m.message_id.0),
             m.created_at,
+            now,
+            sla_secs,
+        ));
+    }
+    for (tid, title, _owner, block) in blocked {
+        let summary = match &block.note {
+            Some(n) if !n.is_empty() => format!("blocked ({}): {}", block.reason.as_str(), n),
+            _ => format!("blocked: {}", block.reason.as_str()),
+        };
+        items.push(waiting_item(
+            WaitingKind::Blocked,
+            Some(*tid),
+            None,
+            None,
+            title
+                .clone()
+                .unwrap_or_else(|| "(untitled thread)".to_string())
+                + " — "
+                + &summary,
+            block.set_at,
             now,
             sla_secs,
         ));

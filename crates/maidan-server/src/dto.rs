@@ -580,6 +580,9 @@ pub struct MarkUnclaimable {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadBlock {
     pub reason: BlockedReason,
+    /// Human-readable note explaining why the thread is blocked.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// Body for `PUT /threads/:id/status` — declare the agent's self-reported

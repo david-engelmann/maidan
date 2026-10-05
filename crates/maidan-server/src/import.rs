@@ -75,6 +75,8 @@ mod tests {
                     updated_at: now,
                     tombstoned_at: None,
                     status: None,
+                    block: None,
+                    closed_without_review: false,
                 },
                 Thread {
                     id: child,
@@ -91,6 +93,8 @@ mod tests {
                     updated_at: now,
                     tombstoned_at: None,
                     status: None,
+                    block: None,
+                    closed_without_review: false,
                 },
             ],
             messages: vec![Message {

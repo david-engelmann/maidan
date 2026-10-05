@@ -395,6 +395,24 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             reason,
             resolved_by,
         },
+        // Non-federatable (a locally-derived block).
+        ThreadBlocked {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            reason,
+            set_by,
+            note,
+        } => ThreadBlocked {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reason,
+            set_by,
+            note,
+        },
         // Non-federatable (a locally-derived lease expiry) — never actually
         // ingested/remapped, but the exhaustive match must classify it.
         ClaimExpired {

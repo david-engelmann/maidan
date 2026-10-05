@@ -67,6 +67,10 @@ async fn in_review(store: &dyn Store, ws: WorkspaceId, worker: MemberId) -> (Thr
         .expect("the new thread is claimable");
     assert_eq!(claimed.id, thread.id);
     store
+        .set_thread_result(thread.id, worker, &serde_json::json!({"status": "done"}))
+        .await
+        .expect("a gated thread needs a result before review");
+    store
         .transition_thread(thread.id, worker, ThreadAction::StartReview)
         .await
         .expect("start review");
@@ -148,6 +152,10 @@ async fn run_suite(store: &dyn Store) {
         .unwrap()
         .expect("the reopened thread is claimable again");
     assert_eq!(again.id, t.id);
+    store
+        .set_thread_result(t.id, worker, &serde_json::json!({"status": "done"}))
+        .await
+        .expect("a gated thread needs a result before review");
     store
         .transition_thread(t.id, worker, ThreadAction::StartReview)
         .await

@@ -260,3 +260,305 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
 
     server.abort();
 }
+
+/// A server on in-memory SQLite with auth on, for the tests below.
+async fn spawn() -> (
+    Arc<dyn Store>,
+    String,
+    reqwest::Client,
+    tokio::task::JoinHandle<()>,
+) {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let artifacts = Arc::new(LocalFsStore::new(dir.keep()));
+    let bus = Arc::new(maidan_bus::InMemoryBus::new());
+    let state = AppState::new(
+        store.clone(),
+        artifacts,
+        bus,
+        search,
+        Arc::new(maidan_search::HashV1Provider),
+        false,
+        false,
+        FederationRuntime::new(true, None),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+    let app = router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    (store, format!("http://{addr}"), client, server)
+}
+
+async fn member_with_token(
+    store: &Arc<dyn Store>,
+    ws: maidan_types::WorkspaceId,
+    handle: &str,
+    caps: &[&str],
+) -> (maidan_types::MemberId, String) {
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: handle.into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: Some(handle.into()),
+            capabilities: caps.iter().map(|c| c.to_string()).collect(),
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    (member.id, format!("Bearer {}", secret.as_str()))
+}
+
+/// A thread an agent worked and handed to review with no reviewer named.
+async fn in_review_unnamed(
+    store: &Arc<dyn Store>,
+    ws: maidan_types::WorkspaceId,
+    agent: maidan_types::MemberId,
+    title: &str,
+    private: bool,
+) -> maidan_types::ThreadId {
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: format!("ch-{}", uuid::Uuid::now_v7()),
+            topic: None,
+            private,
+        })
+        .await
+        .unwrap();
+    if private {
+        store
+            .add_channel_member(ch.id, agent, maidan_types::ChannelMemberRole::Member)
+            .await
+            .unwrap();
+    }
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some(title.into()),
+        })
+        .await
+        .unwrap();
+    store.claim_thread(thread.id, agent).await.unwrap();
+    store
+        .transition_thread(thread.id, agent, ThreadAction::StartReview)
+        .await
+        .unwrap();
+    thread.id
+}
+
+async fn unassigned_titles(
+    client: &reqwest::Client,
+    base: &str,
+    auth: &str,
+    member: maidan_types::MemberId,
+) -> Vec<String> {
+    let inbox: serde_json::Value = client
+        .get(format!("{base}/members/{}/waiting", member.0))
+        .header("Authorization", auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    inbox["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|i| i["kind"] == "unassigned_review")
+        .map(|i| i["summary"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// A review that names nobody reaches its owner, or, with no owner, a
+/// workspace admin; never a member of another workspace, never someone who
+/// cannot open the thread, and never a member who is neither.
+#[tokio::test]
+async fn a_review_nobody_was_named_for_reaches_its_owner_or_an_admin_and_no_one_else() {
+    let (store, base, client, server) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "a".into() })
+        .await
+        .unwrap()
+        .id;
+    let other = store
+        .create_workspace(NewWorkspace { name: "b".into() })
+        .await
+        .unwrap()
+        .id;
+    let (admin, admin_auth) = member_with_token(
+        &store,
+        ws,
+        "admin",
+        &["workspace:read", "thread:transition", "token:admin"],
+    )
+    .await;
+    let (owner, owner_auth) = member_with_token(&store, ws, "owner", &["workspace:read"]).await;
+    let (bystander, bystander_auth) =
+        member_with_token(&store, ws, "bystander", &["workspace:read"]).await;
+    let (agent, _) = member_with_token(&store, ws, "agent", &["workspace:read"]).await;
+    let (other_admin, other_admin_auth) =
+        member_with_token(&store, other, "admin", &["workspace:read", "token:admin"]).await;
+    let (other_agent, _) = member_with_token(&store, other, "agent", &["workspace:read"]).await;
+
+    let owned = in_review_unnamed(&store, ws, agent, "owned: the retry budget", false).await;
+    store.set_thread_owner(owned, Some(owner)).await.unwrap();
+    in_review_unnamed(&store, ws, agent, "ownerless: the cache header", false).await;
+    in_review_unnamed(&store, ws, agent, "private: the acquisition", true).await;
+    in_review_unnamed(&store, other, other_agent, "tenant b: the audit", false).await;
+
+    assert_eq!(
+        unassigned_titles(&client, &base, &owner_auth, owner).await,
+        vec!["owned: the retry budget"],
+        "the owner hears about its own review, and nothing it does not own"
+    );
+    assert_eq!(
+        unassigned_titles(&client, &base, &admin_auth, admin).await,
+        vec!["ownerless: the cache header"],
+        "an admin hears the ownerless review it can open; not the owned one, \
+         not the private one, not another workspace's"
+    );
+    assert!(
+        unassigned_titles(&client, &base, &bystander_auth, bystander)
+            .await
+            .is_empty(),
+        "a member who neither owns nor administers hears nothing"
+    );
+    assert_eq!(
+        unassigned_titles(&client, &base, &other_admin_auth, other_admin).await,
+        vec!["tenant b: the audit"],
+        "the other workspace's admin hears its own, and nothing of this one"
+    );
+    let cross = client
+        .get(format!("{base}/members/{}/waiting", admin.0))
+        .header("Authorization", &other_admin_auth)
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        !cross.text().await.unwrap().contains("ownerless"),
+        "another workspace's admin cannot read this workspace's queue"
+    );
+
+    // The MCP tool applies the same rule.
+    let mcp: serde_json::Value = client
+        .post(format!("{base}/mcp"))
+        .header("Authorization", &admin_auth)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "get_waiting_inbox", "arguments": {"member_id": admin.0}}
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let text = mcp.to_string();
+    assert!(
+        text.contains("unassigned_review") && text.contains("ownerless: the cache header"),
+        "{text}"
+    );
+    for hidden in [
+        "owned: the retry budget",
+        "private: the acquisition",
+        "tenant b: the audit",
+    ] {
+        assert!(!text.contains(hidden), "MCP must not list {hidden}: {text}");
+    }
+
+    server.abort();
+}
+
+/// On a thread whose close needs an approval, start_review is refused until a
+/// result is posted, with the fix named. Without a requirement it is not.
+#[tokio::test]
+async fn start_review_on_a_gated_thread_needs_a_posted_result() {
+    let (store, base, client, server) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "a".into() })
+        .await
+        .unwrap()
+        .id;
+    let (worker, auth) = member_with_token(
+        &store,
+        ws,
+        "worker",
+        &["workspace:read", "thread:transition"],
+    )
+    .await;
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = |title: &'static str| NewThread {
+        channel_id: ch.id,
+        parent_thread_id: None,
+        title: Some(title.into()),
+    };
+    let gated = store.create_thread(thread("gated")).await.unwrap().id;
+    store.set_review_requirement(gated, 1).await.unwrap();
+    let start = |id: maidan_types::ThreadId| {
+        client
+            .post(format!("{base}/threads/{}", id.0))
+            .header("Authorization", &auth)
+            .json(&serde_json::json!({"action": "start_review"}))
+            .send()
+    };
+    let refused = start(gated).await.unwrap();
+    assert_eq!(refused.status(), 409);
+    let problem: serde_json::Value = refused.json().await.unwrap();
+    assert!(
+        problem["detail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("no result posted"),
+        "{problem}"
+    );
+    store
+        .set_thread_result(gated, worker, &serde_json::json!({"status": "done"}))
+        .await
+        .unwrap();
+    assert_eq!(start(gated).await.unwrap().status(), 200);
+
+    let ungated = store.create_thread(thread("ungated")).await.unwrap().id;
+    assert_eq!(start(ungated).await.unwrap().status(), 200);
+
+    server.abort();
+}

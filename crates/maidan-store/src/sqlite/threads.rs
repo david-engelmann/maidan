@@ -8,6 +8,7 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::claim_next::{self, ClaimScope, ClaimSql};
+use crate::queue_counts::{self, QueueScope, QueueSql};
 use crate::sqlite::budget;
 use crate::sqlite::events;
 use crate::sqlite::thread_workers;
@@ -78,14 +79,18 @@ pub async fn create_with_event(
 
 pub async fn get(pool: &SqlitePool, id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
-         FROM maidan_threads WHERE id = ?",
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id,
+                (t.state IN ('closed', 'archived') AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_reviews r
+                   WHERE r.thread_id = t.id AND r.decision = 'approve' AND r.dismissed_at IS NULL
+                 )) AS closed_without_review
+         FROM maidan_threads t WHERE t.id = ?",
     )
     .bind(id.0)
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;
-    row_to_thread(&row)
+    row_to_board_thread(&row)
 }
 
 pub async fn list(pool: &SqlitePool, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
@@ -723,6 +728,46 @@ pub async fn list_review_requests(
     rows.iter().map(row_to_thread).collect()
 }
 
+/// Threads under review in `workspace_id` with no named reviewer: the ones
+/// `member_id` owns, and, when `include_ownerless`, the ones nobody owns.
+/// Oldest first, by when the thread last entered review.
+pub async fn list_unassigned_reviews(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    include_ownerless: bool,
+) -> Result<Vec<Thread>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
+                t.created_at, COALESCE(
+                    (SELECT MAX(tt.occurred_at) FROM maidan_thread_transitions tt
+                     WHERE tt.thread_id = t.id AND tt.to_state = 'in_review'),
+                    t.updated_at) AS updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = ? AND t.state = 'in_review' AND t.tombstoned_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM maidan_thread_reviewers rv WHERE rv.thread_id = t.id)
+           AND (t.owner_id = ? OR (? AND t.owner_id IS NULL))
+           -- An approval this member already gave answers it for them.
+           AND NOT EXISTS (
+             SELECT 1 FROM maidan_thread_reviews r
+             WHERE r.thread_id = t.id AND r.reviewer_id = ? AND r.decision = 'approve'
+               AND r.dismissed_at IS NULL
+           )
+         ORDER BY COALESCE(
+                    (SELECT MAX(tt.occurred_at) FROM maidan_thread_transitions tt
+                     WHERE tt.thread_id = t.id AND tt.to_state = 'in_review'),
+                    t.updated_at) ASC, t.id ASC",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .bind(include_ownerless)
+    .bind(member_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_thread).collect()
+}
+
 /// Atomically claim the oldest unassigned live thread in `channel_id` for
 /// `member_id` — the "pull the next task" primitive. `None` when the channel
 /// has no unassigned work. SQLite serializes writers, so the select-then-update
@@ -757,55 +802,34 @@ pub async fn claim_next(
     Ok(Some(thread))
 }
 
-/// Task-queue depth for a channel. `not_live` (unassigned or lease expired) and
-/// the deps / explicit-block `NOT EXISTS` clauses mirror the `claim_next`
-/// claimability predicate, so `ready` here is precisely what `claim_next` would
-/// take. `blocked` folds an explicit [`BlockedReason`] in alongside unfinished
-/// DAG deps — they stay distinct *causes*.
-pub async fn channel_queue_depth(
+/// The placeholders the queue counts bind on SQLite: `?1` the scope, `?2` the
+/// reader, `?3` the DM channel name, `?4` now.
+const QUEUE_SQL: QueueSql<'static> = QueueSql {
+    scope: "?1",
+    reader: "?2",
+    dm_channel: "?3",
+    now: "?4",
+};
+
+/// Task-queue depth for a channel or a workspace — see
+/// [`queue_counts`](crate::queue_counts). Its `available` test and the
+/// dependency and explicit-block clauses mirror the `claim_next` claimability
+/// predicate. `blocked` folds an explicit [`BlockedReason`] in alongside
+/// unfinished DAG deps — they stay distinct *causes*.
+///
+/// [`BlockedReason`]: maidan_types::BlockedReason
+pub async fn queue_depth(
     pool: &SqlitePool,
-    channel_id: ChannelId,
+    scope: QueueScope,
+    readable_by: Option<MemberId>,
 ) -> Result<QueueDepth, StoreError> {
-    let now = Utc::now().to_rfc3339();
-    let row = sqlx::query(
-        "SELECT
-             COUNT(*) AS open_count,
-             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
-                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= ?)
-                     THEN 1 ELSE 0 END), 0) AS assigned_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
-                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                       AND NOT EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                     THEN 1 ELSE 0 END), 0) AS ready_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
-                       AND (
-                           EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                           OR EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                       )
-                     THEN 1 ELSE 0 END), 0) AS blocked_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = t.id)
-                     THEN 1 ELSE 0 END), 0) AS unclaimable_count
-         FROM maidan_threads t
-         WHERE t.channel_id = ?
-           AND t.state = 'open'
-           AND t.tombstoned_at IS NULL",
-    )
-    .bind(&now)
-    .bind(&now)
-    .bind(&now)
-    .bind(&now)
-    .bind(channel_id.0)
-    .fetch_one(pool)
-    .await?;
+    let row = sqlx::query(&queue_counts::queue_depth_select(scope, &QUEUE_SQL))
+        .bind(scope.id())
+        .bind(readable_by.map(|m| m.0))
+        .bind(DM_CHANNEL_NAME)
+        .bind(Utc::now().to_rfc3339())
+        .fetch_one(pool)
+        .await?;
     Ok(QueueDepth {
         open: row.get::<i64, _>("open_count"),
         ready: row.get::<i64, _>("ready_count"),
@@ -815,53 +839,21 @@ pub async fn channel_queue_depth(
     })
 }
 
-/// Channel occupancy — the two-clocks refinement of `channel_queue_depth`,
-/// splitting the held threads by the working clock. See the Postgres twin. The
-/// four sub-counts partition `open`.
-pub async fn channel_occupancy(
+/// Occupancy of a channel or a workspace — the two-clocks refinement of
+/// [`queue_depth`], splitting the held threads by the working clock. See the
+/// Postgres twin. The four sub-counts partition `open`.
+pub async fn occupancy(
     pool: &SqlitePool,
-    channel_id: ChannelId,
+    scope: QueueScope,
+    readable_by: Option<MemberId>,
 ) -> Result<ChannelOccupancy, StoreError> {
-    let now = Utc::now().to_rfc3339();
-    let row = sqlx::query(
-        "SELECT
-             COUNT(*) AS open_count,
-             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
-                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= ?)
-                       AND t.work_started_at IS NULL
-                     THEN 1 ELSE 0 END), 0) AS claimed_count,
-             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
-                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= ?)
-                       AND t.work_started_at IS NOT NULL
-                     THEN 1 ELSE 0 END), 0) AS working_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                       AND NOT EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                     THEN 1 ELSE 0 END), 0) AS queued_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < ?))
-                       AND (
-                           EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                           OR EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                       )
-                     THEN 1 ELSE 0 END), 0) AS blocked_count
-         FROM maidan_threads t
-         WHERE t.channel_id = ?
-           AND t.state = 'open'
-           AND t.tombstoned_at IS NULL",
-    )
-    .bind(&now)
-    .bind(&now)
-    .bind(&now)
-    .bind(&now)
-    .bind(channel_id.0)
-    .fetch_one(pool)
-    .await?;
+    let row = sqlx::query(&queue_counts::occupancy_select(scope, &QUEUE_SQL))
+        .bind(scope.id())
+        .bind(readable_by.map(|m| m.0))
+        .bind(DM_CHANNEL_NAME)
+        .bind(Utc::now().to_rfc3339())
+        .fetch_one(pool)
+        .await?;
     Ok(ChannelOccupancy {
         open: row.get::<i64, _>("open_count"),
         queued: row.get::<i64, _>("queued_count"),
@@ -1179,8 +1171,12 @@ pub async fn page_for_channel(
 ) -> Result<Vec<Thread>, StoreError> {
     let cursor = after.map(|t| t.0);
     let rows = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at,
-                tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at,
+                t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id,
+                (t.state IN ('closed', 'archived') AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_reviews r
+                   WHERE r.thread_id = t.id AND r.decision = 'approve' AND r.dismissed_at IS NULL
+                 )) AS closed_without_review
          FROM maidan_threads t
          WHERE t.channel_id = ?
            AND t.tombstoned_at IS NULL
@@ -1196,7 +1192,7 @@ pub async fn page_for_channel(
     .bind(limit.max(0))
     .fetch_all(pool)
     .await?;
-    rows.iter().map(row_to_thread).collect()
+    rows.iter().map(row_to_board_thread).collect()
 }
 
 async fn validate_parent(
@@ -1273,6 +1269,14 @@ async fn enforce_spawn_budget(
     Ok(())
 }
 
+/// A thread read for a board: the row plus its `closed_without_review` column,
+/// which only the board's reads select.
+fn row_to_board_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, StoreError> {
+    let mut thread = row_to_thread(row)?;
+    thread.closed_without_review = row.get("closed_without_review");
+    Ok(thread)
+}
+
 pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, StoreError> {
     let state_str: String = row.get("state");
     let state = match state_str.as_str() {
@@ -1306,5 +1310,7 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
         status: None,
+        block: None,
+        closed_without_review: false,
     })
 }

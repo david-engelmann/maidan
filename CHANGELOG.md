@@ -16,6 +16,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `declare_status` and `get_thread_status` to the worker tool profile.
 
 Refs #1253
+### A blocked agent reaches a human
+
+- **Added:** `set_thread_block` takes an optional `note` explaining why the thread is blocked. Setting a block emits `ThreadBlocked` (non-federatable, like `BlockedResolved`).
+- **Added:** `WaitingKind::Blocked` — a `human` or `gate` block is a Needs-you row for the thread's owner, or workspace admins when it has no owner. The row shows the reason and note, with an Unblock button. Clearing the block removes the row.
+- **Added:** The thread DTO carries `block: Option<ThreadBlock>`. Board cards show `blocked: reason` with the note as a tooltip.
+- **Changed:** `set_thread_block` store API returns `(ThreadBlock, StoredEvent)`.
 
 ### A failed token check drops the previous member
 
@@ -136,6 +142,11 @@ Refs #1253
   that lookup returns, and the webhook poller sends one delivery at a time, so
   a nameserver that never answers held every tenant's webhooks. The lookup now
   gives up after 5 s (`EGRESS_RESOLUTION_TIMEOUT`).
+
+### The docs and the page's sign-in sentences match the board as it is
+
+- **Docs:** Integration no longer mentions `data-ui-version`, which the page dropped in #1224, and says the markup is not an interface; it names Needs you, the header (Change, Search or jump with Ctrl-K or ⌘K, Connect an agent, Sign out) and More tools. README and FAQ name the reviews and approvals waiting on you; FAQ says DMs, notifications and presence are under More tools. OIDC's opening section says how a person signs in now (the identity provider on the first-run card when there is one, or a pasted token that also ends in an HttpOnly session) instead of reading as a login that is missing. Pi calls `/ui/` the board, not the operator shell.
+- **Fixed:** a write with no credential said "Sign in (session) or set a bearer token to write.", from when the token sat in a header field. It now says to paste a token under Connect this browser, and names the identity provider only when the server has one. Connecting live updates with no credential says the same instead of "Bearer token or OIDC session required for WebSocket subscribe".
 
 ### The docs describe the board at `/ui`
 
@@ -1512,7 +1523,6 @@ Refs #1253
 
 - **Fixed:** `maidan` refuses a `MAIDAN_*` name that is not on the server's list, before it parses arguments, and names the nearest known variable. `MAIDAN_ALLOW_UNKNOWN_ENV=1` starts anyway and logs the names. The list lives in `maidan-env`, which the server and the CLI both use.
 
-
 ### Program C's research is kept, and its items lead Open Work
 
 - **Added:** `docs/archive/Context Economics research 2026-10/`, the three
@@ -1609,6 +1619,13 @@ Refs #1253
 - **Added:** `GET /channels/:id/boot` and the MCP resource `maidan://boots/{channel_id}` serve the workspace boot. It is the same bytes for every agent of the channel, and a thread pack's prefix starts with it.
 - **Added:** `max_bytes` caps the canonical pack. Elision grows by blocks of 16 messages. `delta=true` or `since_prefix_sha` returns a delta: the tail alone when the prefix sha matches, otherwise the messages after `message_cursor` or the replacement prefix. `as_of` rebuilds the thread row from the log at that event, not the live row. Id ties sort the same on both databases.
 
+### A review always reaches someone
+
+- **Added:** a thread in review that names no reviewer is an `unassigned_review` in the waiting inbox (`GET /members/{id}/waiting`, MCP `get_waiting_inbox`) of its owner, or, when it has no owner, of every workspace admin (a member holding a live `token:admin` token, or a caller acting with `token:admin` on its own inbox). Before, review requests came only from named reviewers, so such a review reached nobody (UI audit P0-4). Each row is filtered by what the caller can open, the same rule as `review_request`, and an approval the member already gave answers it. Needs you shows the row as a review with "no reviewer named": an admin gets Approve and Request changes; the owner, whose approval does not count, gets Close without review on a thread with no review requirement, and otherwise Request changes with "your approval does not count: name a reviewer".
+- **Changed:** `start_review` on a thread with a review requirement is refused (`409`) until a result is posted with `set_thread_result` / `PUT /threads/{id}/result`. Without a requirement it is allowed, and the approval row in Needs you says "No result was posted" (decided 2026-10-04).
+- **Added:** `closed_without_review` on a thread read by `GET /threads/{id}`, MCP `get_thread` and the channel's thread page: a closed or archived thread with no standing approval. The review gate stays opt-in (decided 2026-10-04), so the board's card and the thread header say "closed without review" instead of "done".
+- **Changed:** `scripts/demo-board.sh` makes the planner the owner of every task it files, so separation of duties is live (the coder's refused close now reads "separation of duties") and the rate-limit card, in review with no reviewer, reaches the planner as an `unassigned_review`.
+
 ### A context delta says when the prefix must be replaced
 
 - **Fixed:** A `message_cursor` delta with `since_prefix_sha` returns the messages after the cursor only when appending them, and their edits, rebuilds a prefix that hashes to `prefix_sha256`. A change outside those messages (a glossary term, an accepted decision, a reference, an artifact, a transition, a change request, an earlier edit, or the elision boundary) returns the replacement prefix instead, so a client cache cannot drift. The first MCP content part of a delta is that head, never an empty string. A cursor with no prefix sha is still the message slice the caller asked for.
@@ -1646,6 +1663,13 @@ Refs #1253
 
 - **Added:** each secret-bearing variable (`DATABASE_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`) can be given as a file path in `<NAME>_FILE`, so a container's config, and `docker inspect`, carries no secret. The server and `maidan` read each file once, at the start of `main` before the async runtime starts, trim trailing newlines and set the plain variable, so every reader of the plain name is unchanged (`crates/maidan-env/src/secret_files.rs`). Setting both forms refuses boot naming the variable; so does a file that cannot be read, is empty, or is not UTF-8. No error or log line carries a value; the server logs which variables came from files. The `MAIDAN_*_FILE` names are registered, so the unknown-variable check accepts them. `maidan-server --health-check` reads no secret file.
 - **Docs:** Production, "One instance built from `main`": the server, `maidan-postgres` and CLI images built at one pinned commit; Postgres against SQLite; auth on with `MAIDAN_ENV=production`; secrets through `_FILE`, owned by the image's uid; the first workspace and token from `maidan init` with no `MAIDAN_BOOTSTRAP`; the egress allowlist seed as audited `POST /workspaces/{wid}/egress-targets` calls; `MAIDAN_GITHUB_TOKEN` as a PAT with `contents:write` and `pull_requests:write`; and a smoke check (`/health/ready`, anonymous `/me` refused, the init token's `/me`, the seed listed, no secret in `docker inspect`).
+
+### Workspace queue depth and occupancy
+
+- **Added:** `GET /workspaces/{wid}/queue-depth` and `GET /workspaces/{wid}/occupancy` (MCP `get_workspace_queue_depth`, `get_workspace_occupancy`) return the channel counts summed over the workspace, so a pool serving `claim_next_workspace_thread` can be sized without polling every channel. Both need `workspace:read`; another workspace's id is refused (403 over REST, an error over MCP). The MCP tool count is 238.
+- **Fixed:** the channel depth and occupancy counted every thread in the channel, so on the `__dm__` channel, which passes the channel check for every member, they reported everyone's DMs. All four counts now apply `claim_next`'s read rule (a private channel's threads for its members, a DM's for its participants, nothing outside the reader's workspace), built once in `queue_counts.rs` for both backends and both scopes.
+- **Changed:** `claim_next`'s read rule is now `thread_access::readable_thread`, the SQL form the A2A and gate listings already used, with the workspace taken from the claimer's member row; the claim and the counts and the listings share one copy of the rule.
+- **Tests:** the workspace-wide `wait_for_ready` (no `channel_id`) skips a thread that becomes ready in a private channel or DM the caller cannot read, or in another workspace, on the live path and on the `since_log_id` replay.
 
 ## [412.0.0] — 2026-09-28
 

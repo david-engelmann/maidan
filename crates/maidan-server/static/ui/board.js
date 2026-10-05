@@ -324,7 +324,9 @@ import { loadMessages } from "./thread.js";
           card.dataset.chrome = chrome.label;
           card.tabIndex = 0;
           card.setAttribute("role", "button");
-          card.setAttribute("aria-label", `${title}: ${chrome.label}`);
+          // The review gate is opt-in: a close with no approval says so.
+          const stateLabel = th.closed_without_review ? "closed without review" : chrome.label;
+          card.setAttribute("aria-label", `${title}: ${stateLabel}`);
           if (th.id === selectedThreadId) card.classList.add("selected");
           const sig = `${chrome.label}|${th.assignee_id || ""}`;
           if (boardSeen.size && boardSeen.get(th.id) !== sig) card.classList.add("fresh");
@@ -336,7 +338,7 @@ import { loadMessages } from "./thread.js";
           foot.className = "card-foot";
           const stateWord = document.createElement("span");
           stateWord.className = "card-state";
-          stateWord.textContent = chrome.label;
+          stateWord.textContent = stateLabel;
           foot.appendChild(stateWord);
           // Agent self-reported status chip (declare_status). Shows the
           // status and note when the agent has declared what it's doing.
@@ -346,6 +348,12 @@ import { loadMessages } from "./thread.js";
             s.textContent = th.status.status.replace(/_/g, " ");
             s.title = th.status.note || `Agent status: ${th.status.status}`;
             foot.appendChild(s);
+          if (th.block) {
+            const b = document.createElement("span");
+            b.className = "card-blocked";
+            b.textContent = `blocked: ${th.block.reason}`;
+            b.title = th.block.note || `Blocked (${th.block.reason})`;
+            foot.appendChild(b);
           }
           if (th.assignee_id) {
             foot.appendChild(personEl(th.assignee_id));
@@ -558,7 +566,9 @@ import { loadMessages } from "./thread.js";
         document.getElementById("thread-actions").replaceChildren();
         if (!th) return;
         const tid = th.id;
-        badgeBox.textContent = sessionChrome(th, lastGates[tid]).label;
+        badgeBox.textContent = th.closed_without_review
+          ? "closed without review"
+          : sessionChrome(th, lastGates[tid]).label;
         const fact = (label, node) => {
           const f = document.createElement("span");
           f.className = "fact";

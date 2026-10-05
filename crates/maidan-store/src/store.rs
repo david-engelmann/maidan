@@ -1369,15 +1369,42 @@ pub trait ThreadStore: Send + Sync {
     /// Point-in-time task-queue depth for a channel: counts of its open task
     /// threads partitioned into ready / assigned / blocked, using the same
     /// claimability predicate as `claim_next`. One aggregate query.
-    async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError>;
+    /// `readable_by` counts only the threads that member may read, by
+    /// `claim_next`'s read rule (on the `__dm__` channel, only its own DMs);
+    /// `None` counts every thread, for a caller that bypasses auth.
+    async fn channel_queue_depth(
+        &self,
+        channel_id: ChannelId,
+        readable_by: Option<MemberId>,
+    ) -> Result<QueueDepth, StoreError>;
+
+    /// [`channel_queue_depth`](Self::channel_queue_depth) across every channel
+    /// of `workspace_id`: the sum of its channels' counts for the same reader.
+    /// A reader from another workspace counts nothing.
+    async fn workspace_queue_depth(
+        &self,
+        workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
+    ) -> Result<QueueDepth, StoreError>;
 
     /// Channel occupancy: the two-clocks refinement of `channel_queue_depth` —
     /// the held threads split into `claimed` (not yet acknowledged) and
     /// `working` (acknowledged), so an orchestrator sees how much held work is
-    /// actually underway. One aggregate query.
+    /// actually underway. One aggregate query. `readable_by` as for
+    /// [`channel_queue_depth`](Self::channel_queue_depth).
     async fn channel_occupancy(
         &self,
         channel_id: ChannelId,
+        readable_by: Option<MemberId>,
+    ) -> Result<ChannelOccupancy, StoreError>;
+
+    /// [`channel_occupancy`](Self::channel_occupancy) across every channel of
+    /// `workspace_id`, as [`workspace_queue_depth`](Self::workspace_queue_depth)
+    /// is to the channel depth.
+    async fn workspace_occupancy(
+        &self,
+        workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
     ) -> Result<ChannelOccupancy, StoreError>;
 }
 
@@ -1785,6 +1812,16 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         member_id: MemberId,
     ) -> Result<Vec<Thread>, StoreError>;
+    /// Threads under review in `workspace_id` that name no reviewer, so no
+    /// review request reaches anyone: those `member_id` owns, plus, when
+    /// `include_ownerless`, those with no owner. Oldest first, by when review
+    /// began. Access is the caller's to filter.
+    async fn list_unassigned_reviews(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        include_ownerless: bool,
+    ) -> Result<Vec<Thread>, StoreError>;
 
     /// Atomically claim the oldest claimable live thread in `channel_id` for
     /// `member_id` — the "pull the next task" primitive. Claimable = unassigned
@@ -1939,12 +1976,14 @@ pub trait AssignmentStore: Send + Sync {
     /// Set (upsert) an explicit dispatch block. Presence of the row parks the
     /// thread from `claim_next` (enforced in
     /// 386.2). One block per thread; re-setting replaces the reason/actor.
+    /// Emits `ThreadBlocked`.
     async fn set_thread_block(
         &self,
         thread_id: ThreadId,
         reason: BlockedReason,
         set_by: MemberId,
-    ) -> Result<ThreadBlock, StoreError>;
+        note: Option<String>,
+    ) -> Result<(ThreadBlock, StoredEvent), StoreError>;
     /// Clear a thread's explicit block. Returns the cleared row; `None` if it
     /// was not blocked (idempotent). Prefer [`clear_thread_block_with_event`]
     /// to emit `BlockedResolved`.
@@ -1992,6 +2031,14 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadStatusDeclaration>, StoreError>;
+    /// Threads blocked with `human` or `gate` reason in a workspace, with
+    /// their blocks. For the waiting inbox: these need a human (owner or
+    /// admin) to unblock. Returns (thread_id, title, owner_id, block).
+    /// Newest first.
+    async fn list_human_gate_blocked_threads(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)>, StoreError>;
 
     /// Set (upsert) a thread's wait timer: the thread is waiting until
     /// `wait_until`, escalating via `on_timeout` on lapse. Re-setting resets

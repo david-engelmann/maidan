@@ -166,6 +166,7 @@ pub enum EventKind {
     ThreadReady,
     ThreadResultSet,
     ApprovalRequested,
+    ThreadBlocked,
     BlockedResolved,
     StatusDeclared,
     ClaimExpired,
@@ -206,6 +207,7 @@ impl EventKind {
             Self::ThreadReady => "thread_ready",
             Self::ThreadResultSet => "thread_result_set",
             Self::ApprovalRequested => "approval_requested",
+            Self::ThreadBlocked => "thread_blocked",
             Self::BlockedResolved => "blocked_resolved",
             Self::StatusDeclared => "status_declared",
             Self::ClaimExpired => "claim_expired",
@@ -246,6 +248,7 @@ impl EventKind {
             "thread_ready" => Some(Self::ThreadReady),
             "thread_result_set" => Some(Self::ThreadResultSet),
             "approval_requested" => Some(Self::ApprovalRequested),
+            "thread_blocked" => Some(Self::ThreadBlocked),
             "blocked_resolved" => Some(Self::BlockedResolved),
             "status_declared" => Some(Self::StatusDeclared),
             "claim_expired" => Some(Self::ClaimExpired),
@@ -311,6 +314,7 @@ impl EventKind {
         Self::ThreadReady,
         Self::ThreadResultSet,
         Self::ApprovalRequested,
+        Self::ThreadBlocked,
         Self::BlockedResolved,
         Self::StatusDeclared,
         Self::ClaimExpired,
@@ -377,6 +381,9 @@ impl EventKind {
             Self::ThreadResultSet => false,
             // Approval gates are local human-control state.
             Self::ApprovalRequested => false,
+            // A block is *this* deployment's dispatch decision; a peer must
+            // not inject one.
+            Self::ThreadBlocked => false,
             // An unblock is *this* deployment's dispatch decision; a peer must
             // not inject one.
             Self::BlockedResolved => false,
@@ -506,6 +513,18 @@ pub enum Event {
         thread_id: Option<ThreadId>,
         gate_id: ApprovalGateId,
         requested_by: MemberId,
+    },
+    /// An explicit dispatch block was set. Carries the reason and the
+    /// blocker's note. Locally derived: not federatable.
+    ThreadBlocked {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        reason: BlockedReason,
+        set_by: MemberId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
     },
     /// An explicit dispatch block was cleared. A waiter observing this can
     /// claim the thread (subject to DAG readiness and the other `claim_next`
@@ -858,6 +877,7 @@ impl Event {
             Self::ThreadReady { .. } => EventKind::ThreadReady,
             Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
             Self::ApprovalRequested { .. } => EventKind::ApprovalRequested,
+            Self::ThreadBlocked { .. } => EventKind::ThreadBlocked,
             Self::BlockedResolved { .. } => EventKind::BlockedResolved,
             Self::StatusDeclared { .. } => EventKind::StatusDeclared,
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
@@ -898,6 +918,7 @@ impl Event {
             | Self::ThreadReady { occurred_at, .. }
             | Self::ThreadResultSet { occurred_at, .. }
             | Self::ApprovalRequested { occurred_at, .. }
+            | Self::ThreadBlocked { occurred_at, .. }
             | Self::BlockedResolved { occurred_at, .. }
             | Self::StatusDeclared { occurred_at, .. }
             | Self::ClaimExpired { occurred_at, .. }
@@ -938,6 +959,7 @@ impl Event {
             | Self::ThreadReady { workspace_id, .. }
             | Self::ThreadResultSet { workspace_id, .. }
             | Self::ApprovalRequested { workspace_id, .. }
+            | Self::ThreadBlocked { workspace_id, .. }
             | Self::BlockedResolved { workspace_id, .. }
             | Self::StatusDeclared { workspace_id, .. }
             | Self::ClaimExpired { workspace_id, .. }
@@ -1422,6 +1444,7 @@ mod kind_tests {
                 | EventKind::ThreadReady
                 | EventKind::ThreadResultSet
                 | EventKind::ApprovalRequested
+                | EventKind::ThreadBlocked
                 | EventKind::BlockedResolved
                 | EventKind::ClaimExpired
                 | EventKind::ClaimUnacknowledged
@@ -1505,6 +1528,7 @@ mod kind_tests {
             EventKind::ThreadReady,
             EventKind::ThreadResultSet,
             EventKind::ApprovalRequested,
+            EventKind::ThreadBlocked,
             EventKind::BlockedResolved,
             EventKind::ClaimExpired,
             EventKind::ClaimUnacknowledged,

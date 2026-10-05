@@ -2840,7 +2840,7 @@ mod tests {
 
         // Clearing a real block wakes a waiter scoped to that thread.
         f.store
-            .set_thread_block(f.public.id, BlockedReason::Human, f.agent.id)
+            .set_thread_block(f.public.id, BlockedReason::Human, f.agent.id, None)
             .await
             .unwrap();
         let (got, _) = tokio::join!(

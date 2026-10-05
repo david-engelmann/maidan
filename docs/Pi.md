@@ -78,7 +78,7 @@ export MAIDAN_SESSION_SECRET=change-me-to-a-32-byte-plus-secret-value
 maidan-server
 ```
 
-Open `http://<pi-ip>:8080/ui/` for the operator shell, or send `Authorization: Bearer
+Open `http://<pi-ip>:8080/ui/` for the board, or send `Authorization: Bearer
 <token>` per [Integration.md](Integration.md). (For a throwaway lab only, you can instead
 run auth off with `AUTH_DISABLED=1 MAIDAN_ALLOW_INSECURE_NO_AUTH=1` — both are required,
 never on a network.)

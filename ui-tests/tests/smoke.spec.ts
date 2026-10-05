@@ -42,6 +42,8 @@ test("primary lists expose loading, actionable empty, and API error detail state
   await page.goto("/ui/");
   await page.fill("#workspace", "00000000-0000-0000-0000-000000000001");
   await page.fill("#token", "test-token");
+  // Since #1257 a pasted token connects only on Sign in or Enter.
+  await page.click("#token-signin");
   await page.click("#refresh-channels");
   await expect(page.locator("#channel-list")).toHaveAttribute("aria-busy", "true");
   await expect(page.locator("#channel-list")).toContainText("Loading channels");

@@ -608,7 +608,8 @@ pub async fn get_member_delivery_mode(
 
 /// The waiting-on-you inbox: everything that needs this member's attention —
 /// their assigned non-terminal threads, the reviews requested from them, the
-/// workspace's pending approval gates,
+/// reviews that name no reviewer and fall to them (owned by them, or ownerless
+/// when they are a workspace admin), the workspace's pending approval gates,
 /// and their unread mentions — oldest-waiting first, each aged against
 /// `?sla_secs` (default 24h). `workspace:read` + self-only for a session (a
 /// bearer orchestrator may query any member).
@@ -640,6 +641,13 @@ pub async fn get_member_waiting(
             reviews.push(thread);
         }
     }
+    let unassigned = maidan_auth::visible_unassigned_reviews(
+        state.store.as_ref(),
+        &auth,
+        member.workspace_id,
+        MemberId(id),
+    )
+    .await?;
     let gates = state
         .store
         .list_pending_approval_gates(member.workspace_id, 200)
@@ -655,11 +663,48 @@ pub async fn get_member_waiting(
         .into_iter()
         .filter(|m| m.created_at > last_read)
         .collect::<Vec<_>>();
+    // Human/gate-blocked threads need owner or admin attention. A thread
+    // reaches its owner; a thread with no owner reaches workspace admins.
+    let mut blocked = Vec::new();
+    {
+        let now = chrono::Utc::now();
+        let is_admin = auth.bypass
+            || (auth.member_id == MemberId(id) && auth.has_capability(maidan_auth::TOKEN_ADMIN))
+            || (auth.delegation_grant_id.is_none()
+                && state
+                    .store
+                    .list_api_tokens_for_member(member.workspace_id, MemberId(id))
+                    .await?
+                    .iter()
+                    .any(|t| {
+                        t.revoked_at.is_none()
+                            && t.expires_at.is_none_or(|at| at > now)
+                            && t.capabilities.iter().any(|c| c == maidan_auth::TOKEN_ADMIN)
+                    }));
+        for (tid, title, owner, block) in state
+            .store
+            .list_human_gate_blocked_threads(member.workspace_id)
+            .await?
+        {
+            let for_owner = owner == Some(MemberId(id));
+            let for_admin = owner.is_none() && is_admin;
+            if for_owner || for_admin {
+                // Access-filter: don't show threads the caller can't open.
+                if auth.bypass
+                    || maidan_auth::can_access_thread(state.store.as_ref(), &auth, tid).await?
+                {
+                    blocked.push((tid, title, owner, block));
+                }
+            }
+        }
+    }
     Ok(Json(assemble_waiting_inbox(
         &assigned,
         &reviews,
+        &unassigned,
         &gates,
         &unread,
+        &blocked,
         chrono::Utc::now(),
         sla,
     )))

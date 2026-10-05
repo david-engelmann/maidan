@@ -46,6 +46,8 @@ fn thread(channel_id: ChannelId) -> Thread {
         updated_at: Utc::now(),
         tombstoned_at: None,
         status: None,
+        block: None,
+        closed_without_review: false,
     }
 }
 
