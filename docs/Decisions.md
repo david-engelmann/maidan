@@ -2068,3 +2068,15 @@ On 2026-10-04 the maintainer added three rulings.
 **Why.** The lanes that need no authorization server reach about twenty listings for 12 to 22 engineering days. The authorization server and its two gated listings cost 35 to 63 days for one new directory and one auth upgrade, plus permanent operations for a solo maintainer. Self-hosting keeps operations near zero, and the demo instance answers the reviewers.
 
 **Record.** Open Work, the connected-apps rows of Next and Later CA.
+
+### The UI audit's three product questions (2026-10-04)
+
+**Decision.** The maintainer ruled on the three questions the UI deep dive of 2026-10-03 raised.
+- The review gate stays opt-in. A thread closes with no approval unless a gate is configured, and the board shows such a close as closed without review.
+- `start_review` needs a posted result on gated threads only. On other threads it is allowed, and the approval card warns that no result was posted.
+- The web UI ships as a generated, minified bundle checked into the repo. CI fails when the bundle is stale, as with the vendored gRPC code, so `cargo build` still needs no Node.
+
+**Why.** Opt-in keeps the room usable for work that needs no review, while the board makes an unreviewed close visible. A gated thread exists to judge a result, so a review with nothing to judge is refused there. A checked-in bundle gives fingerprinted, minified assets without making Node a build dependency.
+
+**Record.** Open Work Next 3 and Next 9, Later U, and Recently decided.
+
