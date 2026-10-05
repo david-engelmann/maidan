@@ -8,9 +8,9 @@ use std::process::Command;
 fn a_thrown_me_check_drops_the_previous_bearer_member() {
     let source = include_str!("../static/ui/session.js");
     let handler = source
-        .split("document.getElementById(\"token\").addEventListener(\"change\"")
+        .split("async function trySignIn()")
         .nth(1)
-        .expect("token change handler");
+        .expect("trySignIn function");
     let catch_block = handler
         .split("} catch (e) {")
         .nth(1)
