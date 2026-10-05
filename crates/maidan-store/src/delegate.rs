@@ -3942,9 +3942,10 @@ macro_rules! store_delegations {
 
             async fn revoke_slash_command(
                 &self,
+                workspace_id: WorkspaceId,
                 id: SlashCommandId,
             ) -> Result<SlashCommand, StoreError> {
-                slash_commands::revoke(self.pool(), id).await
+                slash_commands::revoke(self.pool(), workspace_id, id).await
             }
 
             async fn get_slash_command(
@@ -3977,8 +3978,12 @@ macro_rules! store_delegations {
                 fsm_hooks::list(self.pool(), workspace_id).await
             }
 
-            async fn revoke_fsm_hook(&self, id: FsmHookId) -> Result<FsmHook, StoreError> {
-                fsm_hooks::revoke(self.pool(), id).await
+            async fn revoke_fsm_hook(
+                &self,
+                workspace_id: WorkspaceId,
+                id: FsmHookId,
+            ) -> Result<FsmHook, StoreError> {
+                fsm_hooks::revoke(self.pool(), workspace_id, id).await
             }
 
             async fn get_fsm_hook(&self, id: FsmHookId) -> Result<FsmHookWithSecret, StoreError> {

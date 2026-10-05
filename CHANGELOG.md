@@ -19,6 +19,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** The page accepted two members and left the new group DM unselected. It now refuses fewer than three before the request, says that refusal as a sentence, and selects the conversation the server returns, the same way a one-to-one DM is selected. A browser spec opens one and posts in it.
 
+### Revokes and link upserts are scoped to the caller's workspace
+
+- **Fixed:** `revoke_slash_command` and `revoke_fsm_hook` (REST and MCP) committed the revoke before comparing workspaces, so an admin of one tenant could disable another tenant's command or hook by id. The store methods now take the `WorkspaceId` and match `id AND workspace_id`. Slack and GitHub link upserts moved a link to the caller's workspace when the Slack channel id or `(repo, issue_number)` was already linked elsewhere; they now update only the owner's own row and otherwise return `409` ("already linked by another workspace").
+
 ### A rotated token stays on the connection that asked for it
 
 - **Fixed:** `rotateToken` records the token, the API base, the workspace, and the token id when the request starts. The new secret is exchanged only if those four are still the same when the response arrives. The secret is still shown once, so it is not lost. A network failure is a sentence, not an unhandled rejection. Changing the token field clears the cached token id.
