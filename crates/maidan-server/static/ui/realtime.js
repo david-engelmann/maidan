@@ -133,7 +133,7 @@ import { loadApprovals } from "./tools.js";
           return showError("Select a thread for the thread preset");
         }
         if (!token() && !sessionMemberId) {
-          return showError("Bearer token or OIDC session required for WebSocket subscribe");
+          return showError("Sign in first: live updates need a signed-in session or a token.");
         }
         persist();
         // Wanted from the first attempt, not from the ack: a drop before the

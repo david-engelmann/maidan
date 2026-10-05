@@ -1,7 +1,7 @@
 // @ts-check
 import { OPERATIONS } from "./client.js";
 import { showError } from "./feedback.js";
-import { sessionMemberId, tokenSession } from "./session.js";
+import { oidcLoginPath, sessionMemberId, tokenSession } from "./session.js";
 import { baseInput, tokenKey, wsKey } from "./state.js";
 
 /**
@@ -84,9 +84,15 @@ import { baseInput, tokenKey, wsKey } from "./state.js";
       }
 
       // A write is allowed with either a bearer token or a signed-in session.
+      // Without either the board shows Connect this browser, so the sentence
+      // points there, and names the identity provider only when there is one.
       function requireAuthForWrite() {
         if (token() || sessionMemberId) return true;
-        showError("Sign in (session) or set a bearer token to write.");
+        showError(
+          oidcLoginPath
+            ? "Sign in first: paste a token under Connect this browser, or sign in with your identity provider."
+            : "Sign in first: paste a token under Connect this browser."
+        );
         return false;
       }
 

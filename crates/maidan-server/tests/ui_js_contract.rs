@@ -659,8 +659,8 @@ fn ui_js_puts_the_decisions_agents_wait_on_first() {
     assert!(needs < board, "Needs you sits above the board");
     assert!(
         s.contains("uiReadPath(`/members/${me}/waiting`)")
-            && s.contains("new Set([\"review_request\", \"open_gate\"])"),
-        "the queue reads the waiting inbox and keeps the decisions: reviews and gates"
+            && s.contains("new Set([\"review_request\", \"unassigned_review\", \"open_gate\"])"),
+        "the queue reads the waiting inbox and keeps the decisions: reviews, unassigned reviews and gates"
     );
     assert!(
         s.contains("apiWritePath(`/threads/${tid}/reviews`)")
@@ -1560,18 +1560,20 @@ fn ui_js_state_is_a_word_not_a_pill() {
     let board = function_body(js, "renderBoard");
     assert!(
         !board.contains("chromeBadge(")
-            && board.contains("stateWord.textContent = chrome.label")
+            && board.contains("stateWord.textContent = stateLabel")
+            && board.contains("closed without review")
             && board.contains("card.append(t, foot)"),
         "renderBoard puts the sessionChrome label in the card foot and does not paint a badge"
     );
     assert!(
-        board.contains("card.setAttribute(\"aria-label\", `${title}: ${chrome.label}`)"),
+        board.contains("card.setAttribute(\"aria-label\", `${title}: ${stateLabel}`)"),
         "the card's accessible name uses the same state word"
     );
     let header = function_body(js, "renderThreadHeader");
     assert!(
         !header.contains("chromeBadge(")
-            && header.contains("badgeBox.textContent = sessionChrome(th, lastGates[tid]).label"),
+            && header.contains("badgeBox.textContent = th.closed_without_review")
+            && header.contains("sessionChrome(th, lastGates[tid]).label"),
         "the thread header shows the state word"
     );
     let row = function_body(js, "needsYouRow");

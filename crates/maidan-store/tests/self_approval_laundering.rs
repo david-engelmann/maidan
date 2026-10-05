@@ -97,6 +97,10 @@ async fn run_suite(store: &dyn Store) {
         .await
         .unwrap();
     store
+        .set_thread_result(t.id, owner.id, &serde_json::json!({"status": "done"}))
+        .await
+        .expect("a gated thread needs a result before review");
+    store
         .transition_thread(t.id, owner.id, ThreadAction::StartReview)
         .await
         .expect("start review");
@@ -138,6 +142,10 @@ async fn run_suite(store: &dyn Store) {
         .set_land_gate_pointer(g.id, worker.id, LandGateStatus::Pass, None, None)
         .await
         .unwrap();
+    store
+        .set_thread_result(g.id, owner.id, &serde_json::json!({"status": "done"}))
+        .await
+        .expect("a gated thread needs a result before review");
     store
         .transition_thread(g.id, owner.id, ThreadAction::StartReview)
         .await

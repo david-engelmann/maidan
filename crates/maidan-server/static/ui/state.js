@@ -85,7 +85,7 @@
         "claim_expired",
       ]);
 
-      const NY_KINDS = new Set(["review_request", "open_gate"]);
+      const NY_KINDS = new Set(["review_request", "unassigned_review", "open_gate"]);
 
       // A Needs you load that could not reach the server retries on its own,
       // backing off to once a minute.

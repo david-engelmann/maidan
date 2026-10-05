@@ -266,7 +266,8 @@ struct WaitingArgs {
 }
 
 /// The waiting-on-you inbox: a member's assigned non-terminal threads + the
-/// reviews requested from them + the workspace's pending approval gates +
+/// reviews requested from them + the reviews that name no reviewer and fall to
+/// them + the workspace's pending approval gates +
 /// their unread mentions, oldest-waiting
 /// first, each aged against `sla_secs`. `workspace:read`.
 pub(super) async fn get_waiting_inbox(
@@ -292,6 +293,13 @@ pub(super) async fn get_waiting_inbox(
             reviews.push(thread);
         }
     }
+    let unassigned = maidan_auth::visible_unassigned_reviews(
+        store.as_ref(),
+        auth,
+        member.workspace_id,
+        member_id,
+    )
+    .await?;
     let gates = store
         .list_pending_approval_gates(member.workspace_id, 200)
         .await?;
@@ -304,6 +312,7 @@ pub(super) async fn get_waiting_inbox(
     let inbox = maidan_types::assemble_waiting_inbox(
         &assigned,
         &reviews,
+        &unassigned,
         &gates,
         &unread,
         chrono::Utc::now(),

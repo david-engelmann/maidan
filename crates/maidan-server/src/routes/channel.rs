@@ -116,9 +116,17 @@ pub async fn get_channel_boot(
     Ok(Json(boot))
 }
 
+/// The member whose read rule a queue count applies: the caller, unless it
+/// bypasses auth and so may count everything. The channel check passes the
+/// shared `__dm__` channel for every member, so without it that channel's
+/// counts were every member's DMs.
+fn queue_reader(auth: &AuthContext) -> Option<MemberId> {
+    (!auth.bypass).then_some(auth.member_id)
+}
+
 /// Task-queue depth for a channel: ready / assigned / blocked counts of its
 /// open task threads, for an orchestrator deciding whether to scale workers.
-/// `workspace:read` + channel access.
+/// `workspace:read` + channel access; only threads the caller may read count.
 pub async fn get_channel_queue_depth(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -128,7 +136,29 @@ pub async fn get_channel_queue_depth(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
-    let depth = state.store.channel_queue_depth(channel.id).await?;
+    let depth = state
+        .store
+        .channel_queue_depth(channel.id, queue_reader(&auth))
+        .await?;
+    Ok(Json(depth))
+}
+
+/// `GET /workspaces/:wid/queue-depth` — the channel depth summed over every
+/// channel of the caller's workspace it may read, for sizing a pool of workers
+/// that claim with `POST /workspaces/:wid/threads/claim-next`. `workspace:read`.
+pub async fn get_workspace_queue_depth(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<QueueDepth>> {
+    let workspace_id = WorkspaceId(wid);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    let depth = state
+        .store
+        .workspace_queue_depth(workspace_id, queue_reader(&auth))
+        .await?;
     Ok(Json(depth))
 }
 
@@ -165,7 +195,8 @@ pub async fn list_channel_blocked(
 
 /// Channel occupancy: the two-clocks view — queued / claimed / working /
 /// blocked counts of the channel's open task threads, so an orchestrator sees
-/// how much held work is actually underway. `workspace:read` + channel access.
+/// how much held work is actually underway. `workspace:read` + channel access;
+/// only threads the caller may read count.
 pub async fn get_channel_occupancy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -175,7 +206,29 @@ pub async fn get_channel_occupancy(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
-    let occupancy = state.store.channel_occupancy(channel.id).await?;
+    let occupancy = state
+        .store
+        .channel_occupancy(channel.id, queue_reader(&auth))
+        .await?;
+    Ok(Json(occupancy))
+}
+
+/// `GET /workspaces/:wid/occupancy` — the channel occupancy summed over every
+/// channel of the caller's workspace it may read, as the workspace queue depth
+/// is to the channel one. `workspace:read`.
+pub async fn get_workspace_occupancy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<ChannelOccupancy>> {
+    let workspace_id = WorkspaceId(wid);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    let occupancy = state
+        .store
+        .workspace_occupancy(workspace_id, queue_reader(&auth))
+        .await?;
     Ok(Json(occupancy))
 }
 
