@@ -87,6 +87,12 @@
 
       const NY_KINDS = new Set(["review_request", "open_gate"]);
 
+      // A Needs you load that could not reach the server retries on its own,
+      // backing off to once a minute.
+      const NY_RETRY_MIN_MS = 5000;
+
+      const NY_RETRY_MAX_MS = 60000;
+
 
       // Live thread view. WS event frames whose thread matches the
       // open thread refresh the message list (debounced) instead of only
@@ -127,4 +133,4 @@
 
       const LIVE_POLL_MS = 15000;
 
-export { ACTOR_KEYS, BOARD_COLUMNS, INLINE_IMAGE_TYPES, LIVE_MS, LIVE_POLL_MS, NY_KINDS, QUICK_REACTIONS, SUBJECT_KEYS, THREAD_BOARD_KINDS, THREAD_CONTENT_KINDS, WORKER_PRESET, artifactFetches, artifactImages, baseInput, channelKey, lastSeen, memberDirectory, onMac, reduceMotion, refusals, tokenKey, wsKey, wsResumeKey };
+export { ACTOR_KEYS, BOARD_COLUMNS, INLINE_IMAGE_TYPES, LIVE_MS, LIVE_POLL_MS, NY_KINDS, NY_RETRY_MAX_MS, NY_RETRY_MIN_MS, QUICK_REACTIONS, SUBJECT_KEYS, THREAD_BOARD_KINDS, THREAD_CONTENT_KINDS, WORKER_PRESET, artifactFetches, artifactImages, baseInput, channelKey, lastSeen, memberDirectory, onMac, reduceMotion, refusals, tokenKey, wsKey, wsResumeKey };
