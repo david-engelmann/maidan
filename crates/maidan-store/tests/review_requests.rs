@@ -1,7 +1,10 @@
 //! The reviews waiting on a member: threads under review that name the member
 //! as a reviewer and lack their approval. Approving, a change request that
 //! reopens the thread, closing it, or not being named all take it off the
-//! list. Both backends.
+//! list. A review that names nobody falls to its owner, or, with no owner, to
+//! whoever the caller says may take ownerless reviews. A gated thread cannot
+//! go to review without a result, and a close with no approval reads as
+//! closed without review. Both backends.
 
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
@@ -225,10 +228,201 @@ async fn run_suite(store: &dyn Store) {
     );
 }
 
+async fn unassigned(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    m: MemberId,
+    include_ownerless: bool,
+) -> Vec<ThreadId> {
+    store
+        .list_unassigned_reviews(ws, m, include_ownerless)
+        .await
+        .expect("unassigned reviews")
+        .iter()
+        .map(|t| t.id)
+        .collect()
+}
+
+async fn run_unassigned_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "ur".into() })
+        .await
+        .expect("ws")
+        .id;
+    let other_ws = store
+        .create_workspace(NewWorkspace { name: "ur2".into() })
+        .await
+        .expect("ws2")
+        .id;
+    let worker = member(store, ws, "worker").await;
+    let owner = member(store, ws, "owner").await;
+    let admin = member(store, ws, "admin").await;
+    let reviewer = member(store, ws, "reviewer").await;
+    let foreign = member(store, other_ws, "foreign").await;
+    let foreign_worker = member(store, other_ws, "foreign-worker").await;
+
+    let owned = handed_to_review(store, ws, worker).await;
+    store
+        .set_thread_owner(owned, Some(owner))
+        .await
+        .expect("owner");
+    let ownerless = handed_to_review(store, ws, worker).await;
+    let named = handed_to_review(store, ws, worker).await;
+    store.add_reviewer(named, reviewer).await.expect("named");
+    let elsewhere = handed_to_review(store, other_ws, foreign_worker).await;
+
+    assert_eq!(
+        unassigned(store, ws, owner, false).await,
+        vec![owned],
+        "the owner hears about its own review nobody was named for"
+    );
+    assert_eq!(
+        unassigned(store, ws, admin, true).await,
+        vec![ownerless],
+        "an ownerless review falls to whoever takes ownerless reviews"
+    );
+    assert!(
+        unassigned(store, ws, admin, false).await.is_empty(),
+        "a member who takes no ownerless reviews and owns nothing hears nothing"
+    );
+    assert!(
+        !unassigned(store, ws, owner, true).await.contains(&named),
+        "a review with a named reviewer reaches that reviewer instead"
+    );
+    assert!(
+        !unassigned(store, ws, admin, true).await.contains(&elsewhere),
+        "another workspace's ownerless review never reaches this one"
+    );
+    assert_eq!(
+        unassigned(store, other_ws, foreign, true).await,
+        vec![elsewhere],
+        "and that workspace's own admin hears it"
+    );
+
+    store
+        .submit_review(ownerless, admin, ReviewDecision::Approve, None)
+        .await
+        .expect("admin approves");
+    assert!(
+        unassigned(store, ws, admin, true).await.is_empty(),
+        "an approval the member gave answers it for them"
+    );
+
+    store
+        .add_reviewer(owned, reviewer)
+        .await
+        .expect("name a reviewer");
+    assert!(
+        unassigned(store, ws, owner, false).await.is_empty(),
+        "naming a reviewer moves it to that reviewer's requests"
+    );
+    assert_eq!(requested(store, ws, reviewer).await.len(), 2);
+}
+
+/// `start_review` on a thread whose close needs approvals is refused until a
+/// result is posted. A thread with no requirement may go to review without one.
+async fn run_result_gate_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "rg".into() })
+        .await
+        .expect("ws")
+        .id;
+    let worker = member(store, ws, "worker").await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: "rg".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel")
+        .id;
+    let new_thread = |title: &'static str| NewThread {
+        channel_id: channel,
+        parent_thread_id: None,
+        title: Some(title.into()),
+    };
+    let gated = store.create_thread(new_thread("gated")).await.expect("t").id;
+    store.set_review_requirement(gated, 1).await.expect("gate");
+    let err = store
+        .transition_thread(gated, worker, ThreadAction::StartReview)
+        .await
+        .expect_err("a gated thread with no result is refused");
+    assert!(
+        matches!(&err, maidan_store::StoreError::Conflict(m) if m.contains("no result posted")),
+        "{err:?}"
+    );
+    assert_eq!(
+        store.get_thread(gated).await.expect("row").state,
+        maidan_types::ThreadState::Open,
+        "the refusal changes nothing"
+    );
+    store
+        .set_thread_result(gated, worker, &serde_json::json!({"status": "done"}))
+        .await
+        .expect("result");
+    store
+        .transition_thread(gated, worker, ThreadAction::StartReview)
+        .await
+        .expect("with a result it goes to review");
+
+    let ungated = store.create_thread(new_thread("ungated")).await.expect("t").id;
+    store
+        .transition_thread(ungated, worker, ThreadAction::StartReview)
+        .await
+        .expect("no requirement, no result needed");
+}
+
+/// A close with no approval reads as closed without review on the reads a
+/// board makes; an approved close and an open thread do not.
+async fn run_closed_without_review_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "cwr".into() })
+        .await
+        .expect("ws")
+        .id;
+    let worker = member(store, ws, "worker").await;
+    let human = member(store, ws, "human").await;
+    let bare = handed_to_review(store, ws, worker).await;
+    store
+        .transition_thread(bare, human, ThreadAction::Close)
+        .await
+        .expect("an ungated close needs no approval");
+    let approved = handed_to_review(store, ws, worker).await;
+    store
+        .submit_review(approved, human, ReviewDecision::Approve, None)
+        .await
+        .expect("approve");
+    store
+        .transition_thread(approved, human, ThreadAction::Close)
+        .await
+        .expect("close");
+    let waiting = handed_to_review(store, ws, worker).await;
+
+    assert!(store.get_thread(bare).await.expect("bare").closed_without_review);
+    assert!(!store.get_thread(approved).await.expect("approved").closed_without_review);
+    assert!(!store.get_thread(waiting).await.expect("waiting").closed_without_review);
+    let page = store
+        .page_threads_for_channel(store.get_thread(bare).await.expect("bare").channel_id, None, 10)
+        .await
+        .expect("page");
+    assert_eq!(page.len(), 1);
+    assert!(page[0].closed_without_review, "the channel page carries it too");
+    let json = serde_json::to_value(store.get_thread(approved).await.expect("approved")).expect("json");
+    assert!(
+        json.get("closed_without_review").is_none(),
+        "the flag is left off the wire when false"
+    );
+}
+
 #[tokio::test]
 async fn review_requests_list_what_waits_on_a_named_reviewer_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+    run_unassigned_suite(&store).await;
+    run_result_gate_suite(&store).await;
+    run_closed_without_review_suite(&store).await;
 }
 
 #[tokio::test]
@@ -263,4 +457,7 @@ async fn review_requests_list_what_waits_on_a_named_reviewer_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
+    run_unassigned_suite(&store).await;
+    run_result_gate_suite(&store).await;
+    run_closed_without_review_suite(&store).await;
 }

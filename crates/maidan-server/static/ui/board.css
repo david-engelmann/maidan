@@ -428,6 +428,7 @@
       .ny-title { font-weight: 650; font-size: 0.9rem; color: var(--ink); cursor: pointer; }
       .ny-title:hover { text-decoration: underline; }
       .ny-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; margin-top: 0.15rem; font-size: 0.78rem; color: var(--muted); }
+      .ny-warn { color: var(--err); }
       .ny-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
       .ny-actions button { padding: 0.28rem 0.7rem; font-size: 0.8rem; }
       .ny-actions .done-note { color: #15803d; font-weight: 650; font-size: 0.8rem; }

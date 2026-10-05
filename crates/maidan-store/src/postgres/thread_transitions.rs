@@ -79,6 +79,36 @@ async fn review_gate_in_tx(
     Ok(())
 }
 
+/// Gate a `start_review` on a thread whose close needs approvals: a reviewer
+/// is asked to approve something, so a result must be posted first. A thread
+/// with no review requirement may go to review without one; the approval card
+/// says so instead (decided 2026-10-04).
+async fn result_gate_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    let row = sqlx::query(
+        "SELECT
+           COALESCE((SELECT required_count FROM maidan_thread_review_reqs WHERE thread_id = $1), 0)
+             AS required_count,
+           (SELECT COUNT(*) FROM maidan_thread_results WHERE thread_id = $1) AS results",
+    )
+    .bind(thread_id.0)
+    .fetch_one(&mut **tx)
+    .await?;
+    let required: i64 = sqlx::Row::get(&row, "required_count");
+    let results: i64 = sqlx::Row::get(&row, "results");
+    if required > 0 && results == 0 {
+        return Err(StoreError::Conflict(
+            "no result posted: this thread needs approval to close, so a reviewer must have \
+             something to approve. Next: post the result (set_thread_result, or \
+             PUT /threads/{id}/result), then start_review again"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
 /// The FSM transition on a caller-supplied tx, without committing. Shared by
 /// `transition` (commit only) and `transition_with_event` (append the
 /// `ThreadStateChanged` event in the same tx, then commit).
@@ -125,6 +155,9 @@ pub(crate) async fn transition_in_tx(
     // approvals + no unresolved `refutes` edge. LandGate pointer: a `closed`
     // transition is also gated on a qualifying green pass when a
     // pointer/requirement exists.
+    if action == ThreadAction::StartReview {
+        result_gate_in_tx(tx, thread_id).await?;
+    }
     if to_state == ThreadState::Closed {
         review_gate_in_tx(tx, thread_id).await?;
         super::land_gate::gate_in_tx(tx, thread_id).await?;

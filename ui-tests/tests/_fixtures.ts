@@ -32,6 +32,12 @@ export interface Fixtures {
   desk_send_back_thread_id: string;
   /** Stays in review: a token without thread:transition cannot approve it. */
   desk_waiting_thread_id: string;
+  /** The `triage` channel: two reviews that name no reviewer. */
+  triage_channel_id: string;
+  /** Owned by the operator, with a result and no review requirement. */
+  triage_owned_thread_id: string;
+  /** Owned by nobody and with no result: it falls to the workspace admins. */
+  triage_ownerless_thread_id: string;
   /** The `floor` channel: the deployer holds one task; one is open to claim. */
   floor_channel_id: string;
   floor_held_thread_id: string;

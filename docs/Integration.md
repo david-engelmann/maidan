@@ -1361,7 +1361,21 @@ only `open` threads, so once the result is set, call `transition_thread
 {thread_id, action: "start_review"}` and then release. A thread released while
 still `open` is back in the queue, and the next claim (perhaps your own) does the
 task again. `start_review` is not a land: separation of duties does not restrict
-it, and closing stays with somebody else (below).
+it, and closing stays with somebody else (below). On a thread with a review
+requirement (`set_review_requirement`), `start_review` is refused with a `409`
+naming the fix until a result is set: a reviewer must have something to approve.
+A thread with no requirement may go to review without one, and the board's
+approval row says "No result was posted".
+
+**A review always reaches someone.** A thread in review that names reviewers is
+a `review_request` in each named reviewer's waiting inbox (`get_waiting_inbox`,
+`GET /members/:id/waiting`). One that names nobody is an `unassigned_review` for
+its owner, or, when it has no owner, for every workspace admin (a member holding
+a live `token:admin` token). Both are filtered by what the caller can open. The
+owner's own approval does not count, so the owner's job there is to name a
+reviewer or send the work back. The review gate stays opt-in: a thread with no
+requirement can close with no approval, and the board shows it as "closed without
+review" (`closed_without_review` on the thread).
 
 **A lapsed lease comes back on its own.** The claim reaper runs on every replica
 (`MAIDAN_CLAIM_REAP_TICK_SECS`, every 5 s by default). Each tick a replica frees

@@ -85,7 +85,7 @@
         "claim_expired",
       ]);
 
-      const NY_KINDS = new Set(["review_request", "open_gate"]);
+      const NY_KINDS = new Set(["review_request", "unassigned_review", "open_gate"]);
 
 
       // Live thread view. WS event frames whose thread matches the

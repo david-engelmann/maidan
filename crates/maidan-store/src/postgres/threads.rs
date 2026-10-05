@@ -71,14 +71,18 @@ pub async fn create_with_event(
 
 pub async fn get(pool: &PgPool, id: ThreadId) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
-         FROM maidan_threads WHERE id = $1",
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id,
+                (t.state IN ('closed', 'archived') AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_reviews r
+                   WHERE r.thread_id = t.id AND r.decision = 'approve' AND r.dismissed_at IS NULL
+                 )) AS closed_without_review
+         FROM maidan_threads t WHERE t.id = $1",
     )
     .bind(id.0)
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;
-    row_to_thread(&row)
+    row_to_board_thread(&row)
 }
 
 pub async fn list(pool: &PgPool, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError> {
@@ -647,6 +651,45 @@ pub async fn list_review_requests(
     rows.iter().map(row_to_thread).collect()
 }
 
+/// Threads under review in `workspace_id` with no named reviewer: the ones
+/// `member_id` owns, and, when `include_ownerless`, the ones nobody owns.
+/// Oldest first, by when the thread last entered review.
+pub async fn list_unassigned_reviews(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    include_ownerless: bool,
+) -> Result<Vec<Thread>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
+                t.created_at, COALESCE(
+                    (SELECT MAX(tt.occurred_at) FROM maidan_thread_transitions tt
+                     WHERE tt.thread_id = t.id AND tt.to_state = 'in_review'),
+                    t.updated_at) AS updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = $1 AND t.state = 'in_review' AND t.tombstoned_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM maidan_thread_reviewers rv WHERE rv.thread_id = t.id)
+           AND (t.owner_id = $2 OR ($3 AND t.owner_id IS NULL))
+           -- An approval this member already gave answers it for them.
+           AND NOT EXISTS (
+             SELECT 1 FROM maidan_thread_reviews r
+             WHERE r.thread_id = t.id AND r.reviewer_id = $2 AND r.decision = 'approve'
+               AND r.dismissed_at IS NULL
+           )
+         ORDER BY COALESCE(
+                    (SELECT MAX(tt.occurred_at) FROM maidan_thread_transitions tt
+                     WHERE tt.thread_id = t.id AND tt.to_state = 'in_review'),
+                    t.updated_at) ASC, t.id ASC",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .bind(include_ownerless)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_thread).collect()
+}
+
 /// A thread `claim_next` took, with the claim it took over when that claim's
 /// lease had lapsed (see [`lapsed_claim`]).
 type Claimed = (
@@ -1130,7 +1173,11 @@ pub async fn page_for_channel(
 ) -> Result<Vec<Thread>, StoreError> {
     let rows = sqlx::query(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.state,
-                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id,
+                (t.state IN ('closed', 'archived') AND NOT EXISTS (
+                   SELECT 1 FROM maidan_thread_reviews r
+                   WHERE r.thread_id = t.id AND r.decision = 'approve' AND r.dismissed_at IS NULL
+                 )) AS closed_without_review
          FROM maidan_threads t
          WHERE t.channel_id = $1
            AND t.tombstoned_at IS NULL
@@ -1145,7 +1192,7 @@ pub async fn page_for_channel(
     .bind(limit.max(0))
     .fetch_all(pool)
     .await?;
-    rows.iter().map(row_to_thread).collect()
+    rows.iter().map(row_to_board_thread).collect()
 }
 
 async fn validate_parent(
@@ -1224,6 +1271,14 @@ async fn enforce_spawn_budget(
     Ok(())
 }
 
+/// A thread read for a board: the row plus its `closed_without_review` column,
+/// which only the board's reads select.
+fn row_to_board_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, StoreError> {
+    let mut thread = row_to_thread(row)?;
+    thread.closed_without_review = row.get("closed_without_review");
+    Ok(thread)
+}
+
 pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, StoreError> {
     let state_str: String = row.get("state");
     let state = parse_state(&state_str)?;
@@ -1246,6 +1301,7 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
+        closed_without_review: false,
     })
 }
 

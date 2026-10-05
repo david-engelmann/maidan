@@ -8,7 +8,9 @@
 //! matching `has_capability` / `ensure_workspace`.
 
 use maidan_store::Store;
-use maidan_types::{ChannelId, MessageId, ThreadId, WorkspaceId, DM_CHANNEL_NAME};
+use maidan_types::{
+    ChannelId, MemberId, MessageId, Thread, ThreadId, WorkspaceId, DM_CHANNEL_NAME,
+};
 
 use crate::{AuthContext, AuthError};
 
@@ -184,6 +186,42 @@ pub async fn can_access_thread(
         Err(AuthError::Forbidden(_)) => Ok(false),
         Err(e) => Err(e),
     }
+}
+
+/// The reviews that name no reviewer and fall to `member_id`: those it owns,
+/// and, when it is a workspace admin, those nobody owns. A workspace admin is a
+/// member holding a live `token:admin` token, or the caller itself acting with
+/// `token:admin` (a session carries no token row). Every thread is filtered by
+/// the caller's access, so a private channel's review never reaches someone who
+/// cannot open it.
+pub async fn visible_unassigned_reviews(
+    store: &dyn Store,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<Vec<Thread>, AuthError> {
+    let now = chrono::Utc::now();
+    let is_admin = auth.bypass
+        || (auth.member_id == member_id && auth.has_capability(crate::TOKEN_ADMIN))
+        || store
+            .list_api_tokens_for_member(workspace_id, member_id)
+            .await?
+            .iter()
+            .any(|t| {
+                t.revoked_at.is_none()
+                    && t.expires_at.is_none_or(|at| at > now)
+                    && t.capabilities.iter().any(|c| c == crate::TOKEN_ADMIN)
+            });
+    let mut visible = Vec::new();
+    for thread in store
+        .list_unassigned_reviews(workspace_id, member_id, is_admin)
+        .await?
+    {
+        if auth.bypass || can_access_thread(store, auth, thread.id).await? {
+            visible.push(thread);
+        }
+    }
+    Ok(visible)
 }
 
 /// A message's resolved location, returned by [`authorize_message`]. Mirrors the

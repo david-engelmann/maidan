@@ -2215,6 +2215,21 @@ macro_rules! store_delegations {
                 threads::list_review_requests(self.read_pool(), workspace_id, member_id).await
             }
 
+            async fn list_unassigned_reviews(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                include_ownerless: bool,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::list_unassigned_reviews(
+                    self.read_pool(),
+                    workspace_id,
+                    member_id,
+                    include_ownerless,
+                )
+                .await
+            }
+
             async fn claim_next_thread(
                 &self,
                 channel_id: ChannelId,
