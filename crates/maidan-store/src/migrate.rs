@@ -570,6 +570,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 137, POSTGRES_UP_V137).await?;
     apply_postgres(pool, 138, POSTGRES_UP_V138).await?;
     apply_postgres(pool, 139, POSTGRES_UP_V139).await?;
+    apply_postgres(pool, 140, POSTGRES_UP_V140).await?;
     Ok(())
 }
 
@@ -723,6 +724,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 137, SQLITE_UP_V137).await?;
     apply_sqlite(pool, 138, SQLITE_UP_V138).await?;
     apply_sqlite(pool, 139, SQLITE_UP_V139).await?;
+    apply_sqlite(pool, 140, SQLITE_UP_V140).await?;
     Ok(())
 }
 
