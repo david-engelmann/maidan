@@ -1076,7 +1076,7 @@ fn the_dialog_check_sees_spaced_and_window_calls() {
 #[test]
 fn ui_js_reports_errors_without_blocking_dialogs() {
     let js = script(HTML);
-    for at in blocking_dialog_calls(js) {
+    if let Some(at) = blocking_dialog_calls(js).into_iter().next() {
         panic!("a blocking dialog call at byte {at}: use showError or an inline confirmation");
     }
     assert!(
