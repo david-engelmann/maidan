@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `349e57ef` (2026-10-05).
+on a decision. Last reconciled against `main` at `df691b98` (2026-10-05).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
