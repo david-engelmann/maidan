@@ -5,6 +5,15 @@ for the frozen v1 surface. Responses are the dataclasses in :mod:`maidan.models`
 failures raise the :class:`MaidanError` subclass their problem ``type`` names.
 """
 
+from .cache import (
+    BootPrefix,
+    CacheError,
+    boot_prefix,
+    cache_key,
+    cache_key_fields,
+    cached_prefix,
+    gateway_session,
+)
 from .client import (
     MAX_PAGE_SIZE,
     Client,
@@ -72,6 +81,8 @@ __all__ = [
     "Artifact",
     "BadGatewayError",
     "BadRequestError",
+    "BootPrefix",
+    "CacheError",
     "Channel",
     "ClaimedThread",
     "Client",
@@ -118,7 +129,12 @@ __all__ = [
     "UnsupportedMediaTypeError",
     "Workspace",
     "__version__",
+    "boot_prefix",
+    "cache_key",
+    "cache_key_fields",
+    "cached_prefix",
     "event_type",
+    "gateway_session",
     "new_idempotency_key",
     "parse_room_lsn",
     "problem_error",

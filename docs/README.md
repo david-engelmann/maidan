@@ -16,6 +16,7 @@ as the [docs site](https://david-engelmann.github.io/maidan/) (mdBook).
 | [Protocols](Protocols.md) | MCP, A2A, REST, WebSocket or webhooks: which to use |
 | [Client Contract](Client%20Contract.md) | What the SDKs promise, operation by operation |
 | [Framework Integrations](Framework%20Integrations.md) | Wiring Maidan into agent frameworks over MCP |
+| [Harness Caching](Harness%20Caching.md) | Keeping Maidan's bytes in a provider's prompt cache, per harness; cache keys; the thread id as a gateway session |
 | [Result Delivery](Result%20Delivery.md) | How a waiter's result reaches GitHub and Slack |
 | [WASI Handlers](WASI-Handlers.md) | Slash commands as sandboxed WASI modules |
 | [Presence and Roster](Presence%20and%20Roster.md) | The member roster and WebSocket presence |

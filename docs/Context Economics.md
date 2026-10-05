@@ -160,7 +160,9 @@ the full acceptance criteria.
   - a boot-pack helper that places the shared prefix with a cache breakpoint;
   - recipes for Claude Code and the Agent SDK (`excludeDynamicSections`, fork over spawn), Codex, Goose, pi and OpenHands that say where Maidan's bytes land and how to keep them shared;
   - one cache key per shared-prefix group where the provider takes one (OpenAI `prompt_cache_key`, DeepSeek `user_id`, xAI `x-grok-conv-id`), never shared across workspaces;
-  - the thread id passed as the gateway session id (OpenRouter `session_id`, `Helicone-Session-Id`, a LiteLLM tag, TensorZero `episode_id`), so gateway spend joins Maidan's outcomes.
+  - the thread id passed as the gateway session id (OpenRouter `session_id`, `Helicone-Session-Id`, LiteLLM `litellm_session_id`, TensorZero `episode_id`), so gateway spend joins Maidan's outcomes.
+  
+  The boot-pack helper, cache keys, gateway sessions and recipes are in [Harness Caching](Harness%20Caching.md).
 
 ### Phase 2: coordinate for the cache
 
