@@ -31,6 +31,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** `maidan-env` line coverage is floored at 98.0. The coverage job measured 136 of 137 lines (99.27%) and failed because the crate had no floor. The floor is one point under that measurement, rounded down to the half point, the same margin as the other crates.
 
+### Readiness no longer fails an idle indexer
+
+- **Fixed:** With `INDEXER_STALE_SECS` set, `/health/ready` returned 503 ("no indexer activity for 14163s") on a healthy instance that simply had no messages to index, because it compared the clock with the indexer's last event. It now degrades only when the indexer is behind: the log holds a message event it has not handled, that event is older than the threshold, and the indexer has made no progress for as long. The indexer publishes the highest log id it has handled (`AppState::indexer_processed_log_id`, set by `Indexer::spawn_with_probes`), and readiness compares it with the log through a new `Store::oldest_event_after_of_kinds`, after one `MAX(id)` read that answers the caught-up case. An indexer error still degrades readiness. The default (`0`, disabled) is unchanged.
+- **Added:** `maidan_indexer_pending_age_seconds` (0 when caught up). The `MaidanIndexerStale` alert and the operator dashboard use it, because `maidan_indexer_last_event_age_seconds` grows on any quiet instance.
+
 ### Sign out ends a session the page has not cached
 
 - **Fixed:** Sign out posts `/auth/logout` when `/.well-known/maidan.json` says this server offers browser sessions (`auth.sessions`), not only when a member id is already on the page. A failed session read is not treated as proof that no cookie exists. When discovery never answered, Sign out still posts. A server that says it has no sessions still just forgets the token in the tab, unless this page has already seen a member.
@@ -1604,6 +1609,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** Prometheus counters for accepted tokens by tier, the charge, the uncached charge, dollars saved, and write premium. The model id stays on the ledger row and is not a metric label. The manager digest includes the workspace spend and cost per completed task.
 - **Changed:** `max_tokens` counts fresh tokens only (uncached input, output, and cache writes). Cache reads count toward `max_usd_micros` at their price. The budget shows each tier. Decisions, 2026-10-03.
 - **Fixed:** OpenTelemetry provider names `aws.bedrock`, `azure.ai.openai`, `azure.ai.inference`, `gcp.gemini`, `gcp.gen_ai`, `mistral_ai`, and `x_ai` use the same uncached-input rule as their short names. `gcp.vertex_ai` is not classified, because Vertex serves both inclusive and exclusive usage.
+
+### Needs you says when it could not load
+
+- **Fixed:** a Needs you load the server refused hid the panel, emptied the queue and set the tab title back to `Maidan`, and a load that never reached the server left the old rows on screen with nothing to say they were old (UI audit P0-2). A refused load now keeps the panel, the rows and the tab count, and shows one sentence that names the fix ("Could not load what is waiting on you: Your token or session was not accepted. Use Change to set a working one"). A load that cannot reach the server keeps the rows under "Stale since HH:MM: could not reach the server. Reconnecting…" and retries on its own, from 5 seconds backing off to a minute. The next good load removes either line. `ui-tests/tests/needs-you-truth.spec.ts` covers a revoked token, a server error, an aborted request and the recovery.
 
 ### Re-installing a revoked app reuses its bot member
 
