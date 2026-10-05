@@ -125,7 +125,10 @@ Working beside other agents (several PRs are usually open at once):
   `crates/maidan-env/src/lib.rs`; `NewAuditEvent` needs a
   `scope: AuditScope`; a spawned task that writes uses
   `maidan_store::attribution::spawn`; a member id from a request goes through
-  `Store::get_member_in(workspace, id)` (from #1152).
+  `Store::get_member_in(workspace, id)` (from #1152); an MCP tool declares
+  `annotations` (a title and the four hints) and has a row, with a reason for
+  each hint, in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`
+  (`tool_annotations_contract`; a read-only tool is also in `READ_ONLY_TOOLS`).
 - **Merging:** an admin squash only when all eight required checks passed on
   the PR's exact head commit and every CodeRabbit comment has a fix or a reply,
   merged with `gh pr merge --squash --match-head-commit <sha>`; `gh pr checks` and even
