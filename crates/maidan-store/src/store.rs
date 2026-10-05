@@ -1369,15 +1369,42 @@ pub trait ThreadStore: Send + Sync {
     /// Point-in-time task-queue depth for a channel: counts of its open task
     /// threads partitioned into ready / assigned / blocked, using the same
     /// claimability predicate as `claim_next`. One aggregate query.
-    async fn channel_queue_depth(&self, channel_id: ChannelId) -> Result<QueueDepth, StoreError>;
+    /// `readable_by` counts only the threads that member may read, by
+    /// `claim_next`'s read rule (on the `__dm__` channel, only its own DMs);
+    /// `None` counts every thread, for a caller that bypasses auth.
+    async fn channel_queue_depth(
+        &self,
+        channel_id: ChannelId,
+        readable_by: Option<MemberId>,
+    ) -> Result<QueueDepth, StoreError>;
+
+    /// [`channel_queue_depth`](Self::channel_queue_depth) across every channel
+    /// of `workspace_id`: the sum of its channels' counts for the same reader.
+    /// A reader from another workspace counts nothing.
+    async fn workspace_queue_depth(
+        &self,
+        workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
+    ) -> Result<QueueDepth, StoreError>;
 
     /// Channel occupancy: the two-clocks refinement of `channel_queue_depth` —
     /// the held threads split into `claimed` (not yet acknowledged) and
     /// `working` (acknowledged), so an orchestrator sees how much held work is
-    /// actually underway. One aggregate query.
+    /// actually underway. One aggregate query. `readable_by` as for
+    /// [`channel_queue_depth`](Self::channel_queue_depth).
     async fn channel_occupancy(
         &self,
         channel_id: ChannelId,
+        readable_by: Option<MemberId>,
+    ) -> Result<ChannelOccupancy, StoreError>;
+
+    /// [`channel_occupancy`](Self::channel_occupancy) across every channel of
+    /// `workspace_id`, as [`workspace_queue_depth`](Self::workspace_queue_depth)
+    /// is to the channel depth.
+    async fn workspace_occupancy(
+        &self,
+        workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
     ) -> Result<ChannelOccupancy, StoreError>;
 }
 

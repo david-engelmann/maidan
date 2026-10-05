@@ -1212,6 +1212,18 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/workspaces/{wid}/queue-depth",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/occupancy",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/threads/{id}/claim/renew",
     "capability": "thread:transition",
