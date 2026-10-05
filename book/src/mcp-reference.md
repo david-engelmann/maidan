@@ -38,11 +38,15 @@ An agent creates a channel with `create_channel` and a thread with `create_threa
 
 ## Tools
 
+Every tool's `annotations` carry a `title` and the four hints of the MCP tool spec. `readOnlyHint` is true only for a tool that writes nothing, not even an audit row. `destructiveHint` is true for one that deletes, revokes, or replaces a stored value. `idempotentHint` is true when repeating the same call changes nothing further, and `openWorldHint` when the tool reaches outside Maidan (an HTTP receiver, Slack, GitHub, an embedding provider). The reason for each value is reviewed in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`, and `tool_annotations_contract` fails when a tool's hints and that table disagree.
+
 ### `whoami`
 
-Return the authentication-bound identity: actor_id, member_id, optional delegation_grant_id, workspace_id, capabilities, capability_sets the caller fully holds, and whether the credential is a bearer. Call this first — writes are attributed to member_id.
+**Who am I.** Return the authentication-bound identity: actor_id, member_id, optional delegation_grant_id, workspace_id, capabilities, capability_sets the caller fully holds, and whether the credential is a bearer. Call this first — writes are attributed to member_id.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -53,9 +57,11 @@ Return the authentication-bound identity: actor_id, member_id, optional delegati
 
 ### `list_capability_sets`
 
-List named capability sets (maidan.agent.worker, maidan.human.admin) and the atomic capabilities each expands to at mint time.
+**List capability sets.** List named capability sets (maidan.agent.worker, maidan.human.admin) and the atomic capabilities each expands to at mint time.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -66,9 +72,11 @@ List named capability sets (maidan.agent.worker, maidan.human.admin) and the ato
 
 ### `parse_maidan_uri`
 
-Parse a hierarchical maidan:// room URI (workspace UUID authority, then channels, threads, messages). The authority must be a workspace UUID, not a handle. Optional sha256 fragment is a content hash. MCP thread resource URIs and event pins are rejected.
+**Parse Maidan URI.** Parse a hierarchical maidan:// room URI (workspace UUID authority, then channels, threads, messages). The authority must be a workspace UUID, not a handle. Optional sha256 fragment is a content hash. MCP thread resource URIs and event pins are rejected.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -86,9 +94,11 @@ Parse a hierarchical maidan:// room URI (workspace UUID authority, then channels
 
 ### `get_room`
 
-Get the authenticated room card for a workspace: stable UUID URI plus the current handle alias. A handle rename does not change the URI.
+**Get room.** Get the authenticated room card for a workspace: stable UUID URI plus the current handle alias. A handle rename does not change the URI.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -107,9 +117,11 @@ Get the authenticated room card for a workspace: stable UUID URI plus the curren
 
 ### `set_workspace_handle`
 
-Set or rename a workspace handle alias. Stored ids and maidan:// URIs keep using the workspace UUID. Requires workspace:write.
+**Set workspace handle.** Set or rename a workspace handle alias. Stored ids and maidan:// URIs keep using the workspace UUID. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -132,9 +144,11 @@ Set or rename a workspace handle alias. Stored ids and maidan:// URIs keep using
 
 ### `attenuate_token`
 
-Derive a weaker API token from the caller's grant without token:admin (Levy/Madden attenuation). capabilities must be a non-empty subset of what the caller holds. A derived expires_at cannot outlive the parent bearer. Returns the new token secret once.
+**Attenuate token.** Derive a weaker API token from the caller's grant without token:admin (Levy/Madden attenuation). capabilities must be a non-empty subset of what the caller holds. A derived expires_at cannot outlive the parent bearer. Returns the new token secret once.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -162,9 +176,11 @@ Derive a weaker API token from the caller's grant without token:admin (Levy/Madd
 
 ### `rotate_token`
 
-Replace the secret of the bearer token this call is made with. The new token keeps the same member, capabilities, expiry, quotas and derived tokens; the old secret stops working immediately. Returns the new secret once. Takes no arguments. A delegated token cannot be rotated; exchange its grant again.
+**Rotate token.** Replace the secret of the bearer token this call is made with. The new token keeps the same member, capabilities, expiry, quotas and derived tokens; the old secret stops working immediately. Returns the new secret once. Takes no arguments. A delegated token cannot be rotated; exchange its grant again.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -176,9 +192,11 @@ Replace the secret of the bearer token this call is made with. The new token kee
 
 ### `delegate_token`
 
-Exchange a durable delegation grant for a short-lived token acting as its subject. The token defaults to 15 minutes, cannot exceed one hour or its grant/parent bearer, and is limited to the intersection of grant and delegate capabilities.
+**Delegate token.** Exchange a durable delegation grant for a short-lived token acting as its subject. The token defaults to 15 minutes, cannot exceed one hour or its grant/parent bearer, and is limited to the intersection of grant and delegate capabilities.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -210,9 +228,11 @@ Exchange a durable delegation grant for a short-lived token acting as its subjec
 
 ### `create_delegation_grant`
 
-Create an expiring capability-scoped grant authorizing one workspace member to delegate actions for another. Requires token:admin and a non-empty purpose.
+**Create delegation grant.** Create an expiring capability-scoped grant authorizing one workspace member to delegate actions for another. Requires token:admin and a non-empty purpose.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -257,9 +277,11 @@ Create an expiring capability-scoped grant authorizing one workspace member to d
 
 ### `list_delegation_grants`
 
-List delegation grants in a workspace, including expiry and revocation state. Requires token:admin.
+**List delegation grants.** List delegation grants in a workspace, including expiry and revocation state. Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -278,9 +300,11 @@ List delegation grants in a workspace, including expiry and revocation state. Re
 
 ### `revoke_delegation_grant`
 
-Revoke a delegation grant and every exchanged token and attenuated descendant. Requires token:admin.
+**Revoke delegation grant.** Revoke a delegation grant and every exchanged token and attenuated descendant. Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -304,9 +328,11 @@ Revoke a delegation grant and every exchanged token and attenuated descendant. R
 
 ### `open_dm_conversation`
 
-Open or fetch a 1:1 DM conversation between the authenticated member and another workspace member.
+**Open DM conversation.** Open or fetch a 1:1 DM conversation between the authenticated member and another workspace member.
 
 **Capability:** `message:post`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -330,9 +356,11 @@ Open or fetch a 1:1 DM conversation between the authenticated member and another
 
 ### `list_dm_conversations`
 
-List DM conversations for a member in a workspace.
+**List DM conversations.** List DM conversations for a member in a workspace.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -356,9 +384,11 @@ List DM conversations for a member in a workspace.
 
 ### `post_dm_message`
 
-Post a message in a DM conversation.
+**Post DM message.** Post a message in a DM conversation.
 
 **Capability:** `message:post`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -418,9 +448,11 @@ Post a message in a DM conversation.
 
 ### `create_channel`
 
-Create a channel in a workspace. Requires workspace:write, the same capability as POST /workspaces/{wid}/channels. A private channel adds the caller as its admin so they are not locked out.
+**Create channel.** Create a channel in a workspace. Requires workspace:write, the same capability as POST /workspaces/{wid}/channels. A private channel adds the caller as its admin so they are not locked out.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -450,9 +482,11 @@ Create a channel in a workspace. Requires workspace:write, the same capability a
 
 ### `list_channels`
 
-List channels in a workspace.
+**List channels.** List channels in a workspace.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -471,9 +505,11 @@ List channels in a workspace.
 
 ### `add_channel_member`
 
-Add (or update the role of) a member of a channel. Requires channel:admin. Private channels are gated to their members.
+**Add channel member.** Add (or update the role of) a member of a channel. Requires channel:admin. Private channels are gated to their members.
 
 **Capability:** `channel:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -505,9 +541,11 @@ Add (or update the role of) a member of a channel. Requires channel:admin. Priva
 
 ### `list_channel_members`
 
-List the members of a channel. Requires channel:admin.
+**List channel members.** List the members of a channel. Requires channel:admin.
 
 **Capability:** `channel:admin`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -526,9 +564,11 @@ List the members of a channel. Requires channel:admin.
 
 ### `remove_channel_member`
 
-Remove a member from a channel. Requires channel:admin.
+**Remove channel member.** Remove a member from a channel. Requires channel:admin.
 
 **Capability:** `channel:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -552,9 +592,11 @@ Remove a member from a channel. Requires channel:admin.
 
 ### `create_thread`
 
-Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too.
+**Create thread.** Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -580,9 +622,11 @@ Create a thread in a channel. Requires workspace:write and access to the channel
 
 ### `list_threads`
 
-List a channel's live threads, oldest first, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page.
+**List threads.** List a channel's live threads, oldest first, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -611,9 +655,11 @@ List a channel's live threads, oldest first, keyset-paginated. Default 100 (max 
 
 ### `list_child_threads`
 
-A parent thread's child threads, each collapsed to a summary with a message count — a threaded view of 'N replies' per child without loading each child's messages.
+**List child threads.** A parent thread's child threads, each collapsed to a summary with a message count — a threaded view of 'N replies' per child without loading each child's messages.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -633,9 +679,11 @@ A parent thread's child threads, each collapsed to a summary with a message coun
 
 ### `list_recently_active_threads`
 
-A channel's threads ordered by last activity — most-recently-posted first. A post floats its thread to the top; a rename does not.
+**List recently active threads.** A channel's threads ordered by last activity — most-recently-posted first. A post floats its thread to the top; a rename does not.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -659,9 +707,11 @@ A channel's threads ordered by last activity — most-recently-posted first. A p
 
 ### `mute_thread`
 
-Mute a thread for yourself — the notification router stops routing this thread's activity to you, without leaving the channel or thread. Idempotent.
+**Mute thread.** Mute a thread for yourself — the notification router stops routing this thread's activity to you, without leaving the channel or thread. Idempotent.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -680,9 +730,11 @@ Mute a thread for yourself — the notification router stops routing this thread
 
 ### `unmute_thread`
 
-Unmute a thread you previously muted. Returns unmuted=false if it was not muted.
+**Unmute thread.** Unmute a thread you previously muted. Returns unmuted=false if it was not muted.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -701,9 +753,11 @@ Unmute a thread you previously muted. Returns unmuted=false if it was not muted.
 
 ### `mute_channel`
 
-Mute a whole channel for yourself — the notification router stops routing its firehose (new-message notifications) to you, without leaving the channel. A mention still breaks through. Idempotent.
+**Mute channel.** Mute a whole channel for yourself — the notification router stops routing its firehose (new-message notifications) to you, without leaving the channel. A mention still breaks through. Idempotent.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -722,9 +776,11 @@ Mute a whole channel for yourself — the notification router stops routing its 
 
 ### `unmute_channel`
 
-Unmute a channel you previously muted. Returns unmuted=false if it was not muted.
+**Unmute channel.** Unmute a channel you previously muted. Returns unmuted=false if it was not muted.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -743,9 +799,11 @@ Unmute a channel you previously muted. Returns unmuted=false if it was not muted
 
 ### `set_thread_budget`
 
-REPLACE a thread's whole budget envelope. Every dimension must be stated — max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs — and null means no cap on that dimension. Omitting one is an error rather than a silent removal, because a removed cap never binds and the run it should have stopped keeps going. Use update_thread_budget to change some dimensions and leave the rest alone. An unrecognized key is rejected rather than ignored. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.
+**Set thread budget.** REPLACE a thread's whole budget envelope. Every dimension must be stated — max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs — and null means no cap on that dimension. Omitting one is an error rather than a silent removal, because a removed cap never binds and the run it should have stopped keeps going. Use update_thread_budget to change some dimensions and leave the rest alone. An unrecognized key is rejected rather than ignored. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -782,9 +840,11 @@ REPLACE a thread's whole budget envelope. Every dimension must be stated — max
 
 ### `update_thread_budget`
 
-Change only the budget dimensions you name, leaving the rest as they are. An omitted dimension is untouched; an explicit null clears that cap. Use this to raise or lower one limit without restating the others — set_thread_budget replaces the whole envelope. An unrecognized key is rejected rather than ignored.
+**Update thread budget.** Change only the budget dimensions you name, leaving the rest as they are. An omitted dimension is untouched; an explicit null clears that cap. Use this to raise or lower one limit without restating the others — set_thread_budget replaces the whole envelope. An unrecognized key is rejected rather than ignored.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -845,9 +905,11 @@ Change only the budget dimensions you name, leaving the rest as they are. An omi
 
 ### `get_thread_budget`
 
-A thread's budget envelope with accumulated usage, or null if none is set.
+**Get thread budget.** A thread's budget envelope with accumulated usage, or null if none is set.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -866,9 +928,11 @@ A thread's budget envelope with accumulated usage, or null if none is set.
 
 ### `report_usage`
 
-Record one retry-safe usage heartbeat for your active claim. input is uncached input. Cache writes are a 5-minute tier and a 1-hour tier. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. The price snapshot must calculate to usd_micros. A token budget counts fresh tokens only. A binding cap atomically stops the run.
+**Report usage.** Record one retry-safe usage heartbeat for your active claim. input is uncached input. Cache writes are a 5-minute tier and a 1-hour tier. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. The price snapshot must calculate to usd_micros. A token budget counts fresh tokens only. A binding cap atomically stops the run.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1027,9 +1091,11 @@ Record one retry-safe usage heartbeat for your active claim. input is uncached i
 
 ### `usage_rollup`
 
-Spend, cache hit rate, cache write share, dollars saved against the uncached price, and cost per completed task. Scope is the workspace, or one thread, or one member. A completed task is a closed or archived thread that has not been tombstoned. Rates are parts per million of prompt tokens.
+**Roll up usage.** Spend, cache hit rate, cache write share, dollars saved against the uncached price, and cost per completed task. Scope is the workspace, or one thread, or one member. A completed task is a closed or archived thread that has not been tombstoned. Rates are parts per million of prompt tokens.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1057,9 +1123,11 @@ Spend, cache hit rate, cache write share, dollars saved against the uncached pri
 
 ### `list_dlq`
 
-A channel's agent-work dead-letter queue — runs stopped for exceeding their budget, newest first. Triage these (retry, raise the budget, give up).
+**List dead-lettered runs.** A channel's agent-work dead-letter queue — runs stopped for exceeding their budget, newest first. Triage these (retry, raise the budget, give up).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1083,9 +1151,11 @@ A channel's agent-work dead-letter queue — runs stopped for exceeding their bu
 
 ### `get_tool_transcript`
 
-A thread's tool-call transcript: every ToolUse block correlated with its ToolResult by id. A token-lean projection that drops text/code blocks and bodies.
+**Get tool transcript.** A thread's tool-call transcript: every ToolUse block correlated with its ToolResult by id. A token-lean projection that drops text/code blocks and bodies.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1111,9 +1181,11 @@ A thread's tool-call transcript: every ToolUse block correlated with its ToolRes
 
 ### `assign_thread`
 
-Assign or hand off a thread/task to a member, optionally with a handoff note delivered to subscribers on the assignment event.
+**Assign thread.** Assign or hand off a thread/task to a member, optionally with a handoff note delivered to subscribers on the assignment event.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -1142,9 +1214,11 @@ Assign or hand off a thread/task to a member, optionally with a handoff note del
 
 ### `claim_thread`
 
-Atomically claim an unassigned thread for a member. Returns {thread, claimed}; claimed=false if it was already assigned.
+**Claim thread.** Atomically claim an unassigned thread for a member. Returns {thread, claimed}; claimed=false if it was already assigned.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1163,9 +1237,11 @@ Atomically claim an unassigned thread for a member. Returns {thread, claimed}; c
 
 ### `unassign_thread`
 
-Clear a thread's assignee.
+**Unassign thread.** Clear a thread's assignee.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -1184,9 +1260,11 @@ Clear a thread's assignee.
 
 ### `transition_thread`
 
-Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. On a thread with a review requirement, start_review is refused until a result is posted (set_thread_result). Returns the updated thread.
+**Transition thread.** Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. On a thread with a review requirement, start_review is refused until a result is posted (set_thread_result). Returns the updated thread.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -1215,9 +1293,11 @@ Advance a thread's FSM state (start_review, close, or archive). The MCP twin of 
 
 ### `list_assigned_threads`
 
-List the threads currently assigned to a member (their work queue), oldest first.
+**List assigned threads.** List the threads currently assigned to a member (their work queue), oldest first.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1236,9 +1316,11 @@ List the threads currently assigned to a member (their work queue), oldest first
 
 ### `set_wait`
 
-Set (upsert) a wait timer on a thread: it is waiting until wait_until, and on timeout the sweeper escalates via on_timeout but decides nothing (notify reaches the owner; park also marks the thread unclaimable). Default policy is notify. Cancel it when the awaited thing happens. Requires thread:transition. This returns at once and does not block; to block until something happens, use a wait_for_* tool such as wait_for_result or wait_for_ready.
+**Set wait.** Set (upsert) a wait timer on a thread: it is waiting until wait_until, and on timeout the sweeper escalates via on_timeout but decides nothing (notify reaches the owner; park also marks the thread unclaimable). Default policy is notify. Cancel it when the awaited thing happens. Requires thread:transition. This returns at once and does not block; to block until something happens, use a wait_for_* tool such as wait_for_result or wait_for_ready.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -1276,9 +1358,11 @@ Set (upsert) a wait timer on a thread: it is waiting until wait_until, and on ti
 
 ### `cancel_wait`
 
-Cancel a thread's wait — the awaited thing happened (G2). {cancelled} is false when no wait was set. Requires thread:transition.
+**Cancel wait.** Cancel a thread's wait — the awaited thing happened (G2). {cancelled} is false when no wait was set. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1297,9 +1381,11 @@ Cancel a thread's wait — the awaited thing happened (G2). {cancelled} is false
 
 ### `get_wait`
 
-The thread's wait timer (deadline, on_timeout policy, reason, fired_at), or null if none is set (G2).
+**Get wait.** The thread's wait timer (deadline, on_timeout policy, reason, fired_at), or null if none is set (G2).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1318,9 +1404,11 @@ The thread's wait timer (deadline, on_timeout policy, reason, fired_at), or null
 
 ### `set_priority`
 
-Set (upsert) a thread's dispatch priority (G3 fair dispatch). Higher = more urgent (default 0). claim_next orders by an effective rank = this priority aged up the longer the thread waits, so priority jumps the queue without starving long-waiting tasks. Requires thread:transition.
+**Set priority.** Set (upsert) a thread's dispatch priority (G3 fair dispatch). Higher = more urgent (default 0). claim_next orders by an effective rank = this priority aged up the longer the thread waits, so priority jumps the queue without starving long-waiting tasks. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1344,9 +1432,11 @@ Set (upsert) a thread's dispatch priority (G3 fair dispatch). Higher = more urge
 
 ### `get_priority`
 
-The thread's dispatch-priority record, or null (which means the default priority 0) (G3).
+**Get priority.** The thread's dispatch-priority record, or null (which means the default priority 0) (G3).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1365,9 +1455,11 @@ The thread's dispatch-priority record, or null (which means the default priority
 
 ### `mark_unclaimable`
 
-Park a thread from dispatch (G3): claim_next skips it and an explicit claim is refused, until cleared. An explicit park (needs triage, waiting on external, broken) — distinct from blocked-by-deps / blocked-by-gate / skill-miss. Reason must be non-empty. Requires thread:transition.
+**Mark unclaimable.** Park a thread from dispatch (G3): claim_next skips it and an explicit claim is refused, until cleared. An explicit park (needs triage, waiting on external, broken) — distinct from blocked-by-deps / blocked-by-gate / skill-miss. Reason must be non-empty. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1391,9 +1483,11 @@ Park a thread from dispatch (G3): claim_next skips it and an explicit claim is r
 
 ### `mark_claimable`
 
-Un-park a thread (G3) — it becomes claimable again. {cleared} is false when it was not parked. Requires thread:transition.
+**Mark claimable.** Un-park a thread (G3) — it becomes claimable again. {cleared} is false when it was not parked. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1412,9 +1506,11 @@ Un-park a thread (G3) — it becomes claimable again. {cleared} is false when it
 
 ### `list_unclaimable`
 
-The parked (unclaimable) threads in a channel (G3), newest first — for triage.
+**List unclaimable.** The parked (unclaimable) threads in a channel (G3), newest first — for triage.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1433,9 +1529,11 @@ The parked (unclaimable) threads in a channel (G3), newest first — for triage.
 
 ### `set_thread_block`
 
-Set (upsert) an explicit dispatch block on a thread (G14): claim_next skips it and an explicit claim is refused, until cleared. reason is the closed enum dag|gate|human|child|quota|unclaimable — not a free string. Distinct from DAG-children-must-be-terminal. Requires thread:transition.
+**Set thread block.** Set (upsert) an explicit dispatch block on a thread (G14): claim_next skips it and an explicit claim is refused, until cleared. reason is the closed enum dag|gate|human|child|quota|unclaimable — not a free string. Distinct from DAG-children-must-be-terminal. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1466,9 +1564,11 @@ Set (upsert) an explicit dispatch block on a thread (G14): claim_next skips it a
 
 ### `get_thread_block`
 
-The thread's explicit dispatch block, or null when unblocked (G14). Requires workspace:read.
+**Get thread block.** The thread's explicit dispatch block, or null when unblocked (G14). Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1487,9 +1587,11 @@ The thread's explicit dispatch block, or null when unblocked (G14). Requires wor
 
 ### `clear_thread_block`
 
-Clear an explicit dispatch block (G14). Emits BlockedResolved so waiters can observe the unblock. {cleared} is false when it was not blocked. Requires thread:transition.
+**Clear thread block.** Clear an explicit dispatch block (G14). Emits BlockedResolved so waiters can observe the unblock. {cleared} is false when it was not blocked. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1508,9 +1610,11 @@ Clear an explicit dispatch block (G14). Emits BlockedResolved so waiters can obs
 
 ### `list_blocked_threads`
 
-The explicitly blocked threads in a channel (G14), newest first — for triage. Distinct from queue-depth blocked (unfinished DAG deps).
+**List blocked threads.** The explicitly blocked threads in a channel (G14), newest first — for triage. Distinct from queue-depth blocked (unfinished DAG deps).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1529,9 +1633,11 @@ The explicitly blocked threads in a channel (G14), newest first — for triage. 
 
 ### `set_wip_limit`
 
-Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.
+**Set WIP limit.** Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1555,9 +1661,11 @@ Set or clear this workspace's WIP limit (G11): the max concurrent live claims an
 
 ### `set_delegation_policy`
 
-Set the longest a delegation grant may live in this workspace, in days (1 to 3650); omit or null to restore the default of 90. A grant is the standing authority to keep minting delegated tokens, so this bounds real exposure. Applies to grants issued afterwards. Requires token:admin.
+**Set delegation policy.** Set the longest a delegation grant may live in this workspace, in days (1 to 3650); omit or null to restore the default of 90. A grant is the standing authority to keep minting delegated tokens, so this bounds real exposure. Applies to grants issued afterwards. Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1583,9 +1691,11 @@ Set the longest a delegation grant may live in this workspace, in days (1 to 365
 
 ### `get_delegation_policy`
 
-This workspace's delegation policy: max_grant_days, the longest a delegation grant may live, and is_default when the workspace has set none.
+**Get delegation policy.** This workspace's delegation policy: max_grant_days, the longest a delegation grant may live, and is_default when the workspace has set none.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1596,9 +1706,11 @@ This workspace's delegation policy: max_grant_days, the longest a delegation gra
 
 ### `set_retention_policy`
 
-Replace this workspace's own retention for its messages, events and finished deliveries, in days (1 to 3650 each). A workspace may keep rows for less time than the instance does, never longer: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.
+**Set retention policy.** Replace this workspace's own retention for its messages, events and finished deliveries, in days (1 to 3650 each). A workspace may keep rows for less time than the instance does, never longer: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1650,9 +1762,11 @@ Replace this workspace's own retention for its messages, events and finished del
 
 ### `get_retention_policy`
 
-This workspace's retention: what it set (workspace), what the instance keeps (instance), and what is pruned in effect, the shorter of the two per kind (effective). Days per kind; null means not pruned.
+**Get retention policy.** This workspace's retention: what it set (workspace), what the instance keeps (instance), and what is pruned in effect, the shorter of the two per kind (effective). Days per kind; null means not pruned.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1663,9 +1777,11 @@ This workspace's retention: what it set (workspace), what the instance keeps (in
 
 ### `get_wip_limit`
 
-This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).
+**Get WIP limit.** This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1676,9 +1792,11 @@ This workspace's WIP limit (max concurrent live claims per member), or null when
 
 ### `set_spawn_budget`
 
-Set this workspace's spawn budget (G6): how far an agent family may fan out. max_children caps the direct child threads per parent, max_depth the thread nesting, max_tools the tool calls recorded on one thread. A full replace — an omitted or null axis is unlimited, so calling with no arguments clears the budget; 0 freezes an axis. Keep the caps small: coordination cost grows quadratically in the number of agents. Requires workspace:write.
+**Set spawn budget.** Set this workspace's spawn budget (G6): how far an agent family may fan out. max_children caps the direct child threads per parent, max_depth the thread nesting, max_tools the tool calls recorded on one thread. A full replace — an omitted or null axis is unlimited, so calling with no arguments clears the budget; 0 freezes an axis. Keep the caps small: coordination cost grows quadratically in the number of agents. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1726,9 +1844,11 @@ Set this workspace's spawn budget (G6): how far an agent family may fan out. max
 
 ### `get_spawn_budget`
 
-This workspace's spawn budget as {max_children, max_depth, max_tools}; a null axis is unlimited. Read it before spawning helpers to see how much fan-out is left.
+**Get spawn budget.** This workspace's spawn budget as {max_children, max_depth, max_tools}; a null axis is unlimited. Read it before spawning helpers to see how much fan-out is left.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1739,9 +1859,11 @@ This workspace's spawn budget as {max_children, max_depth, max_tools}; a null ax
 
 ### `get_member_wip`
 
-A member's current live-claim count against the workspace WIP limit ({live_claims, limit}) — for backpressure decisions before claiming more work.
+**Get member WIP.** A member's current live-claim count against the workspace WIP limit ({live_claims, limit}) — for backpressure decisions before claiming more work.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1760,9 +1882,11 @@ A member's current live-claim count against the workspace WIP limit ({live_claim
 
 ### `claim_next_thread`
 
-Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Create a channel with create_channel and a task with create_thread (both need workspace:write; the REST twins are POST /workspaces/{wid}/channels and POST /channels/{cid}/threads).
+**Claim next thread.** Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Create a channel with create_channel and a task with create_thread (both need workspace:write; the REST twins are POST /workspaces/{wid}/channels and POST /channels/{cid}/threads).
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -1787,9 +1911,11 @@ Atomically claim the oldest claimable thread in a channel for a member (claimabl
 
 ### `claim_next_workspace_thread`
 
-claim_next_thread across every channel of the workspace you may read, so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.
+**Claim next workspace thread.** claim_next_thread across every channel of the workspace you may read, so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -1815,9 +1941,11 @@ claim_next_thread across every channel of the workspace you may read, so an agen
 
 ### `renew_claim`
 
-Extend a claimed thread's lease (heartbeat). Only the current assignee holding the matching fencing token may renew; a stale holder whose claim was reclaimed is rejected.
+**Renew claim.** Extend a claimed thread's lease (heartbeat). Only the current assignee holding the matching fencing token may renew; a stale holder whose claim was reclaimed is rejected.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -1849,9 +1977,11 @@ Extend a claimed thread's lease (heartbeat). Only the current assignee holding t
 
 ### `acknowledge_claim`
 
-Acknowledge a claimed thread and start its working clock (work_started_at): the current holder signals it has begun work, distinct from just holding the claim. Acknowledge as soon as you start: a leased claim left unacknowledged past the server's window (MAIDAN_CLAIM_ACK_TIMEOUT_SECS, 120 s) is reported to its owner with a claim_unacknowledged event. Only the assignee holding the matching fencing token may acknowledge; idempotent (the first start time is kept).
+**Acknowledge claim.** Acknowledge a claimed thread and start its working clock (work_started_at): the current holder signals it has begun work, distinct from just holding the claim. Acknowledge as soon as you start: a leased claim left unacknowledged past the server's window (MAIDAN_CLAIM_ACK_TIMEOUT_SECS, 120 s) is reported to its owner with a claim_unacknowledged event. Only the assignee holding the matching fencing token may acknowledge; idempotent (the first start time is kept).
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1876,9 +2006,11 @@ Acknowledge a claimed thread and start its working clock (work_started_at): the 
 
 ### `release_claim`
 
-Release a claim (graceful handoff): the current holder returns the thread to the queue immediately by presenting its fencing token, instead of letting the lease lapse — e.g. an agent shutting down cleanly. Only the assignee holding the matching token may release. Clears the assignment and working clock and emits thread_assignment_changed.
+**Release claim.** Release a claim (graceful handoff): the current holder returns the thread to the queue immediately by presenting its fencing token, instead of letting the lease lapse — e.g. an agent shutting down cleanly. Only the assignee holding the matching token may release. Clears the assignment and working clock and emits thread_assignment_changed.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1903,9 +2035,11 @@ Release a claim (graceful handoff): the current holder returns the thread to the
 
 ### `add_thread_dependency`
 
-Add a task-dependency edge: the thread depends on depends_on_thread_id and stays blocked (won't be handed out by claim_next) until that dependency reaches a terminal state. Both threads must be in the same workspace.
+**Add thread dependency.** Add a task-dependency edge: the thread depends on depends_on_thread_id and stays blocked (won't be handed out by claim_next) until that dependency reaches a terminal state. Both threads must be in the same workspace.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1931,9 +2065,11 @@ Add a task-dependency edge: the thread depends on depends_on_thread_id and stays
 
 ### `list_thread_dependencies`
 
-List a task's dependencies plus whether it is ready to run (true when every dependency is terminal).
+**List thread dependencies.** List a task's dependencies plus whether it is ready to run (true when every dependency is terminal).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1952,9 +2088,11 @@ List a task's dependencies plus whether it is ready to run (true when every depe
 
 ### `get_queue_depth`
 
-A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked, unclaimable}, for deciding whether to scale workers. ready is what claim_next_thread could take now. Counts only threads you may read: on the DM channel, your own DMs. For the whole workspace, use get_workspace_queue_depth.
+**Get queue depth.** A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked, unclaimable}, for deciding whether to scale workers. ready is what claim_next_thread could take now. Counts only threads you may read: on the DM channel, your own DMs. For the whole workspace, use get_workspace_queue_depth.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1973,9 +2111,11 @@ A channel's task-queue depth: counts of its open task threads as {open, ready, a
 
 ### `get_channel_occupancy`
 
-A channel's occupancy as {open, queued, claimed, working, blocked}: the two-clocks refinement of get_queue_depth. It splits held work into claimed (an agent grabbed the task but hasn't acknowledged it via acknowledge_claim) and working (acknowledged and underway) — surfacing a claimed-but-idle agent. queued/blocked mirror get_queue_depth's ready/blocked.
+**Get channel occupancy.** A channel's occupancy as {open, queued, claimed, working, blocked}: the two-clocks refinement of get_queue_depth. It splits held work into claimed (an agent grabbed the task but hasn't acknowledged it via acknowledge_claim) and working (acknowledged and underway) — surfacing a claimed-but-idle agent. queued/blocked mirror get_queue_depth's ready/blocked.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -1994,9 +2134,11 @@ A channel's occupancy as {open, queued, claimed, working, blocked}: the two-cloc
 
 ### `get_workspace_queue_depth`
 
-get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants.
+**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2016,9 +2158,11 @@ get_queue_depth across every channel of the workspace you may read, as {open, re
 
 ### `get_workspace_occupancy`
 
-get_channel_occupancy across every channel of the workspace you may read, as {open, queued, claimed, working, blocked}: the sum of those channels' occupancy. A private channel's threads count only for its members and a DM's only for its participants.
+**Get workspace occupancy.** get_channel_occupancy across every channel of the workspace you may read, as {open, queued, claimed, working, blocked}: the sum of those channels' occupancy. A private channel's threads count only for its members and a DM's only for its participants.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2038,9 +2182,11 @@ get_channel_occupancy across every channel of the workspace you may read, as {op
 
 ### `set_thread_lineage`
 
-Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.
+**Set thread lineage.** Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2064,9 +2210,11 @@ Home a producer's run_id on a thread as parent_run_id. Accepts the producer's st
 
 ### `get_thread_lineage`
 
-Read a thread's run lineage (parent_run_id + set_at), or null if none has been set.
+**Get thread lineage.** Read a thread's run lineage (parent_run_id + set_at), or null if none has been set.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2085,9 +2233,11 @@ Read a thread's run lineage (parent_run_id + set_at), or null if none has been s
 
 ### `list_run_threads`
 
-List threads in the caller's workspace that share a producer parent_run_id, oldest first. Nested children given the same value are included. Private-channel rows the caller cannot access are omitted. F7 mute is not consulted.
+**List run threads.** List threads in the caller's workspace that share a producer parent_run_id, oldest first. Nested children given the same value are included. Private-channel rows the caller cannot access are omitted. F7 mute is not consulted.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2106,9 +2256,11 @@ List threads in the caller's workspace that share a producer parent_run_id, olde
 
 ### `get_run_occupancy`
 
-Nested occupancy for a producer run as {parent_run_id, open, queued, claimed, working, blocked}: the two-clocks partition of every open workspace thread that shares parent_run_id. F7 mute is orthogonal (a muted nested thread still counts). Unknown / unused run returns zeros.
+**Get run occupancy.** Nested occupancy for a producer run as {parent_run_id, open, queued, claimed, working, blocked}: the two-clocks partition of every open workspace thread that shares parent_run_id. F7 mute is orthogonal (a muted nested thread still counts). Unknown / unused run returns zeros.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2127,9 +2279,11 @@ Nested occupancy for a producer run as {parent_run_id, open, queued, claimed, wo
 
 ### `set_thread_result`
 
-Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.
+**Set thread result.** Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: true`
 
 ```json
 {
@@ -2153,9 +2307,11 @@ Attach a task's structured result (arbitrary JSON). Upserts one result per threa
 
 ### `get_thread_result`
 
-Read a task's structured result, or null if none has been produced yet.
+**Get thread result.** Read a task's structured result, or null if none has been produced yet.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2174,9 +2330,11 @@ Read a task's structured result, or null if none has been produced yet.
 
 ### `list_thread_results`
 
-List thread results in the caller's workspace, newest first. Optional result_kind is an exact-match facet on the namespaced string (e.g. example.review.result/1), not a closed enum. Private-channel rows the caller cannot access are omitted.
+**List thread results.** List thread results in the caller's workspace, newest first. Optional result_kind is an exact-match facet on the namespaced string (e.g. example.review.result/1), not a closed enum. Private-channel rows the caller cannot access are omitted.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2198,9 +2356,11 @@ List thread results in the caller's workspace, newest first. Optional result_kin
 
 ### `list_result_deliveries`
 
-List per-target delivery status for a thread's structured result (disposition, external reference, last error). Empty means the result was not routed anywhere, which is valid. workspace:read + thread access.
+**List result deliveries.** List per-target delivery status for a thread's structured result (disposition, external reference, last error). Empty means the result was not routed anywhere, which is valid. workspace:read + thread access.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2219,9 +2379,11 @@ List per-target delivery status for a thread's structured result (disposition, e
 
 ### `replay_result_delivery`
 
-Re-enqueue one result delivery onto the egress outbox. Re-checks the workspace allowlist (an unblessed target stays skipped). Does not bump armed_revision. workspace:write + thread access.
+**Replay result delivery.** Re-enqueue one result delivery onto the egress outbox. Re-checks the workspace allowlist (an unblessed target stays skipped). Does not bump armed_revision. workspace:write + thread access.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: true`
 
 ```json
 {
@@ -2245,9 +2407,11 @@ Re-enqueue one result delivery onto the egress outbox. Re-checks the workspace a
 
 ### `set_thread_owner`
 
-Set (or clear, by omitting owner_id) a thread's durable owner — the accountable party, distinct from the assignee/claimer. Once an owner is set, the claimer can no longer land (close/archive) its own work; the owner or another member must (separation of duties).
+**Set thread owner.** Set (or clear, by omitting owner_id) a thread's durable owner — the accountable party, distinct from the assignee/claimer. Once an owner is set, the claimer can no longer land (close/archive) its own work; the owner or another member must (separation of duties).
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2271,9 +2435,11 @@ Set (or clear, by omitting owner_id) a thread's durable owner — the accountabl
 
 ### `rename_thread`
 
-Rename a thread — give a titled thread a new name (e.g. name a post-derived child thread). The title must not be blank. A rename is metadata, not activity, so it does not float the thread in the recent-activity order.
+**Rename thread.** Rename a thread — give a titled thread a new name (e.g. name a post-derived child thread). The title must not be blank. A rename is metadata, not activity, so it does not float the thread in the recent-activity order.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2297,9 +2463,11 @@ Rename a thread — give a titled thread a new name (e.g. name a post-derived ch
 
 ### `set_thread_steer`
 
-Set (upsert) a thread's persisted steer — durable steering guidance that survives claims and handoffs, so a resuming or newly-assigned agent reads the current steer. Latest wins.
+**Set thread steer.** Set (upsert) a thread's persisted steer — durable steering guidance that survives claims and handoffs, so a resuming or newly-assigned agent reads the current steer. Latest wins.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2323,9 +2491,11 @@ Set (upsert) a thread's persisted steer — durable steering guidance that survi
 
 ### `get_thread_steer`
 
-Read a thread's current steer, or null if none is set. A resuming or newly-assigned agent reads this to follow the current steering guidance.
+**Get thread steer.** Read a thread's current steer, or null if none is set. A resuming or newly-assigned agent reads this to follow the current steering guidance.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2344,9 +2514,11 @@ Read a thread's current steer, or null if none is set. A resuming or newly-assig
 
 ### `wait_for_result`
 
-Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result). To put a deadline on a thread instead, use set_wait.
+**Wait for result.** Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result). To put a deadline on a thread instead, use set_wait.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2373,9 +2545,11 @@ Block until a task's result is produced (a thread_result_set event for thread_id
 
 ### `get_dependency_results`
 
-Gather the structured results of a parent task's dependencies as a list of {thread_id, result} objects (result null if not produced yet), skipping dependencies you can't access. The spawn/wait/aggregate read for a parent task.
+**Get dependency results.** Gather the structured results of a parent task's dependencies as a list of {thread_id, result} objects (result null if not produced yet), skipping dependencies you can't access. The spawn/wait/aggregate read for a parent task.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2395,9 +2569,11 @@ Gather the structured results of a parent task's dependencies as a list of {thre
 
 ### `add_member_skill`
 
-Declare a skill (free-form tag) for a member. Skill routing gates claim_next: a task is claimable by a member only if it holds all the task's required skills.
+**Add member skill.** Declare a skill (free-form tag) for a member. Skill routing gates claim_next: a task is claimable by a member only if it holds all the task's required skills.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2420,9 +2596,11 @@ Declare a skill (free-form tag) for a member. Skill routing gates claim_next: a 
 
 ### `list_member_skills`
 
-List a member's declared skills.
+**List member skills.** List a member's declared skills.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2441,9 +2619,11 @@ List a member's declared skills.
 
 ### `add_thread_required_skill`
 
-Add a required skill to a task. Only a member holding every required skill can claim the task via claim_next_thread.
+**Add thread required skill.** Add a required skill to a task. Only a member holding every required skill can claim the task via claim_next_thread.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2466,9 +2646,11 @@ Add a required skill to a task. Only a member holding every required skill can c
 
 ### `list_thread_required_skills`
 
-List a task's required skills.
+**List thread required skills.** List a task's required skills.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2487,9 +2669,11 @@ List a task's required skills.
 
 ### `create_task_schedule`
 
-Create a task schedule: when due, the sweeper creates a thread titled `title` in `channel_id` (or, when recipe_id is set, instantiates that recipe — parent + DAG children — instead). interval_secs omitted = one-shot; a positive value = recurring. first_run_at omitted = fire on the next tick.
+**Create task schedule.** Create a task schedule: when due, the sweeper creates a thread titled `title` in `channel_id` (or, when recipe_id is set, instantiates that recipe — parent + DAG children — instead). interval_secs omitted = one-shot; a positive value = recurring. first_run_at omitted = fire on the next tick.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -2526,9 +2710,11 @@ Create a task schedule: when due, the sweeper creates a thread titled `title` in
 
 ### `list_task_schedules`
 
-List the caller's workspace task schedules (filtered to channels the caller can access).
+**List task schedules.** List the caller's workspace task schedules (filtered to channels the caller can access).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2539,9 +2725,11 @@ List the caller's workspace task schedules (filtered to channels the caller can 
 
 ### `create_recipe`
 
-Create a recipe: a reusable thread-type blueprint. spec = {params, definition_of_done, retry, children}, where each child is {key, title, required_skills, depends_on (sibling keys)}. Instantiating it (instantiate_recipe) builds a parent thread + a child per child + wires the DAG + attaches skills. NOT a recipe VM — a blueprint the room instantiates.
+**Create recipe.** Create a recipe: a reusable thread-type blueprint. spec = {params, definition_of_done, retry, children}, where each child is {key, title, required_skills, depends_on (sibling keys)}. Instantiating it (instantiate_recipe) builds a parent thread + a child per child + wires the DAG + attaches skills. NOT a recipe VM — a blueprint the room instantiates.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -2569,9 +2757,11 @@ Create a recipe: a reusable thread-type blueprint. spec = {params, definition_of
 
 ### `list_recipes`
 
-List the caller's workspace recipes (filtered to channels the caller can access).
+**List recipes.** List the caller's workspace recipes (filtered to channels the caller can access).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2582,9 +2772,11 @@ List the caller's workspace recipes (filtered to channels the caller can access)
 
 ### `instantiate_recipe`
 
-Instantiate a recipe into a parent thread + its DAG children (copy-on-fire: the recipe bytes are frozen into the run). params are validated against the recipe's declared params (required ones must be present). Returns the RecipeRun.
+**Instantiate recipe.** Instantiate a recipe into a parent thread + its DAG children (copy-on-fire: the recipe bytes are frozen into the run). params are validated against the recipe's declared params (required ones must be present). Returns the RecipeRun.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -2607,9 +2799,11 @@ Instantiate a recipe into a parent thread + its DAG children (copy-on-fire: the 
 
 ### `list_secrets`
 
-List the caller's workspace secrets (metadata only — id, name, timestamps; NEVER the value). Use resolve_secret to fetch a value at exec.
+**List secrets.** List the caller's workspace secrets (metadata only — id, name, timestamps; NEVER the value). Use resolve_secret to fetch a value at exec.
 
 **Capability:** `secret:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2620,9 +2814,11 @@ List the caller's workspace secrets (metadata only — id, name, timestamps; NEV
 
 ### `resolve_secret`
 
-Resolve a named secret to its value (the 'fetch at exec' path). The value is decrypted server-side and returned only in this response — it never enters the event log. Returns null-name error if the secret is unknown.
+**Resolve secret.** Resolve a named secret to its value (the 'fetch at exec' path). The value is decrypted server-side and returned only in this response — it never enters the event log. Returns null-name error if the secret is unknown.
 
 **Capability:** `secret:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2641,9 +2837,11 @@ Resolve a named secret to its value (the 'fetch at exec' path). The value is dec
 
 ### `list_secret_egress_hosts`
 
-List the hosts trusted with this workspace's secret values: on a webhook, automation HTTP or A2A push delivery to one of them, secret://<name> refs in the payload are replaced with the workspace's values; any other host gets the literal ref. Empty (the default) means no host gets a value. Requires secret:admin.
+**List secret egress hosts.** List the hosts trusted with this workspace's secret values: on a webhook, automation HTTP or A2A push delivery to one of them, secret://<name> refs in the payload are replaced with the workspace's values; any other host gets the literal ref. Empty (the default) means no host gets a value. Requires secret:admin.
 
 **Capability:** `secret:admin`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2654,9 +2852,11 @@ List the hosts trusted with this workspace's secret values: on a webhook, automa
 
 ### `allow_secret_egress_host`
 
-Trust a host with this workspace's secret values (idempotent). A listed host receives the value of every secret a payload bound for it names, so this needs secret:read as well as secret:admin. The host is a lowercase hostname or IPv4 address with no scheme, port, path or wildcard, and must be inside the instance ceiling when the operator set one. Audited.
+**Allow secret egress host.** Trust a host with this workspace's secret values (idempotent). A listed host receives the value of every secret a payload bound for it names, so this needs secret:read as well as secret:admin. The host is a lowercase hostname or IPv4 address with no scheme, port, path or wildcard, and must be inside the instance ceiling when the operator set one. Audited.
 
 **Capability:** `secret:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2675,9 +2875,11 @@ Trust a host with this workspace's secret values (idempotent). A listed host rec
 
 ### `revoke_secret_egress_host`
 
-Stop trusting a host with this workspace's secret values; the next delivery to it carries the literal secret:// refs. Not found when the host was not listed. Requires secret:admin. Audited.
+**Revoke secret egress host.** Stop trusting a host with this workspace's secret values; the next delivery to it carries the literal secret:// refs. Not found when the host was not listed. Requires secret:admin. Audited.
 
 **Capability:** `secret:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2695,9 +2897,11 @@ Stop trusting a host with this workspace's secret values; the next delivery to i
 
 ### `freeze_member`
 
-Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released, and emits member_frozen to the workspace (the reason included). The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.
+**Freeze member.** Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released, and emits member_frozen to the workspace (the reason included). The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -2720,9 +2924,11 @@ Freeze a member (the kill-switch): drops their active leases (releases their cla
 
 ### `unfreeze_member`
 
-Lift a member's freeze so they can claim work again. Requires token:admin. Returns {unfrozen} (false if they were not frozen); an unfreeze that lifts a freeze emits member_unfrozen.
+**Unfreeze member.** Lift a member's freeze so they can claim work again. Requires token:admin. Returns {unfrozen} (false if they were not frozen); an unfreeze that lifts a freeze emits member_unfrozen.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2741,9 +2947,11 @@ Lift a member's freeze so they can claim work again. Requires token:admin. Retur
 
 ### `list_frozen_members`
 
-List the frozen members in the caller's workspace (member_id, frozen_at, frozen_by, reason). Requires token:admin.
+**List frozen members.** List the frozen members in the caller's workspace (member_id, frozen_at, frozen_by, reason). Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2754,9 +2962,11 @@ List the frozen members in the caller's workspace (member_id, frozen_at, frozen_
 
 ### `create_share_ticket`
 
-Issue a read-only cross-organization ticket for one channel and an explicit artifact allowlist. Ownership is bound to the authenticated member. Lifetime is capped at 48 hours; the secret is returned once and only its hash is stored. Requires token:admin.
+**Create share ticket.** Issue a read-only cross-organization ticket for one channel and an explicit artifact allowlist. Ownership is bound to the authenticated member. Lifetime is capped at 48 hours; the secret is returned once and only its hash is stored. Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -2788,9 +2998,11 @@ Issue a read-only cross-organization ticket for one channel and an explicit arti
 
 ### `list_share_tickets`
 
-List share tickets and their explicit artifact scopes in the caller's workspace. Secrets are never returned after creation. Requires token:admin.
+**List share tickets.** List share tickets and their explicit artifact scopes in the caller's workspace. Secrets are never returned after creation. Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2801,9 +3013,11 @@ List share tickets and their explicit artifact scopes in the caller's workspace.
 
 ### `revoke_share_ticket`
 
-Immediately revoke a share ticket in the caller's workspace. Requires token:admin.
+**Revoke share ticket.** Immediately revoke a share ticket in the caller's workspace. Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2822,9 +3036,11 @@ Immediately revoke a share ticket in the caller's workspace. Requires token:admi
 
 ### `export_workspace`
 
-Export a workspace as a signed maidan.workspace.export/1 envelope. Tokens die on export: API tokens and secrets are omitted. A blank instance can verify the file without calling this host. Requires token:admin and MAIDAN_EXPORT_SIGNING_KEY.
+**Export workspace.** Export a workspace as a signed maidan.workspace.export/1 envelope. Tokens die on export: API tokens and secrets are omitted. A blank instance can verify the file without calling this host. Requires token:admin and MAIDAN_EXPORT_SIGNING_KEY.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2841,9 +3057,11 @@ Export a workspace as a signed maidan.workspace.export/1 envelope. Tokens die on
 
 ### `verify_workspace_export`
 
-Verify a signed workspace export without importing it. Fail-closed on tamper, a bad signature, stuffed secret fields, or a public key outside MAIDAN_EXPORT_VERIFY_KEYS when that pin is set. An empty pin checks integrity against the embedded key only. Requires token:admin.
+**Verify workspace export.** Verify a signed workspace export without importing it. Fail-closed on tamper, a bad signature, stuffed secret fields, or a public key outside MAIDAN_EXPORT_VERIFY_KEYS when that pin is set. An empty pin checks integrity against the embedded key only. Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2859,9 +3077,11 @@ Verify a signed workspace export without importing it. Fail-closed on tamper, a 
 
 ### `import_workspace`
 
-Verify then import a signed workspace export. mode new remaps ids into a fresh workspace; restore keeps original ids and fails if that workspace exists unless force is true. Tokens die on export: mint new tokens after import. Requires token:admin.
+**Import workspace.** Verify then import a signed workspace export. mode new remaps ids into a fresh workspace; restore keeps original ids and fails if that workspace exists unless force is true. Tokens die on export: mint new tokens after import. Requires token:admin.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -2892,9 +3112,11 @@ Verify then import a signed workspace export. mode new remaps ids into a fresh w
 
 ### `get_log_snapshot`
 
-Hashed event-log snapshot for this workspace (getRepo-shaped, not MST/CAR). Header plus graph_hash is workspace:read. Pass include_graph true for the domain graph; that requires token:admin. Complements hash-chain verify of the retained suffix: this covers a pruned prefix so a peer can resume without trusting the host for history it never saw.
+**Get log snapshot.** Hashed event-log snapshot for this workspace (getRepo-shaped, not MST/CAR). Header plus graph_hash is workspace:read. Pass include_graph true for the domain graph; that requires token:admin. Complements hash-chain verify of the retained suffix: this covers a pruned prefix so a peer can resume without trusting the host for history it never saw.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2915,9 +3137,11 @@ Hashed event-log snapshot for this workspace (getRepo-shaped, not MST/CAR). Head
 
 ### `catch_up_events`
 
-Since-LSN catch-up page after a snapshot (or a prior page). Events have id greater than after_lsn, hash-chain checked from the predecessor. A pruned-gap cursor fails closed and names the snapshot path to refetch; a broken chain fails closed. Requires workspace:read.
+**Catch up on events.** Since-LSN catch-up page after a snapshot (or a prior page). Events have id greater than after_lsn, hash-chain checked from the predecessor. A pruned-gap cursor fails closed and names the snapshot path to refetch; a broken chain fails closed. Requires workspace:read.
 
 **Capability:** `token:admin`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2942,9 +3166,11 @@ Since-LSN catch-up page after a snapshot (or a prior page). Events have id great
 
 ### `verify_event_chain`
 
-Verify the retained event-log hash chain for a workspace. Returns the chain report when intact; fails closed on a splice or rewrite. Twin of GET /workspaces/{id}/events/verify. Requires workspace:read.
+**Verify event chain.** Verify the retained event-log hash chain for a workspace. Returns the chain report when intact; fails closed on a splice or rewrite. Twin of GET /workspaces/{id}/events/verify. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2961,9 +3187,11 @@ Verify the retained event-log hash chain for a workspace. Returns the chain repo
 
 ### `list_tombstones`
 
-Tombstone and deletion explorer for this workspace. Soft-deleted messages (body already cleared) plus, when include_purged is true, hard-purged reconstructions from MessageTombstoned events. Private-channel and DM rows the caller cannot access are omitted. Twin of GET /workspaces/{id}/tombstones. Requires workspace:read.
+**List tombstones.** Tombstone and deletion explorer for this workspace. Soft-deleted messages (body already cleared) plus, when include_purged is true, hard-purged reconstructions from MessageTombstoned events. Private-channel and DM rows the caller cannot access are omitted. Twin of GET /workspaces/{id}/tombstones. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -2998,9 +3226,11 @@ Tombstone and deletion explorer for this workspace. Soft-deleted messages (body 
 
 ### `list_message_backlinks`
 
-Incoming pointers at a message: RelationKind reverse edges plus pins, reactions, and votes. Mentions are outgoing and omitted. Works on a retained tombstone; fails not-found after hard purge. Twin of GET /messages/{id}/backlinks. Requires workspace:read.
+**List message backlinks.** Incoming pointers at a message: RelationKind reverse edges plus pins, reactions, and votes. Mentions are outgoing and omitted. Works on a retained tombstone; fails not-found after hard purge. Twin of GET /messages/{id}/backlinks. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3019,9 +3249,11 @@ Incoming pointers at a message: RelationKind reverse edges plus pins, reactions,
 
 ### `get_kind_census`
 
-EventKind counts for a workspace, optionally narrowed to a channel or thread. Inaccessible private channels are excluded from the totals. Twin of GET /workspaces/{id}/kind-census. Requires workspace:read.
+**Get kind census.** EventKind counts for a workspace, optionally narrowed to a channel or thread. Inaccessible private channels are excluded from the totals. Twin of GET /workspaces/{id}/kind-census. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3048,9 +3280,11 @@ EventKind counts for a workspace, optionally narrowed to a channel or thread. In
 
 ### `create_memory_block`
 
-Create a labeled memory block — a Letta-shaped shared object {label, description, limit, read_only, value} in the workspace that a thread can attach to (a room object). It is how a parent watches a child's result block without a nested runtime: not a transcript, not RAG. Concurrent-safe on the label (re-creating a label returns the existing block). The caller owns it.
+**Create memory block.** Create a labeled memory block — a Letta-shaped shared object {label, description, limit, read_only, value} in the workspace that a thread can attach to (a room object). It is how a parent watches a child's result block without a nested runtime: not a transcript, not RAG. Concurrent-safe on the label (re-creating a label returns the existing block). The caller owns it.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3085,9 +3319,11 @@ Create a labeled memory block — a Letta-shaped shared object {label, descripti
 
 ### `get_memory_block`
 
-Get a memory block by label within the caller's workspace, or null if none. This is the watch-a-child's-result-block read (poll it).
+**Get memory block.** Get a memory block by label within the caller's workspace, or null if none. This is the watch-a-child's-result-block read (poll it).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3105,9 +3341,11 @@ Get a memory block by label within the caller's workspace, or null if none. This
 
 ### `list_memory_blocks`
 
-List the memory blocks in the caller's workspace (id, label, description, limit, read_only, value, owner).
+**List memory blocks.** List the memory blocks in the caller's workspace (id, label, description, limit, read_only, value, owner).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3118,9 +3356,11 @@ List the memory blocks in the caller's workspace (id, label, description, limit,
 
 ### `set_memory_block_value`
 
-Full-rewrite a memory block's value by label (last-writer-wins). A read-only block or a value over the block's char limit is rejected. Use this to publish a result other threads watch.
+**Set memory block value.** Full-rewrite a memory block's value by label (last-writer-wins). A read-only block or a value over the block's char limit is rejected. Use this to publish a result other threads watch.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -3142,9 +3382,11 @@ Full-rewrite a memory block's value by label (last-writer-wins). A read-only blo
 
 ### `attach_memory_block`
 
-Attach a memory block (by label) to a thread so the thread carries it as a room object — how a parent shares a block with a child. Idempotent. Returns {attached}.
+**Attach memory block.** Attach a memory block (by label) to a thread so the thread carries it as a room object — how a parent shares a block with a child. Idempotent. Returns {attached}.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3167,9 +3409,11 @@ Attach a memory block (by label) to a thread so the thread carries it as a room 
 
 ### `detach_memory_block`
 
-Detach a memory block (by id) from a thread. Idempotent. Returns {detached} (false if it was not attached).
+**Detach memory block.** Detach a memory block (by id) from a thread. Idempotent. Returns {detached} (false if it was not attached).
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3193,9 +3437,11 @@ Detach a memory block (by id) from a thread. Idempotent. Returns {detached} (fal
 
 ### `list_thread_memory_blocks`
 
-List the memory blocks attached to a thread (its room objects), by label.
+**List thread memory blocks.** List the memory blocks attached to a thread (its room objects), by label.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3214,9 +3460,11 @@ List the memory blocks attached to a thread (its room objects), by label.
 
 ### `wait_for_memory_block`
 
-Block until a memory block (by label) is rewritten in the caller's workspace, or the timeout lapses. Returns the block with its fresh value, or null on timeout. This is how a parent watches a child's result block without a nested runtime. Live: only sees updates after subscribing, so read the current value with get_memory_block first.
+**Wait for memory block.** Block until a memory block (by label) is rewritten in the caller's workspace, or the timeout lapses. Returns the block with its fresh value, or null on timeout. This is how a parent watches a child's result block without a nested runtime. Live: only sees updates after subscribing, so read the current value with get_memory_block first.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3238,9 +3486,11 @@ Block until a memory block (by label) is rewritten in the caller's workspace, or
 
 ### `set_review_requirement`
 
-Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qualifying approvals before it can close. An approval qualifies when the reviewer is neither the owner nor the assignee (separation of duties) and, when a named reviewer set exists, is in it. A refutes edge also blocks close. Requires thread:transition.
+**Set review requirement.** Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qualifying approvals before it can close. An approval qualifies when the reviewer is neither the owner nor the assignee (separation of duties) and, when a named reviewer set exists, is in it. A refutes edge also blocks close. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3264,9 +3514,11 @@ Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qu
 
 ### `add_reviewer`
 
-Name a reviewer for a thread (G5) — the eligible set. Empty set = open review (any qualifying member). Idempotent. Requires thread:transition.
+**Add reviewer.** Name a reviewer for a thread (G5) — the eligible set. Empty set = open review (any qualifying member). Idempotent. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3290,9 +3542,11 @@ Name a reviewer for a thread (G5) — the eligible set. Empty set = open review 
 
 ### `submit_review`
 
-Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. Every verdict appends a review_submitted event, and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.
+**Submit review.** Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. Every verdict appends a review_submitted event, and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -3322,9 +3576,11 @@ Submit a review decision as the caller (G5): approve or request_changes. The rev
 
 ### `get_review_status`
 
-Read a thread's review standing: required_count, approvals (distinct qualifying), and approvals_met. This is the approval side of the close-gate; a refutes edge is checked separately when closing.
+**Get review status.** Read a thread's review standing: required_count, approvals (distinct qualifying), and approvals_met. This is the approval side of the close-gate; a refutes edge is checked separately when closing.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3343,9 +3599,11 @@ Read a thread's review standing: required_count, approvals (distinct qualifying)
 
 ### `list_reviews`
 
-List a thread's review decisions (reviewer, decision, note).
+**List reviews.** List a thread's review decisions (reviewer, decision, note).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3364,9 +3622,11 @@ List a thread's review decisions (reviewer, decision, note).
 
 ### `list_review_history`
 
-List every verdict submitted on a thread, oldest first (reviewer, decision, note, delegate, recorded_at). list_reviews shows each reviewer's current decision; a re-submission replaces it there but its earlier verdicts stay here.
+**List review history.** List every verdict submitted on a thread, oldest first (reviewer, decision, note, delegate, recorded_at). list_reviews shows each reviewer's current decision; a re-submission replaces it there but its earlier verdicts stay here.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3385,9 +3645,11 @@ List every verdict submitted on a thread, oldest first (reviewer, decision, note
 
 ### `set_land_gate`
 
-Record a land-gate pointer on a thread: status pass or fail, optional artifact_sha, optional land green/amber/red. The room holds the pointer; an external verifier records pass/fail. A qualifying green pass (land-gate-skilled member who is not the implementer) is required to close once the gate is armed. Amber is flags-then-still-engages and is not a land. Requires thread:transition. The caller must have declared the land_gate skill.
+**Set land gate.** Record a land-gate pointer on a thread: status pass or fail, optional artifact_sha, optional land green/amber/red. The room holds the pointer; an external verifier records pass/fail. A qualifying green pass (land-gate-skilled member who is not the implementer) is required to close once the gate is armed. Amber is flags-then-still-engages and is not a land. Requires thread:transition. The caller must have declared the land_gate skill.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -3425,9 +3687,11 @@ Record a land-gate pointer on a thread: status pass or fail, optional artifact_s
 
 ### `get_land_gate`
 
-Read a thread's land-gate standing: required, pointer, land (green/amber/red), landable. No pointer is vacuous green. Requires workspace:read.
+**Get land gate.** Read a thread's land-gate standing: required, pointer, land (green/amber/red), landable. No pointer is vacuous green. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3446,9 +3710,11 @@ Read a thread's land-gate standing: required, pointer, land (green/amber/red), l
 
 ### `list_land_gate_history`
 
-List every land-gate verdict recorded on a thread, oldest first (status, land, artifact_sha, recorder, delegate, recorded_at). get_land_gate shows the latest pointer; a later pointer or clearing the gate leaves earlier verdicts here. Requires workspace:read.
+**List land gate history.** List every land-gate verdict recorded on a thread, oldest first (status, land, artifact_sha, recorder, delegate, recorded_at). get_land_gate shows the latest pointer; a later pointer or clearing the gate leaves earlier verdicts here. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3467,9 +3733,11 @@ List every land-gate verdict recorded on a thread, oldest first (status, land, a
 
 ### `require_land_gate`
 
-Arm the land-gate close-gate on a thread without a pointer yet so closed refuses until a qualifying green pass arrives. Idempotent. Requires thread:transition.
+**Require land gate.** Arm the land-gate close-gate on a thread without a pointer yet so closed refuses until a qualifying green pass arrives. Idempotent. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3488,9 +3756,11 @@ Arm the land-gate close-gate on a thread without a pointer yet so closed refuses
 
 ### `clear_land_gate`
 
-Clear a thread's land-gate pointer and requirement. Requires thread:transition.
+**Clear land gate.** Clear a thread's land-gate pointer and requirement. Requires thread:transition.
 
 **Capability:** `channel:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3509,9 +3779,11 @@ Clear a thread's land-gate pointer and requirement. Requires thread:transition.
 
 ### `set_glossary_term`
 
-Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.
+**Set glossary term.** Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3540,9 +3812,11 @@ Define (or redefine) a term in the workspace's shared glossary — the canonical
 
 ### `get_glossary_term`
 
-Look up one term's canonical definition in the workspace glossary. Returns null when the term is undefined.
+**Get glossary term.** Look up one term's canonical definition in the workspace glossary. Returns null when the term is undefined.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3560,9 +3834,11 @@ Look up one term's canonical definition in the workspace glossary. Returns null 
 
 ### `list_glossary_terms`
 
-List all defined terms in the workspace's shared glossary, ordered by term.
+**List glossary terms.** List all defined terms in the workspace's shared glossary, ordered by term.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3573,9 +3849,11 @@ List all defined terms in the workspace's shared glossary, ordered by term.
 
 ### `wait_for_ready`
 
-Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first). To put a deadline on a thread instead, use set_wait.
+**Wait for ready.** Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first). To put a deadline on a thread instead, use set_wait.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3603,9 +3881,11 @@ Block until a task becomes ready (its last blocking dependency reaches a termina
 
 ### `wait_for_claim_expired`
 
-Block until a claim's lease lapses and its thread is reclaimed (by the claim reaper within seconds, or by the next claim_next_thread; either emits claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal: returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease on a thread in review is not reaped and emits nothing. To put a deadline on a thread instead, use set_wait.
+**Wait for claim expired.** Block until a claim's lease lapses and its thread is reclaimed (by the claim reaper within seconds, or by the next claim_next_thread; either emits claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal: returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease on a thread in review is not reaped and emits nothing. To put a deadline on a thread instead, use set_wait.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3633,9 +3913,11 @@ Block until a claim's lease lapses and its thread is reclaimed (by the claim rea
 
 ### `wait_for_claim_failed`
 
-Block until a claimed run is stopped for going over its budget (report_usage past a tokens/usd/turns/wall limit releases the claim, dead-letters the run and emits claim_failed), or the timeout lapses. Returns the ClaimFailed event (member_id is the stopped holder, reason the budget axis), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch a stop in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.
+**Wait for claim failed.** Block until a claimed run is stopped for going over its budget (report_usage past a tokens/usd/turns/wall limit releases the claim, dead-letters the run and emits claim_failed), or the timeout lapses. Returns the ClaimFailed event (member_id is the stopped holder, reason the budget axis), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch a stop in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3663,9 +3945,11 @@ Block until a claimed run is stopped for going over its budget (report_usage pas
 
 ### `wait_for_blocked_resolved`
 
-Block until an explicit dispatch block is cleared (clear_thread_block emits blocked_resolved), or the timeout lapses. Returns the BlockedResolved event (the reason that cleared, resolved_by), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible thread in the workspace. Clearing a thread that was not blocked emits nothing. Pass since_log_id (your high-water log_id) to also catch a clear in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.
+**Wait for blocked resolved.** Block until an explicit dispatch block is cleared (clear_thread_block emits blocked_resolved), or the timeout lapses. Returns the BlockedResolved event (the reason that cleared, resolved_by), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible thread in the workspace. Clearing a thread that was not blocked emits nothing. Pass since_log_id (your high-water log_id) to also catch a clear in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3698,9 +3982,11 @@ Block until an explicit dispatch block is cleared (clear_thread_block emits bloc
 
 ### `wait_for_landed`
 
-Block until a thread's linked GitHub PR lands (is merged, emitting thread_landed), or the timeout lapses. Returns the ThreadLanded event (repo, pr_number, merged_by, merge_commit_sha, title), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible land in the workspace. The room records the landing but does NOT transition the thread's FSM. Pass since_log_id (your high-water log_id) to also catch a land emitted in the gap before this call subscribes; omit it for pure-live. Live-only; the GET /mcp/stream SSE transport (kinds=thread_landed) is the resumable alternative. To put a deadline on a thread instead, use set_wait.
+**Wait for landed.** Block until a thread's linked GitHub PR lands (is merged, emitting thread_landed), or the timeout lapses. Returns the ThreadLanded event (repo, pr_number, merged_by, merge_commit_sha, title), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible land in the workspace. The room records the landing but does NOT transition the thread's FSM. Pass since_log_id (your high-water log_id) to also catch a land emitted in the gap before this call subscribes; omit it for pure-live. Live-only; the GET /mcp/stream SSE transport (kinds=thread_landed) is the resumable alternative. To put a deadline on a thread instead, use set_wait.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3733,9 +4019,11 @@ Block until a thread's linked GitHub PR lands (is merged, emitting thread_landed
 
 ### `list_mentions`
 
-List recent @mentions of a member (most recent first).
+**List mentions.** List recent @mentions of a member (most recent first).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3758,9 +4046,11 @@ List recent @mentions of a member (most recent first).
 
 ### `get_inbox`
 
-A member's mention inbox: recent mentions plus the read-cursor, so an agent can find what it hasn't seen. Mentions only; for everything waiting on the member (assigned tasks, requested reviews, open approval gates and unread mentions), use get_waiting_inbox.
+**Get inbox.** A member's mention inbox: recent mentions plus the read-cursor, so an agent can find what it hasn't seen. Mentions only; for everything waiting on the member (assigned tasks, requested reviews, open approval gates and unread mentions), use get_waiting_inbox.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3783,9 +4073,11 @@ A member's mention inbox: recent mentions plus the read-cursor, so an agent can 
 
 ### `mark_inbox_read`
 
-Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox.
+**Mark inbox read.** Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3809,9 +4101,11 @@ Advance a member's inbox read-cursor through an instant (RFC 3339); returns the 
 
 ### `wait_for_mention`
 
-Block until the member is next @mentioned, or the timeout lapses. Returns the mention event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch a mention recorded in the gap before this call subscribes; omit it for pure-live behaviour (drain existing ones with get_inbox first).
+**Wait for mention.** Block until the member is next @mentioned, or the timeout lapses. Returns the mention event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch a mention recorded in the gap before this call subscribes; omit it for pure-live behaviour (drain existing ones with get_inbox first).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3841,9 +4135,11 @@ Block until the member is next @mentioned, or the timeout lapses. Returns the me
 
 ### `list_notifications`
 
-List a member's per-recipient notifications, newest first. Set unread_only to see just the unread ones. The durable inbox the notification router fills; drain it here, then wait_for_notification for new ones.
+**List notifications.** List a member's per-recipient notifications, newest first. Set unread_only to see just the unread ones. The durable inbox the notification router fills; drain it here, then wait_for_notification for new ones.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3872,9 +4168,11 @@ List a member's per-recipient notifications, newest first. Set unread_only to se
 
 ### `get_waiting_inbox`
 
-The waiting-on-you inbox, everything needing a member's attention: their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the reviews that name no reviewer and fall to them (unassigned_review: a thread in review with no named reviewer that they own, or that nobody owns when they are a workspace admin), the workspace's pending approval gates, and their unread mentions. Oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone. For mentions alone, with a read-cursor you advance with mark_inbox_read, use get_inbox.
+**Get waiting inbox.** The waiting-on-you inbox, everything needing a member's attention: their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the reviews that name no reviewer and fall to them (unassigned_review: a thread in review with no named reviewer that they own, or that nobody owns when they are a workspace admin), the workspace's pending approval gates, and their unread mentions. Oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone. For mentions alone, with a read-cursor you advance with mark_inbox_read, use get_inbox.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3897,9 +4195,11 @@ The waiting-on-you inbox, everything needing a member's attention: their assigne
 
 ### `list_notifications_grouped`
 
-A member's notifications collapsed into per-thread groups, newest-activity first — a busy thread shows as one group (with its count, unread_count, and latest notification) instead of flooding the flat list. limit bounds how many notifications are scanned.
+**List notifications grouped.** A member's notifications collapsed into per-thread groups, newest-activity first — a busy thread shows as one group (with its count, unread_count, and latest notification) instead of flooding the flat list. limit bounds how many notifications are scanned.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3928,9 +4228,11 @@ A member's notifications collapsed into per-thread groups, newest-activity first
 
 ### `list_buried_decisions`
 
-A member's buried decisions — task results (decisions) produced by someone else in a channel or thread the member follows, since a given instant (default 7 days ago), newest first. The decisions the digest surfaces, queryable directly.
+**List buried decisions.** A member's buried decisions — task results (decisions) produced by someone else in a channel or thread the member follows, since a given instant (default 7 days ago), newest first. The decisions the digest surfaces, queryable directly.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3960,9 +4262,11 @@ A member's buried decisions — task results (decisions) produced by someone els
 
 ### `get_manager_digest`
 
-Compose this member's unread followed-member lifecycle notifications since an instant (default 7 days ago) into per-channel result, gate, and stuck counts. This is a notification view, not analytics.
+**Get manager digest.** Compose this member's unread followed-member lifecycle notifications since an instant (default 7 days ago) into per-channel result, gate, and stuck counts. This is a notification view, not analytics.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -3987,9 +4291,11 @@ Compose this member's unread followed-member lifecycle notifications since an in
 
 ### `get_unread_count`
 
-A member's unread-notification badge count.
+**Get unread count.** A member's unread-notification badge count.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4008,9 +4314,11 @@ A member's unread-notification badge count.
 
 ### `mark_notification_read`
 
-Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's).
+**Mark notification read.** Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4034,9 +4342,11 @@ Mark one of a member's notifications read (recipient-scoped; marked=false if the
 
 ### `snooze_notification`
 
-Snooze one of a member's notifications until an RFC 3339 instant — it drops out of the inbox and unread badge until then, and resurfaces once the snooze lapses. Recipient-scoped (snoozed=false if the id isn't this member's).
+**Snooze notification.** Snooze one of a member's notifications until an RFC 3339 instant — it drops out of the inbox and unread badge until then, and resurfaces once the snooze lapses. Recipient-scoped (snoozed=false if the id isn't this member's).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4065,9 +4375,11 @@ Snooze one of a member's notifications until an RFC 3339 instant — it drops ou
 
 ### `wait_for_notification`
 
-Block until the member gets a new notification-worthy event (today: mentions), or the timeout lapses. The general form of wait_for_mention. Returns the triggering event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch an event from the gap before this call subscribes; omit it for pure-live behaviour (drain with list_notifications first).
+**Wait for notification.** Block until the member gets a new notification-worthy event (today: mentions), or the timeout lapses. The general form of wait_for_mention. Returns the triggering event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch an event from the gap before this call subscribes; omit it for pure-live behaviour (drain with list_notifications first).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4097,9 +4409,11 @@ Block until the member gets a new notification-worthy event (today: mentions), o
 
 ### `set_notification_pref`
 
-Set a member's mute preference for an event kind (kind is snake_case, e.g. mention_recorded). When muted, the router stops writing notifications of that kind for this member.
+**Set notification pref.** Set a member's mute preference for an event kind (kind is snake_case, e.g. mention_recorded). When muted, the router stops writing notifications of that kind for this member.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4127,9 +4441,11 @@ Set a member's mute preference for an event kind (kind is snake_case, e.g. menti
 
 ### `list_notification_prefs`
 
-List a member's notification preferences (per-kind mute flags).
+**List notification prefs.** List a member's notification preferences (per-kind mute flags).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4148,9 +4464,11 @@ List a member's notification preferences (per-kind mute flags).
 
 ### `set_delivery_mode`
 
-Set a member's email delivery mode: immediate (a per-notification email) or digest (a periodic rollup instead). The two are mutually exclusive.
+**Set delivery mode.** Set a member's email delivery mode: immediate (a per-notification email) or digest (a periodic rollup instead). The two are mutually exclusive.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4177,9 +4495,11 @@ Set a member's email delivery mode: immediate (a per-notification email) or dige
 
 ### `get_delivery_mode`
 
-Get a member's email delivery mode (immediate when never set).
+**Get delivery mode.** Get a member's email delivery mode (immediate when never set).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4198,9 +4518,11 @@ Get a member's email delivery mode (immediate when never set).
 
 ### `set_member_email`
 
-Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send.
+**Set member email.** Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4223,9 +4545,11 @@ Set a member's delivery email address (where their email notifications go). A li
 
 ### `get_member_email`
 
-Get a member's delivery email address (null when unset).
+**Get member email.** Get a member's delivery email address (null when unset).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4244,9 +4568,11 @@ Get a member's delivery email address (null when unset).
 
 ### `delete_member_email`
 
-Clear a member's delivery email address (opt out of email). Returns {deleted}.
+**Delete member email.** Clear a member's delivery email address (opt out of email). Returns {deleted}.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4265,9 +4591,11 @@ Clear a member's delivery email address (opt out of email). Returns {deleted}.
 
 ### `follow_channel`
 
-Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel.
+**Follow channel.** Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4291,9 +4619,11 @@ Follow a channel so the member is notified of new messages there even without a 
 
 ### `unfollow_channel`
 
-Stop following a channel (removed=false if not following).
+**Unfollow channel.** Stop following a channel (removed=false if not following).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4317,9 +4647,11 @@ Stop following a channel (removed=false if not following).
 
 ### `list_channel_follows`
 
-List the channels a member follows.
+**List channel follows.** List the channels a member follows.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4338,9 +4670,11 @@ List the channels a member follows.
 
 ### `follow_thread`
 
-Follow a thread so the member is notified of new messages in it even without a mention (honors mutes). Requires access to the thread.
+**Follow thread.** Follow a thread so the member is notified of new messages in it even without a mention (honors mutes). Requires access to the thread.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4364,9 +4698,11 @@ Follow a thread so the member is notified of new messages in it even without a m
 
 ### `unfollow_thread`
 
-Stop following a thread (removed=false if not following).
+**Unfollow thread.** Stop following a thread (removed=false if not following).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4390,9 +4726,11 @@ Stop following a thread (removed=false if not following).
 
 ### `list_thread_follows`
 
-List the threads a member follows.
+**List thread follows.** List the threads a member follows.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4411,9 +4749,11 @@ List the threads a member follows.
 
 ### `follow_member`
 
-Follow another same-workspace member's work occupancy. Self-follow is rejected.
+**Follow member.** Follow another same-workspace member's work occupancy. Self-follow is rejected.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4439,9 +4779,11 @@ Follow another same-workspace member's work occupancy. Self-follow is rejected.
 
 ### `get_member_occupancy`
 
-Get a member's live occupancy: ephemeral presence plus assigned non-terminal threads visible to the caller.
+**Get member occupancy.** Get a member's live occupancy: ephemeral presence plus assigned non-terminal threads visible to the caller.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4461,9 +4803,11 @@ Get a member's live occupancy: ephemeral presence plus assigned non-terminal thr
 
 ### `unfollow_member`
 
-Stop following another member's work occupancy (removed=false if not following).
+**Unfollow member.** Stop following another member's work occupancy (removed=false if not following).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4489,9 +4833,11 @@ Stop following another member's work occupancy (removed=false if not following).
 
 ### `list_member_follows`
 
-List the member-occupancy subscriptions owned by a member.
+**List member follows.** List the member-occupancy subscriptions owned by a member.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4511,9 +4857,11 @@ List the member-occupancy subscriptions owned by a member.
 
 ### `list_messages`
 
-List messages in a thread.
+**List messages.** List messages in a thread.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4538,9 +4886,11 @@ List messages in a thread.
 
 ### `post_message`
 
-Post a message to a thread as the authenticated member.
+**Post message.** Post a message to a thread as the authenticated member.
 
 **Capability:** `message:post`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: true`
 
 ```json
 {
@@ -4600,9 +4950,11 @@ Post a message to a thread as the authenticated member.
 
 ### `seed_from_message`
 
-Seed a new titled work thread from a source message (the write side of 're-ask'), linked by a seeded_from reference edge. inclusion: 'pointer' (default, edge only) or 'quote' (a first message quoting the source). The source is untouched; N seeds per source. Lineage is queryable via list_references (dst=the source, relation=seeded_from).
+**Seed from message.** Seed a new titled work thread from a source message (the write side of 're-ask'), linked by a seeded_from reference edge. inclusion: 'pointer' (default, edge only) or 'quote' (a first message quoting the source). The source is untouched; N seeds per source. Lineage is queryable via list_references (dst=the source, relation=seeded_from).
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -4639,9 +4991,11 @@ Seed a new titled work thread from a source message (the write side of 're-ask')
 
 ### `edit_message`
 
-Edit your own message (message:post). Only the author can edit a message; another member's message can be tombstoned, not rewritten.
+**Edit message.** Edit your own message (message:post). Only the author can edit a message; another member's message can be tombstoned, not rewritten.
 
 **Capability:** `message:post`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -4701,9 +5055,11 @@ Edit your own message (message:post). Only the author can edit a message; anothe
 
 ### `record_mention`
 
-Mark a member as mentioned in a message.
+**Record mention.** Mark a member as mentioned in a message.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -4727,9 +5083,11 @@ Mark a member as mentioned in a message.
 
 ### `cast_vote`
 
-Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.
+**Cast vote.** Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -4764,9 +5122,11 @@ Cast a vote on a message. kind is approve, request_changes, or ack. Any other ki
 
 ### `add_reaction`
 
-Add an emoji reaction to a message.
+**Add reaction.** Add an emoji reaction to a message.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -4789,9 +5149,11 @@ Add an emoji reaction to a message.
 
 ### `remove_reaction`
 
-Remove an emoji reaction from a message.
+**Remove reaction.** Remove an emoji reaction from a message.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4814,9 +5176,11 @@ Remove an emoji reaction from a message.
 
 ### `list_reactions`
 
-List emoji reactions on a message.
+**List reactions.** List emoji reactions on a message.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4835,9 +5199,11 @@ List emoji reactions on a message.
 
 ### `pin_message`
 
-Pin a message to a thread.
+**Pin message.** Pin a message to a thread.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -4861,9 +5227,11 @@ Pin a message to a thread.
 
 ### `unpin_message`
 
-Unpin a message from a thread.
+**Unpin message.** Unpin a message from a thread.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4887,9 +5255,11 @@ Unpin a message from a thread.
 
 ### `list_pins`
 
-List pinned messages in a thread.
+**List pins.** List pinned messages in a thread.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4908,9 +5278,11 @@ List pinned messages in a thread.
 
 ### `add_reference`
 
-Add a typed reference between two threads or messages.
+**Add reference.** Add a typed reference between two threads or messages.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4955,9 +5327,11 @@ Add a typed reference between two threads or messages.
 
 ### `list_references`
 
-List references FROM a source (forward) or TO a target (reverse — 'what references this'), optionally filtered by relation. Provide exactly one of the src_kind+src_id or dst_kind+dst_id pair.
+**List references.** List references FROM a source (forward) or TO a target (reverse — 'what references this'), optionally filtered by relation. Provide exactly one of the src_kind+src_id or dst_kind+dst_id pair.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -4995,9 +5369,11 @@ List references FROM a source (forward) or TO a target (reverse — 'what refere
 
 ### `upload_artifact`
 
-Store bytes in the artifact substrate and register metadata.
+**Upload artifact.** Store bytes in the artifact substrate and register metadata.
 
 **Capability:** `artifact:upload`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -5029,9 +5405,11 @@ Store bytes in the artifact substrate and register metadata.
 
 ### `begin_artifact_multipart`
 
-Start an S3 multipart upload for a large artifact (requires S3 backend).
+**Begin multipart artifact upload.** Start an S3 multipart upload for a large artifact (requires S3 backend).
 
 **Capability:** `artifact:upload`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -5042,9 +5420,11 @@ Start an S3 multipart upload for a large artifact (requires S3 backend).
 
 ### `upload_artifact_multipart_part`
 
-Upload one part of an in-progress multipart artifact.
+**Upload multipart artifact part.** Upload one part of an in-progress multipart artifact.
 
 **Capability:** `artifact:upload`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5075,9 +5455,11 @@ Upload one part of an in-progress multipart artifact.
 
 ### `complete_artifact_multipart`
 
-Finish multipart upload, content-address bytes, and register artifact metadata.
+**Complete multipart artifact upload.** Finish multipart upload, content-address bytes, and register artifact metadata.
 
 **Capability:** `artifact:upload`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5132,9 +5514,11 @@ Finish multipart upload, content-address bytes, and register artifact metadata.
 
 ### `abort_artifact_multipart`
 
-Abort a failed multipart upload.
+**Abort multipart artifact upload.** Abort a failed multipart upload.
 
 **Capability:** `artifact:upload`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5156,9 +5540,11 @@ Abort a failed multipart upload.
 
 ### `get_artifact_metadata`
 
-Fetch artifact metadata by sha256 hex digest.
+**Get artifact metadata.** Fetch artifact metadata by sha256 hex digest.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5178,9 +5564,11 @@ Fetch artifact metadata by sha256 hex digest.
 
 ### `search_messages`
 
-Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets.
+**Search messages.** Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets.
 
 **Capability:** `search:query`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true`
 
 ```json
 {
@@ -5257,9 +5645,11 @@ Full-text, semantic, or hybrid search over a workspace's messages. Returns ranke
 
 ### `register_slash_command`
 
-Register a workspace slash command handler (http URL or MCP tool name).
+**Register slash command.** Register a workspace slash command handler (http URL or MCP tool name).
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5297,9 +5687,11 @@ Register a workspace slash command handler (http URL or MCP tool name).
 
 ### `list_slash_commands`
 
-List registered slash commands in a workspace.
+**List slash commands.** List registered slash commands in a workspace.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5318,9 +5710,11 @@ List registered slash commands in a workspace.
 
 ### `register_fsm_hook`
 
-Register an FSM hook invoked on matching thread state transitions.
+**Register FSM hook.** Register an FSM hook invoked on matching thread state transitions.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -5372,9 +5766,11 @@ Register an FSM hook invoked on matching thread state transitions.
 
 ### `list_fsm_hooks`
 
-List registered FSM automation hooks in a workspace.
+**List FSM hooks.** List registered FSM automation hooks in a workspace.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5393,9 +5789,11 @@ List registered FSM automation hooks in a workspace.
 
 ### `get_thread_context`
 
-Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent). Pass token_budget=<n> to cap the message page by estimated tokens: the opening message and the recent tail are kept, the middle is folded into an auditable elision marker in fixed blocks. The result is two text parts: the stable prefix (workspace boot, brief, messages) and the volatile tail (state, lease, cursors, prefix sha256). Those strings are the bytes REST returns with split=true.
+**Get thread context.** Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent). Pass token_budget=<n> to cap the message page by estimated tokens: the opening message and the recent tail are kept, the middle is folded into an auditable elision marker in fixed blocks. The result is two text parts: the stable prefix (workspace boot, brief, messages) and the volatile tail (state, lease, cursors, prefix sha256). Those strings are the bytes REST returns with split=true.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5472,9 +5870,11 @@ Pack thread messages, edits, references, FSM history, and the workspace glossary
 
 ### `snapshot_thread_context`
 
-Freeze the assembled context pack (live or as_of) into the content-addressed artifact store — a tamper-evident, deduped record of exactly what the agent was handed. Same params as get_thread_context; returns the artifact (kind=context_snapshot). Requires artifact:upload. Fetch the bytes via the artifact sha.
+**Snapshot thread context.** Freeze the assembled context pack (live or as_of) into the content-addressed artifact store — a tamper-evident, deduped record of exactly what the agent was handed. Same params as get_thread_context; returns the artifact (kind=context_snapshot). Requires artifact:upload. Fetch the bytes via the artifact sha.
 
 **Capability:** `artifact:upload`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -5530,9 +5930,11 @@ Freeze the assembled context pack (live or as_of) into the content-addressed art
 
 ### `get_workspace_context`
 
-Pack workspace channels, thread contexts (bounded by thread_limit), and the workspace glossary (once at the top level).
+**Get workspace context.** Pack workspace channels, thread contexts (bounded by thread_limit), and the workspace glossary (once at the top level).
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5581,9 +5983,11 @@ Pack workspace channels, thread contexts (bounded by thread_limit), and the work
 
 ### `request_approval`
 
-Human-in-the-loop gate: open a durable approval gate and return {status: input_required, gate_id} without blocking. A human resolves it later (accept/decline/cancel) over the /ui; poll get_approval_gate for the outcome. Silence is never consent. Pass thread_id to make it a claim gate — while the gate is pending, claim_next will not hand that thread to an agent.
+**Request approval.** Human-in-the-loop gate: open a durable approval gate and return {status: input_required, gate_id} without blocking. A human resolves it later (accept/decline/cancel) over the /ui; poll get_approval_gate for the outcome. Silence is never consent. Pass thread_id to make it a claim gate — while the gate is pending, claim_next will not hand that thread to an agent.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -5611,9 +6015,11 @@ Human-in-the-loop gate: open a durable approval gate and return {status: input_r
 
 ### `get_approval_gate`
 
-Poll a durable approval gate by id. Returns the gate — state is pending until a human answers, then accepted/declined/cancelled with any content they supplied — or null if no such gate exists in your workspace.
+**Get approval gate.** Poll a durable approval gate by id. Returns the gate — state is pending until a human answers, then accepted/declined/cancelled with any content they supplied — or null if no such gate exists in your workspace.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5632,9 +6038,11 @@ Poll a durable approval gate by id. Returns the gate — state is pending until 
 
 ### `link_slack_channel`
 
-Link a Slack channel to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.
+**Link Slack channel.** Link a Slack channel to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5657,9 +6065,11 @@ Link a Slack channel to a Maidan thread so the projector bridges messages both w
 
 ### `list_slack_channel_links`
 
-List the Slack channel links in your workspace. Requires workspace:read.
+**List Slack channel links.** List the Slack channel links in your workspace. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5671,9 +6081,11 @@ List the Slack channel links in your workspace. Requires workspace:read.
 
 ### `unlink_slack_channel`
 
-Remove a Slack channel link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.
+**Unlink Slack channel.** Remove a Slack channel link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5691,9 +6103,11 @@ Remove a Slack channel link in your workspace. Returns {unlinked: bool} (false i
 
 ### `link_github_issue`
 
-Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.
+**Link GitHub issue.** Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5721,9 +6135,11 @@ Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both
 
 ### `list_github_issue_links`
 
-List the GitHub issue/PR links in your workspace. Requires workspace:read.
+**List GitHub issue links.** List the GitHub issue/PR links in your workspace. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5735,9 +6151,11 @@ List the GitHub issue/PR links in your workspace. Requires workspace:read.
 
 ### `unlink_github_issue`
 
-Remove a GitHub issue/PR link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.
+**Unlink GitHub issue.** Remove a GitHub issue/PR link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5760,9 +6178,11 @@ Remove a GitHub issue/PR link in your workspace. Returns {unlinked: bool} (false
 
 ### `tombstone_message`
 
-Withdraw a message. Same store path as DELETE /messages/{id}: message:post, plus channel:admin when the caller is not the author.
+**Tombstone message.** Withdraw a message. Same store path as DELETE /messages/{id}: message:post, plus channel:admin when the caller is not the author.
 
 **Capability:** `message:post`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5781,9 +6201,11 @@ Withdraw a message. Same store path as DELETE /messages/{id}: message:post, plus
 
 ### `open_group_dm`
 
-Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires workspace:read. This writes a conversation.
+**Open group DM.** Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires workspace:read. This writes a conversation.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -5813,9 +6235,11 @@ Open a group DM among at least three workspace members. Same store path as POST 
 
 ### `list_group_dms`
 
-List group DMs for one member. member_id must be the caller. Requires workspace:read.
+**List group DMs.** List group DMs for one member. member_id must be the caller. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5839,9 +6263,11 @@ List group DMs for one member. member_id must be the caller. Requires workspace:
 
 ### `get_group_dm`
 
-Fetch one group DM the caller participates in. Requires workspace:read.
+**Get group DM.** Fetch one group DM the caller participates in. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5860,9 +6286,11 @@ Fetch one group DM the caller participates in. Requires workspace:read.
 
 ### `post_group_dm_message`
 
-Post a message into a group DM the caller participates in. Same store path as POST /group-dms/{id}/messages. Requires message:post.
+**Post group DM message.** Post a message into a group DM the caller participates in. Same store path as POST /group-dms/{id}/messages. Requires message:post.
 
 **Capability:** `message:post`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -5888,9 +6316,11 @@ Post a message into a group DM the caller participates in. Same store path as PO
 
 ### `remove_thread_dependency`
 
-Remove one dependency edge: thread_id no longer depends on depends_on_thread_id. Requires thread:transition.
+**Remove thread dependency.** Remove one dependency edge: thread_id no longer depends on depends_on_thread_id. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5914,9 +6344,11 @@ Remove one dependency edge: thread_id no longer depends on depends_on_thread_id.
 
 ### `list_thread_dependents`
 
-List threads that depend on this thread. Requires workspace:read.
+**List thread dependents.** List threads that depend on this thread. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5935,9 +6367,11 @@ List threads that depend on this thread. Requires workspace:read.
 
 ### `clear_thread_lineage`
 
-Clear the run-lineage row for a thread. NotFound when no row exists. Requires thread:transition.
+**Clear thread lineage.** Clear the run-lineage row for a thread. NotFound when no row exists. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5956,9 +6390,11 @@ Clear the run-lineage row for a thread. NotFound when no row exists. Requires th
 
 ### `remove_member_skill`
 
-Remove a skill from a member. Governance skills follow the REST self-versus-admin split; routing tags are self-only. Requires workspace:write.
+**Remove member skill.** Remove a skill from a member. Governance skills follow the REST self-versus-admin split; routing tags are self-only. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -5981,9 +6417,11 @@ Remove a skill from a member. Governance skills follow the REST self-versus-admi
 
 ### `remove_thread_required_skill`
 
-Remove a required skill from a thread. Requires thread:transition.
+**Remove thread required skill.** Remove a required skill from a thread. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6006,9 +6444,11 @@ Remove a required skill from a thread. Requires thread:transition.
 
 ### `delete_memory_block`
 
-Delete a memory block by id. A block in another workspace is NotFound. Requires workspace:write.
+**Delete memory block.** Delete a memory block by id. A block in another workspace is NotFound. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6027,9 +6467,11 @@ Delete a memory block by id. A block in another workspace is NotFound. Requires 
 
 ### `delete_glossary_term`
 
-Delete a glossary term in the caller workspace. Requires workspace:write.
+**Delete glossary term.** Delete a glossary term in the caller workspace. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6047,9 +6489,11 @@ Delete a glossary term in the caller workspace. Requires workspace:write.
 
 ### `delete_recipe`
 
-Delete a recipe. Requires workspace:write.
+**Delete recipe.** Delete a recipe. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6068,9 +6512,11 @@ Delete a recipe. Requires workspace:write.
 
 ### `set_task_schedule_active`
 
-Pause or resume a task schedule. Same store path as PUT /task-schedules/{id}. Requires workspace:write.
+**Set task schedule active.** Pause or resume a task schedule. Same store path as PUT /task-schedules/{id}. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6093,9 +6539,11 @@ Pause or resume a task schedule. Same store path as PUT /task-schedules/{id}. Re
 
 ### `delete_task_schedule`
 
-Delete a task schedule. Requires workspace:write.
+**Delete task schedule.** Delete a task schedule. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6114,9 +6562,11 @@ Delete a task schedule. Requires workspace:write.
 
 ### `revoke_slash_command`
 
-Revoke a slash command. Requires workspace:write.
+**Revoke slash command.** Revoke a slash command. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6140,9 +6590,11 @@ Revoke a slash command. Requires workspace:write.
 
 ### `revoke_fsm_hook`
 
-Revoke an FSM hook. Requires workspace:write.
+**Revoke FSM hook.** Revoke an FSM hook. Requires workspace:write.
 
 **Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6166,9 +6618,11 @@ Revoke an FSM hook. Requires workspace:write.
 
 ### `clear_review_requirement`
 
-Clear a thread review requirement. Requires channel:admin.
+**Clear review requirement.** Clear a thread review requirement. Requires channel:admin.
 
 **Capability:** `channel:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6187,9 +6641,11 @@ Clear a thread review requirement. Requires channel:admin.
 
 ### `get_review_requirement`
 
-Read the review requirement on a thread. NotFound when unset. Requires workspace:read.
+**Get review requirement.** Read the review requirement on a thread. NotFound when unset. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6208,9 +6664,11 @@ Read the review requirement on a thread. NotFound when unset. Requires workspace
 
 ### `list_reviewers`
 
-List reviewers on a thread. Requires workspace:read.
+**List reviewers.** List reviewers on a thread. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6229,9 +6687,11 @@ List reviewers on a thread. Requires workspace:read.
 
 ### `remove_reviewer`
 
-Remove a reviewer from a thread. Requires channel:admin.
+**Remove reviewer.** Remove a reviewer from a thread. Requires channel:admin.
 
 **Capability:** `channel:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6255,9 +6715,11 @@ Remove a reviewer from a thread. Requires channel:admin.
 
 ### `list_votes`
 
-List votes on a message. Requires workspace:read.
+**List votes.** List votes on a message. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6276,9 +6738,11 @@ List votes on a message. Requires workspace:read.
 
 ### `list_message_edits`
 
-List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.
+**List message edits.** List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6303,9 +6767,11 @@ List the edit history of a message. A tombstoned message returns an empty list u
 
 ### `mark_all_notifications_read`
 
-Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires workspace:read.
+**Mark all notifications read.** Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6324,9 +6790,11 @@ Mark every notification for this member read. Same store path as POST /members/{
 
 ### `advise_land_gate`
 
-Ask the configured advisor for a land-gate recommendation. Read-only: it does not write the gate or the requirement. NotFound when no advisor is configured. Requires thread:transition.
+**Advise land gate.** Ask the configured advisor for a land-gate recommendation. Read-only: it does not write the gate or the requirement. NotFound when no advisor is configured. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true`
 
 ```json
 {
@@ -6355,9 +6823,11 @@ Ask the configured advisor for a land-gate recommendation. Read-only: it does no
 
 ### `create_secret`
 
-Store a named secret in the caller workspace. Returns metadata only; the plaintext is not echoed. Requires secret:admin.
+**Create secret.** Store a named secret in the caller workspace. Returns metadata only; the plaintext is not echoed. Requires secret:admin.
 
 **Capability:** `secret:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6379,9 +6849,11 @@ Store a named secret in the caller workspace. Returns metadata only; the plainte
 
 ### `delete_secret`
 
-Delete a named secret in the caller workspace. Requires secret:admin.
+**Delete secret.** Delete a named secret in the caller workspace. Requires secret:admin.
 
 **Capability:** `secret:admin`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6399,9 +6871,11 @@ Delete a named secret in the caller workspace. Requires secret:admin.
 
 ### `get_artifact`
 
-Return artifact metadata and content_base64 bytes for a sha256 the caller workspace can access. A missing access ref is NotFound. Requires workspace:read.
+**Get artifact.** Return artifact metadata and content_base64 bytes for a sha256 the caller workspace can access. A missing access ref is NotFound. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6421,9 +6895,11 @@ Return artifact metadata and content_base64 bytes for a sha256 the caller worksp
 
 ### `list_members`
 
-List members of a workspace. Same store path as GET /workspaces/{wid}/members. Requires workspace:read.
+**List members.** List members of a workspace. Same store path as GET /workspaces/{wid}/members. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {
@@ -6442,9 +6918,11 @@ List members of a workspace. Same store path as GET /workspaces/{wid}/members. R
 
 ### `get_member`
 
-Fetch one member in the caller workspace. Another workspace is NotFound, same as an unknown id. Requires workspace:read.
+**Get member.** Fetch one member in the caller workspace. Another workspace is NotFound, same as an unknown id. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {

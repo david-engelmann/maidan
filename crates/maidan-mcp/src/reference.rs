@@ -63,7 +63,17 @@ pub fn markdown() -> String {
          creates a thread each time its schedule fires.\n\n",
     );
 
-    out.push_str("## Tools\n\n");
+    out.push_str(
+        "## Tools\n\n\
+         Every tool's `annotations` carry a `title` and the four hints of the MCP tool spec. \
+         `readOnlyHint` is true only for a tool that writes nothing, not even an audit row. \
+         `destructiveHint` is true for one that deletes, revokes, or replaces a stored value. \
+         `idempotentHint` is true when repeating the same call changes nothing further, and \
+         `openWorldHint` when the tool reaches outside Maidan (an HTTP receiver, Slack, GitHub, \
+         an embedding provider). The reason for each value is reviewed in \
+         `crates/maidan-mcp/tests/fixtures/tool-annotations.json`, and \
+         `tool_annotations_contract` fails when a tool's hints and that table disagree.\n\n",
+    );
     for tool in tools::catalog() {
         out.push_str(&render_tool(&tool));
         out.push('\n');
@@ -91,8 +101,32 @@ fn render_tool(tool: &Value) -> String {
         .map(|c| format!("`{c}`"))
         .unwrap_or_else(|_| "—".to_string());
     let schema = tool.get("inputSchema").map(pretty_json).unwrap_or_default();
+    let annotations = tool.get("annotations").cloned().unwrap_or(Value::Null);
+    let title = field_str(&annotations, "title");
+    let hints = render_hints(&annotations);
 
-    format!("### `{name}`\n\n{description}\n\n**Capability:** {cap}\n\n```json\n{schema}\n```\n")
+    format!(
+        "### `{name}`\n\n**{title}.** {description}\n\n**Capability:** {cap}\n\n\
+         **Hints:** {hints}\n\n```json\n{schema}\n```\n"
+    )
+}
+
+fn render_hints(annotations: &Value) -> String {
+    [
+        "readOnlyHint",
+        "destructiveHint",
+        "idempotentHint",
+        "openWorldHint",
+    ]
+    .iter()
+    .map(
+        |hint| match annotations.get(*hint).and_then(Value::as_bool) {
+            Some(value) => format!("`{hint}: {value}`"),
+            None => format!("`{hint}: unset`"),
+        },
+    )
+    .collect::<Vec<_>>()
+    .join(", ")
 }
 
 fn render_resource(resource: &Value) -> String {
