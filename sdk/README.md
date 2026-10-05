@@ -40,6 +40,12 @@ responses that follow the server's OpenAPI schemas, and an error type per RFC
 (`scripts/sdk-test.sh <lang>`) fails when a live response carries a member its
 model does not declare.
 
+`usage-fixtures/` holds provider responses recorded from each provider's
+reference (source URL in each file) with the ledger tokens they must give. All
+four SDKs' usage normalizers and the server's ledger
+(`crates/maidan-types/tests/sdk_usage_fixtures.rs`) read the same files, so
+changing a reader means changing a fixture every suite sees.
+
 Clients capture `Maidan-Room-LSN` as `last_room_lsn` (Cluster 390). Since
 Cluster 398.8 that value is **the caller's workspace head**, not the
 instance's, so it is comparable to a `log_id` the client has actually seen.
@@ -47,3 +53,7 @@ instance's, so it is comparable to a `log_id` the client has actually seen.
 **Publishing 0.3.0.** Push `sdk-ts-v0.3.0`, `sdk-py-v0.3.0`, `sdk-rs-v0.3.0`
 and `sdk-go-v0.3.0` at the commit the server release is cut from. Each job
 refuses a tag that differs from its package's version.
+
+`cache-fixtures/cases.json` holds the inputs and outputs of the cache helpers
+(boot prefix hash, breakpoints, cache keys, gateway sessions). All four SDK
+suites read it, so the helpers give the same request parts in every language.

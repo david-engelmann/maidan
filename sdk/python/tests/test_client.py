@@ -1,5 +1,6 @@
 """Black-box tests against the authenticated server from ``scripts/sdk-test.sh``."""
 
+import hashlib
 import json
 import os
 import threading
@@ -71,6 +72,16 @@ def test_hero_loop_post_list_context():
     ctx = c.threads.context(thread.id)
     assert ctx.thread_id == thread.id
     assert ctx.thread.created_at
+
+
+def test_channels_boot_returns_the_served_boot_bytes_and_their_sha256():
+    c, _ws, _member, channel, _thread = _seed()
+    boot = c.channels.boot(channel.id)
+    parsed = json.loads(boot.text)
+    assert parsed["workspace_id"] == WORKSPACE
+    assert parsed["channel_id"] == channel.id
+    assert boot.text.startswith('{"workspace_id":'), "the bytes are the server's, not re-serialized"
+    assert boot.sha256 == hashlib.sha256(boot.text.encode("utf-8")).hexdigest()
 
 
 def test_get_result_unset_is_404():

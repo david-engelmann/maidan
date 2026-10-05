@@ -1,0 +1,41 @@
+{
+  "name": "deepseek-cache-hit",
+  "provider": "deepseek",
+  "source": "https://api-docs.deepseek.com/api/create-chat-completion",
+  "also": [
+    "https://api-docs.deepseek.com/guides/kv_cache"
+  ],
+  "recorded": "shape",
+  "note": "The reference example above with a cache hit; the numbers are chosen and keep prompt_tokens = hit + miss.",
+  "response": {
+    "model": "deepseek-flash",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 120,
+      "prompt_tokens": 1216,
+      "total_tokens": 1336,
+      "prompt_tokens_details": {
+        "cached_tokens": 1152
+      },
+      "prompt_cache_hit_tokens": 1152,
+      "prompt_cache_miss_tokens": 64,
+      "completion_tokens_details": {
+        "reasoning_tokens": 80
+      }
+    }
+  },
+  "expected": {
+    "model": "deepseek-flash",
+    "tokens": {
+      "input": 64,
+      "output": 120,
+      "cache_read": 1152,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "deepseek"
+    }
+  },
+  "retrieved": "2026-10-04"
+}

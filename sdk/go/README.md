@@ -75,10 +75,12 @@ func main() {
   `Subscribe` stay `maidan.Event` maps, since their shape follows `kind`.
 - `Threads.Transition(id, action)` takes the action string; `ClaimNextThread(cid, opts)`
   takes `*ClaimOptions` (`LeaseSecs`).
+- Usage (0.3.0): `NormalizeUsage(provider, body, UsageOptions{Model, Provider})` turns an Anthropic, Bedrock Converse, OpenAI Responses or Chat Completions, Gemini, DeepSeek, Mistral, xAI or vLLM response body into a `NormalizedUsage` (the `model`, `tokens` and `evidence` of a `report_usage` body), and `USDMicros(tokens, price)` is the charge the server checks. A body it cannot read returns a `*UsageError`. `input` comes out uncached and cache writes split into 5-minute and 1-hour tiers, as the ledger counts them. See "Normalizing provider usage" in the repo's `docs/Integration.md`.
 - Surface (frozen v1): `Workspaces.{Create,Get,Import}`, `Channels.{List,Create}`,
   `Threads.{Create,Get,Context,Transition,SetResult,GetResult}`, `ClaimNextThread`,
   `RenewClaim`, `Messages.{List,Post}`, `Artifacts.{Upload,Get,Meta}`, `Subscribe`,
   `Workspaces.ListEvents`, `FollowLog` (HTTP backfill then WS), and the `WaitFor*`
   helpers. See the repo's `docs/Client Contract.md`.
+- Caching (0.3.0): `c.Channels.Boot(cid)` returns the channel's boot prefix as served, with its SHA256 (for `evidence.pack_sha256`). `CachedPrefix(provider, text, ttl)` places it with a cache breakpoint, `CacheKey(workspaceID, group)` and `CacheKeyFields(provider, key)` give one cache key per shared-prefix group, never shared across workspaces, and `GatewaySession(gateway, threadID, path, name)` passes the thread id as an OpenRouter, Helicone, LiteLLM or TensorZero session id. See the repo's `docs/Harness Caching.md` for where each harness puts Maidan's bytes.
 
 Versioned independently of the server. `0.1.0` is the first usable release.

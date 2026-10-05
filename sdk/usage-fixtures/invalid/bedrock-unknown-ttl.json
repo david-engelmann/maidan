@@ -1,0 +1,23 @@
+{
+  "name": "bedrock-unknown-ttl",
+  "provider": "bedrock-converse",
+  "note": "cacheDetails ttl is 5m or 1h in the API reference; anything else is refused rather than priced on a guessed tier.",
+  "options": {
+    "model": "anthropic.claude-sonnet-5-5"
+  },
+  "response": {
+    "usage": {
+      "inputTokens": 1,
+      "outputTokens": 1,
+      "totalTokens": 102,
+      "cacheWriteInputTokens": 100,
+      "cacheDetails": [
+        {
+          "ttl": "24h",
+          "inputTokens": 100
+        }
+      ]
+    }
+  },
+  "expected_error": "cacheDetails ttl must be 5m or 1h"
+}

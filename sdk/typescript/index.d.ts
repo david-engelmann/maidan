@@ -434,6 +434,71 @@ export interface EventFrame {
   [key: string]: unknown;
 }
 
+/** The channel's boot prefix, byte for byte as served, and its sha256 (hex). */
+export interface BootPrefix {
+  text: string;
+  sha256: string;
+}
+
+/** Where a value goes in a provider or gateway request. */
+export interface RequestFields {
+  body?: Record<string, unknown>;
+  headers?: Record<string, string>;
+}
+
+/** A cache or gateway helper given an input it cannot place. */
+export class CacheError extends Error {}
+
+/** Hash the served boot bytes; `client.channels.boot(cid)` calls this. */
+export function bootPrefix(bytes: Uint8Array | string): Promise<BootPrefix>;
+
+/**
+ * Place the boot prefix as the first, cached part of a request: a breakpoint
+ * for Anthropic, Bedrock Converse (both take `ttl`) and OpenAI Responses, and
+ * first position for the providers that cache a matching prefix on their own.
+ */
+export function cachedPrefix(
+  provider:
+    | "anthropic"
+    | "bedrock-converse"
+    | "openai-responses"
+    | "openai-chat"
+    | "gemini"
+    | "deepseek"
+    | "mistral"
+    | "xai"
+    | "vllm",
+  text: string,
+  options?: { ttl?: "5m" | "1h" },
+): unknown;
+
+/** One key per shared-prefix group, never the same in two workspaces. */
+export function cacheKey(workspaceId: WorkspaceId, group: string): Promise<string>;
+
+/** Where the key goes; `{}` for a provider that takes none. */
+export function cacheKeyFields(
+  provider:
+    | "openai-responses"
+    | "openai-chat"
+    | "mistral"
+    | "xai-responses"
+    | "xai-chat"
+    | "deepseek"
+    | "deepseek-anthropic"
+    | "vllm"
+    | "anthropic"
+    | "bedrock-converse"
+    | "gemini",
+  key: string,
+): RequestFields;
+
+/** The thread id as the gateway's session id, so gateway spend joins the thread. */
+export function gatewaySession(
+  gateway: "openrouter" | "helicone" | "litellm" | "tensorzero" | "tensorzero-native",
+  threadId: ThreadId,
+  options?: { path?: string; name?: string },
+): RequestFields;
+
 export declare class Client {
   baseUrl: string;
   token: string;
@@ -471,6 +536,8 @@ export declare class Client {
   };
 
   channels: {
+    /** The channel's boot prefix, byte for byte as served, with its sha256. */
+    boot(cid: ChannelId): Promise<BootPrefix>;
     list(wid: WorkspaceId): Promise<Channel[]>;
     create(wid: WorkspaceId, name: string, priv?: boolean): Promise<Channel>;
   };
@@ -525,5 +592,67 @@ export declare class Client {
   waitForMention(memberId: MemberId, workspaceId: WorkspaceId, timeoutMs?: number): Promise<EventFrame | null>;
   waitForReady(workspaceId: WorkspaceId, channelId?: ChannelId, timeoutMs?: number): Promise<EventFrame | null>;
 }
+
+/** The ledger's token tiers. `input` is uncached input on every provider. */
+export interface TokenUsage {
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write_5m: number;
+  cache_write_1h: number;
+}
+
+/** Micro-USD per million tokens, one rate per tier, snapshotted per report. */
+export interface PriceSnapshot {
+  input_usd_micros_per_million: number;
+  output_usd_micros_per_million: number;
+  cache_read_usd_micros_per_million: number;
+  cache_write_5m_usd_micros_per_million: number;
+  cache_write_1h_usd_micros_per_million: number;
+}
+
+/** What a normalizer can tell from the response; the rest is the caller's. */
+export interface UsageEvidence {
+  provider: string;
+  service_tier?: string;
+  cache_miss_reason?: string;
+}
+
+/** The economic part of a `report_usage` body. */
+export interface NormalizedUsage {
+  model: string;
+  tokens: TokenUsage;
+  evidence: UsageEvidence;
+}
+
+export type UsageProvider =
+  | "anthropic"
+  | "bedrock-converse"
+  | "openai-responses"
+  | "openai-chat"
+  | "gemini"
+  | "deepseek"
+  | "mistral"
+  | "xai"
+  | "vllm";
+
+/** A usage object that cannot be read into the ledger's shape. */
+export class UsageError extends Error {}
+
+export const USAGE_PROVIDERS: readonly UsageProvider[];
+
+/**
+ * Turn one provider response into the ledger's tokens. `model` names the model
+ * when the response does not (Bedrock Converse); `provider` overrides the
+ * evidence provider name.
+ */
+export function normalizeUsage(
+  provider: UsageProvider,
+  response: Record<string, unknown>,
+  options?: { model?: string; provider?: string },
+): NormalizedUsage;
+
+/** `ceil(sum(tokens x rate) / 1_000_000)`, as the ledger checks it. */
+export function usdMicros(tokens: TokenUsage, priceSnapshot: PriceSnapshot): number;
 
 export default Client;

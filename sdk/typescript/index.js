@@ -3,6 +3,17 @@
 // browser / Node 22+, or inject one via `options.WebSocket`). See docs/Client
 // Contract.md for the frozen surface.
 
+import { bootPrefix } from "./cache.js";
+
+export {
+  CacheError,
+  bootPrefix,
+  cacheKey,
+  cacheKeyFields,
+  cachedPrefix,
+  gatewaySession,
+} from "./cache.js";
+
 /** The URI prefix of every problem `type` the server emits (RFC 9457). */
 export const PROBLEM_BASE = "https://maidan.dev/problems/";
 
@@ -223,6 +234,8 @@ export class Client {
       list: (wid) => this._req("GET", `/workspaces/${wid}/channels`),
       create: (wid, name, priv = false) =>
         this._req("POST", `/workspaces/${wid}/channels`, { name, private: priv }),
+      /** The channel's boot prefix, byte for byte as served, with its sha256. */
+      boot: async (cid) => bootPrefix(await this._reqRaw("GET", `/channels/${cid}/boot`)),
     };
     this.threads = {
       list: (cid, query) => this._req("GET", `/channels/${cid}/threads${qs(query)}`),
@@ -502,5 +515,7 @@ function qs(query) {
   const s = new URLSearchParams(query).toString();
   return s ? `?${s}` : "";
 }
+
+export { UsageError, USAGE_PROVIDERS, normalizeUsage, usdMicros } from "./usage.js";
 
 export default Client;

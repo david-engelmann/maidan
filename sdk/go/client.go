@@ -424,6 +424,16 @@ func (s *ChannelsService) Create(workspaceID, name string, private bool) (*Chann
 	return call[Channel](s.c, http.MethodPost, "/workspaces/"+workspaceID+"/channels", M{"name": name, "private": private})
 }
 
+// Boot is the channel's boot prefix, byte for byte as served, with its sha256.
+func (s *ChannelsService) Boot(channelID string) (*BootPrefix, error) {
+	b, _, err := s.c.doRaw(http.MethodGet, "/channels/"+channelID+"/boot", nil)
+	if err != nil {
+		return nil, err
+	}
+	prefix := NewBootPrefix(b)
+	return &prefix, nil
+}
+
 // --- Threads ---
 
 type ThreadsService struct{ c *Client }

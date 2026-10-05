@@ -3,6 +3,8 @@ package maidan
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -410,4 +412,30 @@ func TestTheServersProblemTypesArriveAsTheirErrorTypes(t *testing.T) {
 	check("second workspace", err, &fb, 403, "forbidden")
 	_, err = c.Workspaces.Import(bundle, ImportRestore)
 	check("restore over itself", err, &cfl, 409, "conflict")
+}
+
+func TestChannelsBootReturnsTheServedBootBytesAndTheirSHA256(t *testing.T) {
+	c := testClient(t)
+	wid, _, channel, _ := seed(t, c)
+	boot, err := c.Channels.Boot(channel.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		WorkspaceID string `json:"workspace_id"`
+		ChannelID   string `json:"channel_id"`
+	}
+	if err := json.Unmarshal([]byte(boot.Text), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.WorkspaceID != wid || parsed.ChannelID != channel.ID {
+		t.Fatalf("boot names %+v", parsed)
+	}
+	if !bytes.HasPrefix([]byte(boot.Text), []byte(`{"workspace_id":`)) {
+		t.Fatal("the bytes are the server's, not re-serialized")
+	}
+	sum := sha256.Sum256([]byte(boot.Text))
+	if want := hex.EncodeToString(sum[:]); boot.SHA256 != want {
+		t.Fatalf("sha256 %q, want %q", boot.SHA256, want)
+	}
 }

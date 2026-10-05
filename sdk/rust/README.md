@@ -72,11 +72,13 @@ fn main() -> Result<(), MaidanError> {
   `serde_json::Value`, and so do event frames from `subscribe`, whose shape follows `kind`.
 - `threads().transition(id, action)` takes the action string; `claim_next_thread(cid,
   lease_secs)` takes an optional lease length.
+- Usage (0.3.0): `normalize_usage(provider, &response, &UsageOptions { model, provider })` turns an Anthropic, Bedrock Converse, OpenAI Responses or Chat Completions, Gemini, DeepSeek, Mistral, xAI or vLLM response into a `NormalizedUsage` (the `model`, `tokens` and `evidence` of a `report_usage` body), and `usd_micros(&tokens, &price)` is the charge the server checks. A response it cannot read is a `UsageError`. `input` comes out uncached and cache writes split into 5-minute and 1-hour tiers, as the ledger counts them. See "Normalizing provider usage" in the repo's `docs/Integration.md`.
 - Surface (frozen v1): `workspaces().{create,get,import}`, `channels().{list,create}`,
   `threads().{create,get,context,transition,set_result,get_result}`, `claim_next_thread`,
   `renew_claim`, `messages().{list,post}`, `artifacts().{upload,get,meta}`, `subscribe`,
   `list_events`, `follow` (HTTP backfill then WS), and the `wait_for_*` helpers. See the
   repo's `docs/Client Contract.md`.
+- Caching (0.3.0): `client.channels().boot(cid)` returns the channel's boot prefix as served, with its sha256 (for `evidence.pack_sha256`). `cached_prefix(provider, text, ttl)` places it with a cache breakpoint, `cache_key(workspace_id, group)` and `cache_key_fields(provider, key)` give one cache key per shared-prefix group, never shared across workspaces, and `gateway_session(gateway, thread_id, path, name)` passes the thread id as an OpenRouter, Helicone, LiteLLM or TensorZero session id. The hash takes `sha2`, the crate's one new dependency. See the repo's `docs/Harness Caching.md` for where each harness puts Maidan's bytes.
 
 Rust's standard library has no HTTP or TLS client, so this crate takes a small synchronous
 stack (`ureq` over rustls for REST, `tungstenite` for the WebSocket) — the one place the four

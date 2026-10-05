@@ -1,0 +1,37 @@
+{
+  "name": "vllm-chat",
+  "provider": "vllm",
+  "source": "https://github.com/vllm-project/vllm/blob/138810056093301f4881050fcf2b1786939da387/vllm/entrypoints/serve/engine/protocol.py",
+  "also": [
+    "https://github.com/vllm-project/vllm/blob/138810056093301f4881050fcf2b1786939da387/vllm/entrypoints/openai/chat_completion/serving.py"
+  ],
+  "recorded": "shape",
+  "note": "vLLM's docs show no usage object, so the fields are its UsageInfo and PromptTokenUsageInfo models and the numbers are chosen. prompt_tokens_details is present only when the server runs with --enable-prompt-tokens-details. created_cache_tokens are newly cached tokens inside prompt_tokens; a self-hosted engine charges no write premium, so they stay uncached input.",
+  "response": {
+    "object": "chat.completion",
+    "model": "Qwen/Qwen3-8B",
+    "usage": {
+      "prompt_tokens": 4200,
+      "total_tokens": 4450,
+      "completion_tokens": 250,
+      "prompt_tokens_details": {
+        "cached_tokens": 4096,
+        "created_cache_tokens": 96
+      }
+    }
+  },
+  "expected": {
+    "model": "Qwen/Qwen3-8B",
+    "tokens": {
+      "input": 104,
+      "output": 250,
+      "cache_read": 4096,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "vllm"
+    }
+  },
+  "retrieved": "2026-10-04"
+}

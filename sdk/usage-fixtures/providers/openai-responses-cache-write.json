@@ -1,0 +1,47 @@
+{
+  "name": "openai-responses-cache-write",
+  "provider": "openai-responses",
+  "source": "https://developers.openai.com/api/docs/guides/prompt-caching",
+  "recorded": "shape",
+  "note": "The reference example above with cached_tokens and cache_write_tokens made non-zero. The guide's own cost function computes ordinary input as input_tokens - cached_tokens - cache_write_tokens. A GPT-5.6+ write has a 30-minute TTL; the ledger records an unsplit write on the 5-minute tier.",
+  "response": {
+    "object": "response",
+    "model": "gpt-6-astra",
+    "service_tier": "default",
+    "usage": {
+      "input_tokens": 8438,
+      "input_tokens_details": {
+        "cached_tokens": 6144,
+        "cache_write_tokens": 1024
+      },
+      "output_tokens": 398,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 8836
+    }
+  },
+  "price_snapshot": {
+    "input_usd_micros_per_million": 10000000,
+    "output_usd_micros_per_million": 50000000,
+    "cache_read_usd_micros_per_million": 1000000,
+    "cache_write_5m_usd_micros_per_million": 12500000,
+    "cache_write_1h_usd_micros_per_million": 0
+  },
+  "expected": {
+    "model": "gpt-6-astra",
+    "tokens": {
+      "input": 1270,
+      "output": 398,
+      "cache_read": 6144,
+      "cache_write_5m": 1024,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "openai",
+      "service_tier": "default"
+    },
+    "usd_micros": 51544
+  },
+  "retrieved": "2026-10-04"
+}

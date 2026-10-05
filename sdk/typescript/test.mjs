@@ -100,6 +100,18 @@ test("hero loop: post, list, context", async () => {
   assert.equal(typeof ctx, "object");
 });
 
+test("channels.boot returns the served boot bytes and their sha256", async () => {
+  const { channel } = await seed();
+  const boot = await client.channels.boot(channel.id);
+  const parsed = JSON.parse(boot.text);
+  assert.equal(parsed.workspace_id, WORKSPACE);
+  assert.equal(parsed.channel_id, channel.id);
+  assert.ok(boot.text.startsWith('{"workspace_id":'), "the bytes are the server's, not re-serialized");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(boot.text));
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  assert.equal(boot.sha256, hex);
+});
+
 test("getResult on an unset thread is a 404 MaidanError", async () => {
   // Exercise the result route and client error path before a result exists.
   const { thread } = await seed();

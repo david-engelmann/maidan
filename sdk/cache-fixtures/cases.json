@@ -1,0 +1,303 @@
+{
+  "note": "Inputs and outputs every SDK's cache helpers must agree on. Ids are UUIDv7 shapes made up for the tests. sha256 values are of the UTF-8 text.",
+  "boot": {
+    "text": "{\"workspace_id\":\"0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b41\",\"channel_id\":\"0199a3c2-8000-7a00-8a00-00000000c0de\"}",
+    "sha256": "2503ddcae3882c69209e86c4ca1449168996d76694e494c605a9e22af2ba4990"
+  },
+  "cached_prefix": [
+    {
+      "provider": "anthropic",
+      "text": "P",
+      "expected": {
+        "type": "text",
+        "text": "P",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    },
+    {
+      "provider": "anthropic",
+      "text": "P",
+      "ttl": "1h",
+      "expected": {
+        "type": "text",
+        "text": "P",
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      }
+    },
+    {
+      "provider": "bedrock-converse",
+      "text": "P",
+      "expected": [
+        {
+          "text": "P"
+        },
+        {
+          "cachePoint": {
+            "type": "default"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "bedrock-converse",
+      "text": "P",
+      "ttl": "1h",
+      "expected": [
+        {
+          "text": "P"
+        },
+        {
+          "cachePoint": {
+            "type": "default",
+            "ttl": "1h"
+          }
+        }
+      ]
+    },
+    {
+      "provider": "openai-responses",
+      "text": "P",
+      "expected": {
+        "type": "message",
+        "role": "developer",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "P",
+            "prompt_cache_breakpoint": {
+              "mode": "explicit"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "provider": "gemini",
+      "text": "P",
+      "expected": {
+        "parts": [
+          {
+            "text": "P"
+          }
+        ]
+      }
+    },
+    {
+      "provider": "openai-chat",
+      "text": "P",
+      "expected": {
+        "role": "system",
+        "content": "P"
+      }
+    },
+    {
+      "provider": "deepseek",
+      "text": "P",
+      "expected": {
+        "role": "system",
+        "content": "P"
+      }
+    },
+    {
+      "provider": "mistral",
+      "text": "P",
+      "expected": {
+        "role": "system",
+        "content": "P"
+      }
+    },
+    {
+      "provider": "xai",
+      "text": "P",
+      "expected": {
+        "role": "system",
+        "content": "P"
+      }
+    },
+    {
+      "provider": "vllm",
+      "text": "P",
+      "expected": {
+        "role": "system",
+        "content": "P"
+      }
+    },
+    {
+      "provider": "openai-chat",
+      "text": "P",
+      "ttl": "1h",
+      "expected_error": "takes no cache ttl"
+    },
+    {
+      "provider": "anthropic",
+      "text": "P",
+      "ttl": "24h",
+      "expected_error": "ttl must be 5m or 1h"
+    },
+    {
+      "provider": "nope",
+      "text": "P",
+      "expected_error": "unknown provider"
+    }
+  ],
+  "cache_key": [
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b41",
+      "group": "0199a3c2-8000-7a00-8a00-00000000c0de",
+      "expected": "maidan-68085d93c03aeaaa022d51e9fac7bcec"
+    },
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b42",
+      "group": "0199a3c2-8000-7a00-8a00-00000000c0de",
+      "expected": "maidan-ff28a0cc08b7c48a47302e9cba1ecf62"
+    }
+  ],
+  "cache_key_fields": [
+    {
+      "provider": "openai-responses",
+      "expected": {
+        "body": {
+          "prompt_cache_key": "K"
+        }
+      }
+    },
+    {
+      "provider": "openai-chat",
+      "expected": {
+        "body": {
+          "prompt_cache_key": "K"
+        }
+      }
+    },
+    {
+      "provider": "mistral",
+      "expected": {
+        "body": {
+          "prompt_cache_key": "K"
+        }
+      }
+    },
+    {
+      "provider": "xai-responses",
+      "expected": {
+        "body": {
+          "prompt_cache_key": "K"
+        }
+      }
+    },
+    {
+      "provider": "xai-chat",
+      "expected": {
+        "headers": {
+          "x-grok-conv-id": "K"
+        }
+      }
+    },
+    {
+      "provider": "deepseek",
+      "expected": {
+        "body": {
+          "user_id": "K"
+        }
+      }
+    },
+    {
+      "provider": "deepseek-anthropic",
+      "expected": {
+        "body": {
+          "metadata": {
+            "user_id": "K"
+          }
+        }
+      }
+    },
+    {
+      "provider": "vllm",
+      "expected": {
+        "body": {
+          "cache_salt": "K"
+        }
+      }
+    },
+    {
+      "provider": "anthropic",
+      "expected": {}
+    },
+    {
+      "provider": "bedrock-converse",
+      "expected": {}
+    },
+    {
+      "provider": "gemini",
+      "expected": {}
+    },
+    {
+      "provider": "nope",
+      "expected_error": "unknown provider"
+    }
+  ],
+  "gateway_session": [
+    {
+      "gateway": "openrouter",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "body": {
+          "session_id": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "gateway": "helicone",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "headers": {
+          "Helicone-Session-Id": "0199a3c3-0000-7000-8000-0000000000a1",
+          "Helicone-Session-Path": "/",
+          "Helicone-Session-Name": "maidan"
+        }
+      }
+    },
+    {
+      "gateway": "litellm",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "body": {
+          "litellm_session_id": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "gateway": "tensorzero",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "body": {
+          "tensorzero::episode_id": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "gateway": "tensorzero-native",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "body": {
+          "episode_id": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "gateway": "tensorzero",
+      "thread_id": "6f1c2d3e-4b5a-4c6d-8e7f-001122334455",
+      "expected_error": "UUIDv7"
+    },
+    {
+      "gateway": "nope",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected_error": "unknown gateway"
+    }
+  ]
+}

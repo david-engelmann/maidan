@@ -1,0 +1,34 @@
+{
+  "name": "gemini",
+  "provider": "gemini",
+  "source": "https://ai.google.dev/api/generate-content",
+  "also": [
+    "https://ai.google.dev/gemini-api/docs/pricing"
+  ],
+  "recorded": "shape",
+  "note": "The reference lists the UsageMetadata fields but shows no response with them filled, so the numbers are chosen. promptTokenCount includes the cached content; totalTokenCount is prompt + thoughts + candidates; the pricing page bills output 'including thinking tokens'.",
+  "response": {
+    "modelVersion": "gemini-3.8-flash",
+    "usageMetadata": {
+      "promptTokenCount": 12000,
+      "cachedContentTokenCount": 10240,
+      "candidatesTokenCount": 380,
+      "thoughtsTokenCount": 920,
+      "totalTokenCount": 13300
+    }
+  },
+  "expected": {
+    "model": "gemini-3.8-flash",
+    "tokens": {
+      "input": 1760,
+      "output": 1300,
+      "cache_read": 10240,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "gcp.gemini"
+    }
+  },
+  "retrieved": "2026-10-04"
+}
