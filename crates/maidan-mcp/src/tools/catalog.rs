@@ -1,5 +1,10 @@
 //! Catalog of every tool the MCP server exposes. The JSON-RPC client
 //! receives this verbatim in the `tools/list` response.
+//!
+//! Every entry's `annotations` (a title and the four MCP behaviour hints) must
+//! match its reviewed row in `tests/fixtures/tool-annotations.json`, which
+//! gives each value its reason; `tool_annotations_contract` enforces it, so a
+//! new tool needs both.
 
 use serde_json::{json, Value};
 
@@ -8,16 +13,37 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "whoami",
             "description": "Return the authentication-bound identity: actor_id, member_id, optional delegation_grant_id, workspace_id, capabilities, capability_sets the caller fully holds, and whether the credential is a bearer. Call this first — writes are attributed to member_id.",
+            "annotations": {
+                "title": "Who am I",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": { "type": "object", "properties": {} }
         }),
         json!({
             "name": "list_capability_sets",
             "description": "List named capability sets (maidan.agent.worker, maidan.human.admin) and the atomic capabilities each expands to at mint time.",
+            "annotations": {
+                "title": "List capability sets",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": { "type": "object", "properties": {} }
         }),
         json!({
             "name": "parse_maidan_uri",
             "description": "Parse a hierarchical maidan:// room URI (workspace UUID authority, then channels, threads, messages). The authority must be a workspace UUID, not a handle. Optional sha256 fragment is a content hash. MCP thread resource URIs and event pins are rejected.",
+            "annotations": {
+                "title": "Parse Maidan URI",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -29,6 +55,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_room",
             "description": "Get the authenticated room card for a workspace: stable UUID URI plus the current handle alias. A handle rename does not change the URI.",
+            "annotations": {
+                "title": "Get room",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -40,6 +73,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_workspace_handle",
             "description": "Set or rename a workspace handle alias. Stored ids and maidan:// URIs keep using the workspace UUID. Requires workspace:write.",
+            "annotations": {
+                "title": "Set workspace handle",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -52,6 +92,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "attenuate_token",
             "description": "Derive a weaker API token from the caller's grant without token:admin (Levy/Madden attenuation). capabilities must be a non-empty subset of what the caller holds. A derived expires_at cannot outlive the parent bearer. Returns the new token secret once.",
+            "annotations": {
+                "title": "Attenuate token",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -65,6 +112,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "rotate_token",
             "description": "Replace the secret of the bearer token this call is made with. The new token keeps the same member, capabilities, expiry, quotas and derived tokens; the old secret stops working immediately. Returns the new secret once. Takes no arguments. A delegated token cannot be rotated; exchange its grant again.",
+            "annotations": {
+                "title": "Rotate token",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -74,6 +128,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "delegate_token",
             "description": "Exchange a durable delegation grant for a short-lived token acting as its subject. The token defaults to 15 minutes, cannot exceed one hour or its grant/parent bearer, and is limited to the intersection of grant and delegate capabilities.",
+            "annotations": {
+                "title": "Delegate token",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -88,6 +149,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "create_delegation_grant",
             "description": "Create an expiring capability-scoped grant authorizing one workspace member to delegate actions for another. Requires token:admin and a non-empty purpose.",
+            "annotations": {
+                "title": "Create delegation grant",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -104,6 +172,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_delegation_grants",
             "description": "List delegation grants in a workspace, including expiry and revocation state. Requires token:admin.",
+            "annotations": {
+                "title": "List delegation grants",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {"workspace_id": {"type": "string", "format": "uuid"}},
@@ -113,6 +188,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "revoke_delegation_grant",
             "description": "Revoke a delegation grant and every exchanged token and attenuated descendant. Requires token:admin.",
+            "annotations": {
+                "title": "Revoke delegation grant",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -125,6 +207,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "open_dm_conversation",
             "description": "Open or fetch a 1:1 DM conversation between the authenticated member and another workspace member.",
+            "annotations": {
+                "title": "Open DM conversation",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -137,6 +226,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_dm_conversations",
             "description": "List DM conversations for a member in a workspace.",
+            "annotations": {
+                "title": "List DM conversations",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -149,6 +245,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "post_dm_message",
             "description": "Post a message in a DM conversation.",
+            "annotations": {
+                "title": "Post DM message",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -164,6 +267,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "create_channel",
             "description": "Create a channel in a workspace. Requires workspace:write, the same capability as POST /workspaces/{wid}/channels. A private channel adds the caller as its admin so they are not locked out.",
+            "annotations": {
+                "title": "Create channel",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -178,6 +288,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_channels",
             "description": "List channels in a workspace.",
+            "annotations": {
+                "title": "List channels",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -189,6 +306,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "add_channel_member",
             "description": "Add (or update the role of) a member of a channel. Requires channel:admin. Private channels are gated to their members.",
+            "annotations": {
+                "title": "Add channel member",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -202,6 +326,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_channel_members",
             "description": "List the members of a channel. Requires channel:admin.",
+            "annotations": {
+                "title": "List channel members",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -213,6 +344,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "remove_channel_member",
             "description": "Remove a member from a channel. Requires channel:admin.",
+            "annotations": {
+                "title": "Remove channel member",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -225,6 +363,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "create_thread",
             "description": "Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too.",
+            "annotations": {
+                "title": "Create thread",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -238,6 +383,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_threads",
             "description": "List a channel's live threads, oldest first, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page.",
+            "annotations": {
+                "title": "List threads",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -251,6 +403,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_child_threads",
             "description": "A parent thread's child threads, each collapsed to a summary with a message count — a threaded view of 'N replies' per child without loading each child's messages.",
+            "annotations": {
+                "title": "List child threads",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -262,6 +421,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_recently_active_threads",
             "description": "A channel's threads ordered by last activity — most-recently-posted first. A post floats its thread to the top; a rename does not.",
+            "annotations": {
+                "title": "List recently active threads",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -274,6 +440,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "mute_thread",
             "description": "Mute a thread for yourself — the notification router stops routing this thread's activity to you, without leaving the channel or thread. Idempotent.",
+            "annotations": {
+                "title": "Mute thread",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -285,6 +458,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unmute_thread",
             "description": "Unmute a thread you previously muted. Returns unmuted=false if it was not muted.",
+            "annotations": {
+                "title": "Unmute thread",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -296,6 +476,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "mute_channel",
             "description": "Mute a whole channel for yourself — the notification router stops routing its firehose (new-message notifications) to you, without leaving the channel. A mention still breaks through. Idempotent.",
+            "annotations": {
+                "title": "Mute channel",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -307,6 +494,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unmute_channel",
             "description": "Unmute a channel you previously muted. Returns unmuted=false if it was not muted.",
+            "annotations": {
+                "title": "Unmute channel",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -318,6 +512,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_thread_budget",
             "description": "REPLACE a thread's whole budget envelope. Every dimension must be stated — max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs — and null means no cap on that dimension. Omitting one is an error rather than a silent removal, because a removed cap never binds and the run it should have stopped keeps going. Use update_thread_budget to change some dimensions and leave the rest alone. An unrecognized key is rejected rather than ignored. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.",
+            "annotations": {
+                "title": "Set thread budget",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -333,6 +534,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "update_thread_budget",
             "description": "Change only the budget dimensions you name, leaving the rest as they are. An omitted dimension is untouched; an explicit null clears that cap. Use this to raise or lower one limit without restating the others — set_thread_budget replaces the whole envelope. An unrecognized key is rejected rather than ignored.",
+            "annotations": {
+                "title": "Update thread budget",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -348,6 +556,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_thread_budget",
             "description": "A thread's budget envelope with accumulated usage, or null if none is set.",
+            "annotations": {
+                "title": "Get thread budget",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -359,6 +574,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "report_usage",
             "description": "Record one retry-safe usage heartbeat for your active claim. input is uncached input. Cache writes are a 5-minute tier and a 1-hour tier. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. The price snapshot must calculate to usd_micros. A token budget counts fresh tokens only. A binding cap atomically stops the run.",
+            "annotations": {
+                "title": "Report usage",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -414,6 +636,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "usage_rollup",
             "description": "Spend, cache hit rate, cache write share, dollars saved against the uncached price, and cost per completed task. Scope is the workspace, or one thread, or one member. A completed task is a closed or archived thread that has not been tombstoned. Rates are parts per million of prompt tokens.",
+            "annotations": {
+                "title": "Roll up usage",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -428,6 +657,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_dlq",
             "description": "A channel's agent-work dead-letter queue — runs stopped for exceeding their budget, newest first. Triage these (retry, raise the budget, give up).",
+            "annotations": {
+                "title": "List dead-lettered runs",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -440,6 +676,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_tool_transcript",
             "description": "A thread's tool-call transcript: every ToolUse block correlated with its ToolResult by id. A token-lean projection that drops text/code blocks and bodies.",
+            "annotations": {
+                "title": "Get tool transcript",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -452,6 +695,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "assign_thread",
             "description": "Assign or hand off a thread/task to a member, optionally with a handoff note delivered to subscribers on the assignment event.",
+            "annotations": {
+                "title": "Assign thread",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -465,6 +715,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "claim_thread",
             "description": "Atomically claim an unassigned thread for a member. Returns {thread, claimed}; claimed=false if it was already assigned.",
+            "annotations": {
+                "title": "Claim thread",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -476,6 +733,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unassign_thread",
             "description": "Clear a thread's assignee.",
+            "annotations": {
+                "title": "Unassign thread",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -487,6 +751,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "transition_thread",
             "description": "Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. Returns the updated thread.",
+            "annotations": {
+                "title": "Transition thread",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -499,6 +770,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_assigned_threads",
             "description": "List the threads currently assigned to a member (their work queue), oldest first.",
+            "annotations": {
+                "title": "List assigned threads",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -510,6 +788,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_wait",
             "description": "Set (upsert) a wait timer on a thread: it is waiting until wait_until, and on timeout the sweeper escalates via on_timeout but decides nothing (notify reaches the owner; park also marks the thread unclaimable). Default policy is notify. Cancel it when the awaited thing happens. Requires thread:transition. This returns at once and does not block; to block until something happens, use a wait_for_* tool such as wait_for_result or wait_for_ready.",
+            "annotations": {
+                "title": "Set wait",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -524,6 +809,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "cancel_wait",
             "description": "Cancel a thread's wait — the awaited thing happened (G2). {cancelled} is false when no wait was set. Requires thread:transition.",
+            "annotations": {
+                "title": "Cancel wait",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -535,6 +827,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_wait",
             "description": "The thread's wait timer (deadline, on_timeout policy, reason, fired_at), or null if none is set (G2).",
+            "annotations": {
+                "title": "Get wait",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -546,6 +845,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_priority",
             "description": "Set (upsert) a thread's dispatch priority (G3 fair dispatch). Higher = more urgent (default 0). claim_next orders by an effective rank = this priority aged up the longer the thread waits, so priority jumps the queue without starving long-waiting tasks. Requires thread:transition.",
+            "annotations": {
+                "title": "Set priority",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -558,6 +864,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_priority",
             "description": "The thread's dispatch-priority record, or null (which means the default priority 0) (G3).",
+            "annotations": {
+                "title": "Get priority",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -569,6 +882,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "mark_unclaimable",
             "description": "Park a thread from dispatch (G3): claim_next skips it and an explicit claim is refused, until cleared. An explicit park (needs triage, waiting on external, broken) — distinct from blocked-by-deps / blocked-by-gate / skill-miss. Reason must be non-empty. Requires thread:transition.",
+            "annotations": {
+                "title": "Mark unclaimable",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -581,6 +901,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "mark_claimable",
             "description": "Un-park a thread (G3) — it becomes claimable again. {cleared} is false when it was not parked. Requires thread:transition.",
+            "annotations": {
+                "title": "Mark claimable",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -592,6 +919,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_unclaimable",
             "description": "The parked (unclaimable) threads in a channel (G3), newest first — for triage.",
+            "annotations": {
+                "title": "List unclaimable",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -603,6 +937,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_thread_block",
             "description": "Set (upsert) an explicit dispatch block on a thread (G14): claim_next skips it and an explicit claim is refused, until cleared. reason is the closed enum dag|gate|human|child|quota|unclaimable — not a free string. Distinct from DAG-children-must-be-terminal. Requires thread:transition.",
+            "annotations": {
+                "title": "Set thread block",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -615,6 +956,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_thread_block",
             "description": "The thread's explicit dispatch block, or null when unblocked (G14). Requires workspace:read.",
+            "annotations": {
+                "title": "Get thread block",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -626,6 +974,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "clear_thread_block",
             "description": "Clear an explicit dispatch block (G14). Emits BlockedResolved so waiters can observe the unblock. {cleared} is false when it was not blocked. Requires thread:transition.",
+            "annotations": {
+                "title": "Clear thread block",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -637,6 +992,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_blocked_threads",
             "description": "The explicitly blocked threads in a channel (G14), newest first — for triage. Distinct from queue-depth blocked (unfinished DAG deps).",
+            "annotations": {
+                "title": "List blocked threads",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -648,6 +1010,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_wip_limit",
             "description": "Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.",
+            "annotations": {
+                "title": "Set WIP limit",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -658,6 +1027,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_delegation_policy",
             "description": "Set the longest a delegation grant may live in this workspace, in days (1 to 3650); omit or null to restore the default of 90. A grant is the standing authority to keep minting delegated tokens, so this bounds real exposure. Applies to grants issued afterwards. Requires token:admin.",
+            "annotations": {
+                "title": "Set delegation policy",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -669,11 +1045,25 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_delegation_policy",
             "description": "This workspace's delegation policy: max_grant_days, the longest a delegation grant may live, and is_default when the workspace has set none.",
+            "annotations": {
+                "title": "Get delegation policy",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {"type": "object", "properties": {}}
         }),
         json!({
             "name": "set_retention_policy",
             "description": "Replace this workspace's own retention for its messages, events and finished deliveries, in days (1 to 3650 each). A workspace may keep rows for less time than the instance does, never longer: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.",
+            "annotations": {
+                "title": "Set retention policy",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -687,16 +1077,37 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_retention_policy",
             "description": "This workspace's retention: what it set (workspace), what the instance keeps (instance), and what is pruned in effect, the shorter of the two per kind (effective). Days per kind; null means not pruned.",
+            "annotations": {
+                "title": "Get retention policy",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {"type": "object", "properties": {}}
         }),
         json!({
             "name": "get_wip_limit",
             "description": "This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).",
+            "annotations": {
+                "title": "Get WIP limit",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {"type": "object", "properties": {}}
         }),
         json!({
             "name": "set_spawn_budget",
             "description": "Set this workspace's spawn budget (G6): how far an agent family may fan out. max_children caps the direct child threads per parent, max_depth the thread nesting, max_tools the tool calls recorded on one thread. A full replace — an omitted or null axis is unlimited, so calling with no arguments clears the budget; 0 freezes an axis. Keep the caps small: coordination cost grows quadratically in the number of agents. Requires workspace:write.",
+            "annotations": {
+                "title": "Set spawn budget",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -709,11 +1120,25 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_spawn_budget",
             "description": "This workspace's spawn budget as {max_children, max_depth, max_tools}; a null axis is unlimited. Read it before spawning helpers to see how much fan-out is left.",
+            "annotations": {
+                "title": "Get spawn budget",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {"type": "object", "properties": {}}
         }),
         json!({
             "name": "get_member_wip",
             "description": "A member's current live-claim count against the workspace WIP limit ({live_claims, limit}) — for backpressure decisions before claiming more work.",
+            "annotations": {
+                "title": "Get member WIP",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -725,6 +1150,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "claim_next_thread",
             "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Create a channel with create_channel and a task with create_thread (both need workspace:write; the REST twins are POST /workspaces/{wid}/channels and POST /channels/{cid}/threads).",
+            "annotations": {
+                "title": "Claim next thread",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -737,6 +1169,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "claim_next_workspace_thread",
             "description": "claim_next_thread across every channel of the workspace you may read, so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.",
+            "annotations": {
+                "title": "Claim next workspace thread",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -749,6 +1188,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "renew_claim",
             "description": "Extend a claimed thread's lease (heartbeat). Only the current assignee holding the matching fencing token may renew; a stale holder whose claim was reclaimed is rejected.",
+            "annotations": {
+                "title": "Renew claim",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -762,6 +1208,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "acknowledge_claim",
             "description": "Acknowledge a claimed thread and start its working clock (work_started_at): the current holder signals it has begun work, distinct from just holding the claim. Acknowledge as soon as you start: a leased claim left unacknowledged past the server's window (MAIDAN_CLAIM_ACK_TIMEOUT_SECS, 120 s) is reported to its owner with a claim_unacknowledged event. Only the assignee holding the matching fencing token may acknowledge; idempotent (the first start time is kept).",
+            "annotations": {
+                "title": "Acknowledge claim",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -774,6 +1227,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "release_claim",
             "description": "Release a claim (graceful handoff): the current holder returns the thread to the queue immediately by presenting its fencing token, instead of letting the lease lapse — e.g. an agent shutting down cleanly. Only the assignee holding the matching token may release. Clears the assignment and working clock and emits thread_assignment_changed.",
+            "annotations": {
+                "title": "Release claim",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -786,6 +1246,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "add_thread_dependency",
             "description": "Add a task-dependency edge: the thread depends on depends_on_thread_id and stays blocked (won't be handed out by claim_next) until that dependency reaches a terminal state. Both threads must be in the same workspace.",
+            "annotations": {
+                "title": "Add thread dependency",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -798,6 +1265,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_thread_dependencies",
             "description": "List a task's dependencies plus whether it is ready to run (true when every dependency is terminal).",
+            "annotations": {
+                "title": "List thread dependencies",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -809,6 +1283,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_queue_depth",
             "description": "A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked}, for deciding whether to scale workers. ready is what claim_next_thread could take now.",
+            "annotations": {
+                "title": "Get queue depth",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -820,6 +1301,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_channel_occupancy",
             "description": "A channel's occupancy as {open, queued, claimed, working, blocked}: the two-clocks refinement of get_queue_depth. It splits held work into claimed (an agent grabbed the task but hasn't acknowledged it via acknowledge_claim) and working (acknowledged and underway) — surfacing a claimed-but-idle agent. queued/blocked mirror get_queue_depth's ready/blocked.",
+            "annotations": {
+                "title": "Get channel occupancy",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -831,6 +1319,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_thread_lineage",
             "description": "Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.",
+            "annotations": {
+                "title": "Set thread lineage",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -843,6 +1338,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_thread_lineage",
             "description": "Read a thread's run lineage (parent_run_id + set_at), or null if none has been set.",
+            "annotations": {
+                "title": "Get thread lineage",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -854,6 +1356,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_run_threads",
             "description": "List threads in the caller's workspace that share a producer parent_run_id, oldest first. Nested children given the same value are included. Private-channel rows the caller cannot access are omitted. F7 mute is not consulted.",
+            "annotations": {
+                "title": "List run threads",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -865,6 +1374,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_run_occupancy",
             "description": "Nested occupancy for a producer run as {parent_run_id, open, queued, claimed, working, blocked}: the two-clocks partition of every open workspace thread that shares parent_run_id. F7 mute is orthogonal (a muted nested thread still counts). Unknown / unused run returns zeros.",
+            "annotations": {
+                "title": "Get run occupancy",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -876,6 +1392,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_thread_result",
             "description": "Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.",
+            "annotations": {
+                "title": "Set thread result",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": true
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -888,6 +1411,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_thread_result",
             "description": "Read a task's structured result, or null if none has been produced yet.",
+            "annotations": {
+                "title": "Get thread result",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -899,6 +1429,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_thread_results",
             "description": "List thread results in the caller's workspace, newest first. Optional result_kind is an exact-match facet on the namespaced string (e.g. example.review.result/1), not a closed enum. Private-channel rows the caller cannot access are omitted.",
+            "annotations": {
+                "title": "List thread results",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -910,6 +1447,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_result_deliveries",
             "description": "List per-target delivery status for a thread's structured result (disposition, external reference, last error). Empty means the result was not routed anywhere, which is valid. workspace:read + thread access.",
+            "annotations": {
+                "title": "List result deliveries",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -921,6 +1465,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "replay_result_delivery",
             "description": "Re-enqueue one result delivery onto the egress outbox. Re-checks the workspace allowlist (an unblessed target stays skipped). Does not bump armed_revision. workspace:write + thread access.",
+            "annotations": {
+                "title": "Replay result delivery",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": true
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -933,6 +1484,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_thread_owner",
             "description": "Set (or clear, by omitting owner_id) a thread's durable owner — the accountable party, distinct from the assignee/claimer. Once an owner is set, the claimer can no longer land (close/archive) its own work; the owner or another member must (separation of duties).",
+            "annotations": {
+                "title": "Set thread owner",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -945,6 +1503,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "rename_thread",
             "description": "Rename a thread — give a titled thread a new name (e.g. name a post-derived child thread). The title must not be blank. A rename is metadata, not activity, so it does not float the thread in the recent-activity order.",
+            "annotations": {
+                "title": "Rename thread",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -957,6 +1522,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_thread_steer",
             "description": "Set (upsert) a thread's persisted steer — durable steering guidance that survives claims and handoffs, so a resuming or newly-assigned agent reads the current steer. Latest wins.",
+            "annotations": {
+                "title": "Set thread steer",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -969,6 +1541,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_thread_steer",
             "description": "Read a thread's current steer, or null if none is set. A resuming or newly-assigned agent reads this to follow the current steering guidance.",
+            "annotations": {
+                "title": "Get thread steer",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -980,6 +1559,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "wait_for_result",
             "description": "Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result). To put a deadline on a thread instead, use set_wait.",
+            "annotations": {
+                "title": "Wait for result",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -993,6 +1579,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_dependency_results",
             "description": "Gather the structured results of a parent task's dependencies as a list of {thread_id, result} objects (result null if not produced yet), skipping dependencies you can't access. The spawn/wait/aggregate read for a parent task.",
+            "annotations": {
+                "title": "Get dependency results",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1004,6 +1597,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "add_member_skill",
             "description": "Declare a skill (free-form tag) for a member. Skill routing gates claim_next: a task is claimable by a member only if it holds all the task's required skills.",
+            "annotations": {
+                "title": "Add member skill",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1016,6 +1616,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_member_skills",
             "description": "List a member's declared skills.",
+            "annotations": {
+                "title": "List member skills",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1027,6 +1634,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "add_thread_required_skill",
             "description": "Add a required skill to a task. Only a member holding every required skill can claim the task via claim_next_thread.",
+            "annotations": {
+                "title": "Add thread required skill",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1039,6 +1653,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_thread_required_skills",
             "description": "List a task's required skills.",
+            "annotations": {
+                "title": "List thread required skills",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1050,6 +1671,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "create_task_schedule",
             "description": "Create a task schedule: when due, the sweeper creates a thread titled `title` in `channel_id` (or, when recipe_id is set, instantiates that recipe — parent + DAG children — instead). interval_secs omitted = one-shot; a positive value = recurring. first_run_at omitted = fire on the next tick.",
+            "annotations": {
+                "title": "Create task schedule",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1065,6 +1693,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_task_schedules",
             "description": "List the caller's workspace task schedules (filtered to channels the caller can access).",
+            "annotations": {
+                "title": "List task schedules",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -1073,6 +1708,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "create_recipe",
             "description": "Create a recipe: a reusable thread-type blueprint. spec = {params, definition_of_done, retry, children}, where each child is {key, title, required_skills, depends_on (sibling keys)}. Instantiating it (instantiate_recipe) builds a parent thread + a child per child + wires the DAG + attaches skills. NOT a recipe VM — a blueprint the room instantiates.",
+            "annotations": {
+                "title": "Create recipe",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1086,6 +1728,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_recipes",
             "description": "List the caller's workspace recipes (filtered to channels the caller can access).",
+            "annotations": {
+                "title": "List recipes",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -1094,6 +1743,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "instantiate_recipe",
             "description": "Instantiate a recipe into a parent thread + its DAG children (copy-on-fire: the recipe bytes are frozen into the run). params are validated against the recipe's declared params (required ones must be present). Returns the RecipeRun.",
+            "annotations": {
+                "title": "Instantiate recipe",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1106,6 +1762,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_secrets",
             "description": "List the caller's workspace secrets (metadata only — id, name, timestamps; NEVER the value). Use resolve_secret to fetch a value at exec.",
+            "annotations": {
+                "title": "List secrets",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -1114,6 +1777,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "resolve_secret",
             "description": "Resolve a named secret to its value (the 'fetch at exec' path). The value is decrypted server-side and returned only in this response — it never enters the event log. Returns null-name error if the secret is unknown.",
+            "annotations": {
+                "title": "Resolve secret",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1125,6 +1795,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_secret_egress_hosts",
             "description": "List the hosts trusted with this workspace's secret values: on a webhook, automation HTTP or A2A push delivery to one of them, secret://<name> refs in the payload are replaced with the workspace's values; any other host gets the literal ref. Empty (the default) means no host gets a value. Requires secret:admin.",
+            "annotations": {
+                "title": "List secret egress hosts",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -1133,6 +1810,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "allow_secret_egress_host",
             "description": "Trust a host with this workspace's secret values (idempotent). A listed host receives the value of every secret a payload bound for it names, so this needs secret:read as well as secret:admin. The host is a lowercase hostname or IPv4 address with no scheme, port, path or wildcard, and must be inside the instance ceiling when the operator set one. Audited.",
+            "annotations": {
+                "title": "Allow secret egress host",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1144,6 +1828,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "revoke_secret_egress_host",
             "description": "Stop trusting a host with this workspace's secret values; the next delivery to it carries the literal secret:// refs. Not found when the host was not listed. Requires secret:admin. Audited.",
+            "annotations": {
+                "title": "Revoke secret egress host",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1155,6 +1846,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "freeze_member",
             "description": "Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released, and emits member_frozen to the workspace (the reason included). The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.",
+            "annotations": {
+                "title": "Freeze member",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1167,6 +1865,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unfreeze_member",
             "description": "Lift a member's freeze so they can claim work again. Requires token:admin. Returns {unfrozen} (false if they were not frozen); an unfreeze that lifts a freeze emits member_unfrozen.",
+            "annotations": {
+                "title": "Unfreeze member",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1178,6 +1883,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_frozen_members",
             "description": "List the frozen members in the caller's workspace (member_id, frozen_at, frozen_by, reason). Requires token:admin.",
+            "annotations": {
+                "title": "List frozen members",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -1186,6 +1898,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "create_share_ticket",
             "description": "Issue a read-only cross-organization ticket for one channel and an explicit artifact allowlist. Ownership is bound to the authenticated member. Lifetime is capped at 48 hours; the secret is returned once and only its hash is stored. Requires token:admin.",
+            "annotations": {
+                "title": "Create share ticket",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1199,6 +1918,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_share_tickets",
             "description": "List share tickets and their explicit artifact scopes in the caller's workspace. Secrets are never returned after creation. Requires token:admin.",
+            "annotations": {
+                "title": "List share tickets",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -1207,6 +1933,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "revoke_share_ticket",
             "description": "Immediately revoke a share ticket in the caller's workspace. Requires token:admin.",
+            "annotations": {
+                "title": "Revoke share ticket",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1218,6 +1951,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "export_workspace",
             "description": "Export a workspace as a signed maidan.workspace.export/1 envelope. Tokens die on export: API tokens and secrets are omitted. A blank instance can verify the file without calling this host. Requires token:admin and MAIDAN_EXPORT_SIGNING_KEY.",
+            "annotations": {
+                "title": "Export workspace",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1228,6 +1968,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "verify_workspace_export",
             "description": "Verify a signed workspace export without importing it. Fail-closed on tamper, a bad signature, stuffed secret fields, or a public key outside MAIDAN_EXPORT_VERIFY_KEYS when that pin is set. An empty pin checks integrity against the embedded key only. Requires token:admin.",
+            "annotations": {
+                "title": "Verify workspace export",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1238,6 +1985,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "import_workspace",
             "description": "Verify then import a signed workspace export. mode new remaps ids into a fresh workspace; restore keeps original ids and fails if that workspace exists unless force is true. Tokens die on export: mint new tokens after import. Requires token:admin.",
+            "annotations": {
+                "title": "Import workspace",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1251,6 +2005,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_log_snapshot",
             "description": "Hashed event-log snapshot for this workspace (getRepo-shaped, not MST/CAR). Header plus graph_hash is workspace:read. Pass include_graph true for the domain graph; that requires token:admin. Complements hash-chain verify of the retained suffix: this covers a pruned prefix so a peer can resume without trusting the host for history it never saw.",
+            "annotations": {
+                "title": "Get log snapshot",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1262,6 +2023,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "catch_up_events",
             "description": "Since-LSN catch-up page after a snapshot (or a prior page). Events have id greater than after_lsn, hash-chain checked from the predecessor. A pruned-gap cursor fails closed and names the snapshot path to refetch; a broken chain fails closed. Requires workspace:read.",
+            "annotations": {
+                "title": "Catch up on events",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1274,6 +2042,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "verify_event_chain",
             "description": "Verify the retained event-log hash chain for a workspace. Returns the chain report when intact; fails closed on a splice or rewrite. Twin of GET /workspaces/{id}/events/verify. Requires workspace:read.",
+            "annotations": {
+                "title": "Verify event chain",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1284,6 +2059,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_tombstones",
             "description": "Tombstone and deletion explorer for this workspace. Soft-deleted messages (body already cleared) plus, when include_purged is true, hard-purged reconstructions from MessageTombstoned events. Private-channel and DM rows the caller cannot access are omitted. Twin of GET /workspaces/{id}/tombstones. Requires workspace:read.",
+            "annotations": {
+                "title": "List tombstones",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1298,6 +2080,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_message_backlinks",
             "description": "Incoming pointers at a message: RelationKind reverse edges plus pins, reactions, and votes. Mentions are outgoing and omitted. Works on a retained tombstone; fails not-found after hard purge. Twin of GET /messages/{id}/backlinks. Requires workspace:read.",
+            "annotations": {
+                "title": "List message backlinks",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1309,6 +2098,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_kind_census",
             "description": "EventKind counts for a workspace, optionally narrowed to a channel or thread. Inaccessible private channels are excluded from the totals. Twin of GET /workspaces/{id}/kind-census. Requires workspace:read.",
+            "annotations": {
+                "title": "Get kind census",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1321,6 +2117,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "create_memory_block",
             "description": "Create a labeled memory block — a Letta-shaped shared object {label, description, limit, read_only, value} in the workspace that a thread can attach to (a room object). It is how a parent watches a child's result block without a nested runtime: not a transcript, not RAG. Concurrent-safe on the label (re-creating a label returns the existing block). The caller owns it.",
+            "annotations": {
+                "title": "Create memory block",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1336,6 +2139,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_memory_block",
             "description": "Get a memory block by label within the caller's workspace, or null if none. This is the watch-a-child's-result-block read (poll it).",
+            "annotations": {
+                "title": "Get memory block",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1347,6 +2157,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_memory_blocks",
             "description": "List the memory blocks in the caller's workspace (id, label, description, limit, read_only, value, owner).",
+            "annotations": {
+                "title": "List memory blocks",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -1355,6 +2172,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_memory_block_value",
             "description": "Full-rewrite a memory block's value by label (last-writer-wins). A read-only block or a value over the block's char limit is rejected. Use this to publish a result other threads watch.",
+            "annotations": {
+                "title": "Set memory block value",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1367,6 +2191,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "attach_memory_block",
             "description": "Attach a memory block (by label) to a thread so the thread carries it as a room object — how a parent shares a block with a child. Idempotent. Returns {attached}.",
+            "annotations": {
+                "title": "Attach memory block",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1379,6 +2210,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "detach_memory_block",
             "description": "Detach a memory block (by id) from a thread. Idempotent. Returns {detached} (false if it was not attached).",
+            "annotations": {
+                "title": "Detach memory block",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1391,6 +2229,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_thread_memory_blocks",
             "description": "List the memory blocks attached to a thread (its room objects), by label.",
+            "annotations": {
+                "title": "List thread memory blocks",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1402,6 +2247,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "wait_for_memory_block",
             "description": "Block until a memory block (by label) is rewritten in the caller's workspace, or the timeout lapses. Returns the block with its fresh value, or null on timeout. This is how a parent watches a child's result block without a nested runtime. Live: only sees updates after subscribing, so read the current value with get_memory_block first.",
+            "annotations": {
+                "title": "Wait for memory block",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1414,6 +2266,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_review_requirement",
             "description": "Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qualifying approvals before it can close. An approval qualifies when the reviewer is neither the owner nor the assignee (separation of duties) and, when a named reviewer set exists, is in it. A refutes edge also blocks close. Requires thread:transition.",
+            "annotations": {
+                "title": "Set review requirement",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1426,6 +2285,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "add_reviewer",
             "description": "Name a reviewer for a thread (G5) — the eligible set. Empty set = open review (any qualifying member). Idempotent. Requires thread:transition.",
+            "annotations": {
+                "title": "Add reviewer",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1438,6 +2304,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "submit_review",
             "description": "Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. Every verdict appends a review_submitted event, and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.",
+            "annotations": {
+                "title": "Submit review",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1451,6 +2324,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_review_status",
             "description": "Read a thread's review standing: required_count, approvals (distinct qualifying), and approvals_met. This is the approval side of the close-gate; a refutes edge is checked separately when closing.",
+            "annotations": {
+                "title": "Get review status",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1462,6 +2342,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_reviews",
             "description": "List a thread's review decisions (reviewer, decision, note).",
+            "annotations": {
+                "title": "List reviews",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1473,6 +2360,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_review_history",
             "description": "List every verdict submitted on a thread, oldest first (reviewer, decision, note, delegate, recorded_at). list_reviews shows each reviewer's current decision; a re-submission replaces it there but its earlier verdicts stay here.",
+            "annotations": {
+                "title": "List review history",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1484,6 +2378,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_land_gate",
             "description": "Record a land-gate pointer on a thread: status pass or fail, optional artifact_sha, optional land green/amber/red. The room holds the pointer; an external verifier records pass/fail. A qualifying green pass (land-gate-skilled member who is not the implementer) is required to close once the gate is armed. Amber is flags-then-still-engages and is not a land. Requires thread:transition. The caller must have declared the land_gate skill.",
+            "annotations": {
+                "title": "Set land gate",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1498,6 +2399,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_land_gate",
             "description": "Read a thread's land-gate standing: required, pointer, land (green/amber/red), landable. No pointer is vacuous green. Requires workspace:read.",
+            "annotations": {
+                "title": "Get land gate",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1509,6 +2417,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_land_gate_history",
             "description": "List every land-gate verdict recorded on a thread, oldest first (status, land, artifact_sha, recorder, delegate, recorded_at). get_land_gate shows the latest pointer; a later pointer or clearing the gate leaves earlier verdicts here. Requires workspace:read.",
+            "annotations": {
+                "title": "List land gate history",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1520,6 +2435,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "require_land_gate",
             "description": "Arm the land-gate close-gate on a thread without a pointer yet so closed refuses until a qualifying green pass arrives. Idempotent. Requires thread:transition.",
+            "annotations": {
+                "title": "Require land gate",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1531,6 +2453,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "clear_land_gate",
             "description": "Clear a thread's land-gate pointer and requirement. Requires thread:transition.",
+            "annotations": {
+                "title": "Clear land gate",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1542,6 +2471,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_glossary_term",
             "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
+            "annotations": {
+                "title": "Set glossary term",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1555,6 +2491,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_glossary_term",
             "description": "Look up one term's canonical definition in the workspace glossary. Returns null when the term is undefined.",
+            "annotations": {
+                "title": "Get glossary term",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1566,6 +2509,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_glossary_terms",
             "description": "List all defined terms in the workspace's shared glossary, ordered by term.",
+            "annotations": {
+                "title": "List glossary terms",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {}
@@ -1574,6 +2524,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "wait_for_ready",
             "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first). To put a deadline on a thread instead, use set_wait.",
+            "annotations": {
+                "title": "Wait for ready",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1586,6 +2543,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "wait_for_claim_expired",
             "description": "Block until a claim's lease lapses and its thread is reclaimed (by the claim reaper within seconds, or by the next claim_next_thread; either emits claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal: returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease on a thread in review is not reaped and emits nothing. To put a deadline on a thread instead, use set_wait.",
+            "annotations": {
+                "title": "Wait for claim expired",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1598,6 +2562,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "wait_for_claim_failed",
             "description": "Block until a claimed run is stopped for going over its budget (report_usage past a tokens/usd/turns/wall limit releases the claim, dead-letters the run and emits claim_failed), or the timeout lapses. Returns the ClaimFailed event (member_id is the stopped holder, reason the budget axis), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch a stop in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.",
+            "annotations": {
+                "title": "Wait for claim failed",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1610,6 +2581,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "wait_for_blocked_resolved",
             "description": "Block until an explicit dispatch block is cleared (clear_thread_block emits blocked_resolved), or the timeout lapses. Returns the BlockedResolved event (the reason that cleared, resolved_by), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible thread in the workspace. Clearing a thread that was not blocked emits nothing. Pass since_log_id (your high-water log_id) to also catch a clear in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.",
+            "annotations": {
+                "title": "Wait for blocked resolved",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1623,6 +2601,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "wait_for_landed",
             "description": "Block until a thread's linked GitHub PR lands (is merged, emitting thread_landed), or the timeout lapses. Returns the ThreadLanded event (repo, pr_number, merged_by, merge_commit_sha, title), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible land in the workspace. The room records the landing but does NOT transition the thread's FSM. Pass since_log_id (your high-water log_id) to also catch a land emitted in the gap before this call subscribes; omit it for pure-live. Live-only; the GET /mcp/stream SSE transport (kinds=thread_landed) is the resumable alternative. To put a deadline on a thread instead, use set_wait.",
+            "annotations": {
+                "title": "Wait for landed",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1636,6 +2621,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_mentions",
             "description": "List recent @mentions of a member (most recent first).",
+            "annotations": {
+                "title": "List mentions",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1648,6 +2640,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_inbox",
             "description": "A member's mention inbox: recent mentions plus the read-cursor, so an agent can find what it hasn't seen. Mentions only; for everything waiting on the member (assigned tasks, requested reviews, open approval gates and unread mentions), use get_waiting_inbox.",
+            "annotations": {
+                "title": "Get inbox",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1660,6 +2659,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "mark_inbox_read",
             "description": "Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox.",
+            "annotations": {
+                "title": "Mark inbox read",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1672,6 +2678,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "wait_for_mention",
             "description": "Block until the member is next @mentioned, or the timeout lapses. Returns the mention event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch a mention recorded in the gap before this call subscribes; omit it for pure-live behaviour (drain existing ones with get_inbox first).",
+            "annotations": {
+                "title": "Wait for mention",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1685,6 +2698,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_notifications",
             "description": "List a member's per-recipient notifications, newest first. Set unread_only to see just the unread ones. The durable inbox the notification router fills; drain it here, then wait_for_notification for new ones.",
+            "annotations": {
+                "title": "List notifications",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1698,6 +2718,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_waiting_inbox",
             "description": "The waiting-on-you inbox, everything needing a member's attention: their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the workspace's pending approval gates, and their unread mentions. Oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone. For mentions alone, with a read-cursor you advance with mark_inbox_read, use get_inbox.",
+            "annotations": {
+                "title": "Get waiting inbox",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1710,6 +2737,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_notifications_grouped",
             "description": "A member's notifications collapsed into per-thread groups, newest-activity first — a busy thread shows as one group (with its count, unread_count, and latest notification) instead of flooding the flat list. limit bounds how many notifications are scanned.",
+            "annotations": {
+                "title": "List notifications grouped",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1723,6 +2757,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_buried_decisions",
             "description": "A member's buried decisions — task results (decisions) produced by someone else in a channel or thread the member follows, since a given instant (default 7 days ago), newest first. The decisions the digest surfaces, queryable directly.",
+            "annotations": {
+                "title": "List buried decisions",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1736,6 +2777,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_manager_digest",
             "description": "Compose this member's unread followed-member lifecycle notifications since an instant (default 7 days ago) into per-channel result, gate, and stuck counts. This is a notification view, not analytics.",
+            "annotations": {
+                "title": "Get manager digest",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1749,6 +2797,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_unread_count",
             "description": "A member's unread-notification badge count.",
+            "annotations": {
+                "title": "Get unread count",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1760,6 +2815,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "mark_notification_read",
             "description": "Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's).",
+            "annotations": {
+                "title": "Mark notification read",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1772,6 +2834,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "snooze_notification",
             "description": "Snooze one of a member's notifications until an RFC 3339 instant — it drops out of the inbox and unread badge until then, and resurfaces once the snooze lapses. Recipient-scoped (snoozed=false if the id isn't this member's).",
+            "annotations": {
+                "title": "Snooze notification",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1785,6 +2854,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "wait_for_notification",
             "description": "Block until the member gets a new notification-worthy event (today: mentions), or the timeout lapses. The general form of wait_for_mention. Returns the triggering event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch an event from the gap before this call subscribes; omit it for pure-live behaviour (drain with list_notifications first).",
+            "annotations": {
+                "title": "Wait for notification",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1798,6 +2874,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_notification_pref",
             "description": "Set a member's mute preference for an event kind (kind is snake_case, e.g. mention_recorded). When muted, the router stops writing notifications of that kind for this member.",
+            "annotations": {
+                "title": "Set notification pref",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1811,6 +2894,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_notification_prefs",
             "description": "List a member's notification preferences (per-kind mute flags).",
+            "annotations": {
+                "title": "List notification prefs",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1822,6 +2912,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_delivery_mode",
             "description": "Set a member's email delivery mode: immediate (a per-notification email) or digest (a periodic rollup instead). The two are mutually exclusive.",
+            "annotations": {
+                "title": "Set delivery mode",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1834,6 +2931,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_delivery_mode",
             "description": "Get a member's email delivery mode (immediate when never set).",
+            "annotations": {
+                "title": "Get delivery mode",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1845,6 +2949,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_member_email",
             "description": "Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send.",
+            "annotations": {
+                "title": "Set member email",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1857,6 +2968,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_member_email",
             "description": "Get a member's delivery email address (null when unset).",
+            "annotations": {
+                "title": "Get member email",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1868,6 +2986,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "delete_member_email",
             "description": "Clear a member's delivery email address (opt out of email). Returns {deleted}.",
+            "annotations": {
+                "title": "Delete member email",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1879,6 +3004,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "follow_channel",
             "description": "Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel.",
+            "annotations": {
+                "title": "Follow channel",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1891,6 +3023,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unfollow_channel",
             "description": "Stop following a channel (removed=false if not following).",
+            "annotations": {
+                "title": "Unfollow channel",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1903,6 +3042,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_channel_follows",
             "description": "List the channels a member follows.",
+            "annotations": {
+                "title": "List channel follows",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1914,6 +3060,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "follow_thread",
             "description": "Follow a thread so the member is notified of new messages in it even without a mention (honors mutes). Requires access to the thread.",
+            "annotations": {
+                "title": "Follow thread",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1926,6 +3079,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unfollow_thread",
             "description": "Stop following a thread (removed=false if not following).",
+            "annotations": {
+                "title": "Unfollow thread",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1938,6 +3098,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_thread_follows",
             "description": "List the threads a member follows.",
+            "annotations": {
+                "title": "List thread follows",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1949,6 +3116,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "follow_member",
             "description": "Follow another same-workspace member's work occupancy. Self-follow is rejected.",
+            "annotations": {
+                "title": "Follow member",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1962,6 +3136,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_member_occupancy",
             "description": "Get a member's live occupancy: ephemeral presence plus assigned non-terminal threads visible to the caller.",
+            "annotations": {
+                "title": "Get member occupancy",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1974,6 +3155,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unfollow_member",
             "description": "Stop following another member's work occupancy (removed=false if not following).",
+            "annotations": {
+                "title": "Unfollow member",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1987,6 +3175,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_member_follows",
             "description": "List the member-occupancy subscriptions owned by a member.",
+            "annotations": {
+                "title": "List member follows",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1999,6 +3194,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_messages",
             "description": "List messages in a thread.",
+            "annotations": {
+                "title": "List messages",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2011,6 +3213,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "post_message",
             "description": "Post a message to a thread as the authenticated member.",
+            "annotations": {
+                "title": "Post message",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": true
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2026,6 +3235,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "seed_from_message",
             "description": "Seed a new titled work thread from a source message (the write side of 're-ask'), linked by a seeded_from reference edge. inclusion: 'pointer' (default, edge only) or 'quote' (a first message quoting the source). The source is untouched; N seeds per source. Lineage is queryable via list_references (dst=the source, relation=seeded_from).",
+            "annotations": {
+                "title": "Seed from message",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2040,6 +3256,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "edit_message",
             "description": "Edit your own message (message:post). Only the author can edit a message; another member's message can be tombstoned, not rewritten.",
+            "annotations": {
+                "title": "Edit message",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2055,6 +3278,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "record_mention",
             "description": "Mark a member as mentioned in a message.",
+            "annotations": {
+                "title": "Record mention",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2067,6 +3297,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "cast_vote",
             "description": "Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.",
+            "annotations": {
+                "title": "Cast vote",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2080,6 +3317,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "add_reaction",
             "description": "Add an emoji reaction to a message.",
+            "annotations": {
+                "title": "Add reaction",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2092,6 +3336,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "remove_reaction",
             "description": "Remove an emoji reaction from a message.",
+            "annotations": {
+                "title": "Remove reaction",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2104,6 +3355,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_reactions",
             "description": "List emoji reactions on a message.",
+            "annotations": {
+                "title": "List reactions",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2115,6 +3373,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "pin_message",
             "description": "Pin a message to a thread.",
+            "annotations": {
+                "title": "Pin message",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2127,6 +3392,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unpin_message",
             "description": "Unpin a message from a thread.",
+            "annotations": {
+                "title": "Unpin message",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2139,6 +3411,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_pins",
             "description": "List pinned messages in a thread.",
+            "annotations": {
+                "title": "List pins",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2150,6 +3429,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "add_reference",
             "description": "Add a typed reference between two threads or messages.",
+            "annotations": {
+                "title": "Add reference",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2165,6 +3451,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_references",
             "description": "List references FROM a source (forward) or TO a target (reverse — 'what references this'), optionally filtered by relation. Provide exactly one of the src_kind+src_id or dst_kind+dst_id pair.",
+            "annotations": {
+                "title": "List references",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2179,6 +3472,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "upload_artifact",
             "description": "Store bytes in the artifact substrate and register metadata.",
+            "annotations": {
+                "title": "Upload artifact",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2195,11 +3495,25 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "begin_artifact_multipart",
             "description": "Start an S3 multipart upload for a large artifact (requires S3 backend).",
+            "annotations": {
+                "title": "Begin multipart artifact upload",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {"type": "object", "properties": {}}
         }),
         json!({
             "name": "upload_artifact_multipart_part",
             "description": "Upload one part of an in-progress multipart artifact.",
+            "annotations": {
+                "title": "Upload multipart artifact part",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2214,6 +3528,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "complete_artifact_multipart",
             "description": "Finish multipart upload, content-address bytes, and register artifact metadata.",
+            "annotations": {
+                "title": "Complete multipart artifact upload",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2242,6 +3563,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "abort_artifact_multipart",
             "description": "Abort a failed multipart upload.",
+            "annotations": {
+                "title": "Abort multipart artifact upload",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2254,6 +3582,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_artifact_metadata",
             "description": "Fetch artifact metadata by sha256 hex digest.",
+            "annotations": {
+                "title": "Get artifact metadata",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2265,6 +3600,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "search_messages",
             "description": "Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets.",
+            "annotations": {
+                "title": "Search messages",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": true
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2297,6 +3639,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "register_slash_command",
             "description": "Register a workspace slash command handler (http URL or MCP tool name).",
+            "annotations": {
+                "title": "Register slash command",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2312,6 +3661,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_slash_commands",
             "description": "List registered slash commands in a workspace.",
+            "annotations": {
+                "title": "List slash commands",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2323,6 +3679,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "register_fsm_hook",
             "description": "Register an FSM hook invoked on matching thread state transitions.",
+            "annotations": {
+                "title": "Register FSM hook",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2339,6 +3702,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_fsm_hooks",
             "description": "List registered FSM automation hooks in a workspace.",
+            "annotations": {
+                "title": "List FSM hooks",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2350,6 +3720,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_thread_context",
             "description": "Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent). Pass token_budget=<n> to cap the message page by estimated tokens: the opening message and the recent tail are kept, the middle is folded into an auditable elision marker in fixed blocks. The result is two text parts: the stable prefix (workspace boot, brief, messages) and the volatile tail (state, lease, cursors, prefix sha256). Those strings are the bytes REST returns with split=true.",
+            "annotations": {
+                "title": "Get thread context",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2373,6 +3750,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "snapshot_thread_context",
             "description": "Freeze the assembled context pack (live or as_of) into the content-addressed artifact store — a tamper-evident, deduped record of exactly what the agent was handed. Same params as get_thread_context; returns the artifact (kind=context_snapshot). Requires artifact:upload. Fetch the bytes via the artifact sha.",
+            "annotations": {
+                "title": "Snapshot thread context",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2392,6 +3776,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_workspace_context",
             "description": "Pack workspace channels, thread contexts (bounded by thread_limit), and the workspace glossary (once at the top level).",
+            "annotations": {
+                "title": "Get workspace context",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2409,6 +3800,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "request_approval",
             "description": "Human-in-the-loop gate: open a durable approval gate and return {status: input_required, gate_id} without blocking. A human resolves it later (accept/decline/cancel) over the /ui; poll get_approval_gate for the outcome. Silence is never consent. Pass thread_id to make it a claim gate — while the gate is pending, claim_next will not hand that thread to an agent.",
+            "annotations": {
+                "title": "Request approval",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2422,6 +3820,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_approval_gate",
             "description": "Poll a durable approval gate by id. Returns the gate — state is pending until a human answers, then accepted/declined/cancelled with any content they supplied — or null if no such gate exists in your workspace.",
+            "annotations": {
+                "title": "Get approval gate",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2433,6 +3838,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "link_slack_channel",
             "description": "Link a Slack channel to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.",
+            "annotations": {
+                "title": "Link Slack channel",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2445,6 +3857,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_slack_channel_links",
             "description": "List the Slack channel links in your workspace. Requires workspace:read.",
+            "annotations": {
+                "title": "List Slack channel links",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -2454,6 +3873,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unlink_slack_channel",
             "description": "Remove a Slack channel link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.",
+            "annotations": {
+                "title": "Unlink Slack channel",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2465,6 +3891,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "link_github_issue",
             "description": "Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.",
+            "annotations": {
+                "title": "Link GitHub issue",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2478,6 +3911,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_github_issue_links",
             "description": "List the GitHub issue/PR links in your workspace. Requires workspace:read.",
+            "annotations": {
+                "title": "List GitHub issue links",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -2487,6 +3927,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "unlink_github_issue",
             "description": "Remove a GitHub issue/PR link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.",
+            "annotations": {
+                "title": "Unlink GitHub issue",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2499,6 +3946,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "tombstone_message",
             "description": "Withdraw a message. Same store path as DELETE /messages/{id}: message:post, plus channel:admin when the caller is not the author.",
+            "annotations": {
+                "title": "Tombstone message",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2510,6 +3964,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "open_group_dm",
             "description": "Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires workspace:read. This writes a conversation.",
+            "annotations": {
+                "title": "Open group DM",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2523,6 +3984,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_group_dms",
             "description": "List group DMs for one member. member_id must be the caller. Requires workspace:read.",
+            "annotations": {
+                "title": "List group DMs",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2535,6 +4003,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_group_dm",
             "description": "Fetch one group DM the caller participates in. Requires workspace:read.",
+            "annotations": {
+                "title": "Get group DM",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2546,6 +4021,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "post_group_dm_message",
             "description": "Post a message into a group DM the caller participates in. Same store path as POST /group-dms/{id}/messages. Requires message:post.",
+            "annotations": {
+                "title": "Post group DM message",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2559,6 +4041,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "remove_thread_dependency",
             "description": "Remove one dependency edge: thread_id no longer depends on depends_on_thread_id. Requires thread:transition.",
+            "annotations": {
+                "title": "Remove thread dependency",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2571,6 +4060,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_thread_dependents",
             "description": "List threads that depend on this thread. Requires workspace:read.",
+            "annotations": {
+                "title": "List thread dependents",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2582,6 +4078,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "clear_thread_lineage",
             "description": "Clear the run-lineage row for a thread. NotFound when no row exists. Requires thread:transition.",
+            "annotations": {
+                "title": "Clear thread lineage",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2593,6 +4096,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "remove_member_skill",
             "description": "Remove a skill from a member. Governance skills follow the REST self-versus-admin split; routing tags are self-only. Requires workspace:write.",
+            "annotations": {
+                "title": "Remove member skill",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2605,6 +4115,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "remove_thread_required_skill",
             "description": "Remove a required skill from a thread. Requires thread:transition.",
+            "annotations": {
+                "title": "Remove thread required skill",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2617,6 +4134,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "delete_memory_block",
             "description": "Delete a memory block by id. A block in another workspace is NotFound. Requires workspace:write.",
+            "annotations": {
+                "title": "Delete memory block",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2628,6 +4152,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "delete_glossary_term",
             "description": "Delete a glossary term in the caller workspace. Requires workspace:write.",
+            "annotations": {
+                "title": "Delete glossary term",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2639,6 +4170,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "delete_recipe",
             "description": "Delete a recipe. Requires workspace:write.",
+            "annotations": {
+                "title": "Delete recipe",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2650,6 +4188,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "set_task_schedule_active",
             "description": "Pause or resume a task schedule. Same store path as PUT /task-schedules/{id}. Requires workspace:write.",
+            "annotations": {
+                "title": "Set task schedule active",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2662,6 +4207,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "delete_task_schedule",
             "description": "Delete a task schedule. Requires workspace:write.",
+            "annotations": {
+                "title": "Delete task schedule",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2673,6 +4225,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "revoke_slash_command",
             "description": "Revoke a slash command. Requires workspace:write.",
+            "annotations": {
+                "title": "Revoke slash command",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2685,6 +4244,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "revoke_fsm_hook",
             "description": "Revoke an FSM hook. Requires workspace:write.",
+            "annotations": {
+                "title": "Revoke FSM hook",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2697,6 +4263,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "clear_review_requirement",
             "description": "Clear a thread review requirement. Requires channel:admin.",
+            "annotations": {
+                "title": "Clear review requirement",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2708,6 +4281,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_review_requirement",
             "description": "Read the review requirement on a thread. NotFound when unset. Requires workspace:read.",
+            "annotations": {
+                "title": "Get review requirement",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2719,6 +4299,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_reviewers",
             "description": "List reviewers on a thread. Requires workspace:read.",
+            "annotations": {
+                "title": "List reviewers",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2730,6 +4317,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "remove_reviewer",
             "description": "Remove a reviewer from a thread. Requires channel:admin.",
+            "annotations": {
+                "title": "Remove reviewer",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2742,6 +4336,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_votes",
             "description": "List votes on a message. Requires workspace:read.",
+            "annotations": {
+                "title": "List votes",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2753,6 +4354,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_message_edits",
             "description": "List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.",
+            "annotations": {
+                "title": "List message edits",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2765,6 +4373,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "mark_all_notifications_read",
             "description": "Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires workspace:read.",
+            "annotations": {
+                "title": "Mark all notifications read",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2776,6 +4391,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "advise_land_gate",
             "description": "Ask the configured advisor for a land-gate recommendation. Read-only: it does not write the gate or the requirement. NotFound when no advisor is configured. Requires thread:transition.",
+            "annotations": {
+                "title": "Advise land gate",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": true
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2790,6 +4412,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "create_secret",
             "description": "Store a named secret in the caller workspace. Returns metadata only; the plaintext is not echoed. Requires secret:admin.",
+            "annotations": {
+                "title": "Create secret",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2802,6 +4431,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "delete_secret",
             "description": "Delete a named secret in the caller workspace. Requires secret:admin.",
+            "annotations": {
+                "title": "Delete secret",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2813,6 +4449,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_artifact",
             "description": "Return artifact metadata and content_base64 bytes for a sha256 the caller workspace can access. A missing access ref is NotFound. Requires workspace:read.",
+            "annotations": {
+                "title": "Get artifact",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2824,6 +4467,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "list_members",
             "description": "List members of a workspace. Same store path as GET /workspaces/{wid}/members. Requires workspace:read.",
+            "annotations": {
+                "title": "List members",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2835,6 +4485,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_member",
             "description": "Fetch one member in the caller workspace. Another workspace is NotFound, same as an unknown id. Requires workspace:read.",
+            "annotations": {
+                "title": "Get member",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {

@@ -1,0 +1,4495 @@
+{
+  "about": "The reviewed MCP tool annotations. Each tool's title and four hints are served in tools/list from crates/maidan-mcp/src/tools/catalog.rs, and tool_annotations_contract fails when the two disagree. Each reason names what the handler does; check it against the handler before changing a value.",
+  "rules": {
+    "readOnlyHint": "true only when the tool writes nothing: no row, event, claim, read marker, blob or audit row. It equals membership in READ_ONLY_TOOLS (crates/maidan-mcp/src/tools/mod.rs); a tool off that list gets a mutation audit row for every call.",
+    "destructiveHint": "true when the call deletes or removes a record, revokes authority or access, tombstones, or replaces a value a person or agent stored (a set_* or upsert that overwrites, an edit, a rename, an import that erases), or makes an irreversible state transition. false for additive writes, for toggles of the caller's own view or preference that a sibling tool flips back, and for the claim lease cycle (claim, renew, acknowledge, release). Always false for a read-only tool.",
+    "idempotentHint": "true when repeating the same call with the same arguments has no further effect on state, including a repeat that is refused and changes nothing. false when each call creates something new, appends an event, or moves a clock forward. Always true for a read-only tool. The per-call audit row is a record of the call, not an effect.",
+    "openWorldHint": "true when the tool itself reaches outside Maidan's database and artifact store: an HTTP receiver, Slack, GitHub, an embedding provider, a land-gate advisor, or a delivery target the call selects. Background projectors and notifications that mirror an ordinary write because of workspace configuration do not make that write open-world."
+  },
+  "tools": {
+    "abort_artifact_multipart": {
+      "title": "Abort multipart artifact upload",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "S3 abort_multipart_upload + delete_object of the temp key"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "discards every uploaded part and the temp object irreversibly"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "both S3 calls' errors are ignored; aborting an already-aborted upload changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "calls Maidan's own S3 artifact backend only"
+      }
+    },
+    "acknowledge_claim": {
+      "title": "Acknowledge claim",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.acknowledge_claim UPDATEs maidan_threads.work_started_at (starts working clock)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "starts the working clock on the caller's own claim; claim lifecycle state, reset on reclaim"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "work_started_at = COALESCE(work_started_at, NOW()) keeps first stamp; repeat only bumps updated_at"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "add_channel_member": {
+      "title": "Add channel member",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "add_channel_member_audited upserts a maidan_channel_members row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO UPDATE SET role replaces an existing member's role; omitted role defaults to member, demoting an admin"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "upsert keyed on (channel_id, member_id); same args leave the same row and role"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store upsert + in-tx audit row only"
+      }
+    },
+    "add_member_skill": {
+      "title": "Add member skill",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "add_member_skill / grant_governance_skill_audited INSERT into maidan_member_skills"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a skill row (ON CONFLICT DO NOTHING); grants, never revokes"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO NOTHING; a repeated grant adds no skill row"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "add_reaction": {
+      "title": "Add reaction",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "add_reaction_with_event INSERTs into maidan_reactions and appends ReactionAdded"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "adds the caller's own reaction; remove_reaction is the sibling that flips it back"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "row is ON CONFLICT DO NOTHING but a ReactionAdded event is appended on every call"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus only"
+      }
+    },
+    "add_reference": {
+      "title": "Add reference",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "add_reference_with_event INSERTs into maidan_references and appends ReferenceAdded"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new reference edge"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "UNIQUE (src_kind, src_id, dst_kind, dst_id, relation): a repeat fails with Conflict and the tx rolls back"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus only"
+      }
+    },
+    "add_reviewer": {
+      "title": "Add reviewer",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.add_reviewer INSERTs into maidan_thread_reviewers"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "first named reviewer turns open review into a named set; others' approvals stop counting in review_status"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "ON CONFLICT (thread_id, member_id) DO NOTHING; repeat returns added=false"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "add_thread_dependency": {
+      "title": "Add thread dependency",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.add_thread_dependency INSERTs a maidan_thread_dependencies edge"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a dependency edge; nothing is removed or overwritten"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "INSERT ... ON CONFLICT DO NOTHING; the same edge again is a no-op"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "add_thread_required_skill": {
+      "title": "Add thread required skill",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.add_thread_required_skill INSERTs into maidan_thread_required_skills"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a requirement row (ON CONFLICT DO NOTHING)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO NOTHING; repeat adds nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "advise_land_gate": {
+      "title": "Advise land gate",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "writes nothing in Maidan: advisor.advise result is returned, the pointer and requirement are untouched"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "no Maidan state changes, so repeating has no additional effect (advice text may vary)"
+      },
+      "openWorldHint": {
+        "value": true,
+        "reason": "TypeSafeLandGateAdvisor POSTs the state to the external Jev API (MAIDAN_JEV_BASE_URL, default api.typesafe.ai)"
+      }
+    },
+    "allow_secret_egress_host": {
+      "title": "Allow secret egress host",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "allow_secret_egress_host_audited inserts into maidan_secret_egress_hosts"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a host; ON CONFLICT DO UPDATE SET host = host is a no-op on an existing entry"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "ON CONFLICT keeps the existing row unchanged"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only records the allowlist entry; makes no outbound call"
+      }
+    },
+    "assign_thread": {
+      "title": "Assign thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "assign_thread_with_event UPDATEs assignee/claim_lease_id and appends ThreadAssignmentChanged"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "replaces the previous assignee, ends their claim (charge_open_claim_in_tx) and mints a new lease that fences the old token"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "every call mints a new ClaimLeaseId, resets work_started_at and appends another ThreadAssignmentChanged"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "attach_memory_block": {
+      "title": "Attach memory block",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.attach_memory_block INSERTs into maidan_thread_memory_blocks"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a thread-block link; ON CONFLICT DO NOTHING"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "ON CONFLICT (thread_id, block_id) DO NOTHING; repeat returns attached=false"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "attenuate_token": {
+      "title": "Attenuate token",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_(attenuated_)api_token_audited mints a token; replace_token_quotas copies parent quotas"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only inserts a new, weaker derived token; parent is untouched"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call generates a new TokenSecret and inserts a new api_token row"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "begin_artifact_multipart": {
+      "title": "Begin multipart artifact upload",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "S3Store.begin_multipart_upload creates a new in-progress multipart upload at multipart/<uuid>"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only starts a new upload; nothing existing is touched"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call creates a new upload_id and object_key"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "calls Maidan's own S3 artifact backend only"
+      }
+    },
+    "cancel_wait": {
+      "title": "Cancel wait",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.cancel_thread_wait DELETEs the maidan_thread_waits row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the wait timer another member set"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "DELETE of an absent wait is a no-op ({cancelled:false})"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "cast_vote": {
+      "title": "Cast vote",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "cast_vote_with_event upserts maidan_votes and appends VoteCast"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (message_id, member_id, kind) DO UPDATE overwrites the caller's prior confidence; no un-vote tool"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "VoteCast event appended on every call even when the vote row is unchanged"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus only"
+      }
+    },
+    "catch_up_events": {
+      "title": "Catch up on events",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "catch_up_since/ensure_cursor_fresh only read the event log; caller supplies after_lsn"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "claim_next_thread": {
+      "title": "Claim next thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "claim_next_thread_with_event UPDATEs the next claimable thread's assignee/lease and appends ThreadAssignmentChanged"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "dispatch claim of queued work the system cycles (renew/acknowledge/release_claim, lease reaper)"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call claims a possibly different next thread with a new lease"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "claim_next_workspace_thread": {
+      "title": "Claim next workspace thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "claim_next_workspace_thread_with_event UPDATEs the claimed thread's assignee/lease and appends ThreadAssignmentChanged"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "dispatch claim of queued work the system cycles (renew/acknowledge/release_claim, lease reaper)"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call claims a possibly different next thread across the workspace with a new lease"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "claim_thread": {
+      "title": "Claim thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "claim_thread_with_event CAS-UPDATEs assignee_id and appends ThreadAssignmentChanged when it wins"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "claims only an unassigned thread (WHERE assignee_id IS NULL); coordination state released via unassign/release_claim"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat finds assignee set, so the CAS matches no row: claimed=false, no event"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "clear_land_gate": {
+      "title": "Clear land gate",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "clear_land_gate_audited DELETEs the maidan_thread_land_gate row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the pointer and disarms the land-gate close-gate"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "second DELETE matches no row; returns cleared=false"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "clear_review_requirement": {
+      "title": "Clear review requirement",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "clear_review_requirement_audited DELETEs the maidan_thread_review_reqs row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the requirement: a full waiver of the review close-gate"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "second DELETE matches no row; returns NotFound with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "clear_thread_block": {
+      "title": "Clear thread block",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "clear_thread_block_with_event DELETEs the block row and appends BlockedResolved"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the block record another member set"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat DELETE finds no row: no event, {cleared:false}"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "clear_thread_lineage": {
+      "title": "Clear thread lineage",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.clear_thread_lineage DELETEs the maidan_thread_lineage row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the thread's stored run lineage"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "repeat finds no row and returns NotFound with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "complete_artifact_multipart": {
+      "title": "Complete multipart artifact upload",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "completes the S3 upload, deletes the temp key, put()s the blob, upsert_artifact_with_event + ArtifactUpserted"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "irreversibly completes the upload and deletes its temp object; ref upsert overwrites kind/mime_type"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat fails: the upload is completed and its temp object deleted, so no new row or event"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's S3 artifact backend and database"
+      }
+    },
+    "create_channel": {
+      "title": "Create channel",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_channel_with_event inserts a channel and appends ChannelCreated; private adds caller via add_channel_member_audited"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only inserts a new channel row (and an Admin membership row for a private channel)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "UNIQUE (workspace_id, name): a repeat with the same name fails Conflict and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store insert + publish_stored to the in-process bus only"
+      }
+    },
+    "create_delegation_grant": {
+      "title": "Create delegation grant",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_delegation_grant_audited inserts into maidan_delegation_grants"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new grant row"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call inserts a new grant with a new id"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "create_memory_block": {
+      "title": "Create memory block",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.create_memory_block INSERTs into maidan_memory_blocks"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "INSERT ... ON CONFLICT (workspace_id,label) DO NOTHING never overwrites an existing block"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat hits ON CONFLICT DO NOTHING and returns the existing block via get_by_label"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "create_recipe": {
+      "title": "Create recipe",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.create_recipe INSERTs into maidan_recipes"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only inserts a new recipe row"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "plain INSERT with a new Uuid::now_v7 id each call; no uniqueness on name"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "create_secret": {
+      "title": "Create secret",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_secret_audited inserts into maidan_secrets"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (workspace_id, name) DO UPDATE overwrites an existing secret's value_ciphertext"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "same name+value leaves the same plaintext stored (ciphertext re-encrypted, updated_at bumped)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "stores ciphertext in Maidan's DB; no outbound call"
+      }
+    },
+    "create_share_ticket": {
+      "title": "Create share ticket",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_share_ticket_audited inserts maidan_share_tickets + share_ticket_artifacts rows"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new ticket"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call generates a new ShareTicketSecret and ticket id"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "no federation peer or outbound call; secret is returned to the caller for the REST consumer surface"
+      }
+    },
+    "create_task_schedule": {
+      "title": "Create task schedule",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.create_task_schedule INSERTs into maidan_task_schedules"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only inserts a new schedule row"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call INSERTs a new schedule with a fresh TaskScheduleId"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; the sweeper later materializes threads in-store"
+      }
+    },
+    "create_thread": {
+      "title": "Create thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_thread_with_event INSERTs into maidan_threads and appends ThreadCreated"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new thread row and event"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call mints a new thread id (Uuid::now_v7) and a new ThreadCreated event"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "delegate_token": {
+      "title": "Delegate token",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_delegated_api_token_audited inserts a short-lived token for the grant's subject"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only inserts a new delegated token; the grant and parent token are unchanged"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call generates a new TokenSecret and a new api_token row"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "delete_glossary_term": {
+      "title": "Delete glossary term",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.delete_glossary_term DELETEs the term row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "removes the workspace's canonical definition"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "second DELETE matches no row; returns NotFound with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "delete_member_email": {
+      "title": "Delete member email",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "member_emails::delete DELETEs from maidan_member_emails"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "removes the member's stored delivery email"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat deletes nothing more ({deleted:false})"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "delete_memory_block": {
+      "title": "Delete memory block",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.delete_memory_block DELETEs the maidan_memory_blocks row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the block and its value; FK ON DELETE CASCADE drops every thread attachment"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat finds no block and returns NotFound with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "delete_recipe": {
+      "title": "Delete recipe",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.delete_recipe DELETEs the maidan_recipes row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the recipe; FK cascades its maidan_recipe_runs and sets task schedules' recipe_id to NULL"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat finds no recipe (get_recipe NotFound) with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "delete_secret": {
+      "title": "Delete secret",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "delete_secret_audited DELETEs from maidan_secrets"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "removes the named secret"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "repeat deletes nothing and returns NotFound"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "delete_task_schedule": {
+      "title": "Delete task schedule",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.delete_task_schedule DELETEs the maidan_task_schedules row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the schedule; future runs stop"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat finds no schedule (get_task_schedule NotFound) with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "detach_memory_block": {
+      "title": "Detach memory block",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.detach_memory_block DELETEs from maidan_thread_memory_blocks"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "removes the thread-block link (the block itself survives)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "second DELETE matches no row; returns detached=false"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "edit_message": {
+      "title": "Edit message",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "edit_message_with_event UPDATEs the message body/metadata/content and appends MessageEdited"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "overwrites the stored body, metadata and content of an existing message"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "every call bumps edited_at and appends a MessageEdited event (and a message_edits row when body differs)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus only"
+      }
+    },
+    "export_workspace": {
+      "title": "Export workspace",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "builds the signed export bundle and writes nothing else, but it is kept off READ_ONLY_TOOLS so a mutation audit row records who took the data"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "changes no stored data; the only write is the audit row of the call"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat returns the same data and changes nothing beyond another audit row of the call"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "signs with a local key and returns the envelope to the caller; no federation peer or outbound call"
+      }
+    },
+    "follow_channel": {
+      "title": "Follow channel",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "follow_channel INSERTs into maidan_channel_follows"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "follow is the member's own subscription; unfollow_channel flips it back"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "INSERT ... ON CONFLICT DO NOTHING: a repeat adds nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "follow_member": {
+      "title": "Follow member",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "follow_member INSERTs into maidan_member_follows after requested_member/get_member_in checks"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "follow is the member's own occupancy subscription; unfollow_member flips it back"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "INSERT ... ON CONFLICT DO NOTHING: a repeat adds nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "follow_thread": {
+      "title": "Follow thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "follow_thread INSERTs into maidan_thread_follows"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "follow is the member's own subscription; unfollow_thread flips it back"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "INSERT ... ON CONFLICT DO NOTHING: a repeat adds nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "freeze_member": {
+      "title": "Freeze member",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "freeze_member_audited upserts maidan_member_freezes, releases claims, appends MemberFrozen"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "releases the member's active claims (release_member_claims_in_tx) and makes claim_next refuse them"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call appends a new MemberFrozen event and resets frozen_at/frozen_by/reason"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "DB writes plus in-process event bus publish_stored; no outbound call"
+      }
+    },
+    "get_approval_gate": {
+      "title": "Get approval gate",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via get_approval_gate"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "get_artifact": {
+      "title": "Get artifact",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "artifact_ref_exists + get_artifact_for_workspace, then artifacts.get reads the blob"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database and artifact store only"
+      }
+    },
+    "get_artifact_metadata": {
+      "title": "Get artifact metadata",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs: artifact_ref_exists + get_artifact_for_workspace / get_artifact_by_sha"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "get_channel_occupancy": {
+      "title": "Get channel occupancy",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs counts via store.channel_occupancy"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "get_delegation_policy": {
+      "title": "Get delegation policy",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only store.get_delegation_policy read"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "get_delivery_mode": {
+      "title": "Get delivery mode",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "get_delivery_mode only SELECTs (defaults to immediate)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_dependency_results": {
+      "title": "Get dependency results",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_thread_dependencies + get_thread_result per accessible dependency"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "get_glossary_term": {
+      "title": "Get glossary term",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via get_glossary_term"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "get_group_dm": {
+      "title": "Get group DM",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only get_group_dm_conversation SELECT plus participant check"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store read only"
+      }
+    },
+    "get_inbox": {
+      "title": "Get inbox",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "list_member_inbox only SELECTs mentions + inbox cursor; does not advance the cursor"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_kind_census": {
+      "title": "Get kind census",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only private_channel_deny_set + event_kind_census reads"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "get_land_gate": {
+      "title": "Get land gate",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via get_land_gate_standing"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "get_log_snapshot": {
+      "title": "Get log snapshot",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "build_log_snapshot reads event floor/head and build_workspace_export"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "get_manager_digest": {
+      "title": "Get manager digest",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "manager_digest_for_member SELECTs unread notification counts + usage_ledger::rollup; read_at untouched"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_member": {
+      "title": "Get member",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "requested_member does get_member/get_member_in SELECT"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_member_email": {
+      "title": "Get member email",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "member_emails::get only SELECTs"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_member_occupancy": {
+      "title": "Get member occupancy",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "requested_member + list_assigned_threads + can_access_thread SELECTs; member_presence reads the in-memory presence map"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store reads plus the in-process presence_reader; no outbound call"
+      }
+    },
+    "get_member_wip": {
+      "title": "Get member WIP",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only reads: requested_member, count_live_claims and get_wip_limit"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_memory_block": {
+      "title": "Get memory block",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via get_memory_block_by_label"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "get_priority": {
+      "title": "Get priority",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.get_thread_priority"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_queue_depth": {
+      "title": "Get queue depth",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs counts via store.channel_queue_depth"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "get_retention_policy": {
+      "title": "Get retention policy",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only store.get_retention_policy read plus in-memory instance_retention"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "get_review_requirement": {
+      "title": "Get review requirement",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via get_review_requirement"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "get_review_status": {
+      "title": "Get review status",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via review_status"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "get_room": {
+      "title": "Get room",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only get_workspace + get_workspace_handle reads"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "get_run_occupancy": {
+      "title": "Get run occupancy",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs counts via store.run_occupancy"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "get_spawn_budget": {
+      "title": "Get spawn budget",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only spawn::get_budget SELECT on maidan_spawn_budgets"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store read only"
+      }
+    },
+    "get_thread_block": {
+      "title": "Get thread block",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.get_thread_block"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_thread_budget": {
+      "title": "Get thread budget",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only budget::get_budget SELECT; does not create a row"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store read only"
+      }
+    },
+    "get_thread_context": {
+      "title": "Get thread context",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "render_thread_context -> context_pack::build_thread_context, which only reads (get_thread, list_messages_after, ...)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "get_thread_lineage": {
+      "title": "Get thread lineage",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.get_thread_lineage"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "get_thread_result": {
+      "title": "Get thread result",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.get_thread_result"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "get_thread_steer": {
+      "title": "Get thread steer",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.get_thread_steer"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "get_tool_transcript": {
+      "title": "Get tool transcript",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs messages via store.list_messages and projects ToolUse/ToolResult in memory"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_unread_count": {
+      "title": "Get unread count",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "unread_notification_count is a SELECT COUNT(*)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_wait": {
+      "title": "Get wait",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.get_thread_wait"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_waiting_inbox": {
+      "title": "Get waiting inbox",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "reads only: list_assigned_threads, list_review_requests, list_pending_approval_gates, list_mentions_for_member, cursor get"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_wip_limit": {
+      "title": "Get WIP limit",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.get_wip_limit"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "get_workspace_context": {
+      "title": "Get workspace context",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "load_workspace_context -> build_workspace_context only reads; dispatch filters threads with can_access_thread"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "import_workspace": {
+      "title": "Import workspace",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "import_workspace_audited writes the bundle's workspace/members/channels/threads/messages"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "mode=restore with force=true erases the existing workspace in the import transaction before writing"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "mode=new (default) remaps to fresh ids, creating a new workspace each call"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "writes only Maidan's DB from the supplied envelope; no outbound call"
+      }
+    },
+    "instantiate_recipe": {
+      "title": "Instantiate recipe",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.instantiate_recipe inserts threads, deps, required skills, a recipe_runs row and ThreadCreated events"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only creates new threads, dependency edges and a run row"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call creates a new parent thread + children, a new run row and new ThreadCreated events"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "link_github_issue": {
+      "title": "Link GitHub issue",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.link_github_issue upserts maidan_github_issue_links"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (repo, issue_number) DO UPDATE re-points an existing link (thread, member) and clears disabled_at"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "upsert to the same values: a repeat leaves the same row"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store write only; no GitHub API call in the handler or link store method"
+      }
+    },
+    "link_slack_channel": {
+      "title": "Link Slack channel",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.link_slack_channel upserts maidan_slack_channel_links"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (slack_channel_id) DO UPDATE re-points an existing link (thread, member) and clears disabled_at"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "upsert to the same values: a repeat leaves the same row"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store write only; no Slack API call in the handler or link store method"
+      }
+    },
+    "list_assigned_threads": {
+      "title": "List assigned threads",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_assigned_threads, filtered by can_access_thread"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_blocked_threads": {
+      "title": "List blocked threads",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_blocked_threads"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_buried_decisions": {
+      "title": "List buried decisions",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "buried_decisions_for_member only SELECTs thread_results joined to follows"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_capability_sets": {
+      "title": "List capability sets",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "returns maidan_auth::named_sets() catalog; touches no store at all"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "pure in-process catalog; no store or network"
+      }
+    },
+    "list_channel_follows": {
+      "title": "List channel follows",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "list_channel_follows only SELECTs"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_channel_members": {
+      "title": "List channel members",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "get_channel (own_channel workspace check) + list_channel_members SELECT only"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store reads only"
+      }
+    },
+    "list_channels": {
+      "title": "List channels",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_channels and channel_is_member to filter private channels"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads maidan_channels / maidan_channel_members only"
+      }
+    },
+    "list_child_threads": {
+      "title": "List child threads",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.child_thread_summaries"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_delegation_grants": {
+      "title": "List delegation grants",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only store.list_delegation_grants read"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "list_dlq": {
+      "title": "List dead-lettered runs",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only dlq::list_for_channel SELECT"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store read only"
+      }
+    },
+    "list_dm_conversations": {
+      "title": "List DM conversations",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_dm_conversations_for_member"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store read only"
+      }
+    },
+    "list_frozen_members": {
+      "title": "List frozen members",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only store.list_frozen_members read"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "list_fsm_hooks": {
+      "title": "List FSM hooks",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_fsm_hooks"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "list_github_issue_links": {
+      "title": "List GitHub issue links",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_github_issue_links(auth.workspace_id)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "list_glossary_terms": {
+      "title": "List glossary terms",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_glossary_terms"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_group_dms": {
+      "title": "List group DMs",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_group_dm_conversations_for_member"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store read only"
+      }
+    },
+    "list_land_gate_history": {
+      "title": "List land gate history",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_land_gate_history"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_member_follows": {
+      "title": "List member follows",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "list_member_follows only SELECTs"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_member_skills": {
+      "title": "List member skills",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_member_skills"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_members": {
+      "title": "List members",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "ensure_workspace check then store.list_members SELECT"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_memory_blocks": {
+      "title": "List memory blocks",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_memory_blocks"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_mentions": {
+      "title": "List mentions",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_mentions_for_member"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_message_backlinks": {
+      "title": "List message backlinks",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only store.list_message_backlinks read"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "list_message_edits": {
+      "title": "List message edits",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_message_edits (and get_message for the tombstone check)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "list_messages": {
+      "title": "List messages",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_messages"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "list_notification_prefs": {
+      "title": "List notification prefs",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "notification_prefs::list only SELECTs"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_notifications": {
+      "title": "List notifications",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_notifications (read_pool); does not mark read"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_notifications_grouped": {
+      "title": "List notifications grouped",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "list_notifications SELECT then in-memory group_notifications_by_thread"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_pins": {
+      "title": "List pins",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_pins_for_thread"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "list_reactions": {
+      "title": "List reactions",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_reactions_for_message"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "list_recently_active_threads": {
+      "title": "List recently active threads",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_recently_active_threads ordered by updated_at"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_recipes": {
+      "title": "List recipes",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_recipes, filtered by can_access_channel"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_references": {
+      "title": "List references",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_references_from / list_references_to"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "list_result_deliveries": {
+      "title": "List result deliveries",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only result_deliveries::list_for_thread SELECT"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store read only; reports status, does not contact targets"
+      }
+    },
+    "list_review_history": {
+      "title": "List review history",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_review_history"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_reviewers": {
+      "title": "List reviewers",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_reviewers"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_reviews": {
+      "title": "List reviews",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_reviews"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_run_threads": {
+      "title": "List run threads",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_threads_for_run + can_access_thread filter"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "list_secret_egress_hosts": {
+      "title": "List secret egress hosts",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only store.list_secret_egress_hosts read"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "list_secrets": {
+      "title": "List secrets",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only store.list_secrets (metadata, no values)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "list_share_tickets": {
+      "title": "List share tickets",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only list_share_tickets + list_share_ticket_artifacts reads"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "list_slack_channel_links": {
+      "title": "List Slack channel links",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_slack_channel_links(auth.workspace_id)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "list_slash_commands": {
+      "title": "List slash commands",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_slash_commands"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "list_task_schedules": {
+      "title": "List task schedules",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_task_schedules, filtered by can_access_channel"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_thread_dependencies": {
+      "title": "List thread dependencies",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_thread_dependencies + thread_dependencies_satisfied"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "list_thread_dependents": {
+      "title": "List thread dependents",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_thread_dependents"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "list_thread_follows": {
+      "title": "List thread follows",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "list_thread_follows only SELECTs"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_thread_memory_blocks": {
+      "title": "List thread memory blocks",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_thread_memory_blocks (JOIN on attachments)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_thread_required_skills": {
+      "title": "List thread required skills",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_thread_required_skills"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "list_thread_results": {
+      "title": "List thread results",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_thread_results + can_access_thread filter"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "list_threads": {
+      "title": "List threads",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs a keyset page via store.page_threads_for_channel"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_tombstones": {
+      "title": "List tombstones",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only list_tombstones + can_access_thread reads"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "list_unclaimable": {
+      "title": "List unclaimable",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_unclaimable_threads"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "list_votes": {
+      "title": "List votes",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via list_votes_for_message"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "reads Maidan's database only"
+      }
+    },
+    "mark_all_notifications_read": {
+      "title": "Mark all notifications read",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "mark_all_notifications_read UPDATEs read_at on every unread notification"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read markers on the member's own notifications; no row removed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "WHERE read_at IS NULL: an immediate repeat finds no unread rows and clears 0"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "mark_claimable": {
+      "title": "Mark claimable",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.mark_thread_claimable DELETEs the maidan_thread_unclaimable row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the park record (reason, marked_by) another member stored; not the caller's own preference"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "DELETE of an absent park is a no-op ({cleared:false})"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "mark_inbox_read": {
+      "title": "Mark inbox read",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "advance_inbox_last_read_at upserts maidan_inbox_cursor"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read marker on the member's own inbox; cursor only moves forward (GREATEST), no rows removed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "GREATEST(last_read_at, read_through) means the same read_through again leaves the cursor unchanged"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "mark_notification_read": {
+      "title": "Mark notification read",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "mark_notification_read UPDATEs maidan_notifications.read_at"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read marker on one of the member's own notifications; no row removed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read_at = COALESCE(read_at, now()) keeps the original read_at on a re-mark"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "mark_unclaimable": {
+      "title": "Mark unclaimable",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.mark_thread_unclaimable upserts a maidan_thread_unclaimable row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO UPDATE replaces the stored reason/marked_by another member set"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "upsert to the same reason leaves the same park (only marked_at refreshes)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "mute_channel": {
+      "title": "Mute channel",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.mute_channel INSERTs into maidan_channel_mutes"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "caller's own preference row; unmute_channel flips it back"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "INSERT ... ON CONFLICT DO NOTHING; repeat is a no-op"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store insert only"
+      }
+    },
+    "mute_thread": {
+      "title": "Mute thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.mute_thread INSERTs into maidan_thread_mutes"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "flips the caller's own mute preference; unmute_thread flips it back"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "INSERT ... ON CONFLICT DO NOTHING: a repeat adds nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "open_dm_conversation": {
+      "title": "Open DM conversation",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "dm::open may create the __dm__ channel, a thread and a maidan_dm_conversations row"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only inserts; an existing conversation is returned untouched"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "get_by_members returns the existing pair's conversation, so a repeat creates nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store inserts only"
+      }
+    },
+    "open_group_dm": {
+      "title": "Open group DM",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "group_dm::open inserts a thread, a maidan_group_dm_conversations row and member rows"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only inserts new rows"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "no lookup of an existing group: every call creates a new group DM id and thread"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store inserts only"
+      }
+    },
+    "parse_maidan_uri": {
+      "title": "Parse Maidan URI",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "RoomUri::parse on the argument; no store access"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "pure parse of the uri string"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "pure parse; no store or network"
+      }
+    },
+    "pin_message": {
+      "title": "Pin message",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "pin_message_with_event INSERTs into maidan_pins and appends MessagePinned"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "adds a pin; unpin_message is the sibling that removes it"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "row is ON CONFLICT DO NOTHING but a MessagePinned event is appended on every call"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus only"
+      }
+    },
+    "post_dm_message": {
+      "title": "Post DM message",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.post_message inserts a new message in the DM thread, then publishes MessagePosted"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new message row (plus routed mention rows)"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "post_message mints a new message id every call"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "no slash dispatch on this path (only post_message calls slash_dispatcher); store + bus only"
+      }
+    },
+    "post_group_dm_message": {
+      "title": "Post group DM message",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "post_message_with_event inserts a new message + MessagePosted event in the group DM thread"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new message row (plus routed mention rows)"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "post_message_with_event mints a new message id every call"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "no slash dispatch on this path (only post_message calls slash_dispatcher); store + bus only"
+      }
+    },
+    "post_message": {
+      "title": "Post message",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "post_message_with_event (or provisional post_message + edit_message_with_posted_event) inserts a new message"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "adds a new message; the slash path only finalizes the metadata of the message this call just inserted"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call inserts a new message id, and a slash body re-runs the command"
+      },
+      "openWorldHint": {
+        "value": true,
+        "reason": "a registered /command in body runs ServerSlashDispatcher: http kind POSTs the signed payload to the receiver URL"
+      }
+    },
+    "record_mention": {
+      "title": "Record mention",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "record_mention_with_event INSERTs into maidan_mentions and appends MentionRecorded"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a mention row (ON CONFLICT DO NOTHING)"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "the row is DO NOTHING on repeat, but a MentionRecorded event is appended every call"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus only"
+      }
+    },
+    "register_fsm_hook": {
+      "title": "Register FSM hook",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.create_fsm_hook INSERTs a new hook (http: with a newly generated encrypted secret)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new hook row"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "no uniqueness on fsm hooks: each call inserts another hook with a new id and secret"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "validate_egress_target is a sync URL check, no request; store only"
+      }
+    },
+    "register_slash_command": {
+      "title": "Register slash command",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.create_slash_command INSERTs a new command (http: with a newly generated encrypted secret)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new command row"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "unique (workspace_id, name) WHERE revoked_at IS NULL: a repeat fails with no new row or secret stored"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "validate_egress_target is a sync URL check, no request; store only"
+      }
+    },
+    "release_claim": {
+      "title": "Release claim",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "release_claim_with_event clears assignee/lease/working clock and appends ThreadAssignmentChanged"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "graceful lease release by the fenced holder, returning the thread to the queue; designed claim cycle"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "repeat fails the (assignee_id, claim_lease_id) fence with NotFound; no second clear or event"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "remove_channel_member": {
+      "title": "Remove channel member",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "remove_channel_member_audited DELETEs from maidan_channel_members"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes the membership row, revoking the member's access to a private channel"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "DELETE of an absent row is a no-op; repeat has no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store delete + in-tx audit row only"
+      }
+    },
+    "remove_member_skill": {
+      "title": "Remove member skill",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.remove_member_skill DELETEs from maidan_member_skills"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "removes a declared skill; for a governance skill this revokes approval authority"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "second DELETE matches no row; returns NotFound with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "remove_reaction": {
+      "title": "Remove reaction",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "remove_reaction_with_event DELETEs the caller's reaction row and appends ReactionRemoved"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "removes only the caller's own reaction, the sibling of add_reaction"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "event appended only when rows_affected > 0; a repeat removes nothing and returns removed=false"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus only"
+      }
+    },
+    "remove_reviewer": {
+      "title": "Remove reviewer",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "remove_reviewer_audited DELETEs from maidan_thread_reviewers"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "revokes a member's reviewer designation (removing the last one reopens review to anyone)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "second DELETE matches no row; returns NotFound with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "remove_thread_dependency": {
+      "title": "Remove thread dependency",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.remove_thread_dependency DELETEs a maidan_thread_dependencies edge"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes a dependency edge"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "repeat finds no edge and returns NotFound with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "remove_thread_required_skill": {
+      "title": "Remove thread required skill",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.remove_thread_required_skill DELETEs from maidan_thread_required_skills"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "removes a requirement row from the task"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "second DELETE matches no row; returns NotFound with no further effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "rename_thread": {
+      "title": "Rename thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_thread_title UPDATEs maidan_threads.title"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "replaces the thread's existing title"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "same title again leaves the value unchanged"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "renew_claim": {
+      "title": "Renew claim",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.renew_claim UPDATEs maidan_threads.assignment_expires_at (lease heartbeat)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "lease heartbeat for the fenced holder; system-managed claim state designed to cycle"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call sets assignment_expires_at = now + lease_secs, moving the expiry forward again"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "replay_result_delivery": {
+      "title": "Replay result delivery",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "prepare_result_delivery_replay resets status to pending and enqueue_egress adds an outbox row (or marks skipped)"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "overwrites row status/last_error, even a delivered one; the worker PATCHes the existing external GitHub/Slack result"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call enqueues a new egress row (fresh synthetic source_log_id); each send also POSTs another review/check run"
+      },
+      "openWorldHint": {
+        "value": true,
+        "reason": "enqueues an EgressKind::Result delivery to GitHub/Slack that the egress worker sends"
+      }
+    },
+    "report_usage": {
+      "title": "Report usage",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "report_accounted_usage writes a ledger row, adds used_* totals, appends UsageReported"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "over budget it NULLs the caller's claim lease, appends ClaimFailed and records a DLQ entry: the run is stopped"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "keyed on usage_report_id: reserve_in_tx fails on repeat and the existing entry is returned with no new effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store transaction + publish_stored to the in-process bus only"
+      }
+    },
+    "request_approval": {
+      "title": "Request approval",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_approval_gate_with_event INSERTs a pending gate and appends ApprovalRequested"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new pending gate"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call creates a new gate id"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "no outbound call in the handler; store + event bus only"
+      }
+    },
+    "require_land_gate": {
+      "title": "Require land gate",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.require_land_gate INSERTs a pending maidan_thread_land_gate row"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "ON CONFLICT (thread_id) DO NOTHING leaves an existing pointer alone; only arms the gate"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "repeat hits ON CONFLICT DO NOTHING and returns the same standing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "resolve_secret": {
+      "title": "Resolve secret",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "decrypts and returns the secret value and writes nothing else, but it is kept off READ_ONLY_TOOLS so a mutation audit row records who took the data"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "changes no stored data; the only write is the audit row of the call"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat returns the same data and changes nothing beyond another audit row of the call"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "decrypts with the server's at-rest key; no outbound call"
+      }
+    },
+    "revoke_delegation_grant": {
+      "title": "Revoke delegation grant",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "revoke_delegation_grant_audited UPDATEs grant revoked_at and revokes its token subtree"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "revokes the grant and every api_token derived from it (recursive subtree UPDATE)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "UPDATE ... WHERE revoked_at IS NULL; a repeat changes nothing and still returns the grant"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "revoke_fsm_hook": {
+      "title": "Revoke FSM hook",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.revoke_fsm_hook sets enabled=false, revoked_at=now(); forget_fsm_secret drops the cached secret"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "revokes the hook: it stops firing"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "UPDATE ... WHERE revoked_at IS NULL: a repeat returns NotFound and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + in-memory secret cache only"
+      }
+    },
+    "revoke_secret_egress_host": {
+      "title": "Revoke secret egress host",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "revoke_secret_egress_host_audited DELETEs from maidan_secret_egress_hosts"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "removes a trusted host from the secret-egress allowlist"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "repeat deletes nothing and returns NotFound"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "revoke_share_ticket": {
+      "title": "Revoke share ticket",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "revoke_share_ticket_audited UPDATEs revoked_at"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "revokes a cross-org read ticket"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "UPDATE ... WHERE revoked_at IS NULL; repeat changes nothing (returns not-found error)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "revoke_slash_command": {
+      "title": "Revoke slash command",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.revoke_slash_command sets enabled=false, revoked_at=now(); forget_slash_secret drops the cached secret"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "revokes the command: it stops dispatching"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "UPDATE ... WHERE revoked_at IS NULL: a repeat returns NotFound and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + in-memory secret cache only"
+      }
+    },
+    "rotate_token": {
+      "title": "Rotate token",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "rotate_api_token_audited inserts a successor token and revokes the old one"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "the caller's current bearer secret is revoked and stops working"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call mints a new secret/token id; the previous secret is revoked again"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "search_messages": {
+      "title": "Search messages",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only queries: search_messages / semantic_search / hybrid_search plus can_access_thread filtering"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": true,
+        "reason": "semantic/hybrid mode calls embedding_provider.embed: with openai-compatible configured that POSTs to MAIDAN_EMBEDDING_ENDPOINT"
+      }
+    },
+    "seed_from_message": {
+      "title": "Seed from message",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "create_thread_with_event + add_reference_with_event (+ post_message_with_event for quote)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds a new thread, a seeded_from edge and optionally a quote message"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "create_thread_with_event mints a new thread id every call"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus only"
+      }
+    },
+    "set_delegation_policy": {
+      "title": "Set delegation policy",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "set_delegation_policy_audited upserts/deletes maidan_delegation_policies"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO UPDATE replaces the workspace grant ceiling; None DELETEs the row back to default"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "same max_grant_days yields the same stored policy"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "set_delivery_mode": {
+      "title": "Set delivery mode",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "set_delivery_mode upserts maidan_member_delivery_prefs (ON CONFLICT DO UPDATE mode)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "the caller's own email delivery preference (immediate/digest); calling it again with the other mode restores it"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "set-to-a-value: same mode again leaves the same row (only updated_at moves)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only writes the pref row; the sweeper's later emails are not requested by this call"
+      }
+    },
+    "set_glossary_term": {
+      "title": "Set glossary term",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_glossary_term upserts maidan_glossary_terms"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (workspace_id, term) DO UPDATE overwrites an existing definition and aliases"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "same term/definition/aliases re-upserts the same values (updated_at bump only)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "set_land_gate": {
+      "title": "Set land gate",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_land_gate_pointer upserts maidan_thread_land_gate and inserts a verdict row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO UPDATE overwrites the previous status/land/artifact_sha pointer"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call INSERTs a new maidan_thread_land_gate_verdicts history row"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "set_member_email": {
+      "title": "Set member email",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "member_emails::set upserts maidan_member_emails"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (member_id) DO UPDATE SET email replaces any previously stored delivery email"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "upsert to the same email leaves the same value (only updated_at moves)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only stores the address; no mail is sent by this call"
+      }
+    },
+    "set_memory_block_value": {
+      "title": "Set memory block value",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_memory_block_value UPDATEs the block's value"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "full rewrite of value (last-writer-wins) replaces what another agent stored"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "publish_event appends a MemoryBlockUpdated event every call (when a bus is configured); updated_at bumps too"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "set_notification_pref": {
+      "title": "Set notification pref",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "notification_prefs::set upserts maidan_notification_prefs (ON CONFLICT DO UPDATE muted)"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "a mute/unmute preference for one event kind; the same tool with muted=false flips it back"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "upsert to the same (member, kind, muted) leaves the same value"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "set_priority": {
+      "title": "Set priority",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_thread_priority upserts a maidan_thread_priorities row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO UPDATE overwrites the previous priority/set_by"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "set-to-a-value: the same priority upserts to the same value (only set_at refreshes)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "set_retention_policy": {
+      "title": "Set retention policy",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "set_retention_policy_audited upserts (or DELETEs when unset) maidan_retention_policies"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "replaces the workspace retention; the background sweeper then prunes messages/events/deliveries past the new cutoff"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "same RetentionDays stores the same row"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "set_review_requirement": {
+      "title": "Set review requirement",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "set_review_requirement_audited upserts maidan_thread_review_reqs"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO UPDATE overwrites required_count; with channel:admin it can lower k to 0, waiving the close-gate"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "same required_count re-upserts the same value (updated_at bump only)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "set_spawn_budget": {
+      "title": "Set spawn budget",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "spawn::set_budget upserts maidan_spawn_budgets, or DELETEs it when all axes are null"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "full replace: ON CONFLICT DO UPDATE overwrites every axis; no args deletes the workspace budget"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "set-to-a-value: same args leave the same row (or no row)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store upsert/delete only"
+      }
+    },
+    "set_task_schedule_active": {
+      "title": "Set task schedule active",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_task_schedule_active UPDATEs the active flag"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "overwrites the active flag on a shared schedule; pausing stops its runs for everyone (same tool resumes it)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "setting the same active value again changes nothing but updated_at"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "set_thread_block": {
+      "title": "Set thread block",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_thread_block upserts a maidan_thread_blocks row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO UPDATE replaces an existing block's reason/set_by"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "upsert to the same reason leaves the same block (only set_at refreshes)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "set_thread_budget": {
+      "title": "Set thread budget",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "budget::set_budget upserts maidan_thread_budgets max_* columns"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "replaces all four max_* limits on an existing budget (null clears a cap)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "set-to-a-value upsert; used_* totals untouched, repeat leaves same limits"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store upsert only"
+      }
+    },
+    "set_thread_lineage": {
+      "title": "Set thread lineage",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_thread_lineage upserts maidan_thread_lineage.parent_run_id"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (thread_id) DO UPDATE overwrites any previously stored parent_run_id"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "upsert to the same parent_run_id leaves the value unchanged (only set_at bumps)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "set_thread_owner": {
+      "title": "Set thread owner",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_thread_owner UPDATEs maidan_threads.owner_id"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "overwrites or clears (owner_id omitted) the existing owner; changes who may land the work"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "setting the same owner_id again leaves the value unchanged (only updated_at bumps)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "set_thread_result": {
+      "title": "Set thread result",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_thread_result upserts maidan_thread_results and publish_event appends ThreadResultSet"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (thread_id) DO UPDATE overwrites the prior result; may also submit request_changes review"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call bumps produced_at and appends a new ThreadResultSet event, re-arming delivery for the new revision"
+      },
+      "openWorldHint": {
+        "value": true,
+        "reason": "result.deliver_to selects Slack/GitHub targets; ThreadResultSet -> route_thread_result -> enqueue_egress"
+      }
+    },
+    "set_thread_steer": {
+      "title": "Set thread steer",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_thread_steer upserts maidan_thread_steer"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (thread_id) DO UPDATE overwrites the previous steer (latest wins)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "same steer again leaves the value unchanged (steered_at/steered_by refresh)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "set_wait": {
+      "title": "Set wait",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_thread_wait upserts a maidan_thread_waits row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO UPDATE replaces the existing wait_until/on_timeout/reason/created_by"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each upsert sets fired_at = NULL, re-arming a timer that already fired so the sweeper escalates again"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "set_wip_limit": {
+      "title": "Set WIP limit",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_wip_limit upserts or DELETEs the maidan_wip_limits row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "overwrites the workspace's previous WIP limit, and limit omitted/null deletes it"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "set-to-a-value: the same limit upserts to the same value (only updated_at moves)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "set_workspace_handle": {
+      "title": "Set workspace handle",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.set_workspace_handle upserts maidan_workspace_handles"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT (workspace_id) DO UPDATE replaces the workspace's existing handle (rename)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "setting the same handle again leaves the same row"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "snapshot_thread_context": {
+      "title": "Snapshot thread context",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "artifacts.put writes the rendered pack; upsert_artifact_with_event upserts row + ref and appends ArtifactUpserted"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "adds a content-addressed snapshot; the ref upsert writes kind=context_snapshot and mime application/json"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "ArtifactUpserted event appended every call; a changed live pack also makes a new blob"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's artifact store and database"
+      }
+    },
+    "snooze_notification": {
+      "title": "Snooze notification",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "snooze_notification UPDATEs maidan_notifications.snoozed_until"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "snooze is the member's own view state; no row removed (re-snoozing replaces snoozed_until)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "sets snoozed_until to the given until; same args leave the same value"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "submit_review": {
+      "title": "Submit review",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.submit_review upserts maidan_thread_reviews, inserts a verdict row and appends ReviewSubmitted"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "upsert overwrites the reviewer's prior decision; request_changes can reopen an in_review thread and dismiss approvals"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call inserts a maidan_thread_review_verdicts row and appends a ReviewSubmitted event"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
+      }
+    },
+    "tombstone_message": {
+      "title": "Tombstone message",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "tombstone_message_with_event UPDATEs tombstoned_at and blanks body/metadata/content"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "tombstone clears the message body, metadata and content irreversibly"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "UPDATE ... WHERE tombstoned_at IS NULL: a repeat returns NotFound and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus + MCP resource notifications only"
+      }
+    },
+    "transition_thread": {
+      "title": "Transition thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "transition_thread_with_event UPDATEs state, INSERTs maidan_thread_transitions and appends ThreadStateChanged"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "close and archive are terminal (maidan_fsm::apply has no way back) and clear the assignee/claim"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "a gated close refusal posts a new notice message each call (record_close_refusal -> post_message_with_event)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "unassign_thread": {
+      "title": "Unassign thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "unassign_thread_with_event clears assignee/lease and appends ThreadAssignmentChanged"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "removes another member's assignment and clears claim_lease_id, fencing the holder; not limited to the caller's own claim"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "append_assignment_event writes a new ThreadAssignmentChanged every call, even when already unassigned"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "unfollow_channel": {
+      "title": "Unfollow channel",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "unfollow_channel DELETEs from maidan_channel_follows"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "unfollow of the member's own subscription; follow_channel flips it back"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat deletes nothing more ({removed:false})"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "unfollow_member": {
+      "title": "Unfollow member",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "unfollow_member DELETEs from maidan_member_follows"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "unfollow of the member's own occupancy subscription; follow_member flips it back"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat deletes nothing more ({removed:false})"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "unfollow_thread": {
+      "title": "Unfollow thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "unfollow_thread DELETEs from maidan_thread_follows"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "unfollow of the member's own subscription; follow_thread flips it back"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat deletes nothing more ({removed:false})"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "unfreeze_member": {
+      "title": "Unfreeze member",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "unfreeze_member_audited DELETEs the freeze row and appends MemberUnfrozen"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "DELETE FROM maidan_member_freezes removes the operator's freeze record (reason, frozen_by); lifts a kill-switch"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "when not frozen nothing is deleted or appended (returns unfrozen=false)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "DB writes plus in-process event bus publish_stored; no outbound call"
+      }
+    },
+    "unlink_github_issue": {
+      "title": "Unlink GitHub issue",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.unlink_github_issue DELETEs the link row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes a projector link (stops the GitHub bridge)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat finds no link and returns unlinked=false"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store only; no GitHub API call"
+      }
+    },
+    "unlink_slack_channel": {
+      "title": "Unlink Slack channel",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.unlink_slack_channel DELETEs the link row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "deletes a projector link (stops the Slack bridge)"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat finds no link and returns unlinked=false"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store only; no Slack API call"
+      }
+    },
+    "unmute_channel": {
+      "title": "Unmute channel",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.unmute_channel DELETEs the caller's maidan_channel_mutes row"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "removes the caller's own mute preference; mute_channel restores it"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "DELETE of an absent row is a no-op (returns unmuted=false)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store delete only"
+      }
+    },
+    "unmute_thread": {
+      "title": "Unmute thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.unmute_thread DELETEs the caller's maidan_thread_mutes row"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "flips the caller's own mute preference back; sibling of mute_thread"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "DELETE of an absent row is a no-op ({unmuted:false})"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
+    "unpin_message": {
+      "title": "Unpin message",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "unpin_message_with_event DELETEs from maidan_pins and appends MessageUnpinned"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "pin toggle, the sibling of pin_message"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "event appended only when a row was deleted; a repeat returns removed=false"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store + event bus only"
+      }
+    },
+    "update_thread_budget": {
+      "title": "Update thread budget",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "budget::patch_budget merges the patch and upserts maidan_thread_budgets"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "overwrites the named max_* limits; explicit null clears an existing cap"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "patch applies absolute values; repeating it yields the same limits"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store upsert only"
+      }
+    },
+    "upload_artifact": {
+      "title": "Upload artifact",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "artifacts.put writes the blob; upsert_artifact_with_event upserts the row + workspace ref and appends ArtifactUpserted"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "re-uploading the same bytes overwrites the workspace ref's kind and mime_type (record_ref_in_tx DO UPDATE)"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "ArtifactUpserted event appended on every call even for identical bytes"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's artifact store (fs/S3) and database"
+      }
+    },
+    "upload_artifact_multipart_part": {
+      "title": "Upload multipart artifact part",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "S3Store.upload_part writes a part to the in-progress upload"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "S3 UploadPart with an existing part_number replaces that previously uploaded part"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "same part_number + same bytes leaves the same part (same ETag)"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "calls Maidan's own S3 artifact backend only"
+      }
+    },
+    "usage_rollup": {
+      "title": "Roll up usage",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "usage_ledger::rollup SELECT aggregates on read_pool; get_member_in check only"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store read only"
+      }
+    },
+    "verify_event_chain": {
+      "title": "Verify event chain",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only store.verify_event_chain read"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns the same data and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database; no outbound call"
+      }
+    },
+    "verify_workspace_export": {
+      "title": "Verify workspace export",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "maidan_auth::verify_export on the argument; no store access"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing is changed"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "pure signature verification"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "in-process verify; no store or network"
+      }
+    },
+    "wait_for_blocked_resolved": {
+      "title": "Wait for blocked resolved",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "wait_for_event subscribes to the bus for BlockedResolved and replays list_events_after; no writes"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's event bus/log for BlockedResolved; makes no outbound call"
+      }
+    },
+    "wait_for_claim_expired": {
+      "title": "Wait for claim expired",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "wait_for_event subscribes to the bus for ClaimExpired and replays list_events_after; no writes"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's event bus/log for ClaimExpired; makes no outbound call"
+      }
+    },
+    "wait_for_claim_failed": {
+      "title": "Wait for claim failed",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "wait_for_event subscribes to the bus for ClaimFailed and replays list_events_after; no writes"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's event bus/log for ClaimFailed; makes no outbound call"
+      }
+    },
+    "wait_for_landed": {
+      "title": "Wait for landed",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "wait_for_event subscribes to the bus for ThreadLanded and replays list_events_after; no writes"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's event bus/log for ThreadLanded; makes no outbound call"
+      }
+    },
+    "wait_for_memory_block": {
+      "title": "Wait for memory block",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "subscribes to the event bus and SELECTs via get_memory_block_by_label; writes nothing"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only: nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's store"
+      }
+    },
+    "wait_for_mention": {
+      "title": "Wait for mention",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "bus.subscribe + list_events_after lookback + can_access_thread; only reads, long-polls until MentionRecorded or timeout"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "event bus subscription and event-log reads inside Maidan"
+      }
+    },
+    "wait_for_notification": {
+      "title": "Wait for notification",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "same wait_for_member_event as wait_for_mention: bus.subscribe + list_events_after lookback, reads only"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; nothing to destroy"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating the call changes no state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "event bus subscription and event-log reads inside Maidan"
+      }
+    },
+    "wait_for_ready": {
+      "title": "Wait for ready",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "wait_for_event subscribes to the bus for ThreadReady and replays list_events_after; no writes"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "only reads Maidan's event bus/log for ThreadReady; makes no outbound call"
+      }
+    },
+    "wait_for_result": {
+      "title": "Wait for result",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "subscribes to bus for ThreadResultSet, lookback via list_events_after, then get_thread_result; no writes"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "whoami": {
+      "title": "Who am I",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "reflects the request AuthContext; no store access"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "no I/O at all"
+      }
+    }
+  }
+}
