@@ -217,10 +217,10 @@ pub async fn revoke_slash_command(
     let command_id = SlashCommandId(command_id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
-    let command = state.store.revoke_slash_command(command_id).await?;
-    if command.workspace_id != workspace_id {
-        return Err(ApiError::NotFound);
-    }
+    state
+        .store
+        .revoke_slash_command(workspace_id, command_id)
+        .await?;
     forget_slash_secret(&state.slash.secrets, command_id);
     Ok(StatusCode::NO_CONTENT)
 }

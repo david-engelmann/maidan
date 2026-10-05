@@ -67,7 +67,7 @@ period is cut, and clients retry.
 | `MAIDAN_EMBEDDING_API_KEY` | optional | Bearer token for remote provider. |
 | `MAIDAN_EMBEDDING_DIM` | no | Embedding dimension for `openai-compatible`. Unset → the server embeds one probe string at boot and uses its length; set it to skip the probe. |
 | `MAIDAN_EMBEDDING_TIMEOUT_SECS` | no | HTTP timeout for remote embeddings (default `15`). |
-| `INDEXER_STALE_SECS` | no | When **> 0**, `/health/ready` is degraded if the embedding indexer has not observed an event for this many seconds. Default `0` (disabled). **Recommended `300`** on Postgres deployments with embeddings enabled. |
+| `INDEXER_STALE_SECS` | no | When **> 0**, `/health/ready` is degraded when the embedding indexer is behind: the log holds a message event it has not handled, that event is older than this many seconds, and the indexer has made no progress for as long. An idle instance with nothing to index stays ready however long it has been quiet. An indexer error degrades readiness regardless. Default `0` (lag check disabled). **Recommended `300`** on Postgres deployments with embeddings enabled. "Handled" means handed to the embedding queue, so a backed-up provider shows in `maidan_indexer_queue_depth` and the indexer error, not here. |
 | `OTLP_ENDPOINT` | no | gRPC OTLP collector URL for **traces** (and metrics when `OTLP_METRICS=1`). Each request's `debug` span carries its method, path (never the query, where an OAuth `code` travels) and headers, with `Authorization`, `Proxy-Authorization`, `Cookie`, `Mcp-Session-Id` and the Slack and GitHub signatures printed as `Sensitive`; so are `Set-Cookie` and `Mcp-Session-Id` on the response. |
 | `OTLP_SERVICE_NAME` | no | Resource `service.name` for OTLP (default `maidan-server`). |
 | `OTLP_METRICS` | no | Set to `1` to push the same `metrics` crate instruments to OTLP (fanout with Prometheus scrape). Requires `OTLP_ENDPOINT` unless `OTLP_METRICS_ENDPOINT` is set. |
@@ -716,7 +716,7 @@ no per-workspace series).
 | `maidan_bus_lag_total` rising | In-process subscribers falling behind the broadcast buffer | Check publish rate; scale consumers; ensure clients use `workspace_id` filter for auto-replay |
 | `maidan_subscribe_replay_total{outcome="replay_hint"}` | Lag without workspace scope or auto-replay failed | Fix client filter; inspect store/DB errors in logs |
 | `maidan_subscribe_replay_total{outcome="replay_truncated"}` sustained | Event log replay hitting 500-row window | Client should loop on `after_id` / `resume_token` until truncation stops |
-| `maidan_indexer_last_event_age_seconds` high (with `INDEXER_STALE_SECS` set) | Indexer silent while messages post | Check embedding provider errors on `/health`; verify indexer task running |
+| `maidan_indexer_pending_age_seconds` high, or `/health/ready` `indexer` reports "indexer is behind" (with `INDEXER_STALE_SECS` set) | Messages are queued in the event log and the indexer is not taking them | Check embedding provider errors on `/health`; verify indexer task running. A high `maidan_indexer_last_event_age_seconds` alone is an idle instance, not a fault |
 | Indexer `rebuild_needed` / `RebuildRequired` in logs | Search tap hit a chain break or `Lagged` without a durable log | Do not keep serving the gapped index. Reindex from the messages table (`maidan reindex-embeddings`). A peer that missed a pruned prefix takes `GET /workspaces/:id/snapshot` then `…/events/catch-up` — never clamp |
 | `maidan_bus_listener_ok == 0` | Postgres `LISTEN` task degraded | Inspect DB connectivity; `maidan_bus_listener_errors_total` trend |
 
@@ -995,7 +995,7 @@ Scrape `GET /metrics` for agent-substrate health (see [Integration](Integration.
 | Metric / signal | Symptom | Suggested action |
 |-----------------|---------|------------------|
 | `maidan_bus_lag_total` | Subscribers behind | Scope WS filters; scale consumers |
-| `maidan_indexer_last_event_age_seconds` | Stale embeddings | Fix embedding provider; run `maidan reindex-embeddings` |
+| `maidan_indexer_pending_age_seconds` | Stale embeddings | Fix embedding provider; run `maidan reindex-embeddings` |
 | `maidan_outbox_pending` / quarantined | Relay stuck | [Outbox relay](#outbox-relay-v1000-postgres-v1200-quarantine-v1400-sqlite) |
 | `maidan_automation_delivery_total{outcome="failure"}` | Slash/FSM HTTP failing | [Automation HTTP delivery](#automation-http-delivery-v6800) |
 | MCP tool latency | Not exported per-tool yet | Use HTTP request metrics + logs |

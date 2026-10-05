@@ -49,11 +49,11 @@
       "id": 3,
       "targets": [
         {
-          "expr": "maidan_indexer_last_event_age_seconds",
+          "expr": "maidan_indexer_pending_age_seconds",
           "refId": "A"
         }
       ],
-      "title": "Indexer last event age (s)",
+      "title": "Indexer oldest pending event age (s)",
       "type": "stat"
     },
     {

@@ -317,10 +317,10 @@ pub(super) async fn revoke_slash_command(
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
     let command_id = SlashCommandId(a.command_id);
-    let command = server.store.revoke_slash_command(command_id).await?;
-    if command.workspace_id != workspace_id {
-        return Err(McpError::NotFound);
-    }
+    let command = server
+        .store
+        .revoke_slash_command(workspace_id, command_id)
+        .await?;
     server.forget_slash_secret(a.command_id);
     Ok(content_json(&command))
 }
@@ -343,10 +343,7 @@ pub(super) async fn revoke_fsm_hook(
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
     let hook_id = FsmHookId(a.hook_id);
-    let hook = server.store.revoke_fsm_hook(hook_id).await?;
-    if hook.workspace_id != workspace_id {
-        return Err(McpError::NotFound);
-    }
+    let hook = server.store.revoke_fsm_hook(workspace_id, hook_id).await?;
     server.forget_fsm_secret(a.hook_id);
     Ok(content_json(&hook))
 }

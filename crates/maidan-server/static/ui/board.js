@@ -764,6 +764,14 @@ import { loadMessages } from "./thread.js";
           renderState(list, "Set a workspace ID to load channels.");
           return;
         }
+        // Before any credential there is nothing to ask the server: a request
+        // could only come back refused, and "not accepted" would blame a token
+        // nobody has pasted yet.
+        if (!token() && !sessionMemberId) {
+          aside.hidden = false;
+          renderState(list, "Paste your token to connect.");
+          return;
+        }
         setLoading(list, "Loading channels…");
         persist();
         const t = token();
