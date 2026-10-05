@@ -3,11 +3,19 @@ import { base } from "./api.js";
 
 
       // Tell the user what to fix without stopping the page. The same message
-      // again refreshes the one on screen rather than stacking a copy.
+      // again refreshes the one on screen rather than stacking a copy, and
+      // says it again: a screen reader announces a change to an alert's
+      // text, not a new timer, and a change undone in the same task can be
+      // dropped, so the text is cleared now and put back in a later task.
       function showError(message) {
         const region = document.getElementById("toasts");
         let toast = [...region.children].find((t) => t.dataset.message === message);
-        if (!toast) {
+        if (toast) {
+          const text = toast.firstElementChild;
+          clearTimeout(Number(toast.dataset.restore));
+          text.textContent = "";
+          toast.dataset.restore = String(setTimeout(() => (text.textContent = message), 100));
+        } else {
           toast = document.createElement("div");
           toast.className = "toast";
           toast.setAttribute("role", "alert");
@@ -18,13 +26,21 @@ import { base } from "./api.js";
           close.type = "button";
           close.setAttribute("aria-label", "Dismiss");
           close.textContent = "×";
-          close.onclick = () => toast.remove();
+          const shown = toast;
+          close.onclick = () => dropToast(shown);
           toast.append(text, close);
           region.appendChild(toast);
-          while (region.children.length > 3) region.firstElementChild.remove();
+          while (region.children.length > 3) dropToast(region.firstElementChild);
         }
+        const shown = toast;
         clearTimeout(Number(toast.dataset.timer));
-        toast.dataset.timer = String(setTimeout(() => toast.remove(), 8000));
+        toast.dataset.timer = String(setTimeout(() => dropToast(shown), 8000));
+      }
+
+      function dropToast(toast) {
+        clearTimeout(Number(toast.dataset.timer));
+        clearTimeout(Number(toast.dataset.restore));
+        toast.remove();
       }
 
       function setStatus(msg, cls) {

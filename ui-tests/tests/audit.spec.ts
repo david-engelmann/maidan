@@ -177,6 +177,29 @@ test("a dropped socket keeps retrying, the board keeps refreshing, and it comes 
   await expect(page.locator("#ws-status")).toHaveText("connected");
 });
 
+// A drop before the first ack (the server restarting as the page connects)
+// is retried like any later drop, not left at "could not connect".
+test("a socket dropped before its first ack is retried", async ({ page }) => {
+  let attempts = 0;
+  await page.routeWebSocket(/\/ws\/subscribe/, (ws) => {
+    attempts += 1;
+    if (attempts === 1) {
+      ws.close({ code: 1011, reason: "starting" });
+      return;
+    }
+    ws.connectToServer();
+  });
+  await page.goto("/ui/");
+  await page.fill("#workspace", fx.workspace_id);
+  await page.fill("#token", fx.live_token);
+  await page.locator("#token").dispatchEvent("change");
+  await page.click(`#channel-list li[data-id="${fx.lab_channel_id}"]`);
+  await expect(page.locator("#board .board-col").first()).toBeVisible();
+  await page.click("#ws-connect");
+  await expect(page.locator("#ws-status")).toHaveText("connected", { timeout: 15_000 });
+  expect(attempts).toBeGreaterThanOrEqual(2);
+});
+
 // At phone width the page is one column: nothing scrolls sideways, and a
 // Needs you row keeps its buttons on screen under its text.
 test("phone width: one column, no sideways scroll, Needs you buttons on screen", async ({ page }) => {

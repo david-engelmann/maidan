@@ -72,63 +72,78 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         button.disabled = true;
         persist();
         status.textContent = "Creating the member…";
-        try {
-        let res;
-        try {
-          res = await api(`${base()}/workspaces/${wid()}/members`, {
-            method: "POST",
-            headers: headers(true),
-            body: JSON.stringify({ handle, display_name: display || null, kind: "agent" }),
-          });
-        } catch (e) {
-          status.textContent = unreachable(e);
-          return;
-        }
-        if (!res.ok) {
-          status.textContent = await responseError(res, "Could not create the member");
-          return;
-        }
-        const member = await res.json();
-        status.textContent = "Minting a worker token…";
-        try {
-          res = await api(`${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
-            method: "POST",
-            headers: headers(true),
-            body: JSON.stringify({ label: handle, capability_set: WORKER_PRESET, capabilities: [] }),
-          });
-        } catch (e) {
-          status.textContent = unreachable(e);
-          return;
-        }
-        if (!res.ok) {
-          status.textContent = await responseError(res, "Member created, but the token was not minted");
-          return;
-        }
-        const minted = await res.json();
-        secretBox.hidden = false;
-        secretBox.replaceChildren();
-        document.getElementById("token-member").value = member.id;
-        const caps = (minted.capabilities || []).join(", ");
-        const lead = document.createElement("span");
-        lead.textContent = `Token for ${display || handle} (shown once). It can claim, post, and transition. Paste it where the snippet says REPLACE_WITH_MAIDAN_TOKEN. `;
-        const code = document.createElement("code");
-        code.id = "cx-secret-value";
-        code.textContent = minted.secret;
-        const copy = document.createElement("button");
-        copy.type = "button";
-        copy.textContent = "Copy token";
-        copy.onclick = async () => {
-          try {
-            await navigator.clipboard.writeText(minted.secret);
-            status.textContent = "Token copied. The snippets still show a placeholder.";
-          } catch (_e) {
-            status.textContent = "Copy was blocked by the browser; select the token instead.";
-          }
+        // Once the member exists a retry cannot create it again (the handle
+        // is taken), so every failure after that point names it and puts its
+        // id in Tokens, where a token can be minted for it.
+        let member = null;
+        const memberCreated = (what) => {
+          document.getElementById("token-member").value = member.id;
+          return `Member ${handle} was created, but ${what} Mint its token in Tokens; the member is filled in there.`;
         };
-        secretBox.append(lead, code, document.createTextNode(" "), copy);
-        if (caps) secretBox.append(document.createTextNode(" Capabilities: " + caps + "."));
-        status.textContent = `Member ${handle} created. The worker preset is ${WORKER_PRESET}.`;
-        loadMembers();
+        try {
+          let res;
+          try {
+            res = await api(`${base()}/workspaces/${wid()}/members`, {
+              method: "POST",
+              headers: headers(true),
+              body: JSON.stringify({ handle, display_name: display || null, kind: "agent" }),
+            });
+          } catch (e) {
+            status.textContent = unreachable(e);
+            return;
+          }
+          if (!res.ok) {
+            status.textContent = await responseError(res, "Could not create the member");
+            return;
+          }
+          member = await res.json();
+          status.textContent = "Minting a worker token…";
+          try {
+            res = await api(`${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
+              method: "POST",
+              headers: headers(true),
+              body: JSON.stringify({ label: handle, capability_set: WORKER_PRESET, capabilities: [] }),
+            });
+          } catch (e) {
+            status.textContent = memberCreated(`its token was not minted. ${unreachable(e)}`);
+            return;
+          }
+          if (!res.ok) {
+            status.textContent = memberCreated(`${await responseError(res, "its token was not minted")}.`);
+            return;
+          }
+          const minted = await res.json();
+          secretBox.hidden = false;
+          secretBox.replaceChildren();
+          document.getElementById("token-member").value = member.id;
+          const caps = (minted.capabilities || []).join(", ");
+          const lead = document.createElement("span");
+          lead.textContent = `Token for ${display || handle} (shown once). It can claim, post, and transition. Paste it where the snippet says REPLACE_WITH_MAIDAN_TOKEN. `;
+          const code = document.createElement("code");
+          code.id = "cx-secret-value";
+          code.textContent = minted.secret;
+          const copy = document.createElement("button");
+          copy.type = "button";
+          copy.textContent = "Copy token";
+          copy.onclick = async () => {
+            try {
+              await navigator.clipboard.writeText(minted.secret);
+              status.textContent = "Token copied. The snippets still show a placeholder.";
+            } catch (_e) {
+              status.textContent = "Copy was blocked by the browser; select the token instead.";
+            }
+          };
+          secretBox.append(lead, code, document.createTextNode(" "), copy);
+          if (caps) secretBox.append(document.createTextNode(" Capabilities: " + caps + "."));
+          status.textContent = `Member ${handle} created. The worker preset is ${WORKER_PRESET}.`;
+          loadMembers();
+        } catch (_e) {
+          // A reply that could not be read. After a mint the server holds a
+          // token this page never saw: it cannot be shown again, so say to
+          // mint another rather than leave "Minting…" on screen.
+          status.textContent = member
+            ? memberCreated("the reply with its token could not be read, so that token cannot be shown.")
+            : "The member reply could not be read. Check Tokens or the member list before trying again: the member may exist.";
         } finally {
           button.disabled = false;
         }
@@ -324,17 +339,17 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         const url = token()
           ? `${base()}/workspaces/${wid()}/search?${params}`
           : `${uiReadPath(`/workspaces/${wid()}/search`)}?${params}`;
+        const box = document.getElementById("search-results");
         let res;
+        let body;
         try {
           res = await api(url, { headers: headers(), credentials: "include" });
+          body = await res.text();
         } catch (e) {
-          const box = document.getElementById("search-results");
           box.textContent = unreachable(e);
           setStatus("Could not reach the server", "err");
           return;
         }
-        const body = await res.text();
-        const box = document.getElementById("search-results");
         if (!res.ok) {
           let detail = "";
           try {
@@ -349,8 +364,15 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           setStatus(said, "err");
           return;
         }
+        let hits;
+        try {
+          hits = JSON.parse(body);
+        } catch (e) {
+          box.textContent = unreachable(e);
+          setStatus("Could not read the search results", "err");
+          return;
+        }
         setStatus("OK", "ok");
-        const hits = JSON.parse(body);
         box.innerHTML = "";
         if (!hits.length) {
           box.textContent = "No hits";

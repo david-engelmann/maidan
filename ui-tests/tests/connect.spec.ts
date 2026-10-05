@@ -74,3 +74,52 @@ test("creating an agent mints a token that can claim, post, and transition", asy
     "workspace:read,workspace:write,message:post,thread:transition",
   );
 });
+
+// Once the member exists a retry cannot create it again: the handle is taken.
+// A mint that fails after that names the member and puts its id in Tokens.
+test("a failed mint after the member is created points Tokens at that member", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.fill("#workspace", fx.workspace_id);
+  await page.fill("#token", fx.admin_token);
+  await page.locator("#token").dispatchEvent("change");
+  await page.route(/\/members\/[^/]+\/tokens$/, (route) =>
+    route.request().method() === "POST" ? route.fulfill({ status: 500, body: "boom" }) : route.continue(),
+  );
+  await page.getByRole("button", { name: "Connect an agent" }).first().click();
+
+  const handle = `nomint-${Date.now()}`;
+  await page.fill("#cx-handle", handle);
+  await page.click("#cx-create-agent");
+
+  const status = page.locator("#cx-status");
+  await expect(status).toContainText(`Member ${handle} was created, but its token was not minted`);
+  await expect(status).toContainText("Mint its token in Tokens");
+  await expect(status).not.toContainText("boom");
+  await expect(page.locator("#token-member")).toHaveValue(/^[0-9a-f-]{36}$/);
+  await expect(page.locator("#cx-create-agent")).toBeEnabled();
+});
+
+// A mint the server made but whose reply the page could not read: the secret
+// cannot be shown again, so the page says so instead of staying on "Minting…".
+test("an unreadable mint reply says the token cannot be shown", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.fill("#workspace", fx.workspace_id);
+  await page.fill("#token", fx.admin_token);
+  await page.locator("#token").dispatchEvent("change");
+  await page.route(/\/members\/[^/]+\/tokens$/, (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({ status: 201, contentType: "application/json", body: "{not json" })
+      : route.continue(),
+  );
+  await page.getByRole("button", { name: "Connect an agent" }).first().click();
+
+  const handle = `garbled-${Date.now()}`;
+  await page.fill("#cx-handle", handle);
+  await page.click("#cx-create-agent");
+
+  const status = page.locator("#cx-status");
+  await expect(status).toContainText(`Member ${handle} was created`);
+  await expect(status).toContainText("cannot be shown");
+  await expect(page.locator("#token-member")).toHaveValue(/^[0-9a-f-]{36}$/);
+  await expect(page.locator("#cx-create-agent")).toBeEnabled();
+});

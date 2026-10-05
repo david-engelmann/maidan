@@ -30,10 +30,17 @@ import { tokenKey, wsResumeKey } from "./state.js";
         bearerMemberId = null;
       }
 
+      // Each token check takes a number. A check that a newer paste or a
+      // newer read has overtaken must not set the member or the status line,
+      // or a slow rejection of token A would sign out token B.
+      let identityGen = 0;
+
       // Trade a token for an HttpOnly session with its authority, and drop it
       // from the page. A server with no session key (404) cannot hold one, so
-      // the token stays in this tab only, never in storage.
-      async function exchangeToken(secret) {
+      // the token stays in this tab only, never in storage. `current` says
+      // whether the caller still wants the answer; an overtaken exchange
+      // leaves the token field to the newer one.
+      async function exchangeToken(secret, current = () => true) {
         let res;
         try {
           res = await api(`${base()}/auth/session/from-token`, {
@@ -44,6 +51,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         } catch (e) {
           return { ok: false, error: unreachable(e) };
         }
+        if (!current()) return { ok: false, stale: true };
         if (res.status === 404) {
           document.getElementById("token").value = secret;
           return { ok: true };
@@ -64,16 +72,19 @@ import { tokenKey, wsResumeKey } from "./state.js";
       }
 
       async function refreshBearerIdentity() {
+        const gen = ++identityGen;
         bearerMemberId = null;
         if (!token()) return null;
         try {
           const res = await api(`${base()}/me`, { headers: headers() });
-          if (!res.ok) return null;
+          if (gen !== identityGen || !res.ok) return null;
           const identity = await res.json();
+          if (gen !== identityGen) return null;
           bearerMemberId = identity.member_id;
           if (!wid()) document.getElementById("workspace").value = identity.workspace_id;
           return identity;
         } catch (_e) {
+          if (gen === identityGen) bearerMemberId = null;
           return null;
         }
       }
@@ -113,22 +124,54 @@ import { tokenKey, wsResumeKey } from "./state.js";
       }
 
 
+      // Discovery is optional, so it is bounded and never holds up a
+      // credential. A newer read (the API base changed) wins over an older
+      // one still in flight, and a read that never got an answer is tried
+      // again, so one dropped request does not hide the identity provider
+      // until the page is reloaded.
+      const DISCOVERY_TIMEOUT_MS = 5000;
+      const DISCOVERY_RETRY_MS = [2000, 5000, 15000];
+      let discoveryGen = 0;
+      let discoveryRetry = null;
+
       // The discovery document says which sign-in paths this server has, so the
       // first-run card never offers an identity provider that is not there.
-      async function loadServerAuth() {
+      function loadServerAuth() {
+        return discoverServerAuth(0);
+      }
+
+      async function discoverServerAuth(attempt) {
+        const gen = ++discoveryGen;
+        clearTimeout(discoveryRetry);
         oidcLoginPath = null;
         serverOffersSessions = null;
+        document.getElementById("first-run-oidc").hidden = true;
+        let answered = false;
+        let loginPath = null;
+        let sessions = null;
         try {
-          const res = await api(`${base()}/.well-known/maidan.json`);
+          const res = await api(`${base()}/.well-known/maidan.json`, {
+            signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+          });
           if (res.ok) {
             const auth = (await res.json()).auth;
-            if (auth && auth.oidc && auth.oidc_login) oidcLoginPath = auth.oidc_login;
-            if (auth && typeof auth.sessions === "boolean") serverOffersSessions = auth.sessions;
+            if (auth && auth.oidc && auth.oidc_login) loginPath = auth.oidc_login;
+            if (auth && typeof auth.sessions === "boolean") sessions = auth.sessions;
+            answered = true;
+          } else if (res.status < 500 && res.status !== 429) {
+            // No discovery document: a token is the only path offered.
+            answered = true;
           }
         } catch (_e) {
-          /* no discovery document: a token is the only path offered */
+          /* unreachable, timed out, or not JSON: try again below */
         }
+        if (gen !== discoveryGen) return;
+        oidcLoginPath = loginPath;
+        serverOffersSessions = sessions;
         document.getElementById("first-run-oidc").hidden = !oidcLoginPath;
+        if (!answered && attempt < DISCOVERY_RETRY_MS.length) {
+          discoveryRetry = setTimeout(() => discoverServerAuth(attempt + 1), DISCOVERY_RETRY_MS[attempt]);
+        }
       }
 
       // A missing cached member is not proof the cookie is gone: the session
@@ -193,6 +236,8 @@ import { tokenKey, wsResumeKey } from "./state.js";
         document.getElementById("token").disabled = true;
         document.getElementById("token-signin").disabled = true;
         persist();
+        const gen = ++identityGen;
+        const current = () => gen === identityGen;
         const status = document.getElementById("session-status");
         const secret = pastedToken();
         if (!secret) {
@@ -200,7 +245,8 @@ import { tokenKey, wsResumeKey } from "./state.js";
           showConnection(false);
           return;
         }
-        const exchanged = await exchangeToken(secret);
+        const exchanged = await exchangeToken(secret, current);
+        if (!current()) return;
         if (!exchanged.ok) {
           bearerMemberId = null;
           status.hidden = false;
@@ -209,27 +255,34 @@ import { tokenKey, wsResumeKey } from "./state.js";
           return;
         }
         await refreshSession();
+        if (!current()) return;
         let res = null;
         try {
           res = await api(`${base()}/me`, { headers: headers() });
         } catch (e) {
-          forgetBearerMember();
-          status.hidden = false;
-          status.className = "err";
-          status.textContent = unreachable(e);
+          if (current()) {
+            forgetBearerMember();
+            status.hidden = false;
+            status.className = "err";
+            status.textContent = unreachable(e);
+          }
           return;
         }
+        if (!current()) return;
         if (!res.ok) {
-          forgetBearerMember();
-          status.hidden = false;
-          status.className = "err";
-          status.textContent =
+          const said =
             res.status === 401
               ? "That token was not accepted: check it was copied whole and has not expired or been revoked, or mint a new one in Tokens."
               : await responseError(res, "Could not check that token");
+          if (!current()) return;
+          forgetBearerMember();
+          status.hidden = false;
+          status.className = "err";
+          status.textContent = said;
           return;
         }
         const identity = await res.json();
+        if (!current()) return;
         bearerMemberId = identity.member_id;
         if (!wid()) document.getElementById("workspace").value = identity.workspace_id;
         persist();
@@ -351,7 +404,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
 
       async function start() {
         setAttention(0);
-        await loadServerAuth();
+        loadServerAuth();
         // An older page kept the token in localStorage: exchange it once and
         // remove it.
         const stored = localStorage.getItem(tokenKey);
