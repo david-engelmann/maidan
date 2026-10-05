@@ -1593,6 +1593,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### A context delta says when the prefix must be replaced
 
 - **Fixed:** A `message_cursor` delta with `since_prefix_sha` returns the messages after the cursor only when appending them, and their edits, rebuilds a prefix that hashes to `prefix_sha256`. A change outside those messages (a glossary term, an accepted decision, a reference, an artifact, a transition, a change request, an earlier edit, or the elision boundary) returns the replacement prefix instead, so a client cache cannot drift. The first MCP content part of a delta is that head, never an empty string. A cursor with no prefix sha is still the message slice the caller asked for.
+### Signing in with a pasted token is a button and Enter
+
+- **Fixed:** the first-run card signed in only when the token field lost focus, so pasting a token and pressing Enter did nothing a person could see, and there was no button to press (UI audit P0-5). The card now has a Sign in button beside the token field and a hint under it ("Paste your token, then press Enter or Sign in."); Enter in the field signs in too. A second trigger while a sign-in is running joins it, so the token is exchanged once. Sign in with an empty field says "Paste your token to connect." and asks the server nothing.
+- **Fixed:** entering a workspace id before any credential loaded its channels with no credential and showed "Could not load channels: Your token or session was not accepted…" to someone who had not pasted a token yet. With no token and no session, the channel list says "Paste your token to connect." and no request is sent. `ui-tests/tests/first-run-sign-in.spec.ts` covers paste and Enter, the button, and workspace then Tab.
+
 ### Usage ledger that prices caching
 
 - **Added:** `input` is uncached input. Cache writes are a 5-minute tier and a 1-hour tier, each with its own snapshotted rate. A usage row stores the provider, response model id, service tier, batch flag, harness and version, cache key, cache-miss reason, and the sha256 of each pack.

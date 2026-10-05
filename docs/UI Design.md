@@ -97,7 +97,7 @@ Creating the member and minting `maidan.agent.worker` is already on main. Do not
 
 ### Empty and error
 
-**No credential.** `#first-run` is the screen. Primary action: **Sign in with your identity provider** (`#login`) when `#first-run-oidc` is shown, otherwise the token field is the action and there is no filled button beside it. `#board`'s static "Connect an agent" is not a second primary while `#first-run` is visible. Hide it or make it a ghost.
+**No credential.** `#first-run` is the screen. Primary action: **Sign in with your identity provider** (`#login`) when `#first-run-oidc` is shown, otherwise the token field is the action: Enter in it, or Sign in (`#token-signin`, a ghost) beside it, signs in, and there is no filled button beside it. Before any credential exists, the channel list says "Paste your token to connect." and nothing asks the server for channels. `#board`'s static "Connect an agent" is not a second primary while `#first-run` is visible. Hide it or make it a ghost.
 
 **Empty channel.** `emptyChannelHelp()` replaces the lanes with `#board-onboard`. Primary action: **Connect an agent**. One sentence on how a task arrives. No `POST /channels/…` path. No "pick a channel." No "New thread in the sidebar." `#create-thread` stays a ghost in `#new-task`.
 
