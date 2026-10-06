@@ -137,6 +137,29 @@ async fn blocked_reason_parks_a_thread_from_dispatch_and_emits_on_clear() {
     assert_eq!(put_body["reason"], "gate");
     assert_eq!(put_body["set_by"], agent.id.0.to_string());
 
+    // The board's channel thread list carries the block, so a blocked card
+    // can be marked without a second read; an unblocked thread carries none.
+    let listed: serde_json::Value = client
+        .get(format!("{base}/channels/{}/threads", ch.id.0))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let card = |id: uuid::Uuid| {
+        listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == id.to_string())
+            .cloned()
+            .unwrap()
+    };
+    assert_eq!(card(t1.id.0)["block"]["reason"], "gate");
+    assert!(card(t2.id.0).get("block").is_none());
+
     // GET the block.
     let got: serde_json::Value = client
         .get(format!("{base}/threads/{}/block", t1.id.0))

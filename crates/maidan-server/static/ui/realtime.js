@@ -136,6 +136,10 @@ import { loadApprovals } from "./tools.js";
           return showError("Sign in first: live updates need a signed-in session or a token.");
         }
         persist();
+        // Wanted from the first attempt, not from the ack: a drop before the
+        // ack (a restart, a network blip) is retried like any other. A policy
+        // refusal (1008) still stops, and Disconnect still clears this.
+        wsWanted = true;
         const frame = { filter: buildWsFilter() };
         const t = pastedToken();
         if (t) frame.token = t;
@@ -168,7 +172,6 @@ import { loadApprovals } from "./tools.js";
           const t = v.type;
           if (t === "subscribe_ack") {
             const recovered = wsRetries > 0;
-            wsWanted = true;
             wsRetries = 0;
             setLiveFallback(false);
             setWsStatus("connected", "connected");

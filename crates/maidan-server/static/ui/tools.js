@@ -1209,6 +1209,10 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
       // secret is still shown once, so it is not lost, but it does not replace
       // a different connection.
       async function rotateToken(id) {
+        // The server reads the id as a UUID in any case; the comparison must
+        // too, or an uppercase id typed in Tokens would rotate the token this
+        // page runs on and leave the page holding the dead secret.
+        const sameId = (a, b) => Boolean(a && b) && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
         const requestToken = token();
         const requestBase = base();
         const requestWorkspace = wid();
@@ -1229,8 +1233,8 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
         }
         const rotated = await res.json();
         const sameConnection =
-          id === requestTokenId &&
-          id === currentTokenId &&
+          sameId(id, requestTokenId) &&
+          sameId(id, currentTokenId) &&
           token() === requestToken &&
           base() === requestBase &&
           wid() === requestWorkspace;

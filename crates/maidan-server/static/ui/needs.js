@@ -227,6 +227,9 @@ import { answerGate } from "./tools.js";
           clear.className = "primary";
           clear.textContent = "Unblock";
           clear.onclick = async () => {
+            // One request at a time: a second click would 404 on a block the
+            // first already cleared.
+            clear.disabled = true;
             let res;
             try {
               res = await api(apiWritePath(`/threads/${item.thread_id}/block`), {
@@ -234,13 +237,14 @@ import { answerGate } from "./tools.js";
                 headers: headers(true),
                 credentials: "include",
               });
-            } catch (e) {
-              toast(`Could not unblock: ${e.message}`);
+            } catch (_e) {
+              clear.disabled = false;
+              showRowError(li, "Could not unblock: the server did not answer. Try again.");
               return;
             }
             if (!res.ok) {
-              const body = await res.text().catch(() => "");
-              toast(`Could not unblock: ${res.status} ${body}`);
+              clear.disabled = false;
+              showRowError(li, await responseError(res, "Could not unblock"));
               return;
             }
             // Remove from state and re-render; schedule a board refresh so

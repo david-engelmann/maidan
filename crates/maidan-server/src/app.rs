@@ -1200,6 +1200,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/ui/api/threads/{tid}/messages", post(routes::post_message))
         .route("/ui/api/threads/{tid}", post(routes::transition_thread))
+        .route(
+            "/ui/api/threads/{tid}/block",
+            delete(routes::clear_thread_block),
+        )
         .route("/ui/api/threads/{tid}/reviews", post(routes::submit_review))
         .route("/ui/api/messages/{mid}", patch(routes::edit_message))
         .route("/ui/api/artifacts", post(routes::upload_artifact))

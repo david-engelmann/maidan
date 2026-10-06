@@ -135,12 +135,12 @@ fn a_requested_review_waits_since_the_thread_last_changed() {
 #[test]
 fn a_human_blocked_thread_waits_as_blocked_with_its_note() {
     let now = Utc::now();
-    let tid = ThreadId(Uuid::new_v4());
-    let owner = MemberId(Uuid::new_v4());
+    let tid = ThreadId::new();
+    let owner = MemberId::new();
     let block = ThreadBlock {
         thread_id: tid,
         reason: BlockedReason::Human,
-        set_by: MemberId(Uuid::new_v4()),
+        set_by: MemberId::new(),
         set_at: now - Duration::seconds(300),
         note: Some("waiting on security review".into()),
     };

@@ -55,7 +55,10 @@ fn rotate_token_activates_only_when_the_connection_is_unchanged() {
             assert!(url.contains("/tokens/tok-1/rotate"), "{name}: url {url}");
             assert_eq!(case["reconnected"], 1, "{name}: the live socket reconnects");
         }
-        if name != "same-connection" && name != "exchange-failed" {
+        if name == "uppercase-id" {
+            assert_eq!(case["reconnected"], 1, "{name}: the live socket reconnects");
+        }
+        if !["same-connection", "exchange-failed", "uppercase-id"].contains(&name) {
             assert_eq!(case["reconnected"], 0, "{name}: socket left alone");
         }
     }
@@ -214,11 +217,11 @@ function reset() {
 }
 
 const cases = [];
-async function scenario(name, setup, want) {
+async function scenario(name, setup, want, id = "tok-1") {
   reset();
   setup();
   const rotate = runRotate(deps);
-  const tokenId = await rotate("tok-1");
+  const tokenId = await rotate(id);
   cases.push({
     name,
     exchanged: obs.exchanged,
@@ -245,6 +248,16 @@ async function scenario(name, setup, want) {
     tokenField: "sekret",
     error: null,
   });
+  // Tokens takes the id as typed; the server reads any case.
+  await scenario("uppercase-id", () => {
+    deps.currentTokenId = "0192f3a4-5b6c-7d8e-9f00-aabbccddeeff";
+  }, {
+    exchange: true,
+    shown: "new-secret",
+    tokenId: "tok-2",
+    tokenField: "sekret",
+    error: null,
+  }, "0192F3A4-5B6C-7D8E-9F00-AABBCCDDEEFF");
   await scenario("workspace-changed", () => {
     apiImpl = async () => {
       state.workspace = "ws-2";
