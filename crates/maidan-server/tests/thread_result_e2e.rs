@@ -91,6 +91,7 @@ async fn set_get_result_over_http_and_event() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .unwrap();

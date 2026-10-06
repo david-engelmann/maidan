@@ -41,6 +41,7 @@ async fn setup(store: &dyn Store, threads: usize, claimers: usize) -> (ChannelId
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some(format!("task {i}")),
+                description: None,
             })
             .await
             .unwrap();

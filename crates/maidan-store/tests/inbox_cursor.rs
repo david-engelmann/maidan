@@ -60,6 +60,7 @@ async fn inbox_unread_count_and_mark_read_on_sqlite() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

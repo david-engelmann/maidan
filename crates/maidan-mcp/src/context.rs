@@ -231,6 +231,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -330,6 +331,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -410,6 +412,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -515,6 +518,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -591,6 +595,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -682,6 +687,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("parent task".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -704,6 +710,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: Some(parent.id),
                 title: Some("child subtask".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -796,6 +803,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("opaque decision".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -810,6 +818,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("failed waiter".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -833,6 +842,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("reviewed waiter".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -857,6 +867,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("claimer task".into()),
+                description: None,
             })
             .await
             .unwrap();

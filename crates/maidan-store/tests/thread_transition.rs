@@ -50,6 +50,7 @@ async fn transition_thread_advances_state_and_logs_row() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .expect("thread");

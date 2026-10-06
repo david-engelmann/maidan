@@ -78,6 +78,7 @@ async fn fire_bare_thread(state: &AppState, sched: &TaskSchedule) {
             channel_id: sched.channel_id,
             parent_thread_id: None,
             title: Some(sched.title.clone()),
+            description: None,
         })
         .await
     {

@@ -53,6 +53,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -159,6 +160,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task2".into()),
+            description: None,
         })
         .await
         .expect("thread2");
@@ -254,6 +256,7 @@ async fn run_enforce_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -383,6 +386,7 @@ async fn run_accounted_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("metered task".into()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -590,6 +594,7 @@ async fn run_patch_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("bp".into()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -659,6 +664,7 @@ async fn run_patch_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("fresh".into()),
+            description: None,
         })
         .await
         .expect("fresh thread");
@@ -711,6 +717,7 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("priced".into()),
+            description: None,
         })
         .await
         .expect("thread");

@@ -82,6 +82,7 @@ async fn inbox_list_count_mark_and_read_all() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

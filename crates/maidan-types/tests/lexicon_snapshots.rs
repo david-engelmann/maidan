@@ -66,6 +66,7 @@ fn thread() -> Thread {
         channel_id: maidan_types::ChannelId(id(3)),
         parent_thread_id: None,
         title: Some("task".into()),
+        description: None,
         state: ThreadState::Open,
         assignee_id: None,
         assignment_expires_at: None,

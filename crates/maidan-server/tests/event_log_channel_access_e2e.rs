@@ -184,6 +184,7 @@ async fn the_event_log_hides_what_the_reader_cannot_see() {
             channel_id: secret.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();
@@ -218,6 +219,7 @@ async fn the_event_log_hides_what_the_reader_cannot_see() {
             channel_id: general.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

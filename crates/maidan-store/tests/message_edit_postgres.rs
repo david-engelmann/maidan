@@ -65,6 +65,7 @@ async fn postgres_edit_message_sets_edited_at() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();
@@ -156,6 +157,7 @@ async fn postgres_message_content_round_trips_via_jsonb() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

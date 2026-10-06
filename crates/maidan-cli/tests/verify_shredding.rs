@@ -60,6 +60,7 @@ async fn verify_shredding_reports_words_a_withdrawal_left() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

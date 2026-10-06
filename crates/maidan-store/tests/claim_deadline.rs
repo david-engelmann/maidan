@@ -45,6 +45,7 @@ async fn world(store: &dyn Store) -> World {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .unwrap();

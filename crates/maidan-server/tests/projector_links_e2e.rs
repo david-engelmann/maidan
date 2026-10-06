@@ -59,6 +59,7 @@ async fn projector_links_link_list_and_unlink() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

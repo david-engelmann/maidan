@@ -88,6 +88,7 @@ async fn thread(store: &dyn Store, name: &str) -> ThreadId {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some(name.into()),
+            description: None,
         })
         .await
         .expect("thread")
@@ -464,6 +465,7 @@ async fn run_replay_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("replay".into()),
+            description: None,
         })
         .await
         .expect("thread")

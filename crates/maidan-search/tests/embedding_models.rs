@@ -108,6 +108,7 @@ async fn sqlite_mixed_dimension_models_coexist() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

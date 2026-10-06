@@ -263,6 +263,7 @@ mod tests {
                 channel_id: ch.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .expect("thread");

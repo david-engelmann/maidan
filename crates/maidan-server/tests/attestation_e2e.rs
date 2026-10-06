@@ -219,6 +219,7 @@ impl World {
                 channel_id: self.channel,
                 parent_thread_id: None,
                 title: Some("work".into()),
+                description: None,
             })
             .await
             .unwrap();

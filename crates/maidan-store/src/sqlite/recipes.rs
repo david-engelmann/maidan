@@ -108,7 +108,7 @@ async fn insert_thread(
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+         RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(Uuid::now_v7())
     .bind(channel_id.0)

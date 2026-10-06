@@ -216,6 +216,7 @@ mod tests {
                 channel_id: public.id,
                 parent_thread_id: None,
                 title: Some("pub".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -224,6 +225,7 @@ mod tests {
                 channel_id: private.id,
                 parent_thread_id: None,
                 title: Some("secret".into()),
+                description: None,
             })
             .await
             .unwrap();

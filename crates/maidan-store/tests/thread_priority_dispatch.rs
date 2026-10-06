@@ -55,6 +55,7 @@ async fn mk(store: &dyn Store, channel: ChannelId, title: &str) -> ThreadId {
             channel_id: channel,
             parent_thread_id: None,
             title: Some(title.into()),
+            description: None,
         })
         .await
         .expect("thread")

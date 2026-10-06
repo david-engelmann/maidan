@@ -1637,6 +1637,10 @@ pub struct Thread {
     pub channel_id: ChannelId,
     pub parent_thread_id: Option<ThreadId>,
     pub title: Option<String>,
+    /// What the task is about, in the creator's words. Set at creation;
+    /// `None` on threads created before descriptions existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub state: ThreadState,
     /// The member this thread/task is assigned to, if any. An axis orthogonal
     /// to [`ThreadState`]: assignment persists across state transitions. Set
@@ -1696,6 +1700,7 @@ pub struct NewThread {
     pub channel_id: ChannelId,
     pub parent_thread_id: Option<ThreadId>,
     pub title: Option<String>,
+    pub description: Option<String>,
 }
 
 /// A child thread collapsed under its parent: the child thread plus a live

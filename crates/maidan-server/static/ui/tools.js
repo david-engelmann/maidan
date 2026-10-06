@@ -1,5 +1,5 @@
 // @ts-check
-import { api, apiWritePath, base, headers, persist, requireAuthForWrite, token, uiReadPath, wid } from "./api.js";
+import { api, apiWritePath, base, headers, persist, requireAuthForWrite, token, uiReadPath, wid, writeApi } from "./api.js";
 import { escapeHtml } from "./artifacts.js";
 import { clearLoading, renderState, responseError, setLoading, setOut, setStatus, showError, unreachable } from "./feedback.js";
 import { authorId, memberName } from "./people.js";
@@ -57,7 +57,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
           const replay = document.createElement("button");
           replay.type = "button";
           replay.textContent = "Replay";
-          replay.onclick = () => replayDelivery(d.id, d.kind);
+          replay.onclick = () => replayDelivery(d.id, d.kind, replay);
           card.appendChild(replay);
           box.appendChild(card);
         });
@@ -87,10 +87,10 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
       }
 
 
-      async function replayDelivery(id, kind) {
+      async function replayDelivery(id, kind, button) {
         if (!requireAuthForWrite()) return;
         try {
-          const res = await api(
+          const res = await writeApi(button || null,
             apiWritePath(`/workspaces/${wid()}/deliveries/${id}/replay?kind=${encodeURIComponent(kind)}`),
             { method: "POST", headers: headers(true), credentials: "include" },
           );
@@ -170,7 +170,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
         }
         const body = global ? {} : { workspace_id: wid() };
         try {
-          const res = await api(apiWritePath(`/operator/reindex-embeddings`), {
+          const res = await writeApi(global ? "op-reindex-global" : "op-reindex-workspace", apiWritePath(`/operator/reindex-embeddings`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
@@ -245,7 +245,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
               const revoke = document.createElement("button");
               revoke.type = "button";
               revoke.textContent = "Revoke";
-              revoke.onclick = () => revokeSlashCommand(c.id);
+              revoke.onclick = () => revokeSlashCommand(c.id, revoke);
               div.appendChild(revoke);
             }
             box.appendChild(div);
@@ -267,7 +267,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
         const secretBox = document.getElementById("slash-secret");
         secretBox.innerHTML = "";
         try {
-          const res = await api(apiWritePath(`/workspaces/${wid()}/slash-commands`), {
+          const res = await writeApi("slash-register", apiWritePath(`/workspaces/${wid()}/slash-commands`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
@@ -305,10 +305,10 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
       }
 
 
-      async function revokeSlashCommand(id) {
+      async function revokeSlashCommand(id, button) {
         if (!requireAuthForWrite()) return;
         try {
-          const res = await api(apiWritePath(`/workspaces/${wid()}/slash-commands/${id}`), {
+          const res = await writeApi(button || null, apiWritePath(`/workspaces/${wid()}/slash-commands/${id}`), {
             method: "DELETE",
             headers: headers(),
             credentials: "include",
@@ -408,7 +408,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             btn.type = "button";
             btn.textContent = "Mark read";
             btn.classList.add("gap-left");
-            btn.onclick = () => markNotificationRead(n.id);
+            btn.onclick = () => markNotificationRead(n.id, btn);
             li.appendChild(btn);
           }
           list.appendChild(li);
@@ -416,10 +416,10 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
       }
 
 
-      async function markNotificationRead(nid) {
+      async function markNotificationRead(nid, button) {
         if (!requireAuthForWrite()) return;
         try {
-          const res = await api(
+          const res = await writeApi(button || null,
             apiWritePath(`/members/${sessionMemberId}/notifications/${nid}/read`),
             { method: "POST", headers: headers(), credentials: "include" },
           );
@@ -1002,7 +1002,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             btn.type = "button";
             btn.textContent = action;
             btn.className = `gate-${action}`;
-            btn.onclick = () => answerGate(gate.id, action, v.request_state);
+            btn.onclick = () => answerGate(gate.id, action, v.request_state, btn);
             li.appendChild(btn);
           }
           list.appendChild(li);
@@ -1011,11 +1011,11 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
 
 
       // Answers a gate and says whether it took: { ok } or { ok: false, why }.
-      async function answerGate(gateId, action, requestState) {
+      async function answerGate(gateId, action, requestState, button) {
         if (!requireAuthForWrite()) return { ok: false, why: "Sign in or paste a token first." };
         let res;
         try {
-          res = await api(apiWritePath(`/approval-gates/${gateId}/answer`), {
+          res = await writeApi(button || null, apiWritePath(`/approval-gates/${gateId}/answer`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
@@ -1153,7 +1153,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
       async function markAllNotificationsRead() {
         if (!requireAuthForWrite()) return;
         try {
-          const res = await api(
+          const res = await writeApi("notif-read-all",
             apiWritePath(`/members/${sessionMemberId}/notifications/read-all`),
             { method: "POST", headers: headers(), credentials: "include" },
           );
@@ -1208,7 +1208,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
       // and the token id are still the ones this request started with. The
       // secret is still shown once, so it is not lost, but it does not replace
       // a different connection.
-      async function rotateToken(id) {
+      async function rotateToken(id, button) {
         // The server reads the id as a UUID in any case; the comparison must
         // too, or an uppercase id typed in Tokens would rotate the token this
         // page runs on and leave the page holding the dead secret.
@@ -1219,7 +1219,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
         const requestTokenId = currentTokenId;
         let res;
         try {
-          res = await api(`${requestBase}/tokens/${encodeURIComponent(id)}/rotate`, {
+          res = await writeApi(button || null, `${requestBase}/tokens/${encodeURIComponent(id)}/rotate`, {
             method: "POST",
             headers: headers(),
           });

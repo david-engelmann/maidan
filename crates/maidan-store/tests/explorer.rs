@@ -63,6 +63,7 @@ async fn run_explorer_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .expect("th");
@@ -109,6 +110,7 @@ async fn run_explorer_suite(store: &dyn Store) {
             channel_id: och.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .expect("oth");
@@ -334,6 +336,7 @@ async fn run_purged_bound_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .expect("thread");

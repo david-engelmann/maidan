@@ -58,6 +58,7 @@ pub(super) async fn seed_from_message(
             channel_id: target_channel,
             parent_thread_id: None,
             title: Some(a.title.trim().to_string()),
+            description: None,
         })
         .await?;
     server.publish_stored(&t_stored).await;

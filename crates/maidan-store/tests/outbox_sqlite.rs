@@ -143,6 +143,7 @@ async fn claimed_rows_open_live_words_and_not_shredded_ones() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

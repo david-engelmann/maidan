@@ -145,6 +145,7 @@ async fn upsert_replaces_existing_embedding() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

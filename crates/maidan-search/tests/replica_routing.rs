@@ -77,6 +77,7 @@ async fn search_read_is_never_stale_and_replica_serves_reads() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .expect("thread");

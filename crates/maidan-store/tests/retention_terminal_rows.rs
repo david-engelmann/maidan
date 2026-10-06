@@ -83,6 +83,7 @@ async fn room(store: &dyn Store, name: &str, log_base: i64) -> Room {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("work".into()),
+            description: None,
         })
         .await
         .expect("thread");

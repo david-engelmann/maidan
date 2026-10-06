@@ -124,6 +124,7 @@ pub(super) async fn create_thread(
             channel_id: ChannelId(a.channel_id),
             parent_thread_id: a.parent_thread_id.map(ThreadId),
             title: a.title,
+            description: None,
         })
         .await;
     let (thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;

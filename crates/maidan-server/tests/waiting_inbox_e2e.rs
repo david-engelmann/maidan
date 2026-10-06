@@ -88,6 +88,7 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("do the thing".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -128,6 +129,7 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
             channel_id: review_ch.id,
             parent_thread_id: None,
             title: Some("fix the flaky test".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -158,6 +160,7 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
             channel_id: secret_ch.id,
             parent_thread_id: None,
             title: Some("private acquisition plan".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -366,6 +369,7 @@ async fn in_review_unnamed(
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some(title.into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -531,6 +535,7 @@ async fn start_review_on_a_gated_thread_needs_a_posted_result() {
         channel_id: ch.id,
         parent_thread_id: None,
         title: Some(title.into()),
+        description: None,
     };
     let gated = store.create_thread(thread("gated")).await.unwrap().id;
     store.set_review_requirement(gated, 1).await.unwrap();

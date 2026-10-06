@@ -109,6 +109,7 @@ async fn thread(store: &dyn Store) -> maidan_types::Thread {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("evaluate me".into()),
+            description: None,
         })
         .await
         .unwrap()

@@ -78,8 +78,11 @@ pub struct AddChannelMember {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateThread {
     pub title: Option<String>,
+    /// What the task is about, in the creator's words.
+    pub description: Option<String>,
     pub parent_thread_id: Option<uuid::Uuid>,
 }
 

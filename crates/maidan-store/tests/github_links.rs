@@ -50,6 +50,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("issue-42".into()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -102,6 +103,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("issue-43".into()),
+            description: None,
         })
         .await
         .expect("thread2");
@@ -253,6 +255,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("issue-45".into()),
+            description: None,
         })
         .await
         .expect("thread3");

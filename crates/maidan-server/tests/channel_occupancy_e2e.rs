@@ -55,6 +55,7 @@ async fn occupancy_splits_claimed_from_working_over_http() {
         channel_id: channel.id,
         parent_thread_id: None,
         title: Some(title.into()),
+        description: None,
     };
     // queued: unassigned.
     let _queued = store.create_thread(mk("queued")).await.unwrap();

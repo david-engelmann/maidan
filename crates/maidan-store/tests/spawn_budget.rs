@@ -52,6 +52,7 @@ async fn run_suite(store: &dyn Store) {
                     channel_id,
                     parent_thread_id: parent,
                     title: Some("t".into()),
+                    description: None,
                 })
                 .await
                 .expect("thread")

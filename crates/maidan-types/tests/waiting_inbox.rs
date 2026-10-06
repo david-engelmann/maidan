@@ -13,6 +13,7 @@ fn thread(state: ThreadState, tombstoned: bool, age_secs: i64) -> Thread {
         channel_id: ChannelId(Uuid::new_v4()),
         parent_thread_id: None,
         title: Some("task".into()),
+        description: None,
         state,
         assignee_id: None,
         assignment_expires_at: None,

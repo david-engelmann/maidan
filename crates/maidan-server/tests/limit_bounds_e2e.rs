@@ -67,6 +67,7 @@ async fn an_absurd_limit_is_clamped_not_honoured() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("busy".into()),
+            description: None,
         })
         .await
         .unwrap();

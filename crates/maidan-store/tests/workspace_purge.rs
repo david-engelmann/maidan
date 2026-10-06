@@ -46,6 +46,7 @@ async fn purge_workspace_tombstones_then_deletes_all_messages() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

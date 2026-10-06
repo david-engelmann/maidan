@@ -93,6 +93,7 @@ async fn list_workspace_results_filters_by_namespaced_kind() {
             channel_id: public.id,
             parent_thread_id: None,
             title: Some("review".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -109,6 +110,7 @@ async fn list_workspace_results_filters_by_namespaced_kind() {
             channel_id: public.id,
             parent_thread_id: None,
             title: Some("plan".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -125,6 +127,7 @@ async fn list_workspace_results_filters_by_namespaced_kind() {
             channel_id: private.id,
             parent_thread_id: None,
             title: Some("secret review".into()),
+            description: None,
         })
         .await
         .unwrap();

@@ -109,6 +109,7 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("first thread".to_string()),
+            description: None,
         })
         .await
         .expect("create thread");
@@ -302,6 +303,7 @@ pub async fn run_parity_scenario(store: &dyn Store) -> ParitySnapshot {
             channel_id: c.id,
             parent_thread_id: None,
             title: Some("t".to_string()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -521,6 +523,7 @@ pub async fn run_cross_tenant_write_scenario(store: &dyn Store) {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some(name.into()),
+                description: None,
             })
             .await
             .expect("thread");

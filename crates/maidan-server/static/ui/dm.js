@@ -1,5 +1,5 @@
 // @ts-check
-import { api, apiWritePath, base, headers, requireAuthForWrite, token, uiReadPath, wid } from "./api.js";
+import { api, apiWritePath, base, headers, requireAuthForWrite, token, uiReadPath, wid, writeApi } from "./api.js";
 import { renderState, responseError, setStatus, showError, unreachable } from "./feedback.js";
 import { authorId, loadMembers, memberName } from "./people.js";
 
@@ -108,7 +108,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
         if (!other) return showError("Enter the other member's ID");
         if (other === me) return showError("Cannot open a DM with yourself");
         try {
-          const res = await api(apiWritePath(`/workspaces/${wid()}/dm`), {
+          const res = await writeApi("dm-open", apiWritePath(`/workspaces/${wid()}/dm`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
@@ -137,7 +137,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
         const body = document.getElementById("dm-body").value.trim();
         if (!body) return showError("Message body required");
         try {
-          const res = await api(apiWritePath(`/dm/${selectedDm.id}/messages`), {
+          const res = await writeApi("dm-send", apiWritePath(`/dm/${selectedDm.id}/messages`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
@@ -219,7 +219,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
         if (ids.length < 3) return showError("A group DM needs at least 3 members");
         const title = document.getElementById("gdm-title").value.trim() || null;
         try {
-          const res = await api(apiWritePath(`/workspaces/${wid()}/group-dms`), {
+          const res = await writeApi("gdm-open", apiWritePath(`/workspaces/${wid()}/group-dms`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
@@ -248,7 +248,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
         const body = document.getElementById("gdm-body").value.trim();
         if (!body) return showError("Message body required");
         try {
-          const res = await api(apiWritePath(`/group-dms/${selectedGdm.id}/messages`), {
+          const res = await writeApi("gdm-send", apiWritePath(`/group-dms/${selectedGdm.id}/messages`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",

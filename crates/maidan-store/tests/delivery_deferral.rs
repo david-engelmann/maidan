@@ -259,6 +259,7 @@ async fn egress_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("egress".into()),
+            description: None,
         })
         .await
         .expect("thread");

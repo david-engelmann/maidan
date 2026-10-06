@@ -57,6 +57,7 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -354,6 +355,7 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -529,6 +531,7 @@ async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_
             channel_id: private.id,
             parent_thread_id: None,
             title: Some("secret".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -708,6 +711,7 @@ async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("owned".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -749,6 +753,7 @@ async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("orphan".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -823,6 +828,7 @@ async fn router_notifies_owner_and_followers_when_a_thread_lands() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("landed".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -921,6 +927,7 @@ async fn channel_mute_suppresses_firehose_but_mention_breaks_through() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

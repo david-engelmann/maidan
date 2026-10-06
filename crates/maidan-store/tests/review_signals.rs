@@ -60,6 +60,7 @@ async fn thread(store: &dyn Store, channel: ChannelId) -> ThreadId {
             channel_id: channel,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .expect("thread")

@@ -75,6 +75,7 @@ async fn harness(name: &str) -> Harness {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some(name.into()),
+            description: None,
         })
         .await
         .unwrap();

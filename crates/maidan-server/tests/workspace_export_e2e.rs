@@ -91,6 +91,7 @@ async fn export_requires_token_admin_and_returns_the_content_graph() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

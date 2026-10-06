@@ -213,6 +213,7 @@ async fn digest_leads_with_buried_decisions() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("the rollout".into()),
+            description: None,
         })
         .await
         .unwrap();

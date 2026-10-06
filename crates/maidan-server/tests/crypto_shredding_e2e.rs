@@ -213,6 +213,7 @@ async fn room(ctx: &Ctx, name: &str) -> Room {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap()

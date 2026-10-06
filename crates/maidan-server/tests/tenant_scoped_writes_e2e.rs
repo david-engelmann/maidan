@@ -43,6 +43,7 @@ async fn tenant(h: &Harness, name: &str) -> Tenant {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::error::StoreError;
 use crate::postgres::threads::row_to_thread;
 
-const THREAD_COLS: &str = "t.id, t.channel_id, t.parent_thread_id, t.title, t.state, \
+const THREAD_COLS: &str = "t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state, \
      t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, \
      t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id";
 

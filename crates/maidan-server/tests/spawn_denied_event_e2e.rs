@@ -120,6 +120,7 @@ async fn a_refused_spawn_publishes_thread_spawn_denied() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("parent claim".into()),
+            description: None,
         })
         .await
         .unwrap();

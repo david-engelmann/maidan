@@ -130,6 +130,7 @@ async fn skills_crud_over_http() {
             channel_id: ChannelId(channel.id.0),
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .unwrap();

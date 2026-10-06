@@ -45,6 +45,7 @@ async fn run_readside_suite(store: &dyn Store) {
         channel_id: channel.id,
         parent_thread_id: None,
         title: Some(title.into()),
+        description: None,
     };
     let first = store.create_thread(mk_thread("first")).await.expect("t1");
     let second = store.create_thread(mk_thread("second")).await.expect("t2");
@@ -139,6 +140,7 @@ async fn run_readside_suite(store: &dyn Store) {
             channel_id: lease_ch.id,
             parent_thread_id: None,
             title: Some("leased".into()),
+            description: None,
         })
         .await
         .expect("leased-thread");
@@ -288,6 +290,7 @@ async fn run_claim_expired_suite(store: &dyn Store) {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .expect("t");

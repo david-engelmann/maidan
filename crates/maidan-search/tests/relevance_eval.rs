@@ -136,6 +136,7 @@ async fn build_corpus(bodies: &[&str]) -> Corpus {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

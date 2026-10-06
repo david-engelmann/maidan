@@ -52,6 +52,7 @@ async fn assert_bulk_reads(store: &dyn Store) {
                     channel_id: channel,
                     parent_thread_id: None,
                     title: None,
+                    description: None,
                 })
                 .await
                 .unwrap(),
@@ -209,6 +210,7 @@ async fn assert_thread_pagination(store: &dyn Store) {
                     channel_id: ch.id,
                     parent_thread_id: None,
                     title: None,
+                    description: None,
                 })
                 .await
                 .unwrap()
@@ -311,6 +313,7 @@ async fn assert_channel_thread_pagination(store: &dyn Store) {
                     channel_id: ch.id,
                     parent_thread_id: None,
                     title: None,
+                    description: None,
                 })
                 .await
                 .unwrap()
@@ -323,6 +326,7 @@ async fn assert_channel_thread_pagination(store: &dyn Store) {
             channel_id: other.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap()

@@ -87,6 +87,7 @@ async fn ui_v5_edit_history_shell_and_session_edits_api() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

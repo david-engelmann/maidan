@@ -55,6 +55,7 @@ async fn seed_with_message(store: &dyn Store) -> maidan_types::StoredEvent {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

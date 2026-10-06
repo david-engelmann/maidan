@@ -71,6 +71,7 @@ async fn server() -> (
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("a".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -79,6 +80,7 @@ async fn server() -> (
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("b".into()),
+            description: None,
         })
         .await
         .unwrap();

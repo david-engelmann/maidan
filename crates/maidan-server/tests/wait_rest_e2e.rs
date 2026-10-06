@@ -83,6 +83,7 @@ async fn thread_wait_set_get_cancel_over_rest() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

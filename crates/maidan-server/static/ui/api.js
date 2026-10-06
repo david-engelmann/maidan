@@ -96,4 +96,38 @@ import { baseInput, tokenKey, wsKey } from "./state.js";
         return false;
       }
 
-export { OPERATIONS, api, apiReadPath, apiWritePath, base, headers, pastedToken, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid, wsUrl };
+      // A mutating request from a board button. The button disables while the
+      // request is in flight, so a double click cannot fire twice, and the
+      // request carries a fresh Idempotency-Key, so a retry after a timeout
+      // replays the first response instead of writing again. `button` is an
+      // element, an element id, a list of elements, or null when no button
+      // owns the call.
+      // @param {HTMLElement|string|NodeList|Array|null} button
+      // @param {string} url
+      // @param {RequestInit=} options
+      // @returns {Promise<Response>}
+      function writeApi(button, url, options) {
+        const els =
+          typeof button === "string"
+            ? [document.getElementById(button)]
+            : button && typeof button.forEach === "function"
+              ? Array.from(button)
+              : [button];
+        const targets = els.filter(Boolean);
+        targets.forEach((el) => {
+          el.disabled = true;
+        });
+        const key =
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const init = { ...(options || {}) };
+        init.headers = { ...(init.headers || {}), "Idempotency-Key": key };
+        return api(url, init).finally(() => {
+          targets.forEach((el) => {
+            el.disabled = false;
+          });
+        });
+      }
+
+export { OPERATIONS, api, apiReadPath, apiWritePath, base, headers, pastedToken, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid, writeApi, wsUrl };

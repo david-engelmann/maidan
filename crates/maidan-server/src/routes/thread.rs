@@ -32,6 +32,13 @@ pub async fn create_thread(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, ctx.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, ctx.channel_id).await?;
+    // A title that is only whitespace is a 422, not an untitled thread:
+    // `None` means untitled on purpose, `Some("")` is a client bug.
+    if body.title.as_deref().is_some_and(|t| t.trim().is_empty()) {
+        return Err(ApiError::UnprocessableEntity(
+            "title must not be blank; omit it for an untitled thread".into(),
+        ));
+    }
     // The thread row and its `ThreadCreated` event commit atomically
     // (transactional outbox); `publish_stored` then notifies the bus. A spawn
     // the budget refuses is recorded as `ThreadSpawnDenied` on the way to the
@@ -42,6 +49,7 @@ pub async fn create_thread(
             channel_id: ChannelId(channel_id),
             parent_thread_id: body.parent_thread_id.map(ThreadId),
             title: body.title,
+            description: body.description,
         })
         .await;
     let actor = (!auth.bypass).then_some(auth.member_id);

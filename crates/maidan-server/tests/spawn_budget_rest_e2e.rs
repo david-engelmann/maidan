@@ -103,6 +103,7 @@ async fn spawn_budget_config_over_http_drives_the_gate() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("parent".into()),
+            description: None,
         })
         .await
         .unwrap();

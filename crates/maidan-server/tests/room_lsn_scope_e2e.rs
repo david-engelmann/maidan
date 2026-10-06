@@ -109,6 +109,7 @@ async fn the_header_reports_the_callers_room_not_the_instance() {
                     channel_id: channel.id,
                     parent_thread_id: None,
                     title: Some("t".into()),
+                    description: None,
                 })
                 .await
                 .unwrap();
@@ -240,6 +241,7 @@ async fn outbound_stamps_and_acks_report_the_room_not_the_instance() {
                         channel_id: channel.id,
                         parent_thread_id: None,
                         title: None,
+                        description: None,
                     })
                     .await
                     .unwrap();

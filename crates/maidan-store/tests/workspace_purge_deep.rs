@@ -38,6 +38,7 @@ async fn seed_workspace(
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("topic".into()),
+            description: None,
         })
         .await
         .unwrap();

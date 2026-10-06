@@ -72,6 +72,7 @@ async fn mk_tenant(store: &Arc<dyn Store>, name: &str) -> Tenant {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .unwrap();

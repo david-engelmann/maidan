@@ -66,6 +66,7 @@ async fn thread_context_pages_messages_by_cursor() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("paged".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -165,6 +166,7 @@ async fn mcp_get_thread_context_honors_message_cursor() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

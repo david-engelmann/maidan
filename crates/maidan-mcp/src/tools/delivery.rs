@@ -198,6 +198,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("review".into()),
+                description: None,
             })
             .await
             .unwrap();

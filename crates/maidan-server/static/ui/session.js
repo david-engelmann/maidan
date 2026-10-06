@@ -1,5 +1,5 @@
 // @ts-check
-import { api, apiReadPath, apiWritePath, base, headers, pastedToken, persist, token, wid } from "./api.js";
+import { api, apiReadPath, apiWritePath, base, headers, pastedToken, persist, token, wid, writeApi } from "./api.js";
 import { loadChannels, setAttention } from "./board.js";
 import { responseError, showError, unreachable } from "./feedback.js";
 import { loadNeedsYou } from "./needs.js";
@@ -43,7 +43,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
       async function exchangeToken(secret, current = () => true) {
         let res;
         try {
-          res = await api(`${base()}/auth/session/from-token`, {
+          res = await writeApi(null, `${base()}/auth/session/from-token`, {
             method: "POST",
             headers: { Accept: "application/json", Authorization: "Bearer " + secret },
             credentials: "include",
@@ -331,7 +331,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         }
         let res;
         try {
-          res = await api(apiWritePath(`/workspaces/${wid()}`), {
+          res = await writeApi("workspace-name-save", apiWritePath(`/workspaces/${wid()}`), {
             method: "PATCH",
             headers: headers(true),
             credentials: "include",

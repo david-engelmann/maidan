@@ -54,6 +54,7 @@ async fn operator_reindex_job_indexes_workspace_messages() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

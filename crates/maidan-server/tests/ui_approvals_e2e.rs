@@ -108,6 +108,7 @@ async fn ui_api_lists_and_answers_an_approval_gate() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("deploy".into()),
+            description: None,
         })
         .await
         .unwrap();
