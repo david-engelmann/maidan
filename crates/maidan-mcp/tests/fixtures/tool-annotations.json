@@ -653,6 +653,25 @@
         "reason": "confined to Maidan's database"
       }
     },
+    "declare_status": {
+      "title": "Declare thread status",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.declare_thread_status upserts a maidan_thread_status row and emits StatusDeclared"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO UPDATE replaces the thread's previous declaration (each one stays in the event log)"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "every call appends another StatusDeclared event, even for the same status and note"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
     "delegate_token": {
       "title": "Delegate token",
       "readOnlyHint": {
@@ -1525,6 +1544,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
+    "get_thread_status": {
+      "title": "Get thread status",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.get_thread_status"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
       }
     },
     "get_thread_steer": {

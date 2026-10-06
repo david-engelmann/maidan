@@ -306,6 +306,18 @@ pub(super) async fn post_message(
     // published, so agent @mentions never fired the notification router /
     // wait_for_mention).
     publish_routed_mentions(server, thread_id, ctx.workspace_id, &msg).await;
+    // A human response supersedes the agent's self-reported status, mirroring
+    // the REST post path. Best-effort: the message is already posted.
+    if let Ok(member) = store.get_member_in(ctx.workspace_id, auth.member_id).await {
+        if member.kind == MemberKind::Human {
+            if let Err(e) = store.clear_thread_status(thread_id).await {
+                tracing::warn!(
+                    thread_id = %thread_id.0,
+                    "clearing thread status after human post failed: {e}"
+                );
+            }
+        }
+    }
     Ok(content_json(&msg))
 }
 

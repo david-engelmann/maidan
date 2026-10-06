@@ -73,6 +73,7 @@ mod share_tickets;
 mod slack_links;
 mod slash_commands;
 mod spawn;
+mod status;
 mod tap_cursor;
 mod task_schedules;
 mod thread_deps;

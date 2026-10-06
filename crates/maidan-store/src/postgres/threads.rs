@@ -1254,6 +1254,7 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
+        status: None,
         block: None,
         closed_without_review: false,
     })

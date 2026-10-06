@@ -155,6 +155,13 @@
     "note": "The scheduler derives a skipped run when overlap policy refuses a firing."
   },
   {
+    "kind": "status_declared",
+    "disposition": "both",
+    "rest_evidence": "crates/maidan-server/tests/declare_status_e2e.rs#a_declared_status_is_read_back_logged_and_superseded_and_stays_in_its_workspace",
+    "mcp_evidence": "crates/maidan-mcp/src/server.rs#status_tools_declare_read_back_and_log_status_declared",
+    "note": "An agent declares its own status on a thread over REST (PUT /threads/:id/status) or MCP (declare_status); each declaration emits StatusDeclared."
+  },
+  {
     "kind": "thread_assignment_changed",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/thread_assignment_e2e.rs#assign_claim_unassign_and_emit_events_over_rest",

@@ -116,6 +116,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "get_thread_context",
     "get_thread_lineage",
     "get_thread_result",
+    "get_thread_status",
     "get_thread_steer",
     "get_tool_transcript",
     "get_unread_count",
@@ -269,6 +270,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_unclaimable"
         | "list_blocked_threads"
         | "get_thread_block"
+        | "get_thread_status"
         | "get_wait"
         | "get_priority"
         | "list_thread_dependencies"
@@ -448,6 +450,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "mark_claimable"
         | "set_thread_block"
         | "clear_thread_block"
+        | "declare_status"
         | "set_wait"
         | "cancel_wait"
         | "set_priority"
@@ -777,6 +780,8 @@ async fn enforce_channel_access(
         | "set_thread_block"
         | "get_thread_block"
         | "clear_thread_block"
+        | "declare_status"
+        | "get_thread_status"
         | "set_wait"
         | "cancel_wait"
         | "get_wait"
@@ -920,6 +925,8 @@ pub async fn dispatch(
         "get_thread_block" => thread::get_thread_block(store, args).await,
         "clear_thread_block" => thread::clear_thread_block(server, auth, args).await,
         "list_blocked_threads" => thread::list_blocked_threads(store, args).await,
+        "declare_status" => thread::declare_status(server, auth, args).await,
+        "get_thread_status" => thread::get_thread_status(store, args).await,
         "set_wait" => thread::set_wait(store, auth, args).await,
         "cancel_wait" => thread::cancel_wait(store, args).await,
         "get_wait" => thread::get_wait(store, args).await,

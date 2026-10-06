@@ -84,6 +84,7 @@ fn sample() -> WorkspaceImport {
             created_at: now,
             updated_at: now,
             tombstoned_at: None,
+            status: None,
             block: None,
             closed_without_review: false,
         }],

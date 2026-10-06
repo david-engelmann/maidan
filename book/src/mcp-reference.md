@@ -1631,6 +1631,68 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `declare_status`
+
+**Declare thread status.** Declare the agent's self-reported status on a thread: working, needs_input, needs_review, blocked, or done, with a one-sentence note. By the claim holder or owner; stalled is refused (system-computed only). Supersedes any prior declaration. Appends StatusDeclared. Requires thread:transition.
+
+**Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "note": {
+      "description": "One-sentence description of what the agent is doing",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "working",
+        "needs_input",
+        "needs_review",
+        "blocked",
+        "done"
+      ],
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "status",
+    "note"
+  ],
+  "type": "object"
+}
+```
+
+### `get_thread_status`
+
+**Get thread status.** The thread's active agent status declaration, or null when cleared. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_wip_limit`
 
 **Set WIP limit.** Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.

@@ -2016,6 +2016,36 @@ pub trait AssignmentStore: Send + Sync {
         thread_ids: &[ThreadId],
     ) -> Result<Vec<ThreadBlock>, StoreError>;
 
+    /// Declare (or supersede) the agent's self-reported status on a thread.
+    /// The declaration is by the claim holder or owner; `stalled` is refused
+    /// (system-computed only). Appends `StatusDeclared` atomically.
+    async fn declare_thread_status(
+        &self,
+        thread_id: ThreadId,
+        status: DeclaredStatus,
+        note: String,
+        declared_by: MemberId,
+    ) -> Result<(ThreadStatusDeclaration, StoredEvent), StoreError>;
+    /// Clear a thread's status declaration. Used when a human responds —
+    /// the declaration is superseded by human activity. Returns the cleared
+    /// declaration; `None` if there was none (idempotent).
+    async fn clear_thread_status(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadStatusDeclaration>, StoreError>;
+    /// The thread's active status declaration, or `None` if cleared.
+    async fn get_thread_status(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ThreadStatusDeclaration>, StoreError>;
+    /// Active status declarations for threads in a channel. For the board's
+    /// thread list: the chip renders from `Thread.status`, which the store's
+    /// thread rows leave unset, so the route attaches these in one read —
+    /// the same pattern as `list_blocked_threads`.
+    async fn list_thread_statuses_for_channel(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Vec<ThreadStatusDeclaration>, StoreError>;
     /// Threads blocked with `human` or `gate` reason in a workspace, with
     /// their blocks. For the waiting inbox: these need a human (owner or
     /// admin) to unblock. Returns (thread_id, title, owner_id, block).

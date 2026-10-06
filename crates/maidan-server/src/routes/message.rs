@@ -113,6 +113,24 @@ pub async fn post_message(
         message
     };
     publish_routed_mentions(&state, ctx.thread_id, ctx.workspace_id, &message).await;
+    // A human response supersedes the agent's self-reported status: the
+    // declaration described what the agent was doing, and the human's reply
+    // means that state is no longer current. Clear it (idempotent); a clear
+    // failure must not fail the already-posted message.
+    if let Ok(member) = state
+        .store
+        .get_member_in(ctx.workspace_id, auth.member_id)
+        .await
+    {
+        if member.kind == MemberKind::Human {
+            if let Err(e) = state.store.clear_thread_status(ctx.thread_id).await {
+                tracing::warn!(
+                    thread_id = %ctx.thread_id.0,
+                    "clearing thread status after human post failed: {e}"
+                );
+            }
+        }
+    }
     Ok((StatusCode::CREATED, Json(message)))
 }
 

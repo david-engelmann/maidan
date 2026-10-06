@@ -558,3 +558,18 @@
       .avatar.hue-9 { --hue: 270; }
       .avatar.hue-10 { --hue: 300; }
       .avatar.hue-11 { --hue: 330; }
+
+/* Agent self-reported status chip (declare_status) */
+.card-status {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: 0.5rem;
+}
+.card-status-working { background: #e3f2fd; color: #1565c0; }
+.card-status-needs_input { background: #fff3e0; color: #e65100; }
+.card-status-needs_review { background: #f3e5f5; color: #6a1b9a; }
+.card-status-blocked { background: #ffebee; color: #c62828; }
+.card-status-done { background: #e8f5e9; color: #2e7d32; }

@@ -7,11 +7,11 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, BlockedReason, ChannelId,
-    ChannelMemberRole, ContentBlock, DelegationGrantId, EgressSurface, EmailDeliveryMode,
-    EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, Member, MemberFreeze,
-    MemberId, MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision, ShareTicket,
-    SlashCommandId, SlashHandlerKind, ThreadDependency, ThreadId, TokenPolicy, TokenQuota,
-    VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
+    ChannelMemberRole, ContentBlock, DeclaredStatus, DelegationGrantId, EgressSurface,
+    EmailDeliveryMode, EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, Member,
+    MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision,
+    ShareTicket, SlashCommandId, SlashHandlerKind, ThreadDependency, ThreadId, TokenPolicy,
+    TokenQuota, VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -583,6 +583,16 @@ pub struct SetThreadBlock {
     /// Human-readable note explaining why the thread is blocked.
     #[serde(default)]
     pub note: Option<String>,
+}
+
+/// Body for `PUT /threads/:id/status` — declare the agent's self-reported
+/// status. `status` is the closed `DeclaredStatus` enum
+/// (`working|needs_input|needs_review|blocked|done`); `stalled` is refused.
+/// `note` is a one-sentence description.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DeclareStatusRequest {
+    pub status: DeclaredStatus,
+    pub note: String,
 }
 
 /// Body for `PUT /threads/:id/wait` — set a wait timer. On `wait_until` the
