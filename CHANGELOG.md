@@ -1697,6 +1697,14 @@ Refs #1253
 - **Fixed:** `wait_for_*` tools called over `POST /mcp` answered "requires an event bus". The HTTP dispatcher built its `McpServer` with no bus wired in; only the stdio CLI had one. `AppState::new` now passes its bus through `with_event_bus`, and `attach_resource_notifier` preserves it when it rebuilds the dispatcher.
 - **Tests:** new `wait_http_e2e.rs`: a wait over `POST /mcp` wakes when `set_thread_result` fires on the same replica (SQLite), and a wait on replica A wakes when the result is set through replica B.
 
+### Board write hygiene
+
+- **Added:** every mutating board button disables while its request is in flight and sends a fresh `Idempotency-Key`, so a double click or a retry replays the first response instead of writing twice.
+- **Added:** the idempotency middleware now wraps the `/ui/api` write routes as well as the protected router. The Client Contract documents the wider scope.
+- **Changed:** a blank thread title is refused before the request leaves the page, and the server answers 422 `problems/unprocessable-entity` for one that arrives anyway. Omitting the title still makes an untitled thread.
+- **Added:** `POST /channels/{id}/threads` accepts an optional `description` and stores it on the thread. Unknown fields are rejected with 400.
+- **Tests:** a Playwright spec double-clicks Add task and asserts exactly one task appears; Rust tests cover the blank-title 422, the unknown-field 400, the persisted description, and idempotent `/ui/api` thread creation.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
