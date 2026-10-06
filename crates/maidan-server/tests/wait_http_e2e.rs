@@ -309,3 +309,168 @@ async fn http_wait_never_wakes_on_another_workspace_event() {
     assert!(wait_resp.get("error").is_none(), "{wait_resp}");
     assert_eq!(tool_text(&wait_resp), Value::Null);
 }
+
+/// A workspace with one member and a parent+dependency thread pair, over REST.
+/// Returns (member_id, parent_thread_id, dep_thread_id).
+async fn workspace_with_dep_pair(
+    client: &reqwest::Client,
+    base: &str,
+    ws_name: &str,
+) -> (String, String, String) {
+    let ws: Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": ws_name}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws["id"].as_str().unwrap().to_string();
+    let member: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/members"))
+        .json(&json!({"handle": "waiter", "kind": "agent"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let member_id = member["id"].as_str().unwrap().to_string();
+    let ch: Value = client
+        .post(format!("{base}/workspaces/{workspace_id}/channels"))
+        .json(&json!({"name": "general"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let channel_id = ch["id"].as_str().unwrap();
+    let mk_thread = |title: &str| {
+        let client = client.clone();
+        let base = base.to_string();
+        let channel_id = channel_id.to_string();
+        let title = title.to_string();
+        async move {
+            client
+                .post(format!("{base}/channels/{channel_id}/threads"))
+                .json(&json!({"title": title}))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()["id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+    };
+    let parent = mk_thread("parent").await;
+    let dep = mk_thread("dep").await;
+    (member_id, parent, dep)
+}
+
+/// Drive a dependency to terminal over MCP, emitting `ThreadReady` for the parent.
+async fn close_dependency(
+    client: &reqwest::Client,
+    base: &str,
+    member: &str,
+    parent: &str,
+    dep: &str,
+) {
+    for (tool, args) in [
+        (
+            "add_thread_dependency",
+            json!({"thread_id": parent, "depends_on_thread_id": dep}),
+        ),
+        (
+            "transition_thread",
+            json!({"thread_id": dep, "action": "start_review"}),
+        ),
+        (
+            "transition_thread",
+            json!({"thread_id": dep, "action": "close"}),
+        ),
+    ] {
+        let resp = mcp_call(client, base, member, tool, args).await;
+        assert!(resp.get("error").is_none(), "{tool}: {resp}");
+    }
+}
+
+/// `wait_for_ready` with no channel pins no thread: the workspace id is the
+/// only filter that can stop another workspace's `ThreadReady` from waking the
+/// waiter. A thread-pinned wait (like `wait_for_result` above) would pass even
+/// with workspace filtering broken, because the thread ids already differ.
+#[tokio::test]
+async fn http_workspace_scoped_wait_ignores_other_workspaces_ready() {
+    let (h, _bus) = spawn_sqlite().await;
+    let base = format!("http://{}", h.addr);
+    let client = client();
+    let (member_a, parent_a, dep_a) = workspace_with_dep_pair(&client, &base, "ws-a").await;
+    let (member_b, parent_b, dep_b) = workspace_with_dep_pair(&client, &base, "ws-b").await;
+
+    // Phase 1: A's waiter must not wake when B's dependency closes.
+    let wait_client = client.clone();
+    let wait_base = base.clone();
+    let member_a_c = member_a.clone();
+    let waiter = tokio::spawn(async move {
+        mcp_call(
+            &wait_client,
+            &wait_base,
+            &member_a_c,
+            "wait_for_ready",
+            json!({"timeout_ms": 1500}),
+        )
+        .await
+    });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    close_dependency(&client, &base, &member_b, &parent_b, &dep_b).await;
+
+    let wait_resp = tokio::time::timeout(Duration::from_secs(15), waiter)
+        .await
+        .expect("waiter finishes")
+        .expect("waiter joins");
+    assert!(wait_resp.get("error").is_none(), "{wait_resp}");
+    assert_eq!(
+        tool_text(&wait_resp),
+        Value::Null,
+        "workspace-scoped wait in A must not wake on B's ThreadReady"
+    );
+
+    // Phase 2: the same wait must wake when A's own dependency closes, so the
+    // negative phase cannot pass vacuously on a broken wait.
+    let wait_client = client.clone();
+    let wait_base = base.clone();
+    let member_a_c = member_a.clone();
+    let waiter = tokio::spawn(async move {
+        mcp_call(
+            &wait_client,
+            &wait_base,
+            &member_a_c,
+            "wait_for_ready",
+            json!({"timeout_ms": 5000}),
+        )
+        .await
+    });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    close_dependency(&client, &base, &member_a, &parent_a, &dep_a).await;
+
+    let wait_resp = tokio::time::timeout(Duration::from_secs(15), waiter)
+        .await
+        .expect("waiter finishes")
+        .expect("waiter joins");
+    assert!(wait_resp.get("error").is_none(), "{wait_resp}");
+    let woke = tool_text(&wait_resp);
+    assert!(
+        woke.is_object(),
+        "workspace-scoped wait in A must wake on A's ThreadReady, got {woke}"
+    );
+    assert_eq!(woke["kind"].as_str().unwrap(), "thread_ready");
+    assert_eq!(
+        woke["thread_id"].as_str().unwrap(),
+        parent_a,
+        "the wake is for A's parent thread"
+    );
+}
