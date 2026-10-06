@@ -2459,7 +2459,6 @@ macro_rules! store_delegations {
             ) -> Result<Option<ThreadStatusDeclaration>, StoreError> {
                 status::get(self.read_pool(), thread_id).await
             }
-
             async fn list_human_gate_blocked_threads(
                 &self,
                 workspace_id: WorkspaceId,
