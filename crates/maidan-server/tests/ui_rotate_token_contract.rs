@@ -161,6 +161,9 @@ async function api(url, options) {
   obs.method = options && options.method;
   return apiImpl(url, options);
 }
+async function writeApi(_button, url, options) {
+  return api(url, options);
+}
 
 const runRotate = new Function(
   "deps",
@@ -182,6 +185,7 @@ const runRotate = new Function(
   "const exchangeToken = deps.exchangeToken;\n" +
   "const document = deps.document;\n" +
   "const api = deps.api;\n" +
+  "const writeApi = deps.writeApi;\n" +
   rotateSource + "\n" +
   "return async function (id) {\n" +
   "  await rotateToken(id);\n" +
@@ -191,7 +195,7 @@ const runRotate = new Function(
 
 const deps = {
   token, base, wid, headers, persist, showSecretOnce, showError, setStatus, setOut,
-  disconnectWs, connectWs, unreachable, responseError, exchangeToken, document, api,
+  disconnectWs, connectWs, unreachable, responseError, exchangeToken, document, api, writeApi,
   currentTokenId: state.currentTokenId,
   wsSocket,
 };
