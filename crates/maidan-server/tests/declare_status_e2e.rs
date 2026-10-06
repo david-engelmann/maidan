@@ -109,6 +109,7 @@ async fn a_declared_status_is_read_back_logged_and_superseded_and_stays_in_its_w
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("parser".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -352,6 +353,7 @@ async fn a_stranger_cannot_declare_status_on_anothers_thread() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("parser".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -479,6 +481,7 @@ async fn a_human_response_clears_the_declared_status() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("parser".into()),
+            description: None,
         })
         .await
         .unwrap();

@@ -83,7 +83,10 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         try {
           let res;
           try {
-            res = await writeApi("cx-create-agent", `${base()}/workspaces/${wid()}/members`, {
+            // The outer guard owns the button for the whole create+mint action:
+            // passing null keeps writeApi from re-enabling it between the
+            // two requests, where another click could start an overlap.
+            res = await writeApi(null, `${base()}/workspaces/${wid()}/members`, {
               method: "POST",
               headers: headers(true),
               body: JSON.stringify({ handle, display_name: display || null, kind: "agent" }),
@@ -99,7 +102,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           member = await res.json();
           status.textContent = "Minting a worker token…";
           try {
-            res = await writeApi("cx-create-agent", `${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
+            res = await writeApi(null, `${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
               method: "POST",
               headers: headers(true),
               body: JSON.stringify({ label: handle, capability_set: WORKER_PRESET, capabilities: [] }),
@@ -542,17 +545,27 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       };
 
       document.getElementById("upload-artifact").onclick = async () => {
-        if (!requireAuthForWrite()) return;
-        const fileInput = document.getElementById("artifact-file");
-        if (!fileInput.files || !fileInput.files[0]) return showError("Choose a file");
-        const kind = document.getElementById("artifact-kind").value;
-        persist();
-        const artifact = await uploadArtifact(fileInput.files[0], kind, "upload-artifact");
-        if (!artifact) return;
-        setStatus("Artifact uploaded", "ok");
-        setOut(artifact);
-        const attach = document.getElementById("attach-artifact-next");
-        if (attach && attach.checked) await attachToSelectedThread(artifact);
+        const btn = document.getElementById("upload-artifact");
+        // Hold the button through the optional attach: writeApi would
+        // otherwise re-enable it after the upload while the attach is still
+        // in flight, and another click could upload and attach twice.
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try {
+          if (!requireAuthForWrite()) return;
+          const fileInput = document.getElementById("artifact-file");
+          if (!fileInput.files || !fileInput.files[0]) return showError("Choose a file");
+          const kind = document.getElementById("artifact-kind").value;
+          persist();
+          const artifact = await uploadArtifact(fileInput.files[0], kind, null);
+          if (!artifact) return;
+          setStatus("Artifact uploaded", "ok");
+          setOut(artifact);
+          const attach = document.getElementById("attach-artifact-next");
+          if (attach && attach.checked) await attachToSelectedThread(artifact);
+        } finally {
+          btn.disabled = false;
+        }
       };
 
       // Paste a file (a screenshot, say) into the composer and it becomes an
@@ -730,40 +743,50 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
 
 
       document.getElementById("mint-member-token").onclick = async () => {
-        if (!requireBearer()) return;
-        persist();
-        const mid = document.getElementById("token-member").value.trim();
-        const label = document.getElementById("token-label").value.trim();
-        const caps = parseCaps(document.getElementById("token-caps").value);
-        // Attenuation pre-flight: a minted token cannot exceed the caller's grant
-        // (the server enforces this too, via validate_subset — this flags it early).
-        if (!myCapabilities) await loadAttenuationCeiling();
-        const excess = capsExceedingGrant(caps);
-        const warn = document.getElementById("attenuation-warning");
-        if (excess.length) {
-          warn.textContent =
-            `Cannot widen your grant — these exceed your ceiling and will be rejected: ${excess.join(", ")}`;
-          warn.hidden = false;
-          setStatus("Attenuation: request exceeds your grant", "err");
-          return;
+        const btn = document.getElementById("mint-member-token");
+        // One mint at a time, guarded before the attenuation preflight: two
+        // rapid clicks could otherwise both pass the await below and mint
+        // with different idempotency keys.
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try {
+          if (!requireBearer()) return;
+          persist();
+          const mid = document.getElementById("token-member").value.trim();
+          const label = document.getElementById("token-label").value.trim();
+          const caps = parseCaps(document.getElementById("token-caps").value);
+          // Attenuation pre-flight: a minted token cannot exceed the caller's grant
+          // (the server enforces this too, via validate_subset — this flags it early).
+          if (!myCapabilities) await loadAttenuationCeiling();
+          const excess = capsExceedingGrant(caps);
+          const warn = document.getElementById("attenuation-warning");
+          if (excess.length) {
+            warn.textContent =
+              `Cannot widen your grant — these exceed your ceiling and will be rejected: ${excess.join(", ")}`;
+            warn.hidden = false;
+            setStatus("Attenuation: request exceeds your grant", "err");
+            return;
+          }
+          warn.hidden = true;
+          const res = await writeApi(null, `${base()}/workspaces/${wid()}/members/${mid}/tokens`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ label: label || null, capabilities: caps }),
+          });
+          const body = await res.text();
+          if (!res.ok) {
+            setStatus(`HTTP ${res.status}`, "err");
+            return setOut(body);
+          }
+          const parsed = JSON.parse(body);
+          document.getElementById("token").value = parsed.secret;
+          document.getElementById("token-revoke-id").value = parsed.id;
+          persist();
+          setStatus("Token minted", "ok");
+          setOut(parsed);
+        } finally {
+          btn.disabled = false;
         }
-        warn.hidden = true;
-        const res = await writeApi("mint-member-token", `${base()}/workspaces/${wid()}/members/${mid}/tokens`, {
-          method: "POST",
-          headers: headers(true),
-          body: JSON.stringify({ label: label || null, capabilities: caps }),
-        });
-        const body = await res.text();
-        if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
-          return setOut(body);
-        }
-        const parsed = JSON.parse(body);
-        document.getElementById("token").value = parsed.secret;
-        document.getElementById("token-revoke-id").value = parsed.id;
-        persist();
-        setStatus("Token minted", "ok");
-        setOut(parsed);
       };
 
       document.getElementById("list-member-tokens").onclick = async () => {

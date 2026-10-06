@@ -98,10 +98,11 @@ import { baseInput, tokenKey, wsKey } from "./state.js";
 
       // A mutating request from a board button. The button disables while the
       // request is in flight, so a double click cannot fire twice, and the
-      // request carries a fresh Idempotency-Key, so a retry after a timeout
-      // replays the first response instead of writing again. `button` is an
-      // element, an element id, a list of elements, or null when no button
-      // owns the call.
+      // request carries a fresh Idempotency-Key, so a duplicated delivery
+      // of the same request replays the first response instead of writing
+      // again. Each call is one request with one key: a later call is a new
+      // write, not a retry of this one. `button` is an element, an element
+      // id, a list of elements, or null when no button owns the call.
       // @param {HTMLElement|string|NodeList|Array|null} button
       // @param {string} url
       // @param {RequestInit=} options

@@ -1002,7 +1002,10 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             btn.type = "button";
             btn.textContent = action;
             btn.className = `gate-${action}`;
-            btn.onclick = () => answerGate(gate.id, action, v.request_state, btn);
+            // The whole row's buttons own the call, so accept, decline and
+            // cancel all disable while one answer is in flight; a second
+            // click cannot send a conflicting action for the same gate.
+            btn.onclick = () => answerGate(gate.id, action, v.request_state, li.querySelectorAll("button"));
             li.appendChild(btn);
           }
           list.appendChild(li);

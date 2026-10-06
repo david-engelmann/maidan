@@ -380,8 +380,7 @@ const SQLITE_UP_V139: &str =
     include_str!("../../../migrations/sqlite/0139_usage_cache_pricing.sql");
 const SQLITE_UP_V140: &str = include_str!("../../../migrations/sqlite/0140_thread_block_note.sql");
 const SQLITE_UP_V141: &str = include_str!("../../../migrations/sqlite/0141_thread_status.sql");
-const SQLITE_UP_V142: &str =
-    include_str!("../../../migrations/sqlite/0142_thread_description.sql");
+const SQLITE_UP_V142: &str = include_str!("../../../migrations/sqlite/0142_thread_description.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
