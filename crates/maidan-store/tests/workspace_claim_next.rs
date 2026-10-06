@@ -331,7 +331,7 @@ async fn skips_threads_that_are_not_ready(store: &dyn Store) {
         .await
         .expect("dependency");
     store
-        .set_thread_block(dependency, BlockedReason::Human, agent)
+        .set_thread_block(dependency, BlockedReason::Human, agent, None)
         .await
         .expect("block");
     let needs_skill = thread(store, c).await;

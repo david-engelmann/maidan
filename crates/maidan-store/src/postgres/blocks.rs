@@ -19,6 +19,7 @@ fn row_to_block(row: &sqlx::postgres::PgRow) -> Result<ThreadBlock, StoreError> 
         reason,
         set_by: MemberId(row.get::<Uuid, _>("set_by")),
         set_at: row.get::<DateTime<Utc>, _>("set_at"),
+        note: row.get::<Option<String>, _>("note"),
     })
 }
 
@@ -27,20 +28,37 @@ pub async fn set(
     thread_id: ThreadId,
     reason: BlockedReason,
     set_by: MemberId,
-) -> Result<ThreadBlock, StoreError> {
+    note: Option<String>,
+) -> Result<(ThreadBlock, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
-        "INSERT INTO maidan_thread_blocks (thread_id, reason, set_by)
-         VALUES ($1, $2, $3)
+        "INSERT INTO maidan_thread_blocks (thread_id, reason, set_by, note)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (thread_id) DO UPDATE SET
-             reason = EXCLUDED.reason, set_by = EXCLUDED.set_by, set_at = NOW()
-         RETURNING thread_id, reason, set_by, set_at",
+             reason = EXCLUDED.reason, set_by = EXCLUDED.set_by, set_at = NOW(),
+             note = EXCLUDED.note
+         RETURNING thread_id, reason, set_by, set_at, note",
     )
     .bind(thread_id.0)
     .bind(reason.as_str())
     .bind(set_by.0)
-    .fetch_one(pool)
+    .bind(note.clone())
+    .fetch_one(&mut *tx)
     .await?;
-    row_to_block(&row)
+    let block = row_to_block(&row)?;
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+    let event = Event::ThreadBlocked {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id,
+        reason,
+        set_by,
+        note,
+    };
+    let stored = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((block, stored))
 }
 
 /// Clear the block and append `BlockedResolved` in one tx. `None` event when
@@ -53,7 +71,7 @@ pub async fn clear_with_event(
     let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "DELETE FROM maidan_thread_blocks WHERE thread_id = $1
-         RETURNING thread_id, reason, set_by, set_at",
+         RETURNING thread_id, reason, set_by, set_at, note",
     )
     .bind(thread_id.0)
     .fetch_optional(&mut *tx)
@@ -80,7 +98,7 @@ pub async fn clear_with_event(
 pub async fn clear(pool: &PgPool, thread_id: ThreadId) -> Result<Option<ThreadBlock>, StoreError> {
     let row = sqlx::query(
         "DELETE FROM maidan_thread_blocks WHERE thread_id = $1
-         RETURNING thread_id, reason, set_by, set_at",
+         RETURNING thread_id, reason, set_by, set_at, note",
     )
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -90,7 +108,7 @@ pub async fn clear(pool: &PgPool, thread_id: ThreadId) -> Result<Option<ThreadBl
 
 pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<Option<ThreadBlock>, StoreError> {
     let row = sqlx::query(
-        "SELECT thread_id, reason, set_by, set_at
+        "SELECT thread_id, reason, set_by, set_at, note
          FROM maidan_thread_blocks WHERE thread_id = $1",
     )
     .bind(thread_id.0)
@@ -104,7 +122,7 @@ pub async fn list_for_channel(
     channel_id: ChannelId,
 ) -> Result<Vec<ThreadBlock>, StoreError> {
     let rows = sqlx::query(
-        "SELECT b.thread_id, b.reason, b.set_by, b.set_at
+        "SELECT b.thread_id, b.reason, b.set_by, b.set_at, b.note
          FROM maidan_thread_blocks b
          JOIN maidan_threads t ON t.id = b.thread_id
          WHERE t.channel_id = $1 AND t.tombstoned_at IS NULL
@@ -114,4 +132,44 @@ pub async fn list_for_channel(
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_block).collect()
+}
+
+/// Threads blocked with `human` or `gate` reason in a workspace, with their
+/// blocks. For the waiting inbox. Returns (thread_id, title, owner_id, block).
+pub async fn list_human_gate_blocked(
+    pool: &PgPool,
+    workspace_id: maidan_types::WorkspaceId,
+) -> Result<
+    Vec<(
+        maidan_types::ThreadId,
+        Option<String>,
+        Option<maidan_types::MemberId>,
+        ThreadBlock,
+    )>,
+    StoreError,
+> {
+    let rows = sqlx::query(
+        "SELECT t.id AS t_id, t.title AS t_title, t.owner_id AS t_owner,
+                b.thread_id, b.reason, b.set_by, b.set_at, b.note
+         FROM maidan_thread_blocks b
+         JOIN maidan_threads t ON t.id = b.thread_id
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = $1
+           AND b.reason IN ('human', 'gate')
+           AND t.tombstoned_at IS NULL
+           AND t.state NOT IN ('closed', 'archived')
+         ORDER BY b.set_at DESC, b.thread_id",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let block = row_to_block(row)?;
+        let tid = maidan_types::ThreadId(row.get::<uuid::Uuid, _>("t_id"));
+        let title: Option<String> = row.get("t_title");
+        let owner: Option<uuid::Uuid> = row.get("t_owner");
+        out.push((tid, title, owner.map(maidan_types::MemberId), block));
+    }
+    Ok(out)
 }

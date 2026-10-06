@@ -63,12 +63,24 @@ pub async fn list_threads(
     // Keyset-paginated (was unbounded). Default 100, clamp 1..=500.
     let limit = q.limit.unwrap_or(100).clamp(1, 500);
     let after = q.cursor.map(ThreadId);
-    Ok(Json(
-        state
-            .store
-            .page_threads_for_channel(ChannelId(channel_id), after, limit)
-            .await?,
-    ))
+    let mut threads = state
+        .store
+        .page_threads_for_channel(ChannelId(channel_id), after, limit)
+        .await?;
+    // The board marks a blocked card from `Thread.block`, which the store's
+    // thread rows leave unset: attach the channel's blocks in one read.
+    let blocks = state
+        .store
+        .list_blocked_threads(ChannelId(channel_id))
+        .await?;
+    if !blocks.is_empty() {
+        let by_thread: std::collections::HashMap<ThreadId, ThreadBlock> =
+            blocks.into_iter().map(|b| (b.thread_id, b)).collect();
+        for thread in &mut threads {
+            thread.block = by_thread.get(&thread.id).cloned();
+        }
+    }
+    Ok(Json(threads))
 }
 
 /// A channel's threads ordered by last activity — most-recently bumped first. A
@@ -960,12 +972,11 @@ pub async fn set_thread_block(
     let thread_id = ThreadId(id);
     cap(&auth, THREAD_TRANSITION)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    Ok(Json(
-        state
-            .store
-            .set_thread_block(thread_id, body.reason, auth.member_id)
-            .await?,
-    ))
+    let (block, _event) = state
+        .store
+        .set_thread_block(thread_id, body.reason, auth.member_id, body.note)
+        .await?;
+    Ok(Json(block))
 }
 
 /// `GET /threads/:id/block` — the thread's explicit block, or `404` when

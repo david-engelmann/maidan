@@ -172,7 +172,7 @@ import { answerGate } from "./tools.js";
         if (item.primary) li.classList.add("ny-primary");
         const kind = document.createElement("span");
         kind.className = `ny-kind${item.kind === "open_gate" ? " gate" : ""}`;
-        kind.textContent = item.kind === "open_gate" ? "Approval" : "Review";
+        kind.textContent = item.kind === "open_gate" ? "Approval" : item.kind === "blocked" ? "Blocked" : "Review";
         const main = document.createElement("div");
         main.className = "ny-main";
         const title = document.createElement("div");
@@ -215,6 +215,46 @@ import { answerGate } from "./tools.js";
           changes.onclick = () => askForChanges(item, li);
           actions.append(approve, changes);
           if (item.kind === "unassigned_review") ownerActions(item, li, sub, approve, changes);
+        } else if (item.kind === "blocked") {
+          // A human/gate block: show the reason and note, offer to clear it.
+          // The item.summary already carries "title — blocked (reason): note".
+          const ctx = document.createElement("span");
+          ctx.textContent = item.summary;
+          sub.appendChild(ctx);
+          sub.appendChild(when);
+          const clear = document.createElement("button");
+          clear.type = "button";
+          clear.className = "primary";
+          clear.textContent = "Unblock";
+          clear.onclick = async () => {
+            // One request at a time: a second click would 404 on a block the
+            // first already cleared.
+            clear.disabled = true;
+            let res;
+            try {
+              res = await api(apiWritePath(`/threads/${item.thread_id}/block`), {
+                method: "DELETE",
+                headers: headers(true),
+                credentials: "include",
+              });
+            } catch (_e) {
+              clear.disabled = false;
+              showRowError(li, "Could not unblock: the server did not answer. Try again.");
+              return;
+            }
+            if (!res.ok) {
+              clear.disabled = false;
+              showRowError(li, await responseError(res, "Could not unblock"));
+              return;
+            }
+            // Remove from state and re-render; schedule a board refresh so
+            // the card loses its blocked marker.
+            const idx = needsYou.findIndex((i) => i === item);
+            if (idx >= 0) needsYou.splice(idx, 1);
+            renderNeedsYou();
+            if (typeof scheduleBoardRefresh === "function") scheduleBoardRefresh();
+          };
+          actions.append(clear);
         } else {
           const view = pendingGateViews.get(item.gate_id);
           if (view && view.gate.requested_by) sub.append("asked by ", personEl(view.gate.requested_by));

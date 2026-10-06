@@ -601,10 +601,13 @@ pub(super) async fn list_unclaimable(
 struct SetThreadBlockArgs {
     thread_id: uuid::Uuid,
     reason: BlockedReason,
+    #[serde(default)]
+    note: Option<String>,
 }
 
 /// Set (upsert) an explicit dispatch block. `claim_next` skips the thread and
 /// an explicit `claim` is refused, until cleared. `reason` is the closed enum.
+/// `note` is a human-readable explanation, shown to whoever must unblock it.
 /// `thread:transition`; thread access enforced pre-dispatch.
 pub(super) async fn set_thread_block(
     store: &Arc<dyn Store>,
@@ -612,8 +615,8 @@ pub(super) async fn set_thread_block(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SetThreadBlockArgs = serde_json::from_value(args.clone())?;
-    let block = store
-        .set_thread_block(ThreadId(a.thread_id), a.reason, auth.member_id)
+    let (block, _event) = store
+        .set_thread_block(ThreadId(a.thread_id), a.reason, auth.member_id, a.note)
         .await?;
     Ok(content_json(&block))
 }

@@ -68,8 +68,8 @@ async fn run_suite(store: &dyn Store) {
         .expect("list")
         .is_empty());
 
-    let set = store
-        .set_thread_block(t1.id, BlockedReason::Gate, member.id)
+    let (set, _) = store
+        .set_thread_block(t1.id, BlockedReason::Gate, member.id, None)
         .await
         .expect("set");
     assert_eq!(set.thread_id, t1.id);
@@ -85,7 +85,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Re-set upserts the reason (closed enum, not a free-text park).
     store
-        .set_thread_block(t1.id, BlockedReason::Human, member.id)
+        .set_thread_block(t1.id, BlockedReason::Human, member.id, None)
         .await
         .expect("reset");
     assert_eq!(
@@ -101,7 +101,7 @@ async fn run_suite(store: &dyn Store) {
     // Every closed reason is persistable.
     for &reason in BlockedReason::ALL {
         store
-            .set_thread_block(t2.id, reason, member.id)
+            .set_thread_block(t2.id, reason, member.id, None)
             .await
             .expect("set each reason");
         assert_eq!(
@@ -200,7 +200,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
         .expect("dag edge");
 
     store
-        .set_thread_block(t1.id, BlockedReason::Child, member.id)
+        .set_thread_block(t1.id, BlockedReason::Child, member.id, None)
         .await
         .expect("block");
 
@@ -279,7 +279,7 @@ async fn run_blocked_resolved_suite(store: &dyn Store) {
         .await
         .expect("thread");
     store
-        .set_thread_block(thread.id, BlockedReason::Quota, member.id)
+        .set_thread_block(thread.id, BlockedReason::Quota, member.id, None)
         .await
         .expect("block");
 

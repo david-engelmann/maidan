@@ -317,6 +317,16 @@
     "thread_id": "00000000-0000-0000-0000-000000000004",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.thread_blocked/1": {
+    "$type": "maidan.event.thread_blocked/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_blocked",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reason": "human",
+    "set_by": "00000000-0000-0000-0000-000000000002",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.thread_created/1": {
     "$type": "maidan.event.thread_created/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",

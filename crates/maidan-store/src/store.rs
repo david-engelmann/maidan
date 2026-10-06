@@ -1976,12 +1976,14 @@ pub trait AssignmentStore: Send + Sync {
     /// Set (upsert) an explicit dispatch block. Presence of the row parks the
     /// thread from `claim_next` (enforced in
     /// 386.2). One block per thread; re-setting replaces the reason/actor.
+    /// Emits `ThreadBlocked`.
     async fn set_thread_block(
         &self,
         thread_id: ThreadId,
         reason: BlockedReason,
         set_by: MemberId,
-    ) -> Result<ThreadBlock, StoreError>;
+        note: Option<String>,
+    ) -> Result<(ThreadBlock, StoredEvent), StoreError>;
     /// Clear a thread's explicit block. Returns the cleared row; `None` if it
     /// was not blocked (idempotent). Prefer [`clear_thread_block_with_event`]
     /// to emit `BlockedResolved`.
@@ -2006,6 +2008,15 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         channel_id: ChannelId,
     ) -> Result<Vec<ThreadBlock>, StoreError>;
+
+    /// Threads blocked with `human` or `gate` reason in a workspace, with
+    /// their blocks. For the waiting inbox: these need a human (owner or
+    /// admin) to unblock. Returns (thread_id, title, owner_id, block).
+    /// Newest first.
+    async fn list_human_gate_blocked_threads(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)>, StoreError>;
 
     /// Set (upsert) a thread's wait timer: the thread is waiting until
     /// `wait_until`, escalating via `on_timeout` on lapse. Re-setting resets

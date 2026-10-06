@@ -430,6 +430,10 @@ pub struct ThreadBlock {
     pub reason: BlockedReason,
     pub set_by: MemberId,
     pub set_at: DateTime<Utc>,
+    /// Human-readable note explaining why the thread is blocked. Set by
+    /// `set_thread_block`; empty when the blocker gave no note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// A per-thread budget envelope. An orchestrator sets any of the optional
@@ -1607,6 +1611,11 @@ pub struct Thread {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,
+    /// The thread's explicit dispatch block, if any. Populated by the API
+    /// layer when returning thread details; `None` in store-level queries
+    /// that do not JOIN the blocks table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block: Option<ThreadBlock>,
     /// The thread is closed (or archived) and no approval stands on it. The
     /// review gate is opt-in, so a close can need none; the board says so
     /// rather than showing a plain "done". Read by a single-thread read and a
@@ -2055,6 +2064,9 @@ pub enum WaitingKind {
     /// A thread under review that names the member as a reviewer and does not
     /// have their approval yet.
     ReviewRequest,
+    /// A thread blocked with reason `human` or `gate`, waiting on its owner
+    /// (or workspace admins when it has no owner) to unblock it.
+    Blocked,
     /// A thread under review that names no reviewer, so no review request
     /// reaches anyone. It waits on the thread's owner, or, when it has none,
     /// on the workspace's admins.
@@ -2136,6 +2148,7 @@ pub fn assemble_waiting_inbox(
     unassigned_reviews: &[Thread],
     pending_gates: &[ApprovalGate],
     unread_mentions: &[Mention],
+    blocked: &[(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)],
     now: DateTime<Utc>,
     sla_secs: i64,
 ) -> WaitingInbox {
@@ -2211,6 +2224,26 @@ pub fn assemble_waiting_inbox(
             Some(m.message_id),
             format!("mention in message {}", m.message_id.0),
             m.created_at,
+            now,
+            sla_secs,
+        ));
+    }
+    for (tid, title, _owner, block) in blocked {
+        let summary = match &block.note {
+            Some(n) if !n.is_empty() => format!("blocked ({}): {}", block.reason.as_str(), n),
+            _ => format!("blocked: {}", block.reason.as_str()),
+        };
+        items.push(waiting_item(
+            WaitingKind::Blocked,
+            Some(*tid),
+            None,
+            None,
+            title
+                .clone()
+                .unwrap_or_else(|| "(untitled thread)".to_string())
+                + " — "
+                + &summary,
+            block.set_at,
             now,
             sla_secs,
         ));

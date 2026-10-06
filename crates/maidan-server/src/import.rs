@@ -74,6 +74,7 @@ mod tests {
                     created_at: now,
                     updated_at: now,
                     tombstoned_at: None,
+                    block: None,
                     closed_without_review: false,
                 },
                 Thread {
@@ -90,6 +91,7 @@ mod tests {
                     created_at: now,
                     updated_at: now,
                     tombstoned_at: None,
+                    block: None,
                     closed_without_review: false,
                 },
             ],

@@ -74,6 +74,7 @@ fn thread() -> Thread {
         created_at: ts(),
         updated_at: ts(),
         tombstoned_at: None,
+        block: None,
         closed_without_review: false,
     }
 }
@@ -189,6 +190,15 @@ fn sample_event(kind: EventKind) -> Event {
             thread_id: Some(thread_id),
             gate_id: maidan_types::ApprovalGateId(id(10)),
             requested_by: member_id,
+        },
+        EventKind::ThreadBlocked => Event::ThreadBlocked {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reason: BlockedReason::Human,
+            set_by: member_id,
+            note: None,
         },
         EventKind::BlockedResolved => Event::BlockedResolved {
             occurred_at,
@@ -469,6 +479,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadReady
             | EventKind::ThreadResultSet
             | EventKind::ApprovalRequested
+            | EventKind::ThreadBlocked
             | EventKind::BlockedResolved
             | EventKind::ClaimExpired
             | EventKind::ClaimUnacknowledged
