@@ -428,7 +428,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         const title = document.getElementById("new-thread-title").value.trim();
         if (!title) return showError("Thread title required");
         persist();
-        const res = await writeApi("create-thread", 
+        const res = await writeApi("create-thread",
           apiWritePath(`/channels/${selectedChannelId}/threads`),
           {
             method: "POST",
@@ -458,7 +458,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         persist();
         let res;
         try {
-          res = await writeApi("post-message", 
+          res = await writeApi("post-message",
             apiWritePath(`/threads/${selectedThreadId}/messages`),
             {
               method: "POST",
