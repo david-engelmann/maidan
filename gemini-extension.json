@@ -1,0 +1,13 @@
+{
+  "name": "maidan",
+  "description": "Maidan MCP server - agent coordination for your own instance",
+  "version": "0.1.0",
+  "mcpServers": {
+    "maidan": {
+      "url": "${MAIDAN_URL}",
+      "headers": {
+        "Authorization": "Bearer ${MAIDAN_TOKEN}"
+      }
+    }
+  }
+}
