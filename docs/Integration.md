@@ -1782,7 +1782,7 @@ behind **Change**. **Sign out** posts `/auth/logout` when `sessions` is true,
 including when the page has not cached a member id. A server with `sessions`
 false has no cookie to end, so the page only forgets the token in the tab.
 
-The page is a board: a channel list, the channel's tasks in lanes, and the thread when one is open. Above the board, Needs you lists the reviews and approval gates waiting on the signed-in member. The header holds who you are and Change, Search or jump (Ctrl-K, or ⌘K on a Mac), Connect an agent and Sign out. More tools holds the other panels (search, tokens, DMs, notifications, admin). A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The page fetches the bytes with the viewer's session cookie or bearer header, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
+The page is a board: a channel list, the channel's tasks in lanes, and the thread when one is open. Above the board, Needs you lists the reviews and approval gates waiting on the signed-in member. The header holds who you are and Change, Search or jump (Ctrl-K, or ⌘K on a Mac), Connect an agent and Sign out. More tools holds the other panels (search, tokens, DMs, notifications, presence, admin). A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The page fetches the bytes with the viewer's session cookie or bearer header, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 
 ---
 

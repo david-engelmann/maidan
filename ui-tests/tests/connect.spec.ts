@@ -76,8 +76,33 @@ test("creating an agent mints a token that can claim, post, and transition", asy
 });
 
 // Once the member exists a retry cannot create it again: the handle is taken.
-// A mint that fails after that names the member and puts its id in Tokens.
-test("a failed mint after the member is created points Tokens at that member", async ({ page }) => {
+// A mint the server refuses (4xx) names the member and puts its id in Tokens.
+test("a refused mint after the member is created points Tokens at that member", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.fill("#workspace", fx.workspace_id);
+  await page.fill("#token", fx.admin_token);
+  await page.locator("#token").dispatchEvent("change");
+  await page.route(/\/members\/[^/]+\/tokens$/, (route) =>
+    route.request().method() === "POST" ? route.fulfill({ status: 403, body: "nope" }) : route.continue(),
+  );
+  await page.getByRole("button", { name: "Connect an agent" }).first().click();
+
+  const handle = `nomint-${Date.now()}`;
+  await page.fill("#cx-handle", handle);
+  await page.click("#cx-create-agent");
+
+  const status = page.locator("#cx-status");
+  await expect(status).toContainText(`Member ${handle} was created, but the server refused to mint its token`);
+  await expect(status).toContainText("Mint its token in Tokens");
+  await expect(status).not.toContainText("nope");
+  await expect(page.locator("#token-member")).toHaveValue(/^[0-9a-f-]{36}$/);
+  await expect(page.locator("#cx-create-agent")).toBeEnabled();
+});
+
+// mint_api_token can commit the token before the quota listing fails, so a
+// 500 leaves the outcome unknown: the page must not claim the server refused,
+// because a token may exist that this page never saw.
+test("a 500 from the mint says the outcome is unknown", async ({ page }) => {
   await page.goto("/ui/");
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.admin_token);
@@ -87,12 +112,14 @@ test("a failed mint after the member is created points Tokens at that member", a
   );
   await page.getByRole("button", { name: "Connect an agent" }).first().click();
 
-  const handle = `nomint-${Date.now()}`;
+  const handle = `unkmint-${Date.now()}`;
   await page.fill("#cx-handle", handle);
   await page.click("#cx-create-agent");
 
   const status = page.locator("#cx-status");
-  await expect(status).toContainText(`Member ${handle} was created, but its token was not minted`);
+  await expect(status).toContainText(
+    `Member ${handle} was created, but the server failed while minting its token, so a token may exist that this page never saw.`,
+  );
   await expect(status).toContainText("Mint its token in Tokens");
   await expect(status).not.toContainText("boom");
   await expect(page.locator("#token-member")).toHaveValue(/^[0-9a-f-]{36}$/);

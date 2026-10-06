@@ -68,11 +68,11 @@ pub async fn list_threads(
         .page_threads_for_channel(ChannelId(channel_id), after, limit)
         .await?;
     // The board marks a blocked card from `Thread.block`, which the store's
-    // thread rows leave unset: attach the channel's blocks in one read.
-    let blocks = state
-        .store
-        .list_blocked_threads(ChannelId(channel_id))
-        .await?;
+    // thread rows leave unset: attach blocks for exactly this page's threads.
+    // Reading the channel's whole block list here grew with the channel;
+    // the page is already keyset-bounded, so the block read is too.
+    let thread_ids: Vec<ThreadId> = threads.iter().map(|t| t.id).collect();
+    let blocks = state.store.list_blocks_for_threads(&thread_ids).await?;
     if !blocks.is_empty() {
         let by_thread: std::collections::HashMap<ThreadId, ThreadBlock> =
             blocks.into_iter().map(|b| (b.thread_id, b)).collect();

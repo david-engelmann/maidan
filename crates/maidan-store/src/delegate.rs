@@ -2436,6 +2436,13 @@ macro_rules! store_delegations {
                 blocks::list_for_channel(self.read_pool(), channel_id).await
             }
 
+            async fn list_blocks_for_threads(
+                &self,
+                thread_ids: &[ThreadId],
+            ) -> Result<Vec<ThreadBlock>, StoreError> {
+                blocks::list_for_threads(self.read_pool(), thread_ids).await
+            }
+
             async fn list_human_gate_blocked_threads(
                 &self,
                 workspace_id: WorkspaceId,
