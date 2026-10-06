@@ -92,7 +92,7 @@ test("a failed mint after the member is created points Tokens at that member", a
   await page.click("#cx-create-agent");
 
   const status = page.locator("#cx-status");
-  await expect(status).toContainText(`Member ${handle} was created, but its token was not minted`);
+  await expect(status).toContainText(`Member ${handle} was created, but the server refused to mint its token`);
   await expect(status).toContainText("Mint its token in Tokens");
   await expect(status).not.toContainText("boom");
   await expect(page.locator("#token-member")).toHaveValue(/^[0-9a-f-]{36}$/);

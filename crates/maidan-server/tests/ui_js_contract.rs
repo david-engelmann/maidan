@@ -1005,16 +1005,53 @@ fn ui_js_needs_you_reports_failed_loads_and_keeps_rows_in_use() {
     );
 }
 
+/// Byte ranges of string literals in `js`. The dialog scanner works on raw
+/// text, so without this a sentence like "Use alert (1) only for debugging"
+/// reads as a call. Escapes never end the literal, even `\"`.
+fn string_literal_spans(js: &str) -> Vec<(usize, usize)> {
+    let bytes = js.as_bytes();
+    let mut spans = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let quote = bytes[i];
+        if quote != b'\'' && quote != b'"' && quote != b'`' {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        i += 1;
+        while i < bytes.len() {
+            let b = bytes[i];
+            if b == b'\\' {
+                i += 2;
+                continue;
+            }
+            i += 1;
+            if b == quote {
+                break;
+            }
+        }
+        spans.push((start, i));
+    }
+    spans
+}
+
 /// Byte offsets of `alert`, `confirm` or `prompt` called bare or on
 /// `window`/`globalThis`/`self`, with any whitespace before the `(`.
+/// Matches inside string literals are not calls.
 fn blocking_dialog_calls(js: &str) -> Vec<usize> {
     let bytes = js.as_bytes();
+    let strings = string_literal_spans(js);
+    let in_string = |at: usize| strings.iter().any(|&(s, e)| at >= s && at < e);
     let mut found = Vec::new();
     for dialog in ["alert", "confirm", "prompt"] {
         let mut from = 0;
         while let Some(offset) = js[from..].find(dialog) {
             let at = from + offset;
             from = at + dialog.len();
+            if in_string(at) {
+                continue;
+            }
             if !js[from..]
                 .trim_start_matches(char::is_whitespace)
                 .starts_with('(')
@@ -1063,6 +1100,9 @@ fn the_dialog_check_sees_spaced_and_window_calls() {
         "promptText(1)",
         "mywindow.alert(1)",
         "\"no alert here\"",
+        // A quoted sentence is not a call, even with the paren inside.
+        "\"Use alert (1) only for debugging\"",
+        "'confirm (2) is fine in a string'",
     ] {
         assert!(blocking_dialog_calls(fine).is_empty(), "false hit: {fine}");
     }

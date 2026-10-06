@@ -142,6 +142,31 @@ pub async fn list_for_channel(
     rows.iter().map(row_to_block).collect()
 }
 
+/// Blocks for exactly these thread ids, newest first. The thread-list route
+/// attaches `Thread.block` to one page this way instead of reading the
+/// channel's whole block list and filtering in memory.
+pub async fn list_for_threads(
+    pool: &SqlitePool,
+    thread_ids: &[ThreadId],
+) -> Result<Vec<ThreadBlock>, StoreError> {
+    if thread_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    // SQLite has no array parameter: one placeholder per id, all bound below.
+    let placeholders = vec!["?"; thread_ids.len()].join(",");
+    let sql = format!(
+        "SELECT thread_id, reason, set_by, set_at, note
+         FROM maidan_thread_blocks WHERE thread_id IN ({placeholders})
+         ORDER BY set_at DESC, thread_id"
+    );
+    let mut query = sqlx::query(&sql);
+    for id in thread_ids {
+        query = query.bind(id.0);
+    }
+    let rows = query.fetch_all(pool).await?;
+    rows.iter().map(row_to_block).collect()
+}
+
 /// Threads blocked with `human` or `gate` reason in a workspace, with their
 /// blocks. For the waiting inbox. Returns (thread_id, title, owner_id, block).
 pub async fn list_human_gate_blocked(

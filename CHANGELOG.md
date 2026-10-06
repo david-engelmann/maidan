@@ -1678,6 +1678,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** `claim_next`'s read rule is now `thread_access::readable_thread`, the SQL form the A2A and gate listings already used, with the workspace taken from the claimer's member row; the claim and the counts and the listings share one copy of the rule.
 - **Tests:** the workspace-wide `wait_for_ready` (no `channel_id`) skips a thread that becomes ready in a private channel or DM the caller cannot read, or in another workspace, on the live path and on the `since_log_id` replay.
 
+### `wait_for_*` tools over HTTP MCP
+
+- **Fixed:** `wait_for_*` tools called over `POST /mcp` answered "requires an event bus". The HTTP dispatcher built its `McpServer` with no bus wired in; only the stdio CLI had one. `AppState::new` now passes its bus through `with_event_bus`, and `attach_resource_notifier` preserves it when it rebuilds the dispatcher.
+- **Tests:** new `wait_http_e2e.rs`: a wait over `POST /mcp` wakes when `set_thread_result` fires on the same replica (SQLite), and a wait on replica A wakes when the result is set through replica B.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

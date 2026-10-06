@@ -105,11 +105,15 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
               body: JSON.stringify({ label: handle, capability_set: WORKER_PRESET, capabilities: [] }),
             });
           } catch (e) {
-            status.textContent = memberCreated(`its token was not minted. ${unreachable(e)}`);
+            // The request may have reached the server before the reply was
+            // lost, so a token may exist that this page never saw: the
+            // outcome is unknown, not a confirmed failure.
+            status.textContent = memberCreated(`the token request may have reached the server, so a token may exist that this page never saw. ${unreachable(e)}`);
             return;
           }
           if (!res.ok) {
-            status.textContent = memberCreated(`${await responseError(res, "its token was not minted")}.`);
+            // The server answered, so this is a refusal, not an unknown.
+            status.textContent = memberCreated(`${await responseError(res, "the server refused to mint its token")}.`);
             return;
           }
           const minted = await res.json();

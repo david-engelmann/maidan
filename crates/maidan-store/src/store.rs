@@ -2008,6 +2008,13 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         channel_id: ChannelId,
     ) -> Result<Vec<ThreadBlock>, StoreError>;
+    /// Explicit blocks for exactly these threads, newest first. For attaching
+    /// `Thread.block` to one page of threads without reading the channel's
+    /// whole block list.
+    async fn list_blocks_for_threads(
+        &self,
+        thread_ids: &[ThreadId],
+    ) -> Result<Vec<ThreadBlock>, StoreError>;
 
     /// Threads blocked with `human` or `gate` reason in a workspace, with
     /// their blocks. For the waiting inbox: these need a human (owner or
