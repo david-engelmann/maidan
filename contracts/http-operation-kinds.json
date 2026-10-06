@@ -129,6 +129,7 @@
   {"method":"GET","path":"/operator/egress/dead","kind":"reads"},
   {"method":"POST","path":"/operator/egress/dead/{id}/requeue","kind":"changes"},
   {"method":"GET","path":"/operator/export-public-key","kind":"reads"},
+  {"method":"POST","path":"/operator/github/mark-ready","kind":"changes"},
   {"method":"GET","path":"/operator/legal-holds","kind":"reads"},
   {"method":"GET","path":"/operator/mail/dead","kind":"reads"},
   {"method":"POST","path":"/operator/mail/dead/{id}/requeue","kind":"changes"},

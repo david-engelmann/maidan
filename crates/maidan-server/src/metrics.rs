@@ -365,6 +365,12 @@ pub fn record_github_review(outcome: &str) {
     counter!("maidan_github_review_total", "outcome" => outcome.to_string()).increment(1);
 }
 
+/// Mark-ready flips: `marked` (the draft is now ready), `already_ready` (a
+/// retry found it ready), `refused` (the PR failed the change-flow guards).
+pub fn record_github_mark_ready(outcome: &str) {
+    counter!("maidan_github_mark_ready_total", "outcome" => outcome.to_string()).increment(1);
+}
+
 /// A projector-egress delivery leaving the durable queue, by `surface` (`slack`
 /// | `github`) and `outcome`:
 /// - `sent` — posted to the external surface.

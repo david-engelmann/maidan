@@ -456,12 +456,40 @@ pub struct GithubPull {
     pub base: String,
 }
 
+/// A pull request as read for the mark-ready guard: head, base and draft flag.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubPullBrief {
+    pub number: i64,
+    /// The head branch name.
+    pub head: String,
+    /// The base branch name.
+    pub base: String,
+    pub draft: bool,
+}
+
+/// What flipping a pull request to ready did. A refusal is an outcome, not a
+/// failure: retrying cannot fix a PR that fails the guards.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MarkReadyOutcome {
+    /// The pull was a draft and is now ready for review.
+    Marked {
+        number: i64,
+        head: String,
+        base: String,
+    },
+    /// The pull was already ready; nothing was written.
+    AlreadyReady { number: i64 },
+    /// The flip is refused and nothing was written.
+    Refused(String),
+}
+
 /// The GitHub calls the change flow makes: read a branch and the files a diff
-/// touches, write blobs, a tree and a commit, move the branch, and find or
-/// open its draft pull request. Nothing here approves, merges, marks a pull
-/// request ready, requests a review, comments, deletes a branch, force-pushes
-/// or touches repository settings, and there is deliberately no method that
-/// could.
+/// touches, write blobs, a tree and a commit, move the branch, find or open
+/// its draft pull request, and — the one deliberate exception —
+/// [`GithubGit::mark_pull_request_ready`]. Nothing else here approves,
+/// merges, requests a review, comments, deletes a branch, force-pushes or
+/// touches repository settings, and there is deliberately no other method
+/// that could.
 #[async_trait::async_trait]
 pub trait GithubGit: Send + Sync {
     /// `GET /repos/{repo}/git/ref/heads/{branch}`: the branch head, or `None`
@@ -511,6 +539,30 @@ pub trait GithubGit: Send + Sync {
         title: &str,
         body: &str,
     ) -> Result<GithubPull, GithubError>;
+    /// `GET /repos/{repo}/pulls/{n}`: head ref, base ref and draft flag, for
+    /// the mark-ready guard. A read, so no guard applies; the caller enforces
+    /// the change-flow rules before acting on what it returns.
+    async fn pull_brief(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<GithubPullBrief, GithubError>;
+    /// Flip a draft pull request to ready for review: `GET` the pull, refuse
+    /// anything that is not a draft on an agent branch into an allowed base,
+    /// then `PATCH` it with `{"draft": false}`.
+    ///
+    /// The deliberate, tightly-scoped exception to "never marks ready"
+    /// (Decisions, 2026-10-06): Soundcheck holds no GitHub write credential,
+    /// so Maidan does the flip — only for `feature/agent-*` heads into
+    /// allowlisted bases, never prod, never anything else. The workspace
+    /// allowlist check lives with the caller, which knows the workspace;
+    /// this method enforces the PR-shape guards on the fresh read,
+    /// immediately before the write.
+    async fn mark_pull_request_ready(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<MarkReadyOutcome, GithubError>;
 }
 
 /// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
@@ -1009,6 +1061,65 @@ impl GithubGit for GithubApiClient {
                 "draft": true,
             }));
         pull_from(&self.send_json(request).await?)
+    }
+
+    async fn pull_brief(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<GithubPullBrief, GithubError> {
+        let value = self
+            .send_json(self.request(
+                reqwest::Method::GET,
+                &format!("/repos/{repo}/pulls/{pull_number}"),
+            ))
+            .await?;
+        let number = value
+            .get("number")
+            .and_then(serde_json::Value::as_i64)
+            .filter(|n| *n > 0)
+            .ok_or_else(|| GithubError::Http("github pull has no number".into()))?;
+        Ok(GithubPullBrief {
+            number,
+            head: field(&value, "/head/ref")?,
+            base: field(&value, "/base/ref")?,
+            // Missing means malformed; fail closed by treating it as
+            // not-a-draft rather than flipping blind.
+            draft: value
+                .get("draft")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+        })
+    }
+
+    async fn mark_pull_request_ready(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<MarkReadyOutcome, GithubError> {
+        let brief = self.pull_brief(repo, pull_number).await?;
+        if !brief.draft {
+            return Ok(MarkReadyOutcome::AlreadyReady {
+                number: brief.number,
+            });
+        }
+        // The last check before GitHub: the flip lands only on an agent
+        // branch into an allowed base, whatever the caller asked for.
+        if let Err(reason) = maidan_types::check_change_target(&brief.head, &brief.base) {
+            return Ok(MarkReadyOutcome::Refused(reason));
+        }
+        let request = self
+            .request(
+                reqwest::Method::PATCH,
+                &format!("/repos/{repo}/pulls/{pull_number}"),
+            )
+            .json(&serde_json::json!({ "draft": false }));
+        self.send_json(request).await?;
+        Ok(MarkReadyOutcome::Marked {
+            number: brief.number,
+            head: brief.head,
+            base: brief.base,
+        })
     }
 }
 

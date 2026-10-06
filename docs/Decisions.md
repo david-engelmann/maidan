@@ -2037,8 +2037,31 @@ The token is an admin's, so the guards live in Maidan's code, not in GitHub sett
 - The branch is never `prod`, `main`, `master`, `staging` or `dev`.
 - The base must be the repo's allowed base.
 - `prod` is refused for every repo, whatever the configuration.
-- Maidan never merges, marks ready, changes settings, deletes a branch or force-pushes.
+- Maidan never merges, changes settings, deletes a branch or force-pushes.
+- Maidan marks ready only through the deliberate exception below, never any
+  other PR mutation.
 - The token is never logged.
+
+Agent PRs are authored as David, so nothing may depend on his approval. The
+flow stops at a draft PR, and Soundcheck asks Maidan to mark it ready. The
+shared Maidan runs in Pi's dev-tools compose stack, built from `main`, not
+on a hosted platform.
+
+**Relaxation, 2026-10-06 (maidan#1253).** GitHub refuses
+`markPullRequestReadyForReview` to Soundcheck's fine-grained PAT, so the
+maintainer ruled: Maidan does the flip; Soundcheck stays without
+`contents:write`. `POST /operator/github/mark-ready` flips a draft to ready,
+and only that:
+- only a draft whose head matches `^feature/agent-[a-z0-9][a-z0-9-]*$` and
+  whose base is the allowlisted base for that repo (`change_allowlist_selector`);
+- never prod, never a merge, never any other PR mutation — the client reads
+  the PR fresh and re-applies the guards immediately before the write;
+- callable only by the Soundcheck app (the caller's app installation must
+  resolve to the `soundcheck` slug);
+- audited like other egress (`github.mark_ready` with repo, PR, head, base
+  and outcome).
+The "never mark ready" guard is relaxed exactly this far, in code, not in
+token scope: David's PAT already could, so the guards stay where they were.
 
 Agent PRs are authored as David, so nothing may depend on his approval. The
 flow stops at a draft PR, and Soundcheck marks it ready. The shared Maidan

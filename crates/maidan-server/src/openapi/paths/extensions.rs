@@ -1279,3 +1279,19 @@ pub fn list_github_issue_links() {}
     )
 )]
 pub fn unlink_github_issue() {}
+
+/// Flip a draft agent pull request to ready for review (Soundcheck only)
+#[utoipa::path(
+    post,
+    path = "/operator/github/mark-ready",
+    tag = "operator",
+    request_body = crate::routes::MarkReadyRequest,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Flip attempted; `marked_ready` says whether the PR is now ready", body = crate::routes::MarkReadyResponse),
+        (status = 400, description = "Bad repo or pull number", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, description = "Not the Soundcheck app, or the PR fails the change-flow guards", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "No such pull request", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn mark_pull_ready() {}
