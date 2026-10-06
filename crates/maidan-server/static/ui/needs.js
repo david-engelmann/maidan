@@ -234,13 +234,12 @@ import { answerGate } from "./tools.js";
                 headers: headers(true),
                 credentials: "include",
               });
-            } catch (e) {
-              toast(`Could not unblock: ${e.message}`);
+            } catch (_e) {
+              showRowError(li, "Could not unblock: the server did not answer. Try again.");
               return;
             }
             if (!res.ok) {
-              const body = await res.text().catch(() => "");
-              toast(`Could not unblock: ${res.status} ${body}`);
+              showRowError(li, await responseError(res, "Could not unblock"));
               return;
             }
             // Remove from state and re-render; schedule a board refresh so

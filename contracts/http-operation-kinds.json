@@ -276,6 +276,7 @@
   {"method":"GET","path":"/ui/api/operator/reindex-embeddings/{job_id}","kind":"reads"},
   {"method":"GET","path":"/ui/api/threads/{tid}","kind":"reads"},
   {"method":"POST","path":"/ui/api/threads/{tid}","kind":"changes"},
+  {"method":"DELETE","path":"/ui/api/threads/{tid}/block","kind":"changes"},
   {"method":"GET","path":"/ui/api/threads/{tid}/dependencies","kind":"reads"},
   {"method":"GET","path":"/ui/api/threads/{tid}/messages","kind":"reads"},
   {"method":"POST","path":"/ui/api/threads/{tid}/messages","kind":"changes"},
