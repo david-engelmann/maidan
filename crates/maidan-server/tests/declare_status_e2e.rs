@@ -638,3 +638,125 @@ async fn a_human_dm_reply_clears_the_declared_status() {
 
     server.abort();
 }
+
+/// A human group-DM reply clears the declaration on the group DM's backing
+/// thread, mirroring the DM post path.
+#[tokio::test]
+async fn a_human_group_dm_reply_clears_the_declared_status() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::new(
+        store.clone(),
+        Arc::new(LocalFsStore::new(dir.path())),
+        Arc::new(InMemoryBus::with_capacity(64)),
+        search,
+        Arc::new(maidan_search::HashV1Provider),
+        false,
+        false,
+        FederationRuntime::new(true, None),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    let app = router(state);
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let base = format!("http://{addr}");
+
+    let (ws, agent, agent_auth) = workspace_with_agent(&store, "gdm-clear-ws").await;
+    // Two human members in the same workspace, able to post.
+    let mut human_auths = Vec::new();
+    for handle in ["human-a", "human-b"] {
+        let human = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: handle.into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let human_secret = TokenSecret::generate();
+        store
+            .create_api_token(NewApiToken {
+                workspace_id: ws.id,
+                member_id: human.id,
+                app_installation_id: None,
+                token_hash: hash_secret(human_secret.as_str()),
+                label: Some(handle.into()),
+                capabilities: vec!["workspace:read".into(), "message:post".into()],
+                expires_at: None,
+            })
+            .await
+            .unwrap();
+        human_auths.push((human.id, format!("Bearer {}", human_secret.as_str())));
+    }
+
+    // A group DM between the agent and the two humans; the agent owns the
+    // backing thread so its declarations are accepted.
+    let group = store
+        .open_group_dm_conversation(
+            ws.id,
+            &[agent, human_auths[0].0, human_auths[1].0],
+            Some("ops".into()),
+        )
+        .await
+        .unwrap();
+    store
+        .set_thread_owner(group.thread_id, Some(agent))
+        .await
+        .unwrap();
+    let status_url = format!("{base}/threads/{}/status", group.thread_id.0);
+
+    // The agent declares.
+    let put = client
+        .put(&status_url)
+        .header("Authorization", &agent_auth)
+        .json(&json!({ "status": "working", "note": "Drafting the reply." }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put.status(), StatusCode::OK);
+
+    // A human replies in the group DM.
+    let post = client
+        .post(format!("{base}/group-dms/{}/messages", group.id.0))
+        .header("Authorization", &human_auths[0].1)
+        .json(&json!({ "body": "Got it, thanks." }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(post.status(), StatusCode::CREATED);
+
+    // The declaration is gone.
+    let gone = client
+        .get(&status_url)
+        .header("Authorization", &agent_auth)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        gone.status(),
+        StatusCode::NOT_FOUND,
+        "a human group-DM reply should clear the declared status"
+    );
+
+    server.abort();
+}

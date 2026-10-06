@@ -4282,6 +4282,118 @@ mod tests {
         );
     }
 
+    /// A human DM reply posted over MCP clears the declaration on the DM's
+    /// backing thread, mirroring the REST DM post path.
+    #[tokio::test]
+    async fn mcp_human_dm_reply_clears_the_declared_status() {
+        use maidan_auth::capability::{MESSAGE_POST, THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_types::MemberKind;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace {
+                name: "mcp-dm-clear".into(),
+            })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let human = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "human".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let dm = store
+            .open_dm_conversation(ws.id, agent.id, human.id)
+            .await
+            .unwrap();
+        // Status is declared by the claim holder or the thread owner: make
+        // the agent the owner so its declaration is accepted.
+        store
+            .set_thread_owner(dm.thread_id, Some(agent.id))
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let agent_auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let human_auth = AuthContext::from_session(
+            human.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()],
+        );
+        let body = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // The agent declares.
+        let declared = body(
+            server
+                .call_tool(
+                    &agent_auth,
+                    "declare_status",
+                    &json!({ "thread_id": dm.thread_id.0, "status": "working", "note": "Drafting the reply." }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(declared["status"], "working");
+
+        // The human replies in the DM over MCP.
+        server
+            .call_tool(
+                &human_auth,
+                "post_dm_message",
+                &json!({ "dm_conversation_id": dm.id.0, "body": "Got it, thanks." }),
+            )
+            .await
+            .unwrap();
+
+        // The declaration is gone.
+        let read = body(
+            server
+                .call_tool(
+                    &agent_auth,
+                    "get_thread_status",
+                    &json!({ "thread_id": dm.thread_id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(
+            read.is_null(),
+            "a human DM reply over MCP should clear the declared status, got {read}"
+        );
+    }
+
     /// The WIP admin/visibility tools + enforcement on the MCP claim path
     /// (explicit claim errors at the cap; claim_next returns null).
     #[tokio::test]

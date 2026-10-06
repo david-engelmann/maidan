@@ -660,7 +660,7 @@ pub(super) async fn declare_status(
             "note must be a non-empty one-sentence description".into(),
         ));
     }
-    if note.contains('\n') {
+    if note.contains('\n') || note.contains('\r') {
         return Err(McpError::InvalidParams(
             "note must be a single sentence (no newlines)".into(),
         ));

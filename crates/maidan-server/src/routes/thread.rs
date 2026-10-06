@@ -131,6 +131,10 @@ pub async fn get_thread(
     // thread, so the prior `resolve_thread_context` + `ensure_workspace` was a
     // redundant fetch.
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(id)).await?;
+    // Thread-detail views read `Thread.status` too, same as the list path:
+    // attach the thread's active declaration when one exists.
+    let mut thread = thread;
+    thread.status = state.store.get_thread_status(ThreadId(id)).await?;
     Ok(Json(thread))
 }
 
@@ -1028,7 +1032,7 @@ pub async fn declare_thread_status(
             "note must be a non-empty one-sentence description".into(),
         ));
     }
-    if note.contains('\n') {
+    if note.contains('\n') || note.contains('\r') {
         return Err(ApiError::BadRequest(
             "note must be a single sentence (no newlines)".into(),
         ));

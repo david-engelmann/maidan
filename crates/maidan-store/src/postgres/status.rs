@@ -1,7 +1,8 @@
 //! Agent self-reported status: the `maidan_thread_status` side table.
 //! Presence = an active declaration; absence = cleared. `stalled` is
-//! system-computed only and can never be declared (enforced by
-//! [`DeclaredStatus::parse`] refusing it).
+//! system-computed only and can never be declared (the type has no `Stalled`
+//! variant, so serde refuses it; [`DeclaredStatus::parse`] is only used for
+//! DB reads).
 
 use chrono::{DateTime, Utc};
 use maidan_types::{

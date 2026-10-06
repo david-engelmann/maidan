@@ -1010,7 +1010,8 @@ impl Event {
             | Self::MessageEdited { channel_id, .. }
             | Self::MessageTombstoned { channel_id, .. }
             | Self::MessagePinned { channel_id, .. }
-            | Self::MessageUnpinned { channel_id, .. } => Some(*channel_id),
+            | Self::MessageUnpinned { channel_id, .. }
+            | Self::StatusDeclared { channel_id, .. } => Some(*channel_id),
             // Already optional: resolved best-effort from the thread.
             Self::ProjectorMisconfigured { channel_id, .. } => *channel_id,
             Self::ApprovalRequested { channel_id, .. } => *channel_id,
@@ -1044,7 +1045,8 @@ impl Event {
             | Self::ReactionAdded { thread_id, .. }
             | Self::ReactionRemoved { thread_id, .. }
             | Self::MessagePinned { thread_id, .. }
-            | Self::MessageUnpinned { thread_id, .. } => Some(*thread_id),
+            | Self::MessageUnpinned { thread_id, .. }
+            | Self::StatusDeclared { thread_id, .. } => Some(*thread_id),
             _ => None,
         }
     }
@@ -1089,6 +1091,7 @@ impl Event {
             | Self::MessageUnpinned { member_id, .. } => Some(*member_id),
             Self::MessageEdited { editor_id, .. } => Some(*editor_id),
             Self::MemoryBlockUpdated { updated_by, .. } => Some(*updated_by),
+            Self::StatusDeclared { declared_by, .. } => Some(*declared_by),
             _ => None,
         }
     }
