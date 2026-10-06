@@ -165,7 +165,7 @@ pub async fn list_human_gate_blocked(
          WHERE c.workspace_id = ?
            AND b.reason IN ('human', 'gate')
            AND t.tombstoned_at IS NULL
-           AND t.state NOT IN ('closed', 'landed')
+           AND t.state NOT IN ('closed', 'archived')
          ORDER BY b.set_at DESC, b.thread_id",
     )
     .bind(workspace_id.0)
