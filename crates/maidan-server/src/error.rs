@@ -33,6 +33,9 @@ pub enum ApiError {
     Overloaded(String),
     /// An `Idempotency-Key` reused for a different request. 422.
     IdempotencyKeyReused,
+    /// The request parsed but a field value is invalid (a blank title, a
+    /// negative limit). 422: the shape was fine, the value was not.
+    UnprocessableEntity(String),
     /// A retry arrived while the first request with its `Idempotency-Key` is
     /// still running. 409 with its own type, so a client can tell "retry
     /// shortly" from a conflict with the resource's state.
@@ -68,6 +71,7 @@ impl ApiError {
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Overloaded(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::IdempotencyKeyReused => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::UnprocessableEntity(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::IdempotencyKeyInFlight => StatusCode::CONFLICT,
             Self::CursorTooOld { .. } | Self::EventLogBroken { .. } => StatusCode::CONFLICT,
         }
@@ -88,6 +92,7 @@ impl ApiError {
             Self::Internal(_) => "Internal Server Error",
             Self::Overloaded(_) => "Service Unavailable",
             Self::IdempotencyKeyReused => "Idempotency Key Reused",
+            Self::UnprocessableEntity(_) => "Unprocessable Entity",
             Self::IdempotencyKeyInFlight => "Idempotency Key In Flight",
             Self::CursorTooOld { .. } => "Cursor Too Old",
             Self::EventLogBroken { .. } => "Event Log Broken",
@@ -117,6 +122,7 @@ impl ApiError {
             | Self::TooManyRequests(msg)
             | Self::BadGateway(msg)
             | Self::Internal(msg)
+            | Self::UnprocessableEntity(msg)
             | Self::Overloaded(msg) => msg.clone(),
             Self::CursorTooOld {
                 after_id,
@@ -155,6 +161,7 @@ impl ApiError {
             Self::Internal(_) => "https://maidan.dev/problems/internal",
             Self::Overloaded(_) => "https://maidan.dev/problems/overloaded",
             Self::IdempotencyKeyReused => "https://maidan.dev/problems/idempotency-key-reused",
+            Self::UnprocessableEntity(_) => "https://maidan.dev/problems/unprocessable-entity",
             Self::IdempotencyKeyInFlight => "https://maidan.dev/problems/idempotency-key-in-flight",
             Self::CursorTooOld { .. } => "https://maidan.dev/problems/cursor-too-old",
             Self::EventLogBroken { .. } => "https://maidan.dev/problems/event-log-broken",

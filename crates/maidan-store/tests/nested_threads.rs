@@ -47,6 +47,7 @@ async fn child_cannot_advance_beyond_open_parent() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("parent".to_string()),
+            description: None,
         })
         .await
         .expect("parent");
@@ -55,6 +56,7 @@ async fn child_cannot_advance_beyond_open_parent() {
             channel_id: ch.id,
             parent_thread_id: Some(parent.id),
             title: Some("child".to_string()),
+            description: None,
         })
         .await
         .expect("child");

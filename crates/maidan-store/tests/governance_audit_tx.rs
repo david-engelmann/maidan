@@ -72,6 +72,7 @@ where
         channel_id: channel.id,
         parent_thread_id: None,
         title: Some(title.into()),
+        description: None,
     };
     let t = store.create_thread(thread("t")).await.unwrap().id;
     let app = store

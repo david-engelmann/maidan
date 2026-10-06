@@ -49,6 +49,7 @@ async fn run_usage_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .expect("th");
@@ -83,6 +84,7 @@ async fn run_usage_suite(store: &dyn Store) {
             channel_id: ch2.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .expect("th2");

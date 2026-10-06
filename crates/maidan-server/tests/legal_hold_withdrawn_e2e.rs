@@ -198,6 +198,7 @@ async fn a_withdrawal_withdraws_and_a_hold_keeps_it_for_admins_only() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap()

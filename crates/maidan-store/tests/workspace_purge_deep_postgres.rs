@@ -66,6 +66,7 @@ async fn postgres_deep_purge_removes_related_rows() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

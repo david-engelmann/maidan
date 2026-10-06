@@ -103,6 +103,7 @@ async fn memory_blocks_over_http() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

@@ -75,6 +75,7 @@ fn sample_export() -> WorkspaceExport {
             channel_id,
             parent_thread_id: None,
             title: Some("portable task".into()),
+            description: None,
             state: ThreadState::Open,
             assignee_id: None,
             assignment_expires_at: None,

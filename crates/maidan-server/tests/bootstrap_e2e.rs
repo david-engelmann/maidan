@@ -306,6 +306,7 @@ async fn worker_preset_can_claim_post_and_transition() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("Fix the flaky login test".into()),
+            description: None,
         })
         .await
         .unwrap();

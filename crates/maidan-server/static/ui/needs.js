@@ -1,5 +1,5 @@
 // @ts-check
-import { api, apiReadPath, apiWritePath, headers, token, uiReadPath, wid } from "./api.js";
+import { api, apiReadPath, apiWritePath, headers, token, uiReadPath, wid, writeApi } from "./api.js";
 import { fetchPendingGatesByThread, pendingGateViews, renderResult, renderTeam, renderThreadHeader, scheduleBoardRefresh, selectThread, selectedThreadId, setAttention, threadsById } from "./board.js";
 import { keyActivates, responseError, setStatus } from "./feedback.js";
 import { ago, authorId, personEl } from "./people.js";
@@ -227,23 +227,18 @@ import { answerGate } from "./tools.js";
           clear.className = "primary";
           clear.textContent = "Unblock";
           clear.onclick = async () => {
-            // One request at a time: a second click would 404 on a block the
-            // first already cleared.
-            clear.disabled = true;
             let res;
             try {
-              res = await api(apiWritePath(`/threads/${item.thread_id}/block`), {
+              res = await writeApi(clear, apiWritePath(`/threads/${item.thread_id}/block`), {
                 method: "DELETE",
                 headers: headers(true),
                 credentials: "include",
               });
             } catch (_e) {
-              clear.disabled = false;
               showRowError(li, "Could not unblock: the server did not answer. Try again.");
               return;
             }
             if (!res.ok) {
-              clear.disabled = false;
               showRowError(li, await responseError(res, "Could not unblock"));
               return;
             }
@@ -278,13 +273,9 @@ import { answerGate } from "./tools.js";
               }
               if (!v) return showRowError(li, "This gate is no longer pending.");
               const buttons = actions.querySelectorAll("button");
-              buttons.forEach((x) => (x.disabled = true));
-              const out = await answerGate(item.gate_id, action, v.request_state);
+              const out = await answerGate(item.gate_id, action, v.request_state, buttons);
               if (!out.ok) {
-                const row = rowOnScreen(item, li);
-                const live = row.querySelectorAll(".ny-actions button");
-                (live.length ? live : buttons).forEach((x) => (x.disabled = false));
-                return showRowError(row, out.why);
+                return showRowError(rowOnScreen(item, li), out.why);
               }
               dropRow(item, li);
             };
@@ -335,10 +326,8 @@ import { answerGate } from "./tools.js";
           close.className = "primary";
           close.textContent = "Close without review";
           close.onclick = async () => {
-            close.disabled = true;
-            const done = await closeThread(item.thread_id);
+            const done = await closeThread(item.thread_id, close);
             if (!done.ok) {
-              close.disabled = false;
               return showRowError(rowOnScreen(item, li), done.why);
             }
             dropRow(item, li);
@@ -404,13 +393,13 @@ import { answerGate } from "./tools.js";
       // Reviews and closes are thread transitions. An OIDC session carries
       // thread:transition; a token uses its own grant. The store still refuses
       // a self-approval, including one made with a borrowed token.
-      async function submitReview(tid, decision, note) {
+      async function submitReview(tid, decision, note, button) {
         if (!token() && !sessionMemberId) {
           return { ok: false, why: "Sign in to approve." };
         }
         let res;
         try {
-          res = await api(apiWritePath(`/threads/${tid}/reviews`), {
+          res = await writeApi(button || null, apiWritePath(`/threads/${tid}/reviews`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
@@ -435,10 +424,10 @@ import { answerGate } from "./tools.js";
         }
       }
 
-      async function closeThread(tid) {
+      async function closeThread(tid, button) {
         let res;
         try {
-          res = await api(apiWritePath(`/threads/${tid}`), {
+          res = await writeApi(button || null, apiWritePath(`/threads/${tid}`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
@@ -453,8 +442,7 @@ import { answerGate } from "./tools.js";
 
       async function approveFromInbox(item, li) {
         const actions = li.querySelector(".ny-actions");
-        actions.querySelectorAll("button").forEach((b) => (b.disabled = true));
-        const out = await submitReview(item.thread_id, "approve");
+        const out = await submitReview(item.thread_id, "approve", undefined, actions.querySelectorAll("button"));
         const row = rowOnScreen(item, li);
         const liveActions = row.querySelector(".ny-actions");
         if (!out.ok) {
@@ -476,10 +464,8 @@ import { answerGate } from "./tools.js";
           close.className = "primary";
           close.textContent = "Close task";
           close.onclick = async () => {
-            close.disabled = true;
-            const done = await closeThread(item.thread_id);
+            const done = await closeThread(item.thread_id, close);
             if (!done.ok) {
-              close.disabled = false;
               return showRowError(li, done.why);
             }
             dropRow(item, li);
@@ -511,10 +497,8 @@ import { answerGate } from "./tools.js";
         });
         const go = async () => {
           if (send.disabled) return;
-          send.disabled = true;
-          const out = await submitReview(item.thread_id, "request_changes", input.value.trim());
+          const out = await submitReview(item.thread_id, "request_changes", input.value.trim(), send);
           if (!out.ok) {
-            send.disabled = false;
             return showRowError(rowOnScreen(item, li), out.why);
           }
           dropRow(item, li);
@@ -550,10 +534,8 @@ import { answerGate } from "./tools.js";
           approve.className = "primary";
           approve.textContent = "Approve";
           approve.onclick = async () => {
-            approve.disabled = true;
-            const out = await submitReview(th.id, "approve");
+            const out = await submitReview(th.id, "approve", undefined, approve);
             if (!out.ok) {
-              approve.disabled = false;
               return setStatus(out.why, "err");
             }
             await loadNeedsYou();
@@ -566,10 +548,8 @@ import { answerGate } from "./tools.js";
           close.className = "primary";
           close.textContent = "Close task";
           close.onclick = async () => {
-            close.disabled = true;
-            const out = await closeThread(th.id);
+            const out = await closeThread(th.id, close);
             if (!out.ok) {
-              close.disabled = false;
               return setStatus(out.why, "err");
             }
             scheduleBoardRefresh();

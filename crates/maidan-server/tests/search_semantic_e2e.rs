@@ -71,6 +71,7 @@ async fn http_semantic_search_ranks_by_embedding_similarity() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();
@@ -231,6 +232,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
             channel_id: general.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();
@@ -249,6 +251,7 @@ async fn http_semantic_search_respects_channel_and_kind_facets() {
             channel_id: release.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();
@@ -398,6 +401,7 @@ async fn sqlite_http_semantic_search_ranks_by_embedding_similarity() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();
@@ -528,6 +532,7 @@ async fn sqlite_http_semantic_search_honors_embedding_model_param() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

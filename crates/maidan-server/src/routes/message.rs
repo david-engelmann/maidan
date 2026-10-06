@@ -172,6 +172,7 @@ pub async fn seed_from_message(
             channel_id: target_channel,
             parent_thread_id: None,
             title: Some(body.title.trim().to_string()),
+            description: None,
         })
         .await?;
     super::publish_stored(&state, t_stored).await;

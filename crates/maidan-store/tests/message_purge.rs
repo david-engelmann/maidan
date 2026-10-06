@@ -42,6 +42,7 @@ async fn purge_removes_only_tombstoned_messages() {
         .create_thread(NewThread {
             channel_id: ch.id,
             title: None,
+            description: None,
             parent_thread_id: None,
         })
         .await

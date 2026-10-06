@@ -147,6 +147,7 @@ async fn api_token_hash_is_unique() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .expect("thread");

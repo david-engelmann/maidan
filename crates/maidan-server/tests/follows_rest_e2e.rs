@@ -368,6 +368,7 @@ async fn mute_and_unmute_thread() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

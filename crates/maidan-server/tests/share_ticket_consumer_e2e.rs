@@ -129,6 +129,7 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
             channel_id: incident.id,
             parent_thread_id: None,
             title: Some("first".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -137,6 +138,7 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
             channel_id: incident.id,
             parent_thread_id: None,
             title: Some("second".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -145,6 +147,7 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
             channel_id: unrelated.id,
             parent_thread_id: None,
             title: Some("secret".into()),
+            description: None,
         })
         .await
         .unwrap();

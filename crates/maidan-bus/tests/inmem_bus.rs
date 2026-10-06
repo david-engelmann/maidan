@@ -36,6 +36,7 @@ fn thread(channel_id: ChannelId) -> Thread {
         channel_id,
         parent_thread_id: None,
         title: None,
+        description: None,
         state: ThreadState::Open,
         assignee_id: None,
         assignment_expires_at: None,

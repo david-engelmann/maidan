@@ -184,6 +184,7 @@ mod tests {
             channel_id: ChannelId(Uuid::new_v4()),
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
             state,
             assignee_id: None,
             assignment_expires_at: None,

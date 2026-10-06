@@ -367,6 +367,7 @@ async fn room(store: &dyn Store, name: &str) -> Room {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("work".into()),
+            description: None,
         })
         .await
         .unwrap();

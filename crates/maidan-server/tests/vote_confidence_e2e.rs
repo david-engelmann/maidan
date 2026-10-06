@@ -69,6 +69,7 @@ async fn vote_confidence_round_trips_and_validates() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

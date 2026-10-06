@@ -118,6 +118,7 @@ async fn seed(ctx: &Ctx, ws: WorkspaceId, member: MemberId, private: bool) -> Th
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .unwrap();

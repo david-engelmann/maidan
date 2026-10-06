@@ -49,6 +49,7 @@ async fn run_suite(store: &dyn Store) {
                     channel_id: cid,
                     parent_thread_id: None,
                     title: Some(title),
+                    description: None,
                 })
                 .await
                 .expect("thread")
@@ -164,6 +165,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t1".into()),
+            description: None,
         })
         .await
         .expect("t1");
@@ -172,6 +174,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t2".into()),
+            description: None,
         })
         .await
         .expect("t2");

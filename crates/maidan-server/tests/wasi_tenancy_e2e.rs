@@ -117,6 +117,7 @@ async fn a_handler_cannot_run_another_tenants_module() {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();

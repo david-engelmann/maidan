@@ -85,6 +85,7 @@ async fn claim_next_then_list_mine_then_empty() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .unwrap();

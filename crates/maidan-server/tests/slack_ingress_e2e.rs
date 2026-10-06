@@ -145,6 +145,7 @@ async fn slack_message_in_a_linked_channel_posts_a_maidan_message() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("slack".into()),
+            description: None,
         })
         .await
         .unwrap();

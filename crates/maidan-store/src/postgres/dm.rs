@@ -104,6 +104,7 @@ pub async fn open(
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         },
     )
     .await?;

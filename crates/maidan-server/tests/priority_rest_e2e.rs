@@ -84,6 +84,7 @@ async fn thread_priority_set_and_get_over_rest() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

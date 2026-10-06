@@ -66,6 +66,7 @@ async fn seed(store: &dyn Store, name: &str) -> Seeded {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

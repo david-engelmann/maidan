@@ -60,6 +60,7 @@ async fn run_suite(store: &dyn Store) {
                     channel_id,
                     parent_thread_id: None,
                     title: Some(title),
+                    description: None,
                 })
                 .await
                 .expect("thread")

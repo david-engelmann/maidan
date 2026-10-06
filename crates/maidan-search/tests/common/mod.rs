@@ -73,6 +73,7 @@ pub async fn seed(store: &dyn Store) -> Fixture {
                         channel_id,
                         parent_thread_id: None,
                         title: None,
+                        description: None,
                     })
                     .await
                     .unwrap();

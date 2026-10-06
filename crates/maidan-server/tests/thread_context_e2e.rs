@@ -77,6 +77,7 @@ async fn thread_context_includes_messages_refs_artifacts_and_fsm() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("context thread".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -229,6 +230,7 @@ async fn thread_context_edit_bodies_are_opt_in() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("edited thread".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -372,6 +374,7 @@ async fn token_budget_folds_the_middle_and_records_elision() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("budget thread".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -525,6 +528,7 @@ async fn child_thread_context_grounds_on_its_parent() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("parent task".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -547,6 +551,7 @@ async fn child_thread_context_grounds_on_its_parent() {
             channel_id: ch.id,
             parent_thread_id: Some(parent.id),
             title: Some("child subtask".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -688,6 +693,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("opaque decision".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -706,6 +712,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("failed waiter".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -729,6 +736,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("reviewed waiter".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -753,6 +761,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("claimer task".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -970,6 +979,7 @@ async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: Some("stable".into()),
+            description: None,
         })
         .await
         .unwrap();

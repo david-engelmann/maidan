@@ -123,6 +123,7 @@ async fn land_gate_http_blocks_close_until_a_qualifying_green_pass() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("land this".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -310,6 +311,7 @@ async fn land_gate_advice_requires_transition_before_revealing_feature_state() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();
@@ -397,6 +399,7 @@ async fn land_gate_fail_is_red_and_mcp_standing_matches_the_store_gate() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

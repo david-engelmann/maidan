@@ -582,6 +582,7 @@ async fn new_thread(state: &AppState, auth: &AuthContext) -> Result<ThreadScope,
             channel_id,
             parent_thread_id: None,
             title: Some("A2A conversation".into()),
+            description: None,
         })
         .await;
     let (thread, stored) = spawn_checked(state, auth, created).await?;

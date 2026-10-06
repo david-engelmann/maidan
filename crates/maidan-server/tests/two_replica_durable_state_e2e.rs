@@ -196,6 +196,7 @@ async fn oauth_code_and_reindex_job_cross_replicas() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

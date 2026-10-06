@@ -119,7 +119,7 @@ pub(crate) async fn transition_in_tx(
     action: ThreadAction,
 ) -> Result<ThreadTransitionResult, StoreError> {
     let row = sqlx::query(
-        "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
+        "SELECT id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
          FROM maidan_threads WHERE id = $1 FOR UPDATE",
     )
     .bind(thread_id.0)
@@ -165,7 +165,7 @@ pub(crate) async fn transition_in_tx(
 
     if let Some(parent_id) = thread.parent_thread_id {
         let parent_row = sqlx::query(
-            "SELECT id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
+            "SELECT id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id
              FROM maidan_threads WHERE id = $1",
         )
         .bind(parent_id.0)
@@ -208,7 +208,7 @@ pub(crate) async fn transition_in_tx(
             claimed_at = CASE WHEN $4::boolean THEN NULL ELSE claimed_at END,
             work_started_at = CASE WHEN $4::boolean THEN NULL ELSE work_started_at END
          WHERE id = $3
-         RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+         RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
     )
     .bind(to_state.as_str())
     .bind(now)

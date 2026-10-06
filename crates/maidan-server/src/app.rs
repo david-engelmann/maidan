@@ -1296,6 +1296,12 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/members/{id}/thread-follows/{tid}",
             delete(routes::unfollow_member_thread),
         )
+        // Inside auth (it needs the caller): a double-clicked board button
+        // replays its first response instead of writing twice.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::idempotency::middleware,
+        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::ui_session_or_bearer_middleware,

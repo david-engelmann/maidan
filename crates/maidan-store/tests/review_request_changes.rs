@@ -57,6 +57,7 @@ async fn in_review(store: &dyn Store, ws: WorkspaceId, worker: MemberId) -> (Thr
             channel_id: channel,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .expect("thread");

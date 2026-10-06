@@ -219,7 +219,7 @@ pub async fn report_usage(
             "UPDATE maidan_threads
                  SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = now()
                  WHERE id = $1
-                 RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+                 RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
         )
         .bind(thread_id.0)
         .fetch_one(&mut *tx)
@@ -331,7 +331,7 @@ pub async fn report_accounted_usage(
             "UPDATE maidan_threads
              SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = now()
              WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3
-             RETURNING id, channel_id, parent_thread_id, title, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+             RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
         )
         .bind(new.thread_id.0)
         .bind(new.reporter.0)

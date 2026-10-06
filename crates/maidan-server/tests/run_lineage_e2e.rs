@@ -90,6 +90,7 @@ async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("parent".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -98,6 +99,7 @@ async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
             channel_id: channel.id,
             parent_thread_id: Some(parent.id),
             title: Some("nested".into()),
+            description: None,
         })
         .await
         .unwrap();

@@ -1,5 +1,5 @@
 // @ts-check
-import { api, apiWritePath, headers, uiReadPath, wid } from "./api.js";
+import { api, apiWritePath, headers, uiReadPath, wid, writeApi } from "./api.js";
 import { selectedThreadId } from "./board.js";
 import { responseError, setOut, setStatus, showError, unreachable } from "./feedback.js";
 import { INLINE_IMAGE_TYPES, artifactFetches, artifactImages } from "./state.js";
@@ -191,11 +191,11 @@ import { artifactObjectUrls, loadMessages } from "./thread.js";
       // Upload bytes as a content-addressed artifact. The server stores it by
       // its sha256; the file's name travels only as a display name, so a pasted
       // name cannot steer where anything is stored.
-      async function uploadArtifact(blob, kind) {
+      async function uploadArtifact(blob, kind, button) {
         const params = new URLSearchParams({ kind });
         if (blob.type) params.set("mime_type", blob.type);
         if (blob.name) params.set("filename", blob.name);
-        const res = await api(apiWritePath(`/artifacts?${params}`), {
+        const res = await writeApi(button || null, apiWritePath(`/artifacts?${params}`), {
           method: "POST",
           headers: headers(),
           credentials: "include",
@@ -212,7 +212,7 @@ import { artifactObjectUrls, loadMessages } from "./thread.js";
 
       async function attachToSelectedThread(artifact) {
         if (!selectedThreadId) return false;
-        const pres = await api(apiWritePath(`/threads/${selectedThreadId}/messages`), {
+        const pres = await writeApi(null, apiWritePath(`/threads/${selectedThreadId}/messages`), {
           method: "POST",
           headers: headers(true),
           credentials: "include",

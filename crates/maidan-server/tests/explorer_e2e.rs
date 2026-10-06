@@ -100,6 +100,7 @@ async fn explorer_rest_lists_tombstones_backlinks_and_census() {
             channel_id: public.id,
             parent_thread_id: None,
             title: Some("pub".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -108,6 +109,7 @@ async fn explorer_rest_lists_tombstones_backlinks_and_census() {
             channel_id: private.id,
             parent_thread_id: None,
             title: Some("secret".into()),
+            description: None,
         })
         .await
         .unwrap();

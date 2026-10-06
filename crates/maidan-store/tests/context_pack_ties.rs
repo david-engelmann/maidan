@@ -30,6 +30,7 @@ async fn assert_tied_refs(
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .expect("thread");

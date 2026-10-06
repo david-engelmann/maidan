@@ -248,6 +248,9 @@ async function api() {
     },
   };
 }
+async function writeApi(_button, url, options) {
+  return api(url, options);
+}
 
 const feedback = input.feedback
   .split("\n")

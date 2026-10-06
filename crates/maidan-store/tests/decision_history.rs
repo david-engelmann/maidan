@@ -71,6 +71,7 @@ async fn run_suite(store: &dyn Store) -> ThreadId {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .expect("thread");

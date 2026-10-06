@@ -112,6 +112,7 @@ async fn required_reviewers_over_http() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();
@@ -290,6 +291,7 @@ async fn decision_history_over_http() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

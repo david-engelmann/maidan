@@ -131,6 +131,7 @@ async fn operator_lists_and_requeues_a_dead_projector_delivery() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

@@ -108,6 +108,7 @@ async fn seed_spawns_a_linked_child_thread() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("root".into()),
+            description: None,
         })
         .await
         .unwrap();

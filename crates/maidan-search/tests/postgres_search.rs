@@ -105,6 +105,7 @@ async fn configured_hnsw_build_params_and_ef_search() {
             channel_id: ch.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

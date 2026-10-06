@@ -193,6 +193,7 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -293,6 +294,7 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("second".into()),
+            description: None,
         })
         .await
         .unwrap();

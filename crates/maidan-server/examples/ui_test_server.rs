@@ -78,6 +78,7 @@ async fn main() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("Deploy v9".into()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -124,6 +125,7 @@ async fn main() {
                     channel_id: build.id,
                     parent_thread_id: None,
                     title: Some(title.into()),
+                    description: None,
                 })
                 .await
                 .expect("board thread")
@@ -210,6 +212,7 @@ async fn main() {
                 channel_id: desk.id,
                 parent_thread_id: None,
                 title: Some(title.into()),
+                description: None,
             })
             .await
             .expect("desk thread");
@@ -254,6 +257,7 @@ async fn main() {
                     channel_id: floor.id,
                     parent_thread_id: None,
                     title: Some(title.into()),
+                    description: None,
                 })
                 .await
                 .expect("floor thread"),
@@ -291,6 +295,7 @@ async fn main() {
                 channel_id: triage.id,
                 parent_thread_id: None,
                 title: Some(title.into()),
+                description: None,
             })
             .await
             .expect("triage thread");
@@ -354,6 +359,7 @@ async fn main() {
             channel_id: lab.id,
             parent_thread_id: None,
             title: Some(format!("Title {XSS}")),
+            description: None,
         })
         .await
         .expect("lab thread");

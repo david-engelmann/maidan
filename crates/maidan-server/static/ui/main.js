@@ -1,5 +1,5 @@
 // @ts-check
-import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid } from "./api.js";
+import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid, writeApi } from "./api.js";
 import { attachToSelectedThread, escapeHtml, uploadArtifact } from "./artifacts.js";
 import { loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChannelId, selectedThreadId } from "./board.js";
 import { loadDms, loadGroupDms, openDm, openGroupDm, sendDmMessage, sendGroupDmMessage } from "./dm.js";
@@ -83,7 +83,10 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         try {
           let res;
           try {
-            res = await api(`${base()}/workspaces/${wid()}/members`, {
+            // The outer guard owns the button for the whole create+mint action:
+            // passing null keeps writeApi from re-enabling it between the
+            // two requests, where another click could start an overlap.
+            res = await writeApi(null, `${base()}/workspaces/${wid()}/members`, {
               method: "POST",
               headers: headers(true),
               body: JSON.stringify({ handle, display_name: display || null, kind: "agent" }),
@@ -99,7 +102,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           member = await res.json();
           status.textContent = "Minting a worker token…";
           try {
-            res = await api(`${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
+            res = await writeApi(null, `${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
               method: "POST",
               headers: headers(true),
               body: JSON.stringify({ label: handle, capability_set: WORKER_PRESET, capabilities: [] }),
@@ -215,7 +218,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       };
 
       document.getElementById("mint").onclick = async () => {
-        const res = await api(`${base()}/auth/session/mint`, {
+        const res = await writeApi("mint", `${base()}/auth/session/mint`, {
           method: "POST",
           credentials: "include",
         });
@@ -229,14 +232,14 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       };
 
       document.getElementById("rotate-own-token").onclick = () => {
-        if (currentTokenId) rotateToken(currentTokenId);
+        if (currentTokenId) rotateToken(currentTokenId, "rotate-own-token");
       };
 
       document.getElementById("rotate-token").onclick = () => {
         if (!requireBearer()) return;
         const id = document.getElementById("token-revoke-id").value.trim();
         if (!id) return showError("Token ID required");
-        rotateToken(id);
+        rotateToken(id, "rotate-token");
       };
 
       document.getElementById("copy-secret").onclick = () => {
@@ -405,7 +408,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         const name = document.getElementById("new-channel-name").value.trim();
         if (!name) return showError("Channel name required");
         persist();
-        const res = await api(apiWritePath(`/workspaces/${wid()}/channels`), {
+        const res = await writeApi("create-channel", apiWritePath(`/workspaces/${wid()}/channels`), {
           method: "POST",
           headers: headers(true),
           credentials: "include",
@@ -426,14 +429,15 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         if (!requireAuthForWrite()) return;
         if (!selectedChannelId) return showError("Select a channel first");
         const title = document.getElementById("new-thread-title").value.trim();
+        if (!title) return showError("Thread title required");
         persist();
-        const res = await api(
+        const res = await writeApi("create-thread",
           apiWritePath(`/channels/${selectedChannelId}/threads`),
           {
             method: "POST",
             headers: headers(true),
             credentials: "include",
-            body: JSON.stringify({ title: title || null }),
+            body: JSON.stringify({ title }),
           }
         );
         const body = await res.text();
@@ -457,7 +461,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         persist();
         let res;
         try {
-          res = await api(
+          res = await writeApi("post-message",
             apiWritePath(`/threads/${selectedThreadId}/messages`),
             {
               method: "POST",
@@ -517,7 +521,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         if (!id) return showError("Message ID required");
         const text = document.getElementById("edit-message-body").value.trim();
         persist();
-        const res = await api(apiWritePath(`/messages/${id}`), {
+        const res = await writeApi("edit-message", apiWritePath(`/messages/${id}`), {
           method: "PATCH",
           headers: headers(true),
           credentials: "include",
@@ -541,17 +545,27 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       };
 
       document.getElementById("upload-artifact").onclick = async () => {
-        if (!requireAuthForWrite()) return;
-        const fileInput = document.getElementById("artifact-file");
-        if (!fileInput.files || !fileInput.files[0]) return showError("Choose a file");
-        const kind = document.getElementById("artifact-kind").value;
-        persist();
-        const artifact = await uploadArtifact(fileInput.files[0], kind);
-        if (!artifact) return;
-        setStatus("Artifact uploaded", "ok");
-        setOut(artifact);
-        const attach = document.getElementById("attach-artifact-next");
-        if (attach && attach.checked) await attachToSelectedThread(artifact);
+        const btn = document.getElementById("upload-artifact");
+        // Hold the button through the optional attach: writeApi would
+        // otherwise re-enable it after the upload while the attach is still
+        // in flight, and another click could upload and attach twice.
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try {
+          if (!requireAuthForWrite()) return;
+          const fileInput = document.getElementById("artifact-file");
+          if (!fileInput.files || !fileInput.files[0]) return showError("Choose a file");
+          const kind = document.getElementById("artifact-kind").value;
+          persist();
+          const artifact = await uploadArtifact(fileInput.files[0], kind, null);
+          if (!artifact) return;
+          setStatus("Artifact uploaded", "ok");
+          setOut(artifact);
+          const attach = document.getElementById("attach-artifact-next");
+          if (attach && attach.checked) await attachToSelectedThread(artifact);
+        } finally {
+          btn.disabled = false;
+        }
       };
 
       // Paste a file (a screenshot, say) into the composer and it becomes an
@@ -594,7 +608,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         persist();
         const id = document.getElementById("thread-id").value.trim();
         const action = document.getElementById("fsm-action").value;
-        const res = await api(apiWritePath(`/threads/${id}`), {
+        const res = await writeApi("transition-thread", apiWritePath(`/threads/${id}`), {
           method: "POST",
           headers: headers(true),
           credentials: "include",
@@ -667,7 +681,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           return showError("Check the confirmation box");
         }
         persist();
-        const res = await api(`${base()}/workspaces/${w}/purge`, {
+        const res = await writeApi("purge-workspace", `${base()}/workspaces/${w}/purge`, {
           method: "POST",
           headers: headers(true),
           body: "{}",
@@ -692,7 +706,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         const baseUrl = document.getElementById("peer-base-url").value.trim();
         if (!name || !baseUrl) return showError("Name and base URL required");
         persist();
-        const res = await api(`${base()}/workspaces/${wid()}/peers`, {
+        const res = await writeApi("create-peer", `${base()}/workspaces/${wid()}/peers`, {
           method: "POST",
           headers: headers(true),
           body: JSON.stringify({ name, base_url: baseUrl }),
@@ -713,7 +727,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         const pid = document.getElementById("peer-delete-id").value.trim();
         if (!pid || !wid()) return showError("Peer ID and workspace required");
         persist();
-        const res = await api(`${base()}/workspaces/${wid()}/peers/${pid}`, {
+        const res = await writeApi("delete-peer", `${base()}/workspaces/${wid()}/peers/${pid}`, {
           method: "DELETE",
           headers: headers(),
         });
@@ -729,40 +743,50 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
 
 
       document.getElementById("mint-member-token").onclick = async () => {
-        if (!requireBearer()) return;
-        persist();
-        const mid = document.getElementById("token-member").value.trim();
-        const label = document.getElementById("token-label").value.trim();
-        const caps = parseCaps(document.getElementById("token-caps").value);
-        // Attenuation pre-flight: a minted token cannot exceed the caller's grant
-        // (the server enforces this too, via validate_subset — this flags it early).
-        if (!myCapabilities) await loadAttenuationCeiling();
-        const excess = capsExceedingGrant(caps);
-        const warn = document.getElementById("attenuation-warning");
-        if (excess.length) {
-          warn.textContent =
-            `Cannot widen your grant — these exceed your ceiling and will be rejected: ${excess.join(", ")}`;
-          warn.hidden = false;
-          setStatus("Attenuation: request exceeds your grant", "err");
-          return;
+        const btn = document.getElementById("mint-member-token");
+        // One mint at a time, guarded before the attenuation preflight: two
+        // rapid clicks could otherwise both pass the await below and mint
+        // with different idempotency keys.
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try {
+          if (!requireBearer()) return;
+          persist();
+          const mid = document.getElementById("token-member").value.trim();
+          const label = document.getElementById("token-label").value.trim();
+          const caps = parseCaps(document.getElementById("token-caps").value);
+          // Attenuation pre-flight: a minted token cannot exceed the caller's grant
+          // (the server enforces this too, via validate_subset — this flags it early).
+          if (!myCapabilities) await loadAttenuationCeiling();
+          const excess = capsExceedingGrant(caps);
+          const warn = document.getElementById("attenuation-warning");
+          if (excess.length) {
+            warn.textContent =
+              `Cannot widen your grant — these exceed your ceiling and will be rejected: ${excess.join(", ")}`;
+            warn.hidden = false;
+            setStatus("Attenuation: request exceeds your grant", "err");
+            return;
+          }
+          warn.hidden = true;
+          const res = await writeApi(null, `${base()}/workspaces/${wid()}/members/${mid}/tokens`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ label: label || null, capabilities: caps }),
+          });
+          const body = await res.text();
+          if (!res.ok) {
+            setStatus(`HTTP ${res.status}`, "err");
+            return setOut(body);
+          }
+          const parsed = JSON.parse(body);
+          document.getElementById("token").value = parsed.secret;
+          document.getElementById("token-revoke-id").value = parsed.id;
+          persist();
+          setStatus("Token minted", "ok");
+          setOut(parsed);
+        } finally {
+          btn.disabled = false;
         }
-        warn.hidden = true;
-        const res = await api(`${base()}/workspaces/${wid()}/members/${mid}/tokens`, {
-          method: "POST",
-          headers: headers(true),
-          body: JSON.stringify({ label: label || null, capabilities: caps }),
-        });
-        const body = await res.text();
-        if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
-          return setOut(body);
-        }
-        const parsed = JSON.parse(body);
-        document.getElementById("token").value = parsed.secret;
-        document.getElementById("token-revoke-id").value = parsed.id;
-        persist();
-        setStatus("Token minted", "ok");
-        setOut(parsed);
       };
 
       document.getElementById("list-member-tokens").onclick = async () => {
@@ -829,7 +853,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         const id = document.getElementById("token-revoke-id").value.trim();
         if (!id) return showError("Token ID required");
         persist();
-        const res = await api(`${base()}/tokens/${id}`, {
+        const res = await writeApi("revoke-token", `${base()}/tokens/${id}`, {
           method: "DELETE",
           headers: headers(),
         });

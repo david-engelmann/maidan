@@ -59,6 +59,7 @@ async fn wait_sweeper_fires_due_waits_parks_and_notifies() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("waiting".into()),
+            description: None,
         })
         .await
         .unwrap();

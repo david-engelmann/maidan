@@ -36,6 +36,7 @@ async fn seed_thread(store: &dyn Store) -> (maidan_types::ThreadId, maidan_types
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("fsm-thread".to_string()),
+            description: None,
         })
         .await
         .expect("thread");

@@ -1,5 +1,5 @@
 // @ts-check
-import { api, apiReadPath, apiWritePath, headers } from "./api.js";
+import { api, apiReadPath, apiWritePath, headers, writeApi } from "./api.js";
 
 /**
  * Turn a base64url VAPID public key into the bytes subscribe expects.
@@ -58,7 +58,7 @@ export async function registerBrowserPush(memberId, overrides) {
   const json = subscription.toJSON();
   let res;
   try {
-    res = await api(apiWritePath(`/members/${memberId}/push-subscriptions`), {
+    res = await writeApi(null, apiWritePath(`/members/${memberId}/push-subscriptions`), {
       method: "POST",
       headers: headers(true),
       credentials: "include",

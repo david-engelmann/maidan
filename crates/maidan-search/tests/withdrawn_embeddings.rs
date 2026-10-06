@@ -45,6 +45,7 @@ async fn post(store: &dyn Store) -> (MessageId, MessageId) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

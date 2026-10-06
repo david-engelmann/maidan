@@ -272,3 +272,80 @@ async fn idempotency_keys_replay_refuse_and_take_over() {
         .unwrap();
     assert_eq!(read.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn ui_api_writes_are_idempotent() {
+    let (addr, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let client = reqwest::Client::new();
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "ui-idem".into(),
+        })
+        .await
+        .unwrap();
+    let alice = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "alice".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let tok = mint(store.as_ref(), ws.id, alice.id).await;
+    let ch: Value = client
+        .post(format!("{base}/workspaces/{}/channels", ws.id.0))
+        .header("Authorization", &tok)
+        .header("Content-Type", "application/json")
+        .body(r#"{"name":"board"}"#)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cid = ch["id"].as_str().unwrap();
+    let url = format!("{base}/ui/api/channels/{cid}/threads");
+    let post = |key: Option<&str>, body: &str| {
+        let mut req = client
+            .post(&url)
+            .header("Authorization", &tok)
+            .header("Content-Type", "application/json")
+            .body(body.to_string());
+        if let Some(key) = key {
+            req = req.header("Idempotency-Key", key);
+        }
+        req.send()
+    };
+    let count = || async {
+        let list: Vec<Value> = client
+            .get(&url)
+            .header("Authorization", &tok)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        list.len()
+    };
+
+    // The board's create-thread button sends Idempotency-Key; a double submit
+    // with the same key runs once and replays.
+    let body = r#"{"title":"ui task"}"#;
+    let first = post(Some("ui-k-1"), body).await.unwrap();
+    assert_eq!(first.status(), StatusCode::CREATED);
+    assert!(first.headers().get("idempotent-replayed").is_none());
+    let first: Value = first.json().await.unwrap();
+    let retry = post(Some("ui-k-1"), body).await.unwrap();
+    assert_eq!(retry.status(), StatusCode::CREATED);
+    assert_eq!(retry.headers()["idempotent-replayed"], "true");
+    let retry: Value = retry.json().await.unwrap();
+    assert_eq!(retry["id"], first["id"]);
+    assert_eq!(count().await, 1);
+
+    // Without a key the write runs every time.
+    post(None, body).await.unwrap();
+    assert_eq!(count().await, 2);
+}

@@ -123,6 +123,7 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("land this".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -276,6 +277,7 @@ async fn a_warning_only_review_does_not_arm_the_close_gate() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap();

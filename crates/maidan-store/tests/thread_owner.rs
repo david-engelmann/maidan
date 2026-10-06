@@ -56,6 +56,7 @@ async fn run_owner_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -139,6 +140,7 @@ async fn run_sod_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -206,6 +208,7 @@ async fn run_steer_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("task".into()),
+            description: None,
         })
         .await
         .expect("thread");
@@ -272,6 +275,7 @@ async fn run_rename_suite(store: &dyn Store) {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("old title".into()),
+            description: None,
         })
         .await
         .expect("thread");

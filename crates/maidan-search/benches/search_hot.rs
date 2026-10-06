@@ -67,6 +67,7 @@ fn sqlite_ctx() -> BenchCtx {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .expect("thread");

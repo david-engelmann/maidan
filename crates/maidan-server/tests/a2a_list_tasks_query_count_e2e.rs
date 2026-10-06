@@ -68,6 +68,7 @@ async fn thread(store: &dyn Store, workspace_id: WorkspaceId, private: bool) -> 
             channel_id: channel.id,
             parent_thread_id: None,
             title: None,
+            description: None,
         })
         .await
         .unwrap()

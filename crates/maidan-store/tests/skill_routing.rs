@@ -58,6 +58,7 @@ async fn run_suite(store: &dyn Store) {
         channel_id: channel.id,
         parent_thread_id: None,
         title: Some(title.into()),
+        description: None,
     };
     // `review` (created first, so oldest) requires code-review; `open` has no
     // requirement.

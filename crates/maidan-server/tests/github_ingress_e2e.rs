@@ -128,6 +128,7 @@ async fn github_issue_comment_in_a_linked_issue_posts_a_maidan_message() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("issue-42".into()),
+            description: None,
         })
         .await
         .unwrap();
@@ -216,6 +217,7 @@ async fn github_pull_request_merged_emits_thread_landed() {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("pr-7".into()),
+            description: None,
         })
         .await
         .unwrap();

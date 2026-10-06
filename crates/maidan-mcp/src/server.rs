@@ -1214,6 +1214,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -1721,6 +1722,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .unwrap();
@@ -1818,6 +1820,7 @@ mod tests {
                 channel_id: ch.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -1951,6 +1954,7 @@ mod tests {
                     channel_id,
                     parent_thread_id: None,
                     title: Some("t".into()),
+                    description: None,
                 })
                 .await
                 .unwrap()
@@ -2099,6 +2103,7 @@ mod tests {
                     channel_id,
                     parent_thread_id: None,
                     title: Some("t".into()),
+                    description: None,
                 })
                 .await
                 .unwrap()
@@ -2255,6 +2260,7 @@ mod tests {
                     channel_id,
                     parent_thread_id: None,
                     title: Some("t".into()),
+                    description: None,
                 })
                 .await
                 .unwrap()
@@ -2397,6 +2403,7 @@ mod tests {
                     channel_id,
                     parent_thread_id: None,
                     title: Some("t".into()),
+                    description: None,
                 })
                 .await
                 .unwrap()
@@ -2538,6 +2545,7 @@ mod tests {
                     channel_id,
                     parent_thread_id: None,
                     title: Some("t".into()),
+                    description: None,
                 })
                 .await
                 .unwrap()
@@ -2682,6 +2690,7 @@ mod tests {
                     channel_id,
                     parent_thread_id: None,
                     title: Some("t".into()),
+                    description: None,
                 };
                 (
                     ws.id,
@@ -2973,6 +2982,7 @@ mod tests {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some(title.into()),
+            description: None,
         };
         // parent depends on dep1 + dep2.
         let parent = store.create_thread(mk("parent")).await.unwrap();
@@ -3151,6 +3161,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("parent".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -3159,6 +3170,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: Some(parent.id),
                 title: Some("nested".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -3346,6 +3358,7 @@ mod tests {
                 channel_id: public.id,
                 parent_thread_id: None,
                 title: Some("review".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -3358,6 +3371,7 @@ mod tests {
                 channel_id: public.id,
                 parent_thread_id: None,
                 title: Some("plan".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -3370,6 +3384,7 @@ mod tests {
                 channel_id: private.id,
                 parent_thread_id: None,
                 title: Some("secret".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -3489,6 +3504,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("task".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -3623,6 +3639,7 @@ mod tests {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some(title.into()),
+            description: None,
         };
         // t1 has no deps → ready; t2 depends on t1 → blocked.
         let t1 = store.create_thread(mk("t1")).await.unwrap();
@@ -3695,6 +3712,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -3811,6 +3829,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -3906,6 +3925,7 @@ mod tests {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some(title.into()),
+            description: None,
         };
         let t1 = store.create_thread(mk("t1")).await.unwrap();
         let t2 = store.create_thread(mk("t2")).await.unwrap();
@@ -4035,6 +4055,7 @@ mod tests {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some(title.into()),
+            description: None,
         };
         let t1 = store.create_thread(mk("t1")).await.unwrap();
         let t2 = store.create_thread(mk("t2")).await.unwrap();
@@ -4205,6 +4226,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("parser".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -4436,6 +4458,7 @@ mod tests {
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some(title.into()),
+            description: None,
         };
         let t1 = store.create_thread(mk("t1")).await.unwrap();
         let t2 = store.create_thread(mk("t2")).await.unwrap();
@@ -4565,6 +4588,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("parent".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -4578,6 +4602,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: Some(parent.id),
                 title: Some("child".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -4797,6 +4822,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("task".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -4998,6 +5024,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("task".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -5088,6 +5115,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -5500,6 +5528,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -5873,6 +5902,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -6439,6 +6469,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .unwrap();
@@ -6577,6 +6608,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .unwrap();
@@ -6841,6 +6873,7 @@ mod tests {
                 channel_id: ch.id,
                 parent_thread_id: None,
                 title: Some("task".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -6962,6 +6995,7 @@ mod tests {
                     channel_id: ch.id,
                     parent_thread_id: None,
                     title: Some(title.into()),
+                    description: None,
                 })
                 .await
                 .unwrap();
@@ -7108,6 +7142,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .unwrap();
@@ -7298,6 +7333,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("task".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -7468,6 +7504,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .unwrap();
@@ -7641,6 +7678,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .unwrap();
@@ -7791,6 +7829,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .unwrap();
@@ -7928,6 +7967,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .unwrap();
@@ -8059,6 +8099,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: None,
+                description: None,
             })
             .await
             .unwrap();
@@ -8086,6 +8127,7 @@ mod tests {
                         channel_id,
                         parent_thread_id: Some(parent_thread_id),
                         title: None,
+                        description: None,
                     })
                     .await
             }
@@ -8188,6 +8230,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -8295,6 +8338,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -8500,6 +8544,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -8774,6 +8819,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("root".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -8877,6 +8923,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("t".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -9080,6 +9127,7 @@ mod tests {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some("task".into()),
+                description: None,
             })
             .await
             .unwrap();
@@ -9467,6 +9515,7 @@ mod tests {
                 channel_id: private.id,
                 parent_thread_id: None,
                 title: Some("secret".into()),
+                description: None,
             })
             .await
             .unwrap();

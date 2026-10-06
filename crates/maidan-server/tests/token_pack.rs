@@ -92,6 +92,7 @@ async fn token_pack_evidence() {
                 channel_id: channel.id,
                 parent_thread_id: None,
                 title: Some(format!("investigation-{t}")),
+                description: None,
             })
             .await
             .unwrap();

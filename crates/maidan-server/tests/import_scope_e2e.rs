@@ -111,6 +111,7 @@ async fn seed(store: &dyn Store, name: &str) -> (WorkspaceId, MemberId, TokenSec
             channel_id: channel.id,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
         })
         .await
         .unwrap();

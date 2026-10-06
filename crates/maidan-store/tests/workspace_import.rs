@@ -75,6 +75,7 @@ fn sample() -> WorkspaceImport {
             channel_id: ch,
             parent_thread_id: None,
             title: Some("t".into()),
+            description: None,
             state: ThreadState::Closed,
             assignee_id: Some(m2),
             assignment_expires_at: None,

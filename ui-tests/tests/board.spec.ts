@@ -138,3 +138,18 @@ test("a refused subscribe shows the server's reason", async ({ page }) => {
   await expect(page.locator("#ws-status")).toContainText("missing event:subscribe capability");
   await expect(page.locator("#ws-status")).toHaveClass(/error/);
 });
+
+// A double click on Add task makes one task, not two. The button disables
+// while the first request is in flight, so the second click never fires;
+// the request also carries an Idempotency-Key, so even a retry replays.
+test("a double click on Add task makes one task", async ({ page }) => {
+  await openBoard(page);
+  const title = `double-click ${Date.now()}`;
+  await page.fill("#new-thread-title", title);
+  const cards = page.locator("#board .card", { hasText: title });
+  await page.dblclick("#create-thread");
+  await expect(cards).toHaveCount(1, { timeout: 10_000 });
+  // No second task arrives late.
+  await page.waitForTimeout(2000);
+  await expect(cards).toHaveCount(1);
+});
