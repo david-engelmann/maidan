@@ -56,15 +56,50 @@ import { artifactObjectUrls, loadMessages } from "./thread.js";
         return new Blob([await res.arrayBuffer()], { type });
       }
 
+      // The image cache is bounded in bytes as well as entries: each entry
+      // holds the whole blob, and a hundred large uploads would otherwise
+      // keep hundreds of MiB alive. The least recently drawn goes first.
+      const ARTIFACT_IMAGE_BYTES = 32 * 1024 * 1024;
+      const ARTIFACT_IMAGE_ENTRIES = 100;
+      const artifactImageSizes = new Map();
+
+      // Evict the oldest entries until both limits hold. `keep` is the image
+      // being drawn now, kept even when it alone is over the budget.
+      function trimImageCache(images, sizes, maxBytes, maxEntries, keep) {
+        let total = 0;
+        for (const n of sizes.values()) total += n;
+        for (const key of images.keys()) {
+          if (images.size <= maxEntries && total <= maxBytes) break;
+          if (key === keep) continue;
+          total -= sizes.get(key) || 0;
+          sizes.delete(key);
+          images.delete(key);
+        }
+      }
+
       function artifactImage(sha, type) {
         const key = `${wid()} ${sha}`;
-        if (!artifactImages.has(key)) {
-          if (artifactImages.size > 100) artifactImages.clear();
-          const load = artifactBlob(sha, type);
-          load.catch(() => artifactImages.delete(key));
-          artifactImages.set(key, load);
+        const cached = artifactImages.get(key);
+        if (cached) {
+          artifactImages.delete(key);
+          artifactImages.set(key, cached);
+          return cached;
         }
-        return artifactImages.get(key);
+        const load = artifactBlob(sha, type).then((blob) => {
+          if (artifactImages.get(key) === load) {
+            artifactImageSizes.set(key, blob.size);
+            trimImageCache(artifactImages, artifactImageSizes, ARTIFACT_IMAGE_BYTES, ARTIFACT_IMAGE_ENTRIES, key);
+          }
+          return blob;
+        });
+        load.catch(() => {
+          if (artifactImages.get(key) !== load) return;
+          artifactImages.delete(key);
+          artifactImageSizes.delete(key);
+        });
+        artifactImages.set(key, load);
+        trimImageCache(artifactImages, artifactImageSizes, ARTIFACT_IMAGE_BYTES, ARTIFACT_IMAGE_ENTRIES, key);
+        return load;
       }
 
 
@@ -193,4 +228,4 @@ import { artifactObjectUrls, loadMessages } from "./thread.js";
         return pres.ok;
       }
 
-export { artifactBlob, artifactCard, artifactImage, artifactMeta, artifactObjectUrl, artifactShasFromMetadata, attachToSelectedThread, escapeHtml, formatBytes, mediaEssence, uploadArtifact };
+export { artifactBlob, artifactCard, artifactImage, artifactMeta, artifactObjectUrl, artifactShasFromMetadata, attachToSelectedThread, escapeHtml, formatBytes, mediaEssence, trimImageCache, uploadArtifact };

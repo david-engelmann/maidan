@@ -40,6 +40,8 @@ function makeEl() {
     append(...nodes) {
       children.push(...nodes);
     },
+    after() {},
+    prepend() {},
     appendChild(child) {
       children.push(child);
       return child;
@@ -120,7 +122,9 @@ const { refreshBearerIdentity } = session;
 const { authorId } = await import(people);
 
 let meThrows = false;
-globalThis.fetch = async (url) => {
+// A /me answer held back until the test releases it, keyed by the token.
+const heldMe = new Map();
+globalThis.fetch = async (url, options) => {
   const target = String(url);
   if (target.includes("/auth/session/from-token")) {
     return { ok: false, status: 404, json: async () => ({}), text: async () => "" };
@@ -129,15 +133,20 @@ globalThis.fetch = async (url) => {
     return { ok: false, status: 401, json: async () => ({}), text: async () => "" };
   }
   if (target.endsWith("/me")) {
+    const auth = (options && options.headers && options.headers.Authorization) || "";
+    const held = heldMe.get(auth.replace(/^Bearer /, ""));
+    if (held) return held;
     if (meThrows) throw new TypeError("network down");
+    const member = auth === "Bearer secret-b" ? "mem_b" : "mem_old";
     return {
       ok: true,
       status: 200,
-      json: async () => ({ member_id: "mem_old", workspace_id: "ws_1" }),
+      json: async () => ({ member_id: member, workspace_id: "ws_1" }),
       text: async () => "",
     };
   }
-  throw new Error("unexpected fetch " + target);
+  // Signing in goes on to load the board; those reads answer empty.
+  return { ok: true, status: 200, json: async () => [], text: async () => "[]" };
 };
 
 document.getElementById("workspace").value = "ws_1";
@@ -159,3 +168,36 @@ const status = document.getElementById("session-status");
 assert.equal(status.hidden, false);
 assert.equal(status.className, "err");
 assert.match(status.textContent, /^Could not reach the server at /);
+
+// Token A is pasted and its check is held. While it runs, the field and the
+// Sign in button are locked, so token B cannot race it (#1257 serializes
+// sign-in). A second change while A is in flight joins A's attempt rather
+// than starting another. A's rejection is shown, then B signs in cleanly
+// and clears it.
+meThrows = false;
+let releaseA;
+heldMe.set(
+  "secret-a",
+  new Promise((resolve) => {
+    releaseA = () => resolve({ ok: false, status: 401, json: async () => ({}), text: async () => "" });
+  }),
+);
+document.getElementById("token").value = "secret-a";
+const pastedA = Promise.all(change.map((fn) => fn()));
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(document.getElementById("token").disabled, true, "the token field is locked while a sign-in runs");
+assert.equal(document.getElementById("token-signin").disabled, true, "Sign in is locked while a sign-in runs");
+releaseA();
+await pastedA;
+assert.equal(document.getElementById("token").disabled, false, "the field unlocks when the attempt ends");
+assert.equal(status.className, "err", "token A's rejection is shown");
+assert.equal(session.bearerMemberId, null);
+document.getElementById("token").value = "secret-b";
+await Promise.all(change.map((fn) => fn()));
+assert.equal(session.bearerMemberId, "mem_b");
+assert.equal(authorId(), "mem_b");
+assert.notEqual(status.className, "err", "token B's success clears token A's rejection");
+
+// The page keeps retrying its live socket by design, and Node has no socket
+// server here, so end once every assertion has passed.
+process.exit(0);
