@@ -113,7 +113,8 @@ import { baseInput, tokenKey, wsKey } from "./state.js";
             : button && typeof button.forEach === "function"
               ? Array.from(button)
               : [button];
-        const targets = els.filter(Boolean);
+        // Only real buttons disable; anything else still gets the key.
+        const targets = els.filter((el) => el instanceof HTMLButtonElement);
         targets.forEach((el) => {
           el.disabled = true;
         });

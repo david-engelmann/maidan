@@ -1004,6 +1004,7 @@ which is prose. Each type is `https://maidan.dev/problems/` plus:
 | `payload-too-large` | 413 | The body is over the limit |
 | `unsupported-media-type` | 415 | The body's content type is not accepted |
 | `idempotency-key-reused` | 422 | The key was used for a different request; use a new key |
+| `unprocessable-entity` | 422 | The request parsed but a value is invalid, like a blank thread title |
 | `rate-limited` | 429 | Over the rate limit; wait `Retry-After` |
 | `internal` | 500 | A server failure; quote `X-Request-Id` |
 | `bad-gateway` | 502 | An upstream the request depends on failed |
