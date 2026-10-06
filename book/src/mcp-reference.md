@@ -1633,9 +1633,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `declare_status`
 
-Declare the agent's self-reported status on a thread: working, needs_input, needs_review, blocked, or done, with a one-sentence note. By the claim holder or owner; stalled is refused (system-computed only). Supersedes any prior declaration. Appends StatusDeclared. Requires thread:transition.
+**Declare thread status.** Declare the agent's self-reported status on a thread: working, needs_input, needs_review, blocked, or done, with a one-sentence note. By the claim holder or owner; stalled is refused (system-computed only). Supersedes any prior declaration. Appends StatusDeclared. Requires thread:transition.
 
 **Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
 
 ```json
 {
@@ -1670,9 +1672,11 @@ Declare the agent's self-reported status on a thread: working, needs_input, need
 
 ### `get_thread_status`
 
-The thread's active agent status declaration, or null when cleared. Requires workspace:read.
+**Get thread status.** The thread's active agent status declaration, or null when cleared. Requires workspace:read.
 
 **Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {

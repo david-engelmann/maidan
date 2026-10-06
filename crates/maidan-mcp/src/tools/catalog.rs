@@ -1010,6 +1010,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "declare_status",
             "description": "Declare the agent's self-reported status on a thread: working, needs_input, needs_review, blocked, or done, with a one-sentence note. By the claim holder or owner; stalled is refused (system-computed only). Supersedes any prior declaration. Appends StatusDeclared. Requires thread:transition.",
+            "annotations": {
+                "title": "Declare thread status",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1023,6 +1030,13 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "get_thread_status",
             "description": "The thread's active agent status declaration, or null when cleared. Requires workspace:read.",
+            "annotations": {
+                "title": "Get thread status",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
