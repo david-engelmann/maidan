@@ -32,10 +32,29 @@ pub struct MarkReadyResponse {
     pub reason: Option<String>,
 }
 
+/// Proof that the mark-ready guard path ran. `GithubGit::set_pull_ready`
+/// takes one, and the field is private, so only this module can mint it —
+/// the single construction site is `flip_pull_ready_guarded`, after the
+/// shape, base-map and allowlist guards pass. This closes the bypass where
+/// the bare trait method was directly callable, skipping every guard.
+pub struct MarkReadyGuardPass {
+    _private: (),
+}
+
+impl MarkReadyGuardPass {
+    /// E2E harness: the client-half contract tests call the bare
+    /// `set_pull_ready` to pin its wire shape. Production code never uses
+    /// this; every production pass is minted in `flip_pull_ready_guarded`.
+    pub fn for_tests() -> Self {
+        Self { _private: () }
+    }
+}
+
 /// What the single guard path can report. A refusal means nothing was
 /// written; a store or GitHub failure means the flip did not happen, except
-/// that a GitHub failure on the PATCH itself cannot say which side of the
-/// write it landed on.
+/// that a transport failure on the mutation itself cannot say which side of
+/// the write it landed on — success is only reported when the mutation's
+/// answer says `isDraft: false`.
 #[derive(Debug)]
 pub enum MarkReadyGuard {
     Refused(String),
@@ -46,15 +65,16 @@ pub enum MarkReadyGuard {
 /// The one guard path for the mark-ready flip (Decisions, 2026-10-06): a
 /// single fresh pull brief, every guard evaluated against it — the PR-shape
 /// rules, the per-repository base map, the workspace egress allowlist — and
-/// only then the PATCH. There is deliberately no second read: the allowlist
+/// only then the `markPullRequestReadyForReview` mutation, keyed on the
+/// brief's node id. There is deliberately no second read: the allowlist
 /// check used to run on an earlier brief than the write's, so a base retarget
 /// in between slipped through. Every guard now sees the same brief the write
 /// acts on.
 ///
-/// Residual: the read and the PATCH are still two GitHub calls with no
+/// Residual: the read and the mutation are still two GitHub calls with no
 /// conditional write between them, so a retarget inside that window cannot be
-/// refused. GitHub offers no precondition on the pulls PATCH; the window is
-/// one round trip.
+/// refused. GitHub offers no precondition on the mutation; the window is one
+/// round trip.
 pub async fn flip_pull_ready_guarded(
     store: &dyn maidan_store::Store,
     workspace_id: WorkspaceId,
@@ -88,9 +108,14 @@ pub async fn flip_pull_ready_guarded(
             base: brief.base,
         });
     }
-    git.set_pull_ready(repo, pull_number)
-        .await
-        .map_err(MarkReadyGuard::Github)?;
+    git.set_pull_ready(
+        repo,
+        pull_number,
+        &brief.node_id,
+        MarkReadyGuardPass { _private: () },
+    )
+    .await
+    .map_err(MarkReadyGuard::Github)?;
     Ok(MarkReadyOutcome::Marked {
         number: brief.number,
         head: brief.head,
@@ -171,14 +196,32 @@ async fn audit_mark_ready(
     .await;
 }
 
+/// `owner/name`, each side one or more of `[A-Za-z0-9_.-]`. Anything else is
+/// a 400: GitHub would reject it, and a path-shaped value must never reach
+/// the URL builder unvalidated.
+fn valid_repo_shape(repo: &str) -> bool {
+    let mut parts = repo.split('/');
+    let part_ok = |p: &str| {
+        !p.is_empty()
+            && p.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+    };
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(owner), Some(name), None) => part_ok(owner) && part_ok(name),
+        _ => false,
+    }
+}
+
 /// `POST /operator/github/mark-ready` — flip a draft pull request to ready
 /// for review.
 ///
 /// Soundcheck-only. The flip lands only on a `feature/agent-*` head into the
 /// workspace's allowlisted base for that repo — never prod, never a merge,
-/// never any other PR mutation. Every call is audited, including refusals:
-/// this endpoint is the sole gate for a PR mutation, so unlike other egress
-/// paths it audits refused calls too (Decisions, 2026-10-06).
+/// never any other PR mutation. Every call that reaches the handler is
+/// audited, including refusals: this endpoint is the sole gate for a PR
+/// mutation, so unlike other egress paths it audits refused calls too
+/// (Decisions, 2026-10-06). Middleware denials never reach the handler; they
+/// are counted, not stored.
 pub async fn mark_pull_ready(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -216,6 +259,20 @@ pub async fn mark_pull_ready(
         return Err(ApiError::BadRequest(
             "repo and a positive pull_number are required".into(),
         ));
+    }
+    if !valid_repo_shape(&repo) {
+        audit_mark_ready(
+            &state,
+            &auth,
+            &repo,
+            pull_number,
+            None,
+            None,
+            "refused",
+            Some("repo must be owner/name"),
+        )
+        .await;
+        return Err(ApiError::BadRequest("repo must be owner/name".into()));
     }
     let Some(sender) = state.github_sender.as_ref() else {
         audit_mark_ready(
