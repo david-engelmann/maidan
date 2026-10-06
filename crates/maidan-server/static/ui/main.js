@@ -112,8 +112,15 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
             return;
           }
           if (!res.ok) {
-            // The server answered, so this is a refusal, not an unknown.
-            status.textContent = memberCreated(`${await responseError(res, "the server refused to mint its token")}.`);
+            // mint_api_token can commit the token before the quota listing
+            // fails, so a 5xx leaves the outcome unknown: a token may exist
+            // that this page never saw. A 4xx is a refusal before anything
+            // was created.
+            const what =
+              res.status >= 500
+                ? "the server failed while minting its token, so a token may exist that this page never saw."
+                : `${await responseError(res, "the server refused to mint its token")}.`;
+            status.textContent = memberCreated(what);
             return;
           }
           const minted = await res.json();

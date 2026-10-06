@@ -1005,51 +1005,141 @@ fn ui_js_needs_you_reports_failed_loads_and_keeps_rows_in_use() {
     );
 }
 
-/// Byte ranges of string literals in `js`. The dialog scanner works on raw
-/// text, so without this a sentence like "Use alert (1) only for debugging"
-/// reads as a call. Escapes never end the literal, even `\"`.
-fn string_literal_spans(js: &str) -> Vec<(usize, usize)> {
+/// Byte ranges of non-code regions in `js`: string literals and comments.
+/// The dialog scanner works on raw text, so without this a sentence like
+/// "Use alert (1) only for debugging" reads as a call, and a `//` comment
+/// reads as a call site. Escapes never end the literal, even `\"`.
+///
+/// Template literals are split at `${...}` interpolations: the literal parts
+/// stay spans, the interpolated code is scanned again, so a call inside
+/// `` `done: ${alert("x")}` `` is found while `"nested"` inside
+/// `` `done: ${"nested"}` `` stays a span. `//` and `/* */` comments are
+/// spans too, because a quote in a comment (as in `// don't`) would otherwise
+/// open a false string that hides a later real call. JS block comments do not
+/// nest, so the first `*/` ends one.
+fn non_code_spans(js: &str) -> Vec<(usize, usize)> {
     let bytes = js.as_bytes();
     let mut spans = Vec::new();
-    let mut i = 0;
+    scan_code(bytes, 0, &mut spans, false);
+    spans
+}
+
+/// Scan `bytes` from `i` as code, pushing non-code spans (strings, template
+/// segments, comments). When `stop_at_brace` is set, a `}` at brace depth
+/// zero ends the scan: it closes the `${` interpolation whose code this is,
+/// and the returned index points at that `}`. Otherwise the scan runs to the
+/// end of input.
+fn scan_code(
+    bytes: &[u8],
+    mut i: usize,
+    spans: &mut Vec<(usize, usize)>,
+    stop_at_brace: bool,
+) -> usize {
+    let mut depth = 0usize;
     while i < bytes.len() {
-        let quote = bytes[i];
-        if quote != b'\'' && quote != b'"' && quote != b'`' {
-            i += 1;
+        match bytes[i] {
+            b'\'' | b'"' => i = scan_string(bytes, i, spans),
+            b'`' => i = scan_template(bytes, i, spans),
+            // A quote in a comment is not a string start: `// don't` must not
+            // open a span that swallows the next line's code. Comments are
+            // non-code spans themselves, so a call written in one is ignored.
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                let start = i;
+                i += 2;
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                spans.push((start, i));
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                let start = i;
+                i += 2;
+                while i < bytes.len() && !(bytes[i] == b'*' && bytes.get(i + 1) == Some(&b'/')) {
+                    i += 1;
+                }
+                i = (i + 2).min(bytes.len());
+                spans.push((start, i));
+            }
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                if stop_at_brace && depth == 0 {
+                    return i;
+                }
+                depth = depth.saturating_sub(1);
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    i
+}
+
+/// Scan a `'...'` or `"..."` literal starting at its quote; push its span and
+/// return the index just past it. A backslash escapes the next byte, so an
+/// escaped quote never ends the literal.
+fn scan_string(bytes: &[u8], start: usize, spans: &mut Vec<(usize, usize)>) -> usize {
+    let quote = bytes[start];
+    let mut i = start + 1;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\\' {
+            i += 2;
             continue;
         }
-        let start = i;
         i += 1;
-        while i < bytes.len() {
-            let b = bytes[i];
-            if b == b'\\' {
-                i += 2;
-                continue;
-            }
-            i += 1;
-            if b == quote {
-                break;
-            }
+        if b == quote {
+            break;
         }
-        spans.push((start, i));
     }
-    spans
+    spans.push((start, i));
+    i
+}
+
+/// Scan a template literal starting at its backtick. Literal segments become
+/// spans; each `${...}` is scanned as code (so calls inside interpolations
+/// are found) and scanning resumes in string mode after the matching `}`.
+/// Returns the index just past the closing backtick, or the end of input
+/// when the literal is unterminated.
+fn scan_template(bytes: &[u8], start: usize, spans: &mut Vec<(usize, usize)>) -> usize {
+    let mut seg_start = start;
+    let mut i = start + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b'$' if bytes.get(i + 1) == Some(&b'{') => {
+                spans.push((seg_start, i));
+                let close = scan_code(bytes, i + 2, spans, true);
+                i = (close + 1).min(bytes.len());
+                seg_start = i;
+            }
+            b'`' => {
+                spans.push((seg_start, i + 1));
+                return i + 1;
+            }
+            _ => i += 1,
+        }
+    }
+    spans.push((seg_start, i));
+    i
 }
 
 /// Byte offsets of `alert`, `confirm` or `prompt` called bare or on
 /// `window`/`globalThis`/`self`, with any whitespace before the `(`.
-/// Matches inside string literals are not calls.
+/// Matches inside string literals or comments are not calls.
 fn blocking_dialog_calls(js: &str) -> Vec<usize> {
     let bytes = js.as_bytes();
-    let strings = string_literal_spans(js);
-    let in_string = |at: usize| strings.iter().any(|&(s, e)| at >= s && at < e);
+    let non_code = non_code_spans(js);
+    let in_non_code = |at: usize| non_code.iter().any(|&(s, e)| at >= s && at < e);
     let mut found = Vec::new();
     for dialog in ["alert", "confirm", "prompt"] {
         let mut from = 0;
         while let Some(offset) = js[from..].find(dialog) {
             let at = from + offset;
             from = at + dialog.len();
-            if in_string(at) {
+            if in_non_code(at) {
                 continue;
             }
             if !js[from..]
@@ -1106,6 +1196,70 @@ fn the_dialog_check_sees_spaced_and_window_calls() {
     ] {
         assert!(blocking_dialog_calls(fine).is_empty(), "false hit: {fine}");
     }
+}
+
+/// `${...}` inside a template literal is code, not string content: a dialog
+/// call there must be found, while a string nested in the interpolation must
+/// not read as a call.
+#[test]
+fn the_dialog_scanner_sees_through_template_interpolation() {
+    let js = "`done: ${alert(\"x\")}`";
+    assert_eq!(
+        blocking_dialog_calls(js),
+        vec![js.find("alert").expect("the fixture contains alert")],
+        "a call inside ${{...}} is code, not string content"
+    );
+    assert!(
+        blocking_dialog_calls("`done: ${\"nested\"}`").is_empty(),
+        "a string inside ${{...}} is still a string"
+    );
+    assert!(
+        blocking_dialog_calls("`done: ${\"alert\"}`").is_empty(),
+        "the dialog word inside an interpolated string is not a call"
+    );
+    // Brace depth inside the interpolation: the first } at depth zero ends
+    // it, an inner block does not.
+    let js = "`done: ${if (x) { y(); } alert(1)}`";
+    assert_eq!(
+        blocking_dialog_calls(js),
+        vec![js.find("alert").expect("the fixture contains alert")],
+        "braces inside ${{...}} must not end the interpolation early"
+    );
+}
+
+/// A quote inside a comment is not a string start: `// don't` used to open a
+/// false string span that hid the real call on the next line, a recall
+/// regression against the pre-PR scanner.
+#[test]
+fn the_dialog_scanner_ignores_comments() {
+    let js = "// don't do this\nfoo();\nalert(1);\nbar(\"it's fine\");";
+    assert_eq!(
+        blocking_dialog_calls(js),
+        vec![js.find("alert").expect("the fixture contains alert")],
+        "a // comment's apostrophe must not hide a later call"
+    );
+    let js = "/* don't */ alert(1);";
+    assert_eq!(
+        blocking_dialog_calls(js),
+        vec![js.find("alert").expect("the fixture contains alert")],
+        "a /* */ comment's apostrophe must not hide a later call"
+    );
+    // Calls inside comments are not calls.
+    assert!(
+        blocking_dialog_calls("// alert(1)\nfoo();").is_empty(),
+        "a call in a // comment is not a call"
+    );
+    assert!(
+        blocking_dialog_calls("/* alert(1) */").is_empty(),
+        "a call in a /* */ comment is not a call"
+    );
+    // A // inside a string is not a comment start.
+    let js = "const u = \"http://x\"; alert(1);";
+    assert_eq!(
+        blocking_dialog_calls(js),
+        vec![js.find("alert").expect("the fixture contains alert")],
+        "// inside a string literal is string content"
+    );
 }
 
 /// A blocking `alert()`, `confirm()` or `prompt()` stops the page and cannot
