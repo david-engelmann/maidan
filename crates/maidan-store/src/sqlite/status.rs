@@ -32,8 +32,11 @@ fn row_to_declaration(
 /// `StatusDeclared` in one tx. Returns the declaration and the stored event.
 ///
 /// The declaration is by the claim holder or the thread owner; anyone else
-/// is refused. The check runs inside the declaration transaction so a claim
-/// handoff racing the declaration cannot slip between check and write.
+/// is refused. The check runs inside the declaration transaction. Unlike the
+/// Postgres path this SELECT takes no row lock — SQLite has no `FOR UPDATE` —
+/// so a claim handoff committing between the check and the write is evaluated
+/// against the pre-handoff holder. The window is one statement wide; the
+/// Postgres path closes it with a row lock.
 pub async fn declare(
     pool: &SqlitePool,
     thread_id: ThreadId,

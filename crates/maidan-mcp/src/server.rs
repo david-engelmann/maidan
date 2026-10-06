@@ -4208,6 +4208,13 @@ mod tests {
             })
             .await
             .unwrap();
+        // Status is declared by the claim holder or the thread owner: make the
+        // agent the owner so its declaration is accepted, mirroring the REST
+        // e2e setup.
+        store
+            .set_thread_owner(thread.id, Some(agent.id))
+            .await
+            .unwrap();
         let server = McpServer::new(
             store.clone(),
             Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),

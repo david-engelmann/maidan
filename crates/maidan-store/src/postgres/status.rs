@@ -30,8 +30,9 @@ fn row_to_declaration(row: &sqlx::postgres::PgRow) -> Result<ThreadStatusDeclara
 /// `StatusDeclared` in one tx. Returns the declaration and the stored event.
 ///
 /// The declaration is by the claim holder or the thread owner; anyone else
-/// is refused. The check runs inside the declaration transaction so a claim
-/// handoff racing the declaration cannot slip between check and write.
+/// is refused. The holder check locks the thread row (`FOR UPDATE`) inside
+/// the declaration transaction, so a claim handoff racing the declaration
+/// blocks on the row lock instead of slipping between the check and the write.
 pub async fn declare(
     pool: &PgPool,
     thread_id: ThreadId,
@@ -43,10 +44,11 @@ pub async fn declare(
     // Who may speak for the thread: the member holding its claim
     // (`assignee_id`), or the thread's owner. Anyone else gets a refusal,
     // not a silent overwrite of another agent's status.
-    let holder = sqlx::query("SELECT assignee_id, owner_id FROM maidan_threads WHERE id = $1")
-        .bind(thread_id.0)
-        .fetch_optional(&mut *tx)
-        .await?;
+    let holder =
+        sqlx::query("SELECT assignee_id, owner_id FROM maidan_threads WHERE id = $1 FOR UPDATE")
+            .bind(thread_id.0)
+            .fetch_optional(&mut *tx)
+            .await?;
     let Some(row) = holder else {
         return Err(StoreError::NotFound);
     };

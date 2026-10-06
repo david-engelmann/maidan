@@ -1,4 +1,4 @@
--- Open Work Next 5 (P1-6): agent self-reported status.
+-- Open Work Next 1 (P1-6): agent self-reported status.
 -- `declare_status` lets the claim holder or owner say what the agent is doing.
 -- Presence = a declaration is active; absence = no declaration (cleared).
 -- `stalled` is system-computed only and is not a declarable value.

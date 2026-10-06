@@ -100,6 +100,18 @@ pub(super) async fn post_dm_message(
     // Record + publish MentionRecorded per @mention so the notification router
     // / wait_for_mention fire (was recorded but never published).
     publish_routed_mentions(server, dm.thread_id, dm.workspace_id, &msg).await;
+    // A human DM reply supersedes the agent's self-reported status, mirroring
+    // the channel post path. Best-effort: the message is already posted.
+    if let Ok(member) = store.get_member_in(dm.workspace_id, auth.member_id).await {
+        if member.kind == MemberKind::Human {
+            if let Err(e) = store.clear_thread_status(dm.thread_id).await {
+                tracing::warn!(
+                    thread_id = %dm.thread_id.0,
+                    "clearing thread status after human DM post failed: {e}"
+                );
+            }
+        }
+    }
     Ok(content_json(&msg))
 }
 
@@ -573,5 +585,21 @@ pub(super) async fn post_group_dm_message(
         .await?;
     server.publish_stored(&stored).await;
     publish_routed_mentions(server, group.thread_id, group.workspace_id, &msg).await;
+    // A human group-DM reply supersedes the agent's self-reported status,
+    // mirroring the channel post path. Best-effort: the message is already posted.
+    if let Ok(member) = server
+        .store
+        .get_member_in(group.workspace_id, auth.member_id)
+        .await
+    {
+        if member.kind == MemberKind::Human {
+            if let Err(e) = server.store.clear_thread_status(group.thread_id).await {
+                tracing::warn!(
+                    thread_id = %group.thread_id.0,
+                    "clearing thread status after human group DM post failed: {e}"
+                );
+            }
+        }
+    }
     Ok(content_json(&msg))
 }

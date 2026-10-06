@@ -74,7 +74,7 @@ impl DeclaredStatus {
     }
 
     /// Every declarable variant. Kept in sync by the exhaustive-match tripwire
-    /// in `declared_status_tests::all_variants_round_trip`.
+    /// in the `all_variants_round_trip` test (`tests/declared_status.rs`).
     pub const ALL: &'static [Self] = &[
         Self::Working,
         Self::NeedsInput,
