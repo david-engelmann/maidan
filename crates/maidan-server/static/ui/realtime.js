@@ -4,7 +4,7 @@ import { loadThreads, markSeen, markSeenFromFrame, noteRefusalFromFrame, refresh
 import { appendLive, setStatus, setWsStatus, showError } from "./feedback.js";
 import { loadNeedsYou } from "./needs.js";
 import { authorId, memberName } from "./people.js";
-import { sessionMemberId } from "./session.js";
+import { oidcLoginPath, sessionMemberId } from "./session.js";
 import { LIVE_POLL_MS, THREAD_BOARD_KINDS, wsResumeKey } from "./state.js";
 import { liveFrameTargetsOpenThread, scheduleLiveRefresh } from "./thread.js";
 import { loadApprovals } from "./tools.js";
@@ -133,7 +133,13 @@ import { loadApprovals } from "./tools.js";
           return showError("Select a thread for the thread preset");
         }
         if (!token() && !sessionMemberId) {
-          return showError("Sign in first: live updates need a signed-in session or a token.");
+          // Same wording as the write path's requireAuthForWrite: the board
+          // points at Connect this browser in both cases.
+          return showError(
+            oidcLoginPath
+              ? "Sign in first: paste a token under Connect this browser, or sign in with your identity provider."
+              : "Sign in first: paste a token under Connect this browser."
+          );
         }
         persist();
         // Wanted from the first attempt, not from the ack: a drop before the

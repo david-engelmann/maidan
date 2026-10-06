@@ -317,12 +317,81 @@ async fn run_blocked_resolved_suite(store: &dyn Store) {
     assert!(ev.is_none(), "idempotent clear must not re-emit");
 }
 
+/// `list_blocks_for_threads` returns blocks for exactly the requested threads:
+/// a block on another thread in the same channel must not leak in, and an
+/// empty request returns empty without touching the database.
+async fn run_list_blocks_for_threads_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: "p".into() })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "pager".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "pc".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let mut ids = Vec::new();
+    for title in ["p1", "p2", "p3"] {
+        let t = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some(title.into()),
+            })
+            .await
+            .expect("thread");
+        ids.push(t.id);
+    }
+    // Block the first and third; the second stays unblocked.
+    for (id, reason) in [
+        (ids[0], BlockedReason::Gate),
+        (ids[2], BlockedReason::Human),
+    ] {
+        store
+            .set_thread_block(id, reason, member.id, None)
+            .await
+            .expect("block");
+    }
+
+    // A page holding the first two threads sees only the first's block: the
+    // third thread's block is in the same channel but off the page.
+    let page = store
+        .list_blocks_for_threads(&ids[..2])
+        .await
+        .expect("page blocks");
+    assert_eq!(page.len(), 1, "only the on-page block is returned");
+    assert_eq!(page[0].thread_id, ids[0]);
+    assert_eq!(page[0].reason, BlockedReason::Gate);
+
+    // The full set returns both blocks.
+    let all = store.list_blocks_for_threads(&ids).await.expect("all");
+    assert_eq!(all.len(), 2);
+
+    // Empty input short-circuits to empty.
+    let none = store.list_blocks_for_threads(&[]).await.expect("empty");
+    assert!(none.is_empty());
+}
+
 #[tokio::test]
 async fn thread_blocks_set_clear_get_list_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
     run_claim_skip_suite(&store).await;
     run_blocked_resolved_suite(&store).await;
+    run_list_blocks_for_threads_suite(&store).await;
 }
 
 #[tokio::test]
@@ -359,4 +428,5 @@ async fn thread_blocks_set_clear_get_list_postgres() {
     run_suite(&store).await;
     run_claim_skip_suite(&store).await;
     run_blocked_resolved_suite(&store).await;
+    run_list_blocks_for_threads_suite(&store).await;
 }
