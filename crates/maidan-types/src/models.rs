@@ -35,6 +35,68 @@ pub enum ThreadState {
     Archived,
 }
 
+/// An agent's self-reported status on a thread. Distinct from [`ThreadState`]
+/// (the workflow FSM) — this is what the agent says it's doing. `Stalled` is
+/// system-computed only and cannot be declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DeclaredStatus {
+    Working,
+    NeedsInput,
+    NeedsReview,
+    Blocked,
+    Done,
+}
+
+impl DeclaredStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Working => "working",
+            Self::NeedsInput => "needs_input",
+            Self::NeedsReview => "needs_review",
+            Self::Blocked => "blocked",
+            Self::Done => "done",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "working" => Some(Self::Working),
+            "needs_input" => Some(Self::NeedsInput),
+            "needs_review" => Some(Self::NeedsReview),
+            "blocked" => Some(Self::Blocked),
+            "done" => Some(Self::Done),
+            // "stalled" is system-computed only; refusing it here is the
+            // enforcement.
+            _ => None,
+        }
+    }
+
+    /// Every declarable variant. Kept in sync by the exhaustive-match tripwire
+    /// in the `all_variants_round_trip` test (`tests/declared_status.rs`).
+    pub const ALL: &'static [Self] = &[
+        Self::Working,
+        Self::NeedsInput,
+        Self::NeedsReview,
+        Self::Blocked,
+        Self::Done,
+    ];
+}
+
+/// An agent's status declaration on a thread: what it's doing, in one
+/// sentence. Set by the claim holder or owner via `declare_status`; cleared
+/// on a human response or a superseding declaration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadStatusDeclaration {
+    pub thread_id: ThreadId,
+    pub status: DeclaredStatus,
+    pub note: String,
+    pub declared_by: MemberId,
+    pub declared_at: DateTime<Utc>,
+}
+
 impl ThreadState {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -1611,6 +1673,10 @@ pub struct Thread {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,
+    /// The agent's self-reported status, if declared. Set via `declare_status`;
+    /// cleared on human response. `None` = no active declaration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<ThreadStatusDeclaration>,
     /// The thread's explicit dispatch block, if any. Populated by the API
     /// layer when returning thread details; `None` in store-level queries
     /// that do not JOIN the blocks table.

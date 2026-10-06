@@ -183,6 +183,22 @@ pub async fn post_dm_message(
         .await?;
     crate::routes::publish_stored(&state, stored).await;
     publish_routed_mentions(&state, dm.thread_id, dm.workspace_id, &m).await;
+    // A human DM reply supersedes the agent's self-reported status, mirroring
+    // the channel post path. Best-effort: the message is already posted.
+    if let Ok(member) = state
+        .store
+        .get_member_in(dm.workspace_id, auth.member_id)
+        .await
+    {
+        if member.kind == MemberKind::Human {
+            if let Err(e) = state.store.clear_thread_status(dm.thread_id).await {
+                tracing::warn!(
+                    thread_id = %dm.thread_id.0,
+                    "clearing thread status after human DM post failed: {e}"
+                );
+            }
+        }
+    }
     let uris = maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), m.id).await;
     state.mcp.publish_resource_uris(uris).await;
     Ok((StatusCode::CREATED, Json(m)))

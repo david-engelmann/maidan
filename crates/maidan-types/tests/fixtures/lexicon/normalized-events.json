@@ -294,6 +294,17 @@
     "schedule_id": "00000000-0000-0000-0000-000000000008",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.status_declared/1": {
+    "$type": "maidan.event.status_declared/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "declared_by": "00000000-0000-0000-0000-000000000002",
+    "kind": "status_declared",
+    "note": "working on it",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "status": "working",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.thread_assignment_changed/1": {
     "$type": "maidan.event.thread_assignment_changed/1",
     "actor_id": "00000000-0000-0000-0000-000000000002",

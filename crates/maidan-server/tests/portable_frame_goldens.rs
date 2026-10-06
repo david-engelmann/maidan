@@ -84,6 +84,7 @@ fn sample_export() -> WorkspaceExport {
             created_at: at,
             updated_at: at,
             tombstoned_at: None,
+            status: None,
             block: None,
             closed_without_review: false,
         }],

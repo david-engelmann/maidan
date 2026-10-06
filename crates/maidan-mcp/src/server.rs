@@ -4162,6 +4162,238 @@ mod tests {
         assert_eq!(claimed["claimed"], json!(true));
     }
 
+    #[tokio::test]
+    async fn status_tools_declare_read_back_and_log_status_declared() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_types::{DeclaredStatus, Event};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "st".into() })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("parser".into()),
+            })
+            .await
+            .unwrap();
+        // Status is declared by the claim holder or the thread owner: make the
+        // agent the owner so its declaration is accepted, mirroring the REST
+        // e2e setup.
+        store
+            .set_thread_owner(thread.id, Some(agent.id))
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let body = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        let declared = body(
+            server
+                .call_tool(
+                    &auth,
+                    "declare_status",
+                    &json!({ "thread_id": thread.id.0, "status": "needs_review", "note": "Ready for a look." }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(declared["status"], "needs_review");
+        assert_eq!(declared["declared_by"], agent.id.0.to_string());
+        let read = body(
+            server
+                .call_tool(
+                    &auth,
+                    "get_thread_status",
+                    &json!({ "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(read["status"], "needs_review");
+        assert_eq!(read["note"], "Ready for a look.");
+
+        let logged: Vec<DeclaredStatus> = store
+            .list_events_after(ws.id, 0, 500)
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e.opened_event().ok()? {
+                Event::StatusDeclared {
+                    thread_id, status, ..
+                } if thread_id == thread.id => Some(status),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(logged, vec![DeclaredStatus::NeedsReview]);
+
+        assert!(
+            server
+                .call_tool(
+                    &auth,
+                    "declare_status",
+                    &json!({ "thread_id": thread.id.0, "status": "stalled", "note": "Stuck." }),
+                )
+                .await
+                .is_err(),
+            "stalled is system-computed and cannot be declared"
+        );
+    }
+
+    /// A human DM reply posted over MCP clears the declaration on the DM's
+    /// backing thread, mirroring the REST DM post path.
+    #[tokio::test]
+    async fn mcp_human_dm_reply_clears_the_declared_status() {
+        use maidan_auth::capability::{MESSAGE_POST, THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_types::MemberKind;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace {
+                name: "mcp-dm-clear".into(),
+            })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let human = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "human".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let dm = store
+            .open_dm_conversation(ws.id, agent.id, human.id)
+            .await
+            .unwrap();
+        // Status is declared by the claim holder or the thread owner: make
+        // the agent the owner so its declaration is accepted.
+        store
+            .set_thread_owner(dm.thread_id, Some(agent.id))
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let agent_auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let human_auth = AuthContext::from_session(
+            human.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), MESSAGE_POST.to_string()],
+        );
+        let body = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+
+        // The agent declares.
+        let declared = body(
+            server
+                .call_tool(
+                    &agent_auth,
+                    "declare_status",
+                    &json!({ "thread_id": dm.thread_id.0, "status": "working", "note": "Drafting the reply." }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert_eq!(declared["status"], "working");
+
+        // The human replies in the DM over MCP.
+        server
+            .call_tool(
+                &human_auth,
+                "post_dm_message",
+                &json!({ "dm_conversation_id": dm.id.0, "body": "Got it, thanks." }),
+            )
+            .await
+            .unwrap();
+
+        // The declaration is gone.
+        let read = body(
+            server
+                .call_tool(
+                    &agent_auth,
+                    "get_thread_status",
+                    &json!({ "thread_id": dm.thread_id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        assert!(
+            read.is_null(),
+            "a human DM reply over MCP should clear the declared status, got {read}"
+        );
+    }
+
     /// The WIP admin/visibility tools + enforcement on the MCP claim path
     /// (explicit claim errors at the cap; claim_next returns null).
     #[tokio::test]

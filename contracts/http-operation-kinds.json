@@ -217,6 +217,8 @@
   {"method":"GET","path":"/threads/{id}/reviews","kind":"reads"},
   {"method":"POST","path":"/threads/{id}/reviews","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/reviews/history","kind":"reads"},
+  {"method":"GET","path":"/threads/{id}/status","kind":"reads"},
+  {"method":"PUT","path":"/threads/{id}/status","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/steer","kind":"reads"},
   {"method":"PUT","path":"/threads/{id}/steer","kind":"changes"},
   {"method":"PUT","path":"/threads/{id}/title","kind":"changes"},

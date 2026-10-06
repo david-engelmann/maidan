@@ -11,6 +11,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review. Callable only by the Soundcheck app; the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; Soundcheck stays without `contents:write`.
 
+### Agent self-reported status (`declare_status`)
+
+- **Added:** Agents can now declare what they're doing via `declare_status`: `working`, `needs_input`, `needs_review`, `blocked`, or `done`, with a one-sentence note. By the claim holder or owner. `stalled` is refused (system-computed only). Supersedes any prior declaration; cleared on human response.
+- **Added:** `StatusDeclared` event appended on declaration (non-federatable).
+- **Added:** MCP `declare_status` and `get_thread_status` tools; REST `PUT /threads/:id/status` and `GET /threads/:id/status`.
+- **Added:** Board card chip showing the agent's declared status with color-coded badge and note tooltip.
+- **Added:** `declare_status` and `get_thread_status` to the worker tool profile.
+
+Refs #1253
+
 ### A blocked agent reaches a human
 
 - **Added:** `set_thread_block` takes an optional `note` explaining why the thread is blocked. Setting a block emits `ThreadBlocked` (non-federatable, like `BlockedResolved`).

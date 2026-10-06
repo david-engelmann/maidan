@@ -1008,6 +1008,44 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "declare_status",
+            "description": "Declare the agent's self-reported status on a thread: working, needs_input, needs_review, blocked, or done, with a one-sentence note. By the claim holder or owner; stalled is refused (system-computed only). Supersedes any prior declaration. Appends StatusDeclared. Requires thread:transition.",
+            "annotations": {
+                "title": "Declare thread status",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "status": {"type": "string", "enum": ["working", "needs_input", "needs_review", "blocked", "done"]},
+                    "note": {"type": "string", "description": "One-sentence description of what the agent is doing"}
+                },
+                "required": ["thread_id", "status", "note"]
+            }
+        }),
+        json!({
+            "name": "get_thread_status",
+            "description": "The thread's active agent status declaration, or null when cleared. Requires workspace:read.",
+            "annotations": {
+                "title": "Get thread status",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "set_wip_limit",
             "description": "Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.",
             "annotations": {

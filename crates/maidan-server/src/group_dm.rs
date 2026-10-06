@@ -113,5 +113,21 @@ pub async fn post_group_dm_message(
         .await?;
     crate::routes::publish_stored(&state, stored).await;
     publish_routed_mentions(&state, group.thread_id, group.workspace_id, &m).await;
+    // A human group-DM reply supersedes the agent's self-reported status,
+    // mirroring the channel post path. Best-effort: the message is already posted.
+    if let Ok(member) = state
+        .store
+        .get_member_in(group.workspace_id, auth.member_id)
+        .await
+    {
+        if member.kind == MemberKind::Human {
+            if let Err(e) = state.store.clear_thread_status(group.thread_id).await {
+                tracing::warn!(
+                    thread_id = %group.thread_id.0,
+                    "clearing thread status after human group DM post failed: {e}"
+                );
+            }
+        }
+    }
     Ok((StatusCode::CREATED, Json(m)))
 }
