@@ -1292,6 +1292,7 @@ pub fn unlink_github_issue() {}
         (status = 400, description = "Bad repo or pull number", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, description = "Not the Soundcheck app, or the PR fails the change-flow guards", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "No such pull request", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 502, description = "GitHub is unreachable or errored", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn mark_pull_ready() {}

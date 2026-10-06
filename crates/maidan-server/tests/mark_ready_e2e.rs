@@ -1,9 +1,10 @@
 //! `POST /operator/github/mark-ready`: Soundcheck asks Maidan to flip a draft
 //! agent pull request to ready for review.
 //!
-//! The fake GitHub below speaks just enough REST for the flip: `GET
-//! /repos/{repo}/pulls/{n}` and `PATCH` with `{"draft": false}`. No live
-//! GitHub call is made anywhere in this file.
+//! The fake GitHub below speaks just enough for the flip: `GET
+//! /repos/{repo}/pulls/{n}` and `POST /graphql` with the
+//! `markPullRequestReadyForReview` mutation. No live GitHub call is made
+//! anywhere in this file.
 
 #![allow(clippy::disallowed_methods)]
 
@@ -24,8 +25,10 @@ use axum::{
 use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{
-    github::{GithubApiClient, GithubGit},
-    router, AppState, FederationRuntime,
+    github::{GithubApiClient, GithubError, GithubGit},
+    router,
+    routes::MarkReadyGuardPass,
+    AppState, FederationRuntime,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -43,13 +46,18 @@ struct FakePull {
     head: String,
     base: String,
     draft: bool,
+    node_id: String,
 }
 
 #[derive(Default)]
 struct FakeGithub {
     pulls: HashMap<i64, FakePull>,
     gets: Vec<i64>,
-    patches: Vec<(i64, Value)>,
+    /// Raw `POST /graphql` payloads, in order.
+    graphql: Vec<Value>,
+    /// When true the mutation answers `isDraft: true` without flipping, so
+    /// the client's post-write verification can be pinned.
+    ignore_flip: bool,
 }
 
 type Shared = Arc<Mutex<FakeGithub>>;
@@ -57,6 +65,45 @@ type Shared = Arc<Mutex<FakeGithub>>;
 async fn github(State(fake): State<Shared>, method: Method, uri: Uri, body: Bytes) -> Response {
     let path = uri.path().to_string();
     let mut fake = fake.lock().unwrap();
+    if path == "/graphql" && method == Method::POST {
+        let payload: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+        fake.graphql.push(payload.clone());
+        let node_id = payload
+            .pointer("/variables/nodeId")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let pull = {
+            let ignore_flip = fake.ignore_flip;
+            let found = fake
+                .pulls
+                .values_mut()
+                .find(|p| p.node_id == node_id)
+                .map(|p| {
+                    if !ignore_flip {
+                        p.draft = false;
+                    }
+                    p.draft
+                });
+            found
+        };
+        match pull {
+            None => {
+                // GraphQL answers 200 with an `errors` array on rejection.
+                return (
+                    StatusCode::OK,
+                    Json(json!({"errors": [{"message": "Could not resolve to a PullRequest with the ID"}]})),
+                )
+                    .into_response();
+            }
+            Some(still_draft) => {
+                return (
+                    StatusCode::OK,
+                    Json(json!({"data": {"markPullRequestReadyForReview": {"pullRequest": {"isDraft": still_draft}}}})),
+                )
+                    .into_response();
+            }
+        }
+    }
     // `/repos/{owner}/{name}/pulls/{n}` — the owner and name are not
     // interpreted; the number selects the pull.
     let number: i64 = path
@@ -73,6 +120,7 @@ async fn github(State(fake): State<Shared>, method: Method, uri: Uri, body: Byte
             "head": {"ref": p.head},
             "base": {"ref": p.base},
             "draft": p.draft,
+            "node_id": p.node_id,
         })
     };
     match method.as_str() {
@@ -80,21 +128,6 @@ async fn github(State(fake): State<Shared>, method: Method, uri: Uri, body: Byte
             fake.gets.push(number);
             match fake.pulls.get(&number) {
                 Some(p) => (StatusCode::OK, Json(pull_json(p))).into_response(),
-                None => {
-                    (StatusCode::NOT_FOUND, Json(json!({"message": "Not Found"}))).into_response()
-                }
-            }
-        }
-        "PATCH" => {
-            let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-            fake.patches.push((number, body.clone()));
-            match fake.pulls.get_mut(&number) {
-                Some(p) => {
-                    if body.get("draft") == Some(&json!(false)) {
-                        p.draft = false;
-                    }
-                    (StatusCode::OK, Json(pull_json(p))).into_response()
-                }
                 None => {
                     (StatusCode::NOT_FOUND, Json(json!({"message": "Not Found"}))).into_response()
                 }
@@ -118,15 +151,21 @@ fn draft_pull(number: i64, head: &str, base: &str) -> FakePull {
         head: head.into(),
         base: base.into(),
         draft: true,
+        node_id: format!("PR_node_{number}"),
     }
 }
 
 // ---------------------------------------------------------------- client tests
 //
-// The client no longer guards: `set_pull_ready` is a bare PATCH and the
-// single guard path (`flip_pull_ready_guarded`) lives with the caller. These
-// tests pin the client's half of that contract — exactly one PATCH with
-// exactly `{"draft": false}`, no read — and the brief the guards run on.
+// The client no longer guards: `set_pull_ready` is a bare GraphQL mutation
+// and the single guard path (`flip_pull_ready_guarded`) lives with the
+// caller. These tests pin the client's half of that contract — exactly one
+// `POST /graphql` with the `markPullRequestReadyForReview` mutation keyed on
+// the brief's node id, no read — plus the failure paths: a GraphQL `errors`
+// answer and a mutation answer that leaves `isDraft: true` are both failed
+// writes, never silent successes.
+// The trait method takes a `MarkReadyGuardPass`; the tests mint one via the
+// test-only constructor, the way production code never can.
 
 async fn github_client() -> (GithubApiClient, Shared) {
     let fake: Shared = Arc::default();
@@ -138,29 +177,94 @@ async fn github_client() -> (GithubApiClient, Shared) {
 }
 
 #[tokio::test]
-async fn set_pull_ready_patches_draft_false_and_reads_nothing() {
+async fn set_pull_ready_posts_the_ready_mutation_and_reads_nothing() {
+    let (client, fake) = github_client().await;
+    fake.lock()
+        .unwrap()
+        .pulls
+        .insert(7, draft_pull(7, "feature/agent-x", "dev"));
+    let node_id = fake.lock().unwrap().pulls[&7].node_id.clone();
+
+    client
+        .set_pull_ready("o/repo", 7, &node_id, MarkReadyGuardPass::for_tests())
+        .await
+        .unwrap();
+    let fake = fake.lock().unwrap();
+    assert!(
+        fake.gets.is_empty(),
+        "no GET: the guard path reads before calling"
+    );
+    assert_eq!(fake.graphql.len(), 1, "one GraphQL call, no more");
+    let payload = &fake.graphql[0];
+    // The mutation is `markPullRequestReadyForReview`, keyed on the PR's
+    // node id — no REST PATCH, no other mutation.
+    let query = payload["query"].as_str().unwrap_or("");
+    assert!(
+        query.contains("markPullRequestReadyForReview"),
+        "the ready mutation: {query}"
+    );
+    assert!(
+        query.contains("pullRequestId"),
+        "keyed on the node id: {query}"
+    );
+    assert_eq!(payload["variables"]["nodeId"], json!(node_id));
+    assert!(!fake.pulls[&7].draft, "the fake flipped too");
+}
+
+#[tokio::test]
+async fn set_pull_ready_fails_on_a_graphql_errors_answer() {
     let (client, fake) = github_client().await;
     fake.lock()
         .unwrap()
         .pulls
         .insert(7, draft_pull(7, "feature/agent-x", "dev"));
 
-    client.set_pull_ready("o/repo", 7).await.unwrap();
-    let fake = fake.lock().unwrap();
+    // No pull carries this node id, so the fake answers GraphQL `errors`.
+    let err = client
+        .set_pull_ready(
+            "o/repo",
+            7,
+            "PR_node_unknown",
+            MarkReadyGuardPass::for_tests(),
+        )
+        .await
+        .unwrap_err();
     assert!(
-        fake.gets.is_empty(),
-        "no GET: the guard path reads before calling"
+        matches!(err, GithubError::Http(_)),
+        "a rejected mutation is a failed write: {err:?}"
     );
-    assert_eq!(fake.patches.len(), 1, "one PATCH, no more");
-    assert_eq!(fake.patches[0].0, 7);
-    // The flip is exactly `{"draft": false}`: no title, body, base or head
-    // is rewritten by the call.
-    assert_eq!(fake.patches[0].1, json!({"draft": false}));
-    assert!(!fake.pulls[&7].draft, "the fake flipped too");
+    assert!(err.to_string().contains("markPullRequestReadyForReview"));
 }
 
 #[tokio::test]
-async fn pull_brief_reports_head_base_and_draft() {
+async fn set_pull_ready_fails_when_the_flip_is_unverified() {
+    let (client, fake) = github_client().await;
+    fake.lock()
+        .unwrap()
+        .pulls
+        .insert(7, draft_pull(7, "feature/agent-x", "dev"));
+    let node_id = fake.lock().unwrap().pulls[&7].node_id.clone();
+    // The mutation answers 200 but leaves the PR a draft — the silent-no-op
+    // class of failure the REST PATCH had. The client must not call it done.
+    fake.lock().unwrap().ignore_flip = true;
+
+    let err = client
+        .set_pull_ready("o/repo", 7, &node_id, MarkReadyGuardPass::for_tests())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, GithubError::Http(_)),
+        "an unverified flip is a failed write: {err:?}"
+    );
+    assert!(err.to_string().contains("isDraft"));
+    assert!(
+        fake.lock().unwrap().pulls[&7].draft,
+        "the draft really is still a draft"
+    );
+}
+
+#[tokio::test]
+async fn pull_brief_reports_head_base_draft_and_node_id() {
     let (client, fake) = github_client().await;
     fake.lock()
         .unwrap()
@@ -172,6 +276,7 @@ async fn pull_brief_reports_head_base_and_draft() {
     assert_eq!(brief.head, "feature/agent-x");
     assert_eq!(brief.base, "dev");
     assert!(brief.draft, "the guards refuse a non-draft");
+    assert_eq!(brief.node_id, "PR_node_7", "the mutation keys on this");
 }
 
 #[tokio::test]
@@ -416,7 +521,7 @@ async fn only_the_soundcheck_app_may_mark_ready() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["marked_ready"], json!(true));
     assert!(
-        h.fake.lock().unwrap().patches.len() == 1,
+        h.fake.lock().unwrap().graphql.len() == 1,
         "the flip landed exactly once"
     );
 }
@@ -430,7 +535,7 @@ async fn mark_ready_needs_the_allowlist() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("o/repo@dev"), "{body}");
     assert!(
-        h.fake.lock().unwrap().patches.is_empty(),
+        h.fake.lock().unwrap().graphql.is_empty(),
         "nothing is written before the allowlist"
     );
 
@@ -461,7 +566,7 @@ async fn mark_ready_refuses_a_non_agent_head() {
         "the allowlist did not fire: {body}"
     );
     assert!(
-        h.fake.lock().unwrap().patches.is_empty(),
+        h.fake.lock().unwrap().graphql.is_empty(),
         "a refused flip writes nothing"
     );
 }
@@ -483,7 +588,7 @@ async fn mark_ready_checks_the_allowlist_against_the_fresh_base() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("o/repo@staging"), "{body}");
     assert!(
-        h.fake.lock().unwrap().patches.is_empty(),
+        h.fake.lock().unwrap().graphql.is_empty(),
         "a refused flip writes nothing"
     );
 }
@@ -504,7 +609,7 @@ async fn mark_ready_enforces_the_per_repo_base_map() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("only into `dev`"), "{body}");
     assert!(
-        h.fake.lock().unwrap().patches.is_empty(),
+        h.fake.lock().unwrap().graphql.is_empty(),
         "a refused flip writes nothing"
     );
 
@@ -526,7 +631,7 @@ async fn mark_ready_enforces_the_per_repo_base_map() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("only into `main`"), "{body}");
     assert!(
-        h.fake.lock().unwrap().patches.is_empty(),
+        h.fake.lock().unwrap().graphql.is_empty(),
         "a refused flip writes nothing"
     );
 }
@@ -550,6 +655,52 @@ async fn mark_ready_rejects_a_bad_request_and_audits_it() {
         .filter(|e| e.action == "github.mark_ready" && e.metadata["outcome"] == json!("refused"))
         .collect();
     assert_eq!(refused.len(), 2, "both bad requests are audited as refused");
+}
+
+#[tokio::test]
+async fn mark_ready_rejects_a_misshapen_repo_and_audits_it() {
+    let h = spawn().await;
+
+    for bad in [
+        "o",
+        "o/repo/extra",
+        "o/re po",
+        "o/r*po",
+        "/repo",
+        "o/",
+        "o//repo",
+    ] {
+        let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), bad, 7).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "repo {bad:?}");
+    }
+
+    // A well-shaped repo passes validation and reaches the guards (here the
+    // allowlist, which refuses it).
+    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "a well-shaped repo reaches the guards"
+    );
+
+    let events = h
+        .store
+        .list_audit_for_workspace(h.workspace_id, 10)
+        .await
+        .unwrap();
+    let shape_refused: Vec<_> = events
+        .iter()
+        .filter(|e| {
+            e.action == "github.mark_ready"
+                && e.metadata["outcome"] == json!("refused")
+                && e.metadata["reason"] == json!("repo must be owner/name")
+        })
+        .collect();
+    assert_eq!(
+        shape_refused.len(),
+        7,
+        "every misshapen repo is audited as refused"
+    );
 }
 
 #[tokio::test]
@@ -634,13 +785,13 @@ async fn mark_ready_is_idempotent_for_soundcheck_retries() {
 
     let (first, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
     assert_eq!(first, StatusCode::OK);
-    // The fake flipped the draft on the first PATCH; the retry finds it ready.
+    // The fake flipped the draft on the first mutation; the retry finds it ready.
     let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["marked_ready"], json!(false));
     assert_eq!(body["reason"], json!("already ready"));
     assert_eq!(
-        h.fake.lock().unwrap().patches.len(),
+        h.fake.lock().unwrap().graphql.len(),
         1,
         "the retry writes nothing"
     );

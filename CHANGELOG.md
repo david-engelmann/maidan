@@ -9,7 +9,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### The change flow can mark a draft ready (Soundcheck only)
 
-- **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review. Callable only by the Soundcheck app; the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; Soundcheck stays without `contents:write`.
+- **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the Soundcheck app; the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; Soundcheck stays without `contents:write`.
 
 ### Agent self-reported status (`declare_status`)
 

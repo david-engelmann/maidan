@@ -27,7 +27,7 @@ use maidan_types::{
 use crate::dto::{LinkGithubIssue, UnlinkGithubQuery};
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath, ApiQuery, ApiText};
-use crate::routes::{cap, ensure_workspace, ApiResult};
+use crate::routes::{cap, ensure_workspace, ApiResult, MarkReadyGuardPass};
 use crate::state::AppState;
 
 /// GitHub App / webhook credentials. `webhook_secret` verifies inbound deliveries;
@@ -456,7 +456,8 @@ pub struct GithubPull {
     pub base: String,
 }
 
-/// A pull request as read for the mark-ready guard: head, base and draft flag.
+/// A pull request as read for the mark-ready guard: head, base, draft flag
+/// and the GraphQL node id the ready mutation needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GithubPullBrief {
     pub number: i64,
@@ -465,6 +466,8 @@ pub struct GithubPullBrief {
     /// The base branch name.
     pub base: String,
     pub draft: bool,
+    /// The PR's GraphQL node id, from the same fresh read the guards ran on.
+    pub node_id: String,
 }
 
 /// What flipping a pull request to ready did.
@@ -540,27 +543,41 @@ pub trait GithubGit: Send + Sync {
         title: &str,
         body: &str,
     ) -> Result<GithubPull, GithubError>;
-    /// `GET /repos/{repo}/pulls/{n}`: head ref, base ref and draft flag, for
-    /// the mark-ready guard. A read, so no guard applies; the caller enforces
-    /// the change-flow rules before acting on what it returns.
+    /// `GET /repos/{repo}/pulls/{n}`: head ref, base ref, draft flag and node
+    /// id, for the mark-ready guard. A read, so no guard applies; the caller
+    /// enforces the change-flow rules before acting on what it returns.
     async fn pull_brief(
         &self,
         repo: &str,
         pull_number: i64,
     ) -> Result<GithubPullBrief, GithubError>;
-    /// Flip a draft pull request to ready for review: `PATCH`
-    /// `/repos/{repo}/pulls/{n}` with `{"draft": false}`. No read and no
+    /// Flip a draft pull request to ready for review, via the GraphQL
+    /// `markPullRequestReadyForReview` mutation keyed on the PR's `node_id`.
+    /// GitHub's REST `PATCH /repos/{repo}/pulls/{n}` with `{"draft": false}`
+    /// is a silent no-op — it returns 200 and leaves the draft a draft — so
+    /// the flip must go through GraphQL, and the mutation's answer must say
+    /// `isDraft: false` before the flip counts as done. No read and no
     /// guards here: the caller must have run the single guard path first
     /// ([`crate::routes::flip_pull_ready_guarded`]), which reads the pull
     /// once, evaluates every guard against that read, and only then calls
     /// this. Guarding here on a second read would reintroduce the TOCTOU the
     /// guard path exists to close, so this method trusts its caller.
     ///
+    /// The `_pass` is a [`MarkReadyGuardPass`], mintable only inside
+    /// `crate::routes::github_ops`: the type system, not convention, keeps
+    /// this method off the direct-call path that would bypass the guards.
+    ///
     /// The deliberate, tightly-scoped exception to "never marks ready"
     /// (Decisions, 2026-10-06): Soundcheck holds no GitHub write credential,
     /// so Maidan does the flip — only for `feature/agent-*` heads into
     /// allowlisted bases, never prod, never anything else.
-    async fn set_pull_ready(&self, repo: &str, pull_number: i64) -> Result<(), GithubError>;
+    async fn set_pull_ready(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        node_id: &str,
+        _pass: MarkReadyGuardPass,
+    ) -> Result<(), GithubError>;
 }
 
 /// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
@@ -1087,18 +1104,58 @@ impl GithubGit for GithubApiClient {
                 .get("draft")
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false),
+            // The write path keys on this; a brief without it cannot flip,
+            // so it is an error rather than an empty string that would
+            // mutate the wrong PR or none at all.
+            node_id: value
+                .get("node_id")
+                .and_then(serde_json::Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| GithubError::Http("github pull has no node_id".into()))?,
         })
     }
 
-    async fn set_pull_ready(&self, repo: &str, pull_number: i64) -> Result<(), GithubError> {
+    async fn set_pull_ready(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        node_id: &str,
+        _pass: MarkReadyGuardPass,
+    ) -> Result<(), GithubError> {
+        // REST `PATCH {"draft": false}` is a silent no-op on GitHub — 200,
+        // draft unchanged — so the flip goes through the GraphQL
+        // `markPullRequestReadyForReview` mutation, on the same token.
         let request = self
-            .request(
-                reqwest::Method::PATCH,
-                &format!("/repos/{repo}/pulls/{pull_number}"),
-            )
-            .json(&serde_json::json!({ "draft": false }));
-        self.send_json(request).await?;
-        Ok(())
+            .request(reqwest::Method::POST, "/graphql")
+            .json(&serde_json::json!({
+                "query": "mutation($nodeId: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $nodeId}) { pullRequest { isDraft } } }",
+                "variables": { "nodeId": node_id },
+            }));
+        let value = self.send_json(request).await?;
+        // GraphQL answers 200 with an `errors` array when the mutation is
+        // rejected — an already-ready PR, a revoked token — so a missing
+        // `data` is never success.
+        if let Some(errors) = value
+            .get("errors")
+            .and_then(|e| e.as_array())
+            .filter(|e| !e.is_empty())
+        {
+            return Err(GithubError::Http(format!(
+                "github markPullRequestReadyForReview rejected: {errors:?}"
+            )));
+        }
+        // The flip counts only when the mutation's own answer says the PR is
+        // no longer a draft; anything else is a failed write, not a success.
+        match value
+            .pointer("/data/markPullRequestReadyForReview/pullRequest/isDraft")
+            .and_then(serde_json::Value::as_bool)
+        {
+            Some(false) => Ok(()),
+            other => Err(GithubError::Http(format!(
+                "github flip unverified: isDraft={other:?} for {repo}#{pull_number}"
+            ))),
+        }
     }
 }
 
