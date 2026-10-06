@@ -136,6 +136,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    second workspace with `POST /operator/workspaces`, without `MAIDAN_BOOTSTRAP` (#1208).
    Signup and a hosted console are not started.
    The connected-apps program is the discovery half. The maintainer chose its fast track on 2026-10-03, lanes 1 to 7 with no authorization server (a Gemini CLI extension, a Copilot CLI plugin, the MCP registries and catalogs, a listing asset pack with a demo instance for reviewers, connect recipes, Muse behind the Dawn outcome, and Cursor). Nothing is submitted until the maintainer says go, and every submission is validated first. Self-hosting stays the product, the authorization server and the ChatGPT and full-OAuth Claude listings are parked, and no enterprise track starts until the consumer lanes measure (Open Work Next 14 to Next 21 and Later CA).
+   The connected-app dev and test program comes first among the listings work. ChatGPT developer mode and claude.ai accept a server with no authentication, so Maidan is tested inside each client from a dev instance before anything is listed, with approvals kept in the console (Open Work Next 18).
 
 ## What Maidan will not become
 
