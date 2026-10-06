@@ -1301,7 +1301,7 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         parent_thread_id: parent.map(ThreadId),
         title: row.get("title"),
         // `try_get`: not every SELECT that feeds this mapper lists the
-        // column (the 0141 migration added it after most were written);
+        // column (the 0142 migration added it after most were written);
         // those rows read as undescribed rather than failing.
         description: row
             .try_get::<Option<String>, _>("description")
