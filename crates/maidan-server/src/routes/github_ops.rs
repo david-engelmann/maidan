@@ -4,14 +4,14 @@
 
 use axum::{extract::State, Extension, Json};
 use maidan_auth::AuthContext;
-use maidan_types::{AuditScope, EgressSurface, NewAuditEvent};
+use maidan_types::{AuditScope, EgressSurface, NewAuditEvent, WorkspaceId};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::ApiResult;
 use crate::error::ApiError;
 use crate::extract::ApiJson;
-use crate::github::{GithubError, MarkReadyOutcome};
+use crate::github::{GithubError, GithubGit, MarkReadyOutcome};
 use crate::state::AppState;
 
 /// The app allowed to ask for the flip: the change flow's companion, which
@@ -30,6 +30,72 @@ pub struct MarkReadyResponse {
     pub number: i64,
     pub marked_ready: bool,
     pub reason: Option<String>,
+}
+
+/// What the single guard path can report. A refusal means nothing was
+/// written; a store or GitHub failure means the flip did not happen, except
+/// that a GitHub failure on the PATCH itself cannot say which side of the
+/// write it landed on.
+#[derive(Debug)]
+pub enum MarkReadyGuard {
+    Refused(String),
+    Store(maidan_store::StoreError),
+    Github(GithubError),
+}
+
+/// The one guard path for the mark-ready flip (Decisions, 2026-10-06): a
+/// single fresh pull brief, every guard evaluated against it — the PR-shape
+/// rules, the per-repository base map, the workspace egress allowlist — and
+/// only then the PATCH. There is deliberately no second read: the allowlist
+/// check used to run on an earlier brief than the write's, so a base retarget
+/// in between slipped through. Every guard now sees the same brief the write
+/// acts on.
+///
+/// Residual: the read and the PATCH are still two GitHub calls with no
+/// conditional write between them, so a retarget inside that window cannot be
+/// refused. GitHub offers no precondition on the pulls PATCH; the window is
+/// one round trip.
+pub async fn flip_pull_ready_guarded(
+    store: &dyn maidan_store::Store,
+    workspace_id: WorkspaceId,
+    git: &dyn GithubGit,
+    repo: &str,
+    pull_number: i64,
+) -> Result<MarkReadyOutcome, MarkReadyGuard> {
+    let brief = git
+        .pull_brief(repo, pull_number)
+        .await
+        .map_err(MarkReadyGuard::Github)?;
+    // Shape rules and the per-repository base map, on the fresh read.
+    maidan_types::check_mark_ready_target(repo, &brief.head, &brief.base)
+        .map_err(MarkReadyGuard::Refused)?;
+    // The same allowlist the change flow checks: `owner/name@base`, as it is
+    // now — a blessing revoked after the draft opened stops the flip.
+    let selector = maidan_types::change_allowlist_selector(repo, &brief.base);
+    let allowed = store
+        .is_egress_target_allowed(workspace_id, EgressSurface::GithubBranch, &selector)
+        .await
+        .map_err(MarkReadyGuard::Store)?;
+    if !allowed {
+        return Err(MarkReadyGuard::Refused(format!(
+            "`{selector}` is not in the workspace egress allowlist"
+        )));
+    }
+    if !brief.draft {
+        return Ok(MarkReadyOutcome::AlreadyReady {
+            number: brief.number,
+            head: brief.head,
+            base: brief.base,
+        });
+    }
+    git.set_pull_ready(repo, pull_number)
+        .await
+        .map_err(MarkReadyGuard::Github)?;
+    Ok(MarkReadyOutcome::Marked {
+        number: brief.number,
+        head: brief.head,
+        base: brief.base,
+    })
 }
 
 /// The caller's app slug, or a refusal. Only the Soundcheck installation may
@@ -60,8 +126,7 @@ async fn soundcheck_caller(state: &AppState, auth: &AuthContext) -> ApiResult<()
     Ok(())
 }
 
-/// A GitHub failure as an HTTP status. A refusal is never an `Err` — the
-/// client returns it as an outcome — so anything here is a real failure.
+/// A GitHub failure as an HTTP status.
 fn github_api_error(err: GithubError) -> ApiError {
     match err {
         GithubError::Api { status: 404, .. } => ApiError::NotFound,
@@ -70,7 +135,9 @@ fn github_api_error(err: GithubError) -> ApiError {
     }
 }
 
-/// Best-effort audit of a mark-ready call. Never fails the request.
+/// Best-effort audit of a mark-ready call. Never fails the request: this is
+/// the same fail-open `audit::record` every other egress path uses (M-A5).
+#[allow(clippy::too_many_arguments)]
 async fn audit_mark_ready(
     state: &AppState,
     auth: &AuthContext,
@@ -81,6 +148,7 @@ async fn audit_mark_ready(
     outcome: &str,
     reason: Option<&str>,
 ) {
+    crate::metrics::record_github_mark_ready(outcome);
     crate::audit::record(
         state,
         NewAuditEvent {
@@ -108,38 +176,124 @@ async fn audit_mark_ready(
 ///
 /// Soundcheck-only. The flip lands only on a `feature/agent-*` head into the
 /// workspace's allowlisted base for that repo — never prod, never a merge,
-/// never any other PR mutation. Every call is audited.
+/// never any other PR mutation. Every call is audited, including refusals:
+/// this endpoint is the sole gate for a PR mutation, so unlike other egress
+/// paths it audits refused calls too (Decisions, 2026-10-06).
 pub async fn mark_pull_ready(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiJson(body): ApiJson<MarkReadyRequest>,
 ) -> ApiResult<Json<MarkReadyResponse>> {
-    soundcheck_caller(&state, &auth).await?;
-    let repo = body.repo.trim();
-    if repo.is_empty() || body.pull_number <= 0 {
+    let repo = body.repo.trim().to_string();
+    let pull_number = body.pull_number;
+
+    if let Err(err) = soundcheck_caller(&state, &auth).await {
+        audit_mark_ready(
+            &state,
+            &auth,
+            &repo,
+            pull_number,
+            None,
+            None,
+            "refused",
+            Some("the caller is not the soundcheck app"),
+        )
+        .await;
+        return Err(err);
+    }
+    if repo.is_empty() || pull_number <= 0 {
+        audit_mark_ready(
+            &state,
+            &auth,
+            &repo,
+            pull_number,
+            None,
+            None,
+            "refused",
+            Some("repo and a positive pull_number are required"),
+        )
+        .await;
         return Err(ApiError::BadRequest(
             "repo and a positive pull_number are required".into(),
         ));
     }
-    let sender = state
-        .github_sender
-        .as_ref()
-        .ok_or_else(|| ApiError::Internal("github is not configured".into()))?;
-    let git = sender
-        .git()
-        .ok_or_else(|| ApiError::Internal("github sender cannot mutate pull requests".into()))?;
+    let Some(sender) = state.github_sender.as_ref() else {
+        audit_mark_ready(
+            &state,
+            &auth,
+            &repo,
+            pull_number,
+            None,
+            None,
+            "failed",
+            Some("github is not configured"),
+        )
+        .await;
+        return Err(ApiError::Internal("github is not configured".into()));
+    };
+    let Some(git) = sender.git() else {
+        audit_mark_ready(
+            &state,
+            &auth,
+            &repo,
+            pull_number,
+            None,
+            None,
+            "failed",
+            Some("github sender cannot mutate pull requests"),
+        )
+        .await;
+        return Err(ApiError::Internal(
+            "github sender cannot mutate pull requests".into(),
+        ));
+    };
 
-    // Read before the allowlist: the selector needs the PR's actual base,
-    // not one the caller claims.
-    let brief = match git.pull_brief(repo, body.pull_number).await {
-        Ok(brief) => brief,
-        Err(err) => {
+    let outcome = match flip_pull_ready_guarded(
+        state.store.as_ref(),
+        auth.workspace_id,
+        git,
+        &repo,
+        pull_number,
+    )
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(MarkReadyGuard::Refused(reason)) => {
+            audit_mark_ready(
+                &state,
+                &auth,
+                &repo,
+                pull_number,
+                None,
+                None,
+                "refused",
+                Some(&reason),
+            )
+            .await;
+            return Err(ApiError::Forbidden(reason));
+        }
+        Err(MarkReadyGuard::Store(err)) => {
+            let reason = format!("allowlist check failed: {err}");
+            audit_mark_ready(
+                &state,
+                &auth,
+                &repo,
+                pull_number,
+                None,
+                None,
+                "failed",
+                Some(&reason),
+            )
+            .await;
+            return Err(ApiError::Internal(reason));
+        }
+        Err(MarkReadyGuard::Github(err)) => {
             let reason = format!("github: {err}");
             audit_mark_ready(
                 &state,
                 &auth,
-                repo,
-                body.pull_number,
+                &repo,
+                pull_number,
                 None,
                 None,
                 "failed",
@@ -149,50 +303,13 @@ pub async fn mark_pull_ready(
             return Err(github_api_error(err));
         }
     };
-    if let Err(reason) = maidan_types::check_change_target(&brief.head, &brief.base) {
-        audit_mark_ready(
-            &state,
-            &auth,
-            repo,
-            body.pull_number,
-            Some(&brief.head),
-            Some(&brief.base),
-            "refused",
-            Some(&reason),
-        )
-        .await;
-        return Err(ApiError::Forbidden(reason));
-    }
-    // The same allowlist the change flow checks: `owner/name@base`, as it is
-    // now — a blessing revoked after the draft opened stops the flip.
-    let selector = maidan_types::change_allowlist_selector(repo, &brief.base);
-    let allowed = state
-        .store
-        .is_egress_target_allowed(auth.workspace_id, EgressSurface::GithubBranch, &selector)
-        .await?;
-    if !allowed {
-        let reason = format!("`{selector}` is not in the workspace egress allowlist");
-        audit_mark_ready(
-            &state,
-            &auth,
-            repo,
-            body.pull_number,
-            Some(&brief.head),
-            Some(&brief.base),
-            "refused",
-            Some(&reason),
-        )
-        .await;
-        return Err(ApiError::Forbidden(reason));
-    }
 
-    let response = match git.mark_pull_request_ready(repo, body.pull_number).await {
-        Ok(MarkReadyOutcome::Marked { number, head, base }) => {
-            crate::metrics::record_github_mark_ready("marked");
+    match outcome {
+        MarkReadyOutcome::Marked { number, head, base } => {
             audit_mark_ready(
                 &state,
                 &auth,
-                repo,
+                &repo,
                 number,
                 Some(&head),
                 Some(&base),
@@ -200,61 +317,29 @@ pub async fn mark_pull_ready(
                 None,
             )
             .await;
-            MarkReadyResponse {
+            Ok(Json(MarkReadyResponse {
                 number,
                 marked_ready: true,
                 reason: None,
-            }
+            }))
         }
-        Ok(MarkReadyOutcome::AlreadyReady { number }) => {
-            crate::metrics::record_github_mark_ready("already_ready");
+        MarkReadyOutcome::AlreadyReady { number, head, base } => {
             audit_mark_ready(
                 &state,
                 &auth,
-                repo,
+                &repo,
                 number,
-                Some(&brief.head),
-                Some(&brief.base),
+                Some(&head),
+                Some(&base),
                 "already_ready",
                 None,
             )
             .await;
-            MarkReadyResponse {
+            Ok(Json(MarkReadyResponse {
                 number,
                 marked_ready: false,
                 reason: Some("already ready".into()),
-            }
+            }))
         }
-        Ok(MarkReadyOutcome::Refused(reason)) => {
-            crate::metrics::record_github_mark_ready("refused");
-            audit_mark_ready(
-                &state,
-                &auth,
-                repo,
-                body.pull_number,
-                Some(&brief.head),
-                Some(&brief.base),
-                "refused",
-                Some(&reason),
-            )
-            .await;
-            return Err(ApiError::Forbidden(reason));
-        }
-        Err(err) => {
-            let reason = format!("github: {err}");
-            audit_mark_ready(
-                &state,
-                &auth,
-                repo,
-                body.pull_number,
-                Some(&brief.head),
-                Some(&brief.base),
-                "failed",
-                Some(&reason),
-            )
-            .await;
-            return Err(github_api_error(err));
-        }
-    };
-    Ok(Json(response))
+    }
 }

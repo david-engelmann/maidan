@@ -122,6 +122,11 @@ fn draft_pull(number: i64, head: &str, base: &str) -> FakePull {
 }
 
 // ---------------------------------------------------------------- client tests
+//
+// The client no longer guards: `set_pull_ready` is a bare PATCH and the
+// single guard path (`flip_pull_ready_guarded`) lives with the caller. These
+// tests pin the client's half of that contract — exactly one PATCH with
+// exactly `{"draft": false}`, no read — and the brief the guards run on.
 
 async fn github_client() -> (GithubApiClient, Shared) {
     let fake: Shared = Arc::default();
@@ -133,24 +138,19 @@ async fn github_client() -> (GithubApiClient, Shared) {
 }
 
 #[tokio::test]
-async fn mark_ready_flips_a_draft_and_touches_nothing_else() {
+async fn set_pull_ready_patches_draft_false_and_reads_nothing() {
     let (client, fake) = github_client().await;
     fake.lock()
         .unwrap()
         .pulls
         .insert(7, draft_pull(7, "feature/agent-x", "dev"));
 
-    let outcome = client.mark_pull_request_ready("o/repo", 7).await.unwrap();
-    assert_eq!(
-        outcome,
-        maidan_server::github::MarkReadyOutcome::Marked {
-            number: 7,
-            head: "feature/agent-x".into(),
-            base: "dev".into(),
-        },
-        "{outcome:?}"
-    );
+    client.set_pull_ready("o/repo", 7).await.unwrap();
     let fake = fake.lock().unwrap();
+    assert!(
+        fake.gets.is_empty(),
+        "no GET: the guard path reads before calling"
+    );
     assert_eq!(fake.patches.len(), 1, "one PATCH, no more");
     assert_eq!(fake.patches[0].0, 7);
     // The flip is exactly `{"draft": false}`: no title, body, base or head
@@ -160,74 +160,24 @@ async fn mark_ready_flips_a_draft_and_touches_nothing_else() {
 }
 
 #[tokio::test]
-async fn mark_ready_refuses_a_head_that_is_not_an_agent_branch() {
+async fn pull_brief_reports_head_base_and_draft() {
     let (client, fake) = github_client().await;
     fake.lock()
         .unwrap()
         .pulls
-        .insert(8, draft_pull(8, "hotfix/urgent", "dev"));
+        .insert(7, draft_pull(7, "feature/agent-x", "dev"));
 
-    let outcome = client.mark_pull_request_ready("o/repo", 8).await.unwrap();
-    assert!(
-        matches!(outcome, maidan_server::github::MarkReadyOutcome::Refused(_)),
-        "{outcome:?}"
-    );
-    assert!(
-        fake.lock().unwrap().patches.is_empty(),
-        "a refused flip writes nothing"
-    );
+    let brief = client.pull_brief("o/repo", 7).await.unwrap();
+    assert_eq!(brief.number, 7);
+    assert_eq!(brief.head, "feature/agent-x");
+    assert_eq!(brief.base, "dev");
+    assert!(brief.draft, "the guards refuse a non-draft");
 }
 
 #[tokio::test]
-async fn mark_ready_refuses_a_forbidden_base() {
-    let (client, fake) = github_client().await;
-    fake.lock()
-        .unwrap()
-        .pulls
-        .insert(9, draft_pull(9, "feature/agent-x", "prod"));
-
-    let outcome = client.mark_pull_request_ready("o/repo", 9).await.unwrap();
-    assert!(
-        matches!(outcome, maidan_server::github::MarkReadyOutcome::Refused(_)),
-        "{outcome:?}"
-    );
-    assert!(
-        fake.lock().unwrap().patches.is_empty(),
-        "a refused flip writes nothing"
-    );
-}
-
-#[tokio::test]
-async fn mark_ready_is_a_noop_on_an_already_ready_pull() {
-    let (client, fake) = github_client().await;
-    fake.lock().unwrap().pulls.insert(
-        10,
-        FakePull {
-            number: 10,
-            head: "feature/agent-x".into(),
-            base: "dev".into(),
-            draft: false,
-        },
-    );
-
-    let outcome = client.mark_pull_request_ready("o/repo", 10).await.unwrap();
-    assert_eq!(
-        outcome,
-        maidan_server::github::MarkReadyOutcome::AlreadyReady { number: 10 }
-    );
-    assert!(
-        fake.lock().unwrap().patches.is_empty(),
-        "an already-ready pull is not rewritten"
-    );
-}
-
-#[tokio::test]
-async fn mark_ready_errors_on_a_missing_pull() {
+async fn pull_brief_errors_on_a_missing_pull() {
     let (client, _) = github_client().await;
-    let err = client
-        .mark_pull_request_ready("o/repo", 999)
-        .await
-        .unwrap_err();
+    let err = client.pull_brief("o/repo", 999).await.unwrap_err();
     assert!(err.is_not_found(), "{err:?}");
 }
 
@@ -444,6 +394,19 @@ async fn only_the_soundcheck_app_may_mark_ready() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("soundcheck"), "{body}");
 
+    // The refusal is audited: this endpoint is the sole gate for a PR
+    // mutation, so refused calls are recorded, not just marked ones.
+    let events = h
+        .store
+        .list_audit_for_workspace(h.workspace_id, 10)
+        .await
+        .unwrap();
+    let event = events
+        .iter()
+        .find(|e| e.action == "github.mark_ready" && e.metadata["outcome"] == json!("refused"))
+        .expect("the app-gate refusal is audited");
+    assert_eq!(event.metadata["pull_number"], json!(7));
+
     // Another app's token is not Soundcheck either.
     let (status, body) = post_mark_ready(&h, Some(&h.other_app_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
@@ -480,19 +443,164 @@ async fn mark_ready_needs_the_allowlist() {
 #[tokio::test]
 async fn mark_ready_refuses_a_non_agent_head() {
     let h = spawn().await;
-    allow(&h, "o/repo@dev").await;
+    // No allowlist entry on purpose: if the allowlist fired first, the
+    // refusal would name the selector. The shape guard of the single guard
+    // path must fire first and name the head.
     h.fake
         .lock()
         .unwrap()
         .pulls
-        .insert(11, draft_pull(11, "main", "dev"));
+        .insert(11, draft_pull(11, "feature/not-an-agent", "dev"));
 
     let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 11).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let text = body.to_string();
+    assert!(text.contains("does not match"), "{body}");
+    assert!(
+        !text.contains("o/repo@dev"),
+        "the allowlist did not fire: {body}"
+    );
     assert!(
         h.fake.lock().unwrap().patches.is_empty(),
         "a refused flip writes nothing"
     );
+}
+
+#[tokio::test]
+async fn mark_ready_checks_the_allowlist_against_the_fresh_base() {
+    let h = spawn().await;
+    allow(&h, "o/repo@dev").await;
+    // The PR targets staging while the allowlist blesses dev. The refusal
+    // must name the PR's actual base, proving the allowlist ran on the fresh
+    // read rather than on a caller-supplied base.
+    h.fake
+        .lock()
+        .unwrap()
+        .pulls
+        .insert(12, draft_pull(12, "feature/agent-x", "staging"));
+
+    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 12).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(body.to_string().contains("o/repo@staging"), "{body}");
+    assert!(
+        h.fake.lock().unwrap().patches.is_empty(),
+        "a refused flip writes nothing"
+    );
+}
+
+#[tokio::test]
+async fn mark_ready_enforces_the_per_repo_base_map() {
+    let h = spawn().await;
+    // wax flips only into dev, even with the allowlist blessing main.
+    allow(&h, "david-engelmann/wax@main").await;
+    h.fake
+        .lock()
+        .unwrap()
+        .pulls
+        .insert(13, draft_pull(13, "feature/agent-x", "main"));
+
+    let (status, body) =
+        post_mark_ready(&h, Some(&h.soundcheck_bearer), "david-engelmann/wax", 13).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(body.to_string().contains("only into `dev`"), "{body}");
+    assert!(
+        h.fake.lock().unwrap().patches.is_empty(),
+        "a refused flip writes nothing"
+    );
+
+    // agent-skills flips only into main.
+    allow(&h, "david-engelmann/agent-skills@dev").await;
+    h.fake
+        .lock()
+        .unwrap()
+        .pulls
+        .insert(14, draft_pull(14, "feature/agent-x", "dev"));
+
+    let (status, body) = post_mark_ready(
+        &h,
+        Some(&h.soundcheck_bearer),
+        "david-engelmann/agent-skills",
+        14,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(body.to_string().contains("only into `main`"), "{body}");
+    assert!(
+        h.fake.lock().unwrap().patches.is_empty(),
+        "a refused flip writes nothing"
+    );
+}
+
+#[tokio::test]
+async fn mark_ready_rejects_a_bad_request_and_audits_it() {
+    let h = spawn().await;
+
+    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "", 7).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "empty repo");
+    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 0).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "non-positive pull number");
+
+    let events = h
+        .store
+        .list_audit_for_workspace(h.workspace_id, 10)
+        .await
+        .unwrap();
+    let refused: Vec<_> = events
+        .iter()
+        .filter(|e| e.action == "github.mark_ready" && e.metadata["outcome"] == json!("refused"))
+        .collect();
+    assert_eq!(refused.len(), 2, "both bad requests are audited as refused");
+}
+
+#[tokio::test]
+async fn mark_ready_404s_a_missing_pull_and_audits_the_failure() {
+    let h = spawn().await;
+    allow(&h, "o/repo@dev").await;
+
+    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 999).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let events = h
+        .store
+        .list_audit_for_workspace(h.workspace_id, 10)
+        .await
+        .unwrap();
+    let event = events
+        .iter()
+        .find(|e| e.action == "github.mark_ready" && e.metadata["outcome"] == json!("failed"))
+        .expect("the failure is audited");
+    assert_eq!(event.metadata["pull_number"], json!(999));
+}
+
+#[tokio::test]
+async fn mark_ready_audits_refusals_marks_and_retries() {
+    let h = spawn().await;
+
+    // Refused: no allowlist entry.
+    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Marked, then already-ready on the retry.
+    allow(&h, "o/repo@dev").await;
+    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["marked_ready"], json!(false));
+
+    let events = h
+        .store
+        .list_audit_for_workspace(h.workspace_id, 10)
+        .await
+        .unwrap();
+    let outcomes: Vec<String> = events
+        .iter()
+        .filter(|e| e.action == "github.mark_ready")
+        .filter_map(|e| e.metadata["outcome"].as_str().map(str::to_string))
+        .collect();
+    for want in ["refused", "marked", "already_ready"] {
+        assert!(outcomes.contains(&want.to_string()), "{outcomes:?}");
+    }
 }
 
 #[tokio::test]

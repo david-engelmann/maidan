@@ -563,6 +563,37 @@ pub fn change_allowlist_selector(repo: &str, base: &str) -> String {
     format!("{repo}@{base}")
 }
 
+/// The change flow's per-repository base map for the mark-ready flip
+/// (maidan#1253): these repositories open agent pull requests only into the
+/// mapped base. Hard-coded on purpose, like [`PROTECTED_BRANCHES`]: the token
+/// the flow runs with can push anywhere, so the guard has to be in this code,
+/// not in configuration or in GitHub's settings.
+const MARK_READY_BASES: [(&str, &str); 5] = [
+    ("bgv3", "dev"),
+    ("relay", "dev"),
+    ("dawn", "dev"),
+    ("wax", "dev"),
+    ("agent-skills", "main"),
+];
+
+/// The mark-ready half of the base guard: the shape rules from
+/// [`check_change_target`], plus the per-repository base map. A repository in
+/// [`MARK_READY_BASES`] flips only into its mapped base; a repository outside
+/// the map is governed by the workspace egress allowlist, which fails closed.
+pub fn check_mark_ready_target(repo: &str, branch: &str, base: &str) -> Result<(), String> {
+    check_change_target(branch, base)?;
+    let name = repo.rsplit('/').next().unwrap_or(repo);
+    match MARK_READY_BASES
+        .iter()
+        .find(|(r, _)| r.eq_ignore_ascii_case(name))
+    {
+        Some((_, want)) if !base.eq_ignore_ascii_case(want) => Err(format!(
+            "`{repo}` opens agent pull requests only into `{want}`; `{base}` is not its base"
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// The fields of a [`PI_CHANGE_RESULT_KIND`] envelope that a commit is built
 /// from. Read straight off the envelope, like `head_sha`: the base commit is
 /// the producer's, never one looked up from the thread or the branch.
@@ -1412,6 +1443,38 @@ mod tests {
             let err = check_change_target(branch, base).unwrap_err();
             assert!(err.contains(why), "{branch} -> {base}: {err}");
         }
+    }
+
+    #[test]
+    fn the_mark_ready_base_map_names_its_repo_and_base() {
+        // Mapped repos flip only into their mapped base.
+        for (repo, base) in [
+            ("david-engelmann/bgv3", "dev"),
+            ("david-engelmann/relay", "dev"),
+            ("david-engelmann/dawn", "dev"),
+            ("david-engelmann/wax", "dev"),
+            ("david-engelmann/agent-skills", "main"),
+        ] {
+            assert!(
+                check_mark_ready_target(repo, "feature/agent-x", base).is_ok(),
+                "{repo} -> {base}"
+            );
+        }
+        // A mapped repo into any other base names the mapped base.
+        for (repo, base, want) in [
+            ("david-engelmann/wax", "main", "dev"),
+            ("david-engelmann/bgv3", "staging", "dev"),
+            ("david-engelmann/agent-skills", "dev", "main"),
+        ] {
+            let err = check_mark_ready_target(repo, "feature/agent-x", base).unwrap_err();
+            assert!(err.contains(want), "{repo} -> {base}: {err}");
+            assert!(err.contains("only into"), "{repo} -> {base}: {err}");
+        }
+        // Outside the map the shape rules still apply and the allowlist
+        // governs: a well-formed target passes here.
+        assert!(check_mark_ready_target("o/repo", "feature/agent-x", "dev").is_ok());
+        assert!(check_mark_ready_target("o/repo", "feature/agent-x", "prod").is_err());
+        assert!(check_mark_ready_target("o/repo", "hotfix/x", "dev").is_err());
     }
 
     #[test]

@@ -467,8 +467,7 @@ pub struct GithubPullBrief {
     pub draft: bool,
 }
 
-/// What flipping a pull request to ready did. A refusal is an outcome, not a
-/// failure: retrying cannot fix a PR that fails the guards.
+/// What flipping a pull request to ready did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MarkReadyOutcome {
     /// The pull was a draft and is now ready for review.
@@ -478,15 +477,17 @@ pub enum MarkReadyOutcome {
         base: String,
     },
     /// The pull was already ready; nothing was written.
-    AlreadyReady { number: i64 },
-    /// The flip is refused and nothing was written.
-    Refused(String),
+    AlreadyReady {
+        number: i64,
+        head: String,
+        base: String,
+    },
 }
 
 /// The GitHub calls the change flow makes: read a branch and the files a diff
 /// touches, write blobs, a tree and a commit, move the branch, find or open
 /// its draft pull request, and — the one deliberate exception —
-/// [`GithubGit::mark_pull_request_ready`]. Nothing else here approves,
+/// [`GithubGit::set_pull_ready`]. Nothing else here approves,
 /// merges, requests a review, comments, deletes a branch, force-pushes or
 /// touches repository settings, and there is deliberately no other method
 /// that could.
@@ -547,22 +548,19 @@ pub trait GithubGit: Send + Sync {
         repo: &str,
         pull_number: i64,
     ) -> Result<GithubPullBrief, GithubError>;
-    /// Flip a draft pull request to ready for review: `GET` the pull, refuse
-    /// anything that is not a draft on an agent branch into an allowed base,
-    /// then `PATCH` it with `{"draft": false}`.
+    /// Flip a draft pull request to ready for review: `PATCH`
+    /// `/repos/{repo}/pulls/{n}` with `{"draft": false}`. No read and no
+    /// guards here: the caller must have run the single guard path first
+    /// ([`crate::routes::flip_pull_ready_guarded`]), which reads the pull
+    /// once, evaluates every guard against that read, and only then calls
+    /// this. Guarding here on a second read would reintroduce the TOCTOU the
+    /// guard path exists to close, so this method trusts its caller.
     ///
     /// The deliberate, tightly-scoped exception to "never marks ready"
     /// (Decisions, 2026-10-06): Soundcheck holds no GitHub write credential,
     /// so Maidan does the flip — only for `feature/agent-*` heads into
-    /// allowlisted bases, never prod, never anything else. The workspace
-    /// allowlist check lives with the caller, which knows the workspace;
-    /// this method enforces the PR-shape guards on the fresh read,
-    /// immediately before the write.
-    async fn mark_pull_request_ready(
-        &self,
-        repo: &str,
-        pull_number: i64,
-    ) -> Result<MarkReadyOutcome, GithubError>;
+    /// allowlisted bases, never prod, never anything else.
+    async fn set_pull_ready(&self, repo: &str, pull_number: i64) -> Result<(), GithubError>;
 }
 
 /// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
@@ -1092,22 +1090,7 @@ impl GithubGit for GithubApiClient {
         })
     }
 
-    async fn mark_pull_request_ready(
-        &self,
-        repo: &str,
-        pull_number: i64,
-    ) -> Result<MarkReadyOutcome, GithubError> {
-        let brief = self.pull_brief(repo, pull_number).await?;
-        if !brief.draft {
-            return Ok(MarkReadyOutcome::AlreadyReady {
-                number: brief.number,
-            });
-        }
-        // The last check before GitHub: the flip lands only on an agent
-        // branch into an allowed base, whatever the caller asked for.
-        if let Err(reason) = maidan_types::check_change_target(&brief.head, &brief.base) {
-            return Ok(MarkReadyOutcome::Refused(reason));
-        }
+    async fn set_pull_ready(&self, repo: &str, pull_number: i64) -> Result<(), GithubError> {
         let request = self
             .request(
                 reqwest::Method::PATCH,
@@ -1115,11 +1098,7 @@ impl GithubGit for GithubApiClient {
             )
             .json(&serde_json::json!({ "draft": false }));
         self.send_json(request).await?;
-        Ok(MarkReadyOutcome::Marked {
-            number: brief.number,
-            head: brief.head,
-            base: brief.base,
-        })
+        Ok(())
     }
 }
 

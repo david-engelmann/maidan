@@ -2054,19 +2054,36 @@ maintainer ruled: Maidan does the flip; Soundcheck stays without
 and only that:
 - only a draft whose head matches `^feature/agent-[a-z0-9][a-z0-9-]*$` and
   whose base is the allowlisted base for that repo (`change_allowlist_selector`);
-- never prod, never a merge, never any other PR mutation — the client reads
-  the PR fresh and re-applies the guards immediately before the write;
+- never prod, never a merge, never any other PR mutation. One fresh pull read
+  feeds every guard (the shape rules, the per-repository base map, the
+  workspace allowlist) immediately before the PATCH; there is no second read,
+  so a base retarget between the allowlist check and the write cannot slip
+  through. The read and the PATCH are still two GitHub calls with no
+  conditional write, so a retarget inside that one round trip is the accepted
+  residual;
 - callable only by the Soundcheck app (the caller's app installation must
   resolve to the `soundcheck` slug);
 - audited like other egress (`github.mark_ready` with repo, PR, head, base
-  and outcome).
+  and outcome), and unlike other egress it audits refused calls too: this
+  endpoint is the sole gate for a PR mutation.
 The "never mark ready" guard is relaxed exactly this far, in code, not in
 token scope: David's PAT already could, so the guards stay where they were.
 
-Agent PRs are authored as David, so nothing may depend on his approval. The
-flow stops at a draft PR, and Soundcheck marks it ready. The shared Maidan
-runs in Pi's dev-tools compose stack, built from `main`, not on a hosted
-platform.
+**Capability map, 2026-10-06 (repair).** The route is gated on the caller's
+app identity, not on a member capability, so no capability in the map would be
+honest: none of the known capabilities fits, inventing one would be
+speculative, and enforcing a redundant capability would add deployment
+coupling with no security gain. The map entry therefore carries
+`"gate": "app-installation"` with `"capability": "app:soundcheck"`, the
+contract test validates the marker, the capability matrix e2e skips it, and
+`mark_ready_e2e::only_the_soundcheck_app_may_mark_ready` proves the gate
+(member, other-app and missing tokens all 403 naming Soundcheck).
+
+**Audit failure, 2026-10-06 (repair).** The endpoint's audit is best-effort
+and never fails the request, matching the established pattern:
+`audit::record` is fail-open everywhere (it logs `audit.write_failed` on a
+store failure). Refused calls are audited anyway because this endpoint is the
+sole gate for a PR mutation; other egress paths skip auth-failure audits.
 
 **Alternatives.** A GitHub App installation token (kept as optional Open Work
 Next 25); credentials in Pi's sandbox (refused: Pi holds no write credential

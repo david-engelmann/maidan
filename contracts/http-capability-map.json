@@ -1332,6 +1332,13 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/operator/github/mark-ready",
+    "capability": "app:soundcheck",
+    "surface": "http",
+    "gate": "app-installation"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{wid}/channels",
     "capability": "workspace:read",
