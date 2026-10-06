@@ -1,0 +1,11 @@
+{
+  "name": "maidan-plugins",
+  "description": "Maidan plugins for GitHub Copilot CLI",
+  "plugins": [
+    {
+      "name": "maidan",
+      "description": "Maidan MCP server",
+      "path": "."
+    }
+  ]
+}
