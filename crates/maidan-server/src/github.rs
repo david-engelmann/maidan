@@ -456,12 +456,41 @@ pub struct GithubPull {
     pub base: String,
 }
 
+/// A pull request as read for the mark-ready guard: head, base and draft flag.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubPullBrief {
+    pub number: i64,
+    /// The head branch name.
+    pub head: String,
+    /// The base branch name.
+    pub base: String,
+    pub draft: bool,
+}
+
+/// What flipping a pull request to ready did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MarkReadyOutcome {
+    /// The pull was a draft and is now ready for review.
+    Marked {
+        number: i64,
+        head: String,
+        base: String,
+    },
+    /// The pull was already ready; nothing was written.
+    AlreadyReady {
+        number: i64,
+        head: String,
+        base: String,
+    },
+}
+
 /// The GitHub calls the change flow makes: read a branch and the files a diff
-/// touches, write blobs, a tree and a commit, move the branch, and find or
-/// open its draft pull request. Nothing here approves, merges, marks a pull
-/// request ready, requests a review, comments, deletes a branch, force-pushes
-/// or touches repository settings, and there is deliberately no method that
-/// could.
+/// touches, write blobs, a tree and a commit, move the branch, find or open
+/// its draft pull request, and — the one deliberate exception —
+/// [`GithubGit::set_pull_ready`]. Nothing else here approves,
+/// merges, requests a review, comments, deletes a branch, force-pushes or
+/// touches repository settings, and there is deliberately no other method
+/// that could.
 #[async_trait::async_trait]
 pub trait GithubGit: Send + Sync {
     /// `GET /repos/{repo}/git/ref/heads/{branch}`: the branch head, or `None`
@@ -511,6 +540,27 @@ pub trait GithubGit: Send + Sync {
         title: &str,
         body: &str,
     ) -> Result<GithubPull, GithubError>;
+    /// `GET /repos/{repo}/pulls/{n}`: head ref, base ref and draft flag, for
+    /// the mark-ready guard. A read, so no guard applies; the caller enforces
+    /// the change-flow rules before acting on what it returns.
+    async fn pull_brief(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<GithubPullBrief, GithubError>;
+    /// Flip a draft pull request to ready for review: `PATCH`
+    /// `/repos/{repo}/pulls/{n}` with `{"draft": false}`. No read and no
+    /// guards here: the caller must have run the single guard path first
+    /// ([`crate::routes::flip_pull_ready_guarded`]), which reads the pull
+    /// once, evaluates every guard against that read, and only then calls
+    /// this. Guarding here on a second read would reintroduce the TOCTOU the
+    /// guard path exists to close, so this method trusts its caller.
+    ///
+    /// The deliberate, tightly-scoped exception to "never marks ready"
+    /// (Decisions, 2026-10-06): Soundcheck holds no GitHub write credential,
+    /// so Maidan does the flip — only for `feature/agent-*` heads into
+    /// allowlisted bases, never prod, never anything else.
+    async fn set_pull_ready(&self, repo: &str, pull_number: i64) -> Result<(), GithubError>;
 }
 
 /// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
@@ -1009,6 +1059,46 @@ impl GithubGit for GithubApiClient {
                 "draft": true,
             }));
         pull_from(&self.send_json(request).await?)
+    }
+
+    async fn pull_brief(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<GithubPullBrief, GithubError> {
+        let value = self
+            .send_json(self.request(
+                reqwest::Method::GET,
+                &format!("/repos/{repo}/pulls/{pull_number}"),
+            ))
+            .await?;
+        let number = value
+            .get("number")
+            .and_then(serde_json::Value::as_i64)
+            .filter(|n| *n > 0)
+            .ok_or_else(|| GithubError::Http("github pull has no number".into()))?;
+        Ok(GithubPullBrief {
+            number,
+            head: field(&value, "/head/ref")?,
+            base: field(&value, "/base/ref")?,
+            // Missing means malformed; fail closed by treating it as
+            // not-a-draft rather than flipping blind.
+            draft: value
+                .get("draft")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+        })
+    }
+
+    async fn set_pull_ready(&self, repo: &str, pull_number: i64) -> Result<(), GithubError> {
+        let request = self
+            .request(
+                reqwest::Method::PATCH,
+                &format!("/repos/{repo}/pulls/{pull_number}"),
+            )
+            .json(&serde_json::json!({ "draft": false }));
+        self.send_json(request).await?;
+        Ok(())
     }
 }
 

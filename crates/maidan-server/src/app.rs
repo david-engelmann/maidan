@@ -854,6 +854,7 @@ pub fn router(state: AppState) -> Router {
             "/operator/egress/dead/{id}/requeue",
             post(routes::requeue_dead_egress),
         )
+        .route("/operator/github/mark-ready", post(routes::mark_pull_ready))
         .route(
             "/workspaces/{wid}/automation/dlq",
             get(automation_deliveries::list_quarantined_automation_deliveries),

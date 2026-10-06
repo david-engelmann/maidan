@@ -393,6 +393,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::requeue_dead_mail,
         paths::list_dead_egress,
         paths::requeue_dead_egress,
+        paths::mark_pull_ready,
         paths::start_reindex_embeddings,
         paths::get_reindex_embeddings_job,
         paths::get_member,
