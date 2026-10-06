@@ -32,8 +32,7 @@ async fn setup() -> Ctx {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> =
-        Arc::new(maidan_search::SqliteSearch::new(pool));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.keep()));
     let bus = Arc::new(InMemoryBus::with_capacity(256));
@@ -112,7 +111,10 @@ async fn null_title_is_an_untitled_thread() {
 #[tokio::test]
 async fn unknown_fields_are_rejected() {
     let ctx = setup().await;
-    let res = post(&ctx, json!({"title": "t", "bogus": 1})).send().await.unwrap();
+    let res = post(&ctx, json!({"title": "t", "bogus": 1}))
+        .send()
+        .await
+        .unwrap();
     // The extractor normalizes axum's 422 to 400: one status for "cannot read".
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }

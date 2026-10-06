@@ -1303,7 +1303,9 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         // `try_get`: not every SELECT that feeds this mapper lists the
         // column (the 0141 migration added it after most were written);
         // those rows read as undescribed rather than failing.
-        description: row.try_get::<Option<String>, _>("description").unwrap_or(None),
+        description: row
+            .try_get::<Option<String>, _>("description")
+            .unwrap_or(None),
         state,
         assignee_id: assignee.map(MemberId),
         assignment_expires_at: row.get::<Option<DateTime<Utc>>, _>("assignment_expires_at"),
