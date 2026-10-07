@@ -366,7 +366,7 @@ pub fn record_github_review(outcome: &str) {
 }
 
 /// Mark-ready flips: `marked` (the draft is now ready), `already_ready` (a
-/// retry found it ready), `refused` (the call failed a guard: not Soundcheck,
+/// retry found it ready), `refused` (the call failed a guard: not the mark-ready app,
 /// bad input, or the PR failed the change-flow guards), `failed` (GitHub or
 /// the store failed). Every terminal outcome of the endpoint is metered.
 pub fn record_github_mark_ready(outcome: &str) {

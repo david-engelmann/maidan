@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn a_missing_title_falls_back_to_the_opening_message_cut_at_a_word() {
         let c = change(None, None);
-        let long = "!change bgv3 make the booking confirmation email say the venue name and the start time instead of the generic text";
+        let long = "!change example-repo make the booking confirmation email say the venue name and the start time instead of the generic text";
         let title = request(&c, Some(long)).title();
         assert!(title.chars().count() <= FALLBACK_TITLE_MAX_CHARS, "{title}");
         assert!(title.ends_with('…'), "{title}");

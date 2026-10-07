@@ -49,7 +49,7 @@ period is cut, and clients retry.
 |                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
 | `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for `DATABASE_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN` and `MAIDAN_SLACK_SIGNING_SECRET` (a Docker or Kubernetes secret mount), so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8; the error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
 | `MAIDAN_GITHUB_WRITE_REPOS` | with a GitHub token | Comma-separated `owner/name`s, the only repositories the instance's GitHub token may write to (branches, commits, draft and ready pull requests, comments, reviews, check runs). Compared case-insensitively. Unset or empty, every GitHub write is refused and a boot warning says so. A workspace's egress allowlist narrows this list and can never widen it. |
-| `MAIDAN_MARK_READY_APP_ID` | for mark-ready | The id of the one app whose installations may call `POST /operator/github/mark-ready` (Soundcheck in the change flow). An app id is unique across the instance; an app slug is not, so the slug is never trusted. Unset, every mark-ready call is refused. A value that is not a UUID refuses boot. |
+| `MAIDAN_MARK_READY_APP_ID` | for mark-ready | The id of the one app whose installations may call `POST /operator/github/mark-ready`: the **mark-ready app**, the client in the change flow that asks Maidan to flip its draft pull requests to ready. An app id is unique across the instance; an app slug is not, so the slug is never trusted. Unset, every mark-ready call is refused. A value that is not a UUID refuses boot. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED` outright.       |
 | `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` | no | Dev only. A workspace id whose name begins `synthetic-`, read by an MCP `POST` with no credential (read-only tools). Refused under `MAIDAN_ENV=production` and beside `AUTH_DISABLED`. See Integration, "Anonymous reading on a dev instance". |
 | `AUTH_DISABLED` | no       | Serve every request unauthenticated. **Fail-closed:** takes effect only when `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` is *also* set, and never when `MAIDAN_ENV=production` (either violation refuses boot). A stray `AUTH_DISABLED=1` alone now fails startup loudly instead of silently serving an open workspace. Dev/test/CI only. |
@@ -420,8 +420,8 @@ workspaces, so the operator also names the repositories the token may write
 to in `MAIDAN_GITHUB_WRITE_REPOS`, for example
 `MAIDAN_GITHUB_WRITE_REPOS=example/app,example/skills`. A write to any other
 repository is refused before a request is made, whichever workspace asks. To
-let Soundcheck mark agent pull requests ready, set `MAIDAN_MARK_READY_APP_ID`
-to the id of its app (`GET /workspaces/{wid}/apps` lists it).
+let the mark-ready app mark agent pull requests ready, set `MAIDAN_MARK_READY_APP_ID`
+to the id of that app (`GET /workspaces/{wid}/apps` lists it).
 
 **4. The services.** Auth is on: nothing sets `AUTH_DISABLED`, and
 `MAIDAN_ENV=production` refuses it and the development KEK outright. With

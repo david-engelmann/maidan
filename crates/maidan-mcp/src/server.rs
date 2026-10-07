@@ -3209,7 +3209,7 @@ mod tests {
     async fn run_lineage_tools_home_fixture_and_attribute_nested() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
 
-        const PI_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
+        const PRODUCER_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
         const FIXTURE: &str =
             include_str!("../../maidan-types/tests/fixtures/waiter_result_v1.json");
 
@@ -3295,7 +3295,7 @@ mod tests {
         assert!(miss.is_null());
 
         let fixture: Value = serde_json::from_str(FIXTURE).expect("fixture");
-        assert_eq!(fixture["run_id"], json!(PI_RUN_ID));
+        assert_eq!(fixture["run_id"], json!(PRODUCER_RUN_ID));
         server
             .call_tool(
                 &auth,
@@ -3315,7 +3315,7 @@ mod tests {
                 .await
                 .unwrap(),
         );
-        assert_eq!(lined["parent_run_id"], json!(PI_RUN_ID));
+        assert_eq!(lined["parent_run_id"], json!(PRODUCER_RUN_ID));
         assert_eq!(lined["thread_id"], json!(parent.id.0));
 
         let nest = unwrap_content(
@@ -3323,19 +3323,19 @@ mod tests {
                 .call_tool(
                     &auth,
                     "set_thread_lineage",
-                    &json!({ "thread_id": child.id.0, "parent_run_id": PI_RUN_ID }),
+                    &json!({ "thread_id": child.id.0, "parent_run_id": PRODUCER_RUN_ID }),
                 )
                 .await
                 .unwrap(),
         );
-        assert_eq!(nest["parent_run_id"], json!(PI_RUN_ID));
+        assert_eq!(nest["parent_run_id"], json!(PRODUCER_RUN_ID));
 
         let listed = unwrap_content(
             server
                 .call_tool(
                     &auth,
                     "list_run_threads",
-                    &json!({ "parent_run_id": PI_RUN_ID }),
+                    &json!({ "parent_run_id": PRODUCER_RUN_ID }),
                 )
                 .await
                 .unwrap(),
@@ -3357,12 +3357,12 @@ mod tests {
                 .call_tool(
                     &auth,
                     "get_run_occupancy",
-                    &json!({ "parent_run_id": PI_RUN_ID }),
+                    &json!({ "parent_run_id": PRODUCER_RUN_ID }),
                 )
                 .await
                 .unwrap(),
         );
-        assert_eq!(occ["parent_run_id"], json!(PI_RUN_ID));
+        assert_eq!(occ["parent_run_id"], json!(PRODUCER_RUN_ID));
         assert_eq!(occ["open"], json!(2));
         assert_eq!(occ["queued"], json!(2));
 
@@ -3372,7 +3372,7 @@ mod tests {
                 .call_tool(
                     &auth,
                     "get_run_occupancy",
-                    &json!({ "parent_run_id": PI_RUN_ID }),
+                    &json!({ "parent_run_id": PRODUCER_RUN_ID }),
                 )
                 .await
                 .unwrap(),

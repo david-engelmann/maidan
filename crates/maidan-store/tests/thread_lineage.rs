@@ -12,7 +12,7 @@ use serde_json::json;
 use sqlx::sqlite::SqlitePoolOptions;
 
 /// The authoritative waiter fixture's `run_id` — the first real producer.
-const PI_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
+const PRODUCER_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
 
 async fn sqlite() -> SqliteStore {
     let pool = SqlitePoolOptions::new()
@@ -105,21 +105,21 @@ async fn run_suite(store: &dyn Store) {
     ))
     .expect("fixture");
     let extracted = run_id_from_payload(&fixture).expect("fixture run_id");
-    assert_eq!(extracted, PI_RUN_ID);
+    assert_eq!(extracted, PRODUCER_RUN_ID);
 
     let lined = store
         .set_thread_lineage(parent.id, extracted)
         .await
         .expect("home parent");
-    assert_eq!(lined.parent_run_id, PI_RUN_ID);
+    assert_eq!(lined.parent_run_id, PRODUCER_RUN_ID);
     assert_eq!(lined.thread_id, parent.id);
 
     let child_lined = store
-        .set_thread_lineage(child.id, &format!("  {PI_RUN_ID}  "))
+        .set_thread_lineage(child.id, &format!("  {PRODUCER_RUN_ID}  "))
         .await
         .expect("trim accepted");
     assert_eq!(
-        child_lined.parent_run_id, PI_RUN_ID,
+        child_lined.parent_run_id, PRODUCER_RUN_ID,
         "the stored value is the trimmed producer id, not a minted uuid"
     );
 
@@ -129,7 +129,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("other run");
 
     let listed = store
-        .list_threads_for_run(ws, PI_RUN_ID)
+        .list_threads_for_run(ws, PRODUCER_RUN_ID)
         .await
         .expect("list");
     let ids: Vec<_> = listed.iter().map(|t| t.id).collect();
@@ -143,8 +143,11 @@ async fn run_suite(store: &dyn Store) {
         "a different producer run is not attributed"
     );
 
-    let occ0 = store.run_occupancy(ws, PI_RUN_ID).await.expect("occ0");
-    assert_eq!(occ0.parent_run_id, PI_RUN_ID);
+    let occ0 = store
+        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .await
+        .expect("occ0");
+    assert_eq!(occ0.parent_run_id, PRODUCER_RUN_ID);
     assert_eq!(occ0.open, 2, "parent + nested child");
     assert_eq!(occ0.queued, 2);
     assert_eq!(occ0.claimed, 0);
@@ -160,7 +163,10 @@ async fn run_suite(store: &dyn Store) {
         .thread
         .claim_lease_id
         .expect("a claim mints a lease");
-    let occ_claimed = store.run_occupancy(ws, PI_RUN_ID).await.expect("claimed");
+    let occ_claimed = store
+        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .await
+        .expect("claimed");
     assert_eq!(occ_claimed.queued, 1);
     assert_eq!(occ_claimed.claimed, 1);
     assert_eq!(occ_claimed.working, 0);
@@ -169,7 +175,10 @@ async fn run_suite(store: &dyn Store) {
         .acknowledge_claim(child.id, member, lease)
         .await
         .expect("ack");
-    let occ_working = store.run_occupancy(ws, PI_RUN_ID).await.expect("working");
+    let occ_working = store
+        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .await
+        .expect("working");
     assert_eq!(occ_working.queued, 1);
     assert_eq!(occ_working.claimed, 0);
     assert_eq!(occ_working.working, 1);
@@ -179,7 +188,10 @@ async fn run_suite(store: &dyn Store) {
         .mute_thread(member, child.id)
         .await
         .expect("F7 mute the nested thread");
-    let occ_muted = store.run_occupancy(ws, PI_RUN_ID).await.expect("muted");
+    let occ_muted = store
+        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .await
+        .expect("muted");
     assert_eq!(
         occ_muted, occ_working,
         "F7 mute is orthogonal — muted nested work still counts"
@@ -205,7 +217,10 @@ async fn run_suite(store: &dyn Store) {
         .set_thread_block(parent.id, maidan_types::BlockedReason::Human, member, None)
         .await
         .expect("block the parent");
-    let occ_blocked = store.run_occupancy(ws, PI_RUN_ID).await.expect("blocked");
+    let occ_blocked = store
+        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .await
+        .expect("blocked");
     assert_eq!(
         occ_blocked.blocked, 1,
         "an explicit block row must count as blocked"
@@ -237,7 +252,10 @@ async fn run_suite(store: &dyn Store) {
 
     store.clear_thread_block(parent.id).await.expect("unblock");
     assert_eq!(
-        store.run_occupancy(ws, PI_RUN_ID).await.expect("cleared"),
+        store
+            .run_occupancy(ws, PRODUCER_RUN_ID)
+            .await
+            .expect("cleared"),
         occ_working,
         "clearing the block returns the run to where it was"
     );
@@ -260,7 +278,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("other ws");
     let isolated = store
-        .list_threads_for_run(other_ws.id, PI_RUN_ID)
+        .list_threads_for_run(other_ws.id, PRODUCER_RUN_ID)
         .await
         .expect("cross-tenant");
     assert!(isolated.is_empty(), "lineage is workspace-scoped");

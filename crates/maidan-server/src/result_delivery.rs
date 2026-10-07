@@ -31,7 +31,7 @@ use chrono::{DateTime, Utc};
 use maidan_types::{
     parse_change_result, parse_waiter_result, status, DeliverTarget, EgressKind, EgressTarget,
     ExternalRef, GithubReviewComment, NewEgressOutbox, ResultDelivery, ThreadId, WaiterResult,
-    WorkspaceId, PI_CHANGE_RESULT_KIND,
+    WorkspaceId, CHANGE_RESULT_KIND,
 };
 use tracing::{debug, warn};
 
@@ -288,12 +288,12 @@ async fn route_one(
 }
 
 /// Why a blessed `github_branch` target still gets no GitHub write: only a
-/// [`PI_CHANGE_RESULT_KIND`] with status `changed` is committed.
+/// [`CHANGE_RESULT_KIND`] with status `changed` is committed.
 fn no_change_reason(target: &EgressTarget, waiter: &WaiterResult) -> Option<String> {
     if !matches!(target, EgressTarget::GithubBranch { .. }) {
         return None;
     }
-    if waiter.result_kind != PI_CHANGE_RESULT_KIND {
+    if waiter.result_kind != CHANGE_RESULT_KIND {
         return Some(format!(
             "result kind `{}` carries no change to commit",
             waiter.result_kind
@@ -322,9 +322,9 @@ pub enum ChangeReply {
 /// than waiting on a row that may never settle.
 pub const CHANGE_REPLY_MAX_WAIT: chrono::Duration = chrono::Duration::hours(6);
 
-/// Build the Slack reply to a [`PI_CHANGE_RESULT_KIND`] from its
+/// Build the Slack reply to a [`CHANGE_RESULT_KIND`] from its
 /// `github_branch` deliveries: the commit and pull request when one landed,
-/// the recorded reason when it did not, and the status alone when Pi reported
+/// the recorded reason when it did not, and the status alone when the producer reported
 /// anything other than `changed`.
 pub async fn change_reply(state: &AppState, thread_id: ThreadId) -> ChangeReply {
     change_reply_at(state, thread_id, Utc::now()).await
@@ -348,7 +348,7 @@ pub async fn change_reply_at(
     let mut lines = Vec::new();
     if !change.is_changed() {
         lines.push(format!(
-            "Pi finished with status `{}`, so nothing was committed.",
+            "The coding agent finished with status `{}`, so nothing was committed.",
             change.status
         ));
         if let Some(summary) = &change.summary {
