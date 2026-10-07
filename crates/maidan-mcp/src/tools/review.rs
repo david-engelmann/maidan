@@ -30,7 +30,7 @@ pub(super) async fn set_review_requirement(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetRequirementArgs = serde_json::from_value(args.clone())?;
+    let a: SetRequirementArgs = crate::tools::parse_args(args)?;
     if a.required_count < 0 {
         return Err(McpError::InvalidParams(
             "required_count must be >= 0".into(),
@@ -105,7 +105,7 @@ pub(super) async fn add_reviewer(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AddReviewerArgs = serde_json::from_value(args.clone())?;
+    let a: AddReviewerArgs = crate::tools::parse_args(args)?;
     if !auth.bypass {
         let thread = store.get_thread(ThreadId(a.thread_id)).await?;
         let channel = store.get_channel(thread.channel_id).await?;
@@ -137,7 +137,7 @@ pub(super) async fn submit_review(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SubmitReviewArgs = serde_json::from_value(args.clone())?;
+    let a: SubmitReviewArgs = crate::tools::parse_args(args)?;
     let note = a.note.as_deref().map(str::trim).filter(|n| !n.is_empty());
     let thread_id = ThreadId(a.thread_id);
     let submission = server
@@ -168,14 +168,14 @@ pub(super) async fn get_review_status(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let status = store.review_status(ThreadId(a.thread_id)).await?;
     Ok(content_json(&status))
 }
 
 /// List a thread's review decisions.
 pub(super) async fn list_reviews(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let reviews = store.list_reviews(ThreadId(a.thread_id)).await?;
     Ok(content_json(&reviews))
 }
@@ -185,7 +185,7 @@ pub(super) async fn list_review_history(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let history = store.list_review_history(ThreadId(a.thread_id)).await?;
     Ok(content_json(&history))
 }
@@ -342,7 +342,7 @@ pub(super) async fn get_review_requirement(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let req = store
         .get_review_requirement(ThreadId(a.thread_id))
         .await?
@@ -358,7 +358,7 @@ pub(super) async fn clear_review_requirement(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let workspace_id = super::thread_workspace(store.as_ref(), thread_id).await?;
     let cleared = store
@@ -385,7 +385,7 @@ pub(super) async fn list_reviewers(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let reviewers = store.list_reviewers(ThreadId(a.thread_id)).await?;
     Ok(content_json(&reviewers))
 }
@@ -404,7 +404,7 @@ pub(super) async fn remove_reviewer(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RemoveReviewerArgs = serde_json::from_value(args.clone())?;
+    let a: RemoveReviewerArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let workspace_id = super::thread_workspace(store.as_ref(), thread_id).await?;
     let removed = store

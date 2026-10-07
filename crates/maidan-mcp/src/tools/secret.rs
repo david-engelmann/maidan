@@ -42,7 +42,7 @@ pub(super) async fn resolve_secret(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ResolveArgs = serde_json::from_value(args.clone())?;
+    let a: ResolveArgs = crate::tools::parse_args(args)?;
     let Some(key) = server.encryption_key() else {
         return Err(McpError::Internal(
             "secret storage requires an encryption key configured on the server".into(),
@@ -98,7 +98,7 @@ pub(super) async fn allow_secret_egress_host(
     args: &Value,
 ) -> Result<Value, McpError> {
     auth.require_capability(SECRET_READ)?;
-    let a: HostArgs = serde_json::from_value(args.clone())?;
+    let a: HostArgs = crate::tools::parse_args(args)?;
     let host = maidan_types::normalize_secret_egress_host(&a.host)
         .map_err(|why| McpError::InvalidParams(why.to_string()))?;
     if !maidan_types::within_secret_egress_ceiling(&host, server.secret_egress_ceiling()) {
@@ -138,7 +138,7 @@ pub(super) async fn revoke_secret_egress_host(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: HostArgs = serde_json::from_value(args.clone())?;
+    let a: HostArgs = crate::tools::parse_args(args)?;
     let host = a.host.to_ascii_lowercase();
     let revoked = store
         .revoke_secret_egress_host_audited(
@@ -178,7 +178,7 @@ pub(super) async fn create_secret(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CreateSecretArgs = serde_json::from_value(args.clone())?;
+    let a: CreateSecretArgs = crate::tools::parse_args(args)?;
     if !maidan_types::is_valid_secret_name(&a.name) {
         return Err(McpError::InvalidParams(
             "secret name must be non-empty and use only [A-Za-z0-9_.-]".into(),
@@ -229,7 +229,7 @@ pub(super) async fn delete_secret(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ResolveArgs = serde_json::from_value(args.clone())?;
+    let a: ResolveArgs = crate::tools::parse_args(args)?;
     let deleted = store
         .delete_secret_audited(
             auth.workspace_id,

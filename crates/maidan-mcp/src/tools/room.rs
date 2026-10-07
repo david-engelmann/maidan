@@ -47,7 +47,7 @@ struct ParseUriArgs {
 /// Parse a hierarchical `maidan://{workspace_id}/…` room URI. MCP
 /// `maidan://threads/{id}` and `maidan:event/{id}` pins fail.
 pub(super) async fn parse_maidan_uri(args: &Value) -> Result<Value, McpError> {
-    let a: ParseUriArgs = serde_json::from_value(args.clone())?;
+    let a: ParseUriArgs = crate::tools::parse_args(args)?;
     let uri = RoomUri::parse(&a.uri).map_err(|e| McpError::InvalidParams(e.to_string()))?;
     Ok(content_json(&uri))
 }
@@ -63,7 +63,7 @@ pub(super) async fn get_room(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetRoomArgs = serde_json::from_value(args.clone())?;
+    let a: GetRoomArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
     let _ = store.get_workspace(workspace_id).await?;
@@ -86,7 +86,7 @@ pub(super) async fn set_workspace_handle(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetHandleArgs = serde_json::from_value(args.clone())?;
+    let a: SetHandleArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
     let row = store.set_workspace_handle(workspace_id, &a.handle).await?;
@@ -121,7 +121,7 @@ pub(super) async fn rotate_token(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let _: RotateArgs = serde_json::from_value(args.clone())?;
+    let _: RotateArgs = crate::tools::parse_args(args)?;
     let Some(token_id) = auth.token_id else {
         return Err(McpError::InvalidParams(
             "rotate_token rotates the bearer token of this call; there is none".into(),
@@ -167,7 +167,7 @@ pub(super) async fn attenuate_token(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AttenuateArgs = serde_json::from_value(args.clone())?;
+    let a: AttenuateArgs = crate::tools::parse_args(args)?;
     let capabilities = maidan_auth::attenuate(&holder_grant(auth), &a.capabilities)
         .map_err(McpError::InvalidParams)?;
     let parent = match auth.token_id {
@@ -254,7 +254,7 @@ pub(super) async fn delegate_token(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: DelegateTokenArgs = serde_json::from_value(args.clone())?;
+    let a: DelegateTokenArgs = crate::tools::parse_args(args)?;
     // One hop — see the REST twin. A borrowed token exchanging would use its
     // subject's grants and erase the real actor from the chain.
     if auth.delegation_grant_id.is_some() {
@@ -363,7 +363,7 @@ pub(super) async fn create_delegation_grant(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CreateDelegationGrantArgs = serde_json::from_value(args.clone())?;
+    let a: CreateDelegationGrantArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
     if let Some(unknown) = a
@@ -434,7 +434,7 @@ pub(super) async fn list_delegation_grants(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListDelegationGrantsArgs = serde_json::from_value(args.clone())?;
+    let a: ListDelegationGrantsArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
     Ok(content_json(
@@ -454,7 +454,7 @@ pub(super) async fn revoke_delegation_grant(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RevokeDelegationGrantArgs = serde_json::from_value(args.clone())?;
+    let a: RevokeDelegationGrantArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     let grant_id = DelegationGrantId(a.grant_id);
     auth.ensure_workspace(workspace_id)?;
@@ -782,7 +782,7 @@ pub(super) async fn set_delegation_policy(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetDelegationPolicyArgs = serde_json::from_value(args.clone())?;
+    let a: SetDelegationPolicyArgs = crate::tools::parse_args(args)?;
     let (actor, workspace_id) = (auth.actor_id, auth.workspace_id);
     let policy = store
         .set_delegation_policy_audited(
@@ -822,7 +822,7 @@ pub(super) async fn set_retention_policy(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let days: maidan_types::RetentionDays = serde_json::from_value(args.clone())?;
+    let days: maidan_types::RetentionDays = crate::tools::parse_args(args)?;
     let (actor, workspace_id) = (auth.actor_id, auth.workspace_id);
     let instance = server.instance_retention();
     let days = server

@@ -35,7 +35,7 @@ pub(super) async fn register_slash_command(
         )
         .map_err(McpError::from)?;
     }
-    let a: RegisterSlashCommandArgs = serde_json::from_value(args.clone())?;
+    let a: RegisterSlashCommandArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
@@ -127,7 +127,7 @@ pub(super) async fn list_slash_commands(
         )
         .map_err(McpError::from)?;
     }
-    let a: ListSlashCommandsArgs = serde_json::from_value(args.clone())?;
+    let a: ListSlashCommandsArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
@@ -204,7 +204,7 @@ pub(super) async fn register_fsm_hook(
         )
         .map_err(McpError::from)?;
     }
-    let a: RegisterFsmHookArgs = serde_json::from_value(args.clone())?;
+    let a: RegisterFsmHookArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
@@ -286,7 +286,7 @@ pub(super) async fn list_fsm_hooks(
         )
         .map_err(McpError::from)?;
     }
-    let a: ListFsmHooksArgs = serde_json::from_value(args.clone())?;
+    let a: ListFsmHooksArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
@@ -312,7 +312,7 @@ pub(super) async fn revoke_slash_command(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RevokeSlashArgs = serde_json::from_value(args.clone())?;
+    let a: RevokeSlashArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
@@ -338,7 +338,7 @@ pub(super) async fn revoke_fsm_hook(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RevokeFsmArgs = serde_json::from_value(args.clone())?;
+    let a: RevokeFsmArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;

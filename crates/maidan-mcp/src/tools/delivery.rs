@@ -29,7 +29,7 @@ pub(super) async fn list_result_deliveries(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArgs = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArgs = crate::tools::parse_args(args)?;
     let rows = store.list_result_deliveries(ThreadId(a.thread_id)).await?;
     Ok(content_json(&rows))
 }
@@ -48,7 +48,7 @@ pub(super) async fn replay_result_delivery_tool(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ReplayArgs = serde_json::from_value(args.clone())?;
+    let a: ReplayArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let delivery_id = ResultDeliveryId(a.delivery_id);
     let thread = store.get_thread(thread_id).await?;

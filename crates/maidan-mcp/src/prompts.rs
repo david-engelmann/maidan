@@ -34,7 +34,7 @@ pub async fn get(store: &Arc<dyn Store>, name: &str, args: &Value) -> Result<Val
 }
 
 async fn thread_workflow(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let parsed: ThreadWorkflowArgs = serde_json::from_value(args.clone())
+    let parsed: ThreadWorkflowArgs = crate::tools::parse_args(args)
         .map_err(|e| McpError::InvalidParams(format!("thread_workflow args: {e}")))?;
     let thread = store
         .get_thread(ThreadId(parsed.thread_id))

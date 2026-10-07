@@ -41,7 +41,7 @@ fn parse_envelope(args: &Value) -> Result<SignedExport, McpError> {
         serde_json::from_value(args["envelope"].clone())
             .map_err(|e| McpError::InvalidParams(format!("signed envelope: {e}")))
     } else {
-        serde_json::from_value(args.clone())
+        crate::tools::parse_args(args)
             .map_err(|e| McpError::InvalidParams(format!("signed envelope: {e}")))
     }
 }
@@ -69,7 +69,7 @@ pub(super) async fn export_workspace(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ExportArgs = serde_json::from_value(args.clone())?;
+    let a: ExportArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id.unwrap_or(auth.workspace_id.0));
     auth.ensure_workspace(workspace_id)?;
     let Some(key) = server.export_signing() else {

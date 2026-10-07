@@ -24,7 +24,7 @@ pub(super) async fn cast_vote(
     auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CastVoteArgs = serde_json::from_value(args.clone())?;
+    let a: CastVoteArgs = crate::tools::parse_args(args)?;
     if let Some(c) = a.confidence {
         if !(0.0..=1.0).contains(&c) {
             return Err(McpError::InvalidParams(
@@ -59,7 +59,7 @@ pub(super) async fn add_reaction(
     auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ReactionArgs = serde_json::from_value(args.clone())?;
+    let a: ReactionArgs = crate::tools::parse_args(args)?;
     let stored = server
         .store
         .add_reaction_with_event(NewReaction {
@@ -77,7 +77,7 @@ pub(super) async fn remove_reaction(
     auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ReactionArgs = serde_json::from_value(args.clone())?;
+    let a: ReactionArgs = crate::tools::parse_args(args)?;
     // The event is appended only when a row was actually removed (idempotent).
     let (removed, stored) = server
         .store
@@ -99,7 +99,7 @@ pub(super) async fn list_reactions(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListReactionsArgs = serde_json::from_value(args.clone())?;
+    let a: ListReactionsArgs = crate::tools::parse_args(args)?;
     let list = store
         .list_reactions_for_message(MessageId(a.message_id))
         .await?;
@@ -118,7 +118,7 @@ pub(super) async fn pin_message(
     auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: PinArgs = serde_json::from_value(args.clone())?;
+    let a: PinArgs = crate::tools::parse_args(args)?;
     let stored = server
         .store
         .pin_message_with_event(NewPin {
@@ -136,7 +136,7 @@ pub(super) async fn unpin_message(
     auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: PinArgs = serde_json::from_value(args.clone())?;
+    let a: PinArgs = crate::tools::parse_args(args)?;
     let (removed, stored) = server
         .store
         .unpin_message_with_event(
@@ -158,7 +158,7 @@ struct ListPinsArgs {
 }
 
 pub(super) async fn list_pins(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ListPinsArgs = serde_json::from_value(args.clone())?;
+    let a: ListPinsArgs = crate::tools::parse_args(args)?;
     let list = store.list_pins_for_thread(ThreadId(a.thread_id)).await?;
     Ok(content_json(&list))
 }
@@ -171,7 +171,7 @@ struct ListVotesArgs {
 
 /// Votes on a message. Twin of `GET /messages/{id}/votes`.
 pub(super) async fn list_votes(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ListVotesArgs = serde_json::from_value(args.clone())?;
+    let a: ListVotesArgs = crate::tools::parse_args(args)?;
     let votes = store
         .list_votes_for_message(MessageId(a.message_id))
         .await?;

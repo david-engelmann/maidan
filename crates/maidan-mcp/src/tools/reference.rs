@@ -25,7 +25,7 @@ pub(super) async fn add_reference(
     server: &crate::server::McpServer,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AddReferenceArgs = serde_json::from_value(args.clone())?;
+    let a: AddReferenceArgs = crate::tools::parse_args(args)?;
     // Emit ReferenceAdded (atomic) + bus-notify, like REST.
     let (r, stored) = server
         .store
@@ -59,7 +59,7 @@ pub(super) async fn list_references(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListReferencesArgs = serde_json::from_value(args.clone())?;
+    let a: ListReferencesArgs = crate::tools::parse_args(args)?;
     let mut refs = match (a.src_kind, a.src_id, a.dst_kind, a.dst_id) {
         (Some(sk), Some(si), None, None) => store.list_references_from(sk, si).await?,
         (None, None, Some(dk), Some(di)) => store.list_references_to(dk, di).await?,

@@ -74,7 +74,7 @@ pub(super) async fn set_thread_budget(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetBudgetArgs = serde_json::from_value(args.clone())?;
+    let a: SetBudgetArgs = crate::tools::parse_args(args)?;
     let patch = a.patch();
     let missing = patch.missing_dimensions();
     if !missing.is_empty() {
@@ -101,7 +101,7 @@ pub(super) async fn update_thread_budget(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetBudgetArgs = serde_json::from_value(args.clone())?;
+    let a: SetBudgetArgs = crate::tools::parse_args(args)?;
     let budget = store
         .patch_thread_budget(ThreadId(a.thread_id), a.patch())
         .await?;
@@ -118,7 +118,7 @@ pub(super) async fn get_thread_budget(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let budget = store.get_thread_budget(ThreadId(a.thread_id)).await?;
     Ok(content_json(&budget))
 }
@@ -163,7 +163,7 @@ pub(super) async fn report_usage(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ReportUsageArgs = serde_json::from_value(args.clone())?;
+    let a: ReportUsageArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let reporter = if auth.bypass {
         server
@@ -196,7 +196,7 @@ struct ListDlqArgs {
 /// A channel's agent-work dead-letter queue — runs stopped for exceeding their
 /// budget, newest first. Channel access is enforced pre-dispatch.
 pub(super) async fn list_dlq(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ListDlqArgs = serde_json::from_value(args.clone())?;
+    let a: ListDlqArgs = crate::tools::parse_args(args)?;
     let limit = a.limit.unwrap_or(50).clamp(1, 200);
     let entries = store
         .list_channel_dlq(ChannelId(a.channel_id), limit)
@@ -256,7 +256,7 @@ pub(super) async fn usage_rollup(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: UsageRollupArgs = serde_json::from_value(args.clone())?;
+    let a: UsageRollupArgs = crate::tools::parse_args(args)?;
     if a.thread_id.is_some() && a.member_id.is_some() {
         return Err(McpError::InvalidParams(
             "name thread_id or member_id, not both".into(),

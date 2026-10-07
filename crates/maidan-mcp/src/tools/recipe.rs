@@ -31,7 +31,7 @@ pub(super) async fn create_recipe(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CreateRecipeArgs = serde_json::from_value(args.clone())?;
+    let a: CreateRecipeArgs = crate::tools::parse_args(args)?;
     if a.name.trim().is_empty() {
         return Err(McpError::InvalidParams("name must not be empty".into()));
     }
@@ -95,7 +95,7 @@ pub(super) async fn instantiate_recipe(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: InstantiateArgs = serde_json::from_value(args.clone())?;
+    let a: InstantiateArgs = crate::tools::parse_args(args)?;
     let recipe_id = RecipeId(a.recipe_id);
     let recipe = server.store.get_recipe(recipe_id).await?;
     if !auth.bypass && recipe.workspace_id != auth.workspace_id {
@@ -126,7 +126,7 @@ pub(super) async fn delete_recipe(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: DeleteRecipeArgs = serde_json::from_value(args.clone())?;
+    let a: DeleteRecipeArgs = crate::tools::parse_args(args)?;
     let recipe_id = RecipeId(a.recipe_id);
     let recipe = store.get_recipe(recipe_id).await?;
     if !auth.bypass && recipe.workspace_id != auth.workspace_id {

@@ -26,7 +26,7 @@ pub(super) async fn add_member_skill(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberSkillArgs = serde_json::from_value(args.clone())?;
+    let a: MemberSkillArgs = crate::tools::parse_args(args)?;
     if a.skill.trim().is_empty() {
         return Err(McpError::InvalidParams("skill must not be empty".into()));
     }
@@ -94,7 +94,7 @@ pub(super) async fn list_member_skills(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberIdArgs = serde_json::from_value(args.clone())?;
+    let a: MemberIdArgs = crate::tools::parse_args(args)?;
     let skills = store.list_member_skills(MemberId(a.member_id)).await?;
     Ok(content_json(&skills))
 }
@@ -112,7 +112,7 @@ pub(super) async fn add_thread_required_skill(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadSkillArgs = serde_json::from_value(args.clone())?;
+    let a: ThreadSkillArgs = crate::tools::parse_args(args)?;
     if a.skill.trim().is_empty() {
         return Err(McpError::InvalidParams("skill must not be empty".into()));
     }
@@ -134,7 +134,7 @@ pub(super) async fn list_thread_required_skills(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArgs = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArgs = crate::tools::parse_args(args)?;
     let skills = store
         .list_thread_required_skills(ThreadId(a.thread_id))
         .await?;
@@ -150,7 +150,7 @@ pub(super) async fn remove_member_skill(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberSkillArgs = serde_json::from_value(args.clone())?;
+    let a: MemberSkillArgs = crate::tools::parse_args(args)?;
     if !auth.bypass {
         let target = MemberId(a.member_id);
         let admin = maidan_auth::require_observed_capability(
@@ -188,7 +188,7 @@ pub(super) async fn remove_thread_required_skill(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadSkillArgs = serde_json::from_value(args.clone())?;
+    let a: ThreadSkillArgs = crate::tools::parse_args(args)?;
     let removed = store
         .remove_thread_required_skill(ThreadId(a.thread_id), &a.skill)
         .await?;

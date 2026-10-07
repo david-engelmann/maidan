@@ -31,7 +31,7 @@ pub(super) async fn seed_from_message(
     args: &Value,
 ) -> Result<Value, McpError> {
     let store = &server.store;
-    let a: SeedArgs = serde_json::from_value(args.clone())?;
+    let a: SeedArgs = crate::tools::parse_args(args)?;
     let source_id = MessageId(a.message_id);
     let chain = resolve_message_chain(store.as_ref(), source_id)
         .await

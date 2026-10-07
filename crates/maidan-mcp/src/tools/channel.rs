@@ -61,7 +61,7 @@ pub(super) async fn add_channel_member(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AddChannelMemberArgs = serde_json::from_value(args.clone())?;
+    let a: AddChannelMemberArgs = crate::tools::parse_args(args)?;
     let channel = own_channel(store, auth, ChannelId(a.channel_id)).await?;
     let member = store
         .get_member_in(channel.workspace_id, MemberId(a.member_id))
@@ -96,7 +96,7 @@ pub(super) async fn list_channel_members(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ChannelRefArgs = serde_json::from_value(args.clone())?;
+    let a: ChannelRefArgs = crate::tools::parse_args(args)?;
     own_channel(store, auth, ChannelId(a.channel_id)).await?;
     let members = store.list_channel_members(ChannelId(a.channel_id)).await?;
     Ok(content_json(&members))
@@ -107,7 +107,7 @@ pub(super) async fn remove_channel_member(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ChannelMemberRefArgs = serde_json::from_value(args.clone())?;
+    let a: ChannelMemberRefArgs = crate::tools::parse_args(args)?;
     let channel = own_channel(store, auth, ChannelId(a.channel_id)).await?;
     store
         .remove_channel_member_audited(
@@ -138,7 +138,7 @@ pub(super) async fn mute_channel(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ChannelRefArgs = serde_json::from_value(args.clone())?;
+    let a: ChannelRefArgs = crate::tools::parse_args(args)?;
     store
         .mute_channel(auth.member_id, ChannelId(a.channel_id))
         .await?;
@@ -152,7 +152,7 @@ pub(super) async fn unmute_channel(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ChannelRefArgs = serde_json::from_value(args.clone())?;
+    let a: ChannelRefArgs = crate::tools::parse_args(args)?;
     let unmuted = store
         .unmute_channel(auth.member_id, ChannelId(a.channel_id))
         .await?;
@@ -164,7 +164,7 @@ pub(super) async fn list_channels(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListChannelsArgs = serde_json::from_value(args.clone())?;
+    let a: ListChannelsArgs = crate::tools::parse_args(args)?;
     let channels = store.list_channels(WorkspaceId(a.workspace_id)).await?;
     if auth.bypass {
         return Ok(content_json(&channels));
@@ -201,7 +201,7 @@ pub(super) async fn create_channel(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CreateChannelArgs = serde_json::from_value(args.clone())?;
+    let a: CreateChannelArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
     let (channel, stored) = server
@@ -254,7 +254,7 @@ pub(super) async fn open_dm_conversation(
     auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: OpenDmArgs = serde_json::from_value(args.clone())?;
+    let a: OpenDmArgs = crate::tools::parse_args(args)?;
     let dm = store
         .open_dm_conversation(
             WorkspaceId(a.workspace_id),
@@ -276,7 +276,7 @@ pub(super) async fn list_dm_conversations(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListDmArgs = serde_json::from_value(args.clone())?;
+    let a: ListDmArgs = crate::tools::parse_args(args)?;
     let list = store
         .list_dm_conversations_for_member(WorkspaceId(a.workspace_id), MemberId(a.member_id))
         .await?;
@@ -414,7 +414,7 @@ pub(super) async fn open_group_dm(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: OpenGroupDmArgs = serde_json::from_value(args.clone())?;
+    let a: OpenGroupDmArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
@@ -439,7 +439,7 @@ pub(super) async fn list_group_dms(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListGroupDmsArgs = serde_json::from_value(args.clone())?;
+    let a: ListGroupDmsArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
@@ -462,7 +462,7 @@ pub(super) async fn get_group_dm(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetGroupDmArgs = serde_json::from_value(args.clone())?;
+    let a: GetGroupDmArgs = crate::tools::parse_args(args)?;
     let group = store
         .get_group_dm_conversation(GroupDmConversationId(a.group_dm_conversation_id))
         .await?;

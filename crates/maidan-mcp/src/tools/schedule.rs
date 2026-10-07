@@ -37,7 +37,7 @@ pub(super) async fn create_task_schedule(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CreateScheduleArgs = serde_json::from_value(args.clone())?;
+    let a: CreateScheduleArgs = crate::tools::parse_args(args)?;
     if a.title.trim().is_empty() {
         return Err(McpError::InvalidParams("title must not be empty".into()));
     }
@@ -137,7 +137,7 @@ pub(super) async fn set_task_schedule_active(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetScheduleActiveArgs = serde_json::from_value(args.clone())?;
+    let a: SetScheduleActiveArgs = crate::tools::parse_args(args)?;
     let id = TaskScheduleId(a.schedule_id);
     authorize_schedule(store, auth, id).await?;
     let updated = store.set_task_schedule_active(id, a.active).await?;
@@ -150,7 +150,7 @@ pub(super) async fn delete_task_schedule(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ScheduleIdArgs = serde_json::from_value(args.clone())?;
+    let a: ScheduleIdArgs = crate::tools::parse_args(args)?;
     let id = TaskScheduleId(a.schedule_id);
     authorize_schedule(store, auth, id).await?;
     if !store.delete_task_schedule(id).await? {
