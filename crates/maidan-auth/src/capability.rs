@@ -52,7 +52,8 @@ pub const OPERATOR_GLOBAL: &str = "operator:global";
 /// is human-control state: accepting one needs a human member, or a token an
 /// admin deliberately granted this, for an automated approver the workspace
 /// trusts. In no preset and not delegatable: approving is authority, not
-/// work, and a worker must never be able to approve another worker's request.
+/// work. A worker token, which never carries it, cannot accept another
+/// worker's request.
 pub const APPROVAL_GRANT: &str = "approval:grant";
 
 const KNOWN: &[&str] = &[
