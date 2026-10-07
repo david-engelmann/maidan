@@ -32,9 +32,6 @@ suite="@modelcontextprotocol/conformance@${MAIDAN_CONFORMANCE_VERSION:-0.2.0-alp
 base="http://127.0.0.1:${port}"
 bin_dir="${MAIDAN_BIN_DIR:-}"
 out="${MAIDAN_CONFORMANCE_OUT:-}"
-# The binaries refuse a MAIDAN_* variable they do not know, so this script's
-# own settings stop here.
-unset MAIDAN_MCP_PORT MAIDAN_CONFORMANCE_VERSION MAIDAN_BIN_DIR MAIDAN_CONFORMANCE_OUT
 
 if [[ -z "$bin_dir" ]]; then
   echo "=== building maidan-server + maidan ==="
