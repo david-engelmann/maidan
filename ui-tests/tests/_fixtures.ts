@@ -60,6 +60,13 @@ export interface Fixtures {
   lab_thread_id: string;
   /** The lab member. A third person, so a group DM can be opened. */
   lab_member_id: string;
+  /** Rae Reviewer, a second human, so the member picker offers a human. */
+  rae_member_id: string;
+  /** A second workspace: its Visitor (human), Outsider (agent) and the Visitor's token. */
+  other_workspace_id: string;
+  other_member_id: string;
+  outsider_member_id: string;
+  other_token: string;
   /** Admin grant (token:admin and the worker preset). Connect an agent uses it. */
   admin_token: string;
   /** A dead-lettered webhook delivery the Operator tab can replay. */

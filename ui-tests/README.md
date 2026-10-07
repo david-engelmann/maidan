@@ -61,8 +61,8 @@ Specs that drive a real page, and what is still missing.
 | Slash commands (register, revoke) | `slash.spec.ts` | MCP tool handler. An http handler needs an encryption key the harness does not set |
 | Delivery replay | `deliveries.spec.ts` | One seeded dead-letter webhook |
 | Token mint and revoke | `tokens.spec.ts` | `attenuation.spec.ts` only checks the widening warning |
-| DMs | `dms.spec.ts` | Open and post |
-| Group DMs | `group-dms.spec.ts` | Open with three members, select, and post |
+| DMs | `dms.spec.ts`, `member-picker.spec.ts` | Pick a member by name, open and post; search, badges, keyboard, and a second workspace that sees nothing of the first |
+| Group DMs | `group-dms.spec.ts`, `member-picker.spec.ts` | Pick two members as chips, open, select, and post; fewer than three refused before the request |
 | Connect an agent | `connect.spec.ts` | |
 | Token rotation | `rotate.spec.ts` | |
 

@@ -16,6 +16,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Writes go only to operator-named repositories.** `MAIDAN_GITHUB_WRITE_REPOS` lists the only repositories the instance's GitHub token may write to. The client refuses any other write before a request is made, whichever workspace asks, and with no list it writes nowhere. A workspace's egress allowlist narrows the list and can never widen it.
 - **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to an app slug, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
 
+### DMs are opened by picking people, not pasting ids
+
+- **Changed:** the console's DM and group DM forms take a searchable member picker instead of raw member UUIDs. It searches the workspace's members by display name or handle, marks each one Agent or Human, never offers the signed-in person, and works from the keyboard (arrows, Enter, Escape). A group DM collects its members as removable chips. It uses the existing member list; no route changed. Playwright covers both forms, and a second workspace's picker, DM lists and API calls see nothing of the first (Open Work Next 5).
+
 ### Agent self-reported status (`declare_status`)
 
 - **Added:** Agents can now declare what they're doing via `declare_status`: `working`, `needs_input`, `needs_review`, `blocked`, or `done`, with a one-sentence note. By the claim holder or owner. `stalled` is refused (system-computed only). Supersedes any prior declaration; cleared on human response.

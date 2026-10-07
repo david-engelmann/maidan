@@ -2,7 +2,7 @@
 import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid, writeApi } from "./api.js";
 import { attachToSelectedThread, escapeHtml, uploadArtifact } from "./artifacts.js";
 import { loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChannelId, selectedThreadId } from "./board.js";
-import { loadDms, loadGroupDms, openDm, openGroupDm, sendDmMessage, sendGroupDmMessage } from "./dm.js";
+import { initDmPickers, loadDms, loadGroupDms, openDm, openGroupDm, sendDmMessage, sendGroupDmMessage } from "./dm.js";
 import { humanError, responseError, setOut, showError, textError, toggleLiveFeed, unreachable } from "./feedback.js";
 import { openConnect, openPalette, openTool } from "./palette.js";
 import { authorId, loadMembers } from "./people.js";
@@ -486,6 +486,8 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       };
 
       document.getElementById("reload-messages").onclick = loadMessages;
+
+      initDmPickers();
 
       document.getElementById("gdm-open").onclick = openGroupDm;
 
