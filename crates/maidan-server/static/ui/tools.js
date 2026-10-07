@@ -4,7 +4,7 @@ import { escapeHtml } from "./artifacts.js";
 import { clearLoading, renderState, responseError, setLoading, setOut, setStatus, showError, unreachable } from "./feedback.js";
 import { authorId, memberName } from "./people.js";
 import { connectWs, disconnectWs, wsSocket } from "./realtime.js";
-import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
+import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showSecretOnce } from "./session.js";
 
 
       let approvalsLoading = false;
@@ -1118,6 +1118,8 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
           : me.delegation_grant_id
             ? "delegated token — works as this member under a grant"
             : "bearer token — acts as this member";
+        // The panel read /me afresh, so the header word follows it.
+        showIdentityMode(credentialMode(me));
         document.getElementById("session-rotate").hidden = !(currentTokenId && token());
         const granted = new Set(me.capabilities || []);
         const known = me.known_capabilities || [];

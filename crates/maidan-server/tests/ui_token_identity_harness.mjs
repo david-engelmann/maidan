@@ -120,6 +120,9 @@ const people = new URL("../static/ui/people.js", import.meta.url).href;
 const session = await import(ui);
 const { refreshBearerIdentity } = session;
 const { authorId } = await import(people);
+// The same module instance session.js imported, so humanError reads the mode
+// the sign-in set.
+const { humanError } = await import(new URL("../static/ui/feedback.js", import.meta.url).href);
 
 let meThrows = false;
 // A /me answer held back until the test releases it, keyed by the token.
@@ -137,11 +140,13 @@ globalThis.fetch = async (url, options) => {
     const held = heldMe.get(auth.replace(/^Bearer /, ""));
     if (held) return held;
     if (meThrows) throw new TypeError("network down");
-    const member = auth === "Bearer secret-b" ? "mem_b" : "mem_old";
+    const member = auth === "Bearer secret-b" ? "mem_b" : auth === "Bearer secret-d" ? "mem_d" : "mem_old";
+    // secret-d works as its member under a delegation grant.
+    const grant = auth === "Bearer secret-d" ? "grant_1" : null;
     return {
       ok: true,
       status: 200,
-      json: async () => ({ member_id: member, workspace_id: "ws_1" }),
+      json: async () => ({ member_id: member, workspace_id: "ws_1", is_bearer: true, delegation_grant_id: grant }),
       text: async () => "",
     };
   }
@@ -197,6 +202,28 @@ await Promise.all(change.map((fn) => fn()));
 assert.equal(session.bearerMemberId, "mem_b");
 assert.equal(authorId(), "mem_b");
 assert.notEqual(status.className, "err", "token B's success clears token A's rejection");
+
+// The header names the credential, and a refusal uses its words. A failed
+// sign-in forgets the mode rather than keeping the previous token's.
+const badge = document.getElementById("identity-mode");
+assert.equal(badge.hidden, false, "a working token shows its mode");
+assert.equal(badge.textContent, "bearer token");
+assert.equal(badge.dataset.mode, "bearer");
+assert.match(humanError(403, "forbidden"), /^Your token is not allowed/);
+
+document.getElementById("token").value = "secret-d";
+await Promise.all(change.map((fn) => fn()));
+assert.equal(session.bearerMemberId, "mem_d");
+assert.equal(badge.textContent, "delegated token");
+assert.equal(badge.dataset.mode, "delegated");
+assert.match(humanError(403, "forbidden"), /^This delegated token is not allowed/);
+
+meThrows = true;
+document.getElementById("token").value = "secret-gone";
+await Promise.all(change.map((fn) => fn()));
+assert.equal(badge.hidden, true, "a failed sign-in hides the mode");
+assert.equal(badge.textContent, "");
+assert.equal(humanError(401, ""), "Your token or session was not accepted. Use Change to set a working one");
 
 // The page keeps retrying its live socket by design, and Node has no socket
 // server here, so end once every assertion has passed.

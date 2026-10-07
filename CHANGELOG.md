@@ -692,6 +692,15 @@ Refs #1253
   the share route and thread context already refused one. All of them now
   answer `404` / `NotFound`.
 
+### The header names the credential, and errors use its words
+
+- **Added:** the `/ui` header shows which credential the page acts with
+  (`session`, `bearer token` or `delegated token`, read from `GET /me`) as a
+  muted word after the workspace name. A refusal names that credential: a
+  signed-in session is told about its session and how to paste a token, never
+  "your token", and a delegated token is told it holds only what its grant
+  lends (Open Work Next 4, first half).
+
 ### Decisions keep their history
 
 - **Added:** every review verdict and land-gate verdict is appended to a

@@ -936,8 +936,19 @@ fn ui_js_board_has_its_own_loading_and_error_states() {
 fn ui_js_missing_token_admin_does_not_send_you_back_to_tokens() {
     let s = script(HTML);
     assert!(
-        s.contains("if (status === 403 && needs && needs[1] === \"token:admin\")"),
-        "minting needs token:admin, so a token:admin refusal must not say mint one in Tokens"
+        s.contains("if (status === 403) return refusal(needs ? needs[1] : null, mode);"),
+        "every 403 goes through the one refusal sentence"
+    );
+    let refusal = function_body(s, "refusal");
+    let admin = refusal
+        .find("if (cap === \"token:admin\")")
+        .expect("a token:admin branch");
+    let mint = refusal
+        .find("Mint a token with it in Tokens")
+        .expect("the mint sentence");
+    assert!(
+        admin < mint,
+        "minting needs token:admin, so a token:admin refusal must not say mint one in Tokens, in any mode"
     );
 }
 

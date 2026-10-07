@@ -88,25 +88,56 @@ import { base } from "./api.js";
         return `${lead}${said}`;
       }
 
+      // Which credential the page acts with, from GET /me: "session" (a
+      // sign-in, whose capabilities are fixed), "bearer" (a token, or the
+      // session made from one), "delegated" (a token working as a member
+      // under a delegation grant), or null until the page knows. An error
+      // sentence names the credential the person actually holds.
+      let identityMode = null;
+
+      function setIdentityMode(mode) {
+        identityMode = mode === "session" || mode === "bearer" || mode === "delegated" ? mode : null;
+      }
+export { setIdentityMode };
+
       // Say what went wrong and what to do about it. The server body is read
       // only so a missing capability can be named. It is not shown, and neither
       // is the status code. A 409 is a rule refusing the action.
-      function humanError(status, detail) {
+      function humanError(status, detail, mode = identityMode) {
         const needs = /(?:capability|needs?|requires?)[^a-z]*([a-z]+:[a-z_]+)/i.exec(detail || "");
-        if (status === 401) return "Your token or session was not accepted. Use Change to set a working one";
-        // Minting itself needs token:admin, so pointing at Tokens would loop.
-        if (status === 403 && needs && needs[1] === "token:admin")
-          return "Your token is not allowed to do this; it needs token:admin. Ask a workspace admin for a token (maidan init prints the first admin token)";
-        if (status === 403)
-          return needs
-            ? `Your token is not allowed to do this; it needs ${needs[1]}. Mint a token with it in Tokens`
-            : "Your token is not allowed to do this. Mint one with the right capability in Tokens";
+        if (status === 401) {
+          // A session cannot be fixed with Change alone: it ended, so sign in.
+          if (mode === "session") return "Your session was not accepted; it may have ended. Sign in again, or use Change to paste a token";
+          if (mode === "delegated") return "This delegated token was not accepted; it or its grant may have ended. Use Change to set a working one";
+          if (mode === "bearer") return "Your token was not accepted. Use Change to set a working one";
+          return "Your token or session was not accepted. Use Change to set a working one";
+        }
+        if (status === 403) return refusal(needs ? needs[1] : null, mode);
         if (status === 404) return "Not found. It may have been deleted, or it belongs to another workspace";
         if (status === 409) return "Refused";
         if (status === 413) return "That is too large for the server to accept";
         if (status === 429) return "Too many requests. Wait a moment, then try again";
         if (status >= 500) return "The server hit an error. Try again; if it keeps failing, check the server log";
         return "The request was not accepted";
+      }
+
+      // A 403 in the words of the credential that was refused. Minting itself
+      // needs token:admin, so pointing at Tokens would loop. A session cannot
+      // mint at all, and a delegated token holds only what its grant lends.
+      function refusal(cap, mode) {
+        const who = mode === "session" ? "Your session" : mode === "delegated" ? "This delegated token" : "Your token";
+        const lead = cap ? `${who} is not allowed to do this; it needs ${cap}.` : `${who} is not allowed to do this.`;
+        if (cap === "token:admin")
+          return `${lead} Ask a workspace admin for a token (maidan init prints the first admin token)`;
+        if (mode === "session")
+          return cap
+            ? `${lead} A session cannot mint tokens, so use Change to paste a token that has it`
+            : `${lead} Use Change to paste a token with the right capability`;
+        if (mode === "delegated")
+          return cap
+            ? `${lead} It holds only what its grant lends: ask for a grant that includes it`
+            : `${lead} It holds only what its grant lends: ask for a grant with the right capability`;
+        return cap ? `${lead} Mint a token with it in Tokens` : `${lead} Mint one with the right capability in Tokens`;
       }
 
       // A list row that acts on click is also a button for the keyboard: it

@@ -40,7 +40,7 @@ test("a revoked token is told what to fix, and the queue and tab count stay", as
 
   const state = page.locator("#needs-you-state");
   await expect(state).toHaveText(
-    "Could not load what is waiting on you: Your token or session was not accepted. Use Change to set a working one",
+    "Could not load what is waiting on you: Your token was not accepted. Use Change to set a working one",
   );
   await expect(state).toHaveClass(/\berr\b/);
   await expect(page.locator("#needs-you")).toBeVisible();

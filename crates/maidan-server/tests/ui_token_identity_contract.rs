@@ -1,4 +1,5 @@
-//! Pasting a token must not keep the previous member when `/me` never answers.
+//! Pasting a token must not keep the previous member when `/me` never answers,
+//! and the header's credential word follows the token that `/me` accepted.
 //! The page handler is the one in `static/ui/session.js`. Node runs that
 //! module against a stub document. A copy of the handler would not count.
 
