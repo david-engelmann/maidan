@@ -31,7 +31,12 @@ client ships a release that changes how it does MCP.
 
 ## Recipes
 
-The examples use `https://maidan.example.com` and a token in `MAIDAN_TOKEN`.
+The examples use `https://maidan.example.com` and a token in the environment
+variable `MAIDAN_TOKEN`. Where a client reads environment variables in its
+configuration file, the recipe uses that, so the token is never written into
+the file. A client that stores the header itself keeps it in your home
+directory. Keep that file private, and never commit a project-level MCP
+configuration that holds a token.
 
 ### Claude Code
 
@@ -69,14 +74,15 @@ gemini mcp add --transport http -H "Authorization: Bearer $MAIDAN_TOKEN" \
 ```
 
 Or in `settings.json`, use `httpUrl`. A plain `url` selects the older SSE
-transport, which Maidan does not serve on this path.
+transport, which Maidan does not serve on this path. Gemini CLI expands
+`${MAIDAN_TOKEN}` in the file from the environment.
 
 ```json
 {
   "mcpServers": {
     "maidan": {
       "httpUrl": "https://maidan.example.com/mcp/streamable",
-      "headers": { "Authorization": "Bearer YOUR_TOKEN" }
+      "headers": { "Authorization": "Bearer ${MAIDAN_TOKEN}" }
     }
   }
 }
@@ -84,21 +90,12 @@ transport, which Maidan does not serve on this path.
 
 ### GitHub Copilot CLI
 
-In `~/.copilot/mcp-config.json`, or through `/mcp add` with the URL and the
-header.
-
-```json
-{
-  "mcpServers": {
-    "maidan": {
-      "type": "http",
-      "url": "https://maidan.example.com/mcp/streamable",
-      "headers": { "Authorization": "Bearer YOUR_TOKEN" },
-      "tools": ["*"]
-    }
-  }
-}
-```
+Run `/mcp add`, choose HTTP, and give it the URL
+`https://maidan.example.com/mcp/streamable` and the header
+`Authorization: Bearer <token>`. Copilot CLI saves the server in
+`~/.copilot/mcp-config.json`, and its documentation names no way to read the
+token from the environment there, so the token sits in that file in plain text.
+Keep it private.
 
 ### claude.ai custom connector
 
