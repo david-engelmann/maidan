@@ -64,7 +64,7 @@ Refs #1253
 
 ### A DNS-rebinding page gets nothing from an open mode
 
-- **Fixed:** A page on another site that points its own name at this machine could reach a server running with `AUTH_DISABLED`, or the anonymous MCP reader, and act as a caller with no credential. Such a request is now refused (403) when the server listens on a loopback address and `Host` is not a loopback name, or when its `Origin` is not its `Host`. A request with a credential is never judged by this, so a reverse proxy that forwards a public `Host` keeps working. The official conformance suite's DNS-rebinding check now passes.
+- **Fixed:** A page on another site that points its own name at this machine could reach a server running with `AUTH_DISABLED`, or the anonymous MCP reader, and act as a caller with no credential. Such a request is now refused (403) unless its `Host` is a loopback name, an IP address, or a name in the new `MAIDAN_ALLOWED_HOSTS`, and unless its `Origin` (if any) is its `Host`. A rebinding page can only present a name of its own, so this holds on a server bound to every interface, as a container is. A request with a credential is never judged by this, so a reverse proxy that forwards a public `Host` keeps working. The official conformance suite's DNS-rebinding check now passes.
 
 ### The official MCP conformance suite runs against Maidan
 

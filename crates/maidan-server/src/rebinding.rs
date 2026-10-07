@@ -8,11 +8,13 @@
 //! request with no credential everything that request may do, which here means
 //! `AUTH_DISABLED` and the anonymous dev reader of MCP.
 //!
-//! So a request that rides one of those open modes is refused (403) when the
-//! server is bound to a loopback address and `Host` is not a loopback name, and
-//! when it carries an `Origin` whose authority is not its `Host`. A request with
-//! a credential is never judged here, so a reverse proxy that forwards a public
-//! `Host` to a loopback-bound server keeps working.
+//! So a request that rides one of those open modes is refused (403) when its
+//! `Host` names neither a loopback name, an IP address, nor a name listed in
+//! `MAIDAN_ALLOWED_HOSTS`, and when it carries an `Origin` whose authority is
+//! not its `Host`. A rebinding page can only present a name of its own, never
+//! an IP address, so the rule holds however the server is bound, including on
+//! every interface as a container is. A request with a credential is never
+//! judged here, so a reverse proxy that forwards a public `Host` keeps working.
 
 use axum::{
     extract::{Request, State},
@@ -25,7 +27,7 @@ use crate::{error::ApiError, AppState};
 
 pub async fn middleware(State(state): State<AppState>, req: Request, next: Next) -> Response {
     if rides_an_open_mode(&state, &req) {
-        if let Err(reason) = judge(state.loopback_bind, req.headers()) {
+        if let Err(reason) = judge(&state.allowed_hosts, req.headers()) {
             return ApiError::Forbidden(reason.into()).into_response();
         }
     }
@@ -44,13 +46,17 @@ fn rides_an_open_mode(state: &AppState, req: &Request) -> bool {
 }
 
 /// `Err` with the reason a credential-less request is refused.
-pub(crate) fn judge(loopback_bind: bool, headers: &HeaderMap) -> Result<(), &'static str> {
+pub(crate) fn judge(allowed_hosts: &[String], headers: &HeaderMap) -> Result<(), &'static str> {
     let host = headers
         .get(header::HOST)
         .and_then(|h| h.to_str().ok())
         .unwrap_or_default();
-    if loopback_bind && !is_loopback_name(host_name(host)) {
-        return Err("a server on a loopback address answers only a loopback Host");
+    let name = host_name(host).trim_end_matches('.').to_ascii_lowercase();
+    let named = is_loopback_name(&name)
+        || name.parse::<std::net::IpAddr>().is_ok()
+        || allowed_hosts.contains(&name);
+    if !named {
+        return Err("a request with no credential must name this server: a loopback name, an IP address, or a host in MAIDAN_ALLOWED_HOSTS");
     }
     if let Some(origin) = headers.get(header::ORIGIN) {
         let authority = origin
@@ -65,6 +71,15 @@ pub(crate) fn judge(loopback_bind: bool, headers: &HeaderMap) -> Result<(), &'st
     Ok(())
 }
 
+/// The names `MAIDAN_ALLOWED_HOSTS` lists (comma-separated, without ports),
+/// lowercased.
+pub fn allowed_hosts_from(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|h| h.trim().trim_end_matches('.').to_ascii_lowercase())
+        .filter(|h| !h.is_empty())
+        .collect()
+}
+
 /// `host[:port]` or `[v6][:port]`, without the port.
 fn host_name(authority: &str) -> &str {
     if let Some(rest) = authority.strip_prefix('[') {
@@ -76,7 +91,6 @@ fn host_name(authority: &str) -> &str {
 }
 
 fn is_loopback_name(name: &str) -> bool {
-    let name = name.trim_end_matches('.').to_ascii_lowercase();
     name == "localhost"
         || name.ends_with(".localhost")
         || name
@@ -100,38 +114,50 @@ mod tests {
     }
 
     #[test]
-    fn a_rebound_name_is_refused_on_a_loopback_server() {
+    fn a_rebound_name_is_refused_however_the_server_is_bound() {
         let rebound = headers(
             "evil.example.com:8080",
             Some("http://evil.example.com:8080"),
         );
-        assert!(judge(true, &rebound).is_err());
+        assert!(judge(&[], &rebound).is_err());
         for host in [
             "localhost:8080",
             "127.0.0.1:8080",
             "[::1]:8080",
             "app.localhost",
             "127.0.0.2",
+            "192.168.1.20:8080",
+            "[fd00::1]:8080",
         ] {
             let origin = format!("http://{host}");
-            assert!(judge(true, &headers(host, Some(&origin))).is_ok(), "{host}");
-            assert!(judge(true, &headers(host, None)).is_ok(), "{host}");
+            assert!(judge(&[], &headers(host, Some(&origin))).is_ok(), "{host}");
+            assert!(judge(&[], &headers(host, None)).is_ok(), "{host}");
         }
     }
 
     #[test]
-    fn another_origin_is_refused_wherever_the_server_is_bound() {
+    fn a_listed_host_is_this_server() {
+        let allowed = allowed_hosts_from(" Dev.Example.com , ,other.example.");
+        assert_eq!(allowed, ["dev.example.com", "other.example"]);
+        let named = headers("dev.example.com", Some("https://dev.example.com"));
+        assert!(judge(&allowed, &named).is_ok());
+        assert!(judge(&[], &named).is_err());
+    }
+
+    #[test]
+    fn another_origin_is_refused_wherever_the_server_is() {
+        let allowed = allowed_hosts_from("maidan.example.com");
         let cross = headers("maidan.example.com", Some("https://other.example.com"));
-        assert!(judge(false, &cross).is_err());
+        assert!(judge(&allowed, &cross).is_err());
         assert!(judge(
-            true,
+            &[],
             &headers("localhost:8080", Some("http://localhost:9999"))
         )
         .is_err());
-        assert!(judge(false, &headers("maidan.example.com", Some("null"))).is_err());
-        assert!(judge(false, &headers("maidan.example.com", None)).is_ok());
+        assert!(judge(&allowed, &headers("maidan.example.com", Some("null"))).is_err());
+        assert!(judge(&allowed, &headers("maidan.example.com", None)).is_ok());
         assert!(judge(
-            false,
+            &allowed,
             &headers("maidan.example.com", Some("https://maidan.example.com"))
         )
         .is_ok());

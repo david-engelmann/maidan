@@ -116,8 +116,8 @@ async fn spawn() -> World {
             .await
             .unwrap(),
     );
-    // The listener below is on 127.0.0.1, as a dev instance on a laptop is.
-    state.loopback_bind = true;
+    // A public dev instance names itself in MAIDAN_ALLOWED_HOSTS.
+    state.allowed_hosts = vec!["dev.example.com".into()];
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
@@ -381,6 +381,22 @@ async fn a_rebound_request_with_no_credential_is_refused() {
         .await
         .unwrap();
     assert_eq!(local.status(), StatusCode::OK);
+    let by_address = post("10.0.0.7:8080", None, None).await.unwrap();
+    assert_eq!(
+        by_address.status(),
+        StatusCode::OK,
+        "an IP address cannot be a rebound name"
+    );
+    let listed = post("dev.example.com", Some("https://dev.example.com"), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        listed.status(),
+        StatusCode::OK,
+        "MAIDAN_ALLOWED_HOSTS names this server"
+    );
+    let unlisted = post("other.example.com", None, None).await.unwrap();
+    assert_eq!(unlisted.status(), StatusCode::FORBIDDEN);
     let proxied = post("maidan.example.com", None, Some(&world.bearer))
         .await
         .unwrap();
