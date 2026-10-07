@@ -22,7 +22,6 @@ fn thread(state: ThreadState, tombstoned: bool, age_secs: i64) -> Thread {
         created_at: now - Duration::seconds(age_secs),
         updated_at: now,
         tombstoned_at: if tombstoned { Some(now) } else { None },
-        closed_without_review: false,
     }
 }
 

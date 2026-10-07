@@ -22,7 +22,6 @@ pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueL
            SET workspace_id = EXCLUDED.workspace_id, channel_id = EXCLUDED.channel_id,
                thread_id = EXCLUDED.thread_id, member_id = EXCLUDED.member_id,
                disabled_at = NULL
-           WHERE maidan_github_issue_links.workspace_id = EXCLUDED.workspace_id
          RETURNING {COLS}"
     ))
     .bind(&new.repo)
@@ -31,12 +30,10 @@ pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueL
     .bind(new.channel_id.0)
     .bind(new.thread_id.0)
     .bind(new.member_id.0)
-    .fetch_optional(pool)
+    .fetch_one(pool)
     .await
     .map_err(map_link_err)?;
-    row.as_ref()
-        .map(row_to_link)
-        .ok_or_else(|| StoreError::Conflict("already linked by another workspace".into()))
+    Ok(row_to_link(&row))
 }
 
 /// The only uniqueness this insert can violate is the one-link-per-thread index

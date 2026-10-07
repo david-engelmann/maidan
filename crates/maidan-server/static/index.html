@@ -120,7 +120,6 @@
             <span id="needs-you-count" class="ny-count" aria-label="items waiting on you"></span>
             <span id="needs-you-hint" class="ny-hint"></span>
           </div>
-          <p id="needs-you-state" class="ny-state" role="status" hidden></p>
           <ul id="needs-you-list" aria-live="polite"></ul>
         </section>
         <section id="board-panel" aria-labelledby="board-title">
@@ -134,10 +133,8 @@
                 <label>Workspace id <input id="workspace" /></label>
                 <label id="workspace-name-label" hidden>Name <input id="workspace-name" autocomplete="off" /></label>
                 <button id="workspace-name-save" type="button" class="ghost" hidden>Save name</button>
-                <label>Token <input id="token" type="password" autocomplete="off" title="Exchanged for a session. This browser does not keep the token" aria-describedby="token-hint" /></label>
-                <button id="token-signin" type="button" class="ghost">Sign in</button>
+                <label>Token <input id="token" type="password" autocomplete="off" title="Exchanged for a session. This browser does not keep the token" /></label>
               </div>
-              <p class="first-run-note" id="token-hint">Paste your token, then press Enter or Sign in.</p>
             </div>
             <p class="first-run-note">A token comes from <code>maidan init</code> on the server, or from an admin in Tokens. This browser exchanges it for a session and does not keep the token, so use your own device.</p>
             <p class="first-run-note" id="storage-warning">The workspace id and the live resume token stay in localStorage as plaintext. Any script on this page can read them. The sign-in token itself is not stored there.</p>

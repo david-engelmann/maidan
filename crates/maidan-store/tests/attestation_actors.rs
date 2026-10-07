@@ -116,10 +116,6 @@ async fn run_suite(store: &dyn Store) {
     // in the status a client reads or in what a close enforces.
     store.set_review_requirement(worked.id, 1).await.unwrap();
     store
-        .set_thread_result(worked.id, worker, &serde_json::json!({"status": "done"}))
-        .await
-        .expect("a gated thread needs a result before review");
-    store
         .transition_thread(worked.id, worker, ThreadAction::StartReview)
         .await
         .unwrap();

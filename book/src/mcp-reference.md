@@ -1184,7 +1184,7 @@ Clear a thread's assignee.
 
 ### `transition_thread`
 
-Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. On a thread with a review requirement, start_review is refused until a result is posted (set_thread_result). Returns the updated thread.
+Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. Returns the updated thread.
 
 **Capability:** `thread:transition`
 
@@ -3828,7 +3828,7 @@ List a member's per-recipient notifications, newest first. Set unread_only to se
 
 ### `get_waiting_inbox`
 
-The waiting-on-you inbox, everything needing a member's attention: their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the reviews that name no reviewer and fall to them (unassigned_review: a thread in review with no named reviewer that they own, or that nobody owns when they are a workspace admin), the workspace's pending approval gates, and their unread mentions. Oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone. For mentions alone, with a read-cursor you advance with mark_inbox_read, use get_inbox.
+The waiting-on-you inbox, everything needing a member's attention: their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the workspace's pending approval gates, and their unread mentions. Oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone. For mentions alone, with a read-cursor you advance with mark_inbox_read, use get_inbox.
 
 **Capability:** `workspace:read`
 

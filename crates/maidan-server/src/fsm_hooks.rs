@@ -189,7 +189,10 @@ pub async fn revoke_fsm_hook(
     let hook_id = FsmHookId(hook_id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
-    state.store.revoke_fsm_hook(workspace_id, hook_id).await?;
+    let hook = state.store.revoke_fsm_hook(hook_id).await?;
+    if hook.workspace_id != workspace_id {
+        return Err(ApiError::NotFound);
+    }
     forget_fsm_secret(&state.fsm_hooks.secrets, hook_id);
     Ok(StatusCode::NO_CONTENT)
 }

@@ -290,9 +290,7 @@ async fn run_unassigned_suite(store: &dyn Store) {
         "a review with a named reviewer reaches that reviewer instead"
     );
     assert!(
-        !unassigned(store, ws, admin, true)
-            .await
-            .contains(&elsewhere),
+        !unassigned(store, ws, admin, true).await.contains(&elsewhere),
         "another workspace's ownerless review never reaches this one"
     );
     assert_eq!(
@@ -345,11 +343,7 @@ async fn run_result_gate_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
     };
-    let gated = store
-        .create_thread(new_thread("gated"))
-        .await
-        .expect("t")
-        .id;
+    let gated = store.create_thread(new_thread("gated")).await.expect("t").id;
     store.set_review_requirement(gated, 1).await.expect("gate");
     let err = store
         .transition_thread(gated, worker, ThreadAction::StartReview)
@@ -373,11 +367,7 @@ async fn run_result_gate_suite(store: &dyn Store) {
         .await
         .expect("with a result it goes to review");
 
-    let ungated = store
-        .create_thread(new_thread("ungated"))
-        .await
-        .expect("t")
-        .id;
+    let ungated = store.create_thread(new_thread("ungated")).await.expect("t").id;
     store
         .transition_thread(ungated, worker, ThreadAction::StartReview)
         .await
@@ -410,42 +400,16 @@ async fn run_closed_without_review_suite(store: &dyn Store) {
         .expect("close");
     let waiting = handed_to_review(store, ws, worker).await;
 
-    assert!(
-        store
-            .get_thread(bare)
-            .await
-            .expect("bare")
-            .closed_without_review
-    );
-    assert!(
-        !store
-            .get_thread(approved)
-            .await
-            .expect("approved")
-            .closed_without_review
-    );
-    assert!(
-        !store
-            .get_thread(waiting)
-            .await
-            .expect("waiting")
-            .closed_without_review
-    );
+    assert!(store.get_thread(bare).await.expect("bare").closed_without_review);
+    assert!(!store.get_thread(approved).await.expect("approved").closed_without_review);
+    assert!(!store.get_thread(waiting).await.expect("waiting").closed_without_review);
     let page = store
-        .page_threads_for_channel(
-            store.get_thread(bare).await.expect("bare").channel_id,
-            None,
-            10,
-        )
+        .page_threads_for_channel(store.get_thread(bare).await.expect("bare").channel_id, None, 10)
         .await
         .expect("page");
     assert_eq!(page.len(), 1);
-    assert!(
-        page[0].closed_without_review,
-        "the channel page carries it too"
-    );
-    let json =
-        serde_json::to_value(store.get_thread(approved).await.expect("approved")).expect("json");
+    assert!(page[0].closed_without_review, "the channel page carries it too");
+    let json = serde_json::to_value(store.get_thread(approved).await.expect("approved")).expect("json");
     assert!(
         json.get("closed_without_review").is_none(),
         "the flag is left off the wire when false"

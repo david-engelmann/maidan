@@ -411,13 +411,9 @@
       .ny-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.9rem; background: #fffaf0; border-bottom: 1px solid #f6e3bd; }
       .ny-head[hidden] { display: none; }
       .ny-head h2 { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: #9a3412; }
-      .ny-count { background: #c2410c; color: #fff; border-radius: 999px; font-size: 0.72rem; font-weight: 700; padding: 0 0.45rem; line-height: 1.35rem; min-width: 1.35rem; text-align: center; }
+      .ny-count { background: #ea580c; color: #fff; border-radius: 999px; font-size: 0.72rem; font-weight: 700; padding: 0 0.45rem; line-height: 1.35rem; min-width: 1.35rem; text-align: center; }
       .ny-count:empty { display: none; }
       .ny-hint { color: var(--muted); font-size: 0.8rem; }
-      /* A failed load is a sentence under the head, never an empty panel. */
-      .ny-state { margin: 0; padding: 0.5rem 0.9rem; font-size: 0.8rem; color: var(--muted); border-bottom: 1px solid var(--line); }
-      .ny-state.err { color: var(--err); }
-      .ny-state[hidden] { display: none; }
       #needs-you-list { list-style: none; margin: 0; padding: 0; }
       #board-refusal { margin: 0 0 0.7rem; padding: 0.55rem 0.75rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius); font-size: 0.86rem; }
       #board-refusal[hidden] { display: none; }

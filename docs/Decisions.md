@@ -2052,31 +2052,3 @@ by design).
 **Status.** Open Work Next 1 (the delivery) and Next 2 (the from-`main`
 instance).
 
-### The connected-apps program runs its fast track without an authorization server (2026-10-03)
-
-**Decision.** The maintainer answered the connected-apps strategy's four questions on 2026-10-03.
-- Hosting is hybrid, open source first. Self-hosting is the product. A hosted demo instance serves directory reviewers, with uptime and seeding obligations, and listing copy says plainly that production is self-hosted.
-- The OAuth authorization server is on hold. The program is lanes 1 to 7. Lane 8 is parked, not cancelled, and is revisited after the fast track ships and measures. The Claude full-OAuth and ChatGPT listings wait on that revisit. The Muse API-key and Claude static-headers paths are unaffected.
-- No enterprise track until the consumer lanes measure. Lane 12 stays parked, and a real customer in one ecosystem reopens its track early.
-- Muse shadows Dawn. Lane 6 waits on the outcome of the maintainer's Dawn submission, with its materials prepared. A Dawn rejection on the shared API-key auth model re-scopes Lane 6 to OAuth with PKCE or parks it. A rejection on Dawn-specific grounds changes nothing.
-
-On 2026-10-04 the maintainer added three rulings.
-- Nothing is published or submitted to any directory, catalog or registry until the maintainer says go, and every submission is a version with a validation record first. Lane 9's hint and title pass moves ahead of every submission.
-- The hybrid hosting decision does not limit the hosted console. The console work in progress continues.
-- Maintainer hours are not a constraint, so the program carries no capacity number and no support-hour pause triggers.
-
-**Why.** The lanes that need no authorization server reach about twenty listings for 12 to 22 engineering days. The authorization server and its two gated listings cost 35 to 63 days for one new directory and one auth upgrade, plus permanent operations for a solo maintainer. Self-hosting keeps operations near zero, and the demo instance answers the reviewers.
-
-**Record.** Open Work, the connected-apps rows of Next and Later CA.
-
-### The UI audit's three product questions (2026-10-04)
-
-**Decision.** The maintainer ruled on the three questions the UI deep dive of 2026-10-03 raised.
-- The review gate stays opt-in. A thread closes with no approval unless a gate is configured, and the board shows such a close as closed without review.
-- `start_review` needs a posted result on gated threads only. On other threads it is allowed, and the approval card warns that no result was posted.
-- The web UI ships as a generated, minified bundle checked into the repo. CI fails when the bundle is stale, as with the vendored gRPC code, so `cargo build` still needs no Node.
-
-**Why.** Opt-in keeps the room usable for work that needs no review, while the board makes an unreviewed close visible. A gated thread exists to judge a result, so a review with nothing to judge is refused there. A checked-in bundle gives fingerprinted, minified assets without making Node a build dependency.
-
-**Record.** Open Work Next 3 and Next 9, Later U, and Recently decided.
-

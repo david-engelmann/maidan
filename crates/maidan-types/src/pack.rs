@@ -971,7 +971,6 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             tombstoned_at: tombstoned.then(Utc::now),
-            closed_without_review: false,
         }
     }
 
@@ -1244,7 +1243,6 @@ mod tests {
             created_at: at_secs(1),
             updated_at: at_secs(updated),
             tombstoned_at: None,
-            closed_without_review: false,
         }
     }
 

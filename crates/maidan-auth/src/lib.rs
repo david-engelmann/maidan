@@ -17,8 +17,8 @@ pub mod token;
 pub use access::{
     authorize_message, authorize_thread, can_access_channel, can_access_thread,
     ensure_channel_access, ensure_dm_participant, ensure_message_access, ensure_thread_access,
-    private_channel_deny_set, resolve_wasi_handler_target, visible_unassigned_reviews,
-    MessageScope, ThreadScope, WasiTargetError,
+    private_channel_deny_set, resolve_wasi_handler_target, visible_unassigned_reviews, MessageScope,
+    ThreadScope, WasiTargetError,
 };
 pub use authorization::{
     record_delegated_authorization, require_capability as require_observed_capability,

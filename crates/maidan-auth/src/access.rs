@@ -203,16 +203,15 @@ pub async fn visible_unassigned_reviews(
     let now = chrono::Utc::now();
     let is_admin = auth.bypass
         || (auth.member_id == member_id && auth.has_capability(crate::TOKEN_ADMIN))
-        || (auth.delegation_grant_id.is_none()
-            && store
-                .list_api_tokens_for_member(workspace_id, member_id)
-                .await?
-                .iter()
-                .any(|t| {
-                    t.revoked_at.is_none()
-                        && t.expires_at.is_none_or(|at| at > now)
-                        && t.capabilities.iter().any(|c| c == crate::TOKEN_ADMIN)
-                }));
+        || store
+            .list_api_tokens_for_member(workspace_id, member_id)
+            .await?
+            .iter()
+            .any(|t| {
+                t.revoked_at.is_none()
+                    && t.expires_at.is_none_or(|at| at > now)
+                    && t.capabilities.iter().any(|c| c == crate::TOKEN_ADMIN)
+            });
     let mut visible = Vec::new();
     for thread in store
         .list_unassigned_reviews(workspace_id, member_id, is_admin)

@@ -86,18 +86,13 @@ pub async fn list(
     rows.iter().map(row_to_command).collect()
 }
 
-pub async fn revoke(
-    pool: &SqlitePool,
-    workspace_id: WorkspaceId,
-    id: SlashCommandId,
-) -> Result<SlashCommand, StoreError> {
+pub async fn revoke(pool: &SqlitePool, id: SlashCommandId) -> Result<SlashCommand, StoreError> {
     let updated = sqlx::query(
         "UPDATE maidan_slash_commands
          SET enabled = 0, revoked_at = CURRENT_TIMESTAMP
-         WHERE id = ? AND workspace_id = ? AND revoked_at IS NULL",
+         WHERE id = ? AND revoked_at IS NULL",
     )
     .bind(id.0)
-    .bind(workspace_id.0)
     .execute(pool)
     .await?
     .rows_affected();

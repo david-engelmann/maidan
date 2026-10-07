@@ -293,13 +293,9 @@ pub(super) async fn get_waiting_inbox(
             reviews.push(thread);
         }
     }
-    let unassigned = maidan_auth::visible_unassigned_reviews(
-        store.as_ref(),
-        auth,
-        member.workspace_id,
-        member_id,
-    )
-    .await?;
+    let unassigned =
+        maidan_auth::visible_unassigned_reviews(store.as_ref(), auth, member.workspace_id, member_id)
+            .await?;
     let gates = store
         .list_pending_approval_gates(member.workspace_id, 200)
         .await?;

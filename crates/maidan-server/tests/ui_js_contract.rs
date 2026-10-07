@@ -659,8 +659,8 @@ fn ui_js_puts_the_decisions_agents_wait_on_first() {
     assert!(needs < board, "Needs you sits above the board");
     assert!(
         s.contains("uiReadPath(`/members/${me}/waiting`)")
-            && s.contains("new Set([\"review_request\", \"unassigned_review\", \"open_gate\"])"),
-        "the queue reads the waiting inbox and keeps the decisions: reviews, unassigned reviews and gates"
+            && s.contains("new Set([\"review_request\", \"open_gate\"])"),
+        "the queue reads the waiting inbox and keeps the decisions: reviews and gates"
     );
     assert!(
         s.contains("apiWritePath(`/threads/${tid}/reviews`)")
@@ -962,38 +962,12 @@ fn ui_js_thread_pages_have_no_cap_but_stop_on_a_stuck_cursor() {
     );
 }
 
-/// A failed Needs you load is never an empty queue: a refusal says what to
-/// fix, a dropped connection keeps the rows under a stale line and retries,
-/// and neither zeroes the count in the tab title.
 #[test]
-fn ui_js_needs_you_reports_failed_loads_and_keeps_rows_in_use() {
+fn ui_js_needs_you_clears_on_refusal_and_keeps_rows_in_use() {
     let s = script(HTML);
-    let load = function_body(s, "loadNeedsYou");
-    let refused = &load[load.find("if (!res.ok)").expect("a refused load")
-        ..load
-            .find("items = (await res.json())")
-            .expect("the good path")];
     assert!(
-        refused.contains("showNeedsYouTrouble(why, \"err\")"),
-        "a refused inbox load names the fix in the panel"
-    );
-    assert!(
-        !refused.contains("setAttention(0)")
-            && !refused.contains("needsYou = []")
-            && !refused.contains("box.hidden = true"),
-        "a refused inbox load neither clears the queue, zeroes the tab count, nor hides the panel"
-    );
-    let thrown = &load[load.find("catch (_e)").expect("a thrown load")..];
-    assert!(
-        thrown.contains("showNeedsYouTrouble(")
-            && thrown.contains("\"stale\"")
-            && thrown.contains("scheduleNeedsYouRetry()"),
-        "an unreachable server keeps the rows under a stale line and retries"
-    );
-    assert!(
-        function_body(s, "renderNeedsYou")
-            .contains("document.getElementById(\"needs-you-state\").hidden = true;"),
-        "the next good load clears the error and stale line"
+        s.contains("needsYou = [];\n            setAttention(0);"),
+        "a refused inbox load clears the queue and the tab count"
     );
     assert!(
         s.contains("list.appendChild(keep.get(k) || needsYouRow(item));"),
@@ -1508,20 +1482,18 @@ fn ui_js_state_is_a_word_not_a_pill() {
     let board = function_body(js, "renderBoard");
     assert!(
         !board.contains("chromeBadge(")
-            && board.contains("stateWord.textContent = stateLabel")
-            && board.contains("closed without review")
+            && board.contains("stateWord.textContent = chrome.label")
             && board.contains("card.append(t, foot)"),
         "renderBoard puts the sessionChrome label in the card foot and does not paint a badge"
     );
     assert!(
-        board.contains("card.setAttribute(\"aria-label\", `${title}: ${stateLabel}`)"),
+        board.contains("card.setAttribute(\"aria-label\", `${title}: ${chrome.label}`)"),
         "the card's accessible name uses the same state word"
     );
     let header = function_body(js, "renderThreadHeader");
     assert!(
         !header.contains("chromeBadge(")
-            && header.contains("badgeBox.textContent = th.closed_without_review")
-            && header.contains("sessionChrome(th, lastGates[tid]).label"),
+            && header.contains("badgeBox.textContent = sessionChrome(th, lastGates[tid]).label"),
         "the thread header shows the state word"
     );
     let row = function_body(js, "needsYouRow");
@@ -2062,7 +2034,10 @@ fn ui_js_reports_qa_failures_in_words_and_opens_the_dm() {
         "a refused search is words, not the raw problem body"
     );
 
-    let token = function_body(js, "trySignIn");
+    let token = js
+        .split("getElementById(\"token\").addEventListener(\"change\"")
+        .nth(1)
+        .expect("token change");
     assert!(
         token.contains("status.hidden = true;\n        status.textContent = \"\";"),
         "an accepted token clears the earlier rejection"
@@ -2286,8 +2261,7 @@ const loadChannels = new Function(
     let selectedThreadId = null;
     let boardSeen = new Map();
     let headerGen = 0;
-    // Signed in: with no credential loadChannels asks the server nothing.
-    let sessionMemberId = "member-1";
+    let sessionMemberId = null;
     const channelKey = "maidan_channel";
     function wid() { return "ws"; }
     function renderState() {}
@@ -4704,31 +4678,4 @@ fn ui_js_drops_dead_brand_sub_and_the_version_marker() {
         !html.contains("brand-sub"),
         "the page does not use brand-sub"
     );
-}
-
-/// Signing in is something a person can see and do: Enter in the token field
-/// and a Sign in button run the same sign-in, and a second trigger joins the
-/// one in flight. With no credential, loadChannels asks the server nothing and
-/// says what to do, so no "not accepted" sentence reaches someone who has not
-/// pasted a token.
-#[test]
-fn ui_js_signs_in_on_enter_or_button_and_asks_nothing_without_a_credential() {
-    let js = script(HTML);
-    assert!(HTML.contains("id=\"token-signin\""), "a Sign in button");
-    assert!(
-        js.contains("if (!signingIn)") && js.contains("signingIn = trySignIn()"),
-        "one sign-in at a time"
-    );
-    assert!(
-        js.contains("if (e.key !== \"Enter\") return;")
-            && js.contains("getElementById(\"token-signin\").addEventListener(\"click\""),
-        "Enter and the button both sign in"
-    );
-    let load = function_body(js, "loadChannels");
-    let guard = load
-        .find("if (!token() && !sessionMemberId)")
-        .expect("a no-credential guard");
-    let request = load.find("await api(").expect("the channels request");
-    assert!(guard < request, "the guard comes before any request");
-    assert!(load.contains("\"Paste your token to connect.\""));
 }

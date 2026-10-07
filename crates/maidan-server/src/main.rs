@@ -550,7 +550,6 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     }
     state.presence.spawn_tasks();
     state.indexer_last_error = indexer_last_error;
-    let indexer_processed = state.indexer_processed_log_id.clone();
     state.indexer_metrics = indexer_metrics;
     state.bus_hydrate_stats = bus_hydrate_stats;
     state.outbox_relay = outbox_relay;
@@ -867,7 +866,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
 
     let indexer = Indexer::new(bus, indexer_handler)
         .with_log(state.store.clone())
-        .spawn_with_probes(indexer_heartbeat, indexer_processed);
+        .spawn_with_heartbeat(indexer_heartbeat);
     tracing::info!("background indexer running");
 
     if let Err(err) = maidan_server::webhooks::hydrate_webhook_secrets(&state).await {

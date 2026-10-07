@@ -193,7 +193,6 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             tombstoned_at: None,
-            closed_without_review: false,
         }
     }
 

@@ -267,31 +267,6 @@ pub async fn max_event_id(pool: &SqlitePool) -> Result<i64, StoreError> {
     Ok(row.get::<i64, _>("max_id"))
 }
 
-/// The oldest event after `after_id` of one of `kinds`; see
-/// [`crate::Store::oldest_event_after_of_kinds`].
-pub async fn oldest_event_after_of_kinds(
-    pool: &SqlitePool,
-    after_id: i64,
-    kinds: &[maidan_types::EventKind],
-) -> Result<Option<(i64, chrono::DateTime<chrono::Utc>)>, StoreError> {
-    if kinds.is_empty() {
-        return Ok(None);
-    }
-    let marks = vec!["?"; kinds.len()].join(", ");
-    let sql = format!(
-        "SELECT id, inserted_at FROM maidan_events
-         WHERE id > ? AND kind IN ({marks})
-         ORDER BY id ASC
-         LIMIT 1"
-    );
-    let mut query = sqlx::query(&sql).bind(after_id);
-    for kind in kinds {
-        query = query.bind(kind.as_str());
-    }
-    let row = query.fetch_optional(pool).await?;
-    Ok(row.map(|r| (r.get("id"), r.get("inserted_at"))))
-}
-
 /// A thread's events with `id <= through_id`, in `id` order — the immutable
 /// substrate for as-of context replay. See the Postgres twin.
 pub async fn list_through(

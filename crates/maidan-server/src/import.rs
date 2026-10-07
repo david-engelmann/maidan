@@ -74,7 +74,6 @@ mod tests {
                     created_at: now,
                     updated_at: now,
                     tombstoned_at: None,
-                    closed_without_review: false,
                 },
                 Thread {
                     id: child,
@@ -90,7 +89,6 @@ mod tests {
                     created_at: now,
                     updated_at: now,
                     tombstoned_at: None,
-                    closed_without_review: false,
                 },
             ],
             messages: vec![Message {

@@ -90,18 +90,13 @@ pub async fn list_matching(
         .collect()
 }
 
-pub async fn revoke(
-    pool: &SqlitePool,
-    workspace_id: WorkspaceId,
-    id: FsmHookId,
-) -> Result<FsmHook, StoreError> {
+pub async fn revoke(pool: &SqlitePool, id: FsmHookId) -> Result<FsmHook, StoreError> {
     let updated = sqlx::query(
         "UPDATE maidan_fsm_hooks
          SET enabled = 0, revoked_at = CURRENT_TIMESTAMP
-         WHERE id = ? AND workspace_id = ? AND revoked_at IS NULL",
+         WHERE id = ? AND revoked_at IS NULL",
     )
     .bind(id.0)
-    .bind(workspace_id.0)
     .execute(pool)
     .await?
     .rows_affected();

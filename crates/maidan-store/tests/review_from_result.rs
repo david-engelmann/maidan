@@ -154,10 +154,6 @@ async fn run_suite(store: &dyn Store) {
     );
 
     store
-        .set_thread_result(thread.id, owner.id, &serde_json::json!({"status": "done"}))
-        .await
-        .expect("a gated thread needs a result before review");
-    store
         .transition_thread(thread.id, owner.id, ThreadAction::StartReview)
         .await
         .expect("start review");

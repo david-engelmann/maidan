@@ -437,11 +437,8 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
    `after_id` until the frame stops.
 5. **Postgres LISTEN** — `maidan_bus_listener_ok` and `/health/ready` `bus` field;
    listener errors increment `maidan_bus_listener_errors_total`.
-6. **Indexer lag** — set `INDEXER_STALE_SECS` (e.g. `300`) when embeddings are on;
-   readiness degrades only while message events wait unhandled past it, never for
-   an idle instance. Watch `maidan_indexer_pending_age_seconds` (0 when caught up)
-   and `/health` `indexer_last_event_at`; `maidan_indexer_last_event_age_seconds`
-   grows on any quiet instance.
+6. **Indexer silence** — set `INDEXER_STALE_SECS` (e.g. `300`) when embeddings are on;
+   watch `maidan_indexer_last_event_age_seconds` and `/health` `indexer_last_event_at`.
 
 ### Bus hydrate troubleshooting (`v8.0.0`)
 

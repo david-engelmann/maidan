@@ -192,37 +192,6 @@ tests:
         eval_time: 7m
         exp_alerts: []
 
-  # MaidanIndexerStale keys on pending age: an idle instance whose last event is
-  # a day old (86400s) but has nothing waiting must NOT fire.
-  - interval: 1m
-    input_series:
-      - series: maidan_indexer_last_event_age_seconds
-        values: "86400+0x10"
-      - series: maidan_indexer_pending_age_seconds
-        values: "0+0x10"
-    alert_rule_test:
-      - alertname: MaidanIndexerStale
-        eval_time: 8m
-        exp_alerts: []
-
-  # ...and fires once an unindexed event has waited past 600s for 5m.
-  - interval: 1m
-    input_series:
-      - series: maidan_indexer_pending_age_seconds
-        values: "3600+0x10"
-    alert_rule_test:
-      - alertname: MaidanIndexerStale
-        eval_time: 8m
-        exp_alerts:
-          - exp_labels:
-              severity: warning
-              slo: search_index
-            exp_annotations:
-              summary: Embedding indexer behind
-              description: |
-                The oldest unindexed message event is 1h 0m 0s old.
-                Set INDEXER_STALE_SECS in readiness; check embedding provider.
-
   # MaidanIndexerEmbedFailures fires when the monotonic gauge climbs over 15m.
   - interval: 1m
     input_series:
