@@ -171,6 +171,24 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     let ip_key = crate::rate_limit::client_ip_key(&req);
 
     let Some(secret) = bearer else {
+        if is_mcp && req.method() == Method::POST {
+            if let Some(reader) = state.dev_anonymous_reader.clone() {
+                // Every anonymous caller is one member, so each is limited by
+                // its client address before the shared workspace budget.
+                if let Err(response) =
+                    crate::rate_limit::enforce_client_key(&state, &ip_key, true).await
+                {
+                    return response;
+                }
+                if let Err(response) =
+                    crate::rate_limit::enforce_workspace(&state, &path, false, &reader.workspace_id)
+                        .await
+                {
+                    return response;
+                }
+                return run_authorized(&state, req, next, reader).await;
+            }
+        }
         // A page that exchanged its token for a session sends no bearer.
         // Its client IP was already counted by the outer limiter.
         let session = token_session(&state, req.uri().path(), req.method(), req.headers()).await;
