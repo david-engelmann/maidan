@@ -475,7 +475,8 @@ fn build_mcp_arguments(
     thread_id: ThreadId,
     author_id: MemberId,
 ) -> Value {
-    let declared = tools::declared_arguments(tool).unwrap_or_default();
+    let none = std::collections::HashSet::new();
+    let declared = tools::declared_arguments(tool).unwrap_or(&none);
     let mut base = if parsed.args.trim_start().starts_with('{') {
         serde_json::from_str(&parsed.args).unwrap_or_else(|_| json!({ "text": parsed.args }))
     } else if parsed.args.is_empty() {

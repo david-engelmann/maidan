@@ -10,8 +10,6 @@
 //! refuses the feature, so no setting can turn capture on in production, and a
 //! dev build emits frames only when `MAIDAN_LOG` enables `maidan_mcp::frame`.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use maidan_auth::AuthContext;
@@ -90,25 +88,6 @@ const PROTOCOL_PARAMS: &[&str] = &[
     "uri",
 ];
 
-/// Each tool's declared argument names, read from the catalog once. A tool
-/// that is not in it is unknown, and only a declared name is ever logged.
-fn declared_args(tool: &str) -> Option<&'static HashSet<String>> {
-    static DECLARED: LazyLock<HashMap<String, HashSet<String>>> = LazyLock::new(|| {
-        crate::tools::catalog()
-            .into_iter()
-            .filter_map(|tool| {
-                let name = tool["name"].as_str()?.to_string();
-                let args = tool["inputSchema"]["properties"]
-                    .as_object()
-                    .map(|properties| properties.keys().cloned().collect())
-                    .unwrap_or_default();
-                Some((name, args))
-            })
-            .collect()
-    });
-    DECLARED.get(tool)
-}
-
 /// The argument names a request carried that `known` lists, sorted and
 /// comma-joined, and how many it carried that `known` does not list.
 fn arg_keys(args: &Value, known: impl Fn(&str) -> bool) -> (String, usize) {
@@ -149,7 +128,7 @@ pub(crate) fn line(method: &str, params: &Value, result: &Result<Value, McpError
             .and_then(Value::as_str)
             .unwrap_or_default();
         let args = params.get("arguments").unwrap_or(&Value::Null);
-        match declared_args(name) {
+        match crate::tools::declared_arguments(name) {
             Some(declared) => (name, arg_keys(args, |key| declared.contains(key))),
             None => ("(unknown)", arg_keys(args, |_| false)),
         }
