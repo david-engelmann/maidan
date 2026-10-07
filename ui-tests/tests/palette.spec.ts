@@ -147,8 +147,11 @@ test("a late channel lookup for an opened task does not undo a channel picked si
     await route.continue();
   });
   await signIn(page);
-  await page.locator(`#needs-you-list .ny-item[data-thread-id="${fx.thread_id}"] .ny-title`).click();
-  await expect(page.locator("#thread-context")).toHaveText("Deploy v9 to prod?");
+  // Any row on the #general thread will do: other specs add gates to it.
+  const row = page.locator(`#needs-you-list .ny-item[data-thread-id="${fx.thread_id}"] .ny-title`).first();
+  const label = ((await row.textContent()) || "").trim();
+  await row.click();
+  await expect(page.locator("#thread-context")).toHaveText(label);
   await page.click(`#channel-list li[data-id="${fx.board_channel_id}"]`);
   await expect(page.locator("#board-title")).toHaveText("# build");
 
