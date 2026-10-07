@@ -44,6 +44,7 @@ fi
 
 work="$(mktemp -d)"
 server_pid=""
+# shellcheck disable=SC2329 # run by the EXIT trap below
 cleanup() {
   [[ -n "$server_pid" ]] && kill "$server_pid" 2>/dev/null || true
   rm -rf "$work"
@@ -53,6 +54,8 @@ trap cleanup EXIT
 export DATABASE_URL="sqlite://${work}/maidan.db?mode=rwc"
 export MAIDAN_SESSION_SECRET="mcp-conformance-session-secret-0123456789abcdef"
 
+# Every log of this run names the source it tested.
+echo "=== server commit $(git rev-parse HEAD 2>/dev/null || echo unknown) ==="
 echo "=== seeding a synthetic workspace (maidan init) ==="
 workspace="$("${bin_dir}/maidan" init --workspace synthetic-conformance 2>/dev/null |
   sed -nE 's/^  workspace: synthetic-conformance +\(([0-9a-f-]{36})\)$/\1/p')"
