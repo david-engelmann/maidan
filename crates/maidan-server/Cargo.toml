@@ -90,6 +90,9 @@ bootstrap = []
 # scrape stay). Forwards to the maidan-observability `otel` feature.
 otel = ["maidan-observability/otel"]
 sqlite-vec = ["maidan-search/sqlite-vec"]
+# Full MCP frame capture for a developer reproducing a client's exchange.
+# Dev builds only; see maidan-mcp's `frame-capture`.
+mcp-frame-capture = ["maidan-mcp/frame-capture"]
 # Swap the presence hub's lock for loom's so the `loom` model tests can
 # explore its interleavings. Test-only: never enable it in a build that runs.
 loom = ["dep:loom"]

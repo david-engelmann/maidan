@@ -26,6 +26,7 @@ pub mod profiles;
 pub mod prompts;
 pub mod protocol;
 pub mod reference;
+mod request_log;
 pub mod resource_updates;
 pub mod resources;
 pub mod server;

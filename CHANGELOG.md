@@ -38,6 +38,11 @@ Refs #1253
 
 - **Fixed:** Pasting a token drops the member id learned from the previous token when `/me` throws. The page no longer keeps calling routes as that member. An empty token field and a rejected `/me` use the same drop.
 
+### Every MCP request is logged, and no value is
+
+- **Added:** One `info` line per MCP request on the `maidan_mcp::request` target, on at the default filter, from HTTP, streamable, stdio and slash-command calls alike. It carries the method, tool, argument names, principal, transport, profile, latency and outcome, and never an argument value or a result.
+- **Added:** The `mcp-frame-capture` feature logs whole frames with secret-shaped keys redacted on `maidan_mcp::frame`, for dev builds only. A release build that enables it fails to compile, and a CI lint step keeps it compiling in dev.
+
 ### A vote kind is a closed set
 
 - **Changed:** `cast_vote.kind` is `approve`, `request_changes`, or `ack`. REST `POST /messages/{id}/votes` and MCP `cast_vote` reject every other kind, including `up`, `upvote`, `request-changes`, and a custom emoji. REST returns 400. MCP returns `InvalidParams`. An emoji stays a reaction. There is no alias and no older open string.
