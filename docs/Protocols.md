@@ -20,6 +20,18 @@ accept `2026-07-28`, and until Cluster 412 their handshake with Maidan failed.
 `scripts/mcp-inspector.sh` runs the Inspector against a real server to keep it
 that way. See [Required protocol upgrades](#required-protocol-upgrades).
 
+**What the official conformance suite says.** `scripts/mcp-conformance.sh` runs
+the suite's frozen requirement sets for `2025-11-25` and `2026-07-28` against a
+dev instance. Every check that fails is listed with its reason in
+`scripts/mcp-conformance/`. Most are scenarios built on the suite's own fixture
+tools, or features Maidan does not declare. The rest are real `2026-07-28` gaps,
+tracked in Open Work. Per-request `_meta` is not validated (SEP-2575), and a
+method `2026-07-28` removed is still answered instead of 404 with -32601. A
+routing-header mismatch is not a JSON-RPC -32020 (SEP-2243). `tasks/*` is not
+answered -32021 (SEP-2663). Host and Origin are not checked against DNS
+rebinding. So `2026-07-28` is negotiated and served, but not yet conformant in
+full.
+
 ---
 
 ## The 2026 stack (do not pick a winner)
