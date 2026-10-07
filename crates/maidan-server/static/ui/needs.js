@@ -183,9 +183,7 @@ import { answerGate } from "./tools.js";
         // A review row leads with the task. (The task of a gate shows as context.)
         const isGate = item.kind === "open_gate";
         const block = item.kind === "blocked" ? splitBlockSummary(item.summary) : null;
-        title.textContent = isGate
-          ? item.summary
-          : (th && th.title) || (block && block.title) || item.summary;
+        title.textContent = isGate ? item.summary : (th && th.title) || (block && block.title) || item.summary;
         if (item.thread_id) {
           title.onclick = () => selectThread(item.thread_id, (th && th.title) || title.textContent);
           keyActivates(title, "link"); // it opens the task
