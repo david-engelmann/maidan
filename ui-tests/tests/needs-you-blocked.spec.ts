@@ -10,7 +10,7 @@ const fx = fixtures();
 
 const NOTE = "rotate the signing key by hand";
 const HOLD_TITLE = "Held up: the signing key needs a person";
-const OTHER_TITLE = "Elsewhere: the other workspace's blocked task";
+const SECOND_TITLE = "Afar: the second workspace's blocked task";
 
 const row = (page: Page, threadId: string) =>
   page.locator(`#needs-you-list .ny-item[data-thread-id="${threadId}"]`);
@@ -148,42 +148,42 @@ test("a second workspace sees nothing of the first's blocked task, and cannot cl
   // Through the API: each member's inbox lists only its own workspace's block.
   const mine = await waitingThreadIds(request, fx.review_token, fx.member_id);
   expect(mine).toContain(fx.hold_thread_id);
-  expect(mine).not.toContain(fx.other_thread_id);
-  const theirs = await waitingThreadIds(request, fx.other_token, fx.other_member_id);
-  expect(theirs).toContain(fx.other_thread_id);
+  expect(mine).not.toContain(fx.second_thread_id);
+  const theirs = await waitingThreadIds(request, fx.second_token, fx.second_member_id);
+  expect(theirs).toContain(fx.second_thread_id);
   expect(theirs).not.toContain(fx.hold_thread_id);
 
   // The second workspace cannot read the first's inbox or block, or clear it.
-  const peek = await request.get(`/members/${fx.member_id}/waiting`, { headers: bearer(fx.other_token) });
+  const peek = await request.get(`/members/${fx.member_id}/waiting`, { headers: bearer(fx.second_token) });
   expect([403, 404]).toContain(peek.status());
-  const peekBlock = await request.get(`/threads/${fx.hold_thread_id}/block`, { headers: bearer(fx.other_token) });
+  const peekBlock = await request.get(`/threads/${fx.hold_thread_id}/block`, { headers: bearer(fx.second_token) });
   expect([403, 404]).toContain(peekBlock.status());
-  const clear = await request.delete(`/threads/${fx.hold_thread_id}/block`, { headers: bearer(fx.other_token) });
+  const clear = await request.delete(`/threads/${fx.hold_thread_id}/block`, { headers: bearer(fx.second_token) });
   expect([403, 404]).toContain(clear.status());
   expect(await holdBlockStatus(request)).toBe(200);
   // Nor the other way round.
-  const back = await request.delete(`/threads/${fx.other_thread_id}/block`, { headers: bearer(fx.admin_token) });
+  const back = await request.delete(`/threads/${fx.second_thread_id}/block`, { headers: bearer(fx.admin_token) });
   expect([403, 404]).toContain(back.status());
-  const otherBlock = await request.get(`/threads/${fx.other_thread_id}/block`, { headers: bearer(fx.other_token) });
-  expect(otherBlock.status()).toBe(200);
+  const secondBlock = await request.get(`/threads/${fx.second_thread_id}/block`, { headers: bearer(fx.second_token) });
+  expect(secondBlock.status()).toBe(200);
 
-  // On the page: the outsider's Needs you shows its own blocked task and
+  // On the page: the stranger's Needs you shows its own blocked task and
   // nothing from the first workspace.
-  await signIn(page, fx.other_workspace_id, fx.other_token);
-  const own = row(page, fx.other_thread_id);
+  await signIn(page, fx.second_workspace_id, fx.second_token);
+  const own = row(page, fx.second_thread_id);
   await expect(own).toBeVisible();
   await expect(own.locator(".ny-kind")).toHaveText("Blocked");
-  await expect(own.locator(".ny-title")).toHaveText(OTHER_TITLE);
-  await expect(own.locator(".ny-sub")).toContainText("blocked (human): only the other workspace may see this");
+  await expect(own.locator(".ny-title")).toHaveText(SECOND_TITLE);
+  await expect(own.locator(".ny-sub")).toContainText("blocked (human): only the second workspace may see this");
   await expect(own.getByRole("button", { name: "Unblock" })).toBeVisible();
   await expect(row(page, fx.hold_thread_id)).toHaveCount(0);
   await expect(page.locator("#needs-you-list")).not.toContainText(HOLD_TITLE);
   await expect(page.locator("#needs-you-list")).not.toContainText(NOTE);
 
-  // And the operator's page shows its own block and not the outsider's.
+  // And the operator's page shows its own block and not the stranger's.
   await page.context().clearCookies();
   await signIn(page, fx.workspace_id, fx.review_token);
   await expect(row(page, fx.hold_thread_id)).toBeVisible();
-  await expect(row(page, fx.other_thread_id)).toHaveCount(0);
-  await expect(page.locator("#needs-you-list")).not.toContainText(OTHER_TITLE);
+  await expect(row(page, fx.second_thread_id)).toHaveCount(0);
+  await expect(page.locator("#needs-you-list")).not.toContainText(SECOND_TITLE);
 });

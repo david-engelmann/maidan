@@ -38,6 +38,16 @@ export interface Fixtures {
   triage_owned_thread_id: string;
   /** Owned by nobody and with no result: it falls to the workspace admins. */
   triage_ownerless_thread_id: string;
+  /** The `hold` channel: a task the operator owns, unblocked until a spec blocks it. */
+  hold_channel_id: string;
+  hold_thread_id: string;
+  /** A second workspace, for showing one workspace sees nothing of another's blocks. */
+  second_workspace_id: string;
+  second_member_id: string;
+  /** The stranger's grant in the second workspace (every capability). */
+  second_token: string;
+  /** Owned by the stranger and blocked (reason human) from the seed. */
+  second_thread_id: string;
   /** The `floor` channel: the deployer holds one task; one is open to claim. */
   floor_channel_id: string;
   floor_held_thread_id: string;
@@ -55,16 +65,6 @@ export interface Fixtures {
   /** A dead-lettered webhook delivery the Operator tab can replay. */
   delivery_id: number;
   delivery_url: string;
-  /** The `hold` channel: a task the operator owns, unblocked until a spec blocks it. */
-  hold_channel_id: string;
-  hold_thread_id: string;
-  /** A second workspace, for showing one workspace sees nothing of another. */
-  other_workspace_id: string;
-  other_member_id: string;
-  /** The outsider's grant in the second workspace (every capability). */
-  other_token: string;
-  /** Owned by the outsider and blocked (reason human) from the seed. */
-  other_thread_id: string;
 }
 
 export function fixtures(): Fixtures {

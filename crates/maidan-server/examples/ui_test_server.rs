@@ -320,6 +320,95 @@ async fn main() {
         triage_threads.push(t);
     }
 
+    // A task the operator owns, for the Unblock row in Needs you. It starts
+    // unblocked: the spec blocks it, so a retry starts from the same place.
+    // Its own channel, so the blocked marker on its card moves no other spec.
+    let hold = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "hold".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("hold channel");
+    let hold_thread = store
+        .create_thread(NewThread {
+            channel_id: hold.id,
+            parent_thread_id: None,
+            title: Some("Held up: the signing key needs a person".into()),
+            description: None,
+        })
+        .await
+        .expect("hold thread");
+    store
+        .set_thread_owner(hold_thread.id, Some(member.id))
+        .await
+        .expect("hold owner");
+
+    // A second workspace, so a spec can show that one workspace sees nothing
+    // of another. Its member owns a task that is already blocked, which its
+    // own Needs you lists and the first workspace's never does.
+    let second_ws = store
+        .create_workspace(NewWorkspace {
+            name: "Second UI Test Workspace".into(),
+        })
+        .await
+        .expect("second ws");
+    let stranger = store
+        .create_member(NewMember {
+            workspace_id: second_ws.id,
+            handle: "stranger".into(),
+            display_name: Some("Stranger".into()),
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("stranger");
+    let afar = store
+        .create_channel(NewChannel {
+            workspace_id: second_ws.id,
+            name: "afar".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("second channel");
+    let second_thread = store
+        .create_thread(NewThread {
+            channel_id: afar.id,
+            parent_thread_id: None,
+            title: Some("Afar: the second workspace's blocked task".into()),
+            description: None,
+        })
+        .await
+        .expect("second thread");
+    store
+        .set_thread_owner(second_thread.id, Some(stranger.id))
+        .await
+        .expect("second owner");
+    store
+        .set_thread_block(
+            second_thread.id,
+            BlockedReason::Human,
+            stranger.id,
+            Some("only the second workspace may see this".into()),
+        )
+        .await
+        .expect("second block");
+    let second_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: second_ws.id,
+            member_id: stranger.id,
+            app_installation_id: None,
+            token_hash: hash_secret(second_secret.as_str()),
+            label: Some("ui-test-second".into()),
+            capabilities: capability::all(),
+            expires_at: None,
+        })
+        .await
+        .expect("second token");
+
     // An empty channel, for the onboarding state a channel shows before its
     // first task.
     let quiet = store
@@ -407,95 +496,6 @@ async fn main() {
         })
         .await
         .expect("lab gate");
-
-    // A task the operator owns, for the Unblock row in Needs you. It starts
-    // unblocked: the spec blocks it, so a retry starts from the same place.
-    // Its own channel, so the blocked marker on its card moves no other spec.
-    let hold = store
-        .create_channel(NewChannel {
-            workspace_id: ws.id,
-            name: "hold".into(),
-            topic: None,
-            private: false,
-        })
-        .await
-        .expect("hold channel");
-    let hold_thread = store
-        .create_thread(NewThread {
-            channel_id: hold.id,
-            parent_thread_id: None,
-            title: Some("Held up: the signing key needs a person".into()),
-            description: None,
-        })
-        .await
-        .expect("hold thread");
-    store
-        .set_thread_owner(hold_thread.id, Some(member.id))
-        .await
-        .expect("hold owner");
-
-    // A second workspace, so a spec can show that one workspace sees nothing
-    // of another. Its member owns a task that is already blocked, which its
-    // own Needs you lists and the first workspace's never does.
-    let other_ws = store
-        .create_workspace(NewWorkspace {
-            name: "Other UI Test Workspace".into(),
-        })
-        .await
-        .expect("other ws");
-    let outsider = store
-        .create_member(NewMember {
-            workspace_id: other_ws.id,
-            handle: "outsider".into(),
-            display_name: Some("Outsider".into()),
-            kind: MemberKind::Human,
-        })
-        .await
-        .expect("outsider");
-    let elsewhere = store
-        .create_channel(NewChannel {
-            workspace_id: other_ws.id,
-            name: "elsewhere".into(),
-            topic: None,
-            private: false,
-        })
-        .await
-        .expect("other channel");
-    let other_thread = store
-        .create_thread(NewThread {
-            channel_id: elsewhere.id,
-            parent_thread_id: None,
-            title: Some("Elsewhere: the other workspace's blocked task".into()),
-            description: None,
-        })
-        .await
-        .expect("other thread");
-    store
-        .set_thread_owner(other_thread.id, Some(outsider.id))
-        .await
-        .expect("other owner");
-    store
-        .set_thread_block(
-            other_thread.id,
-            BlockedReason::Human,
-            outsider.id,
-            Some("only the other workspace may see this".into()),
-        )
-        .await
-        .expect("other block");
-    let other_secret = TokenSecret::generate();
-    store
-        .create_api_token(NewApiToken {
-            workspace_id: other_ws.id,
-            member_id: outsider.id,
-            app_installation_id: None,
-            token_hash: hash_secret(other_secret.as_str()),
-            label: Some("ui-test-other".into()),
-            capabilities: capability::all(),
-            expires_at: None,
-        })
-        .await
-        .expect("other token");
 
     let secret = TokenSecret::generate();
     store
@@ -682,6 +682,12 @@ async fn main() {
         "triage_channel_id": triage.id.0.to_string(),
         "triage_owned_thread_id": triage_threads[0].id.0.to_string(),
         "triage_ownerless_thread_id": triage_threads[1].id.0.to_string(),
+        "hold_channel_id": hold.id.0.to_string(),
+        "hold_thread_id": hold_thread.id.0.to_string(),
+        "second_workspace_id": second_ws.id.0.to_string(),
+        "second_member_id": stranger.id.0.to_string(),
+        "second_token": second_secret.as_str(),
+        "second_thread_id": second_thread.id.0.to_string(),
         "floor_channel_id": floor.id.0.to_string(),
         "floor_held_thread_id": floor_threads[0].id.0.to_string(),
         "floor_glide_thread_id": floor_threads[1].id.0.to_string(),
@@ -693,12 +699,6 @@ async fn main() {
         "admin_token": admin_secret.as_str(),
         "delivery_id": delivery_id,
         "delivery_url": "https://hooks.example.test/maidan",
-        "hold_channel_id": hold.id.0.to_string(),
-        "hold_thread_id": hold_thread.id.0.to_string(),
-        "other_workspace_id": other_ws.id.0.to_string(),
-        "other_member_id": outsider.id.0.to_string(),
-        "other_token": other_secret.as_str(),
-        "other_thread_id": other_thread.id.0.to_string(),
     });
     std::fs::write(
         &fixtures_path,
