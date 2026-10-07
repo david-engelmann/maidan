@@ -4,7 +4,28 @@
     "readOnlyHint": "true only when the tool writes nothing: no row, event, claim, read marker, blob or audit row. It equals membership in READ_ONLY_TOOLS (crates/maidan-mcp/src/tools/mod.rs); a tool off that list gets a mutation audit row for every call.",
     "destructiveHint": "true when the call deletes or removes a record, revokes authority or access, tombstones, or replaces a value a person or agent stored (a set_* or upsert that overwrites, an edit, a rename, an import that erases), or makes an irreversible state transition. false for additive writes, for toggles of the caller's own view or preference that a sibling tool flips back, and for the claim lease cycle (claim, renew, acknowledge, release). Always false for a read-only tool.",
     "idempotentHint": "true when repeating the same call with the same arguments has no further effect on state, including a repeat that is refused and changes nothing. false when each call creates something new, appends an event, or moves a clock forward. Always true for a read-only tool. The per-call audit row is a record of the call, not an effect.",
-    "openWorldHint": "true when the tool itself reaches outside Maidan's database and artifact store: an HTTP receiver, Slack, GitHub, an embedding provider, a land-gate advisor, or a delivery target the call selects. Background projectors and notifications that mirror an ordinary write because of workspace configuration do not make that write open-world."
+    "openWorldHint": "true when the tool itself reaches outside Maidan's database and artifact store: an HTTP receiver, Slack, GitHub, an embedding provider, a land-gate advisor, or a delivery target the call selects. Background projectors and notifications that mirror an ordinary write because of workspace configuration do not make that write open-world.",
+    "name": "snake_case of at most 64 characters, the bound Claude and OpenAI clients put on a tool name, and short enough that Claude Code's mcp__maidan__ prefix still fits it. The leading word is a verb that says whether the tool writes: one of read_verbs means read-only and any other means a write, and no name joins two verbs with _or_ or _and_.",
+    "mixed": "A write whose result the caller then reads as data, not just an echo of the write, so a model could reach for it to look something up. Each one stays a single tool, is never read-only, and its description names the write in the words given here."
+  },
+  "read_verbs": ["advise", "catch", "get", "list", "parse", "search", "usage", "verify", "wait", "whoami"],
+  "mixed": {
+    "claim_next_thread": {
+      "returns": "the claimed thread and its content-addressed pin",
+      "writes": "Atomically claim the oldest claimable thread"
+    },
+    "claim_next_workspace_thread": {
+      "returns": "the claimed thread and its content-addressed pin",
+      "writes": "Atomically claim the oldest claimable thread"
+    },
+    "mark_inbox_read": {
+      "returns": "the member's inbox after the cursor moves",
+      "writes": "Advance a member's inbox read-cursor"
+    },
+    "open_dm_conversation": {
+      "returns": "the conversation, created on the first call",
+      "writes": "The first call creates the conversation"
+    }
   },
   "tools": {
     "abort_artifact_multipart": {
