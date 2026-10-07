@@ -1,0 +1,30 @@
+{
+  "name": "gemini",
+  "provider": "gemini",
+  "source": "https://github.com/agentgateway/agentgateway/pull/2813",
+  "recorded": "verbatim",
+  "note": "A live streamGenerateContent event observed through a gateway, as quoted in the pull request, with the candidates left out and Cloud Code's `response` envelope removed. totalTokenCount (30550) is prompt (30460) + candidates (3) + thoughts (87), and the pricing page bills output including thinking tokens, so output is 90.",
+  "response": {
+    "usageMetadata": {
+      "promptTokenCount": 30460,
+      "candidatesTokenCount": 3,
+      "totalTokenCount": 30550,
+      "thoughtsTokenCount": 87
+    },
+    "modelVersion": "gemini-3.6-flash"
+  },
+  "expected": {
+    "model": "gemini-3.6-flash",
+    "tokens": {
+      "input": 30460,
+      "output": 90,
+      "cache_read": 0,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "gcp.gemini"
+    }
+  },
+  "retrieved": "2026-10-07"
+}

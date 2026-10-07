@@ -259,6 +259,14 @@ under a fixed cap, whose variance sizes the full run.
 | DeepSeek | `prompt_cache_miss_tokens` | `prompt_cache_hit_tokens` | none |
 | Mistral, xAI, vLLM | `prompt_tokens` minus read | `prompt_tokens_details.cached_tokens` | none |
 
+Output needs the same care: Gemini counts `thoughtsTokenCount` apart from
+`candidatesTokenCount`, and xAI's `completion_tokens` leaves
+`reasoning_tokens` out, while OpenAI, Anthropic, DeepSeek and vLLM include
+reasoning in output. Bedrock Converse splits its writes by TTL in
+`cacheDetails`. DeepSeek's reference states that `prompt_tokens` is hit plus
+miss. The SDK normalizers (C4) apply this table; Integration, "Normalizing
+provider usage", lists what each reads and what the docs leave unsettled.
+
 ## Where the market is, and what is open
 
 The cost claims the research found are per request or per token; it found
@@ -290,7 +298,8 @@ report:
 - how the official TypeScript SDK's version probe treats a server without `server/discover`;
 - where Claude Code places server `instructions` in every version, and how Cursor builds its requests;
 - whether a `max_tokens: 0` request refreshes an existing Anthropic entry's TTL, and whether real-time and batch traffic share entries;
-- Mistral's and xAI's cache TTL and scope, and DeepSeek's minimum length.
+- Mistral's and xAI's cache TTL and scope, and DeepSeek's minimum length;
+- whether xAI's Responses `output_tokens` leaves reasoning out, as its Chat Completions example does, and whether Gemini's `promptTokenCount` includes `toolUsePromptTokenCount` (both found while recording the SDK usage fixtures on 2026-10-04, not in a research report).
 
 ## What this is not
 

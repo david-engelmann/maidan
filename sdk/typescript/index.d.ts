@@ -526,4 +526,66 @@ export declare class Client {
   waitForReady(workspaceId: WorkspaceId, channelId?: ChannelId, timeoutMs?: number): Promise<EventFrame | null>;
 }
 
+/** The ledger's token tiers. `input` is uncached input on every provider. */
+export interface TokenUsage {
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write_5m: number;
+  cache_write_1h: number;
+}
+
+/** Micro-USD per million tokens, one rate per tier, snapshotted per report. */
+export interface PriceSnapshot {
+  input_usd_micros_per_million: number;
+  output_usd_micros_per_million: number;
+  cache_read_usd_micros_per_million: number;
+  cache_write_5m_usd_micros_per_million: number;
+  cache_write_1h_usd_micros_per_million: number;
+}
+
+/** What a normalizer can tell from the response; the rest is the caller's. */
+export interface UsageEvidence {
+  provider: string;
+  service_tier?: string;
+  cache_miss_reason?: string;
+}
+
+/** The economic part of a `report_usage` body. */
+export interface NormalizedUsage {
+  model: string;
+  tokens: TokenUsage;
+  evidence: UsageEvidence;
+}
+
+export type UsageProvider =
+  | "anthropic"
+  | "bedrock-converse"
+  | "openai-responses"
+  | "openai-chat"
+  | "gemini"
+  | "deepseek"
+  | "mistral"
+  | "xai"
+  | "vllm";
+
+/** A usage object that cannot be read into the ledger's shape. */
+export class UsageError extends Error {}
+
+export const USAGE_PROVIDERS: readonly UsageProvider[];
+
+/**
+ * Turn one provider response into the ledger's tokens. `model` names the model
+ * when the response does not (Bedrock Converse); `provider` overrides the
+ * evidence provider name.
+ */
+export function normalizeUsage(
+  provider: UsageProvider,
+  response: Record<string, unknown>,
+  options?: { model?: string; provider?: string },
+): NormalizedUsage;
+
+/** `ceil(sum(tokens x rate) / 1_000_000)`, as the ledger checks it. */
+export function usdMicros(tokens: TokenUsage, priceSnapshot: PriceSnapshot): number;
+
 export default Client;

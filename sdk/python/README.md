@@ -61,6 +61,7 @@ ready = client.wait_for_ready(wid)  # event dict or None on timeout
   `.problem` (the body as sent) and `.retry_after` (on 429 and 503), plus `.is_conflict` /
   `.is_cursor_too_old` / `.is_forbidden` / `.is_rate_limited`.
 - **0.3.0 (unreleased; 0.2.0 was never tagged):** writes send an `Idempotency-Key` reused across retries; requests retry up to `max_retries` (default 2) on transport failures, 408, 429 (`Retry-After`), 500, 502, 503, 504 and 409 `idempotency-key-in-flight`. `threads.list_all(cid)` and `list_events_all(wid)` are generators over every page, asking for at most `MAX_PAGE_SIZE` (500, the server's cap) per page. Typed responses and the error classes are new since 0.1.
+- Usage (0.3.0): `normalize_usage(provider, response, model=None, evidence_provider=None)` turns an Anthropic, Bedrock Converse, OpenAI Responses or Chat Completions, Gemini, DeepSeek, Mistral, xAI or vLLM response into the `model`, `tokens` and `evidence` of a `report_usage` body, and `usd_micros(tokens, price_snapshot)` is the charge the server checks. A response it cannot read raises `UsageError`. `input` comes out uncached and cache writes split into 5-minute and 1-hour tiers, as the ledger counts them. See "Normalizing provider usage" in the repo's `docs/Integration.md`.
 - Surface (frozen v1): `workspaces.{create,get,import_}`, `channels.{list,create}`,
   `threads.{create,get,context,transition,set_result,get_result}`, `claim_next_thread`,
   `renew_claim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,

@@ -1223,6 +1223,88 @@ cost per completed task. `POST /threads/{id}/usage/otel` accepts the same
 heartbeat with token counts taken from GenAI usage attributes; the price
 snapshot is still the caller's, and Maidan computes `usd_micros`.
 
+#### Normalizing provider usage
+
+Providers disagree on what "input tokens" means, so each SDK has a pure
+function that turns a provider's response into the `model`, `tokens` and
+`evidence` of a `report_usage` body: `normalizeUsage` (TypeScript),
+`normalize_usage` (Python and Rust) and `NormalizeUsage` (Go). A second
+function, `usdMicros` / `usd_micros` / `USDMicros`, computes the charge the
+server checks, in integers. The provider id names the API shape you called,
+not the host:
+
+| Provider id | Uncached `input` | `cache_read` | Cache writes | `output` | Evidence `provider` |
+|---|---|---|---|---|---|
+| `anthropic` (Messages) | `input_tokens` | `cache_read_input_tokens` | `cache_creation.ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`; `cache_creation_input_tokens` on the 5-minute tier when both are 0 | `output_tokens` (includes thinking) | `anthropic` |
+| `bedrock-converse` | `inputTokens` | `cacheReadInputTokens` | `cacheDetails` by `ttl` (`5m`, `1h`); `cacheWriteInputTokens` on the 5-minute tier when there are none | `outputTokens` | `aws.bedrock` |
+| `openai-responses` | `input_tokens` − read − write | `input_tokens_details.cached_tokens` | `input_tokens_details.cache_write_tokens`, 5-minute tier | `output_tokens` (includes reasoning) | `openai` |
+| `openai-chat` | `prompt_tokens` − read − write | `prompt_tokens_details.cached_tokens` | `prompt_tokens_details.cache_write_tokens`, 5-minute tier | `completion_tokens` (includes reasoning) | `openai` |
+| `gemini` | `promptTokenCount` − read | `cachedContentTokenCount` | none per request | `candidatesTokenCount` + `thoughtsTokenCount` | `gcp.gemini` |
+| `deepseek` | `prompt_cache_miss_tokens` | `prompt_cache_hit_tokens` | none | `completion_tokens` | `deepseek` |
+| `mistral` | `prompt_tokens` − read | `prompt_tokens_details.cached_tokens` | none | `completion_tokens` | `mistral_ai` |
+| `xai` (Chat or Responses) | `prompt_tokens` or `input_tokens` − read | `prompt_tokens_details.cached_tokens` or `input_tokens_details.cached_tokens` | none | `completion_tokens` + `completion_tokens_details.reasoning_tokens` (or the Responses names) | `x_ai` |
+| `vllm` | `prompt_tokens` − read | `prompt_tokens_details.cached_tokens` | none | `completion_tokens` | `vllm` |
+
+An unsplit write lands on the 5-minute tier, as the ledger records it; price
+that tier at the provider's write rate (OpenAI's GPT-5.6 writes have a 30-minute
+TTL). A total smaller than the cache tiers it includes is refused, not stored as
+a negative count. The evidence also carries the response's service tier
+(Anthropic `usage.service_tier`, OpenAI `service_tier`, Gemini
+`usageMetadata.serviceTier`) and Anthropic's
+`diagnostics.cache_miss_reason.type`; the harness, cache key and pack hashes are
+yours to add. A response that names no model (Bedrock Converse, or a bare usage
+object) needs the model passed in. A shape served by another host keeps its
+reader and takes an evidence-provider override: Azure's Chat Completions is
+`openai-chat` with `azure.ai.openai`.
+
+```ts
+import { normalizeUsage, usdMicros } from "maidan";
+
+const { model, tokens, evidence } = normalizeUsage("anthropic", response);
+const body = {
+  usage_report_id: crypto.randomUUID(), // keep it across retries of this report
+  claim_lease_id: claim.claim_lease_id,
+  model,
+  tokens,
+  usd_micros: usdMicros(tokens, price),
+  price_snapshot: price, // your rates, in micro-USD per million tokens
+  turns: 1,
+  evidence: { ...evidence, harness: "my-agent" },
+};
+await fetch(`${base}/threads/${threadId}/usage`, { method: "POST", headers, body: JSON.stringify(body) });
+```
+
+What the official docs do not settle, and how the normalizers read it:
+
+- **xAI reasoning.** The Chat Completions reference example totals
+  `prompt + completion + reasoning` (32 + 9 + 94 = 135), so `completion_tokens`
+  leaves reasoning out, and the pricing page bills reasoning at the completion
+  rate. No sentence states it. The Responses example has 0 reasoning tokens, so
+  the Responses reading follows the Chat one unconfirmed.
+- **Gemini tool-use prompts.** `toolUsePromptTokenCount` is documented, but not
+  whether `promptTokenCount` includes it; `totalTokenCount` is prompt + thoughts
+  + candidates. It is not added to `input`.
+- **vLLM writes.** `prompt_tokens_details.created_cache_tokens` (in vLLM's code,
+  not its docs) counts newly cached tokens inside `prompt_tokens`. A self-hosted
+  engine charges no write premium, so they stay uncached input.
+  `prompt_tokens_details` appears only with `--enable-prompt-tokens-details`.
+- **OpenAI models on Bedrock** return OpenAI's Responses shape (input including
+  cached tokens). Normalize them as `openai-responses` and report the result
+  with `report_usage`. Sent raw to `/usage/otel` with provider `aws.bedrock`,
+  their `input_tokens` would be read as already uncached.
+
+`POST /threads/{id}/usage/otel` reads the same fields when its `attributes` are
+the provider's usage object flattened with dotted keys
+(`"cache_creation.ephemeral_5m_input_tokens": 148`) plus
+`gen_ai.provider.name` and `gen_ai.response.model`. The fixtures in
+`sdk/usage-fixtures/providers/` are recorded responses, copied from a
+provider's reference or a public report, with the source URL in each file;
+`constructed/` holds the few cases no published response shows (a Bedrock
+`cacheDetails` split, a Gemini cache read, a vLLM cache hit), with chosen
+numbers and marked as such. The four SDK suites and
+`crates/maidan-types/tests/sdk_usage_fixtures.rs` read both, so a normalizer
+that drifts from the ledger fails a test.
+
 Keep `usage_report_id` stable across a transport retry. The exact same request
 returns its original ledger outcome without charging or emitting again; reuse
 with different economic content fails. A stale `claim_lease_id` also fails
