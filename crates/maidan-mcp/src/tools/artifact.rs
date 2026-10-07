@@ -67,7 +67,7 @@ pub(super) async fn upload_artifact_multipart_part(
     artifacts: &Arc<dyn ArtifactStore>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: UploadMultipartPartArgs = serde_json::from_value(args.clone())?;
+    let a: UploadMultipartPartArgs = crate::tools::parse_args(args)?;
     let raw = STANDARD
         .decode(&a.content_base64)
         .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
@@ -103,7 +103,7 @@ pub(super) async fn complete_artifact_multipart(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CompleteMultipartArgs = serde_json::from_value(args.clone())?;
+    let a: CompleteMultipartArgs = crate::tools::parse_args(args)?;
     let upload = multipart_upload(&a.upload_id, &a.object_key);
     let parts: Vec<CompletedPart> = a
         .parts
@@ -156,7 +156,7 @@ pub(super) async fn abort_artifact_multipart(
     artifacts: &Arc<dyn ArtifactStore>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AbortMultipartArgs = serde_json::from_value(args.clone())?;
+    let a: AbortMultipartArgs = crate::tools::parse_args(args)?;
     let upload = multipart_upload(&a.upload_id, &a.object_key);
     s3_artifacts(artifacts)?
         .abort_multipart_upload(&upload)
@@ -170,7 +170,7 @@ pub(super) async fn upload_artifact(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: UploadArtifactArgs = serde_json::from_value(args.clone())?;
+    let a: UploadArtifactArgs = crate::tools::parse_args(args)?;
     let raw = STANDARD
         .decode(&a.content_base64)
         .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
@@ -206,7 +206,16 @@ pub(super) async fn upload_artifact(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GetArtifactMetadataArgs {
+    #[serde(deserialize_with = "sha256_hex")]
     sha256: String,
+}
+
+/// A sha256 hex digest, refused while parsing so a malformed one says so
+/// instead of reading as an artifact that does not exist.
+fn sha256_hex<'de, D: serde::Deserializer<'de>>(de: D) -> Result<String, D::Error> {
+    let hex = String::deserialize(de)?;
+    maidan_artifacts::Sha256::from_hex(&hex).map_err(serde::de::Error::custom)?;
+    Ok(hex)
 }
 
 pub(super) async fn get_artifact_metadata(
@@ -214,7 +223,7 @@ pub(super) async fn get_artifact_metadata(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetArtifactMetadataArgs = serde_json::from_value(args.clone())?;
+    let a: GetArtifactMetadataArgs = crate::tools::parse_args(args)?;
     // A blob is deduped across tenants, so gate on the caller's per-workspace
     // access ref. A missing ref returns NotFound (indistinguishable from a
     // genuinely-absent artifact — no cross-tenant existence oracle), exactly as
@@ -244,7 +253,7 @@ pub(super) async fn get_artifact(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetArtifactMetadataArgs = serde_json::from_value(args.clone())?;
+    let a: GetArtifactMetadataArgs = crate::tools::parse_args(args)?;
     let sha = maidan_artifacts::Sha256::from_hex(&a.sha256)
         .map_err(|e| McpError::InvalidParams(e.to_string()))?;
     if !auth.bypass

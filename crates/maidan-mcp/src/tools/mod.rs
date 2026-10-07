@@ -222,6 +222,42 @@ const BULK_TOOLS: &[&str] = &[
 ];
 const LONG_POLL_TOOL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(330);
 
+/// A tool's arguments as `T`, or an invalid-params error that names the
+/// argument at fault (`workspace_id: UUID parsing failed ...`), so a caller can
+/// fix the call without reading the schema.
+pub(crate) fn parse_args<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, McpError> {
+    serde_path_to_error::deserialize(args).map_err(|err| {
+        let path = err.path().to_string();
+        let inner = err.into_inner();
+        if path == "." {
+            McpError::InvalidParams(inner.to_string())
+        } else {
+            McpError::InvalidParams(format!("{path}: {inner}"))
+        }
+    })
+}
+
+#[cfg(test)]
+mod parse_args_tests {
+    use serde_json::json;
+
+    use super::parse_args;
+
+    #[derive(Debug, serde::Deserialize)]
+    struct Args {
+        #[allow(dead_code)]
+        workspace_id: uuid::Uuid,
+    }
+
+    #[test]
+    fn a_malformed_or_missing_argument_is_refused_by_name() {
+        for args in [json!({ "workspace_id": "not-a-uuid" }), json!({})] {
+            let err = parse_args::<Args>(&args).unwrap_err();
+            assert!(err.to_string().contains("workspace_id"), "{err}");
+        }
+    }
+}
+
 pub fn is_read_only(name: &str) -> bool {
     READ_ONLY_TOOLS.binary_search(&name).is_ok()
 }

@@ -56,7 +56,7 @@ pub(super) async fn request_approval(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RequestApprovalArgs = serde_json::from_value(args.clone())?;
+    let a: RequestApprovalArgs = crate::tools::parse_args(args)?;
     let (gate, event) = server
         .store
         .create_approval_gate_with_event(&NewApprovalGate {
@@ -89,7 +89,7 @@ pub(super) async fn get_approval_gate(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetApprovalGateArgs = serde_json::from_value(args.clone())?;
+    let a: GetApprovalGateArgs = crate::tools::parse_args(args)?;
     let gate = server.store.get_approval_gate(a.gate_id).await?;
     match gate {
         // Scope to the caller's workspace (bypass sees all); an out-of-workspace

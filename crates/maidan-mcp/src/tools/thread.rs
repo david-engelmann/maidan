@@ -88,7 +88,7 @@ struct ListThreadsArgs {
 }
 
 pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ListThreadsArgs = serde_json::from_value(args.clone())?;
+    let a: ListThreadsArgs = crate::tools::parse_args(args)?;
     // Keyset-paginated (was unbounded). Default 100, clamp 1..=500.
     let limit = a.limit.unwrap_or(100).clamp(1, 500);
     let after = a.cursor.map(ThreadId);
@@ -116,7 +116,7 @@ pub(super) async fn create_thread(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CreateThreadArgs = serde_json::from_value(args.clone())?;
+    let a: CreateThreadArgs = crate::tools::parse_args(args)?;
     let actor = (!auth.bypass).then_some(auth.member_id);
     let created = server
         .store
@@ -143,7 +143,7 @@ pub(super) async fn list_child_threads(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let summaries = store.child_thread_summaries(ThreadId(a.thread_id)).await?;
     Ok(content_json(&summaries))
 }
@@ -163,7 +163,7 @@ pub(super) async fn list_recently_active_threads(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RecentThreadsArgs = serde_json::from_value(args.clone())?;
+    let a: RecentThreadsArgs = crate::tools::parse_args(args)?;
     let limit = a.limit.unwrap_or(50).clamp(1, 200);
     let threads = store
         .list_recently_active_threads(ChannelId(a.channel_id), limit)
@@ -179,7 +179,7 @@ pub(super) async fn mute_thread(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     store
         .mute_thread(auth.member_id, ThreadId(a.thread_id))
         .await?;
@@ -193,7 +193,7 @@ pub(super) async fn unmute_thread(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let unmuted = store
         .unmute_thread(auth.member_id, ThreadId(a.thread_id))
         .await?;
@@ -217,7 +217,7 @@ pub(super) async fn get_tool_transcript(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ToolTranscriptArgs = serde_json::from_value(args.clone())?;
+    let a: ToolTranscriptArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let limit = a.limit.unwrap_or(200).clamp(1, 500);
     let messages = store.list_messages(thread_id, limit).await?;
@@ -251,7 +251,7 @@ pub(super) async fn assign_thread(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AssignThreadArgs = serde_json::from_value(args.clone())?;
+    let a: AssignThreadArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     // Atomic domain-write + event: the store captures the previous assignee
     // in-tx and appends ThreadAssignmentChanged with it, so the agent-driven
@@ -282,7 +282,7 @@ pub(super) async fn claim_thread(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ClaimThreadArgs = serde_json::from_value(args.clone())?;
+    let a: ClaimThreadArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let member_id = auth.member_id;
     // Unclaimable: a parked thread refuses an explicit claim, just as
@@ -328,7 +328,7 @@ pub(super) async fn unassign_thread(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: UnassignThreadArgs = serde_json::from_value(args.clone())?;
+    let a: UnassignThreadArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     // Atomic: the store captures the previous assignee in-tx and appends
     // ThreadAssignmentChanged with it.
@@ -400,7 +400,7 @@ pub(super) async fn transition_thread(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: TransitionThreadArgs = serde_json::from_value(args.clone())?;
+    let a: TransitionThreadArgs = crate::tools::parse_args(args)?;
     let action = maidan_fsm::ThreadAction::parse(&a.action).ok_or_else(|| {
         McpError::InvalidParams(format!(
             "unknown action {:?}; expected start_review, close, or archive (to send \
@@ -482,7 +482,7 @@ pub(super) async fn set_wait(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetWaitArgs = serde_json::from_value(args.clone())?;
+    let a: SetWaitArgs = crate::tools::parse_args(args)?;
     let reason = a.reason.as_deref().map(str::trim).filter(|r| !r.is_empty());
     let wait = store
         .set_thread_wait(
@@ -499,14 +499,14 @@ pub(super) async fn set_wait(
 /// Cancel a thread's wait — the awaited thing happened. `{cancelled}` is
 /// `false` when no wait was set. `thread:transition`; thread access enforced.
 pub(super) async fn cancel_wait(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let cancelled = store.cancel_thread_wait(ThreadId(a.thread_id)).await?;
     Ok(content_json(&json!({ "cancelled": cancelled })))
 }
 
 /// The thread's wait, or null. `workspace:read`; thread access enforced.
 pub(super) async fn get_wait(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let wait = store.get_thread_wait(ThreadId(a.thread_id)).await?;
     Ok(content_json(&wait))
 }
@@ -527,7 +527,7 @@ pub(super) async fn set_priority(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetPriorityArgs = serde_json::from_value(args.clone())?;
+    let a: SetPriorityArgs = crate::tools::parse_args(args)?;
     let priority = store
         .set_thread_priority(ThreadId(a.thread_id), a.priority, auth.member_id)
         .await?;
@@ -537,7 +537,7 @@ pub(super) async fn set_priority(
 /// The thread's dispatch-priority record, or null (= the default priority 0).
 /// `workspace:read`; thread access enforced.
 pub(super) async fn get_priority(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let priority = store.get_thread_priority(ThreadId(a.thread_id)).await?;
     Ok(content_json(&priority))
 }
@@ -557,7 +557,7 @@ pub(super) async fn mark_unclaimable(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MarkUnclaimableArgs = serde_json::from_value(args.clone())?;
+    let a: MarkUnclaimableArgs = crate::tools::parse_args(args)?;
     let reason = a.reason.trim();
     if reason.is_empty() {
         return Err(McpError::InvalidParams("reason must not be empty".into()));
@@ -574,7 +574,7 @@ pub(super) async fn mark_claimable(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let cleared = store.mark_thread_claimable(ThreadId(a.thread_id)).await?;
     Ok(content_json(&json!({ "cleared": cleared })))
 }
@@ -590,7 +590,7 @@ pub(super) async fn list_unclaimable(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ChannelIdArg = serde_json::from_value(args.clone())?;
+    let a: ChannelIdArg = crate::tools::parse_args(args)?;
     let parked = store
         .list_unclaimable_threads(ChannelId(a.channel_id))
         .await?;
@@ -615,7 +615,7 @@ pub(super) async fn set_thread_block(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetThreadBlockArgs = serde_json::from_value(args.clone())?;
+    let a: SetThreadBlockArgs = crate::tools::parse_args(args)?;
     let (block, _event) = store
         .set_thread_block(ThreadId(a.thread_id), a.reason, auth.member_id, a.note)
         .await?;
@@ -628,7 +628,7 @@ pub(super) async fn get_thread_block(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let block = store.get_thread_block(ThreadId(a.thread_id)).await?;
     Ok(content_json(&block))
 }
@@ -651,7 +651,7 @@ pub(super) async fn declare_status(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: DeclareStatusArgs = serde_json::from_value(args.clone())?;
+    let a: DeclareStatusArgs = crate::tools::parse_args(args)?;
     // `stalled` is system-computed only; DeclaredStatus::parse refuses it,
     // and the type has no Stalled variant, so this is enforced by construction.
     // Validate the note is one sentence (non-empty, no newlines).
@@ -670,7 +670,7 @@ pub(super) async fn get_thread_status(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let status = store.get_thread_status(ThreadId(a.thread_id)).await?;
     Ok(content_json(&status))
 }
@@ -682,7 +682,7 @@ pub(super) async fn clear_thread_block(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdArg = serde_json::from_value(args.clone())?;
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
     let (cleared, stored) = server
         .store
         .clear_thread_block_with_event(ThreadId(a.thread_id), auth.member_id)
@@ -699,7 +699,7 @@ pub(super) async fn list_blocked_threads(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ChannelIdArg = serde_json::from_value(args.clone())?;
+    let a: ChannelIdArg = crate::tools::parse_args(args)?;
     let blocks = store.list_blocked_threads(ChannelId(a.channel_id)).await?;
     Ok(content_json(&blocks))
 }
@@ -719,7 +719,7 @@ pub(super) async fn set_wip_limit(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetWipLimitArgs = serde_json::from_value(args.clone())?;
+    let a: SetWipLimitArgs = crate::tools::parse_args(args)?;
     if let Some(limit) = a.limit {
         if limit < 0 {
             return Err(McpError::InvalidParams("limit must be >= 0".into()));
@@ -752,7 +752,7 @@ pub(super) async fn get_member_wip(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberWipArgs = serde_json::from_value(args.clone())?;
+    let a: MemberWipArgs = crate::tools::parse_args(args)?;
     let member_id = MemberId(a.member_id);
     // Another workspace's member: its claims and limit are not ours to read.
     let member = super::requested_member(store.as_ref(), auth, member_id).await?;
@@ -777,7 +777,7 @@ pub(super) async fn list_assigned_threads(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListAssignedThreadsArgs = serde_json::from_value(args.clone())?;
+    let a: ListAssignedThreadsArgs = crate::tools::parse_args(args)?;
     let member_id = MemberId(a.member_id);
     let member = super::requested_member(store.as_ref(), auth, member_id).await?;
     let threads = store
@@ -813,7 +813,7 @@ pub(super) async fn claim_next_thread(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ClaimNextThreadArgs = serde_json::from_value(args.clone())?;
+    let a: ClaimNextThreadArgs = crate::tools::parse_args(args)?;
     let lease_secs = server.claim_lease_policy().lease_for(a.lease_secs)?;
     let member_id = auth.member_id;
     // WIP limit: a capped member is dispatched nothing (null), the same shape
@@ -851,7 +851,7 @@ pub(super) async fn claim_next_workspace_thread(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ClaimNextWorkspaceThreadArgs = serde_json::from_value(args.clone())?;
+    let a: ClaimNextWorkspaceThreadArgs = crate::tools::parse_args(args)?;
     let lease_secs = server.claim_lease_policy().lease_for(a.lease_secs)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
@@ -901,7 +901,7 @@ pub(super) async fn renew_claim(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RenewClaimArgs = serde_json::from_value(args.clone())?;
+    let a: RenewClaimArgs = crate::tools::parse_args(args)?;
     let lease_secs = crate::claim_lease::check_lease_secs(a.lease_secs)?;
     let thread = server
         .store
@@ -930,7 +930,7 @@ pub(super) async fn acknowledge_claim(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AcknowledgeClaimArgs = serde_json::from_value(args.clone())?;
+    let a: AcknowledgeClaimArgs = crate::tools::parse_args(args)?;
     let thread = server
         .store
         .acknowledge_claim(
@@ -958,7 +958,7 @@ pub(super) async fn release_claim(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ReleaseClaimArgs = serde_json::from_value(args.clone())?;
+    let a: ReleaseClaimArgs = crate::tools::parse_args(args)?;
     let member = auth.member_id;
     // Atomic: release + ThreadAssignmentChanged in one tx.
     let (thread, stored) = server
@@ -990,7 +990,7 @@ pub(super) async fn add_thread_dependency(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AddThreadDependencyArgs = serde_json::from_value(args.clone())?;
+    let a: AddThreadDependencyArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let depends_on = ThreadId(a.depends_on_thread_id);
     let ctx = resolve_thread_context(store.as_ref(), thread_id)
@@ -1023,7 +1023,7 @@ pub(super) async fn list_thread_dependencies(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadDepsArgs = serde_json::from_value(args.clone())?;
+    let a: ThreadDepsArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let dependencies = store.list_thread_dependencies(thread_id).await?;
     let ready = store.thread_dependencies_satisfied(thread_id).await?;
@@ -1054,7 +1054,7 @@ pub(super) async fn get_queue_depth(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: QueueDepthArgs = serde_json::from_value(args.clone())?;
+    let a: QueueDepthArgs = crate::tools::parse_args(args)?;
     let depth = store
         .channel_queue_depth(ChannelId(a.channel_id), queue_reader(auth))
         .await?;
@@ -1070,7 +1070,7 @@ pub(super) async fn get_channel_occupancy(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: QueueDepthArgs = serde_json::from_value(args.clone())?;
+    let a: QueueDepthArgs = crate::tools::parse_args(args)?;
     let occupancy = store
         .channel_occupancy(ChannelId(a.channel_id), queue_reader(auth))
         .await?;
@@ -1087,7 +1087,7 @@ struct WorkspaceQueueArgs {
 /// pre-dispatch workspace gate checks it too, but it passes what it cannot
 /// parse, and a required argument deserves its own check.
 fn queue_workspace(auth: &AuthContext, args: &Value) -> Result<WorkspaceId, McpError> {
-    let a: WorkspaceQueueArgs = serde_json::from_value(args.clone())?;
+    let a: WorkspaceQueueArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
     Ok(workspace_id)
@@ -1137,7 +1137,7 @@ pub(super) async fn set_thread_lineage(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetThreadLineageArgs = serde_json::from_value(args.clone())?;
+    let a: SetThreadLineageArgs = crate::tools::parse_args(args)?;
     let lineage = store
         .set_thread_lineage(ThreadId(a.thread_id), &a.parent_run_id)
         .await?;
@@ -1156,7 +1156,7 @@ pub(super) async fn get_thread_lineage(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetThreadLineageArgs = serde_json::from_value(args.clone())?;
+    let a: GetThreadLineageArgs = crate::tools::parse_args(args)?;
     let lineage = store.get_thread_lineage(ThreadId(a.thread_id)).await?;
     Ok(content_json(&lineage))
 }
@@ -1183,7 +1183,7 @@ pub(super) async fn list_run_threads(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RunLineageArgs = serde_json::from_value(args.clone())?;
+    let a: RunLineageArgs = crate::tools::parse_args(args)?;
     let parent_run_id = require_parent_run_id(&a.parent_run_id)?;
     let threads = store
         .list_threads_for_run(auth.workspace_id, parent_run_id)
@@ -1208,7 +1208,7 @@ pub(super) async fn get_run_occupancy(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RunLineageArgs = serde_json::from_value(args.clone())?;
+    let a: RunLineageArgs = crate::tools::parse_args(args)?;
     let parent_run_id = require_parent_run_id(&a.parent_run_id)?;
     let occupancy = store
         .run_occupancy(auth.workspace_id, parent_run_id)
@@ -1232,7 +1232,7 @@ pub(super) async fn set_thread_result(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetThreadResultArgs = serde_json::from_value(args.clone())?;
+    let a: SetThreadResultArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let result = server
         .store
@@ -1297,7 +1297,7 @@ pub(super) async fn get_thread_result(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetThreadResultArgs = serde_json::from_value(args.clone())?;
+    let a: GetThreadResultArgs = crate::tools::parse_args(args)?;
     let result = store.get_thread_result(ThreadId(a.thread_id)).await?;
     Ok(content_json(&result))
 }
@@ -1322,7 +1322,7 @@ pub(super) async fn list_thread_results(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListThreadResultsArgs = serde_json::from_value(args.clone())?;
+    let a: ListThreadResultsArgs = crate::tools::parse_args(args)?;
     let limit = a.limit.unwrap_or(50).clamp(1, 500);
     let results = store
         .list_thread_results(auth.workspace_id, a.result_kind.as_deref(), limit)
@@ -1356,7 +1356,7 @@ pub(super) async fn set_thread_owner(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetThreadOwnerArgs = serde_json::from_value(args.clone())?;
+    let a: SetThreadOwnerArgs = crate::tools::parse_args(args)?;
     let thread = store
         .set_thread_owner(ThreadId(a.thread_id), a.owner_id.map(MemberId))
         .await?;
@@ -1373,7 +1373,7 @@ struct RenameThreadArgs {
 /// Rename a thread. Rejects a blank title. Thread access is enforced
 /// pre-dispatch.
 pub(super) async fn rename_thread(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: RenameThreadArgs = serde_json::from_value(args.clone())?;
+    let a: RenameThreadArgs = crate::tools::parse_args(args)?;
     let title = a.title.trim();
     if title.is_empty() {
         return Err(McpError::InvalidParams("title must not be empty".into()));
@@ -1398,7 +1398,7 @@ pub(super) async fn set_thread_steer(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetThreadSteerArgs = serde_json::from_value(args.clone())?;
+    let a: SetThreadSteerArgs = crate::tools::parse_args(args)?;
     let steer = server
         .store
         .set_thread_steer(ThreadId(a.thread_id), auth.member_id, &a.steer)
@@ -1419,7 +1419,7 @@ pub(super) async fn get_thread_steer(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetThreadSteerArgs = serde_json::from_value(args.clone())?;
+    let a: GetThreadSteerArgs = crate::tools::parse_args(args)?;
     let steer = store.get_thread_steer(ThreadId(a.thread_id)).await?;
     Ok(content_json(&steer))
 }
@@ -1453,7 +1453,7 @@ pub(super) async fn wait_for_result(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: WaitForResultArgs = serde_json::from_value(args.clone())?;
+    let a: WaitForResultArgs = crate::tools::parse_args(args)?;
     let Some(bus) = server.event_bus.as_ref() else {
         return Err(McpError::InvalidParams(
             "wait_for_result requires an event bus".into(),
@@ -1530,7 +1530,7 @@ pub(super) async fn get_dependency_results(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: DependencyResultsArgs = serde_json::from_value(args.clone())?;
+    let a: DependencyResultsArgs = crate::tools::parse_args(args)?;
     let deps = store
         .list_thread_dependencies(ThreadId(a.thread_id))
         .await?;
@@ -1677,7 +1677,7 @@ async fn channel_wait(
     tool: &'static str,
     kind: EventKind,
 ) -> Result<Value, McpError> {
-    let a: ChannelWaitArgs = serde_json::from_value(args.clone())?;
+    let a: ChannelWaitArgs = crate::tools::parse_args(args)?;
     wait_for_event(
         server,
         auth,
@@ -1700,7 +1700,7 @@ async fn thread_wait(
     tool: &'static str,
     kind: EventKind,
 ) -> Result<Value, McpError> {
-    let a: ThreadWaitArgs = serde_json::from_value(args.clone())?;
+    let a: ThreadWaitArgs = crate::tools::parse_args(args)?;
     wait_for_event(
         server,
         auth,
@@ -1833,7 +1833,7 @@ pub(super) async fn remove_thread_dependency(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RemoveThreadDependencyArgs = serde_json::from_value(args.clone())?;
+    let a: RemoveThreadDependencyArgs = crate::tools::parse_args(args)?;
     let removed = store
         .remove_thread_dependency(ThreadId(a.thread_id), ThreadId(a.depends_on_thread_id))
         .await?;
@@ -1854,7 +1854,7 @@ pub(super) async fn list_thread_dependents(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdOnlyArgs = serde_json::from_value(args.clone())?;
+    let a: ThreadIdOnlyArgs = crate::tools::parse_args(args)?;
     let dependents = store.list_thread_dependents(ThreadId(a.thread_id)).await?;
     Ok(content_json(&dependents))
 }
@@ -1865,7 +1865,7 @@ pub(super) async fn clear_thread_lineage(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadIdOnlyArgs = serde_json::from_value(args.clone())?;
+    let a: ThreadIdOnlyArgs = crate::tools::parse_args(args)?;
     if !store.clear_thread_lineage(ThreadId(a.thread_id)).await? {
         return Err(McpError::NotFound);
     }

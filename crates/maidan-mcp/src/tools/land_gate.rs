@@ -31,7 +31,7 @@ pub(super) async fn set_land_gate(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetArgs = serde_json::from_value(args.clone())?;
+    let a: SetArgs = crate::tools::parse_args(args)?;
     let sha = a
         .artifact_sha
         .as_deref()
@@ -50,7 +50,7 @@ struct ThreadArg {
 
 /// Read a thread's LandGate standing.
 pub(super) async fn get_land_gate(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let standing = store.get_land_gate_standing(ThreadId(a.thread_id)).await?;
     Ok(content_json(&standing))
 }
@@ -60,7 +60,7 @@ pub(super) async fn list_land_gate_history(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let history = store.list_land_gate_history(ThreadId(a.thread_id)).await?;
     Ok(content_json(&history))
 }
@@ -70,7 +70,7 @@ pub(super) async fn require_land_gate(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let standing = store.require_land_gate(ThreadId(a.thread_id)).await?;
     Ok(content_json(&standing))
 }
@@ -81,7 +81,7 @@ pub(super) async fn clear_land_gate(
     auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadArg = serde_json::from_value(args.clone())?;
+    let a: ThreadArg = crate::tools::parse_args(args)?;
     let workspace_id = super::thread_workspace(store.as_ref(), ThreadId(a.thread_id)).await?;
     let cleared = store
         .clear_land_gate_audited(
@@ -117,7 +117,7 @@ pub(super) async fn advise_land_gate(
     server: &crate::server::McpServer,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AdviseArgs = serde_json::from_value(args.clone())?;
+    let a: AdviseArgs = crate::tools::parse_args(args)?;
     let thread_id = a.thread_id;
     let Some(advisor) = server.land_gate_advisor() else {
         return Err(McpError::NotFound);

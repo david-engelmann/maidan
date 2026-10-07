@@ -33,7 +33,7 @@ pub(super) async fn set_spawn_budget(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetSpawnBudgetArgs = serde_json::from_value(args.clone())?;
+    let a: SetSpawnBudgetArgs = crate::tools::parse_args(args)?;
     for (axis, limit) in [
         ("max_children", a.max_children),
         ("max_depth", a.max_depth),

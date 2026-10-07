@@ -42,7 +42,7 @@ pub(super) async fn freeze_member(
     args: &Value,
 ) -> Result<Value, McpError> {
     let store = &server.store;
-    let a: FreezeArgs = serde_json::from_value(args.clone())?;
+    let a: FreezeArgs = crate::tools::parse_args(args)?;
     let member_id = MemberId(a.member_id);
     let workspace_id = ensure_same_workspace(store, auth, member_id).await?;
     let reason = a.reason.as_deref().map(str::trim).filter(|r| !r.is_empty());
@@ -80,7 +80,7 @@ pub(super) async fn unfreeze_member(
     args: &Value,
 ) -> Result<Value, McpError> {
     let store = &server.store;
-    let a: UnfreezeArgs = serde_json::from_value(args.clone())?;
+    let a: UnfreezeArgs = crate::tools::parse_args(args)?;
     let member_id = MemberId(a.member_id);
     let workspace_id = ensure_same_workspace(store, auth, member_id).await?;
     let stored = store

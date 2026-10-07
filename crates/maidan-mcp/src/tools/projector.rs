@@ -49,7 +49,7 @@ pub(super) async fn link_slack_channel(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: LinkSlackArgs = serde_json::from_value(args.clone())?;
+    let a: LinkSlackArgs = crate::tools::parse_args(args)?;
     let scope =
         maidan_auth::authorize_thread(server.store.as_ref(), auth, ThreadId(a.thread_id)).await?;
     let link = server
@@ -82,7 +82,7 @@ pub(super) async fn unlink_slack_channel(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: UnlinkSlackArgs = serde_json::from_value(args.clone())?;
+    let a: UnlinkSlackArgs = crate::tools::parse_args(args)?;
     // Workspace-scope the unlink: only remove a link that belongs to the caller's ws.
     let scoped = matches!(
         server.store.get_slack_channel_link(&a.slack_channel_id).await?,
@@ -101,7 +101,7 @@ pub(super) async fn link_github_issue(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: LinkGithubArgs = serde_json::from_value(args.clone())?;
+    let a: LinkGithubArgs = crate::tools::parse_args(args)?;
     let scope =
         maidan_auth::authorize_thread(server.store.as_ref(), auth, ThreadId(a.thread_id)).await?;
     let link = server
@@ -135,7 +135,7 @@ pub(super) async fn unlink_github_issue(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: UnlinkGithubArgs = serde_json::from_value(args.clone())?;
+    let a: UnlinkGithubArgs = crate::tools::parse_args(args)?;
     let scoped = matches!(
         server.store.get_github_issue_link(&a.repo, a.issue_number).await?,
         Some(link) if link.workspace_id == auth.workspace_id

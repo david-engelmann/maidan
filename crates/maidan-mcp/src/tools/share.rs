@@ -24,7 +24,7 @@ pub(super) async fn create_share_ticket(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CreateArgs = serde_json::from_value(args.clone())?;
+    let a: CreateArgs = crate::tools::parse_args(args)?;
     let secret = ShareTicketSecret::generate();
     let (actor, workspace_id) = (auth.actor_id, auth.workspace_id);
     // The store rejects any SHA that is not lowercase hex, so the distinct
@@ -95,7 +95,7 @@ pub(super) async fn revoke_share_ticket(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RevokeArgs = serde_json::from_value(args.clone())?;
+    let a: RevokeArgs = crate::tools::parse_args(args)?;
     let ticket_id = ShareTicketId(a.ticket_id);
     if !server
         .store

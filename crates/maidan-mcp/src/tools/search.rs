@@ -61,7 +61,7 @@ pub(super) async fn search_messages(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SearchMessagesArgs = serde_json::from_value(args.clone())?;
+    let a: SearchMessagesArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     let limit = clamp_search_limit(a.limit);
     // Exclude private channels the caller can't see at the query level so they

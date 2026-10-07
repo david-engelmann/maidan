@@ -37,7 +37,7 @@ struct MemberLimitArgs {
 }
 
 pub(super) async fn list_mentions(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: MemberLimitArgs = serde_json::from_value(args.clone())?;
+    let a: MemberLimitArgs = crate::tools::parse_args(args)?;
     let mentions = store
         .list_mentions_for_member(MemberId(a.member_id), clamp_limit(a.limit))
         .await?;
@@ -45,7 +45,7 @@ pub(super) async fn list_mentions(store: &Arc<dyn Store>, args: &Value) -> Resul
 }
 
 pub(super) async fn get_inbox(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: MemberLimitArgs = serde_json::from_value(args.clone())?;
+    let a: MemberLimitArgs = crate::tools::parse_args(args)?;
     let inbox = store
         .list_member_inbox(MemberId(a.member_id), clamp_limit(a.limit))
         .await?;
@@ -64,7 +64,7 @@ pub(super) async fn mark_inbox_read(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MarkInboxReadArgs = serde_json::from_value(args.clone())?;
+    let a: MarkInboxReadArgs = crate::tools::parse_args(args)?;
     store
         .advance_inbox_last_read_at(MemberId(a.member_id), a.read_through)
         .await?;
@@ -101,7 +101,7 @@ pub(super) async fn wait_for_mention(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: WaitForMentionArgs = serde_json::from_value(args.clone())?;
+    let a: WaitForMentionArgs = crate::tools::parse_args(args)?;
     wait_for_member_event(
         server,
         auth,
@@ -249,7 +249,7 @@ pub(super) async fn list_notifications(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListNotificationsArgs = serde_json::from_value(args.clone())?;
+    let a: ListNotificationsArgs = crate::tools::parse_args(args)?;
     let notes = store
         .list_notifications(MemberId(a.member_id), a.unread_only, clamp_limit(a.limit))
         .await?;
@@ -275,7 +275,7 @@ pub(super) async fn get_waiting_inbox(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: WaitingArgs = serde_json::from_value(args.clone())?;
+    let a: WaitingArgs = crate::tools::parse_args(args)?;
     let member_id = MemberId(a.member_id);
     let member = store.get_member(member_id).await?;
     let sla = a.sla_secs.filter(|&s| s > 0).unwrap_or(86_400);
@@ -377,7 +377,7 @@ pub(super) async fn get_manager_digest(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ManagerDigestArgs = serde_json::from_value(args.clone())?;
+    let a: ManagerDigestArgs = crate::tools::parse_args(args)?;
     let member_id = MemberId(a.member_id);
     super::requested_member(server.store.as_ref(), auth, member_id).await?;
     if !auth.bypass && auth.token_id.is_none() && auth.member_id != member_id {
@@ -403,7 +403,7 @@ pub(super) async fn list_buried_decisions(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: BuriedDecisionsArgs = serde_json::from_value(args.clone())?;
+    let a: BuriedDecisionsArgs = crate::tools::parse_args(args)?;
     let since = a
         .since
         .unwrap_or_else(|| chrono::Utc::now() - chrono::Duration::days(7));
@@ -421,7 +421,7 @@ pub(super) async fn list_notifications_grouped(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListNotificationsArgs = serde_json::from_value(args.clone())?;
+    let a: ListNotificationsArgs = crate::tools::parse_args(args)?;
     let notes = store
         .list_notifications(MemberId(a.member_id), a.unread_only, clamp_limit(a.limit))
         .await?;
@@ -440,7 +440,7 @@ pub(super) async fn get_unread_count(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let a: MemberIdArg = crate::tools::parse_args(args)?;
     let count = store
         .unread_notification_count(MemberId(a.member_id))
         .await?;
@@ -460,7 +460,7 @@ pub(super) async fn mark_notification_read(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MarkNotificationReadArgs = serde_json::from_value(args.clone())?;
+    let a: MarkNotificationReadArgs = crate::tools::parse_args(args)?;
     let marked = store
         .mark_notification_read(MemberId(a.member_id), NotificationId(a.notification_id))
         .await?;
@@ -483,7 +483,7 @@ pub(super) async fn snooze_notification(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SnoozeNotificationArgs = serde_json::from_value(args.clone())?;
+    let a: SnoozeNotificationArgs = crate::tools::parse_args(args)?;
     let snoozed = store
         .snooze_notification(
             MemberId(a.member_id),
@@ -505,7 +505,7 @@ pub(super) async fn wait_for_notification(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: WaitForMentionArgs = serde_json::from_value(args.clone())?;
+    let a: WaitForMentionArgs = crate::tools::parse_args(args)?;
     wait_for_member_event(
         server,
         auth,
@@ -533,7 +533,7 @@ pub(super) async fn set_notification_pref(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetNotificationPrefArgs = serde_json::from_value(args.clone())?;
+    let a: SetNotificationPrefArgs = crate::tools::parse_args(args)?;
     let kind = EventKind::parse(&a.kind)
         .ok_or_else(|| McpError::InvalidParams(format!("unknown event kind: {}", a.kind)))?;
     let pref = store
@@ -553,7 +553,7 @@ pub(super) async fn list_notification_prefs(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListNotificationPrefsArgs = serde_json::from_value(args.clone())?;
+    let a: ListNotificationPrefsArgs = crate::tools::parse_args(args)?;
     let prefs = store.list_notification_prefs(MemberId(a.member_id)).await?;
     Ok(content_json(&prefs))
 }
@@ -573,7 +573,7 @@ pub(super) async fn set_delivery_mode(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetDeliveryModeArgs = serde_json::from_value(args.clone())?;
+    let a: SetDeliveryModeArgs = crate::tools::parse_args(args)?;
     let mode = EmailDeliveryMode::parse(&a.mode)
         .ok_or_else(|| McpError::InvalidParams(format!("unknown delivery mode: {}", a.mode)))?;
     store.set_delivery_mode(MemberId(a.member_id), mode).await?;
@@ -591,7 +591,7 @@ pub(super) async fn get_delivery_mode(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetDeliveryModeArgs = serde_json::from_value(args.clone())?;
+    let a: GetDeliveryModeArgs = crate::tools::parse_args(args)?;
     let mode = store.get_delivery_mode(MemberId(a.member_id)).await?;
     Ok(content_json(&serde_json::json!({ "mode": mode.as_str() })))
 }
@@ -609,7 +609,7 @@ pub(super) async fn set_member_email(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetMemberEmailArgs = serde_json::from_value(args.clone())?;
+    let a: SetMemberEmailArgs = crate::tools::parse_args(args)?;
     let email = a.email.trim();
     if !email.contains('@') || email.len() < 3 {
         return Err(McpError::InvalidParams(
@@ -631,7 +631,7 @@ pub(super) async fn get_member_email(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberEmailArgs = serde_json::from_value(args.clone())?;
+    let a: MemberEmailArgs = crate::tools::parse_args(args)?;
     let email = store.get_member_email(MemberId(a.member_id)).await?;
     Ok(content_json(&email))
 }
@@ -641,7 +641,7 @@ pub(super) async fn delete_member_email(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberEmailArgs = serde_json::from_value(args.clone())?;
+    let a: MemberEmailArgs = crate::tools::parse_args(args)?;
     let deleted = store.delete_member_email(MemberId(a.member_id)).await?;
     Ok(content_json(&serde_json::json!({ "deleted": deleted })))
 }
@@ -659,7 +659,7 @@ pub(super) async fn follow_channel(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: FollowChannelArgs = serde_json::from_value(args.clone())?;
+    let a: FollowChannelArgs = crate::tools::parse_args(args)?;
     store
         .follow_channel(MemberId(a.member_id), ChannelId(a.channel_id))
         .await?;
@@ -671,7 +671,7 @@ pub(super) async fn unfollow_channel(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: FollowChannelArgs = serde_json::from_value(args.clone())?;
+    let a: FollowChannelArgs = crate::tools::parse_args(args)?;
     let removed = store
         .unfollow_channel(MemberId(a.member_id), ChannelId(a.channel_id))
         .await?;
@@ -683,7 +683,7 @@ pub(super) async fn list_channel_follows(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let a: MemberIdArg = crate::tools::parse_args(args)?;
     Ok(content_json(
         &store.list_channel_follows(MemberId(a.member_id)).await?,
     ))
@@ -699,7 +699,7 @@ struct FollowThreadArgs {
 /// Follow a thread to be notified of activity there. Thread access is enforced
 /// pre-dispatch (the `thread_id` arg). Idempotent.
 pub(super) async fn follow_thread(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: FollowThreadArgs = serde_json::from_value(args.clone())?;
+    let a: FollowThreadArgs = crate::tools::parse_args(args)?;
     store
         .follow_thread(MemberId(a.member_id), ThreadId(a.thread_id))
         .await?;
@@ -711,7 +711,7 @@ pub(super) async fn unfollow_thread(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: FollowThreadArgs = serde_json::from_value(args.clone())?;
+    let a: FollowThreadArgs = crate::tools::parse_args(args)?;
     let removed = store
         .unfollow_thread(MemberId(a.member_id), ThreadId(a.thread_id))
         .await?;
@@ -723,7 +723,7 @@ pub(super) async fn list_thread_follows(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let a: MemberIdArg = crate::tools::parse_args(args)?;
     Ok(content_json(
         &store.list_thread_follows(MemberId(a.member_id)).await?,
     ))
@@ -743,7 +743,7 @@ pub(super) async fn follow_member(
     auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: FollowMemberArgs = serde_json::from_value(args.clone())?;
+    let a: FollowMemberArgs = crate::tools::parse_args(args)?;
     let follower_id = MemberId(a.member_id);
     let followed_id = MemberId(a.followed_member_id);
     if follower_id == followed_id {
@@ -765,7 +765,7 @@ pub(super) async fn unfollow_member(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: FollowMemberArgs = serde_json::from_value(args.clone())?;
+    let a: FollowMemberArgs = crate::tools::parse_args(args)?;
     let removed = store
         .unfollow_member(MemberId(a.member_id), MemberId(a.followed_member_id))
         .await?;
@@ -777,7 +777,7 @@ pub(super) async fn list_member_follows(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let a: MemberIdArg = crate::tools::parse_args(args)?;
     Ok(content_json(
         &store.list_member_follows(MemberId(a.member_id)).await?,
     ))
@@ -789,7 +789,7 @@ pub(super) async fn get_member_occupancy(
     auth: &maidan_auth::AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let a: MemberIdArg = crate::tools::parse_args(args)?;
     let member_id = MemberId(a.member_id);
     let member = super::requested_member(server.store.as_ref(), auth, member_id).await?;
     let assigned = server
@@ -823,7 +823,7 @@ pub(super) async fn list_members(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListMembersArgs = serde_json::from_value(args.clone())?;
+    let a: ListMembersArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)
         .map_err(McpError::from)?;
@@ -838,7 +838,7 @@ pub(super) async fn get_member(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let a: MemberIdArg = crate::tools::parse_args(args)?;
     let member = super::requested_member(store.as_ref(), auth, MemberId(a.member_id)).await?;
     Ok(content_json(&member))
 }
@@ -849,7 +849,7 @@ pub(super) async fn mark_all_notifications_read(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: MemberIdArg = serde_json::from_value(args.clone())?;
+    let a: MemberIdArg = crate::tools::parse_args(args)?;
     let cleared = store
         .mark_all_notifications_read(MemberId(a.member_id))
         .await? as i64;

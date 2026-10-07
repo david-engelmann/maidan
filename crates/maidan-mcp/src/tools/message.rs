@@ -55,7 +55,7 @@ pub(super) async fn post_dm_message(
     args: &Value,
 ) -> Result<Value, McpError> {
     let store = &server.store;
-    let a: PostDmMessageArgs = serde_json::from_value(args.clone())?;
+    let a: PostDmMessageArgs = crate::tools::parse_args(args)?;
     let dm = store
         .get_dm_conversation(DmConversationId(a.dm_conversation_id))
         .await?;
@@ -172,7 +172,7 @@ fn default_limit() -> i64 {
 }
 
 pub(super) async fn list_messages(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
-    let a: ListMessagesArgs = serde_json::from_value(args.clone())?;
+    let a: ListMessagesArgs = crate::tools::parse_args(args)?;
     let messages = store
         .list_messages(ThreadId(a.thread_id), a.limit.clamp(1, 500))
         .await?;
@@ -227,7 +227,7 @@ pub(super) async fn post_message(
     args: &Value,
 ) -> Result<Value, McpError> {
     let store = &server.store;
-    let a: PostMessageArgs = serde_json::from_value(args.clone())?;
+    let a: PostMessageArgs = crate::tools::parse_args(args)?;
     let content = a.content.clone();
     let body = body_from_content(&a.body, content.as_deref())?;
     let thread_id = ThreadId(a.thread_id);
@@ -351,7 +351,7 @@ pub(super) async fn edit_message(
     args: &Value,
 ) -> Result<Value, McpError> {
     let store = &server.store;
-    let a: EditMessageArgs = serde_json::from_value(args.clone())?;
+    let a: EditMessageArgs = crate::tools::parse_args(args)?;
     let message_id = MessageId(a.message_id);
     let existing = store.get_message(message_id).await?;
     if existing.tombstoned_at.is_some() {
@@ -421,7 +421,7 @@ pub(super) async fn record_mention(
     server: &crate::server::McpServer,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: RecordMentionArgs = serde_json::from_value(args.clone())?;
+    let a: RecordMentionArgs = crate::tools::parse_args(args)?;
     // The explicit-mention API now emits MentionRecorded (atomic) + bus-notify,
     // so it reaches the notification router / wait_for_mention like REST.
     let stored = server
@@ -478,7 +478,7 @@ pub(super) async fn tombstone_message(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: TombstoneMessageArgs = serde_json::from_value(args.clone())?;
+    let a: TombstoneMessageArgs = crate::tools::parse_args(args)?;
     let message_id = MessageId(a.message_id);
     let chain = maidan_auth::authorize_message(server.store.as_ref(), auth, message_id).await?;
     let message = server.store.get_message(message_id).await?;
@@ -524,7 +524,7 @@ pub(super) async fn list_message_edits(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListMessageEditsArgs = serde_json::from_value(args.clone())?;
+    let a: ListMessageEditsArgs = crate::tools::parse_args(args)?;
     let message_id = MessageId(a.message_id);
     if !auth.bypass && store.get_message(message_id).await?.tombstoned_at.is_some() {
         return Ok(content_json(&Vec::<MessageEdit>::new()));
@@ -551,7 +551,7 @@ pub(super) async fn post_group_dm_message(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: PostGroupDmMessageArgs = serde_json::from_value(args.clone())?;
+    let a: PostGroupDmMessageArgs = crate::tools::parse_args(args)?;
     let group_id = GroupDmConversationId(a.group_dm_conversation_id);
     let group = server.store.get_group_dm_conversation(group_id).await?;
     auth.ensure_workspace(group.workspace_id)

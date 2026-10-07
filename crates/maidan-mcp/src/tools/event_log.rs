@@ -79,7 +79,7 @@ pub(super) async fn get_log_snapshot(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SnapshotArgs = serde_json::from_value(args.clone())?;
+    let a: SnapshotArgs = crate::tools::parse_args(args)?;
     let workspace_id = workspace(auth, a.workspace_id)?;
     if a.include_graph && !auth.bypass {
         maidan_auth::require_observed_capability(
@@ -98,7 +98,7 @@ pub(super) async fn catch_up_events(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CatchUpArgs = serde_json::from_value(args.clone())?;
+    let a: CatchUpArgs = crate::tools::parse_args(args)?;
     let workspace_id = workspace(auth, a.workspace_id)?;
     // The whole log, bodies from every private channel and DM included, as one
     // chain: a workspace admin's read, as on REST.
@@ -125,7 +125,7 @@ pub(super) async fn verify_event_chain(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: VerifyArgs = serde_json::from_value(args.clone())?;
+    let a: VerifyArgs = crate::tools::parse_args(args)?;
     let workspace_id = workspace(auth, a.workspace_id)?;
     let report = store.as_ref().verify_event_chain(workspace_id).await?;
     if !report.ok {

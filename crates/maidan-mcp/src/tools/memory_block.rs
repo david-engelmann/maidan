@@ -41,7 +41,7 @@ pub(super) async fn create_memory_block(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: CreateArgs = serde_json::from_value(args.clone())?;
+    let a: CreateArgs = crate::tools::parse_args(args)?;
     let label = a.label.trim().to_string();
     if !maidan_types::is_valid_block_label(&label) {
         return Err(McpError::InvalidParams(
@@ -76,7 +76,7 @@ pub(super) async fn get_memory_block(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: LabelArgs = serde_json::from_value(args.clone())?;
+    let a: LabelArgs = crate::tools::parse_args(args)?;
     let block = store
         .get_memory_block_by_label(auth.workspace_id, a.label.trim())
         .await?;
@@ -108,7 +108,7 @@ pub(super) async fn set_memory_block_value(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetArgs = serde_json::from_value(args.clone())?;
+    let a: SetArgs = crate::tools::parse_args(args)?;
     let block = server
         .store
         .get_memory_block_by_label(auth.workspace_id, a.label.trim())
@@ -147,7 +147,7 @@ pub(super) async fn attach_memory_block(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: AttachArgs = serde_json::from_value(args.clone())?;
+    let a: AttachArgs = crate::tools::parse_args(args)?;
     let block = store
         .get_memory_block_by_label(auth.workspace_id, a.label.trim())
         .await?
@@ -171,7 +171,7 @@ pub(super) async fn list_thread_memory_blocks(
     _auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ThreadArgs = serde_json::from_value(args.clone())?;
+    let a: ThreadArgs = crate::tools::parse_args(args)?;
     let blocks = store
         .list_thread_memory_blocks(ThreadId(a.thread_id))
         .await?;
@@ -192,7 +192,7 @@ pub(super) async fn detach_memory_block(
     _auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: DetachArgs = serde_json::from_value(args.clone())?;
+    let a: DetachArgs = crate::tools::parse_args(args)?;
     let detached = store
         .detach_memory_block(ThreadId(a.thread_id), MemoryBlockId(a.block_id))
         .await?;
@@ -220,7 +220,7 @@ pub(super) async fn wait_for_memory_block(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: WaitArgs = serde_json::from_value(args.clone())?;
+    let a: WaitArgs = crate::tools::parse_args(args)?;
     let Some(bus) = server.event_bus.as_ref() else {
         return Err(McpError::InvalidParams(
             "wait_for_memory_block requires an event bus".into(),
@@ -280,7 +280,7 @@ pub(super) async fn delete_memory_block(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: DeleteBlockArgs = serde_json::from_value(args.clone())?;
+    let a: DeleteBlockArgs = crate::tools::parse_args(args)?;
     let block_id = MemoryBlockId(a.block_id);
     let block = store
         .get_memory_block(block_id)

@@ -62,7 +62,7 @@ pub(super) async fn list_tombstones(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListTombstonesArgs = serde_json::from_value(args.clone())?;
+    let a: ListTombstonesArgs = crate::tools::parse_args(args)?;
     let workspace_id = workspace(auth, a.workspace_id)?;
     store.get_workspace(workspace_id).await?;
     let limit = clamp_tombstone_limit(a.limit);
@@ -91,7 +91,7 @@ pub(super) async fn list_message_backlinks(
     store: &Arc<dyn Store>,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: ListMessageBacklinksArgs = serde_json::from_value(args.clone())?;
+    let a: ListMessageBacklinksArgs = crate::tools::parse_args(args)?;
     let backlinks = store
         .list_message_backlinks(MessageId(a.message_id))
         .await?;
@@ -103,7 +103,7 @@ pub(super) async fn get_kind_census(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: KindCensusArgs = serde_json::from_value(args.clone())?;
+    let a: KindCensusArgs = crate::tools::parse_args(args)?;
     let workspace_id = workspace(auth, a.workspace_id)?;
     store.get_workspace(workspace_id).await?;
     let deny = maidan_auth::private_channel_deny_set(store.as_ref(), auth, workspace_id).await?;

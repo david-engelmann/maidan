@@ -81,7 +81,7 @@ fn limits_from(a: &ThreadContextArgs) -> ThreadContextLimits {
 }
 
 fn parse_thread_args(args: &Value) -> Result<ThreadContextArgs, McpError> {
-    serde_json::from_value(args.clone()).map_err(|e| McpError::InvalidParams(e.to_string()))
+    crate::tools::parse_args(args).map_err(|e| McpError::InvalidParams(e.to_string()))
 }
 
 /// The pack as JSON for callers that navigate fields. Key order inside a
@@ -141,7 +141,7 @@ pub async fn load_workspace_context(
     args: &Value,
 ) -> Result<WorkspaceContext, McpError> {
     let a: WorkspaceContextArgs =
-        serde_json::from_value(args.clone()).map_err(|e| McpError::InvalidParams(e.to_string()))?;
+        crate::tools::parse_args(args).map_err(|e| McpError::InvalidParams(e.to_string()))?;
     let message_limit = if a.message_limit > 0 {
         a.message_limit
     } else {

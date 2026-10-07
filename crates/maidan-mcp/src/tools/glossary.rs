@@ -32,7 +32,7 @@ pub(super) async fn set_glossary_term(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: SetGlossaryArgs = serde_json::from_value(args.clone())?;
+    let a: SetGlossaryArgs = crate::tools::parse_args(args)?;
     if a.term.trim().is_empty() {
         return Err(McpError::InvalidParams("term must not be empty".into()));
     }
@@ -66,7 +66,7 @@ pub(super) async fn get_glossary_term(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: GetGlossaryArgs = serde_json::from_value(args.clone())?;
+    let a: GetGlossaryArgs = crate::tools::parse_args(args)?;
     let term = store
         .get_glossary_term(auth.workspace_id, a.term.trim())
         .await?;
@@ -96,7 +96,7 @@ pub(super) async fn delete_glossary_term(
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let a: DeleteGlossaryArgs = serde_json::from_value(args.clone())?;
+    let a: DeleteGlossaryArgs = crate::tools::parse_args(args)?;
     let deleted = store
         .delete_glossary_term(auth.workspace_id, a.term.trim())
         .await?;
