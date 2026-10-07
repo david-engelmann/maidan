@@ -655,25 +655,10 @@ pub(super) async fn declare_status(
     // `stalled` is system-computed only; DeclaredStatus::parse refuses it,
     // and the type has no Stalled variant, so this is enforced by construction.
     // Validate the note is one sentence (non-empty, no newlines).
-    let note = a.note.trim();
-    if note.is_empty() {
-        return Err(McpError::InvalidParams(
-            "note must be a non-empty one-sentence description".into(),
-        ));
-    }
-    if note.contains('\n') || note.contains('\r') {
-        return Err(McpError::InvalidParams(
-            "note must be a single sentence (no newlines)".into(),
-        ));
-    }
+    let note = maidan_types::status_note(&a.note).map_err(McpError::InvalidParams)?;
     let (declaration, stored) = server
         .store
-        .declare_thread_status(
-            ThreadId(a.thread_id),
-            a.status,
-            note.to_string(),
-            auth.member_id,
-        )
+        .declare_thread_status(ThreadId(a.thread_id), a.status, note, auth.member_id)
         .await?;
     server.publish_stored(&stored).await;
     Ok(content_json(&declaration))

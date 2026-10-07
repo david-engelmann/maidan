@@ -203,12 +203,13 @@ async fn a_declared_status_is_read_back_logged_and_superseded_and_stays_in_its_w
     assert_eq!(now["status"], "needs_input");
     assert_eq!(now["note"], "Which date format?");
 
-    // `stalled` is system-computed, so an agent cannot declare it; a blank
-    // or multi-line note is refused.
+    // `stalled` is system-computed, so an agent cannot declare it; a blank,
+    // multi-line or over-long note is refused.
     for bad in [
         json!({ "status": "stalled", "note": "Nothing is happening." }),
         json!({ "status": "working", "note": "   " }),
         json!({ "status": "working", "note": "One.\nTwo." }),
+        json!({ "status": "working", "note": "a".repeat(maidan_types::STATUS_NOTE_MAX_CHARS + 1) }),
     ] {
         let res = client
             .put(&url)

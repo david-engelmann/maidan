@@ -1034,20 +1034,10 @@ pub async fn declare_thread_status(
     let thread_id = ThreadId(id);
     cap(&auth, THREAD_TRANSITION)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    let note = body.note.trim();
-    if note.is_empty() {
-        return Err(ApiError::BadRequest(
-            "note must be a non-empty one-sentence description".into(),
-        ));
-    }
-    if note.contains('\n') || note.contains('\r') {
-        return Err(ApiError::BadRequest(
-            "note must be a single sentence (no newlines)".into(),
-        ));
-    }
+    let note = maidan_types::status_note(&body.note).map_err(ApiError::BadRequest)?;
     let (declaration, stored) = state
         .store
-        .declare_thread_status(thread_id, body.status, note.to_string(), auth.member_id)
+        .declare_thread_status(thread_id, body.status, note, auth.member_id)
         .await?;
     publish_stored(&state, stored).await;
     Ok(Json(declaration))
