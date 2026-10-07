@@ -3,14 +3,15 @@
 ## Context
 
 The connected-app E2E harness is ready at:
-`https://github.com/david-engelmann/maidan-harness` (branch: main)
+`https://github.com/david-engelmann/maidan` (branch: `handoff/claude-desktop-e2e`,
+files under `connected-app-harness/`)
 
 It contains:
 - 9-provider harness (54/54 tests green)
 - Claude/ChatGPT browser automation
 - MCP preflight and verification
-- `docs/connected-app-playbook.md`: all learnings
-- `docs/claude-desktop-local.md`: local testing guide
+- `connected-app-harness/docs/connected-app-playbook.md`: all learnings
+- `connected-app-harness/docs/claude-desktop-local.md`: local testing guide
 
 ## Your Task
 
@@ -19,8 +20,8 @@ Run the Maidan MCP server locally and test it via Claude Desktop.
 ### Step 1: Get the code
 
 ```bash
-git clone https://github.com/david-engelmann/maidan-harness.git
-cd maidan-harness
+git clone -b handoff/claude-desktop-e2e https://github.com/david-engelmann/maidan.git
+cd maidan/connected-app-harness
 ```
 
 ### Step 2: Build and run the Maidan server
