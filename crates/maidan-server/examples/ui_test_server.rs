@@ -3,7 +3,8 @@
 //! This is **test support, not a shipped binary**: it stands up the real
 //! `maidan-server` router on an in-memory SQLite store, seeds a deterministic
 //! workspace / channel / thread / pending approval gate (plus a `build` channel
-//! with one thread per board lane), mints a bearer token,
+//! with one thread per board lane, and a second workspace for isolation
+//! checks), mints a bearer token,
 //! writes the fixtures to a JSON file, and then serves forever so a headless
 //! browser can drive the actual `/ui`. Playwright's `webServer` starts it,
 //! waits for `/ui/`, runs the specs, and kills it.
@@ -21,8 +22,8 @@ use maidan_fsm::ThreadAction;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewMessage, NewThread,
-    NewWebhookSubscription, NewWorkspace, ReviewDecision,
+    BlockedReason, MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewMessage,
+    NewThread, NewWebhookSubscription, NewWorkspace, ReviewDecision,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -407,6 +408,95 @@ async fn main() {
         .await
         .expect("lab gate");
 
+    // A task the operator owns, for the Unblock row in Needs you. It starts
+    // unblocked: the spec blocks it, so a retry starts from the same place.
+    // Its own channel, so the blocked marker on its card moves no other spec.
+    let hold = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "hold".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("hold channel");
+    let hold_thread = store
+        .create_thread(NewThread {
+            channel_id: hold.id,
+            parent_thread_id: None,
+            title: Some("Held up: the signing key needs a person".into()),
+            description: None,
+        })
+        .await
+        .expect("hold thread");
+    store
+        .set_thread_owner(hold_thread.id, Some(member.id))
+        .await
+        .expect("hold owner");
+
+    // A second workspace, so a spec can show that one workspace sees nothing
+    // of another. Its member owns a task that is already blocked, which its
+    // own Needs you lists and the first workspace's never does.
+    let other_ws = store
+        .create_workspace(NewWorkspace {
+            name: "Other UI Test Workspace".into(),
+        })
+        .await
+        .expect("other ws");
+    let outsider = store
+        .create_member(NewMember {
+            workspace_id: other_ws.id,
+            handle: "outsider".into(),
+            display_name: Some("Outsider".into()),
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("outsider");
+    let elsewhere = store
+        .create_channel(NewChannel {
+            workspace_id: other_ws.id,
+            name: "elsewhere".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("other channel");
+    let other_thread = store
+        .create_thread(NewThread {
+            channel_id: elsewhere.id,
+            parent_thread_id: None,
+            title: Some("Elsewhere: the other workspace's blocked task".into()),
+            description: None,
+        })
+        .await
+        .expect("other thread");
+    store
+        .set_thread_owner(other_thread.id, Some(outsider.id))
+        .await
+        .expect("other owner");
+    store
+        .set_thread_block(
+            other_thread.id,
+            BlockedReason::Human,
+            outsider.id,
+            Some("only the other workspace may see this".into()),
+        )
+        .await
+        .expect("other block");
+    let other_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: other_ws.id,
+            member_id: outsider.id,
+            app_installation_id: None,
+            token_hash: hash_secret(other_secret.as_str()),
+            label: Some("ui-test-other".into()),
+            capabilities: capability::all(),
+            expires_at: None,
+        })
+        .await
+        .expect("other token");
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -603,6 +693,12 @@ async fn main() {
         "admin_token": admin_secret.as_str(),
         "delivery_id": delivery_id,
         "delivery_url": "https://hooks.example.test/maidan",
+        "hold_channel_id": hold.id.0.to_string(),
+        "hold_thread_id": hold_thread.id.0.to_string(),
+        "other_workspace_id": other_ws.id.0.to_string(),
+        "other_member_id": outsider.id.0.to_string(),
+        "other_token": other_secret.as_str(),
+        "other_thread_id": other_thread.id.0.to_string(),
     });
     std::fs::write(
         &fixtures_path,

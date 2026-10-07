@@ -471,6 +471,10 @@ Refs #1253
   allowed to do this; it needs thread:transition. Mint a token with it in
   Tokens".
 
+### Needs you shows blocked tasks
+
+- **Fixed:** a task blocked until a person clears it (reason `human` or `gate`) now shows in Needs you for its owner, or for workspace admins when it has no owner, with its reason, note and an Unblock button. The waiting inbox already returned these items, but the page filtered them out, so the Unblock row never appeared. A row whose Unblock failed once now leaves when a later try succeeds, instead of staying up under the old error. `ui-tests/tests/needs-you-blocked.spec.ts` covers the row, Unblock, a refused and an unanswered Unblock, the refused and stale queue states, and a second workspace that sees and clears nothing of the first.
+
 ### Every HTTP operation says whether it reads or changes, and CI checks it does
 
 - **Added:** `contracts/http-operation-kinds.json` classifies each of the 394
