@@ -140,6 +140,9 @@ async fn webhook_suite(backend: &Backend) {
             .unwrap();
     }
 
+    // A deferral is measured from the poll, so it is checked against the poll
+    // time: a slow run must not make a short deferral look like none.
+    let polled_at = Utc::now();
     webhook_worker::poll_deliveries(&state, 16).await.unwrap();
 
     assert_eq!(
@@ -155,7 +158,7 @@ async fn webhook_suite(backend: &Backend) {
     for row in &pending {
         assert!(backlog.contains(&row.id), "only retries are deferred");
         assert_eq!(row.attempts, 1, "a deferral does not count as an attempt");
-        assert!(row.next_attempt_at > Utc::now(), "deferred into the future");
+        assert!(row.next_attempt_at > polled_at, "deferred past the poll");
     }
     assert!(store
         .list_webhook_deliveries(ws, AutomationDeliveryFilter::DeadLetter, 100)
@@ -206,6 +209,9 @@ async fn automation_suite(backend: &Backend) {
         store.enqueue_automation_delivery(delivery()).await.unwrap();
     }
 
+    // A deferral is measured from the poll, so it is checked against the poll
+    // time: a slow run must not make a short deferral look like none.
+    let polled_at = Utc::now();
     automation_worker::poll_once(&state, 16).await.unwrap();
 
     assert_eq!(hits.load(Ordering::SeqCst), BURST as usize + FRESH);
@@ -217,7 +223,7 @@ async fn automation_suite(backend: &Backend) {
     for row in &pending {
         assert!(backlog.contains(&row.id), "only retries are deferred");
         assert_eq!(row.attempts, 1, "a deferral does not count as an attempt");
-        assert!(row.next_attempt_at > Utc::now(), "deferred into the future");
+        assert!(row.next_attempt_at > polled_at, "deferred past the poll");
     }
     assert!(store
         .list_automation_deliveries(ws, AutomationDeliveryFilter::DeadLetter, 100)
