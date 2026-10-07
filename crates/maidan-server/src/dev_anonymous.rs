@@ -81,7 +81,7 @@ pub async fn reader_for(
     // channel membership, DM, grant or role can ever reach it. The foreign
     // keys refuse to attach anything to a member that does not exist, and this
     // caller only reads, so nothing is ever written under the id.
-    let nobody = MemberId(uuid::Uuid::new_v4());
+    let nobody = MemberId::new();
     Ok(AuthContext::anonymous_reader(nobody, workspace_id))
 }
 
