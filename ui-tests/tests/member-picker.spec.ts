@@ -118,10 +118,15 @@ test("a pick during a slow member load keeps the list closed", async ({ page }) 
   let release: () => void = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
   let seen = false;
+  // The held load answers with one extra member, so the test can see when
+  // the page has taken the response into its member directory.
   await page.route(/\/workspaces\/[^/]+\/members$/, async (route) => {
     seen = true;
     await held;
-    await route.continue();
+    const res = await route.fetch();
+    const rows = await res.json();
+    rows.push({ id: "late-arrival", handle: "late-arrival", display_name: "Late Arrival", kind: "agent" });
+    await route.fulfill({ response: res, json: rows });
   });
   await page.focus("#dm-member-search");
   await page.keyboard.type("rae");
@@ -130,8 +135,20 @@ test("a pick during a slow member load keeps the list closed", async ({ page }) 
   await expect(page.locator("#dm-member-options")).toBeHidden();
   expect(seen).toBe(true);
   release();
-  await page.waitForResponse(/\/workspaces\/[^/]+\/members$/);
-  await page.waitForTimeout(200);
+  // The directory update and the end of the picker's load run in one
+  // microtask checkpoint, so once the page shows the extra member the
+  // picker has already decided whether to reopen.
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const importer = new Function("href", "return import(href)") as (
+          href: string,
+        ) => Promise<{ memberDirectory: Map<string, { handle: string }> }>;
+        const state = await importer("/ui/static/state.js");
+        return state.memberDirectory.has("late-arrival");
+      }),
+    )
+    .toBe(true);
   await expect(page.locator("#dm-member-options")).toBeHidden();
   await expect(page.locator("#dm-member-search")).toHaveAttribute("aria-expanded", "false");
 });
