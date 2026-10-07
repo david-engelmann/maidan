@@ -76,7 +76,7 @@ Refs #1253
 
 ### `maidan mcp-stdio` speaks only JSON-RPC on stdout
 
-- **Fixed:** The `maidan` CLI wrote its log lines to stdout. For `mcp-stdio`, stdout is the protocol, so every stdio client (Claude Desktop, Cursor and others) got lines that were not JSON-RPC messages, one more per tool call since the request log. Logs now go to stderr for every `maidan` command, and `every_line_on_stdout_is_a_json_rpc_message` fails if one reaches stdout. Found running Maidan under Claude Desktop.
+- **Fixed:** The `maidan` CLI wrote its log lines to stdout. For `mcp-stdio`, stdout is the protocol, so every stdio client got lines that were not JSON-RPC messages, one more per tool call since the request log. Logs now go to stderr for every `maidan` command, and `every_line_on_stdout_is_a_json_rpc_message` fails if one reaches stdout. Found running Maidan under a desktop MCP client.
 
 ### Opening a group DM selects it and asks for three members
 
