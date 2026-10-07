@@ -184,8 +184,11 @@ pub struct McpServer {
 }
 
 /// What a caller with no credential may do on a dev instance: discover the
-/// server and read. Anything else, a subscription or a tool that writes
-/// included, is refused with the reason so the client can ask for a token.
+/// server and read. A subscription, or a tool that writes, is refused with the
+/// reason so the client can ask for a token. A tool the catalog does not have
+/// gets the usual unknown-tool error, and a method not listed here is not
+/// found, so a method added later stays closed to this caller until it is
+/// listed.
 fn anonymous_may(request: &JsonRpcRequest) -> Result<(), McpError> {
     match request.method.as_str() {
         "initialize"
@@ -205,18 +208,20 @@ fn anonymous_may(request: &JsonRpcRequest) -> Result<(), McpError> {
                 .get("name")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            if tools::is_read_only(name) {
-                Ok(())
-            } else {
+            if tools::required_capability(name).is_ok() && !tools::is_read_only(name) {
                 Err(McpError::Forbidden(format!(
                     "{name} is not a read-only tool, and this endpoint only reads for a caller \
                      with no credential. Send a bearer token to call it"
                 )))
+            } else {
+                Ok(())
             }
         }
-        other => Err(McpError::Forbidden(format!(
-            "{other} is not open to a caller with no credential. Send a bearer token"
+        "resources/subscribe" | "resources/unsubscribe" => Err(McpError::Forbidden(format!(
+            "{} is not open to a caller with no credential. Send a bearer token",
+            request.method
         ))),
+        other => Err(McpError::MethodNotFound(other.into())),
     }
 }
 

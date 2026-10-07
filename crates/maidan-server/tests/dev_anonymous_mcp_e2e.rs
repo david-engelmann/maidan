@@ -224,6 +224,19 @@ async fn a_caller_with_no_credential_reads_the_synthetic_workspace_and_nothing_e
         )
         .await;
     assert!(refused(&subscribe), "{subscribe}");
+    let unknown_tool = world.call("no_such_tool", json!({})).await;
+    assert!(
+        unknown_tool["error"].is_object() && !refused(&unknown_tool),
+        "an unknown tool gets the usual error, not a request for a token: {unknown_tool}"
+    );
+    let unknown_method = world
+        .rpc("/mcp", None, "completion/complete", json!({}))
+        .await;
+    assert_eq!(
+        unknown_method["error"]["code"],
+        json!(-32601),
+        "{unknown_method}"
+    );
     let channels_after = world.store.list_channels(world.synthetic).await.unwrap();
     assert_eq!(channels_after.len(), 1, "nothing was created");
 }
