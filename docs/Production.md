@@ -1028,6 +1028,10 @@ Every MCP request writes one `info` line on the `maidan_mcp::request` target, so
 
 Full frames are a developer tool, not a setting. Build with `--features mcp-frame-capture` and set `MAIDAN_LOG=info,maidan_mcp::frame=debug` to log each request and response. Secret-shaped keys are redacted at any depth, inside JSON result text too, and a tool that carries credentials (its name says secret, token, ticket or grant) has its arguments and result withheld. A release build that enables the feature fails to compile, so no published image can capture frames.
 
+### DNS rebinding
+
+A page on another site can point its own name at this machine and send requests past the browser's same-origin rule, with `Host` and `Origin` naming that site. It holds no bearer token and gets none of this server's cookies, so it gains only what a request with no credential may do. That is everything under `AUTH_DISABLED`, and reading under `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE`. In those two modes a request with no credential is refused (403) when the server listens on a loopback address and `Host` is not a loopback name (`localhost`, a name under `.localhost`, or a loopback IP), and when it carries an `Origin` that is not its `Host`. A request with a credential is not judged by `Host`, so a reverse proxy that forwards a public `Host` to a loopback-bound server keeps working.
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |

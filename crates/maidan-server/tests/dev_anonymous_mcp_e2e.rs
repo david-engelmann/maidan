@@ -116,6 +116,8 @@ async fn spawn() -> World {
             .await
             .unwrap(),
     );
+    // The listener below is on 127.0.0.1, as a dev instance on a laptop is.
+    state.loopback_bind = true;
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
@@ -341,5 +343,50 @@ async fn the_anonymous_reader_is_no_member_and_sees_no_private_channel() {
     assert!(
         world.store.get_member(reader.member_id).await.is_err(),
         "the anonymous reader must be no member"
+    );
+}
+
+/// A page on another site that points its own name at this machine sends
+/// `Host` and `Origin` naming that site. With no credential it would get the
+/// anonymous reader, so it is refused. A credential is unaffected, which keeps
+/// a reverse proxy that forwards a public `Host` working.
+#[tokio::test]
+async fn a_rebound_request_with_no_credential_is_refused() {
+    let world = spawn().await;
+    let list = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
+    let post = |host: &str, origin: Option<&str>, bearer: Option<&str>| {
+        let mut request = world
+            .client
+            .post(format!("{}/mcp", world.base))
+            .header("Host", host)
+            .header("Accept", "application/json")
+            .json(&list);
+        if let Some(origin) = origin {
+            request = request.header("Origin", origin);
+        }
+        if let Some(bearer) = bearer {
+            request = request.bearer_auth(bearer);
+        }
+        request.send()
+    };
+    let rebound = post("evil.example.com", Some("http://evil.example.com"), None)
+        .await
+        .unwrap();
+    assert_eq!(rebound.status(), StatusCode::FORBIDDEN);
+    let cross = post("localhost", Some("http://other.localhost"), None)
+        .await
+        .unwrap();
+    assert_eq!(cross.status(), StatusCode::FORBIDDEN);
+    let local = post("localhost", Some("http://localhost"), None)
+        .await
+        .unwrap();
+    assert_eq!(local.status(), StatusCode::OK);
+    let proxied = post("maidan.example.com", None, Some(&world.bearer))
+        .await
+        .unwrap();
+    assert_eq!(
+        proxied.status(),
+        StatusCode::OK,
+        "a credential is never judged by Host"
     );
 }
