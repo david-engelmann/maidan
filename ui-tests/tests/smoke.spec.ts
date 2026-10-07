@@ -39,6 +39,14 @@ test("primary lists expose loading, actionable empty, and API error detail state
     }
   });
 
+  // The test server offers sessions and would refuse "test-token", and a
+  // refused exchange leaves no credential, so the channel list would never be
+  // asked for. Answer the exchange as a server without sessions does (404):
+  // the token stays in this tab and the stubbed channel route is what loads.
+  await page.route(/\/auth\/session\/from-token$/, (route) =>
+    route.fulfill({ status: 404, contentType: "application/json", body: "{}" }),
+  );
+
   await page.goto("/ui/");
   await page.fill("#workspace", "00000000-0000-0000-0000-000000000001");
   await page.fill("#token", "test-token");

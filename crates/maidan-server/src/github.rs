@@ -468,6 +468,14 @@ pub struct GithubPullBrief {
     pub draft: bool,
     /// The PR's GraphQL node id, from the same fresh read the guards ran on.
     pub node_id: String,
+    /// Whether the head branch lives in the base repository. A fork's
+    /// `feature/agent-*` branch is not one of the change flow's, so the flip
+    /// refuses it; a head repository GitHub no longer reports (a deleted
+    /// fork) reads as `false`.
+    pub same_repo: bool,
+    /// Whether the pull request is open. A closed draft cannot be marked
+    /// ready, so the flip refuses it plainly instead of failing at GitHub.
+    pub open: bool,
 }
 
 /// What flipping a pull request to ready did.
@@ -1113,6 +1121,18 @@ impl GithubGit for GithubApiClient {
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .ok_or_else(|| GithubError::Http("github pull has no node_id".into()))?,
+            same_repo: match (
+                value
+                    .pointer("/head/repo/full_name")
+                    .and_then(serde_json::Value::as_str),
+                value
+                    .pointer("/base/repo/full_name")
+                    .and_then(serde_json::Value::as_str),
+            ) {
+                (Some(head), Some(base)) => head.eq_ignore_ascii_case(base),
+                _ => false,
+            },
+            open: value.get("state").and_then(serde_json::Value::as_str) == Some("open"),
         })
     }
 

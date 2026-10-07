@@ -47,6 +47,10 @@ struct FakePull {
     base: String,
     draft: bool,
     node_id: String,
+    /// `owner/name` of the head branch's repository; a fork differs from the
+    /// base repository the fake always reports as `o/repo`.
+    head_repo: String,
+    open: bool,
 }
 
 #[derive(Default)]
@@ -117,9 +121,10 @@ async fn github(State(fake): State<Shared>, method: Method, uri: Uri, body: Byte
     let pull_json = |p: &FakePull| {
         json!({
             "number": p.number,
-            "head": {"ref": p.head},
-            "base": {"ref": p.base},
+            "head": {"ref": p.head, "repo": {"full_name": p.head_repo}},
+            "base": {"ref": p.base, "repo": {"full_name": "o/repo"}},
             "draft": p.draft,
+            "state": if p.open { "open" } else { "closed" },
             "node_id": p.node_id,
         })
     };
@@ -152,6 +157,8 @@ fn draft_pull(number: i64, head: &str, base: &str) -> FakePull {
         base: base.into(),
         draft: true,
         node_id: format!("PR_node_{number}"),
+        head_repo: "o/repo".into(),
+        open: true,
     }
 }
 
@@ -277,6 +284,8 @@ async fn pull_brief_reports_head_base_draft_and_node_id() {
     assert_eq!(brief.base, "dev");
     assert!(brief.draft, "the guards refuse a non-draft");
     assert_eq!(brief.node_id, "PR_node_7", "the mutation keys on this");
+    assert!(brief.open, "the fake reports an open pull request");
+    assert!(brief.same_repo, "the head lives in the base repository");
 }
 
 #[tokio::test]
@@ -572,6 +581,42 @@ async fn mark_ready_refuses_a_non_agent_head() {
 }
 
 #[tokio::test]
+async fn mark_ready_refuses_a_closed_pull() {
+    let h = spawn().await;
+    allow(&h, "o/repo@dev").await;
+    let mut pull = draft_pull(13, "feature/agent-x", "dev");
+    pull.open = false;
+    h.fake.lock().unwrap().pulls.insert(13, pull);
+
+    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 13).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(body.to_string().contains("closed"), "{body}");
+    assert!(
+        h.fake.lock().unwrap().graphql.is_empty(),
+        "a closed pull request is never flipped"
+    );
+}
+
+#[tokio::test]
+async fn mark_ready_refuses_a_pull_from_a_fork() {
+    let h = spawn().await;
+    allow(&h, "o/repo@dev").await;
+    // A fork can name its branch `feature/agent-*` and open a draft into an
+    // allowlisted base; it is not one of the change flow's branches.
+    let mut pull = draft_pull(12, "feature/agent-x", "dev");
+    pull.head_repo = "stranger/repo".into();
+    h.fake.lock().unwrap().pulls.insert(12, pull);
+
+    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 12).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(body.to_string().contains("fork"), "{body}");
+    assert!(
+        h.fake.lock().unwrap().graphql.is_empty(),
+        "a fork's pull request is never flipped"
+    );
+}
+
+#[tokio::test]
 async fn mark_ready_checks_the_allowlist_against_the_fresh_base() {
     let h = spawn().await;
     allow(&h, "o/repo@dev").await;
@@ -794,5 +839,37 @@ async fn mark_ready_is_idempotent_for_soundcheck_retries() {
         h.fake.lock().unwrap().graphql.len(),
         1,
         "the retry writes nothing"
+    );
+}
+
+/// `MarkReadyGuardPass::for_tests` is public because integration tests need
+/// it, so this is what keeps production code from minting a pass that skips
+/// the guards: no file under any crate's `src/` may call it.
+#[test]
+fn no_source_file_mints_a_guard_pass_for_tests() {
+    fn visit(dir: &std::path::Path, hits: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                visit(&path, hits);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                if text.contains("MarkReadyGuardPass::for_tests") {
+                    hits.push(path.display().to_string());
+                }
+            }
+        }
+    }
+    let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut hits = Vec::new();
+    for entry in std::fs::read_dir(&crates).unwrap() {
+        let src = entry.unwrap().path().join("src");
+        if src.is_dir() {
+            visit(&src, &mut hits);
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "production code must not mint a guard pass: {hits:?}"
     );
 }

@@ -42,9 +42,14 @@ pub struct MarkReadyGuardPass {
 }
 
 impl MarkReadyGuardPass {
-    /// E2E harness: the client-half contract tests call the bare
-    /// `set_pull_ready` to pin its wire shape. Production code never uses
-    /// this; every production pass is minted in `flip_pull_ready_guarded`.
+    /// E2E harness only: the client-half contract tests call the bare
+    /// `set_pull_ready` to pin its wire shape. It cannot be `cfg(test)`,
+    /// because integration tests build the crate without that cfg, so the
+    /// type system alone does not stop a caller. `mark_ready_e2e`'s
+    /// `no_source_file_mints_a_guard_pass_for_tests` fails if any file under
+    /// a crate's `src/` calls it; every production pass is minted in
+    /// `flip_pull_ready_guarded`.
+    #[doc(hidden)]
     pub fn for_tests() -> Self {
         Self { _private: () }
     }
@@ -89,6 +94,21 @@ pub async fn flip_pull_ready_guarded(
     // Shape rules and the per-repository base map, on the fresh read.
     maidan_types::check_mark_ready_target(repo, &brief.head, &brief.base)
         .map_err(MarkReadyGuard::Refused)?;
+    // A fork's branch can carry a `feature/agent-*` name too; only the change
+    // flow's own branches, which live in the base repository, are flipped.
+    if !brief.open {
+        return Err(MarkReadyGuard::Refused(format!(
+            "pull request #{} is closed; only an open draft is marked ready",
+            brief.number
+        )));
+    }
+    if !brief.same_repo {
+        return Err(MarkReadyGuard::Refused(
+            "the pull request's head is not in this repository (a fork or a deleted head); \
+             only the change flow's own branches are marked ready"
+                .into(),
+        ));
+    }
     // The same allowlist the change flow checks: `owner/name@base`, as it is
     // now — a blessing revoked after the draft opened stops the flip.
     let selector = maidan_types::change_allowlist_selector(repo, &brief.base);
