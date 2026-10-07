@@ -349,6 +349,22 @@ mod tests {
     }
 
     #[test]
+    fn a_deferral_is_due_its_delay_after_the_moment_it_is_made() {
+        let (budget, _clock) = budget(1, 2);
+        assert_eq!(budget.admit("h", Attempt::Retry), Admission::Send);
+        let before = chrono::Utc::now();
+        let until =
+            deferred_until(&budget, "test", "h", Attempt::Retry).expect("the bucket is empty");
+        let after = chrono::Utc::now();
+        // The first deferral from an empty bucket is exactly MIN_DEFER.
+        let delay = chrono::Duration::from_std(MIN_DEFER).expect("a small duration");
+        assert!(
+            before + delay <= until && until <= after + delay,
+            "{until} is not {delay} after a moment between {before} and {after}"
+        );
+    }
+
+    #[test]
     fn deferrals_are_spread_one_refill_interval_apart_and_bounded() {
         let (budget, _clock) = budget(1, 2);
         assert_eq!(budget.admit("h", Attempt::Retry), Admission::Send);
