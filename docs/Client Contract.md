@@ -63,6 +63,7 @@ There is **no** `workspaces.list`. Do not invent one.
 |-----|------|------------|
 | `channels.list` | `GET /workspaces/{wid}/channels` | `workspace:read` |
 | `channels.create` | `POST /workspaces/{wid}/channels` | `workspace:write` |
+| `channels.boot` | `GET /channels/{cid}/boot` | `workspace:read` + channel access. 0.3.0: returns the bytes as served, as text, with their sha256, not a parsed model |
 
 Create body: `{ "name", "private": false }`.
 
@@ -229,6 +230,7 @@ Not `token:admin`. `artifact:upload` only if the cookbook uploads.
 | `client.mcp_url` | `{base_url}/mcp/streamable`. String only. No MCP dependency |
 | `last_room_lsn` | Last seen `Maidan-Room-LSN` (decimal). Not a WAL token |
 | `event_type(kind)` | `maidan.event.{kind}/1` |
+| `cached_prefix` / `cache_key` / `cache_key_fields` / `gateway_session` | 0.3.0. Pure functions, no request: the boot prefix with a cache breakpoint, one cache key per shared-prefix group (never shared across workspaces), and the thread id as a gateway session id. Every SDK agrees on `sdk/cache-fixtures/cases.json` ([Harness Caching](Harness%20Caching.md)) |
 | `max_retries` | 0.3.0. Retry budget (default 2): TS `{ maxRetries }`, Python `max_retries=`, Go `Client.MaxRetries`, Rust `.with_max_retries(n)` |
 | `new_idempotency_key()` / `retry_delay(...)` | 0.3.0. Exported so callers can reuse the policy |
 | `normalize_usage(provider, response)` / `usd_micros(tokens, price)` | 0.3.0. Pure functions, no request: a provider response becomes the `model`, `tokens` and `evidence` of a `report_usage` body, and the charge the server checks. Every SDK and the server's ledger agree on `sdk/usage-fixtures/` (Integration, "Normalizing provider usage") |

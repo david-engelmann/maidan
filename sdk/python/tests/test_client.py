@@ -1,5 +1,6 @@
 """Black-box tests against the authenticated server from ``scripts/sdk-test.sh``."""
 
+import hashlib
 import json
 import os
 import threading
@@ -38,6 +39,9 @@ from maidan import (
 BASE = os.environ.get("MAIDAN_URL", "http://127.0.0.1:8080")
 TOKEN = os.environ.get("MAIDAN_TOKEN", "")
 WORKSPACE = os.environ.get("MAIDAN_WORKSPACE", "")
+# A second workspace from scripts/sdk-test.sh, to show the first stays invisible.
+OTHER_TOKEN = os.environ.get("MAIDAN_OTHER_TOKEN", "")
+OTHER_WORKSPACE = os.environ.get("MAIDAN_OTHER_WORKSPACE", "")
 
 
 def _client() -> Client:
@@ -71,6 +75,35 @@ def test_hero_loop_post_list_context():
     ctx = c.threads.context(thread.id)
     assert ctx.thread_id == thread.id
     assert ctx.thread.created_at
+
+
+def test_channels_boot_returns_the_served_boot_bytes_and_their_sha256():
+    c, _ws, _member, channel, _thread = _seed()
+    boot = c.channels.boot(channel.id)
+    parsed = json.loads(boot.text)
+    assert parsed["workspace_id"] == WORKSPACE
+    assert parsed["channel_id"] == channel.id
+    assert boot.text.startswith('{"workspace_id":'), "the bytes are the server's, not re-serialized"
+    assert boot.sha256 == hashlib.sha256(boot.text.encode("utf-8")).hexdigest()
+
+
+def test_channels_boot_from_a_second_workspace_sees_nothing_of_the_first():
+    assert OTHER_TOKEN and OTHER_WORKSPACE, "scripts/sdk-test.sh provisions a second workspace"
+    c, _ws, _member, channel, _thread = _seed()
+    first = c.channels.boot(channel.id)
+    other = Client(BASE, OTHER_TOKEN)
+    with pytest.raises(MaidanError) as refused:
+        other.channels.boot(channel.id)
+    assert refused.value.status in (403, 404)
+    body = json.dumps(refused.value.problem)
+    assert WORKSPACE not in body, "the refusal names the first workspace"
+    assert first.sha256 not in body, "the refusal carries the first boot's hash"
+    own = other.channels.create(OTHER_WORKSPACE, f"py-sdk-other-{uuid.uuid4().hex}")
+    boot = other.channels.boot(own.id)
+    assert json.loads(boot.text)["workspace_id"] == OTHER_WORKSPACE
+    assert WORKSPACE not in boot.text, "the second workspace's boot names the first"
+    assert channel.id not in boot.text, "the second workspace's boot names the first's channel"
+    assert boot.sha256 != first.sha256
 
 
 def test_get_result_unset_is_404():
