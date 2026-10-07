@@ -194,6 +194,12 @@ pub struct AppState {
     /// still works). Set via [`AppState::attach_github_sender`]; tests inject a
     /// mock.
     pub github_sender: Option<Arc<dyn crate::github::GithubSender>>,
+    /// The one app whose installations may call mark-ready
+    /// (`MAIDAN_MARK_READY_APP_ID`). An app id is unique across the instance,
+    /// where an app slug is unique only within its workspace, so naming the
+    /// app here keeps another workspace's look-alike from acting through the
+    /// instance's GitHub token. `None` refuses every mark-ready call.
+    pub mark_ready_app_id: Option<maidan_types::AppId>,
     /// A2A Agent Card transport advertisement config: public origin for
     /// absolute interface URLs + the advertised gRPC address. Default empty
     /// (host-relative URLs, no gRPC interface); the server binary sets it from
@@ -317,6 +323,7 @@ impl AppState {
             slack_sender: None,
             github: None,
             github_sender: None,
+            mark_ready_app_id: None,
             a2a_card: crate::a2a_agent::A2aCardConfig::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,

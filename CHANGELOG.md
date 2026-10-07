@@ -11,6 +11,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the Soundcheck app; the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; Soundcheck stays without `contents:write`.
 
+### The instance's GitHub token answers to the operator
+
+- **Writes go only to operator-named repositories.** `MAIDAN_GITHUB_WRITE_REPOS` lists the only repositories the instance's GitHub token may write to. The client refuses any other write before a request is made, whichever workspace asks, and with no list it writes nowhere. A workspace's egress allowlist narrows the list and can never widen it.
+- **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to the slug `soundcheck`, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
+
 ### Agent self-reported status (`declare_status`)
 
 - **Added:** Agents can now declare what they're doing via `declare_status`: `working`, `needs_input`, `needs_review`, `blocked`, or `done`, with a one-sentence note. By the claim holder or owner. `stalled` is refused (system-computed only). Supersedes any prior declaration; cleared on human response.

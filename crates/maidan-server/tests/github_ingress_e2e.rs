@@ -41,6 +41,7 @@ async fn spawn(
         state.attach_github(Arc::new(GithubConfig {
             webhook_secret: SECRET.into(),
             api_token: None,
+            write_repos: Vec::new(),
         }));
     }
     let app = router(state);

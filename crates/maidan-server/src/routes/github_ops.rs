@@ -14,10 +14,6 @@ use crate::extract::ApiJson;
 use crate::github::{GithubError, GithubGit, MarkReadyOutcome};
 use crate::state::AppState;
 
-/// The app allowed to ask for the flip: the change flow's companion, which
-/// holds no GitHub write credential of its own (Decisions, 2026-10-06).
-pub const SOUNDCHECK_APP_SLUG: &str = "soundcheck";
-
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct MarkReadyRequest {
     /// `owner/name`.
@@ -143,12 +139,15 @@ pub async fn flip_pull_ready_guarded(
     })
 }
 
-/// The caller's app slug, or a refusal. Only the Soundcheck installation may
-/// ask for the flip: a member token, a session, or another app's token is
-/// not Soundcheck, whatever capabilities it carries.
+/// Whether the caller is an installation of the operator-designated app
+/// (`MAIDAN_MARK_READY_APP_ID`, Soundcheck in the change flow). A member
+/// token, a session, another app's token, or an app that merely shares the
+/// designated app's slug in another workspace is refused, whatever
+/// capabilities it carries. No designated app refuses every call.
 async fn soundcheck_caller(state: &AppState, auth: &AuthContext) -> ApiResult<()> {
-    let refused =
-        || ApiError::Forbidden("only the soundcheck app may mark pull requests ready".into());
+    let refused = || {
+        ApiError::Forbidden("only the operator-designated app may mark pull requests ready".into())
+    };
     let installation_id = auth.app_installation_id.ok_or_else(refused)?;
     let installation = state
         .store
@@ -165,7 +164,7 @@ async fn soundcheck_caller(state: &AppState, auth: &AuthContext) -> ApiResult<()
         .get_app(installation.app_id)
         .await
         .map_err(|_| refused())?;
-    if app.slug != SOUNDCHECK_APP_SLUG {
+    if state.mark_ready_app_id != Some(app.id) {
         return Err(refused());
     }
     Ok(())
@@ -259,7 +258,7 @@ pub async fn mark_pull_ready(
             None,
             None,
             "refused",
-            Some("the caller is not the soundcheck app"),
+            Some("the caller is not the operator-designated app"),
         )
         .await;
         return Err(err);

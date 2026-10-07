@@ -2131,3 +2131,14 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Open Work, the Muse row and Recently decided.
 
+### The instance's GitHub token answers to the operator (2026-10-07)
+
+**Decision.** The GitHub token belongs to the instance, and egress allowlists belong to workspaces, so the operator bounds the token.
+- `MAIDAN_GITHUB_WRITE_REPOS` names the only repositories the token may write to. The GitHub client builds every request in one place, which refuses anything but a read to an unlisted repository, and a test fails if any other code in the client sends a request. A write method added later is checked without a guard of its own. Each existing write method also checks first, so a refused write sends nothing.
+- A client writes nowhere until it is given that list. Production builds it from the variable; with the variable unset, every GitHub write is refused and a boot warning says so. Reads still work.
+- Mark-ready is bound to `MAIDAN_MARK_READY_APP_ID`. App ids are unique across the instance, while app slugs are unique only within a workspace.
+
+**Why.** The mark-ready review of 2026-10-07 found that any workspace admin could create an app slugged `soundcheck` and allowlist any repository the token reached. That is harmless on a single-tenant stack and an escalation on any shared or demo instance. Failing closed when unset means a new deployment cannot inherit the hole by omission.
+
+**Record.** Open Work Next 8. Production names both variables.
+

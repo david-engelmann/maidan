@@ -37,14 +37,18 @@ use crate::state::AppState;
 pub struct GithubConfig {
     pub webhook_secret: String,
     pub api_token: Option<String>,
+    /// `MAIDAN_GITHUB_WRITE_REPOS`: the only repositories the token may write
+    /// to. Not a secret; empty means the token writes nowhere.
+    pub write_repos: Vec<String>,
 }
 
-// Both fields are credentials; `{:?}` must never print them.
+// The secret and the token are credentials; `{:?}` must never print them.
 impl std::fmt::Debug for GithubConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GithubConfig")
             .field("webhook_secret", &"[redacted]")
             .field("api_token", &self.api_token.as_ref().map(|_| "[redacted]"))
+            .field("write_repos", &self.write_repos)
             .finish()
     }
 }
@@ -59,9 +63,12 @@ impl GithubConfig {
         let api_token = std::env::var("MAIDAN_GITHUB_TOKEN")
             .ok()
             .filter(|s| !s.is_empty());
+        let write_repos =
+            parse_write_repos(&std::env::var("MAIDAN_GITHUB_WRITE_REPOS").unwrap_or_default());
         Some(GithubConfig {
             webhook_secret,
             api_token,
+            write_repos,
         })
     }
 }
@@ -604,6 +611,29 @@ pub struct GithubApiClient {
     /// wire path can be tested against a loopback server.
     base_url: String,
     http: reqwest::Client,
+    /// The repositories this client may write to. The token belongs to the
+    /// instance while egress allowlists belong to workspaces, so the operator
+    /// names the repositories here (`MAIDAN_GITHUB_WRITE_REPOS`) and no
+    /// workspace can point the token anywhere else. A new client writes
+    /// nowhere until it is given a list.
+    write_repos: WriteRepos,
+}
+
+/// Where a [`GithubApiClient`] may write.
+enum WriteRepos {
+    /// Only these `owner/name`s, lowercased. Empty means nowhere.
+    Listed(std::collections::HashSet<String>),
+    /// Anywhere the token reaches: test loopback servers only.
+    Any,
+}
+
+/// `MAIDAN_GITHUB_WRITE_REPOS`: comma-separated `owner/name`s, compared
+/// case-insensitively as GitHub does. Blank entries are ignored.
+pub fn parse_write_repos(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|r| r.trim().to_ascii_lowercase())
+        .filter(|r| !r.is_empty())
+        .collect()
 }
 
 impl GithubApiClient {
@@ -621,6 +651,39 @@ impl GithubApiClient {
             http: crate::egress_http::bounded()
                 .build()
                 .unwrap_or_else(|_| reqwest::Client::new()),
+            write_repos: WriteRepos::Listed(Default::default()),
+        }
+    }
+
+    /// Let this client write to exactly these `owner/name`s.
+    pub fn with_write_repos(mut self, repos: impl IntoIterator<Item = String>) -> Self {
+        self.write_repos = WriteRepos::Listed(
+            repos
+                .into_iter()
+                .map(|r| r.trim().to_ascii_lowercase())
+                .filter(|r| !r.is_empty())
+                .collect(),
+        );
+        self
+    }
+
+    /// Let this client write anywhere its token reaches. For loopback test
+    /// servers; production builds the client with [`Self::with_write_repos`].
+    pub fn with_any_write_repo(mut self) -> Self {
+        self.write_repos = WriteRepos::Any;
+        self
+    }
+
+    /// Refuse a write to a repository the operator did not name, before any
+    /// request is made.
+    fn ensure_writable(&self, repo: &str) -> Result<(), GithubError> {
+        match &self.write_repos {
+            WriteRepos::Any => Ok(()),
+            WriteRepos::Listed(repos) if repos.contains(&repo.to_ascii_lowercase()) => Ok(()),
+            WriteRepos::Listed(_) => Err(GithubError::Refused(format!(
+                "`{repo}` is not in MAIDAN_GITHUB_WRITE_REPOS, the repositories this \
+                 instance's GitHub token may write to"
+            ))),
         }
     }
 }
@@ -641,14 +704,13 @@ impl GithubSender for GithubApiClient {
         issue_number: i64,
         text: &str,
     ) -> Result<Option<ExternalRef>, GithubError> {
-        let url = format!(
-            "{}/repos/{repo}/issues/{issue_number}/comments",
-            self.base_url
-        );
-        let resp = crate::trace_context::stamp(self.http.post(&url))
-            .bearer_auth(&self.token)
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "maidan-projector") // GitHub requires a User-Agent
+        self.ensure_writable(repo)?;
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                repo,
+                &format!("/issues/{issue_number}/comments"),
+            )?
             .json(&serde_json::json!({ "body": text }))
             .send()
             .await
@@ -679,14 +741,13 @@ impl GithubSender for GithubApiClient {
         comment_id: i64,
         text: &str,
     ) -> Result<(), GithubError> {
-        let url = format!(
-            "{}/repos/{repo}/issues/comments/{comment_id}",
-            self.base_url
-        );
-        let resp = crate::trace_context::stamp(self.http.patch(&url))
-            .bearer_auth(&self.token)
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "maidan-projector")
+        self.ensure_writable(repo)?;
+        let resp = self
+            .request(
+                reqwest::Method::PATCH,
+                repo,
+                &format!("/issues/comments/{comment_id}"),
+            )?
             .json(&serde_json::json!({ "body": text }))
             .send()
             .await
@@ -710,14 +771,12 @@ impl GithubSender for GithubApiClient {
         // rather than guess.
         let mut out = Vec::new();
         for page in 1..=10 {
-            let url = format!(
-                "{}/repos/{repo}/issues/{issue_number}/comments?per_page=100&page={page}",
-                self.base_url
-            );
-            let resp = crate::trace_context::stamp(self.http.get(&url))
-                .bearer_auth(&self.token)
-                .header("Accept", "application/vnd.github+json")
-                .header("User-Agent", "maidan-projector")
+            let resp = self
+                .request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/issues/{issue_number}/comments?per_page=100&page={page}"),
+                )?
                 .send()
                 .await
                 .map_err(|e| self.http_error(e))?;
@@ -755,13 +814,15 @@ impl GithubSender for GithubApiClient {
         commit_id: &str,
         comments: &[GithubReviewComment],
     ) -> Result<(), GithubError> {
-        let url = format!("{}/repos/{repo}/pulls/{pull_number}/reviews", self.base_url);
+        self.ensure_writable(repo)?;
         let comments_json: Vec<serde_json::Value> =
             comments.iter().map(review_comment_payload).collect();
-        let resp = crate::trace_context::stamp(self.http.post(&url))
-            .bearer_auth(&self.token)
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "maidan-projector")
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                repo,
+                &format!("/pulls/{pull_number}/reviews"),
+            )?
             .json(&serde_json::json!({
                 "commit_id": commit_id,
                 "event": GITHUB_REVIEW_EVENT_COMMENT,
@@ -785,11 +846,9 @@ impl GithubSender for GithubApiClient {
         repo: &str,
         check: &GithubCheckRun,
     ) -> Result<(), GithubError> {
-        let url = format!("{}/repos/{repo}/check-runs", self.base_url);
-        let resp = crate::trace_context::stamp(self.http.post(&url))
-            .bearer_auth(&self.token)
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "maidan-projector")
+        self.ensure_writable(repo)?;
+        let resp = self
+            .request(reqwest::Method::POST, repo, "/check-runs")?
             .json(&check_run_body(check))
             .send()
             .await
@@ -805,18 +864,46 @@ impl GithubSender for GithubApiClient {
 }
 
 impl GithubApiClient {
-    fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        self.request_accepting(method, path, "application/vnd.github+json")
+    /// A request to `path` inside `repo`. Anything but a GET writes to `repo`,
+    /// so it is refused unless the operator listed `repo`. Every request is
+    /// built here or in [`Self::graphql`], and a test holds the HTTP client to
+    /// [`Self::build`], so a write method added later cannot miss the check.
+    fn request(
+        &self,
+        method: reqwest::Method,
+        repo: &str,
+        path: &str,
+    ) -> Result<reqwest::RequestBuilder, GithubError> {
+        self.request_accepting(method, repo, path, "application/vnd.github+json")
+    }
+
+    fn request_accepting(
+        &self,
+        method: reqwest::Method,
+        repo: &str,
+        path: &str,
+        accept: &str,
+    ) -> Result<reqwest::RequestBuilder, GithubError> {
+        if method != reqwest::Method::GET {
+            self.ensure_writable(repo)?;
+        }
+        Ok(self.build(method, &format!("/repos/{repo}{path}"), accept))
+    }
+
+    /// A GraphQL mutation on `repo`. The endpoint is not under the
+    /// repository's path, so the repository is named and checked here.
+    fn graphql(&self, repo: &str) -> Result<reqwest::RequestBuilder, GithubError> {
+        self.ensure_writable(repo)?;
+        Ok(self.build(
+            reqwest::Method::POST,
+            "/graphql",
+            "application/vnd.github+json",
+        ))
     }
 
     /// `.header` appends, so a second `Accept` would be sent beside the
     /// default rather than replace it: the media type is chosen once, here.
-    fn request_accepting(
-        &self,
-        method: reqwest::Method,
-        path: &str,
-        accept: &str,
-    ) -> reqwest::RequestBuilder {
+    fn build(&self, method: reqwest::Method, path: &str, accept: &str) -> reqwest::RequestBuilder {
         crate::trace_context::stamp(
             self.http
                 .request(method, format!("{}{path}", self.base_url)),
@@ -914,9 +1001,9 @@ fn encode_path(path: &str) -> String {
 #[async_trait::async_trait]
 impl GithubGit for GithubApiClient {
     async fn branch_head(&self, repo: &str, branch: &str) -> Result<Option<String>, GithubError> {
-        let path = format!("/repos/{repo}/git/ref/heads/{}", encode_path(branch));
+        let path = format!("/git/ref/heads/{}", encode_path(branch));
         match self
-            .send_json(self.request(reqwest::Method::GET, &path))
+            .send_json(self.request(reqwest::Method::GET, repo, &path)?)
             .await
         {
             Ok(value) => field(&value, "/object/sha").map(Some),
@@ -926,17 +1013,18 @@ impl GithubGit for GithubApiClient {
     }
 
     async fn create_branch(&self, repo: &str, branch: &str, sha: &str) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
         guard_ref(branch)?;
         let request = self
-            .request(reqwest::Method::POST, &format!("/repos/{repo}/git/refs"))
+            .request(reqwest::Method::POST, repo, "/git/refs")?
             .json(&serde_json::json!({ "ref": format!("refs/heads/{branch}"), "sha": sha }));
         self.send_json(request).await.map(|_| ())
     }
 
     async fn commit(&self, repo: &str, sha: &str) -> Result<GitCommit, GithubError> {
-        let path = format!("/repos/{repo}/git/commits/{sha}");
+        let path = format!("/git/commits/{sha}");
         let value = self
-            .send_json(self.request(reqwest::Method::GET, &path))
+            .send_json(self.request(reqwest::Method::GET, repo, &path)?)
             .await?;
         let parents = value
             .get("parents")
@@ -964,7 +1052,7 @@ impl GithubGit for GithubApiClient {
         sha: &str,
     ) -> Result<Option<Vec<u8>>, GithubError> {
         let url = format!(
-            "/repos/{repo}/contents/{}?ref={}",
+            "/contents/{}?ref={}",
             encode_path(path),
             urlencoding::encode(sha)
         );
@@ -973,9 +1061,10 @@ impl GithubGit for GithubApiClient {
         let resp = self
             .request_accepting(
                 reqwest::Method::GET,
+                repo,
                 &url,
                 "application/vnd.github.raw+json",
-            )
+            )?
             .send()
             .await
             .map_err(|e| self.http_error(e))?;
@@ -995,9 +1084,10 @@ impl GithubGit for GithubApiClient {
     }
 
     async fn create_blob(&self, repo: &str, content: &[u8]) -> Result<String, GithubError> {
+        self.ensure_writable(repo)?;
         use base64::Engine as _;
         let request = self
-            .request(reqwest::Method::POST, &format!("/repos/{repo}/git/blobs"))
+            .request(reqwest::Method::POST, repo, "/git/blobs")?
             .json(&serde_json::json!({
                 "content": base64::engine::general_purpose::STANDARD.encode(content),
                 "encoding": "base64",
@@ -1011,6 +1101,7 @@ impl GithubGit for GithubApiClient {
         base_tree: &str,
         entries: &[GitTreeEntry],
     ) -> Result<String, GithubError> {
+        self.ensure_writable(repo)?;
         let tree: Vec<serde_json::Value> = entries
             .iter()
             .map(|e| {
@@ -1023,7 +1114,7 @@ impl GithubGit for GithubApiClient {
             })
             .collect();
         let request = self
-            .request(reqwest::Method::POST, &format!("/repos/{repo}/git/trees"))
+            .request(reqwest::Method::POST, repo, "/git/trees")?
             .json(&serde_json::json!({ "base_tree": base_tree, "tree": tree }));
         field(&self.send_json(request).await?, "/sha")
     }
@@ -1035,17 +1126,19 @@ impl GithubGit for GithubApiClient {
         tree: &str,
         parents: &[String],
     ) -> Result<String, GithubError> {
+        self.ensure_writable(repo)?;
         let request = self
-            .request(reqwest::Method::POST, &format!("/repos/{repo}/git/commits"))
+            .request(reqwest::Method::POST, repo, "/git/commits")?
             .json(&serde_json::json!({ "message": message, "tree": tree, "parents": parents }));
         field(&self.send_json(request).await?, "/sha")
     }
 
     async fn update_branch(&self, repo: &str, branch: &str, sha: &str) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
         guard_ref(branch)?;
-        let path = format!("/repos/{repo}/git/refs/heads/{}", encode_path(branch));
+        let path = format!("/git/refs/heads/{}", encode_path(branch));
         let request = self
-            .request(reqwest::Method::PATCH, &path)
+            .request(reqwest::Method::PATCH, repo, &path)?
             .json(&serde_json::json!({ "sha": sha, "force": false }));
         self.send_json(request).await.map(|_| ())
     }
@@ -1053,9 +1146,9 @@ impl GithubGit for GithubApiClient {
     async fn open_pull(&self, repo: &str, branch: &str) -> Result<Option<GithubPull>, GithubError> {
         let owner = repo.split('/').next().unwrap_or_default();
         let head = urlencoding::encode(&format!("{owner}:{branch}")).into_owned();
-        let path = format!("/repos/{repo}/pulls?head={head}&state=open&per_page=1");
+        let path = format!("/pulls?head={head}&state=open&per_page=1");
         let value = self
-            .send_json(self.request(reqwest::Method::GET, &path))
+            .send_json(self.request(reqwest::Method::GET, repo, &path)?)
             .await?;
         value
             .as_array()
@@ -1072,17 +1165,18 @@ impl GithubGit for GithubApiClient {
         title: &str,
         body: &str,
     ) -> Result<GithubPull, GithubError> {
+        self.ensure_writable(repo)?;
         guard_ref(branch)?;
         guard_base(base)?;
-        let request = self
-            .request(reqwest::Method::POST, &format!("/repos/{repo}/pulls"))
-            .json(&serde_json::json!({
-                "title": title,
-                "body": body,
-                "head": branch,
-                "base": base,
-                "draft": true,
-            }));
+        let request =
+            self.request(reqwest::Method::POST, repo, "/pulls")?
+                .json(&serde_json::json!({
+                    "title": title,
+                    "body": body,
+                    "head": branch,
+                    "base": base,
+                    "draft": true,
+                }));
         pull_from(&self.send_json(request).await?)
     }
 
@@ -1094,8 +1188,9 @@ impl GithubGit for GithubApiClient {
         let value = self
             .send_json(self.request(
                 reqwest::Method::GET,
-                &format!("/repos/{repo}/pulls/{pull_number}"),
-            ))
+                repo,
+                &format!("/pulls/{pull_number}"),
+            )?)
             .await?;
         let number = value
             .get("number")
@@ -1143,11 +1238,12 @@ impl GithubGit for GithubApiClient {
         node_id: &str,
         _pass: MarkReadyGuardPass,
     ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
         // REST `PATCH {"draft": false}` is a silent no-op on GitHub — 200,
         // draft unchanged — so the flip goes through the GraphQL
         // `markPullRequestReadyForReview` mutation, on the same token.
         let request = self
-            .request(reqwest::Method::POST, "/graphql")
+            .graphql(repo)?
             .json(&serde_json::json!({
                 "query": "mutation($nodeId: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $nodeId}) { pullRequest { isDraft } } }",
                 "variables": { "nodeId": node_id },
@@ -1380,6 +1476,29 @@ pub async fn unlink_github_issue(
 mod tests {
     use super::*;
 
+    /// Every request the client sends is made in `build`, and only the two
+    /// builders that check `MAIDAN_GITHUB_WRITE_REPOS` call it, so a write
+    /// method added later cannot reach GitHub without the check.
+    #[test]
+    fn every_github_request_is_built_where_the_repository_is_checked() {
+        let source = include_str!("github.rs");
+        let source = &source[..source
+            .find("#[cfg(test)]\nmod tests")
+            .unwrap_or(source.len())];
+        let http_uses = source
+            .match_indices("self.http")
+            .filter(|(at, found)| {
+                !source[at + found.len()..].starts_with(|c: char| c == '_' || c.is_alphanumeric())
+            })
+            .count();
+        assert_eq!(http_uses, 1, "only `build` may use self.http");
+        assert_eq!(
+            source.matches("self.build(").count(),
+            2,
+            "only `request_accepting` and `graphql` may call `build`"
+        );
+    }
+
     #[test]
     fn from_env_disabled_without_a_secret() {
         // Not asserting on process env here (shared) — just the shape: a config with
@@ -1388,6 +1507,7 @@ mod tests {
         let cfg = GithubConfig {
             webhook_secret: "s".into(),
             api_token: None,
+            write_repos: Vec::new(),
         };
         assert_eq!(cfg.webhook_secret, "s");
         assert!(cfg.api_token.is_none());
@@ -1449,6 +1569,7 @@ mod tests {
         let cfg = GithubConfig {
             webhook_secret: "whsec-value".into(),
             api_token: Some("ghp_secretvalue".into()),
+            write_repos: Vec::new(),
         };
         let shown = format!("{cfg:?}");
         assert!(
@@ -1463,7 +1584,8 @@ mod tests {
     #[tokio::test]
     async fn the_client_writes_only_agent_branches_and_never_opens_a_pull_into_prod() {
         // No server: a refused write must not reach the network at all.
-        let client = GithubApiClient::with_base_url("t".into(), "http://127.0.0.1:9".into());
+        let client = GithubApiClient::with_base_url("t".into(), "http://127.0.0.1:9".into())
+            .with_any_write_repo();
         let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
         for branch in ["main", "prod", "dev", "feature/x", "feature/agent-X"] {
             let created = client.create_branch("o/r", branch, sha).await.unwrap_err();

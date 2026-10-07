@@ -708,12 +708,32 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         // one. The egress runs on the notification-router bus consumer.
         if let Some(token) = github_cfg.api_token.clone() {
             state.attach_github_sender(std::sync::Arc::new(
-                maidan_server::github::GithubApiClient::new(token),
+                maidan_server::github::GithubApiClient::new(token)
+                    .with_write_repos(github_cfg.write_repos.clone()),
             ));
-            tracing::info!("github projector egress configured");
+            if github_cfg.write_repos.is_empty() {
+                tracing::warn!(
+                    "github egress configured with no MAIDAN_GITHUB_WRITE_REPOS: every GitHub write is refused"
+                );
+            } else {
+                tracing::info!(repos = ?github_cfg.write_repos, "github projector egress configured");
+            }
         }
         state.attach_github(std::sync::Arc::new(github_cfg));
         tracing::info!("github projector ingress configured");
+    }
+
+    // The one app whose installations may mark agent pull requests ready.
+    // An unparseable id refuses boot: a typo would otherwise silently turn
+    // mark-ready off.
+    if let Ok(raw) = std::env::var("MAIDAN_MARK_READY_APP_ID") {
+        let raw = raw.trim();
+        if !raw.is_empty() {
+            let id = uuid::Uuid::parse_str(raw)
+                .map_err(|e| anyhow::anyhow!("MAIDAN_MARK_READY_APP_ID is not an app id: {e}"))?;
+            state.mark_ready_app_id = Some(maidan_types::AppId(id));
+            tracing::info!(app_id = %id, "mark-ready app designated");
+        }
     }
 
     // Background projector-egress worker: drains the durable egress queue with

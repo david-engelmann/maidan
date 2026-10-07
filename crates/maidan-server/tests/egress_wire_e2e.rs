@@ -238,7 +238,7 @@ async fn slack_client_maps_ok_false_to_api_error() {
 #[tokio::test]
 async fn github_client_posts_issue_comment_and_returns_the_comment_ref() {
     let (base, rec) = spawn(StatusCode::CREATED, json!({ "id": 998877 })).await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let reference = client
         .post_comment("acme/widgets", 42, "hello github")
         .await
@@ -270,7 +270,8 @@ async fn github_client_posts_issue_comment_and_returns_the_comment_ref() {
 async fn github_client_reports_an_idless_success_as_delivered_without_a_ref() {
     for response in [json!({}), json!({ "id": 0 }), json!({ "id": "998877" })] {
         let (base, _rec) = spawn(StatusCode::CREATED, response.clone()).await;
-        let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+        let client =
+            GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
         assert_eq!(
             client
                 .post_comment("acme/widgets", 42, "x")
@@ -288,7 +289,7 @@ async fn github_client_reports_an_idless_success_as_delivered_without_a_ref() {
 #[tokio::test]
 async fn github_client_updates_a_comment_by_id_without_the_issue_number() {
     let (base, rec) = spawn(StatusCode::OK, json!({ "id": 998877 })).await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     client
         .update_comment("acme/widgets", 998877, "the revised review")
         .await
@@ -310,7 +311,7 @@ async fn github_client_updates_a_comment_by_id_without_the_issue_number() {
 #[tokio::test]
 async fn github_client_maps_an_update_404_to_a_misconfiguration() {
     let (base, _rec) = spawn(StatusCode::NOT_FOUND, json!({ "message": "Not Found" })).await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let err = client
         .update_comment("acme/widgets", 1, "x")
         .await
@@ -327,7 +328,7 @@ async fn github_client_does_not_treat_a_rate_limited_update_as_a_misconfiguratio
         &[("retry-after", "60")],
     )
     .await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let err = client
         .update_comment("acme/widgets", 1, "x")
         .await
@@ -338,7 +339,7 @@ async fn github_client_does_not_treat_a_rate_limited_update_as_a_misconfiguratio
 #[tokio::test]
 async fn github_client_maps_non_success_to_api_error() {
     let (base, _rec) = spawn(StatusCode::NOT_FOUND, json!({ "message": "Not Found" })).await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let err = client
         .post_comment("acme/missing", 1, "x")
         .await
@@ -366,7 +367,7 @@ async fn github_client_marks_a_rate_limited_403_as_rate_limited() {
         &[("x-ratelimit-remaining", "0")],
     )
     .await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let err = client
         .post_comment("acme/widgets", 1, "x")
         .await
@@ -395,7 +396,7 @@ async fn github_client_lists_issue_comments() {
         json!([{ "id": 11, "body": "<!-- maidan:result:x -->\nreview" }]),
     )
     .await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let comments = client
         .list_issue_comments("acme/widgets", 42)
         .await
@@ -422,7 +423,7 @@ async fn github_client_lists_issue_comments() {
 #[tokio::test]
 async fn github_client_creates_a_pull_review_with_right_side_and_envelope_commit_id() {
     let (base, rec) = spawn(StatusCode::OK, json!({ "id": 77, "state": "COMMENTED" })).await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
     client
         .create_review(
@@ -484,7 +485,7 @@ async fn github_client_maps_a_create_review_422_to_unprocessable() {
         json!({ "message": "Line could not be processed" }),
     )
     .await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let err = client
         .create_review("acme/widgets", 7, "a".repeat(40).as_str(), &[])
         .await
@@ -496,7 +497,7 @@ async fn github_client_maps_a_create_review_422_to_unprocessable() {
 #[tokio::test]
 async fn github_client_maps_a_create_review_404_to_not_found() {
     let (base, _rec) = spawn(StatusCode::NOT_FOUND, json!({ "message": "Not Found" })).await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let err = client
         .create_review("acme/widgets", 7, "a".repeat(40).as_str(), &[])
         .await
@@ -511,7 +512,7 @@ async fn github_client_maps_a_create_review_500_to_a_transient_api_error() {
         json!({ "message": "GitHub is down" }),
     )
     .await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let err = client
         .create_review("acme/widgets", 7, "a".repeat(40).as_str(), &[])
         .await
@@ -541,7 +542,7 @@ async fn github_client_does_not_treat_a_rate_limited_create_review_403_as_a_misc
         &[("x-ratelimit-remaining", "0")],
     )
     .await;
-    let client = GithubApiClient::with_base_url("ghp-secret".into(), base);
+    let client = GithubApiClient::with_base_url("ghp-secret".into(), base).with_any_write_repo();
     let err = client
         .create_review("acme/widgets", 7, "a".repeat(40).as_str(), &[])
         .await
