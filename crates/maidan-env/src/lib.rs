@@ -38,6 +38,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_CONTENT_KEK",
     "MAIDAN_CONTENT_KEK_FILE",
     "MAIDAN_CONTENT_KEK_PREVIOUS",
+    "MAIDAN_CONTENT_KEK_PREVIOUS_FILE",
     "MAIDAN_COOKIE_SECURE",
     "MAIDAN_DB_ACQUIRE_TIMEOUT_SECS",
     "MAIDAN_DB_BUSY_TIMEOUT_MS",
@@ -45,6 +46,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_DB_LOCK_TIMEOUT_MS",
     "MAIDAN_DB_MAX_CONNECTIONS",
     "MAIDAN_DB_REPLICA_URL",
+    "MAIDAN_DB_REPLICA_URL_FILE",
     "MAIDAN_DB_STATEMENT_TIMEOUT_MS",
     "MAIDAN_DELIVERY_RECONCILE_MS",
     "MAIDAN_DELIVERY_STABILITY_SECS",
@@ -53,6 +55,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_EGRESS_WORKER_TICK_SECS",
     "MAIDAN_EMAIL_PRESENCE_WINDOW_SECS",
     "MAIDAN_EMBEDDING_API_KEY",
+    "MAIDAN_EMBEDDING_API_KEY_FILE",
     "MAIDAN_EMBEDDING_DIM",
     "MAIDAN_EMBEDDING_ENDPOINT",
     "MAIDAN_EMBEDDING_MODEL",
@@ -62,6 +65,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_EMBED_REPAIR_INTERVAL_SECS",
     "MAIDAN_ENV",
     "MAIDAN_EXPORT_SIGNING_KEY",
+    "MAIDAN_EXPORT_SIGNING_KEY_FILE",
     "MAIDAN_EXPORT_VERIFY_KEYS",
     "MAIDAN_GITHUB_TOKEN",
     "MAIDAN_GITHUB_TOKEN_FILE",
@@ -93,6 +97,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_OIDC_AUTO_PROVISION",
     "MAIDAN_OIDC_CLIENT_ID",
     "MAIDAN_OIDC_CLIENT_SECRET",
+    "MAIDAN_OIDC_CLIENT_SECRET_FILE",
     "MAIDAN_OIDC_ENABLED",
     "MAIDAN_OIDC_FIRST_ADMIN",
     "MAIDAN_OIDC_ISSUER",
@@ -111,6 +116,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_PRESENCE_TTL_SECS",
     "MAIDAN_RATE_LIMIT_MAX",
     "MAIDAN_RATE_LIMIT_REDIS_URL",
+    "MAIDAN_RATE_LIMIT_REDIS_URL_FILE",
     "MAIDAN_RATE_LIMIT_WINDOW_SECS",
     "MAIDAN_RETENTION_AUDIT_DAYS",
     "MAIDAN_RETENTION_BATCH",
@@ -132,13 +138,16 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_SMTP_FROM",
     "MAIDAN_SMTP_HOST",
     "MAIDAN_SMTP_PASSWORD",
+    "MAIDAN_SMTP_PASSWORD_FILE",
     "MAIDAN_SMTP_PORT",
     "MAIDAN_SMTP_STARTTLS",
     "MAIDAN_SMTP_USERNAME",
     "MAIDAN_SUBSCRIBE_RESUME_SECRET",
+    "MAIDAN_SUBSCRIBE_RESUME_SECRET_FILE",
     "MAIDAN_SUBSCRIBE_RESUME_TTL_SECS",
     "MAIDAN_TRUSTED_PROXY_HOPS",
     "MAIDAN_VAPID_PRIVATE_KEY",
+    "MAIDAN_VAPID_PRIVATE_KEY_FILE",
     "MAIDAN_VAPID_PUBLIC_KEY",
     "MAIDAN_VAPID_SUBJECT",
     "MAIDAN_WAIT_SWEEP_TICK_SECS",
@@ -382,6 +391,100 @@ mod tests {
             assert!(!SERVER_ENV.contains(name), "{name} is on both lists");
         }
         assert!(SERVER_ENV.contains(&ALLOW_UNKNOWN_ENV));
+    }
+
+    /// Server variables whose names look like secrets but are not, each with
+    /// why. Every other one must be able to come from a mounted file.
+    const NOT_SECRETS: &[(&str, &str)] = &[
+        ("MAIDAN_ALLOW_INSECURE_DEV_KEK", "a switch, not a key"),
+        ("MAIDAN_ALLOW_PRIVATE_EGRESS", "a switch"),
+        ("MAIDAN_EXPORT_VERIFY_KEYS", "public keys"),
+        (
+            "MAIDAN_JEV_BASE_URL",
+            "an endpoint that carries no credential",
+        ),
+        ("MAIDAN_SECRET_EGRESS_ALLOWLIST", "a list of hosts"),
+        ("MAIDAN_VAPID_PUBLIC_KEY", "a public key"),
+    ];
+
+    /// Secrets the server reads outside the `MAIDAN_` namespace, which
+    /// `SERVER_ENV` does not list.
+    const OTHER_SECRETS: &[&str] = &[
+        "DATABASE_URL",
+        "FEDERATION_DECRYPT_KEYS",
+        "FEDERATION_ENCRYPTION_KEY",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+    ];
+
+    fn looks_secret(name: &str) -> bool {
+        [
+            "SECRET",
+            "TOKEN",
+            "PASSWORD",
+            "KEK",
+            "PRIVATE",
+            "CREDENTIAL",
+        ]
+        .iter()
+        .any(|word| name.contains(word))
+            || ["_KEY", "_KEYS", "_URL", "_DSN"]
+                .iter()
+                .any(|end| name.ends_with(end))
+            || name.contains("_KEY_")
+    }
+
+    /// A secret in an environment variable shows in `docker inspect`,
+    /// `kubectl describe` and the compose file. Every one the server reads can
+    /// instead come from a mounted file, and a new one fails here until it
+    /// can, or until a reviewer says why it is not a secret.
+    #[test]
+    fn every_secret_the_server_reads_can_come_from_a_file() {
+        let filed: Vec<&str> = SECRET_FILE_ENV.iter().map(|(name, _)| *name).collect();
+        let mut missing: Vec<&str> = SERVER_ENV
+            .iter()
+            .copied()
+            .filter(|name| !name.ends_with("_FILE") && looks_secret(name))
+            .filter(|name| !NOT_SECRETS.iter().any(|(n, _)| n == name))
+            .chain(OTHER_SECRETS.iter().copied())
+            .filter(|name| !filed.contains(name))
+            .collect();
+        missing.sort_unstable();
+        assert!(
+            missing.is_empty(),
+            "add each to SECRET_FILE_ENV, or to NOT_SECRETS with the reason it is not a secret: {missing:?}"
+        );
+        for (name, _) in NOT_SECRETS {
+            assert!(SERVER_ENV.contains(name), "{name} is not a server variable");
+            assert!(looks_secret(name), "{name} needs no exception");
+        }
+        for (name, file_var) in SECRET_FILE_ENV {
+            assert_eq!(*file_var, format!("{name}_FILE"), "{name}");
+        }
+    }
+
+    /// The Helm chart refuses to mount a key the server cannot read from a
+    /// file, so its list of those keys must be this crate's.
+    #[test]
+    fn every_secret_file_the_chart_mounts_is_one_the_server_reads() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../helm/maidan/templates/_helpers.tpl");
+        let helpers = std::fs::read_to_string(&path).expect("the chart's helpers");
+        let start = helpers
+            .find(r#"{{- define "maidan.fileSecretNames" -}}"#)
+            .expect("maidan.fileSecretNames is defined");
+        let names = helpers[start..]
+            .lines()
+            .nth(1)
+            .expect("the names follow the define");
+        let mut chart: Vec<&str> = names.split_whitespace().collect();
+        chart.sort_unstable();
+        let mut server: Vec<&str> = SECRET_FILE_ENV.iter().map(|(name, _)| *name).collect();
+        server.sort_unstable();
+        assert_eq!(
+            chart, server,
+            "update maidan.fileSecretNames in helm/maidan"
+        );
     }
 
     #[test]

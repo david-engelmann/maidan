@@ -33,6 +33,14 @@ minio:
     size: 50Gi
 
 maidan:
+  secretFiles:
+    # The bundled stores' credentials, as files (see values.yaml).
+    extra:
+      - name: "{{ .Release.Name }}-datastores"
+        keys:
+          - DATABASE_URL
+          - S3_ACCESS_KEY_ID
+          - S3_SECRET_ACCESS_KEY
   replicaCount: 2
   # The chart refuses a production render without a release tag or digest, so
   # this names both the registry and the release (the same pin as

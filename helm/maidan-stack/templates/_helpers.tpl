@@ -118,6 +118,32 @@ stack (it cannot see this chart's values); the stack makes it when
 {{- end }}
 {{- if or $pg.enabled $minio.enabled }}
 {{- $want := include "maidan-stack.datastores.secretName" . }}
+{{- $files := true }}
+{{- with .Values.maidan.secretFiles }}
+{{- if hasKey . "enabled" }}
+{{- $files = .enabled }}
+{{- end }}
+{{- end }}
+{{- if $files }}
+{{- $keys := list }}
+{{- if $pg.enabled }}
+{{- $keys = append $keys "DATABASE_URL" }}
+{{- end }}
+{{- if $minio.enabled }}
+{{- $keys = concat $keys (list "S3_ACCESS_KEY_ID" "S3_SECRET_ACCESS_KEY") }}
+{{- end }}
+{{- $listed := list }}
+{{- with .Values.maidan.secretFiles }}
+{{- range .extra }}
+{{- if eq (tpl (toString .name) $) $want }}
+{{- $listed = .keys }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if not (eq (sortAlpha $listed | join ",") (sortAlpha $keys | join ",")) }}
+{{- fail (printf "maidan.secretFiles.extra must list Secret %s with keys %s, the credentials this chart renders for its stores (values-ci.yaml shows the entry)" $want (join ", " $keys)) }}
+{{- end }}
+{{- else }}
 {{- $wired := false }}
 {{- range .Values.maidan.extraEnvFrom }}
 {{- if and .secretRef (eq (tpl (toString .secretRef.name) $) $want) }}
@@ -125,7 +151,20 @@ stack (it cannot see this chart's values); the stack makes it when
 {{- end }}
 {{- end }}
 {{- if not $wired }}
-{{- fail (printf "maidan.extraEnvFrom must keep the secretRef to %s (values.yaml has it): it is how the server reaches the bundled Postgres and MinIO" $want) }}
+{{- fail (printf "with maidan.secretFiles.enabled false, maidan.extraEnvFrom must hold a secretRef to %s: it is how the server reaches the bundled Postgres and MinIO" $want) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $minio.enabled }}
+{{- $want := include "maidan-stack.datastores.secretName" . }}
+{{- $wired := false }}
+{{- range .Values.maidan.extraEnvFrom }}
+{{- if and .configMapRef (eq (tpl (toString .configMapRef.name) $) $want) }}
+{{- $wired = true }}
+{{- end }}
+{{- end }}
+{{- if not $wired }}
+{{- fail (printf "maidan.extraEnvFrom must keep the configMapRef to %s (values.yaml has it): it is how the server finds the bundled MinIO" $want) }}
 {{- end }}
 {{- end }}
 {{- if $pg.enabled }}

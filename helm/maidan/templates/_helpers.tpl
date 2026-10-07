@@ -68,7 +68,81 @@ one are refused by `maidan.image`, including when `existingSecret` is set.
 render cannot see, so the DATABASE_URL checks are left to whoever sets it (the
 stack checks it when it runs no database of its own).
 */}}
+{{/*
+The secrets the server can read from a file, as maidan-env's SECRET_FILE_ENV
+lists them. `every_secret_file_the_chart_mounts_is_one_the_server_reads` in
+crates/maidan-env keeps the two lists equal.
+*/}}
+{{- define "maidan.fileSecretNames" -}}
+DATABASE_URL FEDERATION_DECRYPT_KEYS FEDERATION_ENCRYPTION_KEY MAIDAN_CONTENT_KEK MAIDAN_CONTENT_KEK_PREVIOUS MAIDAN_DB_REPLICA_URL MAIDAN_EMBEDDING_API_KEY MAIDAN_EXPORT_SIGNING_KEY MAIDAN_GITHUB_TOKEN MAIDAN_GITHUB_WEBHOOK_SECRET MAIDAN_OIDC_CLIENT_SECRET MAIDAN_RATE_LIMIT_REDIS_URL MAIDAN_SESSION_SECRET MAIDAN_SLACK_BOT_TOKEN MAIDAN_SLACK_SIGNING_SECRET MAIDAN_SMTP_PASSWORD MAIDAN_SUBSCRIBE_RESUME_SECRET MAIDAN_VAPID_PRIVATE_KEY S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY
+{{- end -}}
+
+{{/*
+The Secrets mounted as files, as a JSON list of {name, keys}: each
+`secretFiles.extra` source, then the chart's own Secret with every key it
+renders, or existingSecret with the keys declared for it. A key an extra source
+holds comes from that source and is left out of the chart's own Secret, the way
+extraEnvFrom overrides it. Refuses a key the server cannot read from a file, and
+a key two extra sources both hold.
+*/}}
+{{- define "maidan.secretFileSources" -}}
+{{- $sources := list }}
+{{- $taken := dict }}
+{{- range .Values.secretFiles.extra }}
+{{- $name := tpl .name $ }}
+{{- if not .keys }}
+{{- fail (printf "secretFiles.extra lists Secret %s with no keys: name each key to mount, since a source with none would mount every key it holds" $name) }}
+{{- end }}
+{{- range .keys }}
+{{- if hasKey $taken . }}
+{{- fail (printf "%s is mounted from both %s and %s: keep it in one" . (index $taken .) $name) }}
+{{- end }}
+{{- $_ := set $taken . $name }}
+{{- end }}
+{{- $sources = append $sources (dict "name" $name "keys" .keys) }}
+{{- end }}
+{{- $own := list }}
+{{- if .Values.existingSecret }}
+{{- $own = .Values.secretFiles.existingSecretKeys }}
+{{- if not $own }}
+{{- fail "secretFiles.existingSecretKeys is empty: name each key existingSecret holds, since a source with none would mount every key it holds" }}
+{{- end }}
+{{- else }}
+{{- $own = keys .Values.secrets | sortAlpha }}
+{{- $own = append $own "MAIDAN_CONTENT_KEK" }}
+{{- if .Values.contentKekPrevious }}
+{{- $own = append $own "MAIDAN_CONTENT_KEK_PREVIOUS" }}
+{{- end }}
+{{- end }}
+{{- $kept := list }}
+{{- range $own }}
+{{- if not (hasKey $taken .) }}
+{{- $kept = append $kept . }}
+{{- end }}
+{{- end }}
+{{- if $kept }}
+{{- $sources = append $sources (dict "name" (include "maidan.secretName" .) "keys" $kept) }}
+{{- end }}
+{{- $allowed := splitList " " (include "maidan.fileSecretNames" .) }}
+{{- range $sources }}
+{{- $source := .name }}
+{{- range .keys }}
+{{- if not (has . $allowed) }}
+{{- fail (printf "%s in Secret %s cannot be read from a file: put it in config, or set secretFiles.enabled=false" . $source) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- toJson $sources }}
+{{- end -}}
+
 {{- define "maidan.validate" -}}
+{{- if .Values.secretFiles.enabled }}
+{{- range .Values.extraEnvFrom }}
+{{- if .secretRef }}
+{{- fail (printf "extraEnvFrom holds a secretRef to %s, which would put its keys in the environment: list it in secretFiles.extra with its keys, or set secretFiles.enabled=false" (tpl (toString .secretRef.name) $)) }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- range $k, $v := .Values.config }}
 {{- if contains "CHANGE_ME" (toString $v) }}
 {{- fail (printf "config.%s still holds the placeholder CHANGE_ME: set it to the real value" $k) }}
@@ -85,8 +159,16 @@ stack checks it when it runs no database of its own).
 {{- fail (printf "%s still holds the placeholder CHANGE_ME: set it to a key from openssl rand -hex 32, or set existingSecret to a Secret holding MAIDAN_CONTENT_KEK" $k) }}
 {{- end }}
 {{- end }}
+{{- $dbFromExtra := false }}
+{{- if .Values.secretFiles.enabled }}
+{{- range .Values.secretFiles.extra }}
+{{- if has "DATABASE_URL" .keys }}
+{{- $dbFromExtra = true }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if .Values.production }}
-{{- if not .Values.extraEnvFrom }}
+{{- if not (or .Values.extraEnvFrom $dbFromExtra) }}
 {{- $db := required "a production install needs its database: set existingSecret to a Secret holding DATABASE_URL and MAIDAN_CONTENT_KEK, or set secrets.DATABASE_URL" .Values.secrets.DATABASE_URL }}
 {{- if eq $db "postgres://maidan:maidan@postgres:5432/maidan" }}
 {{- fail "secrets.DATABASE_URL is the chart's development default (user and password maidan): set existingSecret to a Secret holding DATABASE_URL and MAIDAN_CONTENT_KEK, or set secrets.DATABASE_URL to your database" }}
