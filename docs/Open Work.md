@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `407dcc12` (2026-10-07).
+on a decision. Last reconciled against `main` at `625a83ec` (2026-10-07).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -52,8 +52,7 @@ CI ran.
 
 | PR | What it does | State (2026-10-06) | Merge after |
 |---|---|---|---|
-| #1276 | Mark-ready refuses a fork's or a closed pull request, the test-only guard pass is enforced by a contract test, and the smoke spec that kept Playwright red on `main` signs in the way a server without sessions answers | `mark_ready_e2e` 18/18 locally, full suite running, CI running | None |
-| (live check) | Mark-ready has never run against GitHub. agent-skills#11 was still a draft on 2026-10-07, and bgv3#5847 is closed, so it cannot be the second test | Blocked on pi-ff redeploying the dev-tools stack from `main` at or after #1276, then Soundcheck flipping agent-skills#11 and one fresh open draft in bgv3, each re-read to confirm it is no longer a draft | #1276 |
+| (live check) | Mark-ready has never run against GitHub. agent-skills#11 was still a draft on 2026-10-07, and bgv3#5847 is closed, so it cannot be the second test | Blocked on pi-ff redeploying the dev-tools stack from `main` at or after #1276, then Soundcheck flipping agent-skills#11 and one fresh open draft in bgv3, each re-read to confirm it is no longer a draft | — |
 | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
 
 ## Next: ranked

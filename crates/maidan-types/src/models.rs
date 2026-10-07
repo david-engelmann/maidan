@@ -84,6 +84,60 @@ impl DeclaredStatus {
     ];
 }
 
+/// The longest note a status declaration may carry, in characters. A
+/// declaration says in one sentence what the agent is doing; every board card
+/// and every `StatusDeclared` event carries the note, so it stays short.
+pub const STATUS_NOTE_MAX_CHARS: usize = 280;
+
+/// A declaration's note, trimmed, or why it is refused: empty, more than one
+/// line, or longer than [`STATUS_NOTE_MAX_CHARS`]. REST and MCP both call
+/// this, so the two surfaces cannot drift.
+pub fn status_note(note: &str) -> Result<String, String> {
+    let note = note.trim();
+    if note.is_empty() {
+        return Err("note must be a non-empty one-sentence description".into());
+    }
+    // Every character that ends a line: LF, CR, NEL and the Unicode line and
+    // paragraph separators.
+    if note
+        .chars()
+        .any(|c| matches!(c, '\n' | '\r' | '\u{85}' | '\u{2028}' | '\u{2029}'))
+    {
+        return Err("note must be a single sentence (no newlines)".into());
+    }
+    let chars = note.chars().count();
+    if chars > STATUS_NOTE_MAX_CHARS {
+        return Err(format!(
+            "note must be at most {STATUS_NOTE_MAX_CHARS} characters (it is {chars})"
+        ));
+    }
+    Ok(note.to_string())
+}
+
+#[cfg(test)]
+mod status_note_tests {
+    use super::*;
+
+    #[test]
+    fn a_status_note_is_one_trimmed_line_of_at_most_280_characters() {
+        assert_eq!(
+            status_note("  Writing the parser.  ").unwrap(),
+            "Writing the parser."
+        );
+        assert!(status_note("   ").is_err());
+        assert!(status_note("One.\nTwo.").is_err());
+        assert!(status_note("One.\rTwo.").is_err());
+        assert!(status_note("One.\u{85}Two.").is_err());
+        assert!(status_note("One.\u{2028}Two.").is_err());
+        assert!(status_note("One.\u{2029}Two.").is_err());
+        assert!(
+            status_note(&"é".repeat(STATUS_NOTE_MAX_CHARS)).is_ok(),
+            "counted in characters, not bytes"
+        );
+        assert!(status_note(&"a".repeat(STATUS_NOTE_MAX_CHARS + 1)).is_err());
+    }
+}
+
 /// An agent's status declaration on a thread: what it's doing, in one
 /// sentence. Set by the claim holder or owner via `declare_status`; cleared
 /// on a human response or a superseding declaration.
