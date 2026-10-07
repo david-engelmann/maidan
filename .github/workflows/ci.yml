@@ -251,6 +251,41 @@ jobs:
       - name: mcp external verifier
         run: scripts/mcp-inspector.sh
 
+  mcp-conformance:
+    name: mcp conformance (report-only)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The official MCP conformance suite, run per revision against its frozen
+    # requirements for 2025-11-25 and 2026-07-28, on a dev instance in the
+    # anonymous read-only mode (the suite sends no credential). It fails on a
+    # check that newly fails and on a baselined one that now passes; every
+    # known failure is listed with its reason in scripts/mcp-conformance/.
+    # Report-only and NOT a required check: the suite is pre-1.0 and its new
+    # scenarios should be triaged, not block a merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: mcp conformance suite
+        env:
+          MAIDAN_CONFORMANCE_OUT: ${{ github.workspace }}/mcp-conformance-results
+        run: scripts/mcp-conformance.sh
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-conformance-results
+          path: mcp-conformance-results
+          if-no-files-found: ignore
+
   tla:
     name: tla
     needs: changes

@@ -62,6 +62,12 @@ Refs #1253
 - **Added:** `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` names one workspace, which must be called `synthetic-…`. An MCP `POST` with no credential reads it as no member at all, holding `workspace:read` only, so it sees what is public there and nothing a membership, DM or grant gives. Its `tools/list` holds the read-only tools, each marked `"securitySchemes": [{ "type": "noauth" }]`. A tool that writes and a subscription are refused with a request for a token, an unknown tool or method gets the usual error, and an anonymous caller never gets a session. The server refuses to start with it under `MAIDAN_ENV=production` or beside `AUTH_DISABLED`.
 - **Added:** `AuthContext::anonymous_reader`, a context that is never a bypass.
 
+### The official MCP conformance suite runs against Maidan
+
+- **Added:** `scripts/mcp-conformance.sh` and the report-only `mcp conformance` CI job run the official suite's frozen requirement sets for `2025-11-25` and `2026-07-28` against a dev instance in the anonymous read-only mode. Every failing check is listed with its reason in `scripts/mcp-conformance/`. A new failure fails the job, and so does a listed check that starts passing.
+- **Fixed:** `ping` answered "method not found". It now answers an empty result with no `resultType`, which the official SDK reads strictly.
+- **Found:** real `2026-07-28` gaps (SEP-2575 per-request `_meta`, removed methods, SEP-2243 header mismatch, SEP-2663 `tasks/*`) and no DNS-rebinding check on Host and Origin. Each is baselined with its reason and tracked in Open Work.
+
 ### Opening a group DM selects it and asks for three members
 
 - **Fixed:** The page accepted two members and left the new group DM unselected. It now refuses fewer than three before the request, says that refusal as a sentence, and selects the conversation the server returns, the same way a one-to-one DM is selected. A browser spec opens one and posts in it.
