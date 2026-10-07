@@ -28,6 +28,12 @@ Refs #1253
 - **Added:** The thread DTO carries `block: Option<ThreadBlock>`. Board cards show `blocked: reason` with the note as a tooltip.
 - **Changed:** `set_thread_block` store API returns `(ThreadBlock, StoredEvent)`.
 
+### A tool's name says what it does
+
+- **Added:** `tool_annotations_contract` checks every MCP tool name. A name is snake_case and at most 64 characters, and still fits 64 behind Claude Code's `mcp__maidan__` prefix. Its leading verb says whether the tool writes. A reviewed list of read verbs means read-only, any other verb means a write, and no name joins two verbs.
+- **Added:** The four tools a model could mistake for lookups (`claim_next_thread`, `claim_next_workspace_thread`, `mark_inbox_read`, `open_dm_conversation`) stay single tools, as the maintainer decided on 2026-10-07. The contract keeps each one a non-read-only write whose description names the write.
+- **Changed:** `open_dm_conversation` says the first call creates the conversation, and `claim_next_workspace_thread` says it claims.
+
 ### A failed token check drops the previous member
 
 - **Fixed:** Pasting a token drops the member id learned from the previous token when `/me` throws. The page no longer keeps calling routes as that member. An empty token field and a rejected `/me` use the same drop.

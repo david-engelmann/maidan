@@ -206,7 +206,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "open_dm_conversation",
-            "description": "Open or fetch a 1:1 DM conversation between the authenticated member and another workspace member.",
+            "description": "Open the 1:1 DM conversation between the authenticated member and another workspace member. The first call creates the conversation and its thread, and a repeat returns the same conversation.",
             "annotations": {
                 "title": "Open DM conversation",
                 "readOnlyHint": false,
@@ -1206,7 +1206,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "claim_next_workspace_thread",
-            "description": "claim_next_thread across every channel of the workspace you may read, so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.",
+            "description": "Atomically claim the oldest claimable thread across every channel of the workspace you may read (claim_next_thread for the whole workspace), so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.",
             "annotations": {
                 "title": "Claim next workspace thread",
                 "readOnlyHint": false,
