@@ -178,9 +178,50 @@ async fn github_client() -> (GithubApiClient, Shared) {
     let fake: Shared = Arc::default();
     let base = spawn_github(fake.clone()).await;
     (
-        GithubApiClient::with_base_url("test-token".into(), base),
+        GithubApiClient::with_base_url("test-token".into(), base).with_any_write_repo(),
         fake,
     )
+}
+
+#[tokio::test]
+async fn a_write_to_a_repository_the_operator_did_not_name_is_refused_before_any_request() {
+    let fake: Shared = Default::default();
+    let base = spawn_github(fake.clone()).await;
+    fake.lock()
+        .unwrap()
+        .pulls
+        .insert(7, draft_pull(7, "feature/agent-x", "dev"));
+    let node_id = fake.lock().unwrap().pulls[&7].node_id.clone();
+
+    let elsewhere = GithubApiClient::with_base_url("test-token".into(), base.clone())
+        .with_write_repos(["o/other".to_string()]);
+    let err = elsewhere
+        .set_pull_ready("o/repo", 7, &node_id, MarkReadyGuardPass::for_tests())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, GithubError::Refused(_)), "{err:?}");
+    assert!(
+        fake.lock().unwrap().graphql.is_empty(),
+        "the refusal comes before any request"
+    );
+
+    let unconfigured = GithubApiClient::with_base_url("test-token".into(), base.clone());
+    assert!(
+        unconfigured
+            .create_branch("o/repo", "feature/agent-x", "abc")
+            .await
+            .is_err(),
+        "a client given no list writes nowhere"
+    );
+
+    // Names compare case-insensitively, as GitHub's do.
+    let listed = GithubApiClient::with_base_url("test-token".into(), base)
+        .with_write_repos(["O/Repo".to_string()]);
+    listed
+        .set_pull_ready("o/repo", 7, &node_id, MarkReadyGuardPass::for_tests())
+        .await
+        .unwrap();
+    assert_eq!(fake.lock().unwrap().graphql.len(), 1);
 }
 
 #[tokio::test]
@@ -391,10 +432,9 @@ async fn spawn() -> Harness {
         Arc::new(AtomicI64::new(0)),
         None,
     );
-    state.attach_github_sender(Arc::new(GithubApiClient::with_base_url(
-        "test-token".into(),
-        github_base,
-    )));
+    state.attach_github_sender(Arc::new(
+        GithubApiClient::with_base_url("test-token".into(), github_base).with_any_write_repo(),
+    ));
     std::mem::forget(dir);
 
     let ws = store
@@ -421,6 +461,14 @@ async fn spawn() -> Harness {
         .unwrap();
 
     let soundcheck_install = install_app(&store, ws.id, bot.id, "soundcheck").await;
+    // The operator designates the mark-ready app by id (MAIDAN_MARK_READY_APP_ID).
+    state.mark_ready_app_id = Some(
+        store
+            .get_app_installation(soundcheck_install)
+            .await
+            .unwrap()
+            .app_id,
+    );
     let other_install = install_app(&store, ws.id, bot.id, "other-app").await;
     let soundcheck_secret = TokenSecret::generate();
     let other_secret = TokenSecret::generate();
@@ -506,7 +554,10 @@ async fn only_the_soundcheck_app_may_mark_ready() {
     // A member token is not an app token.
     let (status, body) = post_mark_ready(&h, Some(&h.member_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
-    assert!(body.to_string().contains("soundcheck"), "{body}");
+    assert!(
+        body.to_string().contains("operator-designated app"),
+        "{body}"
+    );
 
     // The refusal is audited: this endpoint is the sole gate for a PR
     // mutation, so refused calls are recorded, not just marked ones.
@@ -577,6 +628,68 @@ async fn mark_ready_refuses_a_non_agent_head() {
     assert!(
         h.fake.lock().unwrap().graphql.is_empty(),
         "a refused flip writes nothing"
+    );
+}
+
+#[tokio::test]
+async fn a_look_alike_soundcheck_in_another_workspace_cannot_mark_ready() {
+    let h = spawn().await;
+    allow(&h, "o/repo@dev").await;
+    h.fake
+        .lock()
+        .unwrap()
+        .pulls
+        .insert(14, draft_pull(14, "feature/agent-x", "dev"));
+
+    // Workspace B builds its own app slugged `soundcheck` and blesses the same
+    // repository and base in its own allowlist. Neither makes it the app the
+    // operator designated.
+    let ws_b = h
+        .store
+        .create_workspace(NewWorkspace { name: "b".into() })
+        .await
+        .unwrap();
+    let bot_b = h
+        .store
+        .create_member(NewMember {
+            workspace_id: ws_b.id,
+            handle: "bot-b".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let install_b = install_app(&h.store, ws_b.id, bot_b.id, "soundcheck").await;
+    let secret_b = TokenSecret::generate();
+    let bearer_b = mint(
+        &h.store,
+        ws_b.id,
+        bot_b.id,
+        Some(install_b),
+        secret_b.as_str(),
+    )
+    .await;
+    h.store
+        .allow_egress_target(NewEgressTarget {
+            workspace_id: ws_b.id,
+            surface: EgressSurface::GithubBranch,
+            selector: "o/repo@dev".into(),
+        })
+        .await
+        .unwrap();
+
+    let (status, body) = post_mark_ready(&h, Some(&bearer_b), "o/repo", 14).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(
+        h.fake.lock().unwrap().graphql.is_empty(),
+        "a look-alike app writes nothing"
+    );
+
+    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 14).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "the designated app still can: {body}"
     );
 }
 

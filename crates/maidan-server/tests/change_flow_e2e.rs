@@ -456,10 +456,9 @@ async fn harness() -> Harness {
         Arc::new(AtomicI64::new(0)),
         None,
     );
-    state.attach_github_sender(Arc::new(GithubApiClient::with_base_url(
-        TOKEN.into(),
-        github_base,
-    )));
+    state.attach_github_sender(Arc::new(
+        GithubApiClient::with_base_url(TOKEN.into(), github_base).with_any_write_repo(),
+    ));
     let slack = Arc::new(RecordingSlack::default());
     state.attach_slack_sender(slack.clone());
     std::mem::forget(dir);

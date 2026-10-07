@@ -37,14 +37,18 @@ use crate::state::AppState;
 pub struct GithubConfig {
     pub webhook_secret: String,
     pub api_token: Option<String>,
+    /// `MAIDAN_GITHUB_WRITE_REPOS`: the only repositories the token may write
+    /// to. Not a secret; empty means the token writes nowhere.
+    pub write_repos: Vec<String>,
 }
 
-// Both fields are credentials; `{:?}` must never print them.
+// The secret and the token are credentials; `{:?}` must never print them.
 impl std::fmt::Debug for GithubConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GithubConfig")
             .field("webhook_secret", &"[redacted]")
             .field("api_token", &self.api_token.as_ref().map(|_| "[redacted]"))
+            .field("write_repos", &self.write_repos)
             .finish()
     }
 }
@@ -59,9 +63,12 @@ impl GithubConfig {
         let api_token = std::env::var("MAIDAN_GITHUB_TOKEN")
             .ok()
             .filter(|s| !s.is_empty());
+        let write_repos =
+            parse_write_repos(&std::env::var("MAIDAN_GITHUB_WRITE_REPOS").unwrap_or_default());
         Some(GithubConfig {
             webhook_secret,
             api_token,
+            write_repos,
         })
     }
 }
@@ -604,6 +611,29 @@ pub struct GithubApiClient {
     /// wire path can be tested against a loopback server.
     base_url: String,
     http: reqwest::Client,
+    /// The repositories this client may write to. The token belongs to the
+    /// instance while egress allowlists belong to workspaces, so the operator
+    /// names the repositories here (`MAIDAN_GITHUB_WRITE_REPOS`) and no
+    /// workspace can point the token anywhere else. A new client writes
+    /// nowhere until it is given a list.
+    write_repos: WriteRepos,
+}
+
+/// Where a [`GithubApiClient`] may write.
+enum WriteRepos {
+    /// Only these `owner/name`s, lowercased. Empty means nowhere.
+    Listed(std::collections::HashSet<String>),
+    /// Anywhere the token reaches: test loopback servers only.
+    Any,
+}
+
+/// `MAIDAN_GITHUB_WRITE_REPOS`: comma-separated `owner/name`s, compared
+/// case-insensitively as GitHub does. Blank entries are ignored.
+pub fn parse_write_repos(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|r| r.trim().to_ascii_lowercase())
+        .filter(|r| !r.is_empty())
+        .collect()
 }
 
 impl GithubApiClient {
@@ -621,6 +651,39 @@ impl GithubApiClient {
             http: crate::egress_http::bounded()
                 .build()
                 .unwrap_or_else(|_| reqwest::Client::new()),
+            write_repos: WriteRepos::Listed(Default::default()),
+        }
+    }
+
+    /// Let this client write to exactly these `owner/name`s.
+    pub fn with_write_repos(mut self, repos: impl IntoIterator<Item = String>) -> Self {
+        self.write_repos = WriteRepos::Listed(
+            repos
+                .into_iter()
+                .map(|r| r.trim().to_ascii_lowercase())
+                .filter(|r| !r.is_empty())
+                .collect(),
+        );
+        self
+    }
+
+    /// Let this client write anywhere its token reaches. For loopback test
+    /// servers; production builds the client with [`Self::with_write_repos`].
+    pub fn with_any_write_repo(mut self) -> Self {
+        self.write_repos = WriteRepos::Any;
+        self
+    }
+
+    /// Refuse a write to a repository the operator did not name, before any
+    /// request is made.
+    fn ensure_writable(&self, repo: &str) -> Result<(), GithubError> {
+        match &self.write_repos {
+            WriteRepos::Any => Ok(()),
+            WriteRepos::Listed(repos) if repos.contains(&repo.to_ascii_lowercase()) => Ok(()),
+            WriteRepos::Listed(_) => Err(GithubError::Refused(format!(
+                "`{repo}` is not in MAIDAN_GITHUB_WRITE_REPOS, the repositories this \
+                 instance's GitHub token may write to"
+            ))),
         }
     }
 }
@@ -641,6 +704,7 @@ impl GithubSender for GithubApiClient {
         issue_number: i64,
         text: &str,
     ) -> Result<Option<ExternalRef>, GithubError> {
+        self.ensure_writable(repo)?;
         let url = format!(
             "{}/repos/{repo}/issues/{issue_number}/comments",
             self.base_url
@@ -679,6 +743,7 @@ impl GithubSender for GithubApiClient {
         comment_id: i64,
         text: &str,
     ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
         let url = format!(
             "{}/repos/{repo}/issues/comments/{comment_id}",
             self.base_url
@@ -755,6 +820,7 @@ impl GithubSender for GithubApiClient {
         commit_id: &str,
         comments: &[GithubReviewComment],
     ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
         let url = format!("{}/repos/{repo}/pulls/{pull_number}/reviews", self.base_url);
         let comments_json: Vec<serde_json::Value> =
             comments.iter().map(review_comment_payload).collect();
@@ -785,6 +851,7 @@ impl GithubSender for GithubApiClient {
         repo: &str,
         check: &GithubCheckRun,
     ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
         let url = format!("{}/repos/{repo}/check-runs", self.base_url);
         let resp = crate::trace_context::stamp(self.http.post(&url))
             .bearer_auth(&self.token)
@@ -926,6 +993,7 @@ impl GithubGit for GithubApiClient {
     }
 
     async fn create_branch(&self, repo: &str, branch: &str, sha: &str) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
         guard_ref(branch)?;
         let request = self
             .request(reqwest::Method::POST, &format!("/repos/{repo}/git/refs"))
@@ -995,6 +1063,7 @@ impl GithubGit for GithubApiClient {
     }
 
     async fn create_blob(&self, repo: &str, content: &[u8]) -> Result<String, GithubError> {
+        self.ensure_writable(repo)?;
         use base64::Engine as _;
         let request = self
             .request(reqwest::Method::POST, &format!("/repos/{repo}/git/blobs"))
@@ -1011,6 +1080,7 @@ impl GithubGit for GithubApiClient {
         base_tree: &str,
         entries: &[GitTreeEntry],
     ) -> Result<String, GithubError> {
+        self.ensure_writable(repo)?;
         let tree: Vec<serde_json::Value> = entries
             .iter()
             .map(|e| {
@@ -1035,6 +1105,7 @@ impl GithubGit for GithubApiClient {
         tree: &str,
         parents: &[String],
     ) -> Result<String, GithubError> {
+        self.ensure_writable(repo)?;
         let request = self
             .request(reqwest::Method::POST, &format!("/repos/{repo}/git/commits"))
             .json(&serde_json::json!({ "message": message, "tree": tree, "parents": parents }));
@@ -1042,6 +1113,7 @@ impl GithubGit for GithubApiClient {
     }
 
     async fn update_branch(&self, repo: &str, branch: &str, sha: &str) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
         guard_ref(branch)?;
         let path = format!("/repos/{repo}/git/refs/heads/{}", encode_path(branch));
         let request = self
@@ -1072,6 +1144,7 @@ impl GithubGit for GithubApiClient {
         title: &str,
         body: &str,
     ) -> Result<GithubPull, GithubError> {
+        self.ensure_writable(repo)?;
         guard_ref(branch)?;
         guard_base(base)?;
         let request = self
@@ -1143,6 +1216,7 @@ impl GithubGit for GithubApiClient {
         node_id: &str,
         _pass: MarkReadyGuardPass,
     ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
         // REST `PATCH {"draft": false}` is a silent no-op on GitHub — 200,
         // draft unchanged — so the flip goes through the GraphQL
         // `markPullRequestReadyForReview` mutation, on the same token.
@@ -1388,6 +1462,7 @@ mod tests {
         let cfg = GithubConfig {
             webhook_secret: "s".into(),
             api_token: None,
+            write_repos: Vec::new(),
         };
         assert_eq!(cfg.webhook_secret, "s");
         assert!(cfg.api_token.is_none());
@@ -1449,6 +1524,7 @@ mod tests {
         let cfg = GithubConfig {
             webhook_secret: "whsec-value".into(),
             api_token: Some("ghp_secretvalue".into()),
+            write_repos: Vec::new(),
         };
         let shown = format!("{cfg:?}");
         assert!(
@@ -1463,7 +1539,8 @@ mod tests {
     #[tokio::test]
     async fn the_client_writes_only_agent_branches_and_never_opens_a_pull_into_prod() {
         // No server: a refused write must not reach the network at all.
-        let client = GithubApiClient::with_base_url("t".into(), "http://127.0.0.1:9".into());
+        let client = GithubApiClient::with_base_url("t".into(), "http://127.0.0.1:9".into())
+            .with_any_write_repo();
         let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
         for branch in ["main", "prod", "dev", "feature/x", "feature/agent-X"] {
             let created = client.create_branch("o/r", branch, sha).await.unwrap_err();
