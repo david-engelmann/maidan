@@ -1274,8 +1274,10 @@ fn ui_js_reports_errors_without_blocking_dialogs() {
         panic!("a blocking dialog call at byte {at}: use showError or an inline confirmation");
     }
     assert!(
-        page().contains(r#"<div id="toasts"></div>"#),
-        "the toast region"
+        page().contains(
+            r#"<div id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>"#
+        ),
+        "the toast region, a polite live region"
     );
 }
 

@@ -2,14 +2,25 @@
 import { base } from "./api.js";
 
 
-      // Tell the user what to fix without stopping the page. The same message
-      // again refreshes the one on screen rather than stacking a copy, and
-      // says it again: a screen reader announces a change to an alert's
-      // text, not a new timer, and a change undone in the same task can be
-      // dropped, so the text is cleared now and put back in a later task.
-      function showError(message) {
+      // The page's one feedback surface. `severity` says how loud a message
+      // is: an "error" (the default) or a "warning" interrupts, as an alert;
+      // a "success" says something worked, politely, and leaves sooner. The
+      // region itself is a polite live region, so even a reader that misses
+      // the alert role hears the line.
+      //
+      // The same message again refreshes the one on screen rather than
+      // stacking a copy, and says it again: a screen reader announces a
+      // change to an alert's text, not a new timer, and a change undone in
+      // the same task can be dropped, so the text is cleared now and put back
+      // in a later task.
+      const SEVERITIES = ["error", "warning", "success"];
+
+      function showError(message, severity = "error") {
+        const level = SEVERITIES.includes(severity) ? severity : "error";
         const region = document.getElementById("toasts");
-        let toast = [...region.children].find((t) => t.dataset.message === message);
+        let toast = [...region.children].find(
+          (t) => t.dataset.message === message && t.dataset.severity === level,
+        );
         if (toast) {
           const text = toast.firstElementChild;
           clearTimeout(Number(toast.dataset.restore));
@@ -17,9 +28,10 @@ import { base } from "./api.js";
           toast.dataset.restore = String(setTimeout(() => (text.textContent = message), 100));
         } else {
           toast = document.createElement("div");
-          toast.className = "toast";
-          toast.setAttribute("role", "alert");
+          toast.className = `toast toast-${level}`;
+          toast.setAttribute("role", level === "success" ? "status" : "alert");
           toast.dataset.message = message;
+          toast.dataset.severity = level;
           const text = document.createElement("span");
           text.textContent = message;
           const close = document.createElement("button");
@@ -34,18 +46,13 @@ import { base } from "./api.js";
         }
         const shown = toast;
         clearTimeout(Number(toast.dataset.timer));
-        toast.dataset.timer = String(setTimeout(() => dropToast(shown), 8000));
+        toast.dataset.timer = String(setTimeout(() => dropToast(shown), level === "success" ? 5000 : 8000));
       }
 
       function dropToast(toast) {
         clearTimeout(Number(toast.dataset.timer));
         clearTimeout(Number(toast.dataset.restore));
         toast.remove();
-      }
-
-      function setStatus(msg, cls) {
-        document.getElementById("status").textContent = msg;
-        document.getElementById("status").className = cls || "";
       }
 
       function renderState(el, message, cls = "muted") {
@@ -68,15 +75,7 @@ import { base } from "./api.js";
       async function responseError(res, prefix = "") {
         let detail = "";
         try {
-          const raw = await res.text();
-          if (raw) {
-            try {
-              const problem = JSON.parse(raw);
-              detail = problem.detail || problem.error || problem.message || problem.title || "";
-            } catch (_e) {
-              detail = raw;
-            }
-          }
+          detail = problemDetail(await res.text());
         } catch (_e) {
           /* The status is still useful when the response body cannot be read. */
         }
@@ -166,4 +165,24 @@ import { base } from "./api.js";
           : `Could not reach the server at ${base()}. Check that it is running and that API base is right.`;
       }
 
-export { appendLive, clearLoading, humanError, keyActivates, liveCount, renderState, responseError, setLoading, setOut, setStatus, setWsStatus, showError, toggleLiveFeed, unreachable };
+      // The part of an error reply worth reading for a capability name: the
+      // problem's detail, or the raw text when it is not JSON.
+      function problemDetail(raw) {
+        if (!raw) return "";
+        try {
+          const problem = JSON.parse(raw);
+          return problem.detail || problem.error || problem.message || problem.title || "";
+        } catch (_e) {
+          return raw;
+        }
+      }
+
+      // The same sentence as responseError, for a reply whose body the caller
+      // has already read (the raw output pane shows it).
+      function textError(status, raw, prefix = "") {
+        const detail = String(problemDetail(raw)).replace(/\s+/g, " ").trim().slice(0, 500);
+        const lead = prefix ? `${prefix}: ` : "";
+        return `${lead}${humanError(status, detail)}`;
+      }
+
+export { appendLive, clearLoading, humanError, keyActivates, liveCount, renderState, responseError, setLoading, setOut, setWsStatus, showError, textError, toggleLiveFeed, unreachable };

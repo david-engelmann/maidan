@@ -332,6 +332,47 @@ describe("toasts, discovery, and the image cache", { concurrency: 1 }, () => {
     clearToasts();
   });
 
+  test("showError takes a severity: an error alerts, a success is a polite status", (t) => {
+    clearToasts();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // The stub drops attributes and never detaches, so record the roles the
+    // toasts are given and let remove() take a toast out of the region.
+    const region = document.getElementById("toasts");
+    const roles = new Map();
+    const make = document.createElement;
+    t.mock.method(document, "createElement", (tag) => {
+      const el = make.call(document, tag);
+      el.setAttribute = (name, value) => {
+        if (name === "role") roles.set(el, value);
+      };
+      el.remove = () => {
+        const at = region.children.indexOf(el);
+        if (at >= 0) region.children.splice(at, 1);
+      };
+      return el;
+    });
+    showError("Could not post: The server hit an error");
+    showError("Token minted", "success");
+    showError("Attenuation: request exceeds your grant", "warning");
+    showError("Token minted");
+    showError("Odd severity", "shout");
+    const shown = region.children.map((toast) => [toast.dataset.message, toast.dataset.severity, toast.className, roles.get(toast)]);
+    assert.deepEqual(shown, [
+      ["Attenuation: request exceeds your grant", "warning", "toast toast-warning", "alert"],
+      ["Token minted", "error", "toast toast-error", "alert"],
+      ["Odd severity", "error", "toast toast-error", "alert"],
+    ], "three at most, oldest dropped first; an unknown severity is an error");
+    clearToasts();
+    showError("Token minted", "success");
+    assert.equal(roles.get(region.children[0]), "status", "a success does not interrupt");
+    assert.equal(region.children[0].className, "toast toast-success");
+    showError("Token minted", "success");
+    assert.equal(region.children.length, 1, "the same success again is one toast");
+    showError("Token minted");
+    assert.equal(region.children.length, 2, "an error with the same words is its own toast");
+    clearToasts();
+  });
+
   test("an older discovery answer never overrides the API base set after it", async () => {
     let releaseOld;
     globalThis.fetch = async (url) => {

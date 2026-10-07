@@ -19,11 +19,11 @@ test("slash commands register and revoke from the page", async ({ page }) => {
   await page.click("#slash-register");
 
   const list = page.locator("#slash-list");
-  await expect(page.locator("#status")).toContainText(`Registered /${name}`);
+  await expect(page.locator("#toasts .toast-success", { hasText: `Registered /${name}` })).toHaveAttribute("role", "status");
   await expect(list).toContainText(`/${name}`);
   await expect(list).toContainText("whoami");
 
   await list.getByRole("button", { name: "Revoke" }).click();
-  await expect(page.locator("#status")).toHaveText("Command revoked");
+  await expect(page.locator("#toasts .toast-success", { hasText: "Command revoked" })).toHaveAttribute("role", "status");
   await expect(list).not.toContainText(`/${name}`);
 });

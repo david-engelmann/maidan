@@ -134,8 +134,11 @@ function wid() { return state.workspace; }
 function headers() { return { Authorization: "Bearer " + state.token }; }
 function persist() {}
 function showSecretOnce(_title, secret) { obs.shown = secret; }
-function showError(msg) { obs.error = msg; }
-function setStatus() {}
+// A success is a quiet toast, not an error.
+function showError(msg, severity = "error") {
+  if (severity === "success") obs.notice = msg;
+  else obs.error = msg;
+}
 function setOut() {}
 function disconnectWs() {}
 function connectWs() { obs.reconnected += 1; }
@@ -176,7 +179,6 @@ const runRotate = new Function(
   "const persist = deps.persist;\n" +
   "const showSecretOnce = deps.showSecretOnce;\n" +
   "const showError = deps.showError;\n" +
-  "const setStatus = deps.setStatus;\n" +
   "const setOut = deps.setOut;\n" +
   "const disconnectWs = deps.disconnectWs;\n" +
   "const connectWs = deps.connectWs;\n" +
@@ -194,7 +196,7 @@ const runRotate = new Function(
 );
 
 const deps = {
-  token, base, wid, headers, persist, showSecretOnce, showError, setStatus, setOut,
+  token, base, wid, headers, persist, showSecretOnce, showError, setOut,
   disconnectWs, connectWs, unreachable, responseError, exchangeToken, document, api, writeApi,
   currentTokenId: state.currentTokenId,
   wsSocket,

@@ -14,7 +14,7 @@ test("opening a DM selects it and a message shows in the conversation", async ({
   await page.fill("#dm-other-id", fx.requester_id);
   await page.click("#dm-open");
   await expect(page.locator("#dm-selected")).toContainText("Deployer");
-  await expect(page.locator("#status")).toHaveText("DM opened");
+  await expect(page.locator("#toasts .toast-success", { hasText: "DM opened" })).toHaveAttribute("role", "status");
 
   const body = `hello from the board ${Date.now()}`;
   await page.fill("#dm-body", body);

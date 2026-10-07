@@ -1,7 +1,7 @@
 // @ts-check
 import { api, apiWritePath, headers, uiReadPath, wid, writeApi } from "./api.js";
 import { selectedThreadId } from "./board.js";
-import { responseError, setOut, setStatus, showError, unreachable } from "./feedback.js";
+import { responseError, setOut, showError, textError, unreachable } from "./feedback.js";
 import { INLINE_IMAGE_TYPES, artifactFetches, artifactImages } from "./state.js";
 import { artifactObjectUrls, loadMessages } from "./thread.js";
 
@@ -203,7 +203,7 @@ import { artifactObjectUrls, loadMessages } from "./thread.js";
         });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not upload that file"));
           setOut(body);
           return null;
         }
@@ -222,7 +222,7 @@ import { artifactObjectUrls, loadMessages } from "./thread.js";
           }),
         });
         if (pres.ok) {
-          setStatus("Artifact attached in thread", "ok");
+          showError("Artifact attached in thread", "success");
           await loadMessages();
         }
         return pres.ok;

@@ -15,7 +15,7 @@ test("opening a group DM selects it and a message shows in the conversation", as
   await page.fill("#gdm-title", "release desk");
   await page.click("#gdm-open");
   await expect(page.locator("#gdm-selected")).toContainText("release desk");
-  await expect(page.locator("#status")).toHaveText("Group DM opened");
+  await expect(page.locator("#toasts .toast-success", { hasText: "Group DM opened" })).toHaveAttribute("role", "status");
 
   const body = `hello group ${Date.now()}`;
   await page.fill("#gdm-body", body);

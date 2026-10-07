@@ -1,7 +1,7 @@
 // @ts-check
 import { api, apiWritePath, base, headers, persist, requireAuthForWrite, token, uiReadPath, wid, writeApi } from "./api.js";
 import { escapeHtml } from "./artifacts.js";
-import { clearLoading, renderState, responseError, setLoading, setOut, setStatus, showError, unreachable } from "./feedback.js";
+import { clearLoading, renderState, responseError, setLoading, setOut, showError, unreachable } from "./feedback.js";
 import { authorId, memberName } from "./people.js";
 import { connectWs, disconnectWs, wsSocket } from "./realtime.js";
 import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
@@ -94,11 +94,11 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             apiWritePath(`/workspaces/${wid()}/deliveries/${id}/replay?kind=${encodeURIComponent(kind)}`),
             { method: "POST", headers: headers(true), credentials: "include" },
           );
-          if (!res.ok) return setStatus(`replay HTTP ${res.status}`, "err");
-          setStatus(`Replayed ${kind} delivery #${id}`, "ok");
+          if (!res.ok) return showError(await responseError(res, "Could not replay that delivery"));
+          showError(`Replayed ${kind} delivery #${id}`, "success");
           await loadDeliveries();
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
       }
 
@@ -166,7 +166,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
       async function startReindex(global) {
         if (!requireAuthForWrite()) return;
         if (global && !token()) {
-          return setStatus("System-wide reindex needs a token:admin bearer", "err");
+          return showError("System-wide reindex needs a token:admin bearer");
         }
         const body = global ? {} : { workspace_id: wid() };
         try {
@@ -176,29 +176,29 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             credentials: "include",
             body: JSON.stringify(body),
           });
-          if (!res.ok) return setStatus(`reindex HTTP ${res.status}`, "err");
+          if (!res.ok) return showError(await responseError(res, "Could not start the reindex"));
           const job = await res.json();
           renderReindexJob(job);
           document.getElementById("op-reindex-job").value = job.job_id;
-          setStatus(`Reindex started (${job.job_id})`, "ok");
+          showError(`Reindex started (${job.job_id})`, "success");
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
       }
 
 
       async function pollReindex() {
         const id = document.getElementById("op-reindex-job").value.trim();
-        if (!id) return setStatus("Enter a job ID", "err");
+        if (!id) return showError("Enter a job ID");
         try {
           const res = await api(
             apiWritePath(`/operator/reindex-embeddings/${encodeURIComponent(id)}`),
             { headers: headers(), credentials: "include" },
           );
-          if (!res.ok) return setStatus(`poll HTTP ${res.status}`, "err");
+          if (!res.ok) return showError(await responseError(res, "Could not check the reindex"));
           renderReindexJob(await res.json());
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
       }
 
@@ -278,9 +278,9 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
               handler_target: handlerTarget,
             }),
           });
-          if (!res.ok) return setStatus(`register HTTP ${res.status}`, "err");
+          if (!res.ok) return showError(await responseError(res, "Could not register that command"));
           const out = await res.json();
-          setStatus(`Registered /${name}`, "ok");
+          showError(`Registered /${name}`, "success");
           if (out.secret) {
             const warn = document.createElement("div");
             warn.textContent = "Signing secret (shown once — copy it now):";
@@ -300,7 +300,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
           document.getElementById("slash-desc").value = "";
           await loadSlashCommands();
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
       }
 
@@ -313,11 +313,11 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             headers: headers(),
             credentials: "include",
           });
-          if (!res.ok) return setStatus(`revoke HTTP ${res.status}`, "err");
-          setStatus("Command revoked", "ok");
+          if (!res.ok) return showError(await responseError(res, "Could not revoke that command"));
+          showError("Command revoked", "success");
           await loadSlashCommands();
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
       }
 
@@ -423,9 +423,9 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             apiWritePath(`/members/${sessionMemberId}/notifications/${nid}/read`),
             { method: "POST", headers: headers(), credentials: "include" },
           );
-          if (!res.ok) setStatus(`HTTP ${res.status}`, "err");
+          if (!res.ok) showError(await responseError(res, "Could not mark that read"));
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
         await loadNotifications();
       }
@@ -759,12 +759,12 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
           if (body) opts.body = JSON.stringify(body);
           const res = await api(apiWritePath(suffix), opts);
           if (!res.ok) {
-            setStatus(`HTTP ${res.status}`, "err");
+            showError(await responseError(res, "Could not save that preference"));
             return null;
           }
           return res;
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
           return null;
         }
       }
@@ -967,7 +967,6 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
           });
           if (!res.ok) {
             const message = await responseError(res, "Could not load approvals");
-            setStatus(message, "err");
             renderState(list, message, "err");
             return;
           }
@@ -1005,7 +1004,11 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             // The whole row's buttons own the call, so accept, decline and
             // cancel all disable while one answer is in flight; a second
             // click cannot send a conflicting action for the same gate.
-            btn.onclick = () => answerGate(gate.id, action, v.request_state, li.querySelectorAll("button"));
+            // The caller says why it failed; Needs you puts it on the row instead.
+            btn.onclick = async () => {
+              const out = await answerGate(gate.id, action, v.request_state, li.querySelectorAll("button"));
+              if (!out.ok) showError(out.why);
+            };
             li.appendChild(btn);
           }
           list.appendChild(li);
@@ -1026,15 +1029,13 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
           });
         } catch (e) {
           const why = unreachable(e);
-          setStatus(why, "err");
           return { ok: false, why };
         }
         if (!res.ok) {
           const why = await responseError(res, `Could not ${action} gate`);
-          setStatus(why, "err");
           return { ok: false, why };
         }
-        setStatus(`gate ${action}ed`, "ok");
+        showError(`Gate ${action}ed`, "success");
         await loadApprovals();
         return { ok: true };
       }
@@ -1047,14 +1048,14 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             credentials: "include",
           });
           if (!res.ok) {
-            setStatus(`HTTP ${res.status}`, "err");
+            showError(await responseError(res, "Could not load your session"));
             document.getElementById("session-member").textContent =
               `HTTP ${res.status} — sign in or set a bearer token above`;
             return;
           }
           renderSession(await res.json());
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
       }
 
@@ -1160,9 +1161,9 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
             apiWritePath(`/members/${sessionMemberId}/notifications/read-all`),
             { method: "POST", headers: headers(), credentials: "include" },
           );
-          if (!res.ok) setStatus(`HTTP ${res.status}`, "err");
+          if (!res.ok) showError(await responseError(res, "Could not mark them all read"));
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
         await loadNotifications();
       }
@@ -1255,7 +1256,7 @@ import { exchangeToken, sessionMemberId, showSecretOnce } from "./session.js";
           }
         }
         showSecretOnce("New token (shown once) — the old one no longer works", rotated.secret);
-        setStatus("Token rotated", "ok");
+        showError("Token rotated", "success");
         setOut({ rotated: id, id: rotated.id });
       }
 

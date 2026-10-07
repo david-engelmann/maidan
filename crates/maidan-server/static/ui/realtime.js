@@ -1,7 +1,7 @@
 // @ts-check
 import { pastedToken, persist, token, wid, wsUrl } from "./api.js";
 import { loadThreads, markSeen, markSeenFromFrame, noteRefusalFromFrame, refreshTeamSoon, scheduleBoardRefresh, selectedChannelId, selectedThreadId } from "./board.js";
-import { appendLive, setStatus, setWsStatus, showError } from "./feedback.js";
+import { appendLive, setWsStatus, showError } from "./feedback.js";
 import { loadNeedsYou } from "./needs.js";
 import { authorId, memberName } from "./people.js";
 import { oidcLoginPath, sessionMemberId } from "./session.js";
@@ -70,10 +70,10 @@ import { loadApprovals } from "./tools.js";
 
       function setPresence(status) {
         if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN) {
-          return setStatus("Press Connect WS in the Live toolbar first", "err");
+          return showError("Press Connect WS in the Live toolbar first");
         }
         wsSocket.send(JSON.stringify({ type: "presence", status }));
-        setStatus(`Presence → ${status}`, "ok");
+        showError(`Presence → ${status}`, "success");
       }
 
 

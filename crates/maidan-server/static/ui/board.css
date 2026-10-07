@@ -313,11 +313,15 @@
       #live-panel.connected .when-disconnected { display: none; }
       #live-feed { flex: 1; background: #18181b; color: #e4e4e7; font-family: ui-monospace, monospace; padding: 0.75rem; overflow: auto; border-radius: 0.35rem; margin: 0.45rem 0 0; white-space: pre-wrap; word-break: break-word; max-height: 11rem; min-height: 5rem; font-size: 0.75rem; }
       #live-feed[hidden] { display: none; }
-      /* Errors a user caused (a missing field, no token) as a toast, not a
-         blocking showError(): announced by screen readers, dismissible, gone in
-         a few seconds. */
+      /* The one feedback surface, showError(message, severity): an error a
+         user caused or a refusal, a warning, or a success, as a toast, never a
+         blocking dialog. Announced by screen readers, dismissible, gone in a
+         few seconds. */
       #toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; max-width: min(26rem, calc(100vw - 2rem)); }
       .toast { display: flex; align-items: flex-start; gap: 0.75rem; background: var(--panel); color: var(--err); border: 1px solid var(--border); border-left: 4px solid var(--err); border-radius: 0.35rem; padding: 0.6rem 0.75rem; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); font-size: 0.9rem; }
+      /* A warning or a success is the same toast in ink: only an error is red. */
+      .toast-warning { color: var(--ink); border-left-color: var(--brand-ochre); }
+      .toast-success { color: var(--ink); border-left-color: var(--ok); }
       .toast span { flex: 1; }
       .toast button { background: none; border: none; color: var(--muted); padding: 0 0.25rem; font-size: 1.1rem; line-height: 1; cursor: pointer; }
       /* Board */
