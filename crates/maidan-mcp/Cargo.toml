@@ -9,6 +9,12 @@ authors.workspace = true
 publish.workspace = true
 description = "Model Context Protocol server surface for Maidan."
 
+[features]
+# Log every MCP request and response in full, with secret-shaped keys
+# redacted, on the `maidan_mcp::frame` target at debug. Dev builds only: a
+# release build that enables it fails to compile.
+frame-capture = []
+
 [dependencies]
 maidan-auth = { path = "../maidan-auth" }
 maidan-types = { path = "../maidan-types" }
@@ -35,6 +41,7 @@ maidan-store = { path = "../maidan-store", features = ["test-support"] }
 sqlx.workspace = true
 tempfile = "3"
 proptest = "1"
+tracing-subscriber.workspace = true
 
 [[bin]]
 name = "gen-mcp-reference"

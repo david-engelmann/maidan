@@ -92,6 +92,9 @@ jobs:
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --all-targets --workspace -- -D warnings
+      - name: clippy (dev-only MCP frame capture)
+        # The feature is off in every shipped build, so nothing else compiles it.
+        run: cargo clippy -p maidan-mcp --features frame-capture --all-targets -- -D warnings
       - name: no unwrap/expect in library/binary code
         # Scoped to --lib --bins so it covers crates/*/src only; test modules
         # (#[cfg(test)]) aren't compiled here, and tests/ + benches are excluded.

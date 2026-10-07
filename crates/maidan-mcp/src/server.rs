@@ -531,7 +531,17 @@ impl McpServer {
         args: &Value,
     ) -> Result<Value, McpError> {
         let params = json!({ "name": name, "arguments": args });
+        let started = std::time::Instant::now();
         let result = self.tools_call(&params, auth, None).await;
+        crate::request_log::record(
+            "tools/call",
+            &params,
+            auth,
+            crate::request_log::Transport::Slash,
+            None,
+            started.elapsed(),
+            &result,
+        );
         maidan_auth::record_delegated_authorization(
             self.store.as_ref(),
             auth,
@@ -593,7 +603,17 @@ impl McpServer {
         } else {
             request.method.clone()
         };
+        let started = std::time::Instant::now();
         let result = self.dispatch(&request, auth, session, profile).await;
+        crate::request_log::record(
+            &request.method,
+            &request.params,
+            auth,
+            crate::request_log::Transport::of(session),
+            profile,
+            started.elapsed(),
+            &result,
+        );
         maidan_auth::record_delegated_authorization(
             self.store.as_ref(),
             auth,
@@ -606,13 +626,16 @@ impl McpServer {
             },
         )
         .await;
-        match result {
+        let response = match result {
             Ok(result) => JsonRpcResponse::success(id, complete(result)),
             Err(err) => {
                 tracing::debug!(method = %request.method, error = %err, "mcp dispatch error");
                 JsonRpcResponse::failure(id, err.to_jsonrpc())
             }
-        }
+        };
+        #[cfg(feature = "frame-capture")]
+        crate::request_log::capture(&request, &response);
+        response
     }
 
     async fn dispatch(

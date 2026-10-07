@@ -4585,19 +4585,26 @@ pub fn catalog() -> Vec<Value> {
 /// ones it does not declare — which stopped being true once the argument
 /// structs began rejecting unknown fields, and was never a property worth
 /// depending on.
-pub fn declared_arguments(tool: &str) -> Option<std::collections::HashSet<String>> {
-    catalog().into_iter().find_map(|t| {
-        if t.get("name").and_then(|n| n.as_str()) != Some(tool) {
-            return None;
-        }
-        Some(
-            t.get("inputSchema")
-                .and_then(|s| s.get("properties"))
-                .and_then(|p| p.as_object())
-                .map(|o| o.keys().cloned().collect())
-                .unwrap_or_default(),
-        )
-    })
+///
+/// Read from the catalog once: the MCP request log asks on every call.
+pub fn declared_arguments(tool: &str) -> Option<&'static std::collections::HashSet<String>> {
+    type Declared = std::collections::HashMap<String, std::collections::HashSet<String>>;
+    static DECLARED: std::sync::LazyLock<Declared> = std::sync::LazyLock::new(|| {
+        catalog()
+            .into_iter()
+            .filter_map(|t| {
+                let name = t.get("name")?.as_str()?.to_string();
+                let args = t
+                    .get("inputSchema")
+                    .and_then(|s| s.get("properties"))
+                    .and_then(|p| p.as_object())
+                    .map(|o| o.keys().cloned().collect())
+                    .unwrap_or_default();
+                Some((name, args))
+            })
+            .collect()
+    });
+    DECLARED.get(tool)
 }
 
 #[cfg(test)]

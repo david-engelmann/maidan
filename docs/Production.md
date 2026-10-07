@@ -1021,6 +1021,12 @@ SLO alert templates (Prometheus / Alertmanager): `docs/alerts/` (`v90.0.0`). CI 
 
 **Reindex jobs are durable (`v104.0.0`):** `POST /operator/reindex-embeddings` records job status in `maidan_reindex_jobs`, so `GET /operator/reindex-embeddings/:job_id` resolves on any replica and survives restart. The job still *runs* on the replica that started it; if that pod dies mid-run the row stays `Running` — re-issue the (idempotent) reindex. App OAuth codes are likewise durable (`maidan_oauth_codes`): a code minted on one replica is exchangeable exactly once on any replica.
 
+### MCP request log
+
+Every MCP request writes one `info` line on the `maidan_mcp::request` target, so the default `MAIDAN_LOG` keeps it. The line carries the method, the tool, the names of the arguments, the workspace, member, actor, app installation and delegation grant, the transport (`http`, `streamable`, `stdio` or `slash`), the profile, the latency and the outcome (`ok`, `tool_error` or `error` with its JSON-RPC code). It never carries an argument value or a result. The client chooses every name in a request, so only names the server declares are printed. A method it does not answer is `(other)`, a tool not in the catalog is `(unknown)`, and an argument name the tool does not declare is counted, not printed. To drop the line, add `maidan_mcp::request=warn` to `MAIDAN_LOG`.
+
+Full frames are a developer tool, not a setting. Build with `--features mcp-frame-capture` and set `MAIDAN_LOG=info,maidan_mcp::frame=debug` to log each request and response. Secret-shaped keys are redacted at any depth, inside JSON result text too, and a tool that carries credentials (its name says secret, token, ticket or grant) has its arguments and result withheld. A release build that enables the feature fails to compile, so no published image can capture frames.
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |
