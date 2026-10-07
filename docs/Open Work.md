@@ -52,7 +52,8 @@ CI ran.
 
 | PR | What it does | State (2026-10-06) | Merge after |
 |---|---|---|---|
-| (live check) | Mark-ready has never run against GitHub. agent-skills#11 was still a draft on 2026-10-07, and bgv3#5847 is closed, so it cannot be the second test | Blocked on pi-ff redeploying the dev-tools stack from `main` at or after #1276, then Soundcheck flipping agent-skills#11 and one fresh open draft in bgv3, each re-read to confirm it is no longer a draft | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
+| (live check) | Mark-ready has never run against GitHub. agent-skills#11 was still a draft on 2026-10-07, and bgv3#5847 is closed, so it cannot be the second test | Blocked on pi-ff redeploying the dev-tools stack from `main` at or after #1276, then Soundcheck flipping agent-skills#11 and one fresh open draft in bgv3, each re-read to confirm it is no longer a draft |
+| (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
 
 ## Next: ranked
 

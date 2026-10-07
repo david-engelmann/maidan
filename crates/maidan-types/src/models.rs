@@ -97,7 +97,12 @@ pub fn status_note(note: &str) -> Result<String, String> {
     if note.is_empty() {
         return Err("note must be a non-empty one-sentence description".into());
     }
-    if note.contains('\n') || note.contains('\r') {
+    // Every character that ends a line: LF, CR, NEL and the Unicode line and
+    // paragraph separators.
+    if note
+        .chars()
+        .any(|c| matches!(c, '\n' | '\r' | '\u{85}' | '\u{2028}' | '\u{2029}'))
+    {
         return Err("note must be a single sentence (no newlines)".into());
     }
     let chars = note.chars().count();
@@ -122,6 +127,9 @@ mod status_note_tests {
         assert!(status_note("   ").is_err());
         assert!(status_note("One.\nTwo.").is_err());
         assert!(status_note("One.\rTwo.").is_err());
+        assert!(status_note("One.\u{85}Two.").is_err());
+        assert!(status_note("One.\u{2028}Two.").is_err());
+        assert!(status_note("One.\u{2029}Two.").is_err());
         assert!(
             status_note(&"é".repeat(STATUS_NOTE_MAX_CHARS)).is_ok(),
             "counted in characters, not bytes"
