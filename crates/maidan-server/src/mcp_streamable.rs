@@ -69,6 +69,17 @@ pub async fn streamable(
         return Ok(Json(resp).into_response());
     }
 
+    // Every anonymous caller is the same member, so a session one of them
+    // opened would be open to all of them: an anonymous caller stays stateless.
+    if auth.is_anonymous() {
+        let notification = request.id.is_none();
+        let response = state.mcp.handle(request, &auth).await;
+        if notification {
+            return Ok(StatusCode::ACCEPTED.into_response());
+        }
+        return Ok(Json(response).into_response());
+    }
+
     // A follow-up on an open `2024-11-05` session stays on it — if this caller
     // opened it; anyone else's session id is no session at all.
     let registry = state.mcp.streamable_sessions();

@@ -183,6 +183,57 @@ pub struct McpServer {
     land_gate_advisor: std::sync::OnceLock<Arc<dyn crate::land_gate_advice::LandGateAdvising>>,
 }
 
+/// What a caller with no credential may do on a dev instance: discover the
+/// server and read. Anything else, a subscription or a tool that writes
+/// included, is refused with the reason so the client can ask for a token.
+fn anonymous_may(request: &JsonRpcRequest) -> Result<(), McpError> {
+    match request.method.as_str() {
+        "initialize"
+        | "server/discover"
+        | "ping"
+        | "notifications/initialized"
+        | "notifications/cancelled"
+        | "tools/list"
+        | "resources/list"
+        | "resources/templates/list"
+        | "resources/read"
+        | "prompts/list"
+        | "prompts/get" => Ok(()),
+        "tools/call" => {
+            let name = request
+                .params
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if tools::is_read_only(name) {
+                Ok(())
+            } else {
+                Err(McpError::Forbidden(format!(
+                    "{name} is not a read-only tool, and this endpoint only reads for a caller \
+                     with no credential. Send a bearer token to call it"
+                )))
+            }
+        }
+        other => Err(McpError::Forbidden(format!(
+            "{other} is not open to a caller with no credential. Send a bearer token"
+        ))),
+    }
+}
+
+/// The tools a caller with no credential sees: the read-only ones, each
+/// declaring per tool that it needs no sign-in, which is how ChatGPT tells a
+/// tool it may call anonymously from one that needs a linked account.
+fn anonymous_catalog(tools: Vec<Value>) -> Vec<Value> {
+    tools
+        .into_iter()
+        .filter(|tool| tool["name"].as_str().is_some_and(tools::is_read_only))
+        .map(|mut tool| {
+            tool["securitySchemes"] = json!([{ "type": "noauth" }]);
+            tool
+        })
+        .collect()
+}
+
 impl McpServer {
     pub fn new(
         store: Arc<dyn Store>,
@@ -622,6 +673,9 @@ impl McpServer {
         session: &McpSession,
         profile: Option<crate::profiles::Profile>,
     ) -> Result<Value, McpError> {
+        if auth.is_anonymous() {
+            anonymous_may(request)?;
+        }
         match request.method.as_str() {
             "initialize" => self.initialize(&request.params).await,
             "server/discover" => Ok(caching::with_hint(self.discover(), caching::DISCOVER)),
@@ -632,6 +686,11 @@ impl McpServer {
                 let (tools, hint) = match profile {
                     Some(profile) => (profile.catalog(), caching::PROFILE_TOOLS_LIST),
                     None => (tools::catalog_for(auth), caching::TOOLS_LIST),
+                };
+                let tools = if auth.is_anonymous() {
+                    anonymous_catalog(tools)
+                } else {
+                    tools
                 };
                 Ok(caching::with_hint(json!({ "tools": tools }), hint))
             }

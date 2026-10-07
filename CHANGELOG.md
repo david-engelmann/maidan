@@ -52,6 +52,11 @@ Refs #1253
 
 - **Changed:** `cast_vote.kind` is `approve`, `request_changes`, or `ack`. REST `POST /messages/{id}/votes` and MCP `cast_vote` reject every other kind, including `up`, `upvote`, `request-changes`, and a custom emoji. REST returns 400. MCP returns `InvalidParams`. An emoji stays a reaction. There is no alias and no older open string.
 
+### A dev instance can be read over MCP without a credential
+
+- **Added:** `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` names one workspace, which must be called `synthetic-…`. An MCP `POST` with no credential reads it as an `anonymous-reader` member that holds `workspace:read` only. Its `tools/list` holds the read-only tools, each marked `"securitySchemes": [{ "type": "noauth" }]`. Every other tool, every subscription and every non-read method is refused, and an anonymous caller never gets a session. The server refuses to start with it under `MAIDAN_ENV=production` or beside `AUTH_DISABLED`.
+- **Added:** `AuthContext::anonymous_reader`, a context that is never a bypass.
+
 ### Opening a group DM selects it and asks for three members
 
 - **Fixed:** The page accepted two members and left the new group DM unselected. It now refuses fewer than three before the request, says that refusal as a sentence, and selects the conversation the server returns, the same way a one-to-one DM is selected. A browser spec opens one and posts in it.

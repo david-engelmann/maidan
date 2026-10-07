@@ -2153,3 +2153,11 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Open Work Next 17, Capability Map, Integration.
 
+### A dev instance is read without a credential, one synthetic workspace at a time (2026-10-07)
+
+**Decision.** The maintainer chose on 2026-10-07 to build Next 17's anonymous mode, tightly scoped. `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` names one workspace, and the server refuses to start unless its name begins `synthetic-`, `MAIDAN_ENV` is not `production` and `AUTH_DISABLED` is off. Only an MCP `POST` with no credential is anonymous. It reads as an `anonymous-reader` agent member through `AuthContext::anonymous_reader`, which holds `workspace:read` and is never a bypass. The MCP server lists and calls only `READ_ONLY_TOOLS` for it and marks each `noauth`, refuses subscriptions and every non-read method, and the streamable endpoint never gives it a session.
+
+**Why.** ChatGPT developer mode and claude.ai connectors with "No sign-in" install only against a server that answers without a credential, and the OAuth authorization server is parked. `AUTH_DISABLED` is not this mode, since it grants everything. Read-only is enforced by the tool list, not the capability, because some writes ask only `workspace:read`. Every anonymous caller is the same member, so a session would be shared among them, and so would a subscription. The `synthetic-` name keeps a real team's workspace from being the one exposed, without forbidding synthetic fixtures that include human members.
+
+**Not done.** No OAuth scheme is advertised beside `noauth`, because there is no authorization server to link. The mode is not in any published image's defaults, and the dev deployment recipe that uses it is Next 17's last PR.
+

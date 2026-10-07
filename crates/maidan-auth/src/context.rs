@@ -14,6 +14,7 @@ pub struct AuthContext {
     pub delegation_grant_id: Option<DelegationGrantId>,
     capabilities: Vec<String>,
     pub bypass: bool,
+    anonymous: bool,
 }
 
 impl AuthContext {
@@ -32,6 +33,7 @@ impl AuthContext {
             delegation_grant_id: None,
             capabilities,
             bypass: false,
+            anonymous: false,
         }
     }
 
@@ -51,6 +53,7 @@ impl AuthContext {
             delegation_grant_id: None,
             capabilities,
             bypass: false,
+            anonymous: false,
         }
     }
 
@@ -68,6 +71,7 @@ impl AuthContext {
             delegation_grant_id: None,
             capabilities,
             bypass: false,
+            anonymous: false,
         }
     }
 
@@ -81,7 +85,32 @@ impl AuthContext {
             delegation_grant_id: None,
             capabilities: Vec::new(),
             bypass: true,
+            anonymous: false,
         }
+    }
+
+    /// A caller with no credential on a dev instance's MCP endpoint, reading
+    /// one synthetic workspace as `member_id`. It holds `workspace:read` and
+    /// nothing else, and the MCP server also refuses every tool that writes,
+    /// because some writes ask only for `workspace:read`. It is never a bypass,
+    /// so every workspace check applies to it.
+    pub fn anonymous_reader(member_id: MemberId, workspace_id: WorkspaceId) -> Self {
+        Self {
+            token_id: None,
+            actor_id: member_id,
+            member_id,
+            workspace_id,
+            app_installation_id: None,
+            delegation_grant_id: None,
+            capabilities: vec![crate::capability::WORKSPACE_READ.to_string()],
+            bypass: false,
+            anonymous: true,
+        }
+    }
+
+    /// Whether this caller presented no credential (see [`Self::anonymous_reader`]).
+    pub fn is_anonymous(&self) -> bool {
+        self.anonymous
     }
 
     /// A borrowed context acts as `subject_id` on behalf of `actor_id`.
@@ -112,6 +141,7 @@ impl AuthContext {
             delegation_grant_id: Some(delegation_grant_id),
             capabilities,
             bypass: false,
+            anonymous: false,
         }
     }
 

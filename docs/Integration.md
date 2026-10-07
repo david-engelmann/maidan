@@ -816,6 +816,17 @@ Maidan never issues requests *to* your client: there is no sampling, roots, or e
 back-channel. When an agent needs a human, it opens a durable approval gate — see "Asking a human
 mid-loop" under the waiter loop below.
 
+**Anonymous reading on a dev instance.** A dev instance started with
+`MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` set to a workspace whose name begins `synthetic-` answers an
+MCP `POST` that carries no credential, so a client that installs with no sign-in (ChatGPT developer
+mode, a claude.ai connector with "No sign-in") can discover and read. Such a caller reads that one
+workspace as its `anonymous-reader` member, with `workspace:read` only. Its `tools/list` holds the
+read-only tools, each with `"securitySchemes": [{ "type": "noauth" }]`. Any other tool, a
+subscription, or a method that is not discovery or a read is refused with an error asking for a
+bearer token, and it never gets an `Mcp-Session-Id`. Listeners, REST and every request that sends a
+token behave as before. The server will not start with the variable under `MAIDAN_ENV=production`,
+beside `AUTH_DISABLED`, or naming a workspace that does not exist or is not called `synthetic-…`.
+
 Tool list and schemas: generated [MCP reference](https://david-engelmann.github.io/maidan/mcp-reference.html) (rebuilt on every docs CI run).
 
 ### MCP discovery and cache hints

@@ -28,6 +28,7 @@ pub mod consistency;
 pub mod content_keys;
 pub mod delivery;
 pub mod delivery_ops;
+pub mod dev_anonymous;
 pub mod digest;
 pub mod dm;
 pub mod dto;
