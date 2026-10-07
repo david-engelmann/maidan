@@ -96,6 +96,12 @@ pub async fn flip_pull_ready_guarded(
         .map_err(MarkReadyGuard::Refused)?;
     // A fork's branch can carry a `feature/agent-*` name too; only the change
     // flow's own branches, which live in the base repository, are flipped.
+    if !brief.open {
+        return Err(MarkReadyGuard::Refused(format!(
+            "pull request #{} is closed; only an open draft is marked ready",
+            brief.number
+        )));
+    }
     if !brief.same_repo {
         return Err(MarkReadyGuard::Refused(
             "the pull request's head is not in this repository (a fork or a deleted head); \

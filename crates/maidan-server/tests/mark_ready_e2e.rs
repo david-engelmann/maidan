@@ -50,6 +50,7 @@ struct FakePull {
     /// `owner/name` of the head branch's repository; a fork differs from the
     /// base repository the fake always reports as `o/repo`.
     head_repo: String,
+    open: bool,
 }
 
 #[derive(Default)]
@@ -123,6 +124,7 @@ async fn github(State(fake): State<Shared>, method: Method, uri: Uri, body: Byte
             "head": {"ref": p.head, "repo": {"full_name": p.head_repo}},
             "base": {"ref": p.base, "repo": {"full_name": "o/repo"}},
             "draft": p.draft,
+            "state": if p.open { "open" } else { "closed" },
             "node_id": p.node_id,
         })
     };
@@ -156,6 +158,7 @@ fn draft_pull(number: i64, head: &str, base: &str) -> FakePull {
         draft: true,
         node_id: format!("PR_node_{number}"),
         head_repo: "o/repo".into(),
+        open: true,
     }
 }
 
@@ -281,6 +284,8 @@ async fn pull_brief_reports_head_base_draft_and_node_id() {
     assert_eq!(brief.base, "dev");
     assert!(brief.draft, "the guards refuse a non-draft");
     assert_eq!(brief.node_id, "PR_node_7", "the mutation keys on this");
+    assert!(brief.open, "the fake reports an open pull request");
+    assert!(brief.same_repo, "the head lives in the base repository");
 }
 
 #[tokio::test]
@@ -572,6 +577,23 @@ async fn mark_ready_refuses_a_non_agent_head() {
     assert!(
         h.fake.lock().unwrap().graphql.is_empty(),
         "a refused flip writes nothing"
+    );
+}
+
+#[tokio::test]
+async fn mark_ready_refuses_a_closed_pull() {
+    let h = spawn().await;
+    allow(&h, "o/repo@dev").await;
+    let mut pull = draft_pull(13, "feature/agent-x", "dev");
+    pull.open = false;
+    h.fake.lock().unwrap().pulls.insert(13, pull);
+
+    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 13).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(body.to_string().contains("closed"), "{body}");
+    assert!(
+        h.fake.lock().unwrap().graphql.is_empty(),
+        "a closed pull request is never flipped"
     );
 }
 

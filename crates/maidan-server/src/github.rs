@@ -473,6 +473,9 @@ pub struct GithubPullBrief {
     /// refuses it; a head repository GitHub no longer reports (a deleted
     /// fork) reads as `false`.
     pub same_repo: bool,
+    /// Whether the pull request is open. A closed draft cannot be marked
+    /// ready, so the flip refuses it plainly instead of failing at GitHub.
+    pub open: bool,
 }
 
 /// What flipping a pull request to ready did.
@@ -1129,6 +1132,7 @@ impl GithubGit for GithubApiClient {
                 (Some(head), Some(base)) => head.eq_ignore_ascii_case(base),
                 _ => false,
             },
+            open: value.get("state").and_then(serde_json::Value::as_str) == Some("open"),
         })
     }
 
