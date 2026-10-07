@@ -17,8 +17,10 @@ the same KEK across upgrades: losing it makes every stored message unreadable.
 
 **Secrets are files.** The server reads every secret from a file the chart
 mounts read-only at `/run/secrets/maidan`, one per key, each named in
-`<KEY>_FILE`. No Secret reaches the server through envFrom, so `kubectl describe
-pod` and the process environment show paths, never values. The chart's own
+`<KEY>_FILE`. No Secret reaches the server through envFrom, so the pod
+specification (`kubectl describe pod`, `kubectl get pod -o yaml`) holds paths,
+never values. The server reads each file once at boot into its own process
+environment. The chart's own
 Secret is mounted with every key it renders. An `existingSecret` is mounted with
 the keys in `secretFiles.existingSecretKeys` (`DATABASE_URL` and
 `MAIDAN_CONTENT_KEK` by default), because the chart cannot read a Secret it did
@@ -26,7 +28,9 @@ not render, so list every key yours holds. More Secrets go in
 `secretFiles.extra` as a name and its keys, and a key there replaces the same key
 in the chart's own Secret. A key a Secret lacks stops the pod before the server
 starts. The render refuses a key the server cannot read from a file and a key two
-extra sources both hold. `secretFiles.enabled: false` passes the Secret through
+extra sources both hold, a source with no keys (it would mount them all), and an
+`extraEnvFrom` entry that is a `secretRef` (it would put that Secret's keys in
+the environment). `secretFiles.enabled: false` passes the Secrets through
 envFrom instead.
 
 `values-prod.yaml` sets `production: true`, and a production render refuses

@@ -17,6 +17,7 @@ upgrade a Job (a Helm hook) runs `mc mb --ignore-existing` for every bucket in `
 
 ```bash
 helm template demo helm/maidan-stack --set postgresql.enabled=true --set minio.enabled=true \
+  --set-json 'maidan.secretFiles.extra=[{"name":"{{ .Release.Name }}-datastores","keys":["DATABASE_URL","S3_ACCESS_KEY_ID","S3_SECRET_ACCESS_KEY"]}]' \
   --set maidan.contentKek="$(openssl rand -hex 32)"
 ```
 

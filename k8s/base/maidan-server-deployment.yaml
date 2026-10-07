@@ -56,6 +56,14 @@ spec:
               value: /run/secrets/maidan/DATABASE_URL
             - name: MAIDAN_CONTENT_KEK_FILE
               value: /run/secrets/maidan/MAIDAN_CONTENT_KEK
+            # Uncomment with the matching items below when maidan-secrets holds
+            # them: a KEK rotation, or an S3-compatible artifact backend.
+            # - name: MAIDAN_CONTENT_KEK_PREVIOUS_FILE
+            #   value: /run/secrets/maidan/MAIDAN_CONTENT_KEK_PREVIOUS
+            # - name: S3_ACCESS_KEY_ID_FILE
+            #   value: /run/secrets/maidan/S3_ACCESS_KEY_ID
+            # - name: S3_SECRET_ACCESS_KEY_FILE
+            #   value: /run/secrets/maidan/S3_SECRET_ACCESS_KEY
           volumeMounts:
             - name: artifact-data
               mountPath: /data
@@ -98,3 +106,9 @@ spec:
                 path: DATABASE_URL
               - key: MAIDAN_CONTENT_KEK
                 path: MAIDAN_CONTENT_KEK
+              # - key: MAIDAN_CONTENT_KEK_PREVIOUS
+              #   path: MAIDAN_CONTENT_KEK_PREVIOUS
+              # - key: S3_ACCESS_KEY_ID
+              #   path: S3_ACCESS_KEY_ID
+              # - key: S3_SECRET_ACCESS_KEY
+              #   path: S3_SECRET_ACCESS_KEY

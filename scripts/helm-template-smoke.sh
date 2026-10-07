@@ -65,6 +65,12 @@ refuses "MAIDAN_LOG in Secret maidan-maidan-secrets cannot be read from a file" 
 refuses "S3_ACCESS_KEY_ID is mounted from both a and b" \
   maidan "${chart}" --set contentKek="${kek}" \
   --set-json 'secretFiles.extra=[{"name":"a","keys":["S3_ACCESS_KEY_ID"]},{"name":"b","keys":["S3_ACCESS_KEY_ID"]}]'
+refuses "secretFiles.extra lists Secret empty with no keys" \
+  maidan "${chart}" --set contentKek="${kek}" --set-json 'secretFiles.extra=[{"name":"empty","keys":[]}]'
+refuses "secretFiles.existingSecretKeys is empty" \
+  maidan "${chart}" --set existingSecret=maidan-secrets --set-json 'secretFiles.existingSecretKeys=[]'
+refuses "extraEnvFrom holds a secretRef to other" \
+  maidan "${chart}" --set contentKek="${kek}" --set-json 'extraEnvFrom=[{"secretRef":{"name":"other"}}]'
 helm template maidan "${chart}" --set contentKek="${kek}" \
   | grep -q "MAIDAN_CONTENT_KEK: \"${kek}\"" || {
   echo "the rendered Secret must carry contentKek" >&2
@@ -99,6 +105,10 @@ helm template "${prod[@]}" --set image.tag= \
   echo "a digest must stand in for the tag in a production render" >&2
   exit 1
 }
+# An extra Secret that does not hold DATABASE_URL leaves the check on.
+refuses "secrets.DATABASE_URL is the chart's development default" \
+  "${prod[@]}" --set contentKek="${kek}" \
+  --set-json 'secretFiles.extra=[{"name":"s3","keys":["S3_ACCESS_KEY_ID"]}]'
 refuses "secrets.DATABASE_URL is the chart's development default" \
   "${prod[@]}" --set contentKek="${kek}"
 refuses "a production install needs its database" \
