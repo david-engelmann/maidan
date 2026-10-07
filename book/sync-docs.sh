@@ -41,7 +41,7 @@ top_pages=(
   "FAQ" "Comparison"
   "Architecture" "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
   "Dependencies" "Open Work" "Roadmap" "README" "Claims"
-  "Providers" "Protocols"
+  "Providers" "Protocols" "Clients"
   "Framework Integrations" "WASI-Handlers"
 )
 for name in "${top_pages[@]}"; do

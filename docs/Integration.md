@@ -829,6 +829,8 @@ a token behave as before. The server will not start with the variable under
 `MAIDAN_ENV=production`, beside `AUTH_DISABLED`, or naming a workspace that does not exist or is
 not called `synthetic-…`.
 
+Connecting a particular client, with its configuration, is in [Clients](Clients.md).
+
 Tool list and schemas: generated [MCP reference](https://david-engelmann.github.io/maidan/mcp-reference.html) (rebuilt on every docs CI run).
 
 ### MCP discovery and cache hints
