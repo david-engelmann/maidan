@@ -51,6 +51,8 @@ export MAIDAN_SESSION_SECRET="mcp-inspector-session-secret-0123456789abcdef"
 # A throwaway export signing seed, so the export group's probe can export.
 export MAIDAN_EXPORT_SIGNING_KEY="0101010101010101010101010101010101010101010101010101010101010101"
 
+# Every log of this run names the source it tested.
+echo "=== server commit $(git rev-parse HEAD 2>/dev/null || echo unknown) ==="
 echo "=== seeding (maidan init) ==="
 token="$("${bin_dir}/maidan" init --workspace inspector 2>/dev/null | awk '/^    [A-Za-z0-9_-]{20,}$/ {print $1}')"
 [[ -n "$token" ]] || { echo "could not read the admin token from maidan init" >&2; exit 1; }
