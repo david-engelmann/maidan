@@ -69,9 +69,14 @@ file.
 ### Gemini CLI
 
 ```sh
-gemini mcp add --transport http -H "Authorization: Bearer $MAIDAN_TOKEN" \
+gemini mcp add --scope user --transport http -H "Authorization: Bearer $MAIDAN_TOKEN" \
   maidan https://maidan.example.com/mcp/streamable
 ```
+
+`--scope user` saves the server in your own `~/.gemini/settings.json`. Without
+it the command defaults to the project's `.gemini/settings.json`, and the shell
+has already expanded the token into the header, so it would sit in plain text
+in the project.
 
 Or in `settings.json`, use `httpUrl`. A plain `url` selects the older SSE
 transport, which Maidan does not serve on this path. Gemini CLI expands
