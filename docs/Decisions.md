@@ -2142,3 +2142,14 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Open Work Next 8. Production names both variables.
 
+### Approval gates are accepted by humans, or by a deliberate grant (2026-10-07)
+
+**Decision.** Accepting an approval gate needs the member the token acts as to be a human, or the token to hold `approval:grant`.
+- Declining and cancelling are unchanged.
+- The self-approval rule still applies, and a delegate acting for a human still passes, since approvals are borrowable (2026-09-23).
+- `approval:grant` is an authority capability: in no preset and never delegatable. An admin grants it to an automated approver the workspace trusts. The maintainer chose this over humans-only on 2026-10-07.
+
+**Why.** The Next 17 research found that the answer route checked only `workspace:write`, which every worker token holds. One agent could not accept its own gate, but it could accept another agent's, so two workers could approve each other's work with no human in the loop. That breaks the protocol-layer property that every approval binds to a verified human identity. The code itself calls approval gates "local human-control state".
+
+**Record.** Open Work Next 17, Capability Map, Integration.
+

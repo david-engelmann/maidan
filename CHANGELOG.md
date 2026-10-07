@@ -26,6 +26,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Refs #1253
 
+### Approval gates are accepted by humans
+
+- **Changed:** accepting an approval gate (`POST /approval-gates/{id}/answer`, `accept`) needs the member the token acts as to be a human, or the token to hold the new `approval:grant` capability. A delegate acting for a human passes. Before, `workspace:write` was enough, so one worker agent could accept another's gate with no human involved. Declining and cancelling are unchanged.
+- **Added:** `approval:grant`, an authority capability in no preset and never delegatable, for an automated approver an admin deliberately trusts.
+
 ### A blocked agent reaches a human
 
 - **Added:** `set_thread_block` takes an optional `note` explaining why the thread is blocked. Setting a block emits `ThreadBlocked` (non-federatable, like `BlockedResolved`).

@@ -48,6 +48,13 @@ pub const SECRET_ADMIN: &str = "secret:admin";
 /// agent has no business reading across tenants.
 pub const OPERATOR_GLOBAL: &str = "operator:global";
 
+/// Accept an approval gate as a member that is not a human. An approval gate
+/// is human-control state: accepting one needs a human member, or a token an
+/// admin deliberately granted this, for an automated approver the workspace
+/// trusts. In no preset and not delegatable: approving is authority, not
+/// work, and a worker must never be able to approve another worker's request.
+pub const APPROVAL_GRANT: &str = "approval:grant";
+
 const KNOWN: &[&str] = &[
     WORKSPACE_READ,
     WORKSPACE_WRITE,
@@ -64,6 +71,7 @@ const KNOWN: &[&str] = &[
     CHANNEL_ADMIN,
     SECRET_READ,
     SECRET_ADMIN,
+    APPROVAL_GRANT,
 ];
 
 /// Capabilities that describe *doing work* — reading, writing, posting, moving a
@@ -173,6 +181,7 @@ mod tests {
         FEDERATION_ADMIN,
         AUDIT_READ_GLOBAL,
         OPERATOR_GLOBAL,
+        APPROVAL_GRANT,
     ];
 
     #[test]
