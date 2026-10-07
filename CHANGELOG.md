@@ -55,9 +55,9 @@ Refs #1253
 
 - **Fixed:** `revoke_slash_command` and `revoke_fsm_hook` (REST and MCP) committed the revoke before comparing workspaces, so an admin of one tenant could disable another tenant's command or hook by id. The store methods now take the `WorkspaceId` and match `id AND workspace_id`. Slack and GitHub link upserts moved a link to the caller's workspace when the Slack channel id or `(repo, issue_number)` was already linked elsewhere; they now update only the owner's own row and otherwise return `409` ("already linked by another workspace").
 
-### A wrong MCP argument is named in its error
+### A malformed MCP argument is named in its error
 
-- **Changed:** Every MCP tool's argument error names the argument at fault, as in `workspace_id: UUID parsing failed ...`. Before, a malformed id said only "UUID parsing failed". All 218 tools that parse arguments go through one helper, `tools::parse_args`.
+- **Changed:** When a tool's arguments do not parse (a wrong type, a malformed id, a missing field), the error names the argument at fault, as in `workspace_id: UUID parsing failed ...`. Before, a malformed id said only "UUID parsing failed". All 218 tools that parse arguments go through one helper, `tools::parse_args`. A check a tool makes after parsing (such as `upload_artifact` decoding its base64) words its own error.
 - **Fixed:** A malformed `sha256` on `get_artifact` and `get_artifact_metadata` is an invalid argument, not "resource not found".
 - **Added:** `scripts/mcp-inspector.sh` makes one valid call and one invalid call per tool group through the official Inspector. It fails if an invalid call's error does not name the argument it got wrong, and it fails if a new tool module has no probe.
 
