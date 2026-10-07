@@ -2120,3 +2120,14 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Open Work Next 3 and Next 9, Later U, and Recently decided.
 
+### The Muse lane proceeds under Meta's Connector Terms §3.1(c) (2026-10-06)
+
+**Decision.** The maintainer gave a go on Meta's Connector Terms §3.1(c), which license Meta to use connector content and user interaction data (queries, tool calls and outputs, which for Maidan include who approved what) to improve Muse.
+- The submission uses per-user scoped tokens, never one shared admin bearer, since Meta's guideline §4.4 asks each user's data to be isolated.
+- It lists a thin tool set Meta can classify as read, write or sensitive write, and uses a dedicated reviewer account.
+- It still shadows the outcome of the maintainer's Dawn submission, and it still needs Next 14's validation record and the maintainer's go to submit.
+
+**Why.** The terms were the one blocking question for the lane. With the data use accepted, the remaining work is the shape Meta's guidelines already require.
+
+**Record.** Open Work, the Muse row and Recently decided.
+
