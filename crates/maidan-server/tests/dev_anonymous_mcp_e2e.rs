@@ -308,3 +308,38 @@ async fn only_a_workspace_named_synthetic_is_read_without_a_credential() {
     let refused = dev_anonymous::reader_for(world.store.as_ref(), world.other).await;
     assert!(refused.is_err());
 }
+
+/// The anonymous reader is no member, so no membership, DM or grant can widen
+/// what it sees: nobody can add a member that does not exist to a private
+/// channel.
+#[tokio::test]
+async fn the_anonymous_reader_is_no_member_and_sees_no_private_channel() {
+    let world = spawn().await;
+    world
+        .store
+        .create_channel(NewChannel {
+            workspace_id: world.synthetic,
+            name: "back-room".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .unwrap();
+    let channels = world
+        .call("list_channels", json!({ "workspace_id": world.synthetic }))
+        .await;
+    let text = channels.to_string();
+    assert!(text.contains("fixtures"), "{channels}");
+    assert!(
+        !text.contains("back-room"),
+        "a private channel leaked: {channels}"
+    );
+
+    let reader = dev_anonymous::reader_for(world.store.as_ref(), world.synthetic)
+        .await
+        .unwrap();
+    assert!(
+        world.store.get_member(reader.member_id).await.is_err(),
+        "the anonymous reader must be no member"
+    );
+}

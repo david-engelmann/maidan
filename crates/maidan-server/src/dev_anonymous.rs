@@ -1,18 +1,18 @@
-//! The anonymous MCP reader, for a dev instance a client such as ChatGPT
-//! developer mode or a claude.ai connector with "No sign-in" can install
-//! against before Maidan has an OAuth server.
+//! The anonymous MCP reader, for a dev instance that a client which installs
+//! with no sign-in can use before Maidan has an OAuth server.
 //!
 //! `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` names one workspace, which must be
 //! called `synthetic-…` so a real team's workspace is never the one exposed. A
-//! `POST` to an MCP endpoint with no credential then reads that workspace as
-//! its `anonymous-reader` member, with `workspace:read` and only the read-only
-//! tools. Every other request still needs a credential. The server refuses to
-//! boot with the flag under `MAIDAN_ENV=production` or beside `AUTH_DISABLED`,
-//! which is not this mode and would make it meaningless.
+//! `POST` to an MCP endpoint with no credential then reads that workspace as no
+//! member at all, with `workspace:read` and only the read-only tools, so it sees
+//! what is public there and nothing a membership grants. Every other request
+//! still needs a credential. The server refuses to boot with the flag under
+//! `MAIDAN_ENV=production` or beside `AUTH_DISABLED`, which is not this mode and
+//! would make it meaningless.
 
 use maidan_auth::AuthContext;
-use maidan_store::{Store, StoreError};
-use maidan_types::{MemberKind, NewMember, WorkspaceId};
+use maidan_store::Store;
+use maidan_types::{MemberId, WorkspaceId};
 
 use crate::config::ConfigError;
 
@@ -20,9 +20,6 @@ pub const ENV: &str = "MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE";
 
 /// The prefix a workspace's name must carry to be read without a credential.
 pub const SYNTHETIC_PREFIX: &str = "synthetic-";
-
-/// The member an anonymous caller reads as.
-pub const MEMBER_HANDLE: &str = "anonymous-reader";
 
 /// Whether the flag may be set at all. Pure over its inputs so it is tested
 /// without touching the process environment.
@@ -80,23 +77,12 @@ pub async fn reader_for(
             ),
         ));
     }
-    let member = match store
-        .get_member_by_handle(workspace_id, MEMBER_HANDLE)
-        .await
-    {
-        Ok(member) => member,
-        Err(StoreError::NotFound) => store
-            .create_member(NewMember {
-                workspace_id,
-                handle: MEMBER_HANDLE.into(),
-                display_name: Some("Anonymous reader (dev)".into()),
-                kind: MemberKind::Agent,
-            })
-            .await
-            .map_err(|err| ConfigError::Invalid(ENV, format!("creating {MEMBER_HANDLE}: {err}")))?,
-        Err(err) => return Err(ConfigError::Invalid(ENV, err.to_string())),
-    };
-    Ok(AuthContext::anonymous_reader(member.id, workspace_id))
+    // No member at all: an id that belongs to nobody, fresh each boot, so no
+    // channel membership, DM, grant or role can ever reach it. The foreign
+    // keys refuse to attach anything to a member that does not exist, and this
+    // caller only reads, so nothing is ever written under the id.
+    let nobody = MemberId(uuid::Uuid::new_v4());
+    Ok(AuthContext::anonymous_reader(nobody, workspace_id))
 }
 
 #[cfg(test)]

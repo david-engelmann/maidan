@@ -54,7 +54,7 @@ Refs #1253
 
 ### A dev instance can be read over MCP without a credential
 
-- **Added:** `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` names one workspace, which must be called `synthetic-…`. An MCP `POST` with no credential reads it as an `anonymous-reader` member that holds `workspace:read` only. Its `tools/list` holds the read-only tools, each marked `"securitySchemes": [{ "type": "noauth" }]`. Every other tool, every subscription and every non-read method is refused, and an anonymous caller never gets a session. The server refuses to start with it under `MAIDAN_ENV=production` or beside `AUTH_DISABLED`.
+- **Added:** `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` names one workspace, which must be called `synthetic-…`. An MCP `POST` with no credential reads it as no member at all, holding `workspace:read` only, so it sees what is public there and nothing a membership, DM or grant gives. Its `tools/list` holds the read-only tools, each marked `"securitySchemes": [{ "type": "noauth" }]`. A tool that writes and a subscription are refused with a request for a token, an unknown tool or method gets the usual error, and an anonymous caller never gets a session. The server refuses to start with it under `MAIDAN_ENV=production` or beside `AUTH_DISABLED`.
 - **Added:** `AuthContext::anonymous_reader`, a context that is never a bypass.
 
 ### Opening a group DM selects it and asks for three members
