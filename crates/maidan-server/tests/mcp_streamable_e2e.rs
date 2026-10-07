@@ -259,10 +259,11 @@ async fn streamable_2026_request_is_stateless_and_mints_no_session() {
     // (sessions were removed in the 2026-07-28 revision — Protocols.md J3.3-4).
     let (addr, client, server) = spawn().await;
     let base = format!("http://{addr}");
-    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} });
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": { "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}} } });
     let resp = client
         .post(format!("{base}/mcp/streamable"))
         .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", "tools/list")
         .header("accept", "text/event-stream")
         .json(&body)
         .send()

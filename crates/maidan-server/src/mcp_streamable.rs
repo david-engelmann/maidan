@@ -55,16 +55,18 @@ pub async fn streamable(
         auth.require_capability(WORKSPACE_READ)
             .map_err(|_| ApiError::Forbidden("missing workspace:read capability".into()))?;
     }
-    crate::mcp::validate_protocol_version(&headers)?;
-
     let session_header = headers.get("mcp-session-id").and_then(|v| v.to_str().ok());
     let request = match maidan_mcp::protocol::parse_request(&body) {
         Ok(r) => r,
         Err(rejected) => return Ok(Json(JsonRpcResponse::rejected(rejected)).into_response()),
     };
-    // SEP-2243 routing headers (Mcp-Method / Mcp-Name), when present, must match
-    // the body so a gateway can route/authorize without parsing JSON (J3.2).
-    crate::mcp::validate_routing_headers(&headers, &request)?;
+    // The revision's own checks: on `2026-07-28` the version header, `_meta`,
+    // the routing headers and removed methods; on earlier revisions, routing
+    // headers that are sent must match the body (SEP-2243, J3.2).
+    let era = match crate::mcp::admit(&headers, &request) {
+        Ok(era) => era,
+        Err(refused) => return Ok(*refused),
+    };
     if let Err(resp) = crate::mcp_quota::enforce_mcp_quota(&state, &auth, &request).await {
         return Ok(Json(resp).into_response());
     }
@@ -77,7 +79,7 @@ pub async fn streamable(
         if notification {
             return Ok(StatusCode::ACCEPTED.into_response());
         }
-        return Ok(Json(response).into_response());
+        return Ok(crate::mcp::reply(era, response));
     }
 
     // A follow-up on an open `2024-11-05` session stays on it — if this caller
@@ -95,13 +97,13 @@ pub async fn streamable(
     // notification is acknowledged with `202` and no body. Server-initiated
     // messages ride `GET /mcp/streamable` / `GET /mcp/stream` / WS / the
     // `wait_for_*` tools, not a POST session.
-    if !crate::mcp::wants_session(&headers, &request) {
+    if era == crate::mcp::Era::Current || !crate::mcp::wants_session(&headers, &request) {
         let notification = request.id.is_none();
         let response = state.mcp.handle(request, &auth).await;
         if notification {
             return Ok(StatusCode::ACCEPTED.into_response());
         }
-        return Ok(Json(response).into_response());
+        return Ok(crate::mcp::reply(era, response));
     }
 
     // Content negotiation: a client that accepts only JSON gets a single
