@@ -47,8 +47,12 @@ pub async fn from_env(
     store: &dyn Store,
     auth_disabled: bool,
 ) -> Result<Option<AuthContext>, ConfigError> {
-    let Ok(raw) = std::env::var(ENV) else {
-        return Ok(None);
+    let raw = match std::env::var(ENV) {
+        Ok(raw) => raw,
+        Err(std::env::VarError::NotPresent) => return Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(ConfigError::Invalid(ENV, "is not valid Unicode".into()))
+        }
     };
     validate(crate::config::is_production(), auth_disabled)?;
     let id = raw
