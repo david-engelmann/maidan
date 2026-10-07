@@ -82,11 +82,18 @@ maidan:
   # Required: the content KEK (`--set maidan.contentKek=…`) or
   # `maidan.existingSecret`; see the maidan chart's values.yaml.
   contentKek: ""
-  # How the server reaches the bundled stores: <release>-datastores, which this
-  # chart renders when postgresql or minio is enabled (optional, so the pod
-  # starts without it otherwise). A list you set here replaces this one, so
-  # keep this entry; the render refuses without it while a store is enabled.
+  # Where the bundled MinIO is: the <release>-datastores ConfigMap, which this
+  # chart renders when minio is enabled (optional, so the pod starts without it
+  # otherwise). A list you set here replaces this one, so keep this entry; the
+  # render refuses without it while minio is enabled.
   extraEnvFrom:
-    - secretRef:
+    - configMapRef:
         name: "{{ .Release.Name }}-datastores"
         optional: true
+  # The credentials for the bundled stores, in the <release>-datastores Secret,
+  # reach the server as files. With postgresql or minio enabled, list that
+  # Secret here with the keys it holds (DATABASE_URL for postgresql,
+  # S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY for minio); the render refuses
+  # otherwise and names them. values-ci.yaml and values-prod.yaml do.
+  secretFiles:
+    extra: []

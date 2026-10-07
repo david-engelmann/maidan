@@ -32,6 +32,9 @@ spec:
       terminationGracePeriodSeconds: 45
       securityContext:
         runAsNonRoot: true
+        # The server's group (uid and gid 65532 in the image) owns the secret
+        # files below, which no one else can read.
+        fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -44,19 +47,21 @@ spec:
           envFrom:
             - configMapRef:
                 name: maidan-config
-            - secretRef:
-                name: maidan-secrets
-          # Required: without the content KEK in maidan-secrets the pod does not
-          # start (CreateContainerConfigError). See secret.example.yaml.
+          # Secrets are files under /run/secrets/maidan, never environment
+          # variables, and each <KEY>_FILE names one. The mount below lists every
+          # key, so maidan-secrets without one stops the pod before the server
+          # starts. Add a secret by adding it to both lists (secret.example.yaml).
           env:
-            - name: MAIDAN_CONTENT_KEK
-              valueFrom:
-                secretKeyRef:
-                  name: maidan-secrets
-                  key: MAIDAN_CONTENT_KEK
+            - name: DATABASE_URL_FILE
+              value: /run/secrets/maidan/DATABASE_URL
+            - name: MAIDAN_CONTENT_KEK_FILE
+              value: /run/secrets/maidan/MAIDAN_CONTENT_KEK
           volumeMounts:
             - name: artifact-data
               mountPath: /data
+            - name: secret-files
+              mountPath: /run/secrets/maidan
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /health/ready
@@ -84,3 +89,12 @@ spec:
       volumes:
         - name: artifact-data
           emptyDir: {}
+        - name: secret-files
+          secret:
+            secretName: maidan-secrets
+            defaultMode: 0440
+            items:
+              - key: DATABASE_URL
+                path: DATABASE_URL
+              - key: MAIDAN_CONTENT_KEK
+                path: MAIDAN_CONTENT_KEK

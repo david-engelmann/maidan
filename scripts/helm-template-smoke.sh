@@ -43,6 +43,28 @@ helm template maidan "${chart}" --set existingSecret=maidan-secrets \
   echo "the deployment must read MAIDAN_CONTENT_KEK from the existing Secret" >&2
   exit 1
 }
+# Secrets reach the server as files: each key is a file under
+# /run/secrets/maidan with a <KEY>_FILE pointing at it, and no Secret is passed
+# through envFrom.
+files="$(helm template maidan "${chart}" --set contentKek="${kek}")"
+grep -q "name: MAIDAN_CONTENT_KEK_FILE" <<<"${files}" && grep -q "name: DATABASE_URL_FILE" <<<"${files}" || {
+  echo "the deployment must name each secret file in <KEY>_FILE" >&2
+  exit 1
+}
+if grep -q -- "- secretRef:" <<<"${files}"; then
+  echo "with secretFiles on, no Secret may reach the server through envFrom" >&2
+  exit 1
+fi
+helm template maidan "${chart}" --set contentKek="${kek}" --set secretFiles.enabled=false \
+  | grep -q -- "- secretRef:" || {
+  echo "with secretFiles off, the Secret must reach the server through envFrom" >&2
+  exit 1
+}
+refuses "MAIDAN_LOG in Secret maidan-maidan-secrets cannot be read from a file" \
+  maidan "${chart}" --set contentKek="${kek}" --set secrets.MAIDAN_LOG=info
+refuses "S3_ACCESS_KEY_ID is mounted from both a and b" \
+  maidan "${chart}" --set contentKek="${kek}" \
+  --set-json 'secretFiles.extra=[{"name":"a","keys":["S3_ACCESS_KEY_ID"]},{"name":"b","keys":["S3_ACCESS_KEY_ID"]}]'
 helm template maidan "${chart}" --set contentKek="${kek}" \
   | grep -q "MAIDAN_CONTENT_KEK: \"${kek}\"" || {
   echo "the rendered Secret must carry contentKek" >&2
@@ -118,18 +140,24 @@ if [[ -f "${stack}/Chart.lock" ]]; then
     echo "the stack rendered a store with postgresql and minio off" >&2
     exit 1
   fi
-  # The server reads the stack's connection Secret after its own, so its keys
-  # win; optional, so a stack running neither store still starts.
+  # The server reads the stack's MinIO settings after its own ConfigMap, so
+  # they win; optional, so a stack running neither store still starts.
   has "${rendered}" "$(printf '%s\n' \
-    "                name: maidan-stack-maidan-secrets" \
-    "            - secretRef:" \
+    "                name: maidan-stack-maidan-config" \
+    "            - configMapRef:" \
     "                name: 'maidan-stack-datastores'" \
-    "                optional: true")" "the server must read maidan-stack-datastores after its own Secret"
-  stores=(maidan-stack "${stack}" --set postgresql.enabled=true --set minio.enabled=true
+    "                optional: true")" "the server must read maidan-stack-datastores after its own ConfigMap"
+  datastores='[{"name":"{{ .Release.Name }}-datastores","keys":["DATABASE_URL","S3_ACCESS_KEY_ID","S3_SECRET_ACCESS_KEY"]}]'
+  stores_unwired=(maidan-stack "${stack}" --set postgresql.enabled=true --set minio.enabled=true
     --set maidan.contentKek="${kek}")
+  stores=("${stores_unwired[@]}" --set-json "maidan.secretFiles.extra=${datastores}")
   rendered="$(helm template "${stores[@]}")"
   has "${rendered}" 'DATABASE_URL: "postgres://maidan:maidan@maidan-stack-postgresql:5432/maidan"' \
     "with postgresql on, the server's DATABASE_URL must name the bundled database"
+  has "${rendered}" "$(printf '%s\n' \
+    "                  name: maidan-stack-datastores" \
+    "                  items:" \
+    "                    - key: DATABASE_URL")" "the bundled database's URL must reach the server as a file"
   has "${rendered}" 'ARTIFACT_BACKEND: "s3"' "with minio on, the server must store artifacts in S3"
   has "${rendered}" 'S3_ENDPOINT: "http://maidan-stack-minio:9000"' \
     "with minio on, S3_ENDPOINT must name the release's MinIO Service"
@@ -206,8 +234,14 @@ if password in sts[0]:
     "${stores[@]}" --set minio.auth.rootPassword=has:colon
   refuses "minio.defaultBuckets is empty" \
     "${stores[@]}" --set 'minio.defaultBuckets=\ \,'
-  refuses "maidan.extraEnvFrom must keep the secretRef to maidan-stack-datastores" \
+  refuses "maidan.secretFiles.extra must list Secret maidan-stack-datastores with keys DATABASE_URL, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY" \
+    "${stores_unwired[@]}"
+  refuses "maidan.extraEnvFrom must keep the configMapRef to maidan-stack-datastores" \
     "${stores[@]}" --set-json 'maidan.extraEnvFrom=[]'
+  refuses "with maidan.secretFiles.enabled false, maidan.extraEnvFrom must hold a secretRef to maidan-stack-datastores" \
+    "${stores_unwired[@]}" --set maidan.secretFiles.enabled=false
+  helm template "${stores_unwired[@]}" --set maidan.secretFiles.enabled=false \
+    --set-json 'maidan.extraEnvFrom=[{"configMapRef":{"name":"{{ .Release.Name }}-datastores"}},{"secretRef":{"name":"{{ .Release.Name }}-datastores"}}]' >/dev/null
   if [[ -f "${stack}/values-prod.yaml" ]]; then
     stack_prod=(maidan-stack "${stack}" -f "${stack}/values-prod.yaml"
       --set postgresql.auth.password=smoke-pg-password
@@ -246,10 +280,13 @@ if password in sts[0]:
     }
     # Without the bundled database, the server's own DATABASE_URL is checked
     # here: the maidan chart leaves it to whoever sets extraEnvFrom.
+    # Without the bundled Postgres, the datastores Secret holds only MinIO's keys.
+    s3_only='[{"name":"{{ .Release.Name }}-datastores","keys":["S3_ACCESS_KEY_ID","S3_SECRET_ACCESS_KEY"]}]'
     refuses "maidan.secrets.DATABASE_URL is the maidan chart's development default" \
-      "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set postgresql.enabled=false
+      "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set postgresql.enabled=false \
+      --set-json "maidan.secretFiles.extra=${s3_only}"
     helm template "${stack_prod[@]}" --set maidan.contentKek="${kek}" --set postgresql.enabled=false \
-      --set maidan.secrets.DATABASE_URL="${db}" >/dev/null
+      --set-json "maidan.secretFiles.extra=${s3_only}" --set maidan.secrets.DATABASE_URL="${db}" >/dev/null
   fi
 fi
 echo "helm template smoke OK"

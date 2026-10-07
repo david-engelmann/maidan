@@ -15,6 +15,20 @@ The chart refuses to render without `contentKek` (the content key-encryption
 key) unless `existingSecret` names a Secret holding `MAIDAN_CONTENT_KEK`. Keep
 the same KEK across upgrades: losing it makes every stored message unreadable.
 
+**Secrets are files.** The server reads every secret from a file the chart
+mounts read-only at `/run/secrets/maidan`, one per key, each named in
+`<KEY>_FILE`. No Secret reaches the server through envFrom, so `kubectl describe
+pod` and the process environment show paths, never values. The chart's own
+Secret is mounted with every key it renders. An `existingSecret` is mounted with
+the keys in `secretFiles.existingSecretKeys` (`DATABASE_URL` and
+`MAIDAN_CONTENT_KEK` by default), because the chart cannot read a Secret it did
+not render, so list every key yours holds. More Secrets go in
+`secretFiles.extra` as a name and its keys, and a key there replaces the same key
+in the chart's own Secret. A key a Secret lacks stops the pod before the server
+starts. The render refuses a key the server cannot read from a file and a key two
+extra sources both hold. `secretFiles.enabled: false` passes the Secret through
+envFrom instead.
+
 `values-prod.yaml` sets `production: true`, and a production render refuses
 rather than deploy something that only works on a laptop:
 
@@ -27,11 +41,11 @@ rather than deploy something that only works on a laptop:
   be empty. `existingSecret` names a Secret you create holding
   `DATABASE_URL`, `MAIDAN_CONTENT_KEK` and any other runtime secret, which keeps
   them out of values files and the release history. Setting them inline instead:
-  `--set secrets.DATABASE_URL=… --set contentKek=…`. With `extraEnvFrom` set
-  (more envFrom sources, read after the chart's own, so their keys win), the
-  render leaves the `DATABASE_URL` checks to whoever sets it: it cannot see
-  what those sources hold. maidan-stack uses it to connect the server to its
-  bundled stores.
+  `--set secrets.DATABASE_URL=… --set contentKek=…`. With `extraEnvFrom` or
+  `secretFiles.extra` set (more sources, whose keys win over the chart's own),
+  the render leaves the `DATABASE_URL` checks to whoever sets them: it cannot
+  see what those sources hold. maidan-stack uses both to connect the server to
+  its bundled stores.
 
 `config` values, and `image.tag` and `image.digest`, holding the placeholder
 `CHANGE_ME` fail every render, dev included. `secrets` and `contentKek` holding

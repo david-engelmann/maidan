@@ -24,19 +24,21 @@ helm template demo helm/maidan-stack --set postgresql.enabled=true --set minio.e
 
 ## How the server reaches the stores
 
-With either store enabled the chart renders `<release>-datastores`, and the server reads it after its
-own ConfigMap and Secret (`maidan.extraEnvFrom`), so its keys win:
+With either store enabled the chart renders a `<release>-datastores` Secret, which the server reads as
+files (`maidan.secretFiles.extra`), and with MinIO a `<release>-datastores` ConfigMap, which it reads
+after its own (`maidan.extraEnvFrom`). Both win over the maidan chart's own values for the same keys:
 
-- `postgresql.enabled`: `DATABASE_URL`, built from `postgresql.auth` (percent-encoded) and naming
-  `<release>-postgresql`.
-- `minio.enabled`: `ARTIFACT_BACKEND=s3`, `S3_ENDPOINT` (`http://<release>-minio:9000`), `S3_BUCKET`
-  (the first of `minio.defaultBuckets`), `S3_REGION=us-east-1`, and `S3_ACCESS_KEY_ID` and
-  `S3_SECRET_ACCESS_KEY` (MinIO's root user and password).
+- `postgresql.enabled`: the Secret's `DATABASE_URL`, built from `postgresql.auth` (percent-encoded)
+  and naming `<release>-postgresql`.
+- `minio.enabled`: the Secret's `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` (MinIO's root user and
+  password), and the ConfigMap's `ARTIFACT_BACKEND=s3`, `S3_ENDPOINT` (`http://<release>-minio:9000`),
+  `S3_BUCKET` (the first of `minio.defaultBuckets`) and `S3_REGION=us-east-1`.
 
-You set neither in `maidan.secrets` or `maidan.config`; what those hold for the same keys is
-overridden, so `kubectl get secret <release>-datastores` is what the server connects to. The
-`maidan.extraEnvFrom` entry lives in this chart's `values.yaml`, and a list you set replaces it, so keep
-it: the render refuses while a store is enabled and the entry is gone. With a store disabled, point
+You set none of these in `maidan.secrets` or `maidan.config`. `maidan.secretFiles.extra` must list the
+Secret with exactly the keys it holds for the stores you enabled (`values-ci.yaml` and
+`values-prod.yaml` do, for both), and `maidan.extraEnvFrom` must keep its ConfigMap entry while MinIO
+is enabled. The render refuses otherwise and names what to set. With `maidan.secretFiles.enabled`
+false, `maidan.extraEnvFrom` must also hold a `secretRef` to the Secret. With a store disabled, point
 the server at your own the usual way (`maidan.secrets.DATABASE_URL`, the S3 `maidan.config` keys, or
 `maidan.existingSecret`).
 

@@ -68,6 +68,12 @@ Refs #1253
 - **Fixed:** `ping` answered "method not found". It now answers an empty result with no `resultType`, which the official SDK reads strictly.
 - **Found:** real `2026-07-28` gaps (SEP-2575 per-request `_meta`, removed methods, SEP-2243 header mismatch, SEP-2663 `tasks/*`) and no DNS-rebinding check on Host and Origin. Each is baselined with its reason and tracked in Open Work.
 
+### Every secret can come from a mounted file
+
+- **Added:** `<NAME>_FILE` now works for every secret the server and `maidan` read, not only the first seven. The new ones are `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`.
+- **Changed:** The Helm chart and `k8s/base` mount secrets as files under `/run/secrets/maidan` and name each in `<KEY>_FILE`, so no secret is in the pod's environment. An `existingSecret` is mounted with the keys in `secretFiles.existingSecretKeys`, and more Secrets go in `secretFiles.extra`. A key a Secret lacks stops the pod, and the render refuses a key the server cannot read from a file. `secretFiles.enabled: false` keeps envFrom. `maidan-stack` splits its datastores into a Secret, read as files, and a ConfigMap.
+- **Added:** `every_secret_the_server_reads_can_come_from_a_file` fails when a server variable whose name looks secret has no `_FILE` form, unless a reviewed list says why it is not a secret.
+
 ### Opening a group DM selects it and asks for three members
 
 - **Fixed:** The page accepted two members and left the new group DM unselected. It now refuses fewer than three before the request, says that refusal as a sentence, and selects the conversation the server returns, the same way a one-to-one DM is selected. A browser spec opens one and posts in it.

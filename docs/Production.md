@@ -47,7 +47,7 @@ period is cut, and clients retry.
 |-----------------|----------|------------------------------------------------------|
 | `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite.                    |
 |                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
-| `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for `DATABASE_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN` and `MAIDAN_SLACK_SIGNING_SECRET` (a Docker or Kubernetes secret mount), so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8; the error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
+| `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for every secret the server reads (a Docker or Kubernetes secret mount). That is `DATABASE_URL`, `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SESSION_SECRET`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. A test fails when the server starts reading a new secret that cannot come from a file, so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8. The error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
 | `MAIDAN_GITHUB_WRITE_REPOS` | with a GitHub token | Comma-separated `owner/name`s, the only repositories the instance's GitHub token may write to (branches, commits, draft and ready pull requests, comments, reviews, check runs). Compared case-insensitively. Unset or empty, every GitHub write is refused and a boot warning says so. A workspace's egress allowlist narrows this list and can never widen it. |
 | `MAIDAN_MARK_READY_APP_ID` | for mark-ready | The id of the one app whose installations may call `POST /operator/github/mark-ready` (Soundcheck in the change flow). An app id is unique across the instance; an app slug is not, so the slug is never trusted. Unset, every mark-ready call is refused. A value that is not a UUID refuses boot. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED` outright.       |
@@ -1130,6 +1130,12 @@ and verify its signature first (README, "Prebuilt image").
 Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix), or name an
 `existingSecret` that already holds it. Rendering does not check that Secret
 or its keys.
+
+The chart mounts every secret as a file under `/run/secrets/maidan` and names
+it in `<KEY>_FILE`, so no secret is in the pod's environment. An
+`existingSecret` is mounted with the keys in `secretFiles.existingSecretKeys`,
+and a key the Secret lacks stops the pod. `k8s/base` does the same for
+`maidan-secrets`. See `helm/maidan/README.md`, "Secrets are files".
 
 **The umbrella stack's own stores.** `maidan-stack` can run Postgres and MinIO as
 single-replica StatefulSets of its own (`postgresql.enabled`, `minio.enabled`;
