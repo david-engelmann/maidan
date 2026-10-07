@@ -2161,3 +2161,13 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Not done.** No OAuth scheme is advertised beside `noauth`, because there is no authorization server to link. The mode is not in any published image's defaults, and the dev deployment recipe that uses it is Next 17's last PR.
 
+### Tools that read and write stay single tools, each a documented write (2026-10-07)
+
+**Decision.** The maintainer chose on 2026-10-07 to keep `claim_next_thread`, `claim_next_workspace_thread`, `mark_inbox_read` and `open_dm_conversation` as single tools rather than split each into a read and a write. Each stays off `READ_ONLY_TOOLS`, and its description names the write in words a reviewer fixed in `tests/fixtures/tool-annotations.json`.
+
+**Why.** Each is one action a model takes on purpose (claim the next task, mark the inbox read, open a DM) whose result it then reads. Splitting them would add four tools, and with them the chance a model calls the read and believes it acted. What a model needs is to know the call changes something, which the hint and the description now say.
+
+**Held by.** `tool_annotations_contract`, through `the_mixed_tools_are_documented_writes` and the leading-verb rule (#1281). A new tool whose name starts with a read verb cannot write.
+
+**Record.** Open Work Next 14 and Later CA.
+
