@@ -593,6 +593,9 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // A2A Agent Card transport advertisement: public origin for absolute
     // interface URLs + the advertised gRPC address (§5.2 negotiation).
     state.a2a_card = maidan_server::a2a_agent::A2aCardConfig::from_env();
+    state.allowed_hosts = maidan_server::rebinding::allowed_hosts_from(
+        &std::env::var("MAIDAN_ALLOWED_HOSTS").unwrap_or_default(),
+    );
     state.dev_anonymous_reader =
         maidan_server::dev_anonymous::from_env(state.store.as_ref(), auth_disabled).await?;
     if let Some(reader) = &state.dev_anonymous_reader {

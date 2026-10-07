@@ -78,12 +78,10 @@ server:
   - input-required-result-missing-input-response:sep-2322-missing-response-rerequests
   - input-required-result-multi-round:sep-2322-multi-round-r1
   # Real gaps, tracked in Open Work as 2026-07-28 conformance. Remove each entry with its fix:
-  # Host and Origin are not checked against DNS rebinding; per-request _meta is not validated
-  # (SEP-2575); a method 2026-07-28 removed is not answered 404 with -32601; a routing-header
+  # per-request _meta is not validated (SEP-2575); a method 2026-07-28 removed is not answered 404 with -32601; a routing-header
   # mismatch is a problem+json 400 or a 200, not a JSON-RPC -32020 (SEP-2243); tasks/* is not
   # answered -32021 for an undeclared capability and the extensions capability is not
   # advertised (SEP-2663).
-  - dns-rebinding-protection:localhost-host-rebinding-rejected
   - http-header-validation:sep-2243-server-reject-error-code
   - http-header-validation:sep-2243-server-reject-invalid-headers
   - server-stateless:sep-2575-http-server-header-mismatch-400

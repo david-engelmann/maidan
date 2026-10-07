@@ -28,9 +28,10 @@ tools, or features Maidan does not declare. The rest are real `2026-07-28` gaps,
 tracked in Open Work. Per-request `_meta` is not validated (SEP-2575), and a
 method `2026-07-28` removed is still answered instead of 404 with -32601. A
 routing-header mismatch is not a JSON-RPC -32020 (SEP-2243). `tasks/*` is not
-answered -32021 (SEP-2663). Host and Origin are not checked against DNS
-rebinding. So `2026-07-28` is negotiated and served, but not yet conformant in
-full.
+answered -32021 (SEP-2663). So `2026-07-28` is negotiated and served, but not
+yet conformant in full. A request with no credential, the only kind a
+DNS-rebinding page could use, is refused when its `Host` or `Origin` names
+another site (see Production, "DNS rebinding").
 
 ---
 
