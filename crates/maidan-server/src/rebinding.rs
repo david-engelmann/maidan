@@ -8,13 +8,21 @@
 //! request with no credential everything that request may do, which here means
 //! `AUTH_DISABLED` and the anonymous dev reader of MCP.
 //!
-//! So a request that rides one of those open modes is refused (403) when its
-//! `Host` names neither a loopback name, an IP address, nor a name listed in
+//! A rebinding page presents a public name it controls, which always has a
+//! dot. So a request that rides one of those open modes is refused (403) when
+//! its `Host` is a dotted name that is neither a loopback name nor listed in
 //! `MAIDAN_ALLOWED_HOSTS`, and when it carries an `Origin` whose authority is
-//! not its `Host`. A rebinding page can only present a name of its own, never
-//! an IP address, so the rule holds however the server is bound, including on
-//! every interface as a container is. A request with a credential is never
-//! judged here, so a reverse proxy that forwards a public `Host` keeps working.
+//! not its `Host`. An IP address, a name without a dot (a compose service such
+//! as `maidan`) and a request with no `Host` at all (no browser sends one) are
+//! not rebound names. The rule holds however the server is bound, including on
+//! every interface as a container is.
+//!
+//! For the anonymous reader, a request that carries a credential is not judged
+//! here: it takes the bearer path, which refuses a token it does not know, so a
+//! reverse proxy that forwards a public `Host` keeps working. Under
+//! `AUTH_DISABLED` every request is judged, because no credential is checked and
+//! a page can attach any header; behind such a proxy, list its name in
+//! `MAIDAN_ALLOWED_HOSTS`.
 
 use axum::{
     extract::{Request, State},
@@ -52,11 +60,13 @@ pub(crate) fn judge(allowed_hosts: &[String], headers: &HeaderMap) -> Result<(),
         .and_then(|h| h.to_str().ok())
         .unwrap_or_default();
     let name = host_name(host).trim_end_matches('.').to_ascii_lowercase();
-    let named = is_loopback_name(&name)
+    let named = name.is_empty()
+        || !name.contains('.')
+        || is_loopback_name(&name)
         || name.parse::<std::net::IpAddr>().is_ok()
         || allowed_hosts.contains(&name);
     if !named {
-        return Err("a request with no credential must name this server: a loopback name, an IP address, or a host in MAIDAN_ALLOWED_HOSTS");
+        return Err("a request with no credential must name this server: a loopback name, a name without a dot, an IP address, or a host in MAIDAN_ALLOWED_HOSTS");
     }
     if let Some(origin) = headers.get(header::ORIGIN) {
         let authority = origin
@@ -120,6 +130,10 @@ mod tests {
             Some("http://evil.example.com:8080"),
         );
         assert!(judge(&[], &rebound).is_err());
+        assert!(
+            judge(&[], &HeaderMap::new()).is_ok(),
+            "no browser sends no Host"
+        );
         for host in [
             "localhost:8080",
             "127.0.0.1:8080",
@@ -128,6 +142,7 @@ mod tests {
             "127.0.0.2",
             "192.168.1.20:8080",
             "[fd00::1]:8080",
+            "maidan:8080",
         ] {
             let origin = format!("http://{host}");
             assert!(judge(&[], &headers(host, Some(&origin))).is_ok(), "{host}");
