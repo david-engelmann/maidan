@@ -68,7 +68,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    subscriptions work across replicas (#1131), and an agent can claim the next
    ready thread anywhere in its workspace (#1145). In flight: every way a claim
    ends charges its worked time, and a thread over budget is not handed out.
-   Next: workspace-wide waits and queue depth.
+   Workspace-wide waits work over HTTP MCP (#1255) and queue depth is
+   workspace-wide (#1265).
 3. **Nothing is silently lost, and nothing grows without bound.** Retries share
    a per-host budget (#1122), every audit row belongs to a workspace (#1134),
    both backends have a tested backup path (#1126), and fairness and retention
@@ -113,10 +114,11 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    the connection that requested it (#1229). Opening a group DM asks for three
    members and selects that conversation (#1230). Next, from the UI deep
    dive of 2026-10-03: the human supervising agents is the user, and silence
-   is a state. Needs-you says when it could not load (#1251). Next, sign-in
-   is honest, review and blocked work always reach a person, agents declare
-   their own status, and an approval binds the evidence it showed (Open Work
-   Next 2 to 12). Then the review findings and screenshots captured by a script.
+   is a state. Needs-you says when it could not load (#1251). Sign-in is honest
+   (#1257), review and blocked work reach a person (#1258, #1260), agents
+   declare their own status (#1273), and board writes are idempotent (#1274).
+   Next: split waiting states, vote integrity, and an approval that binds the
+   evidence it showed (Open Work Next 1 to 6). Then the review findings and screenshots captured by a script.
 6. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
@@ -127,16 +129,16 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    MCP 2026-07-28 conformance and the worker and reviewer tool profiles are
    on `main` (#1239, #1240). The canonical pack is on `main` (#1241); the
    ledger prices every cache tier and rolls up cost per completed task
-   (#1242). Next: workspace queue depth and the SDK normalizers (Open
-   Work Next 22 and 23).
+   (#1242). Workspace queue depth shipped in #1265, and the SDK
+   normalizers come next (Open Work Next 18).
    The research behind it is kept in the [archive](archive/Context%20Economics%20research%202026-10/README.md).
 7. **Launch** (the maintainer's call): the public site, an in-browser
    playground, and paid self-hosted tiers before any hosted service, with the
    room itself staying open source. An operator can open a
    second workspace with `POST /operator/workspaces`, without `MAIDAN_BOOTSTRAP` (#1208).
    Signup and a hosted console are not started.
-   The connected-apps program is the discovery half. The maintainer chose its fast track on 2026-10-03, lanes 1 to 7 with no authorization server (a Gemini CLI extension, a Copilot CLI plugin, the MCP registries and catalogs, a listing asset pack with a demo instance for reviewers, connect recipes, Muse behind the Dawn outcome, and Cursor). Nothing is submitted until the maintainer says go, and every submission is validated first. Self-hosting stays the product, the authorization server and the ChatGPT and full-OAuth Claude listings are parked, and no enterprise track starts until the consumer lanes measure (Open Work Next 14 to Next 21 and Later CA).
-   The connected-app dev and test program comes first among the listings work. ChatGPT developer mode and claude.ai accept a server with no authentication, so Maidan is tested inside each client from a dev instance before anything is listed, with approvals kept in the console (Open Work Next 18). The provider research of 2026-10-06 points the fast track at surfaces that need no directory first (CLI plugins, custom connectors and install links), while the Muse lane waits on a decision about Meta's data terms and the ChatGPT and Claude directories wait on the authorization server.
+   The connected-apps program is the discovery half. The maintainer chose its fast track on 2026-10-03, lanes 1 to 7 with no authorization server (a Gemini CLI extension, a Copilot CLI plugin, the MCP registries and catalogs, a listing asset pack with a demo instance for reviewers, connect recipes, Muse behind the Dawn outcome, and Cursor). Nothing is submitted until the maintainer says go, and every submission is validated first. Self-hosting stays the product, the authorization server and the ChatGPT and full-OAuth Claude listings are parked, and no enterprise track starts until the consumer lanes measure (Open Work Next 9 to Next 16 and Later CA).
+   The connected-app dev and test program comes first among the listings work. ChatGPT developer mode and claude.ai accept a server with no authentication, so Maidan is tested inside each client from a dev instance before anything is listed, with approvals kept in the console (Open Work Next 17). The provider research of 2026-10-06 points the fast track at surfaces that need no directory first (CLI plugins, custom connectors and install links), while the Muse lane waits on a decision about Meta's data terms and the ChatGPT and Claude directories wait on the authorization server.
 
 ## What Maidan will not become
 
