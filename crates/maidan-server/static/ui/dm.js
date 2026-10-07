@@ -20,6 +20,12 @@ import { authorId, loadMembers, memberName, memberPicker } from "./people.js";
         gdmPicker = memberPicker({ input: "gdm-member-search", list: "gdm-member-options", picked: "gdm-picked", multiple: true, exclude: notMe });
       }
 
+      // A member picked in one workspace is not a member of the next.
+      function clearDmPickers() {
+        if (dmPicker) dmPicker.clear();
+        if (gdmPicker) gdmPicker.clear();
+      }
+
 
       function dmOther(c) {
         const me = authorId();
@@ -276,4 +282,4 @@ import { authorId, loadMembers, memberName, memberPicker } from "./people.js";
         }
       }
 
-export { dmOther, initDmPickers, loadConversationMessages, loadDmMessages, loadDms, loadGroupDmMessages, loadGroupDms, openDm, openGroupDm, selectDm, selectGroupDm, selectedDm, selectedGdm, sendDmMessage, sendGroupDmMessage };
+export { clearDmPickers, dmOther, initDmPickers, loadConversationMessages, loadDmMessages, loadDms, loadGroupDmMessages, loadGroupDms, openDm, openGroupDm, selectDm, selectGroupDm, selectedDm, selectedGdm, sendDmMessage, sendGroupDmMessage };

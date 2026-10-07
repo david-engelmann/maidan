@@ -105,6 +105,84 @@ test("the group DM picker collects members as removable chips", async ({ page })
   await expect(chips).toHaveCount(0);
 });
 
+// A pick made while the member list is still loading stays made, and the
+// list does not open again when the load lands.
+test("a pick during a slow member load keeps the list closed", async ({ page }) => {
+  await signIn(page, fx.workspace_id, fx.admin_token);
+  await openTab(page, "dms");
+  await page.focus("#dm-member-search");
+  await expect(option(page, "dm-member-options", fx.requester_id)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.locator("#dm-open").focus();
+
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let seen = false;
+  await page.route(/\/workspaces\/[^/]+\/members$/, async (route) => {
+    seen = true;
+    await held;
+    await route.continue();
+  });
+  await page.focus("#dm-member-search");
+  await page.keyboard.type("rae");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(`#dm-picked [data-member-id="${fx.rae_member_id}"]`)).toBeVisible();
+  await expect(page.locator("#dm-member-options")).toBeHidden();
+  expect(seen).toBe(true);
+  release();
+  await page.waitForResponse(/\/workspaces\/[^/]+\/members$/);
+  await page.waitForTimeout(200);
+  await expect(page.locator("#dm-member-options")).toBeHidden();
+  await expect(page.locator("#dm-member-search")).toHaveAttribute("aria-expanded", "false");
+});
+
+// A member picked in one workspace is not offered to the next: changing the
+// workspace clears both pickers.
+test("changing the workspace clears both pickers", async ({ page }) => {
+  await signIn(page, fx.workspace_id, fx.admin_token);
+  await openTab(page, "dms");
+  await page.fill("#dm-member-search", "deploy");
+  await option(page, "dm-member-options", fx.requester_id).click();
+  await page.click('.tabs button[data-tab="group-dms"]');
+  await page.fill("#gdm-member-search", "deploy");
+  await option(page, "gdm-member-options", fx.requester_id).click();
+  await expect(page.locator("#gdm-picked li")).toHaveCount(1);
+
+  await page.locator("#workspace").evaluate((el: HTMLInputElement, id: string) => {
+    el.value = id;
+    el.dispatchEvent(new Event("change"));
+  }, fx.other_workspace_id);
+  await expect(page.locator("#gdm-picked li")).toHaveCount(0);
+  await expect(page.locator("#dm-picked li")).toHaveCount(0);
+});
+
+// A member load that lands after the workspace changed is dropped: the
+// picker never offers the previous workspace's people under the new one.
+test("a member load that lands after a workspace change is dropped", async ({ page }) => {
+  await signIn(page, fx.workspace_id, fx.admin_token);
+  await openTab(page, "dms");
+
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route(/\/workspaces\/[^/]+\/members$/, async (route) => {
+    await held;
+    await route.continue();
+  });
+  const firstLoad = page.waitForResponse(new RegExp(`/workspaces/${fx.workspace_id}/members$`));
+  await page.focus("#dm-member-search");
+  await page.locator("#dm-open").focus();
+  await page.locator("#workspace").evaluate((el: HTMLInputElement, id: string) => {
+    el.value = id;
+    el.dispatchEvent(new Event("change"));
+  }, fx.other_workspace_id);
+  release();
+  await firstLoad;
+
+  await page.focus("#dm-member-search");
+  await expect(page.locator("#dm-member-options")).toContainText("Could not load this workspace's members");
+  await expect(option(page, "dm-member-options", fx.requester_id)).toHaveCount(0);
+});
+
 // Two workspaces. The first opens a DM and a group DM; the second, signed in
 // with its own token, is offered only its own members and lists none of the
 // first's conversations. The first is never offered the second's members.

@@ -80,8 +80,14 @@ import { memberDirectory } from "./state.js";
       // after a workspace change never offers the previous workspace's people.
       let membersWorkspace = "";
 
+      // Only the newest load fills the directory. An older response, or one
+      // for a workspace no longer on screen, is dropped.
+      let membersLoadGen = 0;
+
       async function loadMembers() {
         if (!wid()) return;
+        const forWorkspace = wid();
+        const gen = ++membersLoadGen;
         const url =
           token() && !sessionMemberId
             ? `${base()}/workspaces/${wid()}/members`
@@ -90,8 +96,9 @@ import { memberDirectory } from "./state.js";
           const res = await api(url, { headers: headers(), credentials: "include" });
           if (!res.ok) return;
           const rows = await res.json();
+          if (gen !== membersLoadGen || forWorkspace !== wid()) return;
           memberDirectory.clear();
-          membersWorkspace = wid();
+          membersWorkspace = forWorkspace;
           rows.forEach((m) => {
             memberDirectory.set(m.id, {
               name: m.display_name || m.handle,
@@ -136,8 +143,12 @@ import { memberDirectory } from "./state.js";
         let active = -1;
         let shown = [];
         let quiet = false;
+        // Counts closes, so a load that finishes after a pick or an Escape
+        // does not open the list again.
+        let closes = 0;
 
         function close() {
+          closes += 1;
           list.hidden = true;
           input.setAttribute("aria-expanded", "false");
           input.removeAttribute("aria-activedescendant");
@@ -237,8 +248,9 @@ import { memberDirectory } from "./state.js";
 
         async function openList() {
           if (quiet) return;
+          const seen = closes;
           await loadMembers();
-          if (document.activeElement === input) render();
+          if (closes === seen && document.activeElement === input) render();
         }
 
         input.addEventListener("focus", openList);
