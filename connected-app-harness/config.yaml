@@ -1,0 +1,100 @@
+# Maidan connected-app E2E harness config.
+# The dev server URL and commit SHA are recorded in every test log
+# (research doc fixture rule, §2.0 item 6).
+
+server:
+  # Local maidan-server by default. Swap to the dev cloud host when ready.
+  base_url: "http://127.0.0.1:8080"
+  mcp_path: "/mcp"
+  # Filled by scripts/record-sha.sh or `harness config-sha <sha>`.
+  commit_sha: "cb69ed8008de316706b576785208faa2e141a083"
+  # Auth mode of the target server: "no-auth" (install/discovery/reads)
+  # or "oauth-stub" (dev OAuth 2.1 stub per research §1.10, for the
+  # writes suite). The writes suite is SKIPPED unless oauth-stub —
+  # the two paths are never conflated.
+  auth_mode: "no-auth"
+  # Local server log for the server-side probe. Empty = probe disabled
+  # (UI assertions only; TOOL_NOT_CALLED cannot fire).
+  log_file: "/tmp/maidan-harness-server.log"
+  # Clock-skew allowance (seconds) for correlating server log timestamps
+  # with the harness's mark window. Raise against a remote dev host.
+  skew_allowance: 5.0
+  # How the local server is started (informational; the harness never
+  # starts the server itself).
+  start_hint: "cd ~/workspace/maidan-harness-server && ./target/debug/maidan-server >> /tmp/maidan-harness-server.log 2>&1"
+
+providers:
+  claude:
+    app_url: "https://claude.ai"
+    # Name of the custom connector as installed via setup.
+    connector_name: "Maidan Dev"
+    # Magic-link self-healing auth (Tier 2). Default OFF: David must first
+    # create the zyla@beatgig.com Claude account (one-time human step,
+    # see README.md) and link that Gmail account, then set enabled: true.
+    # `account` is the Gmail account_id for --account (None = default
+    # account); find it via `hatch_gws_cli gmail accounts`.
+    magic_link:
+      enabled: false
+      email: "zyla@beatgig.com"
+      # Verified 2026-10-07: zyla@beatgig.com mail is visible on the linked
+      # david@beatgig.com account (zyla@ is an alias delivering there).
+      account: "9b411cec9abc4d12bffaaa5c001df53f"
+  chatgpt:
+    app_url: "https://chatgpt.com"
+    # Name of the dev-mode plugin/app as installed via setup.
+    plugin_name: "Maidan Dev"
+    # Same Tier-2 contract as claude. NOTE: ChatGPT's sign-in-link email
+    # path is UNVERIFIED — standard login is email+password. Enable only
+    # after confirming the account offers a sign-in-link email.
+    magic_link:
+      enabled: false
+      email: "zyla@beatgig.com"
+      # Verified 2026-10-07: zyla@beatgig.com mail is visible on the linked
+      # david@beatgig.com account (zyla@ is an alias delivering there).
+      account: "9b411cec9abc4d12bffaaa5c001df53f"
+  grok:
+    # Model pinned per research §1.6 (docs publish no supported-model list).
+    model: "grok-4.7"
+    server_label: "maidan"
+  gemini: {}
+  copilot-mcp: {}
+  copilot-plugin: {}
+  claude-code:
+    # Dev-only unattended operation; never use outside the harness.
+    skip_permissions: true
+  cursor: {}
+  meta: {}
+
+# Prompt -> expected MCP tool, per test suite. Prompts are deliberately
+# boring: the assertion that matters is server-side (tool called with
+# expected args), not what the model says back.
+suites:
+  reads:
+    prompt: "Search Maidan for the word onboarding and summarize what you find."
+    expect_tool: "search_messages"
+  multi_tool:
+    prompt: "List my Maidan workspaces, then read the board of the first one, then post the message 'harness ping' to its general channel."
+    expect_tools: ["search_messages", "post_message"]
+  approval:
+    prompt: "Approve the pending Maidan request in my workspace."
+    expect_tool: "request_approval"
+  # Write-flow auth path (research §1.10 dev OAuth stub). Separate from
+  # the no-auth read path above: runs ONLY when server.auth_mode is
+  # "oauth-stub", otherwise skipped (never failed, never conflated).
+  writes:
+    prompt: "Post the message 'harness write probe' to the general channel of my first Maidan workspace."
+    expect_tool: "post_message"
+    requires_auth: true
+  # Elicitation approval flow. Claude Code is the ONLY in-scope provider
+  # implementing elicitation/create (research §5.2); the suite is refused
+  # everywhere else. Requires elicitation.enabled=true below, otherwise
+  # skipped (never failed, never faked).
+  elicitation:
+    prompt: "Approve the pending Maidan request in my workspace."
+    expect_tool: "request_approval"
+    requires_elicitation: true
+
+# Elicitation test gate: the dev server must elicit on the approval tool
+# for this suite to mean anything. Default off.
+elicitation:
+  enabled: false
