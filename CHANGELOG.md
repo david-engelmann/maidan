@@ -38,10 +38,10 @@ Refs #1253
 
 - **Fixed:** Pasting a token drops the member id learned from the previous token when `/me` throws. The page no longer keeps calling routes as that member. An empty token field and a rejected `/me` use the same drop.
 
-### Every MCP request is logged, and no value is
+### Every MCP request is logged without its values
 
-- **Added:** One `info` line per MCP request on the `maidan_mcp::request` target, on at the default filter, from HTTP, streamable, stdio and slash-command calls alike. It carries the method, tool, argument names, principal, transport, profile, latency and outcome, and never an argument value or a result.
-- **Added:** The `mcp-frame-capture` feature logs whole frames with secret-shaped keys redacted on `maidan_mcp::frame`, for dev builds only. A release build that enables it fails to compile, and a CI lint step keeps it compiling in dev.
+- **Added:** One `info` line per MCP request on the `maidan_mcp::request` target, kept at the default filter, from HTTP, streamable, stdio and slash-command calls alike. It carries the method, tool, the argument names the tool declares, principal, transport, profile, latency and outcome, and never an argument value or a result. A method the server does not answer is `(other)` and an undeclared argument name is only counted, so a credential a client puts in a name never reaches the log.
+- **Added:** The `mcp-frame-capture` feature logs whole frames on `maidan_mcp::frame`, with secret-shaped keys redacted at any depth (inside JSON result text too) and the arguments and result of a tool that carries credentials (a secret, token, ticket or grant) withheld, for dev builds only. A release build that enables it fails to compile, and a CI lint step keeps it compiling in dev.
 
 ### A vote kind is a closed set
 
