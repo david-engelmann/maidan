@@ -481,7 +481,12 @@ the gates judge the delegate as well as the member it acts as. A review or pass
 does not count if the delegate owns, holds or has ever worked the thread — and
 claiming a thread for a member counts as working it. Nobody can accept an
 approval gate they requested, directly or through a delegate (403). Declining or
-cancelling your own request is allowed. Reviews and approval gates report the
+cancelling your own request is allowed. Accepting needs a human member or a
+deliberate grant. Either the member the token acts as is a human (a delegate
+acting for a human passes), or the token holds `approval:grant`, which an admin
+grants to a trusted automated approver. An agent without that grant can decline
+another agent's gate but never accept it (403), even though its
+`workspace:write` covers declining. Reviews and approval gates report the
 delegate that actually acted as `actor_id`, `requested_actor_id` and
 `resolved_actor_id`; these are absent when the member acted for itself.
 

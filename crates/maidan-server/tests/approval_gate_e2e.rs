@@ -15,7 +15,8 @@ use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberId, MemberKind, NewApiToken, NewApprovalGate, NewMember, NewWorkspace, WorkspaceId,
+    ApprovalGateState, MemberId, MemberKind, NewApiToken, NewApprovalGate, NewMember, NewWorkspace,
+    WorkspaceId,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -205,4 +206,132 @@ async fn list_and_answer_an_approval_gate() {
         .await
         .unwrap();
     assert!(list_after.is_empty());
+}
+
+/// An approval gate is human-control state. A worker agent holds
+/// `workspace:write`, which is all the answer route asks for, so without this
+/// rule agent B could accept agent A's gate and no human would ever see it.
+/// Declining stays open to any writer; accepting needs a human member, or a
+/// token an admin granted `approval:grant`.
+#[tokio::test]
+async fn an_agent_cannot_accept_another_agents_gate_without_approval_grant() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "pair".into(),
+        })
+        .await
+        .unwrap();
+    let agent = |handle: &'static str| {
+        let store = store.clone();
+        async move {
+            store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let requester = agent("deployer").await;
+    let peer = agent("peer").await;
+    let approver = agent("approver-bot").await;
+    let work = vec![
+        capability::WORKSPACE_READ.to_string(),
+        capability::WORKSPACE_WRITE.to_string(),
+    ];
+    let peer_token = mint(store.as_ref(), ws.id, peer.id, work.clone()).await;
+    let mut granted = work.clone();
+    granted.push(capability::APPROVAL_GRANT.to_string());
+    let approver_token = mint(store.as_ref(), ws.id, approver.id, granted).await;
+
+    let open = |prompt: &'static str| {
+        let store = store.clone();
+        async move {
+            store
+                .create_approval_gate(&NewApprovalGate {
+                    workspace_id: ws.id,
+                    thread_id: None,
+                    requested_by: requester.id,
+                    prompt: prompt.into(),
+                    schema: None,
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let first = open("Deploy v9 to prod?").await;
+    let second = open("Rotate the signing key?").await;
+
+    let request_state = |token: String, gate_id: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let list: Vec<Value> = client
+                .get(format!("{base}/workspaces/{}/approval-gates", ws.id))
+                .bearer_auth(&token)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            list.iter()
+                .find(|g| g["gate"]["id"] == json!(gate_id))
+                .and_then(|g| g["request_state"].as_str())
+                .unwrap()
+                .to_string()
+        }
+    };
+    let answer = |token: String, gate: String, state: String, action: &'static str| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            client
+                .post(format!("{base}/approval-gates/{gate}/answer"))
+                .bearer_auth(&token)
+                .json(&json!({ "request_state": state, "action": action }))
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    // A worker agent cannot accept another agent's gate.
+    let state = request_state(peer_token.clone(), first.id.0.to_string()).await;
+    let refused = answer(
+        peer_token.clone(),
+        first.id.0.to_string(),
+        state.clone(),
+        "accept",
+    )
+    .await;
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    let body: Value = refused.json().await.unwrap();
+    assert!(
+        body.to_string().contains("human member"),
+        "the refusal says who may accept: {body}"
+    );
+    let still = store.get_approval_gate(first.id).await.unwrap().unwrap();
+    assert_eq!(
+        still.state,
+        ApprovalGateState::Pending,
+        "the refused accept changed nothing"
+    );
+
+    // Declining is not approving, and stays open to any writer.
+    let state2 = request_state(peer_token.clone(), second.id.0.to_string()).await;
+    let declined = answer(peer_token, second.id.0.to_string(), state2, "decline").await;
+    assert_eq!(declined.status(), StatusCode::OK);
+
+    // An agent an admin granted approval:grant may accept.
+    let accepted = answer(approver_token, first.id.0.to_string(), state, "accept").await;
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let body: Value = accepted.json().await.unwrap();
+    assert_eq!(body["state"], json!("accepted"));
+    assert_eq!(body["resolved_by"], json!(approver.id.0.to_string()));
 }

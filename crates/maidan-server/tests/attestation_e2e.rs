@@ -94,13 +94,21 @@ async fn world() -> World {
         .unwrap();
     let mut ids = Vec::new();
     for handle in ["admin", "worker", "orchestrator", "outsider", "reviewer"] {
+        // The reviewer is the human who approves; an approval gate is
+        // accepted by a human member (or a token granted approval:grant), and
+        // a delegate acting for the reviewer borrows that.
+        let kind = if handle == "reviewer" {
+            MemberKind::Human
+        } else {
+            MemberKind::Agent
+        };
         ids.push(
             store
                 .create_member(NewMember {
                     workspace_id: ws.id,
                     handle: handle.into(),
                     display_name: None,
-                    kind: MemberKind::Agent,
+                    kind,
                 })
                 .await
                 .unwrap()

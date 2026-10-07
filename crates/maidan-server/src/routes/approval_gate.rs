@@ -10,10 +10,10 @@
 use axum::{extract::State, Extension, Json};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
-    capability::{WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{APPROVAL_GRANT, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_types::{ApprovalGate, ApprovalGateId, ApprovalGateState, WorkspaceId};
+use maidan_types::{ApprovalGate, ApprovalGateId, ApprovalGateState, MemberKind, WorkspaceId};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
@@ -129,6 +129,22 @@ pub async fn answer_approval_gate(
             return Err(ApiError::Forbidden(
                 "an approval cannot be granted by whoever requested it".into(),
             ));
+        }
+        // An approval gate is human-control state: accepting needs the member
+        // the token acts as to be a human (a delegate acting for a human
+        // passes, since that member is the human), or a token an admin granted
+        // `approval:grant` for a trusted automated approver. Otherwise any
+        // worker, which holds `workspace:write`, could approve another
+        // worker's request with no human involved.
+        if !auth.has_capability(APPROVAL_GRANT) {
+            let member = state.store.get_member(auth.member_id).await?;
+            if member.kind != MemberKind::Human {
+                return Err(ApiError::Forbidden(
+                    "an approval gate is accepted by a human member, or by a token \
+                     granted approval:grant"
+                        .into(),
+                ));
+            }
         }
     }
     match state
