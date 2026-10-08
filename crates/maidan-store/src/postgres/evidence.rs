@@ -63,13 +63,15 @@ pub async fn link(
         return Err(StoreError::NotFound);
     }
     let inserted = sqlx::query(
-        "INSERT INTO maidan_thread_artifacts (thread_id, sha256, linked_by)
-         VALUES ($1, $2, $3)
+        "INSERT INTO maidan_thread_artifacts (thread_id, sha256, linked_by, linked_actor_id)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (thread_id, sha256) DO NOTHING",
     )
     .bind(thread_id.0)
     .bind(sha256)
     .bind(linked_by.0)
+    // A delegate linking with a borrowed token: a hand-off judges it too.
+    .bind(crate::attribution::delegate_acting_for(linked_by).map(|m| m.0))
     .execute(&mut *tx)
     .await?
     .rows_affected()

@@ -19,19 +19,24 @@ pub async fn set(
 ) -> Result<ThreadResult, StoreError> {
     let result_kind = result_kind_from_payload(result);
     let row = sqlx::query(
-        "INSERT INTO maidan_thread_results (thread_id, result, produced_by, result_kind)
-         VALUES ($1, $2, $3, $4)
+        "INSERT INTO maidan_thread_results
+             (thread_id, result, produced_by, result_kind, produced_actor_id)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (thread_id) DO UPDATE SET
              result = excluded.result,
              produced_by = excluded.produced_by,
              produced_at = now(),
-             result_kind = excluded.result_kind
+             result_kind = excluded.result_kind,
+             produced_actor_id = excluded.produced_actor_id
          RETURNING thread_id, result, produced_by, produced_at",
     )
     .bind(thread_id.0)
     .bind(result)
     .bind(produced_by.0)
     .bind(result_kind)
+    // The delegate that carried a borrowed token, so a hand-off can tell a
+    // worker's result from one a non-worker produced.
+    .bind(crate::attribution::delegate_acting_for(produced_by).map(|m| m.0))
     .fetch_one(pool)
     .await?;
     Ok(row_to_result(&row))
