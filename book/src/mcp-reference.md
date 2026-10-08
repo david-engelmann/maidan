@@ -5189,7 +5189,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 **Capability:** `workspace:write`
 
-**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
 
 ```json
 {

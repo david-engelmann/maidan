@@ -3394,7 +3394,7 @@ pub fn catalog() -> Vec<Value> {
             "annotations": {
                 "title": "Retract vote",
                 "readOnlyHint": false,
-                "destructiveHint": false,
+                "destructiveHint": true,
                 "idempotentHint": true,
                 "openWorldHint": false
             },

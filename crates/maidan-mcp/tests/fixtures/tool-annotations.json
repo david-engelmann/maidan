@@ -3455,8 +3455,8 @@
         "reason": "retract_vote_with_event DELETEs the caller's vote row and appends VoteRetracted"
       },
       "destructiveHint": {
-        "value": false,
-        "reason": "removes only the caller's own vote, the sibling of cast_vote"
+        "value": true,
+        "reason": "DELETEs the caller's vote row, a verdict other members count, not a toggle of the caller's own view"
       },
       "idempotentHint": {
         "value": true,
