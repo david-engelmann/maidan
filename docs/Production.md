@@ -293,6 +293,7 @@ detail. Summary:
 | `MAIDAN_OIDC_CLIENT_ID` | yes (non-mock) | OAuth client id. |
 | `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Code exchange secret. |
 | `MAIDAN_OIDC_REDIRECT_URI` | yes | Registered callback (e.g. `https://host/auth/oidc/callback`). |
+| `MAIDAN_CONSOLE_ORIGIN` | no | Absolute origin of the console (e.g. `https://host`), used in the one-time links `approval_decide` gives a person. Falls back to the origin of `MAIDAN_OIDC_REDIRECT_URI`; with neither, the links are host-relative and no URL elicitation is offered. |
 | `MAIDAN_OIDC_MOCK` | no | `1` for deterministic dev/CI only; forbidden when `MAIDAN_ENV=production`. |
 | `MAIDAN_OIDC_FIRST_ADMIN` | no | Default on: session may mint the first `token:admin` per workspace via `POST /auth/session/mint`. Set `0` to disable. |
 | `MAIDAN_COOKIE_SECURE` | no | Set `1` in production for `Secure` session cookies. |

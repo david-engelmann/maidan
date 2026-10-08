@@ -101,6 +101,7 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
             requested_by: member.id,
             prompt: "approve the deploy".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .unwrap();

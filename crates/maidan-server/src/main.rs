@@ -570,6 +570,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.sessions = maidan_server::session::SessionSettings::from_env()?;
     state.subscribe_resume_secret = subscribe_resume_secret;
     state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;
+    state.console_origin = maidan_server::state::console_origin_from_env();
     state.webhooks = maidan_server::WebhookRuntime::new(federation_encryption_key.clone());
     state.slash = maidan_server::SlashRuntime::new(federation_encryption_key.clone());
     state.fsm_hooks = maidan_server::FsmHookRuntime::new(federation_encryption_key);

@@ -4,13 +4,16 @@ use crate::openapi::responses::*;
 use uuid::Uuid;
 
 use crate::dto::{
-    CreateChannel, CreateMessage, CreateThread, ListAuditQuery, ListEventsQuery,
-    ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse,
-    OidcCallbackQuery, OidcLoginQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
+    ConfirmApprovalGate, CreateChannel, CreateMessage, CreateThread, ListAuditQuery,
+    ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
+    MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, PeerResponse, RenameWorkspace,
+    SearchQuery, SessionResponse,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
-use maidan_types::{AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, Workspace};
+use maidan_types::{
+    ApprovalGate, AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, Workspace,
+};
 
 /// Start an OIDC login
 #[utoipa::path(
@@ -84,6 +87,27 @@ pub fn get_auth_session() {}
     )
 )]
 pub fn mint_auth_session_token() {}
+
+/// Confirm a model's request to accept an approval gate
+///
+/// The link `approval_decide` gave a person is spent here, by the signed-in
+/// console session it is bound to. A bearer, and a session made from a token,
+/// are refused: the model holding the token cannot finish it. The request must
+/// come from the console page.
+#[utoipa::path(
+    post,
+    path = "/auth/approval-confirmations/confirm",
+    tag = "auth",
+    request_body = ConfirmApprovalGate,
+    security(("sessionCookie" = [])),
+    responses(
+        (status = 200, body = ApprovalGate, description = "The gate, now accepted"),
+        (status = 403, description = "Not a signed-in person's session, not from the console page, or the caller asked for the gate", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "No such live link for this session", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 409, description = "The gate was resolved before the link was spent", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn confirm_approval() {}
 
 /// Exchange a bearer for a browser session
 ///
