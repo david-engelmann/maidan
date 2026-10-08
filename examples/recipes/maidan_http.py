@@ -15,6 +15,7 @@ import urllib.request
 from typing import Any
 
 MCP_PROTOCOL_VERSION = "2026-07-28"
+CLIENT_INFO = {"name": "maidan-recipes", "version": "1"}
 
 
 class MaidanError(RuntimeError):
@@ -62,18 +63,38 @@ class Maidan:
         return json.loads(payload) if payload else None
 
     def tool(self, name: str, arguments: dict[str, Any]) -> Any:
-        """Call one MCP tool. `2026-07-28` is stateless: no initialize, no session."""
+        """Call one MCP tool on `2026-07-28`: stateless, no initialize, no session.
+
+        That revision states itself on every request, and the server refuses a
+        request that leaves any of it out (docs/Integration.md, "MCP
+        streamable"): the `MCP-Protocol-Version` header, the same version in
+        `params._meta` beside the client's capabilities, and `Mcp-Method` and
+        `Mcp-Name` headers naming the method and the tool.
+        """
         self._mcp_id += 1
+        method = "tools/call"
         reply = self.call(
             "POST",
             "/mcp/streamable",
             {
                 "jsonrpc": "2.0",
                 "id": self._mcp_id,
-                "method": "tools/call",
-                "params": {"name": name, "arguments": arguments},
+                "method": method,
+                "params": {
+                    "name": name,
+                    "arguments": arguments,
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+                        "io.modelcontextprotocol/clientCapabilities": {},
+                        "io.modelcontextprotocol/clientInfo": CLIENT_INFO,
+                    },
+                },
             },
-            headers={"mcp-protocol-version": MCP_PROTOCOL_VERSION},
+            headers={
+                "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+                "mcp-method": method,
+                "mcp-name": name,
+            },
         )
         if "error" in reply:
             raise RuntimeError(f"{name}: {reply['error']}")
