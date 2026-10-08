@@ -214,9 +214,14 @@ import { answerGate } from "./tools.js";
           changes.type = "button";
           changes.className = "ghost";
           changes.textContent = "Request changes";
-          changes.onclick = () => askForChanges(item, li);
-          actions.append(approve, changes);
-          if (item.kind === "unassigned_review") ownerActions(item, li, sub, approve, changes);
+          changes.onclick = () => askForNote(item, li, "request_changes");
+          const approveNoted = document.createElement("button");
+          approveNoted.type = "button";
+          approveNoted.className = "ghost";
+          approveNoted.textContent = "Approve with note";
+          approveNoted.onclick = () => askForNote(item, li, "approve");
+          actions.append(approve, changes, approveNoted);
+          if (item.kind === "unassigned_review") ownerActions(item, li, sub, [approve, approveNoted], changes);
         } else if (item.kind === "blocked") {
           // A human/gate block: show the reason and note, offer to clear it.
           // The title is already the row's title, so it is not repeated here.
@@ -328,9 +333,9 @@ import { answerGate } from "./tools.js";
       // requirement it may close the task itself, which the board then shows
       // as closed without review. With one, sending the work back is the
       // owner's move, and naming a reviewer is how it gets approved.
-      async function ownerActions(item, li, sub, approve, changes) {
+      async function ownerActions(item, li, sub, approvals, changes) {
         if (!(await viewerOwns(item.thread_id))) return;
-        approve.remove();
+        approvals.forEach((b) => b.remove());
         const rs = await reviewStatus(item.thread_id);
         if (rs && rs.required_count === 0) {
           const close = document.createElement("button");
@@ -452,9 +457,9 @@ import { answerGate } from "./tools.js";
         return { ok: true };
       }
 
-      async function approveFromInbox(item, li) {
+      async function approveFromInbox(item, li, reviewNote) {
         const actions = li.querySelector(".ny-actions");
-        const out = await submitReview(item.thread_id, "approve", undefined, actions.querySelectorAll("button"));
+        const out = await submitReview(item.thread_id, "approve", reviewNote, actions.querySelectorAll("button"));
         const row = rowOnScreen(item, li);
         const liveActions = row.querySelector(".ny-actions");
         if (!out.ok) {
@@ -490,22 +495,31 @@ import { answerGate } from "./tools.js";
         if (item.thread_id === selectedThreadId) renderThreadHeader();
       }
 
-      function askForChanges(item, li) {
-        if (li.querySelector(".ny-note")) return;
+      // A note row for a verdict. A change request says what to change, so
+      // there is nothing to send until the note does; an approval's note is
+      // optional.
+      function askForNote(item, li, decision) {
+        const open = li.querySelector(".ny-note");
+        if (open) {
+          if (open.dataset.decision === decision) return;
+          open.remove();
+        }
+        const changes = decision === "request_changes";
         const row = document.createElement("div");
         row.className = "ny-note";
+        row.dataset.decision = decision;
         const input = document.createElement("input");
-        input.placeholder = "What should change? The agent reads this.";
-        input.setAttribute("aria-label", "Change request note");
+        input.placeholder = changes
+          ? "What should change? The agent reads this."
+          : "Anything the agent should know? Optional.";
+        input.setAttribute("aria-label", changes ? "Change request note" : "Approval note");
         const send = document.createElement("button");
         send.type = "button";
         send.className = "primary";
-        send.textContent = "Send back";
-        // A change request says what to change, so there is nothing to send
-        // until the note does.
-        send.disabled = true;
+        send.textContent = changes ? "Send back" : "Approve";
+        send.disabled = changes;
         input.oninput = () => {
-          send.disabled = !input.value.trim();
+          send.disabled = changes && !input.value.trim();
         };
         // The note is the decision for this row now, so Approve stops being the
         // filled button until the note is dismissed.
@@ -515,7 +529,13 @@ import { answerGate } from "./tools.js";
         });
         const go = async () => {
           if (send.disabled) return;
-          const out = await submitReview(item.thread_id, "request_changes", input.value.trim(), send);
+          const note = input.value.trim() || undefined;
+          if (!changes) {
+            row.remove();
+            li.querySelectorAll("[data-restore-primary]").forEach((b) => b.classList.add("primary"));
+            return approveFromInbox(item, li, note);
+          }
+          const out = await submitReview(item.thread_id, "request_changes", note, send);
           if (!out.ok) {
             return showRowError(rowOnScreen(item, li), out.why);
           }
@@ -583,4 +603,4 @@ import { answerGate } from "./tools.js";
         document.getElementById("collab-panel").hidden = !selectedThreadId;
       }
 
-export { approveFromInbox, askForChanges, closeThread, dropRow, fillReviewContext, loadNeedsYou, needsYou, needsYouGen, needsYouRow, nyKey, renderNeedsYou, renderThreadActions, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };
+export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadNeedsYou, needsYou, needsYouGen, needsYouRow, nyKey, renderNeedsYou, renderThreadActions, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };
