@@ -101,6 +101,11 @@ Refs #1253
 - **Fixed:** A malformed `sha256` on `get_artifact` and `get_artifact_metadata` is an invalid argument, not "resource not found".
 - **Added:** `scripts/mcp-inspector.sh` makes one valid call and one invalid call per tool group through the official Inspector. It fails if an invalid call's error does not name the argument it got wrong, and it fails if a new tool module has no probe.
 
+### Connecting each MCP client is documented and tested
+
+- **Added:** `docs/Clients.md` has a recipe for Claude Code, Cursor, Gemini CLI, GitHub Copilot CLI, a claude.ai custom connector and ChatGPT developer mode. It also covers the dev instance for clients that cannot send a token, the five-minute check a person makes before each release, and what counts as an attributed connect.
+- **Added:** `contracts/mcp-clients.json` is the client matrix as test config. `client_matrix_e2e` checks each row, checks that every client has a recipe, a matrix row and its release step, and connects to a real server with auth enabled the way each client authenticates.
+
 ### MCP search names what it found
 
 - **Changed:** Each `search_messages` hit carries `channel_name`, `thread_title` and `author_handle` beside the ids. A name that no longer resolves is left out rather than failing the search. Found running Claude clients, which could only report UUIDs back to the person asking.

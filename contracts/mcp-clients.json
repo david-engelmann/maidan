@@ -1,0 +1,76 @@
+{
+  "about": "The MCP clients Maidan is tested against and how each one authenticates to it. client_matrix_e2e reads this file. It connects to a real server the way each client does, and checks that docs/Clients.md has each client's recipe. Each row's facts come from the client's own documentation on the date in checked. Re-read them each quarter, and when a client ships a release that changes how it does MCP.",
+  "auth_modes": {
+    "bearer-header": "A static Authorization: Bearer header carrying a token minted for the agent. The client sends it on every request.",
+    "anonymous-dev": "No credential. Only a dev instance with MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE answers, read-only, on one synthetic workspace."
+  },
+  "elicitation_values": ["supported", "none", "unverified"],
+  "clients": [
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "auth": "bearer-header",
+      "endpoint": "/mcp/streamable",
+      "elicitation": "supported",
+      "release_check": false,
+      "note": "With a configured Authorization header, a 401 is a connection failure, not a sign-in prompt.",
+      "source": "https://code.claude.com/docs/en/mcp",
+      "checked": "2026-10-06"
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "auth": "bearer-header",
+      "endpoint": "/mcp/streamable",
+      "elicitation": "supported",
+      "release_check": true,
+      "note": "Its token refresh is unreliable, so a person checks it each release.",
+      "source": "https://cursor.com/docs/context/mcp",
+      "checked": "2026-10-06"
+    },
+    {
+      "id": "gemini-cli",
+      "name": "Gemini CLI",
+      "auth": "bearer-header",
+      "endpoint": "/mcp/streamable",
+      "elicitation": "none",
+      "release_check": false,
+      "note": "httpUrl is Streamable HTTP and url is the older SSE transport, so use httpUrl.",
+      "source": "https://geminicli.com/docs/tools/mcp-server/",
+      "checked": "2026-10-06"
+    },
+    {
+      "id": "copilot-cli",
+      "name": "GitHub Copilot CLI",
+      "auth": "bearer-header",
+      "endpoint": "/mcp/streamable",
+      "elicitation": "supported",
+      "release_check": false,
+      "note": "Form elicitation since 0.0.421 and URL elicitation since 0.0.423.",
+      "source": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers",
+      "checked": "2026-10-06"
+    },
+    {
+      "id": "claude-ai",
+      "name": "claude.ai custom connector",
+      "auth": "anonymous-dev",
+      "endpoint": "/mcp/streamable",
+      "elicitation": "unverified",
+      "release_check": true,
+      "note": "Added with No sign in. Its fixed-credentials option is not yet verified against Maidan.",
+      "source": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+      "checked": "2026-10-06"
+    },
+    {
+      "id": "chatgpt-developer-mode",
+      "name": "ChatGPT developer mode",
+      "auth": "anonymous-dev",
+      "endpoint": "/mcp/streamable",
+      "elicitation": "none",
+      "release_check": true,
+      "note": "It takes OAuth or no authentication, and Maidan has no OAuth server, so it reads a dev instance anonymously.",
+      "source": "https://developers.openai.com/apps-sdk/build/auth",
+      "checked": "2026-10-06"
+    }
+  ]
+}
