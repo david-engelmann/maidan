@@ -67,6 +67,7 @@ const ready = await client.waitForReady(wid); // event or null on timeout
   `renewClaim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,
   `workspaces.events`, `follow` (HTTP backfill then WS), and the `waitFor*` helpers. See
   the repo's `docs/Client Contract.md`.
+- Caching (0.3.0): `channels.boot(cid)` returns the channel's boot prefix as served, with its sha256 (for `evidence.pack_sha256`). `cachedPrefix(provider, text, { ttl })` places it with a cache breakpoint, `await cacheKey(workspaceId, group)` and `cacheKeyFields(provider, key)` give one cache key per shared-prefix group, never shared across workspaces, and `gatewaySession(gateway, threadId)` passes the thread id as an OpenRouter, Helicone, LiteLLM or TensorZero session id. See the repo's `docs/Harness Caching.md` for where each harness puts Maidan's bytes.
 
 **Node < 22** has no global WebSocket — pass one for `subscribe`:
 

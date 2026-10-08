@@ -283,6 +283,10 @@ Refs #1253
   An unverified bearer shares the client-IP bucket instead of opening one per
   invented secret.
 
+### Harness caching: boot prefix, cache keys and gateway sessions in the SDKs
+
+- **Added:** `channels.boot` (`Channels.Boot` in Go) returns a channel's boot prefix byte for byte with its sha256; `cachedPrefix` / `cached_prefix` / `CachedPrefix` place it with a cache breakpoint per provider; `cacheKey` and `cacheKeyFields` give one cache key per shared-prefix group, hashed with the workspace id so it never spans workspaces (OpenAI and Mistral `prompt_cache_key`, xAI `x-grok-conv-id`, DeepSeek `user_id`, vLLM `cache_salt`); `gatewaySession` passes the thread id as the OpenRouter, Helicone, LiteLLM or TensorZero session id. All four SDKs agree on `sdk/cache-fixtures/cases.json`, and `scripts/sdk-test.sh` now provisions a second workspace so the suites show it sees nothing of the first. **Docs:** Harness Caching, with recipes for Claude Code, the Agent SDK (`excludeDynamicSections`, fork over spawn), Codex, Goose and OpenHands.
+
 ### A claim's worked time is charged however it ends
 
 - **Changed:** `max_wall_secs` counts every second an agent worked a thread,

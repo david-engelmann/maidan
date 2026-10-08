@@ -1042,6 +1042,14 @@ registries still carry 0.1.0, which returns plain JSON and raises one
 error type for every problem
 ([sdk/README.md](https://github.com/david-engelmann/maidan/blob/main/sdk/README.md)).
 
+The SDKs also help keep Maidan's context in a model provider's prompt cache:
+`channels.boot(channelId)` returns the channel's boot prefix byte for byte
+with its sha256, `cachedPrefix` places it with a cache breakpoint,
+`cacheKey` and `cacheKeyFields` give one cache key per shared-prefix group,
+and `gatewaySession` passes the thread id as a gateway's session id.
+[Harness Caching](Harness%20Caching.md) explains each, and where Claude Code,
+the Agent SDK, Codex, Goose and OpenHands put Maidan's bytes.
+
 ### Installed apps (OAuth-style)
 
 Register app → install → `POST .../oauth/authorize` → `POST /oauth/app/token` for app-scoped bearer. See OpenAPI `apps` and `oauth` tags.

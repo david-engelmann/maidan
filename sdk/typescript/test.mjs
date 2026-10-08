@@ -18,6 +18,9 @@ const BASE = process.env.MAIDAN_URL || "http://127.0.0.1:8080";
 const TOKEN = process.env.MAIDAN_TOKEN || "";
 const WORKSPACE = process.env.MAIDAN_WORKSPACE || "";
 const client = new Client(BASE, TOKEN);
+// A second workspace from scripts/sdk-test.sh, to show the first stays invisible.
+const OTHER_TOKEN = process.env.MAIDAN_OTHER_TOKEN || "";
+const OTHER_WORKSPACE = process.env.MAIDAN_OTHER_WORKSPACE || "";
 
 // The response models live only in index.d.ts, so that file is what these tests
 // hold the live server to: every member a response carries must be declared on
@@ -98,6 +101,39 @@ test("hero loop: post, list, context", async () => {
   assert.ok(msgs.some((m) => m.body === "hello from the ts sdk"), "posted message is listed");
   const ctx = await client.threads.context(thread.id);
   assert.equal(typeof ctx, "object");
+});
+
+test("channels.boot returns the served boot bytes and their sha256", async () => {
+  const { channel } = await seed();
+  const boot = await client.channels.boot(channel.id);
+  const parsed = JSON.parse(boot.text);
+  assert.equal(parsed.workspace_id, WORKSPACE);
+  assert.equal(parsed.channel_id, channel.id);
+  assert.ok(boot.text.startsWith('{"workspace_id":'), "the bytes are the server's, not re-serialized");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(boot.text));
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  assert.equal(boot.sha256, hex);
+});
+
+test("channels.boot from a second workspace sees nothing of the first", async () => {
+  assert.ok(OTHER_TOKEN && OTHER_WORKSPACE, "scripts/sdk-test.sh provisions a second workspace");
+  const { channel } = await seed();
+  const first = await client.channels.boot(channel.id);
+  const other = new Client(BASE, OTHER_TOKEN);
+  await assert.rejects(other.channels.boot(channel.id), (err) => {
+    assert.ok(err instanceof MaidanError, `expected a MaidanError, got ${err && err.name}`);
+    assert.ok([403, 404].includes(err.status), `status ${err.status}`);
+    const body = JSON.stringify(err.problem);
+    assert.ok(!body.includes(WORKSPACE), "the refusal names the first workspace");
+    assert.ok(!body.includes(first.sha256), "the refusal carries the first boot's hash");
+    return true;
+  });
+  const own = await other.channels.create(OTHER_WORKSPACE, `ts-sdk-other-${crypto.randomUUID()}`);
+  const boot = await other.channels.boot(own.id);
+  assert.equal(JSON.parse(boot.text).workspace_id, OTHER_WORKSPACE);
+  assert.ok(!boot.text.includes(WORKSPACE), "the second workspace's boot names the first");
+  assert.ok(!boot.text.includes(channel.id), "the second workspace's boot names the first's channel");
+  assert.notEqual(boot.sha256, first.sha256);
 });
 
 test("getResult on an unset thread is a 404 MaidanError", async () => {
