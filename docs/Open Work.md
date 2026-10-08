@@ -57,7 +57,6 @@ CI ran.
 | #1324 | OAuth phase zero (Next 23): RFC 9728 resource metadata and the MCP `WWW-Authenticate` challenge, off until `MAIDAN_PUBLIC_ORIGIN` is set, and `docs/OAuth.md` as the plan | Merge loop. Recount the `.route(` pin if #1328 lands first | — |
 | #1328 | The approval card keeps its decider across a reload and says who linked each artifact (the two #1316 follow-ups) | Review | Recount the `.route(` pin if #1324 lands first |
 | #1329 | A local Keycloak provider for developing OAuth against a real server, moved out of #1321 | Review | #1324 |
-| #1322 | The OAuth research archived as a snapshot under `docs/archive/` | Merge loop | — |
 | (live check) | Mark-ready has never run against GitHub. agent-skills#11 was still a draft on 2026-10-07, and bgv3#5847 is closed, so it cannot be the second test | Blocked on pi-ff redeploying the dev-tools stack from `main` with `MAIDAN_GITHUB_WRITE_REPOS`, `MAIDAN_MARK_READY_APP_ID` and `MAIDAN_MARK_READY_BASES` set. The check runs on a scratch GitHub repository the maintainer owns, not Gitea, because mark-ready flips drafts through GitHub's GraphQL (decided 2026-10-08) | — |
 | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
 
@@ -108,8 +107,7 @@ token's workspace, not the path's, for a bypass caller (#1134); a receiver that
 echoes a secret back in a slash response puts it in `metadata.slash_response`
 (#1140, documented); the retry budget is per replica and does not bound
 first-attempt floods (#1122, documented); the 0124 backfill ordering has no
-test of its own (#1132); the workspace claim's `readable_by` should become
-#1137's `thread_access::readable_thread`, now that both are on `main` (#1145); the MCP test
+test of its own (#1132); the MCP test
 `a_stateless_subscription_lives_while_any_replica_listens_then_lapses` (#1131)
 fails under load with its 300 ms lifetime, and `crypto_shredding` `blob_reap::sqlite_backend` can fail with `database is locked` in the coverage job (seen on #1155, whose change touches no store code); `remove_channel_member` and
 `unfollow_member` answer success for an unknown member (leaks nothing, #1152).
