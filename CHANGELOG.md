@@ -1892,6 +1892,10 @@ Refs #1253
 - **Security:** Installing an app, and minting a token from an installation, grant only what the caller could mint directly. A `token:admin` holder without `operator:global` or `audit:read-global` could install an app with either capability and mint the bot a token that operated or read across every workspace. Both routes now answer 400 for a capability the caller cannot grant, including one an operator put in the installation's grant.
 - **Security:** The installed-app code exchange (`POST /oauth/app/token`) mints with no member behind it, so it never issues `operator:global` or `audit:read-global`, whatever the installation's grant says.
 
+### Removing a channel member names a member of the channel's workspace
+
+- **Fixed:** `DELETE /channels/:cid/members/:mid` and the MCP `remove_channel_member` answer an id that is no member of the channel's workspace, unknown or another workspace's, as not found. They used to answer success and write a `channel_member.remove` audit row naming the id.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
