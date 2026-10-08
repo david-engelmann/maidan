@@ -583,7 +583,7 @@ pub trait GithubGit: Send + Sync {
     /// this method off the direct-call path that would bypass the guards.
     ///
     /// The deliberate, tightly-scoped exception to "never marks ready"
-    /// (Decisions, 2026-10-06): Soundcheck holds no GitHub write credential,
+    /// (Decisions, 2026-10-06): the mark-ready app holds no GitHub write credential,
     /// so Maidan does the flip — only for `feature/agent-*` heads into
     /// allowlisted bases, never prod, never anything else.
     async fn set_pull_ready(

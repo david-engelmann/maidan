@@ -723,7 +723,7 @@ mod tests {
     fn branch_and_thread_targets_round_trip_through_their_stored_pair() {
         for target in [
             EgressTarget::GithubBranch {
-                repo: "beatgig/bgv3".into(),
+                repo: "example-org/example-repo".into(),
                 branch: "feature/agent-x@y-1a2b".into(),
             },
             EgressTarget::Slack {
@@ -738,7 +738,7 @@ mod tests {
             None
         );
         assert_eq!(
-            EgressTarget::parse(EgressSurface::GithubBranch, "beatgig/bgv3"),
+            EgressTarget::parse(EgressSurface::GithubBranch, "example-org/example-repo"),
             None
         );
     }
@@ -746,12 +746,12 @@ mod tests {
     #[test]
     fn a_change_ref_round_trips_and_needs_a_full_sha() {
         let target = EgressTarget::GithubBranch {
-            repo: "beatgig/bgv3".into(),
+            repo: "example-org/example-repo".into(),
             branch: "feature/x".into(),
         };
         let sha = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
         let reference = ExternalRef::GithubBranch {
-            repo: "beatgig/bgv3".into(),
+            repo: "example-org/example-repo".into(),
             commit_sha: sha.into(),
             pull_number: 12,
         };
@@ -766,17 +766,20 @@ mod tests {
 
     #[test]
     fn a_branch_blessing_names_a_repository_and_its_base() {
-        for selector in ["beatgig/bgv3@dev", "beatgig/agent-skills@main"] {
+        for selector in [
+            "example-org/example-repo@dev",
+            "example-org/other-repo@main",
+        ] {
             assert!(validate_allowlist_selector(EgressSurface::GithubBranch, selector).is_ok());
         }
         for selector in [
-            "beatgig/bgv3",
-            "beatgig/bgv3@prod",
-            "beatgig/bgv3@PROD",
-            "beatgig/bgv3@",
-            "beatgig/bgv3@feature/agent-x",
-            "beatgig/bgv3#1@dev",
-            "bgv3@dev",
+            "example-org/example-repo",
+            "example-org/example-repo@prod",
+            "example-org/example-repo@PROD",
+            "example-org/example-repo@",
+            "example-org/example-repo@feature/agent-x",
+            "example-org/example-repo#1@dev",
+            "example-repo@dev",
             "",
         ] {
             assert!(
@@ -789,7 +792,8 @@ mod tests {
             Some(EgressSurface::GithubBranch)
         );
         assert!(
-            validate_allowlist_selector(EgressSurface::Github, "beatgig/bgv3@dev").is_err(),
+            validate_allowlist_selector(EgressSurface::Github, "example-org/example-repo@dev")
+                .is_err(),
             "a comment row never names a base"
         );
     }

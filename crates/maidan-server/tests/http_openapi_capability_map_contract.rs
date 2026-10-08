@@ -23,7 +23,7 @@ struct MapEntry {
     /// Explicit gate marker for routes the capability system does not model.
     /// The only value today is `"app-installation"`: the route is gated on
     /// the caller's app identity, not on a member capability
-    /// (`POST /operator/github/mark-ready`, Soundcheck-only).
+    /// (`POST /operator/github/mark-ready`, mark-ready app only).
     #[serde(default)]
     gate: Option<String>,
 }
@@ -117,9 +117,9 @@ fn is_known_capability(cap: &str) -> bool {
     capability::is_known(cap) || cap == "per-tool" || cap == "per-rpc"
 }
 
-/// An app-installation gate names the app slug it is gated on
-/// (`app:<slug>`), not a member capability: there is no capability for "is
-/// the Soundcheck app", and inventing one would either lie about what the
+/// An app-installation gate names the app role it is gated on
+/// (`app:<role>`), not a member capability: there is no capability for "is
+/// the mark-ready app", and inventing one would either lie about what the
 /// route enforces or add deployment coupling with no security gain. The
 /// matrix e2e skips these entries; `mark_ready_e2e` proves the app gate.
 fn is_app_installation_gate(entry: &MapEntry) -> bool {

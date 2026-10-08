@@ -7,14 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### The change flow can mark a draft ready (Soundcheck only)
+### The change flow can mark a draft ready (mark-ready app only)
 
-- **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the Soundcheck app; the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; Soundcheck stays without `contents:write`.
+- **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the mark-ready app (the operator-designated client, `MAIDAN_MARK_READY_APP_ID`); the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; the mark-ready app stays without `contents:write`.
 
 ### The instance's GitHub token answers to the operator
 
 - **Writes go only to operator-named repositories.** `MAIDAN_GITHUB_WRITE_REPOS` lists the only repositories the instance's GitHub token may write to. The client refuses any other write before a request is made, whichever workspace asks, and with no list it writes nowhere. A workspace's egress allowlist narrows the list and can never widen it.
-- **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to the slug `soundcheck`, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
+- **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to an app slug, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
 
 ### Agent self-reported status (`declare_status`)
 
@@ -142,6 +142,10 @@ Refs #1253
 ### A linked pull request that closes unmerged is said on the thread
 
 - **Added:** a GitHub `pull_request` `closed` delivery with `merged: false`, for a PR linked to a thread, posts one message on that thread (`GitHub closed {repo}#{n} without merging`) and does not emit `ThreadLanded`. The message carries `metadata.github`, so egress does not copy it back onto the PR. An unlinked PR is still ignored. A merge is still a `ThreadLanded` fact and still does not move the thread's state.
+
+### Code, docs and tests use neutral names
+
+- **Changed:** the mark-ready caller is called the mark-ready app everywhere (the operator-designated client named by `MAIDAN_MARK_READY_APP_ID`), and tests and examples use `example-org/example-repo`. The capability map's mark-ready gate reads `app:mark-ready`. No route, field, header, environment variable or check changed.
 
 ### Slack channel links are indexed by thread
 
