@@ -93,7 +93,7 @@ Refs #1253
 ### MCP `2026-07-28` requests are held to their revision
 
 - **Changed:** Each MCP request is placed in its revision. A `2026-07-28` request (that revision in `MCP-Protocol-Version`, or in `params._meta` with no header) must carry `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` in `_meta`, an `Mcp-Method` header, and an `Mcp-Name` header where the method names a target. A refusal is a JSON-RPC error with the request's id and HTTP 400: -32602 for missing `_meta` keys, -32020 for a missing or mismatched header, and -32022 with `requested` and `supported` for an unsupported revision. `initialize`, `ping`, `logging/setLevel`, `resources/subscribe` and `resources/unsubscribe` answer 404 with -32601 on that revision, as does an unknown method. Requests on earlier revisions are unchanged.
-- **Changed:** The official conformance suite passes 101 of 167 `2026-07-28` checks (from 78). The rest are fixture scenarios, features Maidan does not declare, and the optional tasks extension.
+- **Changed:** The official conformance suite passes 102 of 167 `2026-07-28` checks (from 78). The rest are fixture scenarios, features Maidan does not declare, and the optional tasks extension.
 
 ### `maidan mcp-stdio` speaks only JSON-RPC on stdout
 
