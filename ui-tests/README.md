@@ -57,6 +57,7 @@ Specs that drive a real page, and what is still missing.
 | First-run sign-in (Enter, Sign in, no credential yet) | `first-run-sign-in.spec.ts` | |
 | Needs you when a load fails (refused, unreachable, recovery) | `needs-you-truth.spec.ts` | |
 | Needs you blocked tasks (Unblock, its failures, a second workspace) | `needs-you-blocked.spec.ts` | Blocks the seeded `hold` task itself and clears it after each test |
+| Needs you questions (an agent's `needs_input`, its heading, Answer and the reply that clears it) | `needs-you-question.spec.ts` | Asks the question on the seeded `ask` task itself, as the deployer; the reply clears it |
 | Prefs (delivery mode, email, mute, follow) | `prefs.spec.ts` | |
 | Slash commands (register, revoke) | `slash.spec.ts` | MCP tool handler. An http handler needs an encryption key the harness does not set |
 | Delivery replay | `deliveries.spec.ts` | One seeded dead-letter webhook |

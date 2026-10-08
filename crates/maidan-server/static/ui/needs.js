@@ -55,6 +55,9 @@ import { answerGate } from "./tools.js";
           // The request an agent just handed over is the obvious row. Older
           // ones stay, behind it, so a stale review is not the first button.
           items.sort((a, b) => {
+            const ag = nyGroup(a.kind);
+            const bg = nyGroup(b.kind);
+            if (ag.order !== bg.order) return ag.order - bg.order;
             const ar = a.kind === "review_request";
             const br = b.kind === "review_request";
             if (ar && br) return String(b.since).localeCompare(String(a.since));
@@ -143,7 +146,21 @@ import { answerGate } from "./tools.js";
               : "Agents are waiting on your decision. The latest request is first.")
           : "";
         setAttention(n);
+        // The queue splits into what needs a decision, an action and an
+        // answer. With one kind of wait there is nothing to tell apart, so the
+        // headings show only when there are two or more.
+        const headed = new Set(needsYou.map((i) => nyGroup(i.kind).order)).size > 1;
+        let group = null;
         needsYou.forEach((item) => {
+          const g = nyGroup(item.kind);
+          if (headed && g !== group) {
+            const head = document.createElement("li");
+            head.className = "ny-group";
+            head.setAttribute("role", "presentation");
+            head.textContent = g.label;
+            list.appendChild(head);
+            group = g;
+          }
           const k = nyKey(item);
           list.appendChild(keep.get(k) || needsYouRow(item));
           keep.delete(k);
@@ -151,13 +168,25 @@ import { answerGate } from "./tools.js";
         keep.forEach((li) => list.appendChild(li));
         // A queue with nothing in it is one quiet line. A row the human is
         // still using (a change note, a Close task) keeps the box.
-        const empty = list.children.length === 0;
+        const empty = list.querySelector(".ny-item") === null;
         box.classList.toggle("clear", empty);
         document.getElementById("needs-you-quiet").hidden = !empty;
         document.getElementById("needs-you-head").hidden = empty;
         if (empty) box.removeAttribute("aria-labelledby");
         else box.setAttribute("aria-labelledby", "needs-you-title");
         renderTeam([...threadsById.values()]);
+      }
+
+      const NY_GROUPS = {
+        decision: { order: 0, label: "Needs your decision" },
+        action: { order: 1, label: "Needs your action" },
+        question: { order: 2, label: "An agent asked" },
+      };
+
+      function nyGroup(kind) {
+        if (kind === "blocked") return NY_GROUPS.action;
+        if (kind === "question") return NY_GROUPS.question;
+        return NY_GROUPS.decision;
       }
 
       function nyKey(item) {
@@ -173,7 +202,7 @@ import { answerGate } from "./tools.js";
         if (item.primary) li.classList.add("ny-primary");
         const kind = document.createElement("span");
         kind.className = `ny-kind${item.kind === "open_gate" ? " gate" : ""}`;
-        kind.textContent = item.kind === "open_gate" ? "Approval" : item.kind === "blocked" ? "Blocked" : "Review";
+        kind.textContent = { open_gate: "Approval", blocked: "Blocked", question: "Question" }[item.kind] || "Review";
         const main = document.createElement("div");
         main.className = "ny-main";
         const title = document.createElement("div");
@@ -183,7 +212,10 @@ import { answerGate } from "./tools.js";
         // A review row leads with the task. (The task of a gate shows as context.)
         const isGate = item.kind === "open_gate";
         const block = item.kind === "blocked" ? splitBlockSummary(item.summary) : null;
-        title.textContent = isGate ? item.summary : (th && th.title) || (block && block.title) || item.summary;
+        const asked = item.kind === "question" ? splitQuestionSummary(item) : null;
+        title.textContent = isGate
+          ? item.summary
+          : (th && th.title) || (block && block.title) || (asked && asked.title) || item.summary;
         if (item.thread_id) {
           title.onclick = () => selectThread(item.thread_id, (th && th.title) || title.textContent);
           keyActivates(title, "link"); // it opens the task
@@ -257,6 +289,23 @@ import { answerGate } from "./tools.js";
             scheduleBoardRefresh();
           };
           actions.append(clear);
+        } else if (item.kind === "question") {
+          // The agent's question is what the human answers; a reply in the
+          // thread clears it, so Answer opens the thread at the composer.
+          const q = document.createElement("span");
+          q.className = "ny-question";
+          q.textContent = asked.question;
+          sub.append(q, when);
+          const answer = document.createElement("button");
+          answer.type = "button";
+          answer.className = "primary";
+          answer.textContent = "Answer";
+          answer.onclick = () => {
+            selectThread(item.thread_id, (th && th.title) || asked.title);
+            const compose = document.getElementById("compose-body");
+            if (compose) compose.focus();
+          };
+          actions.append(answer);
         } else {
           const view = pendingGateViews.get(item.gate_id);
           if (view && view.gate.requested_by) sub.append("asked by ", personEl(view.gate.requested_by));
@@ -300,6 +349,17 @@ import { answerGate } from "./tools.js";
         const at = s.indexOf(" — blocked");
         if (at < 0) return { title: s, why: s };
         return { title: s.slice(0, at), why: s.slice(at + 3) };
+      }
+
+      // A question's summary is "title: question", and `detail` is the
+      // question alone. A title can hold ": " itself, so the title is what is
+      // left once the known question is taken off the end.
+      function splitQuestionSummary(item) {
+        const s = String(item.summary || "");
+        const question = String(item.detail || "");
+        const tail = `: ${question}`;
+        if (question && s.endsWith(tail)) return { title: s.slice(0, -tail.length), question };
+        return { title: s, question: question || s };
       }
 
       // Who handed the work off and what they reported, from the result. A

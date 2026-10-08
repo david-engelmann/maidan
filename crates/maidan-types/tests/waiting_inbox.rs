@@ -69,7 +69,16 @@ fn assembles_excludes_terminal_sorts_and_flags_overdue() {
     let gates = vec![gate(200)];
     let mentions = vec![mention(50)];
 
-    let inbox = assemble_waiting_inbox(&assigned, &[], &[], &gates, &mentions, &[], now, sla);
+    let inbox = assemble_waiting_inbox(
+        &WaitingSources {
+            assigned: &assigned,
+            pending_gates: &gates,
+            unread_mentions: &mentions,
+            ..Default::default()
+        },
+        now,
+        sla,
+    );
 
     // 2 live threads + 1 gate + 1 mention = 4 items (the 3 excluded threads drop).
     assert_eq!(inbox.total, 4);
@@ -90,7 +99,7 @@ fn assembles_excludes_terminal_sorts_and_flags_overdue() {
 
 #[test]
 fn empty_sources_yield_an_empty_inbox() {
-    let inbox = assemble_waiting_inbox(&[], &[], &[], &[], &[], &[], Utc::now(), 3600);
+    let inbox = assemble_waiting_inbox(&WaitingSources::default(), Utc::now(), 3600);
     assert_eq!(inbox.total, 0);
     assert_eq!(inbox.overdue, 0);
     assert!(inbox.items.is_empty());
@@ -106,12 +115,10 @@ fn a_requested_review_waits_since_the_thread_last_changed() {
     let closed = thread(ThreadState::Closed, false, 9000);
 
     let inbox = assemble_waiting_inbox(
-        &[],
-        &[review.clone(), closed],
-        &[],
-        &[],
-        &[],
-        &[],
+        &WaitingSources {
+            review_requests: &[review.clone(), closed],
+            ..Default::default()
+        },
         now,
         3600,
     );
@@ -147,7 +154,14 @@ fn a_human_blocked_thread_waits_as_blocked_with_its_note() {
     };
     let blocked = vec![(tid, Some("Deploy to prod".into()), Some(owner), block)];
 
-    let inbox = assemble_waiting_inbox(&[], &[], &[], &[], &[], &blocked, now, 3600);
+    let inbox = assemble_waiting_inbox(
+        &WaitingSources {
+            blocked: &blocked,
+            ..Default::default()
+        },
+        now,
+        3600,
+    );
 
     assert_eq!(inbox.total, 1);
     let item = &inbox.items[0];
@@ -170,7 +184,14 @@ fn a_review_with_no_reviewer_waits_as_an_unassigned_review() {
     review.updated_at = now - Duration::seconds(120);
     let closed = thread(ThreadState::Closed, false, 9000);
 
-    let inbox = assemble_waiting_inbox(&[], &[], &[review.clone(), closed], &[], &[], &[], now, 60);
+    let inbox = assemble_waiting_inbox(
+        &WaitingSources {
+            unassigned_reviews: &[review.clone(), closed],
+            ..Default::default()
+        },
+        now,
+        60,
+    );
 
     assert_eq!(inbox.total, 1, "a closed thread waits on nobody");
     let item = &inbox.items[0];
@@ -181,5 +202,51 @@ fn a_review_with_no_reviewer_waits_as_an_unassigned_review() {
     assert_eq!(
         serde_json::to_value(item.kind).unwrap(),
         serde_json::json!("unassigned_review")
+    );
+}
+
+#[test]
+fn an_agents_question_waits_since_it_was_asked_and_names_the_question() {
+    let now = Utc::now();
+    let tid = ThreadId(uuid::Uuid::now_v7());
+    let asker = MemberId(uuid::Uuid::now_v7());
+    let questions = vec![(
+        tid,
+        Some("Migrate the billing table".to_string()),
+        None,
+        ThreadStatusDeclaration {
+            thread_id: tid,
+            status: DeclaredStatus::NeedsInput,
+            note: "Should the old column be dropped or kept for a release?".into(),
+            declared_by: asker,
+            declared_at: now - Duration::seconds(7200),
+        },
+    )];
+    let inbox = assemble_waiting_inbox(
+        &WaitingSources {
+            questions: &questions,
+            ..Default::default()
+        },
+        now,
+        3600,
+    );
+
+    assert_eq!(inbox.total, 1);
+    let item = &inbox.items[0];
+    assert_eq!(item.kind, WaitingKind::Question);
+    assert_eq!(item.thread_id, Some(tid));
+    assert_eq!(
+        item.summary,
+        "Migrate the billing table: Should the old column be dropped or kept for a release?"
+    );
+    assert_eq!(
+        item.detail.as_deref(),
+        Some("Should the old column be dropped or kept for a release?"),
+        "the question on its own, so a title holding \": \" cannot split it"
+    );
+    assert!(item.overdue, "aged from when the agent asked");
+    assert_eq!(
+        serde_json::to_value(item.kind).unwrap(),
+        serde_json::json!("question")
     );
 }

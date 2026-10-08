@@ -1375,6 +1375,19 @@ does. A thread over any budget stays out of `claim_next` until someone raises
 that budget with `update_thread_budget` (or clears the cap). Raising
 `max_wall_secs` is how a thread a hung claim spent comes back.
 
+### Asking a person a question
+
+When the work needs an answer only a person can give, ask with `declare_status
+{thread_id, status: "needs_input", note}` (REST `PUT /threads/:id/status`,
+`thread:transition`), with the question as the one-sentence note. You must hold
+the claim or own the thread. The question reaches a person's waiting inbox as a
+`question` item (`get_waiting_inbox`, `GET /members/:id/waiting`, and Needs you
+in the console), whose `summary` is the thread's title and the question and
+whose `detail` is the question alone. It goes to the thread's owner, or to the workspace's admins
+when the thread has no owner or you own it, and never back to you or to anyone
+who cannot open the thread. A person's reply in the thread clears the
+declaration, and the question leaves the inbox. Read the answer from the thread.
+
 ### Linking evidence to a thread
 
 Attach what a reviewer should look at with `link_thread_artifact {thread_id,

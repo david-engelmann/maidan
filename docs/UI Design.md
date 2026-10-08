@@ -71,9 +71,9 @@ Selectors today: `#shell`, `aside`, `#channel-list`, `#live-panel`, `#ws-status`
 
 Primary action: **Approve** on the first row (review) or the gate. **Request changes**, **Approve with note** and **Decline** are ghosts. While a note is open, its button (**Send back**, or **Approve** for an approval note) is the only filled button. Send back stays disabled until the note has text, and an approval note may stay empty. After approval, **Close task** replaces Approve as the only filled button. This button behavior is already on main. Do not rebuild it.
 
-Selectors: `#needs-you`, `#needs-you-quiet`, `#needs-you-head`, `#needs-you-state`, `#needs-you-title`, `#needs-you-count`, `#needs-you-list`, `.ny-item`, `.ny-kind`, `.ny-title`, `.ny-actions`, `.ny-note`, `.ny-err`. Built by `renderNeedsYou` / `needsYouRow`.
+Selectors: `#needs-you`, `#needs-you-quiet`, `#needs-you-head`, `#needs-you-state`, `#needs-you-title`, `#needs-you-count`, `#needs-you-list`, `.ny-group`, `.ny-item`, `.ny-kind`, `.ny-title`, `.ny-question`, `.ny-actions`, `.ny-note`, `.ny-err`. Built by `renderNeedsYou` / `needsYouRow`.
 
-The count may stay a number beside the title. It is not a badge on each row. The warm head shows only when the list is non-empty. A load that fails is never an empty or hidden queue: `#needs-you-state` under the head says what to fix (a refusal, in `--err`) or "Stale since HH:MM: could not reach the server. Reconnecting…" (muted), the last rows and the tab count stay, and the next good load hides the line.
+When more than one kind waits, the list splits under `.ny-group` headings, "Needs your decision" (reviews and gates), "Needs your action" (blocked tasks) and "An agent asked" (an agent's `needs_input` question, whose primary is **Answer**, opening the thread at the composer). The count may stay a number beside the title. It is not a badge on each row. The warm head shows only when the list is non-empty. A load that fails is never an empty or hidden queue: `#needs-you-state` under the head says what to fix (a refusal, in `--err`) or "Stale since HH:MM: could not reach the server. Reconnecting…" (muted), the last rows and the tab count stay, and the next good load hides the line.
 
 ### Thread
 

@@ -452,6 +452,8 @@
       .ny-item { display: grid; grid-template-columns: auto 1fr auto; gap: 0.35rem 0.75rem; align-items: center; padding: 0.6rem 0.9rem; border-top: 1px solid var(--line); }
       .ny-item:first-child { border-top: none; }
       .ny-kind { font-size: 12px; font-weight: 400; color: #63636c; white-space: nowrap; }
+      .ny-group { padding: 0.5rem 0.9rem 0.15rem; font-size: 0.72rem; font-weight: 600; color: var(--muted); border-top: 1px solid var(--line); }
+      .ny-group:first-child, .ny-group + .ny-item { border-top: none; }
       .ny-main { min-width: 0; }
       .ny-title { font-weight: 650; font-size: 0.9rem; color: var(--ink); cursor: pointer; }
       .ny-title:hover { text-decoration: underline; }

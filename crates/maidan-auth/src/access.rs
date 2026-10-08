@@ -9,7 +9,8 @@
 
 use maidan_store::Store;
 use maidan_types::{
-    ChannelId, MemberId, MessageId, Thread, ThreadId, WorkspaceId, DM_CHANNEL_NAME,
+    ChannelId, MemberId, MessageId, Thread, ThreadBlock, ThreadId, ThreadStatusDeclaration,
+    WorkspaceId, DM_CHANNEL_NAME,
 };
 
 use crate::{AuthContext, AuthError};
@@ -188,20 +189,18 @@ pub async fn can_access_thread(
     }
 }
 
-/// The reviews that name no reviewer and fall to `member_id`: those it owns,
-/// and, when it is a workspace admin, those nobody owns. A workspace admin is a
-/// member holding a live `token:admin` token, or the caller itself acting with
-/// `token:admin` (a session carries no token row). Every thread is filtered by
-/// the caller's access, so a private channel's review never reaches someone who
-/// cannot open it.
-pub async fn visible_unassigned_reviews(
+/// Whether `member_id` is a workspace admin for what falls to admins: a member
+/// holding a live `token:admin` token, or the caller itself acting with
+/// `token:admin` (a session carries no token row). A delegate's grant never
+/// lends it.
+async fn is_workspace_admin(
     store: &dyn Store,
     auth: &AuthContext,
     workspace_id: WorkspaceId,
     member_id: MemberId,
-) -> Result<Vec<Thread>, AuthError> {
+) -> Result<bool, AuthError> {
     let now = chrono::Utc::now();
-    let is_admin = auth.bypass
+    Ok(auth.bypass
         || (auth.member_id == member_id && auth.has_capability(crate::TOKEN_ADMIN))
         || (auth.delegation_grant_id.is_none()
             && store
@@ -212,7 +211,20 @@ pub async fn visible_unassigned_reviews(
                     t.revoked_at.is_none()
                         && t.expires_at.is_none_or(|at| at > now)
                         && t.capabilities.iter().any(|c| c == crate::TOKEN_ADMIN)
-                }));
+                })))
+}
+
+/// The reviews that name no reviewer and fall to `member_id`: those it owns,
+/// and, when it is a workspace admin, those nobody owns. Every thread is
+/// filtered by the caller's access, so a private channel's review never
+/// reaches someone who cannot open it.
+pub async fn visible_unassigned_reviews(
+    store: &dyn Store,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<Vec<Thread>, AuthError> {
+    let is_admin = is_workspace_admin(store, auth, workspace_id, member_id).await?;
     let mut visible = Vec::new();
     for thread in store
         .list_unassigned_reviews(workspace_id, member_id, is_admin)
@@ -223,6 +235,50 @@ pub async fn visible_unassigned_reviews(
         }
     }
     Ok(visible)
+}
+
+/// A thread waiting on a human: its id, title, owner, and why.
+pub type HumanWait<T> = (ThreadId, Option<String>, Option<MemberId>, T);
+
+/// What waits on a human and reaches `member_id`.
+#[derive(Debug, Default)]
+pub struct HumanWaits {
+    /// Threads blocked on a human or a gate.
+    pub blocked: Vec<HumanWait<ThreadBlock>>,
+    /// Agents' questions (`needs_input`).
+    pub questions: Vec<HumanWait<ThreadStatusDeclaration>>,
+}
+
+/// The blocked threads and agents' questions that reach `member_id`. A thread
+/// reaches its owner, and one with no owner reaches the workspace's admins. A
+/// question the owner asked itself also goes to the admins, since the asker
+/// cannot be the one to answer. Every thread is filtered by the caller's
+/// access, so a private channel's wait never reaches someone who cannot open it.
+pub async fn visible_human_waits(
+    store: &dyn Store,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<HumanWaits, AuthError> {
+    let is_admin = is_workspace_admin(store, auth, workspace_id, member_id).await?;
+    let mut waits = HumanWaits::default();
+    for (tid, title, owner, block) in store.list_human_gate_blocked_threads(workspace_id).await? {
+        let reaches = owner == Some(member_id) || (owner.is_none() && is_admin);
+        if reaches && (auth.bypass || can_access_thread(store, auth, tid).await?) {
+            waits.blocked.push((tid, title, owner, block));
+        }
+    }
+    for (tid, title, owner, question) in store.list_threads_needing_input(workspace_id).await? {
+        if question.declared_by == member_id {
+            continue;
+        }
+        let answerer = owner.filter(|o| *o != question.declared_by);
+        let reaches = answerer == Some(member_id) || (answerer.is_none() && is_admin);
+        if reaches && (auth.bypass || can_access_thread(store, auth, tid).await?) {
+            waits.questions.push((tid, title, owner, question));
+        }
+    }
+    Ok(waits)
 }
 
 /// A message's resolved location, returned by [`authorize_message`]. Mirrors the

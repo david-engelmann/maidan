@@ -350,6 +350,36 @@ async fn main() {
         .await
         .expect("hold owner");
 
+    // A task the operator owns and the deployer agent holds, for the
+    // Question row in Needs you. The spec asks the question itself (an answer
+    // clears it), so a retry starts from the same place.
+    let ask = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "ask".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ask channel");
+    let ask_thread = store
+        .create_thread(NewThread {
+            channel_id: ask.id,
+            parent_thread_id: None,
+            title: Some("Asked: where the replica runs".into()),
+            description: None,
+        })
+        .await
+        .expect("ask thread");
+    store
+        .set_thread_owner(ask_thread.id, Some(member.id))
+        .await
+        .expect("ask owner");
+    store
+        .claim_thread(ask_thread.id, requester.id)
+        .await
+        .expect("ask claim");
+
     // A second workspace, so a spec can show that one workspace sees nothing
     // of another. Its member owns a task that is already blocked, which its
     // own Needs you lists and the first workspace's never does.
@@ -590,6 +620,7 @@ async fn main() {
                 capability::WORKSPACE_READ.into(),
                 capability::WORKSPACE_WRITE.into(),
                 capability::MESSAGE_POST.into(),
+                capability::THREAD_TRANSITION.into(),
             ],
             expires_at: None,
         })
@@ -744,6 +775,8 @@ async fn main() {
         "triage_ownerless_thread_id": triage_threads[1].id.0.to_string(),
         "hold_channel_id": hold.id.0.to_string(),
         "hold_thread_id": hold_thread.id.0.to_string(),
+        "ask_channel_id": ask.id.0.to_string(),
+        "ask_thread_id": ask_thread.id.0.to_string(),
         "second_workspace_id": second_ws.id.0.to_string(),
         "second_member_id": stranger.id.0.to_string(),
         "second_token": second_secret.as_str(),

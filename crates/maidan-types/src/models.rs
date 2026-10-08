@@ -2231,6 +2231,10 @@ pub enum WaitingKind {
     /// reaches anyone. It waits on the thread's owner, or, when it has none,
     /// on the workspace's admins.
     UnassignedReview,
+    /// An agent declared `needs_input`: it asked a question and waits for a
+    /// human to answer in the thread. It reaches the thread's owner, or the
+    /// workspace's admins when the thread has no owner or the owner asked.
+    Question,
 }
 
 /// One thing waiting on a member — with its age and whether it has breached the
@@ -2246,6 +2250,10 @@ pub struct WaitingItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_id: Option<MessageId>,
     pub summary: String,
+    /// The part of `summary` a reader acts on, when it has one: an agent's
+    /// question, which `summary` puts after the thread's title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
     pub since: DateTime<Utc>,
     pub age_secs: i64,
     pub overdue: bool,
@@ -2290,28 +2298,55 @@ fn waiting_item(
         gate_id,
         message_id,
         summary,
+        detail: None,
         since,
         age_secs,
         overdue: age_secs > sla_secs,
     }
 }
 
-/// Assemble a member's waiting-on-you inbox from its sources: their
-/// assigned **non-terminal** threads, the reviews requested from them, the
-/// reviews that name no reviewer and fall to them, the workspace's pending
-/// approval gates (they need a human), and their unread mentions. Pure — the
-/// caller fetches the sources and filters them by access and read state; items
-/// come back oldest-waiting first, each aged against `sla_secs`.
+/// What waits on one member, already fetched and filtered by the caller for
+/// access, read state and routing. An omitted source is empty.
+#[derive(Debug, Default)]
+pub struct WaitingSources<'a> {
+    /// Their assigned threads; terminal ones are skipped.
+    pub assigned: &'a [Thread],
+    /// The reviews requested from them.
+    pub review_requests: &'a [Thread],
+    /// The reviews that name no reviewer and fall to them.
+    pub unassigned_reviews: &'a [Thread],
+    /// The workspace's pending approval gates (they need a human).
+    pub pending_gates: &'a [ApprovalGate],
+    /// Their unread mentions.
+    pub unread_mentions: &'a [Mention],
+    /// Threads blocked on a human or a gate that reach them.
+    pub blocked: &'a [(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)],
+    /// Agents' questions (`needs_input`) that reach them.
+    pub questions: &'a [(
+        ThreadId,
+        Option<String>,
+        Option<MemberId>,
+        ThreadStatusDeclaration,
+    )],
+}
+
+/// Assemble a member's waiting-on-you inbox from its sources. Pure: the
+/// caller fetches the sources and filters them; items come back
+/// oldest-waiting first, each aged against `sla_secs`.
 pub fn assemble_waiting_inbox(
-    assigned: &[Thread],
-    review_requests: &[Thread],
-    unassigned_reviews: &[Thread],
-    pending_gates: &[ApprovalGate],
-    unread_mentions: &[Mention],
-    blocked: &[(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)],
+    sources: &WaitingSources<'_>,
     now: DateTime<Utc>,
     sla_secs: i64,
 ) -> WaitingInbox {
+    let WaitingSources {
+        assigned,
+        review_requests,
+        unassigned_reviews,
+        pending_gates,
+        unread_mentions,
+        blocked,
+        questions,
+    } = *sources;
     let mut items = Vec::new();
     for t in assigned {
         if t.state.is_terminal() || t.tombstoned_at.is_some() {
@@ -2407,6 +2442,24 @@ pub fn assemble_waiting_inbox(
             now,
             sla_secs,
         ));
+    }
+    for (tid, title, _owner, declaration) in questions {
+        let mut item = waiting_item(
+            WaitingKind::Question,
+            Some(*tid),
+            None,
+            None,
+            title
+                .clone()
+                .unwrap_or_else(|| "(untitled thread)".to_string())
+                + ": "
+                + &declaration.note,
+            declaration.declared_at,
+            now,
+            sla_secs,
+        );
+        item.detail = Some(declaration.note.clone());
+        items.push(item);
     }
     items.sort_by(|a, b| a.since.cmp(&b.since));
     let overdue = items.iter().filter(|i| i.overdue).count();

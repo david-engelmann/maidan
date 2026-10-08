@@ -1833,6 +1833,11 @@ Refs #1253
 - **Added:** `POST /channels/{id}/threads` accepts an optional `description` and stores it on the thread. Unknown fields are rejected with 400.
 - **Tests:** a Playwright spec double-clicks Add task and asserts exactly one task appears; Rust tests cover the blank-title 422, the unknown-field 400, the persisted description, and idempotent `/ui/api` thread creation.
 
+### An agent's question reaches a person
+
+- **Added:** A `question` item in the waiting inbox (`get_waiting_inbox`, `GET /members/:id/waiting`) for each thread whose agent declared `needs_input`, with the thread's title and the question as its `summary` and the question alone as its new `detail`. It reaches the thread's owner, or the workspace's admins when the thread has no owner or the owner asked, and never the asker or anyone who cannot open the thread. A person's reply in the thread clears it.
+- **Changed:** Needs you in the console shows those questions, with Answer opening the thread at the composer, and splits the queue under "Needs your decision", "Needs your action" and "An agent asked" when more than one kind waits.
+
 ### A thread has a version, and evidence linked by hash
 
 - **Added:** A thread's version (`get_thread_version`, `GET /threads/:id/version`) counts the writes to its messages, result, title and description, and linked artifacts. Database triggers move it, so no write path can change that content without it. It is the first part of evidence-bound approvals (Open Work Next 3), where a decision names the version it was shown.
