@@ -75,18 +75,20 @@ change.
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
   not required.
 
-## Current state (2026-10-01)
+## Current state (2026-10-08)
 
 - **Releases:** latest **`v412.0.0`**. Release tags are cut when the
   maintainer chooses, not per cluster, so some clusters were never tagged
   (v23–26, v78–100, v311, v350–401, v403, v411); their work ships in the next
   tag. `main` is well ahead of `v412.0.0`. Tagging is the maintainer's call.
-- **Program C, context economics, leads the queue** (Open Work Next 2 to 6;
-  design in [`docs/Context Economics.md`](docs/Context%20Economics.md), research
-  in `docs/archive/Context Economics research 2026-10/`). Partial work for
-  three items is on `wip/context-pack-cache-stable`,
-  `wip/mcp-cache-hints-discover` and `wip/workspace-queue-depth`: unreviewed,
-  based on `bd360306`, rebase before building on them.
+- **The queue is led by approvals.** Open Work Next 17 makes accepting a gate
+  a property of the credential (a browser session, `approval:grant`, or a
+  confirmation outside the model), because the answer route accepts any token
+  whose member is a human. Then `approval_decide`, which the maintainer chose on
+  2026-10-08, and the OAuth authorization server (Next 23). Next 3's evidence
+  tiers finish the approval card. Program C's C1 to C4 shipped, and its pilot runs
+  under a runner-enforced cap. Most `wip/` branches hold work that has since
+  shipped: check the Open Work row they name before building on one.
 - **Do not point anyone at a deploy yet.** No deploy path runs a release with
   the week's cross-tenant fixes: the release pins name `v412.0.0`, and some
   paths run `dev`, `latest`, `v315.0.0` or `v0.0.1`. Open Work's **Before anyone
