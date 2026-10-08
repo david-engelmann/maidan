@@ -267,7 +267,7 @@ async fn a_hand_off_to_review_pins_what_was_handed_over() {
     let (addr, client, store) = spawn().await;
     let base = format!("http://{addr}");
     let (ws, worker, token, thread) = tenant(store.as_ref(), "a").await;
-    let (_, _, other_token, _) = tenant(store.as_ref(), "b").await;
+    let (other_ws, _, other_token, other_thread) = tenant(store.as_ref(), "b").await;
     let t = thread.0;
     let held = HELD.to_ascii_lowercase();
     store.record_artifact_ref(ws, &held).await.unwrap();
@@ -315,6 +315,90 @@ async fn a_hand_off_to_review_pins_what_was_handed_over() {
     let manifest: maidan_types::EvidenceManifest =
         serde_json::from_value(packet["manifest"].clone()).unwrap();
     assert_eq!(packet["evidence_root"], manifest.root().unwrap());
+    let result_sha = maidan_types::result_sha256(&result).unwrap();
+    assert_eq!(
+        packet["manifest"]["attestations"],
+        json!([
+            {"kind": "result", "sha256": result_sha, "tier": "self_reported", "attested_by": worker.0},
+            {"kind": "artifact", "sha256": held, "tier": "self_reported", "attested_by": worker.0},
+        ]),
+        "the worker's own result and link"
+    );
+    assert_eq!(packet["self_reported_only"], true);
+
+    // The console reads the same packet through its session proxy.
+    let (s, via_ui) = call(
+        &client,
+        Method::GET,
+        format!("{base}/ui/api/threads/{t}/review-packet"),
+        &token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{via_ui}");
+    assert_eq!(via_ui, packet);
+
+    // The other workspace hands its own thread over with a link from a member
+    // who never worked it: attached, and no warning.
+    let o = other_thread.0;
+    let linker = store
+        .create_member(NewMember {
+            workspace_id: other_ws,
+            handle: "reviewer".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id;
+    store
+        .record_artifact_ref(other_ws, ELSEWHERE)
+        .await
+        .unwrap();
+    store
+        .link_thread_artifact(other_thread, ELSEWHERE, linker)
+        .await
+        .unwrap();
+    store
+        .transition_thread(other_thread, linker, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .unwrap();
+    let (s, theirs) = call(
+        &client,
+        Method::GET,
+        format!("{base}/ui/api/threads/{o}/review-packet"),
+        &other_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{theirs}");
+    assert_eq!(
+        theirs["manifest"]["attestations"],
+        json!([{"kind": "artifact", "sha256": ELSEWHERE, "tier": "attached", "attested_by": linker.0}])
+    );
+    assert_eq!(theirs["self_reported_only"], false);
+    for route in ["threads", "ui/api/threads"] {
+        let (s, _) = call(
+            &client,
+            Method::GET,
+            format!("{base}/{route}/{o}/review-packet"),
+            &token,
+        )
+        .await;
+        assert!(
+            matches!(s, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+            "/{route}: the first workspace reads no packet of the second's: {s}"
+        );
+    }
+    let (s, _) = call(
+        &client,
+        Method::GET,
+        format!("{base}/ui/api/threads/{t}/review-packet"),
+        &other_token,
+    )
+    .await;
+    assert!(
+        matches!(s, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+        "/ui/api: another workspace reads no packet: {s}"
+    );
 
     let (s, _) = call(
         &client,
@@ -344,4 +428,9 @@ async fn a_hand_off_to_review_pins_what_was_handed_over() {
     let text = resp["result"]["content"][0]["text"].as_str().unwrap();
     let via_mcp: Value = serde_json::from_str(text).unwrap();
     assert_eq!(via_mcp["evidence_root"], packet["evidence_root"]);
+    assert_eq!(
+        via_mcp["manifest"]["attestations"],
+        packet["manifest"]["attestations"]
+    );
+    assert_eq!(via_mcp["self_reported_only"], true);
 }

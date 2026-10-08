@@ -4,14 +4,14 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    is_qualifying_pass, land_gate_standing, resolve_land, standing_land, LandColor,
-    LandGatePointer, LandGateStanding, LandGateStatus, LandGateVerdict, MemberId, RecordedLandGate,
-    ThreadId, LAND_GATE_SKILL,
+    land_gate_standing, resolve_land, standing_land, LandColor, LandGatePointer, LandGateStanding,
+    LandGateStatus, LandGateVerdict, MemberId, RecordedLandGate, ThreadId, LAND_GATE_SKILL,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use super::thread_workers;
+use crate::attestation::{GateReading, RecordedPass};
 use crate::error::StoreError;
 
 fn artifact_sha_opt(raw: Option<&str>) -> Result<Option<String>, StoreError> {
@@ -188,15 +188,16 @@ pub(crate) async fn clear_on(
     Ok(done.rows_affected() > 0)
 }
 
-/// Refuse `closed` when a LandGate row exists and is not a qualifying green
-/// pass. Runs on the transition's own tx so it cannot be raced. No row →
-/// additive (close as before).
-pub async fn gate_in_tx(
+/// The thread's land-gate row as the close gate reads it, on the caller's
+/// transaction: the close gate refuses on it, and a hand-off reads it to tier
+/// the evidence, so both judge a pass the same way.
+pub(crate) async fn read_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
-) -> Result<(), StoreError> {
+) -> Result<GateReading, StoreError> {
     let row = sqlx::query(
-        "SELECT s.status, s.land, s.recorded_by, s.recorded_actor_id, t.owner_id, t.assignee_id
+        "SELECT s.status, s.land, s.artifact_sha, s.recorded_by, s.recorded_actor_id,
+                t.owner_id, t.assignee_id
          FROM maidan_thread_land_gate s
          JOIN maidan_threads t ON t.id = s.thread_id
          WHERE s.thread_id = $1",
@@ -205,7 +206,7 @@ pub async fn gate_in_tx(
     .fetch_optional(&mut **tx)
     .await?;
     let Some(row) = row else {
-        return Ok(());
+        return Ok(GateReading::Unarmed);
     };
     let owner_id = row.get::<Option<Uuid>, _>("owner_id").map(MemberId);
     let assignee_id = row.get::<Option<Uuid>, _>("assignee_id").map(MemberId);
@@ -224,11 +225,7 @@ pub async fn gate_in_tx(
                 .ok_or_else(|| StoreError::InvalidInput(format!("unknown land color: {land_s}")))?;
             (status, land, recorded_by)
         }
-        _ => {
-            return Err(StoreError::Conflict(
-                "land gate required: no pass recorded".into(),
-            ));
-        }
+        _ => return Ok(GateReading::Pending),
     };
     let skilled: bool = sqlx::query_scalar(
         "SELECT EXISTS (
@@ -257,25 +254,44 @@ pub async fn gate_in_tx(
         }
         None => false,
     };
-    let worked = worked || actor_conflict;
-    if is_qualifying_pass(
+    Ok(GateReading::Recorded(RecordedPass {
         status,
         land,
         recorded_by,
+        artifact_sha: row.get("artifact_sha"),
         owner_id,
         assignee_id,
-        worked,
+        worked: worked || actor_conflict,
         skilled,
-    ) {
+    }))
+}
+
+/// Refuse `closed` when a LandGate row exists and is not a qualifying green
+/// pass. Runs on the transition's own tx so it cannot be raced. No row →
+/// additive (close as before).
+pub async fn gate_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    let pass = match read_in_tx(tx, thread_id).await? {
+        GateReading::Unarmed => return Ok(()),
+        GateReading::Pending => {
+            return Err(StoreError::Conflict(
+                "land gate required: no pass recorded".into(),
+            ));
+        }
+        GateReading::Recorded(pass) => pass,
+    };
+    if pass.qualifies() {
         return Ok(());
     }
     let verdict = standing_land(
-        Some(&LandGatePointer::new(status, None, land)),
-        Some(recorded_by),
-        owner_id,
-        assignee_id,
-        worked,
-        skilled,
+        Some(&LandGatePointer::new(pass.status, None, pass.land)),
+        Some(pass.recorded_by),
+        pass.owner_id,
+        pass.assignee_id,
+        pass.worked,
+        pass.skilled,
         true,
     );
     Err(StoreError::Conflict(format!(

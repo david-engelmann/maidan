@@ -1065,7 +1065,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_review_packet",
-            "description": "What the thread's current review was handed, recorded when it went to review: the thread version, the result's content hash and the linked artifacts' hashes, with the evidence root over them. Null before any review. Requires workspace:read.",
+            "description": "What the thread's current review was handed, recorded when it went to review: the thread version, the result's content hash and the linked artifacts' hashes, with the evidence root over them. Each item carries an attestation tier judged at the hand-off: verified (a land-gate pass the close gate accepts), attached (linked by a member who never worked the thread) or self_reported (a worker's own result or link). self_reported_only is true when every item is self-reported. Null before any review. Requires workspace:read.",
             "annotations": {
                 "title": "Get review packet",
                 "readOnlyHint": true,

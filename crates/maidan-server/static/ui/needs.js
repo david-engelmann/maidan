@@ -578,6 +578,12 @@ import { answerGate } from "./tools.js";
         const packet = read.packet;
         const manifest = packet.manifest || {};
         const shas = Array.isArray(manifest.artifacts) ? manifest.artifacts : [];
+        // Each item's tier was judged by the server at the hand-off and is in
+        // the root. A packet from before tiers has none, and shows none.
+        const attestations = Array.isArray(manifest.attestations) ? manifest.attestations : [];
+        const ofKind = (k) => attestations.filter((a) => a && a.kind === k);
+        const artifactTiers = ofKind("artifact");
+        const gates = ofKind("land_gate");
         li.dataset.evidenceRoot = packet.evidence_root;
         // The approve buttons wait for a root; a retry that loads one turns them on.
         if (packet.evidence_root) {
@@ -591,7 +597,15 @@ import { answerGate } from "./tools.js";
         root.dataset.root = packet.evidence_root;
         head.append("Evidence ", root);
         box.appendChild(head);
-        if (!manifest.result && !shas.length) {
+        if (packet.self_reported_only === true) {
+          // The server decides when to warn; the page only says so.
+          const warn = document.createElement("div");
+          warn.className = "ny-ev-warn";
+          warn.setAttribute("role", "note");
+          warn.textContent = "Self-reported only: all of this evidence comes from the task's own workers. Nothing was attached by anyone else or verified by a land gate.";
+          box.appendChild(warn);
+        }
+        if (!manifest.result && !shas.length && !gates.length) {
           box.dataset.state = "empty";
           const empty = document.createElement("span");
           empty.className = "ny-ev-empty";
@@ -612,6 +626,7 @@ import { answerGate } from "./tools.js";
           kind.className = "ny-ev-kind";
           kind.textContent = "result";
           r.append(kind, hashEl(manifest.result.sha256, "ny-ev-hash"), " produced by ", personEl(manifest.result.produced_by, { avatar: false, tag: true }));
+          appendTier(r, ofKind("result")[0]);
           list.appendChild(r);
         }
         const rows = shas.map((sha) => {
@@ -624,9 +639,44 @@ import { answerGate } from "./tools.js";
           list.appendChild(a);
           return a;
         });
+        for (const gate of gates) {
+          const g = document.createElement("li");
+          g.className = "ny-ev-item";
+          g.dataset.ev = "land_gate";
+          const kind = document.createElement("span");
+          kind.className = "ny-ev-kind";
+          kind.textContent = "land-gate pass";
+          g.appendChild(kind);
+          if (gate.sha256) g.append(hashEl(gate.sha256, "ny-ev-hash"));
+          g.append(" recorded by ", personEl(gate.attested_by, { avatar: false, tag: true }));
+          appendTier(g, gate);
+          list.appendChild(g);
+        }
         const metas = await Promise.all(shas.map(evidenceMeta));
-        shas.forEach((sha, i) => renderEvidenceArtifact(rows[i], sha, metas[i]));
+        shas.forEach((sha, i) => {
+          renderEvidenceArtifact(rows[i], sha, metas[i]);
+          appendTier(rows[i], artifactTiers.find((a) => a.sha256 === sha) || artifactTiers[i]);
+        });
         renderDecider(li);
+      }
+
+      const TIER_TEXT = {
+        verified: ["verified", "A land-gate pass the close gate accepts"],
+        attached: ["attached", "Linked by a member who never worked the task"],
+        self_reported: ["self-reported", "The work's own account: from a member who worked the task"],
+      };
+
+      // One item's attestation tier, as the server recorded it. An unknown
+      // tier is shown by its wire name rather than dropped.
+      function appendTier(row, attestation) {
+        if (!attestation || !attestation.tier) return;
+        const [text, title] = TIER_TEXT[attestation.tier] || [String(attestation.tier), ""];
+        const tier = document.createElement("span");
+        tier.className = "ny-ev-tier";
+        tier.dataset.tier = String(attestation.tier);
+        tier.textContent = text;
+        if (title) tier.title = title;
+        row.appendChild(tier);
       }
 
       // Who uploaded the bytes and when, from the workspace's own metadata.

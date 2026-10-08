@@ -165,6 +165,73 @@ pub struct EvidenceManifest {
     pub result: Option<ResultEvidence>,
     /// Linked artifacts' sha256 hashes, sorted.
     pub artifacts: Vec<String>,
+    /// How far each piece of evidence can be trusted, judged once at the
+    /// hand-off and part of the root, so an approval names the tiers it was
+    /// shown as well as the evidence. Empty on packets recorded before tiers
+    /// existed, which serialize (and so hash) exactly as they did.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attestations: Vec<EvidenceAttestation>,
+}
+
+/// How far a piece of evidence can be trusted, from strongest to weakest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AttestationTier {
+    /// Checked by someone independent of the work: a qualifying land-gate pass.
+    Verified,
+    /// Put in front of the reviewers by a member who never held the thread.
+    Attached,
+    /// The work's own account of itself: a worker's result, or an artifact a
+    /// worker linked.
+    SelfReported,
+}
+
+impl AttestationTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Verified => "verified",
+            Self::Attached => "attached",
+            Self::SelfReported => "self_reported",
+        }
+    }
+}
+
+/// What kind of evidence an attestation is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceKind {
+    /// The thread's result; `sha256` is the result's hash.
+    Result,
+    /// A linked artifact; `sha256` is its hash.
+    Artifact,
+    /// A land-gate pass standing at the hand-off; `sha256` is the artifact
+    /// the pass names, when it names one.
+    LandGate,
+}
+
+/// One piece of evidence and the tier it was given at the hand-off.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EvidenceAttestation {
+    pub kind: EvidenceKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    pub tier: AttestationTier,
+    /// Who put it there: the result's producer, the artifact's linker, or the
+    /// pass's recorder.
+    pub attested_by: MemberId,
+}
+
+/// Whether an approval of this evidence would rest on self-reported evidence
+/// only: there is evidence, and none of it is better than self-reported.
+/// Packets without tiers never warn, because nothing was judged.
+pub fn self_reported_only(attestations: &[EvidenceAttestation]) -> bool {
+    !attestations.is_empty()
+        && attestations
+            .iter()
+            .all(|a| a.tier == AttestationTier::SelfReported)
 }
 
 impl EvidenceManifest {
@@ -175,6 +242,16 @@ impl EvidenceManifest {
         let value = serde_json::to_value(self)
             .map_err(|e| crate::signed_export::SignedExportError::Json(e.to_string()))?;
         Ok(sha256_hex(&crate::signed_export::canonical_json(&value)?))
+    }
+
+    /// Whether `other` holds the same evidence: the same result and the same
+    /// linked artifacts. Tiers are left out on purpose. They were judged at
+    /// the hand-off, and re-judging them later would let a change in who
+    /// worked the thread move them without the evidence moving.
+    pub fn same_evidence(&self, other: &EvidenceManifest) -> bool {
+        self.thread_id == other.thread_id
+            && self.result == other.result
+            && self.artifacts == other.artifacts
     }
 }
 
@@ -208,6 +285,9 @@ pub struct ReviewPacket {
     pub thread_version: i64,
     pub manifest: EvidenceManifest,
     pub evidence_root: String,
+    /// The server's warning: approving this packet would rest on
+    /// self-reported evidence only. Derived from `manifest.attestations`.
+    pub self_reported_only: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -223,6 +303,7 @@ mod packet_tests {
                 produced_by: MemberId(uuid::Uuid::nil()),
             }),
             artifacts: vec!["aa".repeat(32)],
+            attestations: Vec::new(),
         }
     }
 
