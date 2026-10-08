@@ -1375,6 +1375,21 @@ does. A thread over any budget stays out of `claim_next` until someone raises
 that budget with `update_thread_budget` (or clears the cap). Raising
 `max_wall_secs` is how a thread a hung claim spent comes back.
 
+### Linking evidence to a thread
+
+Attach what a reviewer should look at with `link_thread_artifact {thread_id,
+sha256}` (REST `PUT /threads/:id/artifacts/:sha256`, `workspace:write`). Upload
+the artifact first. Only an artifact your workspace holds can be linked, so a
+hash another workspace uploaded is not found. `list_thread_artifacts` (REST
+`GET /threads/:id/artifacts`) reads the links, and `unlink_thread_artifact`
+(REST `DELETE`) removes one.
+
+A thread's version counts the writes to what a reviewer reads of it, which are
+its messages, its result, its title and description, and its links. Read it
+with `get_thread_version` (REST `GET /threads/:id/version`). The database moves
+it on every such write, whichever path made it, so a decision can name the
+version it was shown.
+
 ### 5. Deliver the result
 
 `set_thread_result {thread_id, result}` attaches one structured JSON result to the

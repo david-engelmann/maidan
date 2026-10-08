@@ -1046,6 +1046,80 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "get_thread_version",
+            "description": "How many writes the thread's content has seen: its messages, result, title and description, and linked artifacts. The database moves it on every such write, so a decision can name the version it was shown. Requires workspace:read.",
+            "annotations": {
+                "title": "Get thread version",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_thread_artifacts",
+            "description": "The artifacts linked to the thread as evidence, in the order they were linked, each with who linked it. Requires workspace:read.",
+            "annotations": {
+                "title": "List thread artifacts",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "link_thread_artifact",
+            "description": "Link an artifact your workspace holds to a thread as evidence, by its sha256. Upload it first; a hash your workspace does not hold is not found. Linking twice keeps the first link. Moves the thread's version. Requires workspace:write.",
+            "annotations": {
+                "title": "Link thread artifact",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "sha256": {"type": "string", "description": "the artifact's sha256, hex"}
+                },
+                "required": ["thread_id", "sha256"]
+            }
+        }),
+        json!({
+            "name": "unlink_thread_artifact",
+            "description": "Unlink an artifact from a thread. Returns whether it was linked. Moves the thread's version when it was. Requires workspace:write.",
+            "annotations": {
+                "title": "Unlink thread artifact",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "sha256": {"type": "string", "description": "the artifact's sha256, hex"}
+                },
+                "required": ["thread_id", "sha256"]
+            }
+        }),
+        json!({
             "name": "set_wip_limit",
             "description": "Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.",
             "annotations": {

@@ -1833,6 +1833,11 @@ Refs #1253
 - **Added:** `POST /channels/{id}/threads` accepts an optional `description` and stores it on the thread. Unknown fields are rejected with 400.
 - **Tests:** a Playwright spec double-clicks Add task and asserts exactly one task appears; Rust tests cover the blank-title 422, the unknown-field 400, the persisted description, and idempotent `/ui/api` thread creation.
 
+### A thread has a version, and evidence linked by hash
+
+- **Added:** A thread's version (`get_thread_version`, `GET /threads/:id/version`) counts the writes to its messages, result, title and description, and linked artifacts. Database triggers move it, so no write path can change that content without it. It is the first part of evidence-bound approvals (Open Work Next 3), where a decision names the version it was shown.
+- **Added:** `link_thread_artifact`, `unlink_thread_artifact` and `list_thread_artifacts` (REST `PUT`, `DELETE` and `GET` under `/threads/:id/artifacts`) attach an artifact to a thread as evidence. Only an artifact the thread's workspace holds can be linked, and a hash is stored as lowercase hex.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

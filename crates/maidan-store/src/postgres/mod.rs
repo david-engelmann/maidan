@@ -21,6 +21,7 @@ mod egress_targets;
 mod email_digest;
 mod erase_workspace;
 pub mod events;
+mod evidence;
 mod explorer;
 mod follows;
 mod fsm_hooks;
