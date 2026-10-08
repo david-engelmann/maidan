@@ -111,10 +111,10 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId, caps: &[&str
 /// read from `creds` instead of `/creds/agent.json`, the compose mount.
 const HARNESS: &str = r#"
 import pathlib, sys
-recipes = pathlib.Path(sys.argv[1])
+recipes, creds = pathlib.Path(sys.argv[1]), sys.argv[2]
 sys.path.insert(0, str(recipes))
 import maidan_http, deploy_agent
-deploy_agent.from_creds = lambda: maidan_http.from_creds(sys.argv[2])
+deploy_agent.from_creds = lambda: maidan_http.from_creds(creds)
 sys.argv = ["deploy_agent.py", "--once"]
 raise SystemExit(deploy_agent.main())
 "#;
@@ -187,6 +187,7 @@ async fn the_deploy_recipe_opens_and_reads_its_gate_over_mcp_2026_07_28() {
         .arg(HARNESS)
         .arg(&recipes)
         .arg(&creds)
+        .env("MAIDAN_URL", &base)
         .env("POLL_SECS", "0.2")
         .env_remove("DEPLOY_COMMAND")
         .stdout(Stdio::piped())
