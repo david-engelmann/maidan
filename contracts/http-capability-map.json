@@ -937,6 +937,18 @@
   },
   {
     "method": "GET",
+    "path": "/ui/api/threads/{tid}/reviews",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/threads/{tid}/artifacts",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/ui/api/workspaces/{wid}/audit",
     "capability": "workspace:read",
     "surface": "http"

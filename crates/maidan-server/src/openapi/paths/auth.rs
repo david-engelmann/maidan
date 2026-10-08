@@ -10,7 +10,10 @@ use crate::dto::{
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
-use maidan_types::{AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, Workspace};
+use maidan_types::{
+    AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, ThreadArtifact, ThreadReview,
+    Workspace,
+};
 
 /// Start an OIDC login
 #[utoipa::path(
@@ -266,6 +269,50 @@ pub fn ui_list_threads() {}
     )
 )]
 pub fn ui_list_messages() {}
+
+/// List a thread's reviews (console)
+///
+/// The bearer tree's `GET /threads/{id}/reviews` for the console: each
+/// reviewer's current review, so the approval card names who decided after a
+/// reload.
+#[utoipa::path(
+    get,
+    path = "/ui/api/threads/{tid}/reviews",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<ThreadReview>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_list_reviews() {}
+
+/// List a thread's linked artifacts (console)
+///
+/// The bearer tree's `GET /threads/{id}/artifacts` for the console: who linked
+/// each artifact to the thread and when, so the approval card can say so and
+/// flag an artifact the packet pinned that the thread no longer links.
+#[utoipa::path(
+    get,
+    path = "/ui/api/threads/{tid}/artifacts",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<ThreadArtifact>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_list_thread_artifacts() {}
 
 /// Search a workspace's messages (console)
 #[utoipa::path(
