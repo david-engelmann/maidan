@@ -10027,7 +10027,10 @@ mod tests {
             .unwrap()
             .workspace_id;
         let notifier = Arc::new(maidan_bus::InMemoryResourceNotifier::new());
-        let ttl = std::time::Duration::from_millis(300);
+        // Long enough that upkeep runs its four passes per TTL (300 ms each)
+        // rather than three at its 100 ms floor, so a loaded runner that
+        // delays one pass does not lapse a subscription a listener holds.
+        let ttl = std::time::Duration::from_millis(1200);
         let a = replica(&server, &notifier, ttl);
         let b = replica(&server, &notifier, ttl);
         let alice = member_auth(member_id, ws);
