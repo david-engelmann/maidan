@@ -316,12 +316,22 @@ async fn member_with_token(
     handle: &str,
     caps: &[&str],
 ) -> (maidan_types::MemberId, String) {
+    member_of_kind_with_token(store, ws, handle, caps, MemberKind::Human).await
+}
+
+async fn member_of_kind_with_token(
+    store: &Arc<dyn Store>,
+    ws: maidan_types::WorkspaceId,
+    handle: &str,
+    caps: &[&str],
+    kind: MemberKind,
+) -> (maidan_types::MemberId, String) {
     let member = store
         .create_member(NewMember {
             workspace_id: ws,
             handle: handle.into(),
             display_name: None,
-            kind: MemberKind::Human,
+            kind,
         })
         .await
         .unwrap();
@@ -599,10 +609,19 @@ async fn an_agents_question_reaches_its_owner_or_an_admin_until_a_human_answers(
         member_with_token(&store, ws, "owner", &["workspace:read", "message:post"]).await;
     let (bystander, bystander_auth) =
         member_with_token(&store, ws, "bystander", &["workspace:read"]).await;
-    let (agent, agent_auth) = member_with_token(&store, ws, "agent", &["workspace:read"]).await;
+    let (agent, agent_auth) =
+        member_of_kind_with_token(&store, ws, "agent", &["workspace:read"], MemberKind::Agent)
+            .await;
     let (other_admin, other_admin_auth) =
         member_with_token(&store, other, "admin", &["workspace:read", "token:admin"]).await;
-    let (other_agent, _) = member_with_token(&store, other, "agent", &["workspace:read"]).await;
+    let (other_agent, _) = member_of_kind_with_token(
+        &store,
+        other,
+        "agent",
+        &["workspace:read"],
+        MemberKind::Agent,
+    )
+    .await;
 
     let owned = asked(&store, ws, agent, "owned", false).await;
     store.set_thread_owner(owned, Some(owner)).await.unwrap();
@@ -614,6 +633,13 @@ async fn an_agents_question_reaches_its_owner_or_an_admin_until_a_human_answers(
         .unwrap();
     asked(&store, ws, agent, "private", true).await;
     asked(&store, other, other_agent, "tenant b", false).await;
+    // A person may declare needs_input on a task they hold; it is not an
+    // agent's question and reaches nobody.
+    let by_person = asked(&store, ws, bystander, "a person asked", false).await;
+    store
+        .set_thread_owner(by_person, Some(owner))
+        .await
+        .unwrap();
 
     assert_eq!(
         questions(&client, &base, &owner_auth, owner).await,

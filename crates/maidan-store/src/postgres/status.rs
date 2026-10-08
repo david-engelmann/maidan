@@ -160,6 +160,7 @@ pub async fn list_needs_input(
          FROM maidan_thread_status s
          JOIN maidan_threads t ON t.id = s.thread_id
          JOIN maidan_channels c ON c.id = t.channel_id
+         JOIN maidan_members m ON m.id = s.declared_by AND m.kind = 'agent'
          WHERE c.workspace_id = $1
            AND s.status = 'needs_input'
            AND t.tombstoned_at IS NULL

@@ -2055,7 +2055,8 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<(ThreadId, Option<String>, Option<MemberId>, ThreadBlock)>, StoreError>;
     /// Threads whose agent declared `needs_input` in a workspace, with their
-    /// declarations. For the waiting inbox: an agent's question waits on a
+    /// declarations. A person's own `needs_input` is not an agent's question,
+    /// so only a declaration by an agent member is listed. For the waiting inbox: an agent's question waits on a
     /// human until someone answers in the thread. Returns (thread_id, title,
     /// owner_id, declaration), oldest question first.
     async fn list_threads_needing_input(

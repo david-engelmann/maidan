@@ -84,6 +84,25 @@ async fn run_suite(store: &dyn Store) {
     tokio::time::sleep(Duration::from_millis(5)).await;
     let second =
         thread_with_status(store, channel, agent, "second", DeclaredStatus::NeedsInput).await;
+    // A person holding a task may declare needs_input too; that is not an
+    // agent's question.
+    let person = store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: "person".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("person");
+    thread_with_status(
+        store,
+        channel,
+        person.id,
+        "asked by a person",
+        DeclaredStatus::NeedsInput,
+    )
+    .await;
     let (other_channel, other_agent) = (channels[1].1, agents[1]);
     thread_with_status(
         store,
@@ -106,7 +125,7 @@ async fn run_suite(store: &dyn Store) {
             (second, Some("second"), None, "second?"),
         ],
         "this workspace's open questions, oldest first; not another status, \
-         not a closed thread, not another workspace's"
+         not a closed thread, not a person's, not another workspace's"
     );
 
     store.clear_thread_status(first).await.expect("clear");
