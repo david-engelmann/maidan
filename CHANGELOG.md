@@ -30,6 +30,10 @@ Refs #1253
 
 - **Tests:** the seven inline Node harnesses in `crates/maidan-server/tests/ui_js_contract.rs` now start from one shared prelude that stubs `api` and `writeApi`. A write through `writeApi`, or a non-GET through `api`, is recorded and refused, and the harness exits non-zero naming each write, even when the page function catches the error and paints a sentence. Before, `writeApi` was undefined there, so a page function that wrote and caught its own failure passed. A contract test checks that every inline harness in the file runs with the prelude (Open Work, "Found reviewing #1273 to #1275").
 
+### An approval in the console can say why
+
+- **Added:** A Needs you review row has **Approve with note**. It opens the same note row as Request changes, with an optional note and an Approve button, and the note is recorded on the review. One-click Approve is unchanged, and an owner whose approval does not count sees neither.
+
 ### Approval gates are accepted by humans
 
 - **Changed:** accepting an approval gate (`POST /approval-gates/{id}/answer`, `accept`) needs the member the token acts as to be a human, or the token to hold the new `approval:grant` capability. A delegate acting for a human passes. Before, `workspace:write` was enough, so one worker agent could accept another's gate with no human involved. Declining and cancelling are unchanged.
