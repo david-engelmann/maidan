@@ -660,9 +660,9 @@ fn ui_js_puts_the_decisions_agents_wait_on_first() {
     assert!(
         s.contains("uiReadPath(`/members/${me}/waiting`)")
             && s.contains(
-                "new Set([\"review_request\", \"unassigned_review\", \"open_gate\", \"blocked\"])"
+                "new Set([\"review_request\", \"unassigned_review\", \"open_gate\", \"blocked\", \"question\"])"
             ),
-        "the queue reads the waiting inbox and keeps the decisions and actions: reviews, unassigned reviews, gates and blocks"
+        "the queue reads the waiting inbox and keeps the decisions, actions and questions: reviews, unassigned reviews, gates, blocks and agents' questions"
     );
     assert!(
         s.contains("apiWritePath(`/threads/${tid}/reviews`)")
@@ -911,7 +911,7 @@ fn ui_js_socket_retries_with_backoff_ignores_replaced_sockets_and_stops_on_refus
 fn ui_js_gate_rows_lead_with_the_question() {
     let s = script(HTML);
     assert!(
-        s.contains("title.textContent = isGate ? item.summary : (th && th.title) || (block && block.title) || item.summary;"),
+        s.contains("title.textContent = isGate\n          ? item.summary\n          : (th && th.title) || (block && block.title) || (asked && asked.title) || item.summary;"),
         "a gate row shows the question being approved, not only its task title"
     );
 }
@@ -1788,9 +1788,9 @@ fn ui_js_state_is_a_word_not_a_pill() {
     let row = function_body(js, "needsYouRow");
     assert!(
         row.contains(
-            "kind.textContent = item.kind === \"open_gate\" ? \"Approval\" : item.kind === \"blocked\" ? \"Blocked\" : \"Review\""
+            "kind.textContent = { open_gate: \"Approval\", blocked: \"Blocked\", question: \"Question\" }[item.kind] || \"Review\""
         ),
-        "a needs-you row says Review, Approval or Blocked"
+        "a needs-you row says Review, Approval, Blocked or Question"
     );
 }
 

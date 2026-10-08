@@ -663,48 +663,23 @@ pub async fn get_member_waiting(
         .into_iter()
         .filter(|m| m.created_at > last_read)
         .collect::<Vec<_>>();
-    // Human/gate-blocked threads need owner or admin attention. A thread
-    // reaches its owner; a thread with no owner reaches workspace admins.
-    let mut blocked = Vec::new();
-    {
-        let now = chrono::Utc::now();
-        let is_admin = auth.bypass
-            || (auth.member_id == MemberId(id) && auth.has_capability(maidan_auth::TOKEN_ADMIN))
-            || (auth.delegation_grant_id.is_none()
-                && state
-                    .store
-                    .list_api_tokens_for_member(member.workspace_id, MemberId(id))
-                    .await?
-                    .iter()
-                    .any(|t| {
-                        t.revoked_at.is_none()
-                            && t.expires_at.is_none_or(|at| at > now)
-                            && t.capabilities.iter().any(|c| c == maidan_auth::TOKEN_ADMIN)
-                    }));
-        for (tid, title, owner, block) in state
-            .store
-            .list_human_gate_blocked_threads(member.workspace_id)
-            .await?
-        {
-            let for_owner = owner == Some(MemberId(id));
-            let for_admin = owner.is_none() && is_admin;
-            if for_owner || for_admin {
-                // Access-filter: don't show threads the caller can't open.
-                if auth.bypass
-                    || maidan_auth::can_access_thread(state.store.as_ref(), &auth, tid).await?
-                {
-                    blocked.push((tid, title, owner, block));
-                }
-            }
-        }
-    }
+    let waits = maidan_auth::visible_human_waits(
+        state.store.as_ref(),
+        &auth,
+        member.workspace_id,
+        MemberId(id),
+    )
+    .await?;
     Ok(Json(assemble_waiting_inbox(
-        &assigned,
-        &reviews,
-        &unassigned,
-        &gates,
-        &unread,
-        &blocked,
+        &WaitingSources {
+            assigned: &assigned,
+            review_requests: &reviews,
+            unassigned_reviews: &unassigned,
+            pending_gates: &gates,
+            unread_mentions: &unread,
+            blocked: &waits.blocked,
+            questions: &waits.questions,
+        },
         chrono::Utc::now(),
         sla,
     )))

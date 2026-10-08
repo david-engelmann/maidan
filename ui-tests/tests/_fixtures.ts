@@ -41,6 +41,9 @@ export interface Fixtures {
   /** The `hold` channel: a task the operator owns, unblocked until a spec blocks it. */
   hold_channel_id: string;
   hold_thread_id: string;
+  /** The `ask` channel: a task the operator owns and the deployer holds; a spec asks its question. */
+  ask_channel_id: string;
+  ask_thread_id: string;
   /** A second workspace, for showing one workspace sees nothing of another's blocks. */
   second_workspace_id: string;
   second_member_id: string;

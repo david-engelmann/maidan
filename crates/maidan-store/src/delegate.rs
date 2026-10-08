@@ -2481,6 +2481,21 @@ macro_rules! store_delegations {
                 blocks::list_human_gate_blocked(self.read_pool(), workspace_id).await
             }
 
+            async fn list_threads_needing_input(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<
+                Vec<(
+                    ThreadId,
+                    Option<String>,
+                    Option<MemberId>,
+                    ThreadStatusDeclaration,
+                )>,
+                StoreError,
+            > {
+                status::list_needs_input(self.read_pool(), workspace_id).await
+            }
+
             async fn set_thread_wait(
                 &self,
                 thread_id: ThreadId,

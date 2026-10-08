@@ -142,3 +142,49 @@ pub async fn list_for_channel(
     .await?;
     rows.iter().map(row_to_declaration).collect()
 }
+
+/// Threads in a workspace whose agent declared `needs_input`, with their
+/// titles, owners and declarations, oldest question first. For the waiting
+/// inbox: an agent's question waits on a human until someone answers in the
+/// thread, which clears the declaration.
+pub async fn list_needs_input(
+    pool: &SqlitePool,
+    workspace_id: maidan_types::WorkspaceId,
+) -> Result<
+    Vec<(
+        ThreadId,
+        Option<String>,
+        Option<MemberId>,
+        ThreadStatusDeclaration,
+    )>,
+    StoreError,
+> {
+    let rows = sqlx::query(
+        "SELECT t.title AS t_title, t.owner_id AS t_owner,
+                s.thread_id, s.status, s.note, s.declared_by, s.declared_at
+         FROM maidan_thread_status s
+         JOIN maidan_threads t ON t.id = s.thread_id
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = ?
+           AND s.status = 'needs_input'
+           AND t.tombstoned_at IS NULL
+           AND t.state NOT IN ('closed', 'archived')
+         ORDER BY s.declared_at, s.thread_id",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let declaration = row_to_declaration(row)?;
+        let title: Option<String> = row.get("t_title");
+        let owner: Option<Uuid> = row.get("t_owner");
+        out.push((
+            declaration.thread_id,
+            title,
+            owner.map(MemberId),
+            declaration,
+        ));
+    }
+    Ok(out)
+}

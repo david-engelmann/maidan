@@ -505,6 +505,187 @@ async fn a_review_nobody_was_named_for_reaches_its_owner_or_an_admin_and_no_one_
     server.abort();
 }
 
+async fn questions(
+    client: &reqwest::Client,
+    base: &str,
+    auth: &str,
+    member: maidan_types::MemberId,
+) -> Vec<String> {
+    let inbox: serde_json::Value = client
+        .get(format!("{base}/members/{}/waiting", member.0))
+        .header("Authorization", auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let mut asked: Vec<String> = inbox["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|i| i["kind"] == "question")
+        .map(|i| i["summary"].as_str().unwrap().to_string())
+        .collect();
+    asked.sort();
+    asked
+}
+
+/// A thread whose agent holds the claim and asks a question.
+async fn asked(
+    store: &Arc<dyn Store>,
+    ws: maidan_types::WorkspaceId,
+    agent: maidan_types::MemberId,
+    title: &str,
+    private: bool,
+) -> maidan_types::ThreadId {
+    let ch = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: format!("ch-{}", uuid::Uuid::now_v7()),
+            topic: None,
+            private,
+        })
+        .await
+        .unwrap();
+    if private {
+        store
+            .add_channel_member(ch.id, agent, maidan_types::ChannelMemberRole::Member)
+            .await
+            .unwrap();
+    }
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: ch.id,
+            parent_thread_id: None,
+            title: Some(title.into()),
+            description: None,
+        })
+        .await
+        .unwrap();
+    store.claim_thread(thread.id, agent).await.unwrap();
+    store
+        .declare_thread_status(
+            thread.id,
+            maidan_types::DeclaredStatus::NeedsInput,
+            "which region?".into(),
+            agent,
+        )
+        .await
+        .unwrap();
+    thread.id
+}
+
+/// An agent's question reaches the thread's owner, or a workspace admin when
+/// nobody owns the thread or the owner is the one asking. It never reaches the
+/// asker, a bystander, someone who cannot open the thread, or another
+/// workspace, and a human's answer in the thread takes it off the queue.
+#[tokio::test]
+async fn an_agents_question_reaches_its_owner_or_an_admin_until_a_human_answers() {
+    let (store, base, client, server) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace { name: "a".into() })
+        .await
+        .unwrap()
+        .id;
+    let other = store
+        .create_workspace(NewWorkspace { name: "b".into() })
+        .await
+        .unwrap()
+        .id;
+    let (admin, admin_auth) =
+        member_with_token(&store, ws, "admin", &["workspace:read", "token:admin"]).await;
+    let (owner, owner_auth) =
+        member_with_token(&store, ws, "owner", &["workspace:read", "message:post"]).await;
+    let (bystander, bystander_auth) =
+        member_with_token(&store, ws, "bystander", &["workspace:read"]).await;
+    let (agent, agent_auth) = member_with_token(&store, ws, "agent", &["workspace:read"]).await;
+    let (other_admin, other_admin_auth) =
+        member_with_token(&store, other, "admin", &["workspace:read", "token:admin"]).await;
+    let (other_agent, _) = member_with_token(&store, other, "agent", &["workspace:read"]).await;
+
+    let owned = asked(&store, ws, agent, "owned", false).await;
+    store.set_thread_owner(owned, Some(owner)).await.unwrap();
+    asked(&store, ws, agent, "ownerless", false).await;
+    let self_owned = asked(&store, ws, agent, "asker owns it", false).await;
+    store
+        .set_thread_owner(self_owned, Some(agent))
+        .await
+        .unwrap();
+    asked(&store, ws, agent, "private", true).await;
+    asked(&store, other, other_agent, "tenant b", false).await;
+
+    assert_eq!(
+        questions(&client, &base, &owner_auth, owner).await,
+        vec!["owned: which region?"],
+        "the owner hears the question on its thread, and only that one"
+    );
+    assert_eq!(
+        questions(&client, &base, &admin_auth, admin).await,
+        vec!["asker owns it: which region?", "ownerless: which region?"],
+        "an admin hears an ownerless question and one the owner asked itself; \
+         not the owned one, not the private one, not another workspace's"
+    );
+    assert!(
+        questions(&client, &base, &agent_auth, agent)
+            .await
+            .is_empty(),
+        "the asker is never asked its own question"
+    );
+    assert!(
+        questions(&client, &base, &bystander_auth, bystander)
+            .await
+            .is_empty(),
+        "a member who neither owns nor administers hears nothing"
+    );
+    assert_eq!(
+        questions(&client, &base, &other_admin_auth, other_admin).await,
+        vec!["tenant b: which region?"],
+        "the other workspace's admin hears its own, and nothing of this one"
+    );
+
+    // The MCP tool applies the same rule.
+    let mcp: serde_json::Value = client
+        .post(format!("{base}/mcp"))
+        .header("Authorization", &owner_auth)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "get_waiting_inbox", "arguments": {"member_id": owner.0}}
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let text = mcp.to_string();
+    assert!(
+        text.contains(r#"\"question\""#) && text.contains("owned: which region?"),
+        "{text}"
+    );
+    for hidden in ["ownerless", "asker owns it", "private", "tenant b"] {
+        assert!(!text.contains(hidden), "MCP must not list {hidden}: {text}");
+    }
+
+    // The owner answers in the thread, and the question leaves the queue.
+    let answered = client
+        .post(format!("{base}/threads/{}/messages", owned.0))
+        .header("Authorization", &owner_auth)
+        .json(&serde_json::json!({"body": "us-east-1"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(answered.status(), reqwest::StatusCode::CREATED);
+    assert!(
+        questions(&client, &base, &owner_auth, owner)
+            .await
+            .is_empty(),
+        "an answered question waits on nobody"
+    );
+
+    server.abort();
+}
+
 /// On a thread whose close needs an approval, start_review is refused until a
 /// result is posted, with the fix named. Without a requirement it is not.
 #[tokio::test]
