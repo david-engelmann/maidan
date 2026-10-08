@@ -116,10 +116,11 @@ Object.defineProperty(globalThis, "navigator", {
 
 const { apiReadPath, apiWritePath, requireBearer } = await import("./api.js");
 const { humanError, showError } = await import("./feedback.js");
+const { setIdentityMode } = await import("./feedback.js");
 const { trimImageCache } = await import("./artifacts.js");
 const { registerBrowserPush } = await import("./push.js");
 const session = await import("./session.js");
-const { loadServerAuth, refreshSession, signOutPostsLogout } = session;
+const { credentialMode, loadServerAuth, refreshSession, signOutPostsLogout } = session;
 
 const BASE = "http://127.0.0.1:8080";
 
@@ -305,6 +306,66 @@ describe("board page helpers", { concurrency: 1 }, () => {
       const said = humanError(status, "raw server body");
       assert.equal(said.includes("raw server body"), false);
       assert.equal(said.includes(String(status)), false);
+    }
+  });
+
+  test("credentialMode reads session, bearer, or delegated from /me", () => {
+    assert.equal(credentialMode(null), null);
+    assert.equal(credentialMode({ is_bearer: false, delegation_grant_id: null }), "session");
+    assert.equal(credentialMode({ is_bearer: true, delegation_grant_id: null }), "bearer");
+    assert.equal(credentialMode({ is_bearer: true, delegation_grant_id: "grant_1" }), "delegated");
+  });
+
+  test("humanError names the credential in use and never says token to a session", () => {
+    const refusals = [
+      [401, "unauthorized"],
+      [403, "requires token:admin"],
+      [403, "needs capability thread:write"],
+      [403, "forbidden"],
+      [403, "This needs a bearer token. A signed-in session cannot call it."],
+    ];
+    for (const [status, detail] of refusals) {
+      const said = humanError(status, detail, "session");
+      assert.match(said, /^Your session /, said);
+      assert.doesNotMatch(said, /\byour token\b|\btoken or session\b|in Tokens/i, said);
+      assert.doesNotMatch(humanError(status, detail, "delegated"), /^Your token/, detail);
+      assert.match(humanError(status, detail, "delegated"), /^This delegated token /, detail);
+      assert.match(humanError(status, detail, "bearer"), /^Your token /, detail);
+    }
+    assert.equal(
+      humanError(401, "", "session"),
+      "Your session was not accepted; it may have ended. Sign in again, or use Change to paste a token",
+    );
+    assert.equal(
+      humanError(403, "needs capability thread:write", "session"),
+      "Your session is not allowed to do this; it needs thread:write. A session cannot mint tokens, so use Change to paste a token that has it",
+    );
+    assert.equal(
+      humanError(403, "needs capability thread:write", "delegated"),
+      "This delegated token is not allowed to do this; it needs thread:write. It holds only what its grant lends: ask for a grant that includes it",
+    );
+    assert.equal(humanError(401, "", "bearer"), "Your token was not accepted. Use Change to set a working one");
+    assert.equal(
+      humanError(403, "needs capability thread:write", "bearer"),
+      "Your token is not allowed to do this; it needs thread:write. Mint a token with it in Tokens",
+    );
+    // Not tied to the credential: the same words for everyone.
+    for (const mode of ["session", "bearer", "delegated"]) {
+      assert.equal(humanError(404, "", mode), humanError(404, "", null));
+      assert.equal(humanError(500, "", mode), humanError(500, "", null));
+    }
+  });
+
+  test("humanError follows the mode the page set, and forgets it on reset", () => {
+    setIdentityMode("session");
+    try {
+      assert.match(humanError(403, "forbidden"), /^Your session is not allowed/);
+      setIdentityMode("delegated");
+      assert.match(humanError(403, "forbidden"), /^This delegated token is not allowed/);
+      setIdentityMode("something else");
+      assert.equal(humanError(401, ""), "Your token or session was not accepted. Use Change to set a working one");
+    } finally {
+      setIdentityMode(null);
     }
   });
 });

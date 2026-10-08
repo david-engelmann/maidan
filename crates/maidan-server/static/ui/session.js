@@ -1,7 +1,7 @@
 // @ts-check
 import { api, apiReadPath, apiWritePath, base, headers, pastedToken, persist, token, wid, writeApi } from "./api.js";
 import { loadChannels, setAttention } from "./board.js";
-import { responseError, showError, unreachable } from "./feedback.js";
+import { responseError, setIdentityMode, showError, unreachable } from "./feedback.js";
 import { loadNeedsYou } from "./needs.js";
 import { authorId, personEl } from "./people.js";
 import { connectWs } from "./realtime.js";
@@ -89,6 +89,32 @@ import { tokenKey, wsResumeKey } from "./state.js";
         }
       }
 
+
+      // What GET /me says the page acts with. A session made from a token
+      // carries that token, so /me reports it as a bearer (or delegated) one.
+      function credentialMode(me) {
+        if (!me) return null;
+        if (!me.is_bearer) return "session";
+        return me.delegation_grant_id ? "delegated" : "bearer";
+      }
+
+      const MODE_WORDS = {
+        session: ["session", "Signed-in session: pinned to this member, with a fixed set of capabilities"],
+        bearer: ["bearer token", "Bearer token: acts as this member with the token's capabilities"],
+        delegated: ["delegated token", "Delegated token: works as this member under a grant, with only what the grant lends"],
+      };
+
+      // The header says which credential is in use, and error sentences
+      // name that credential rather than guessing.
+      function showIdentityMode(mode) {
+        setIdentityMode(mode);
+        const el = document.getElementById("identity-mode");
+        const words = mode ? MODE_WORDS[mode] : null;
+        el.hidden = !words;
+        el.textContent = words ? words[0] : "";
+        el.title = words ? words[1] : "";
+        el.dataset.mode = words ? mode : "";
+      }
 
       async function refreshSession() {
         const el = document.getElementById("session-status");
@@ -249,6 +275,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         if (!current()) return;
         if (!exchanged.ok) {
           bearerMemberId = null;
+          showIdentityMode(null);
           status.hidden = false;
           status.className = "err";
           status.textContent = exchanged.error;
@@ -262,6 +289,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         } catch (e) {
           if (current()) {
             forgetBearerMember();
+            showIdentityMode(null);
             status.hidden = false;
             status.className = "err";
             status.textContent = unreachable(e);
@@ -276,6 +304,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
               : await responseError(res, "Could not check that token");
           if (!current()) return;
           forgetBearerMember();
+          showIdentityMode(null);
           status.hidden = false;
           status.className = "err";
           status.textContent = said;
@@ -284,6 +313,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         const identity = await res.json();
         if (!current()) return;
         bearerMemberId = identity.member_id;
+        showIdentityMode(credentialMode(identity));
         if (!wid()) document.getElementById("workspace").value = identity.workspace_id;
         persist();
         // A later success must not leave the previous rejection on screen.
@@ -418,7 +448,10 @@ import { tokenKey, wsResumeKey } from "./state.js";
           }
         }
         await refreshSession();
-        await refreshBearerIdentity();
+        const identity = await refreshBearerIdentity();
+        // A token (pasted, or the session made from one) answered /me; with
+        // none, a session alone is a sign-in.
+        showIdentityMode(identity ? credentialMode(identity) : sessionMemberId ? "session" : null);
         // refreshSession hides the status when there is no session, which
         // would swallow the failure of the token an older page had stored.
         if (storedTokenError) {
@@ -443,4 +476,4 @@ import { tokenKey, wsResumeKey } from "./state.js";
         showConnection(false);
       }
 
-export { bearerMemberId, exchangeToken, forgetBearerMember, loadServerAuth, oidcLoginPath, refreshBearerIdentity, refreshSession, renderIdentity, saveWorkspaceName, serverOffersSessions, sessionMemberId, showConnection, showSecretOnce, signOutPostsLogout, start, tokenSession };
+export { bearerMemberId, credentialMode, exchangeToken, forgetBearerMember, loadServerAuth, oidcLoginPath, refreshBearerIdentity, refreshSession, renderIdentity, saveWorkspaceName, serverOffersSessions, sessionMemberId, showConnection, showIdentityMode, showSecretOnce, signOutPostsLogout, start, tokenSession };
