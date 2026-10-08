@@ -106,6 +106,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "get_priority",
     "get_queue_depth",
     "get_retention_policy",
+    "get_review_packet",
     "get_review_requirement",
     "get_review_status",
     "get_room",
@@ -310,6 +311,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_thread_block"
         | "get_thread_status"
         | "get_thread_version"
+        | "get_review_packet"
         | "list_thread_artifacts"
         | "get_wait"
         | "get_priority"
@@ -826,6 +828,7 @@ async fn enforce_channel_access(
         | "declare_status"
         | "get_thread_status"
         | "get_thread_version"
+        | "get_review_packet"
         | "list_thread_artifacts"
         | "link_thread_artifact"
         | "unlink_thread_artifact"
@@ -976,6 +979,7 @@ pub async fn dispatch(
         "declare_status" => thread::declare_status(server, auth, args).await,
         "get_thread_status" => thread::get_thread_status(store, args).await,
         "get_thread_version" => thread::get_thread_version(store, args).await,
+        "get_review_packet" => thread::get_review_packet(store, args).await,
         "list_thread_artifacts" => thread::list_thread_artifacts(store, args).await,
         "link_thread_artifact" => thread::link_thread_artifact(store, auth, args).await,
         "unlink_thread_artifact" => thread::unlink_thread_artifact(store, args).await,

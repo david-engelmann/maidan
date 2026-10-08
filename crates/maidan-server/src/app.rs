@@ -550,6 +550,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/{id}/version", get(routes::get_thread_version))
         .route(
+            "/threads/{id}/review-packet",
+            get(routes::get_review_packet),
+        )
+        .route(
             "/threads/{id}/artifacts",
             get(routes::list_thread_artifacts),
         )

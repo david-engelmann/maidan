@@ -685,6 +685,12 @@
   },
   {
     "method": "GET",
+    "path": "/threads/{id}/review-packet",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/threads/{id}/version",
     "capability": "workspace:read",
     "surface": "http"

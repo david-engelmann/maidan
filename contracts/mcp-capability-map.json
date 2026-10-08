@@ -70,6 +70,7 @@
   "get_priority": "workspace:read",
   "get_queue_depth": "workspace:read",
   "get_retention_policy": "workspace:read",
+  "get_review_packet": "workspace:read",
   "get_review_requirement": "workspace:read",
   "get_review_status": "workspace:read",
   "get_room": "workspace:read",

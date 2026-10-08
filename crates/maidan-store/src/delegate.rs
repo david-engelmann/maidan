@@ -1756,6 +1756,13 @@ macro_rules! store_delegations {
             ) -> Result<Vec<ThreadArtifact>, StoreError> {
                 evidence::list(self.read_pool(), thread_id).await
             }
+
+            async fn latest_review_packet(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<ReviewPacket>, StoreError> {
+                review_packets::latest(self.pool(), thread_id).await
+            }
         }
     };
     ($store:ty, TaskScheduleStore) => {

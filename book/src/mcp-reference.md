@@ -1716,6 +1716,29 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `get_review_packet`
+
+**Get review packet.** What the thread's current review was handed, recorded when it went to review: the thread version, the result's content hash and the linked artifacts' hashes, with the evidence root over them. Null before any review. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `list_thread_artifacts`
 
 **List thread artifacts.** The artifacts linked to the thread as evidence, in the order they were linked, each with who linked it. Requires workspace:read.

@@ -70,6 +70,7 @@
   "get_priority",
   "get_queue_depth",
   "get_retention_policy",
+  "get_review_packet",
   "get_review_requirement",
   "get_review_status",
   "get_room",

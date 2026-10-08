@@ -1431,6 +1431,12 @@ pub trait ThreadStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadArtifact>, StoreError>;
+    /// The thread's latest review packet: what its current review was handed,
+    /// recorded by `start_review`. `None` before any.
+    async fn latest_review_packet(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<ReviewPacket>, StoreError>;
 }
 
 #[async_trait]

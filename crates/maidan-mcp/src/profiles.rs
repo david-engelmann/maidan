@@ -50,6 +50,7 @@ pub const WORKER_TOOLS: &[&str] = &[
 /// verdict, a reply, and the transition that closes an approved thread.
 pub const REVIEWER_TOOLS: &[&str] = &[
     "get_artifact",
+    "get_review_packet",
     "get_review_status",
     "get_thread_context",
     "get_thread_result",
