@@ -371,7 +371,7 @@ async fn a_plain_human_bearer_gets_the_confirmation_path_not_an_acceptance() {
         "{url}"
     );
     assert!(
-        env.gate(gate.id).await.state.is_resolved() == false,
+        !env.gate(gate.id).await.state.is_resolved(),
         "a bearer's accept resolved the gate"
     );
 

@@ -1244,7 +1244,7 @@ pub struct NewApprovalConfirmation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmOutcome {
     /// The gate is accepted, recorded as decided via the requesting client.
-    Accepted(ApprovalGate),
+    Accepted(Box<ApprovalGate>),
     /// No live confirmation matches: unknown, someone else's, used or
     /// expired. One answer, so nothing about another's link leaks.
     NotFound,

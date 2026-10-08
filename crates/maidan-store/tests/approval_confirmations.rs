@@ -180,6 +180,7 @@ async fn run_suite(store: &dyn Store) {
     let ConfirmOutcome::Accepted(resolved) = outcome else {
         panic!("expected accepted, got {outcome:?}");
     };
+    let resolved = *resolved;
     assert_eq!(resolved.state, ApprovalGateState::Accepted);
     assert_eq!(resolved.resolved_by, Some(approver.id));
     assert_eq!(resolved.decided_via, Some(via));

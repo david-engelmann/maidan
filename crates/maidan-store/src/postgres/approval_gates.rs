@@ -439,7 +439,7 @@ pub async fn confirm(
     let outcome = match gate {
         Some(gate) => {
             super::audit::append_counted(&mut tx, audit(&gate)).await?;
-            ConfirmOutcome::Accepted(gate)
+            ConfirmOutcome::Accepted(Box::new(gate))
         }
         None => ConfirmOutcome::GateResolved,
     };

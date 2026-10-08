@@ -359,7 +359,7 @@ pub async fn confirm_approval_gate(
         )
         .await?;
     match outcome {
-        ConfirmOutcome::Accepted(gate) => Ok(Json(gate)),
+        ConfirmOutcome::Accepted(gate) => Ok(Json(*gate)),
         ConfirmOutcome::NotFound => Err(ApiError::NotFound),
         ConfirmOutcome::GateResolved => Err(ApiError::Conflict("gate is already resolved".into())),
     }

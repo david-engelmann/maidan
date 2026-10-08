@@ -4,13 +4,16 @@ use crate::openapi::responses::*;
 use uuid::Uuid;
 
 use crate::dto::{
-    ConfirmApprovalGate, CreateChannel, CreateMessage, CreateThread, ListAuditQuery, ListEventsQuery,
-    ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse,
-    OidcCallbackQuery, OidcLoginQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
+    ConfirmApprovalGate, CreateChannel, CreateMessage, CreateThread, ListAuditQuery,
+    ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
+    MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, PeerResponse, RenameWorkspace,
+    SearchQuery, SessionResponse,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
-use maidan_types::{ApprovalGate, AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, Workspace};
+use maidan_types::{
+    ApprovalGate, AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, Workspace,
+};
 
 /// Start an OIDC login
 #[utoipa::path(
