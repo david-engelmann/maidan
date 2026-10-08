@@ -26,8 +26,8 @@ can send no token reads a dev instance anonymously instead (see
 | ChatGPT developer mode | None, against a dev instance | None | Yes |
 
 Each row's facts come from the client's own documentation as read on
-2026-10-06, linked in the JSON file. Re-read them each quarter, and when a
-client ships a release that changes how it does MCP.
+2026-10-06 (Gemini CLI's on 2026-10-08), linked in the JSON file. Re-read them
+each quarter, and when a client ships a release that changes how it does MCP.
 
 ## Recipes
 
@@ -78,9 +78,12 @@ it the command defaults to the project's `.gemini/settings.json`, and the shell
 has already expanded the token into the header, so it would sit in plain text
 in the project.
 
-Or in `settings.json`, use `httpUrl`. A plain `url` selects the older SSE
-transport, which Maidan does not serve on this path. Gemini CLI expands
-`${MAIDAN_TOKEN}` in the file from the environment.
+Or in `settings.json`, use `httpUrl`, which is Streamable HTTP in every
+release. Gemini CLI's documentation still describes a plain `url` as the older
+SSE transport, which Maidan does not serve on this path. Release 0.63.0 tries
+Streamable HTTP first for a `url` with no `type` and falls back to SSE, so
+`httpUrl` is the setting that means the same thing everywhere. Gemini CLI
+expands `${MAIDAN_TOKEN}` in the file from the environment.
 
 ```json
 {
@@ -92,6 +95,41 @@ transport, which Maidan does not serve on this path. Gemini CLI expands
   }
 }
 ```
+
+#### As an extension
+
+The repository is a Gemini CLI extension. `gemini-extension.json` at its root
+names the `maidan` MCP server at `${MAIDAN_URL}/mcp/streamable` with the
+header `Authorization: Bearer ${MAIDAN_TOKEN}`, and nothing else. It has no
+host of its own, so the extension connects to whichever instance
+`MAIDAN_URL` names, and the token is read from the environment each time
+Gemini CLI starts, never stored by the install.
+
+```sh
+export MAIDAN_URL=https://maidan.example.com   # your instance, no trailing slash
+export MAIDAN_TOKEN=...                        # a token minted for this agent
+gemini extensions install https://github.com/david-engelmann/maidan
+gemini extensions list
+gemini mcp list
+```
+
+`gemini extensions install` clones the repository into
+`~/.gemini/extensions/maidan` and asks you to confirm before it installs. Add
+`--ref <branch, tag or commit>` to pin a version. Installing from the
+repository URL is the supported path, not the extension gallery: the gallery
+lists only repositories that carry its topic, and its indexer has skipped valid
+repositories before. `gemini extensions update maidan` pulls a newer commit.
+`gemini extensions uninstall maidan` removes it.
+
+The extension also loads [`gemini-extension.md`](../gemini-extension.md) as
+context for the model: the work loop, and that approvals are decided by a
+person signed in to Maidan's console, never in the chat.
+
+If either variable is unset when Gemini CLI starts, the server's URL or header
+keeps the literal `${...}` text and the connection fails, so `gemini mcp list`
+shows `maidan` as disconnected. A server with the same name in your own
+`settings.json` takes precedence over the extension's, so remove the
+`gemini mcp add` entry above if you switch to the extension.
 
 ### GitHub Copilot CLI
 

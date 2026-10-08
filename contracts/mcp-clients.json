@@ -35,9 +35,9 @@
       "endpoint": "/mcp/streamable",
       "elicitation": "none",
       "release_check": false,
-      "note": "httpUrl is Streamable HTTP and url is the older SSE transport, so use httpUrl.",
+      "note": "httpUrl is Streamable HTTP in every release, and the documentation still calls a plain url the older SSE transport, so use httpUrl. The repository root is also a Gemini CLI extension (gemini-extension.json).",
       "source": "https://geminicli.com/docs/tools/mcp-server/",
-      "checked": "2026-10-06"
+      "checked": "2026-10-08"
     },
     {
       "id": "copilot-cli",
