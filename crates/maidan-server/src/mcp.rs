@@ -96,13 +96,24 @@ fn meta_version(request: &JsonRpcRequest) -> Option<&serde_json::Value> {
 
 /// A batch on `2026-07-28`, which has none: the header names that revision,
 /// or with no header an item states it in `_meta`. Refused whole, so no item
-/// skips the checks a single request gets.
-fn batch_is_current(headers: &HeaderMap, items: &[Result<JsonRpcRequest, JsonRpcError>]) -> bool {
+/// skips the checks a single request gets. The raw items are read, not the
+/// decoded ones, so an item that fails to decode (an `id` of null, say) still
+/// says which revision it is on.
+fn batch_is_current(headers: &HeaderMap, body: &[u8]) -> bool {
     match header(headers, "mcp-protocol-version") {
         Some(version) => !LEGACY_VERSIONS.contains(&version),
-        None => items
-            .iter()
-            .any(|item| item.as_ref().is_ok_and(|r| meta_version(r).is_some())),
+        None => serde_json::from_slice::<serde_json::Value>(body)
+            .ok()
+            .and_then(|value| {
+                value.as_array().map(|items| {
+                    items.iter().any(|item| {
+                        item.pointer("/params/_meta")
+                            .and_then(|meta| meta.get(META_PROTOCOL_VERSION))
+                            .is_some()
+                    })
+                })
+            })
+            .unwrap_or(false),
     }
 }
 
@@ -386,7 +397,7 @@ async fn json_rpc(
         // validated per single request, not against an array. Batches belong
         // to the earlier revisions, so a batch keeps their header check.
         Ok(RequestBody::Batch(items)) => {
-            if batch_is_current(&headers, &items) {
+            if batch_is_current(&headers, &body) {
                 let error = JsonRpcError {
                     code: -32600,
                     message: "a batch is not part of protocol version 2026-07-28: send one request per POST".into(),
@@ -647,7 +658,8 @@ mod era_tests {
 
     #[test]
     fn a_batch_is_current_only_when_it_says_so() {
-        let plain = vec![Ok(request("tools/list", json!({})))];
+        let body = |items: serde_json::Value| serde_json::to_vec(&items).unwrap();
+        let plain = body(json!([{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}]));
         assert!(!batch_is_current(&HeaderMap::new(), &plain));
         assert!(!batch_is_current(
             &headers(&[("mcp-protocol-version", "2025-11-25")]),
@@ -657,11 +669,24 @@ mod era_tests {
             &headers(&[("mcp-protocol-version", "2026-07-28")]),
             &plain
         ));
-        let stated = vec![Ok(request(
-            "tools/list",
-            json!({ "_meta": meta("2026-07-28") }),
-        ))];
+        let stated = body(json!([{"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+            "params": {"_meta": meta("2026-07-28")}}]));
         assert!(batch_is_current(&HeaderMap::new(), &stated));
+        // An item that does not decode still names its revision, so its
+        // siblings are not answered on the legacy path.
+        let malformed = body(json!([
+            {"jsonrpc": "2.0", "id": null, "method": "tools/list",
+             "params": {"_meta": meta("2026-07-28")}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
+        ]));
+        assert!(
+            maidan_mcp::protocol::parse_body(&malformed).is_ok_and(|b| matches!(
+                b,
+                RequestBody::Batch(ref items) if items[0].is_err()
+            )),
+            "the first item fails to decode"
+        );
+        assert!(batch_is_current(&HeaderMap::new(), &malformed));
     }
 
     #[test]
