@@ -438,6 +438,9 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "delete_task_schedule"
         | "revoke_slash_command"
         | "revoke_fsm_hook" => Ok(WORKSPACE_WRITE),
+        // The same as answering over REST. Accepting needs more, decided in
+        // the tool: see `approval::approval_decide`.
+        "approval_decide" => Ok(WORKSPACE_WRITE),
         "upload_artifact"
         | "begin_artifact_multipart"
         | "upload_artifact_multipart_part"
@@ -923,6 +926,7 @@ pub async fn dispatch(
     auth: &AuthContext,
     name: &str,
     args: &Value,
+    call: &crate::call_context::CallContext,
 ) -> Result<Value, McpError> {
     check_argument_scope(auth, name, args)?;
     enforce_channel_access(server, auth, name, args).await?;
@@ -1203,6 +1207,7 @@ pub async fn dispatch(
         }
         "request_approval" => approval::request_approval(server, auth, args).await,
         "get_approval_gate" => approval::get_approval_gate(server, auth, args).await,
+        "approval_decide" => approval::approval_decide(server, auth, args, call).await,
         "whoami" => whoami::whoami(auth).await,
         "list_capability_sets" => room::list_capability_sets().await,
         "parse_maidan_uri" => room::parse_maidan_uri(args).await,

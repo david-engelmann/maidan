@@ -111,6 +111,7 @@ async fn main() {
             requested_by: requester.id,
             prompt: "Deploy v9 to prod?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .expect("gate");
@@ -544,6 +545,7 @@ async fn main() {
             requested_by: mallory.id,
             prompt: format!("Prompt {XSS}"),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .expect("lab gate");
