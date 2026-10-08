@@ -1458,8 +1458,9 @@ A reviewer who wants changes does not reject the thread; they send it back.
 `submit_review {thread_id, decision: "request_changes", note}` (REST
 `POST /threads/:id/reviews`) on a thread in `in_review` returns it to `open`
 when the reviewer is its owner, or a reviewer whose approval would count: not
-someone who worked it and, when the thread names reviewers, one of them. In the
-same transaction:
+someone who worked it and, when the thread names reviewers, one of them. The
+note says what to change, and a `request_changes` without one is refused (REST
+400, MCP -32602). In the same transaction:
 
 - the thread is claimable again, so the next `claim_next_thread` on the channel
   hands it to a worker;

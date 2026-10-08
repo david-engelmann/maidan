@@ -489,6 +489,12 @@ import { answerGate } from "./tools.js";
         send.type = "button";
         send.className = "primary";
         send.textContent = "Send back";
+        // A change request says what to change, so there is nothing to send
+        // until the note does.
+        send.disabled = true;
+        input.oninput = () => {
+          send.disabled = !input.value.trim();
+        };
         // The note is the decision for this row now, so Approve stops being the
         // filled button until the note is dismissed.
         li.querySelectorAll(".ny-actions button.primary").forEach((b) => {
