@@ -138,6 +138,7 @@ async fn member_token(store: &dyn Store, ws: WorkspaceId, handle: &str) -> Strin
                 capability::WORKSPACE_WRITE.into(),
                 capability::MESSAGE_POST.into(),
                 capability::ARTIFACT_UPLOAD.into(),
+                capability::THREAD_TRANSITION.into(),
             ],
             expires_at: None,
         })
@@ -166,6 +167,25 @@ impl Harness {
             .unwrap();
         assert!(resp.status().is_success(), "{path}: {}", resp.status());
         resp.json().await.unwrap()
+    }
+
+    /// A thread transition over REST, returning the status and the body.
+    async fn transition(
+        &self,
+        token: &str,
+        thread_id: &str,
+        action: &str,
+    ) -> (reqwest::StatusCode, String) {
+        let resp = self
+            .client
+            .post(format!("{}/threads/{thread_id}", self.base))
+            .bearer_auth(token)
+            .json(&json!({ "action": action }))
+            .send()
+            .await
+            .unwrap();
+        let status = resp.status();
+        (status, resp.text().await.unwrap())
     }
 
     async fn rpc(&self, token: &str, method: &str, params: Value) -> Value {
@@ -383,6 +403,93 @@ async fn a_private_thread_is_heard_only_by_members_of_its_channel(h: &Harness) {
             "a member outside the private channel heard about its thread: {got}"
         );
     }
+}
+
+/// A refused close over REST is a new notice message on the thread, so it
+/// notifies that thread's subscribers the way the MCP twin does, and nobody
+/// in another workspace.
+async fn a_rest_close_refusal_is_heard_by_its_own_workspace_only(h: &Harness) {
+    let ws_a = workspace(h.store.as_ref(), "close-alpha").await;
+    let ws_b = workspace(h.store.as_ref(), "close-bravo").await;
+    let token_a = member_token(h.store.as_ref(), ws_a, "close-alpha-agent").await;
+    let token_b = member_token(h.store.as_ref(), ws_b, "close-bravo-agent").await;
+    let thread_a = h.thread(&token_a, ws_a, false).await;
+    let thread_b = h.thread(&token_b, ws_b, false).await;
+    let thread_uri = format!("maidan://threads/{thread_a}");
+
+    // One approval is required and none is given, so close is refused.
+    let tid = maidan_types::ThreadId(uuid::Uuid::parse_str(&thread_a).unwrap());
+    let owner = h.store.get_thread(tid).await.unwrap().owner_id.unwrap();
+    h.store.set_review_requirement(tid, 1).await.unwrap();
+    h.store
+        .set_thread_result(tid, owner, &json!({ "done": true }))
+        .await
+        .unwrap();
+
+    let mut listen_a = h.listen(&token_a, "/mcp/notifications").await;
+    let mut listen_b = h.listen(&token_b, "/mcp/notifications").await;
+    let mut listen_b_get = h.listen(&token_b, "/mcp/streamable").await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert!(h.subscribe(&token_a, &thread_uri).await["error"].is_null());
+    for uri in [
+        format!("maidan://workspaces/{}", ws_b.0),
+        format!("maidan://threads/{thread_b}"),
+    ] {
+        assert!(h.subscribe(&token_b, &uri).await["error"].is_null());
+    }
+
+    // Going to review notifies A once; wait for it so the next update can only
+    // come from the refusal.
+    let (status, body) = h.transition(&token_a, &thread_a, "start_review").await;
+    assert!(status.is_success(), "start_review: {status} {body}");
+    let got = listen_a.collect(&thread_uri, Duration::from_secs(5)).await;
+    assert!(got.contains(&thread_uri), "A missed start_review: {got}");
+
+    let (status, body) = h.transition(&token_a, &thread_a, "close").await;
+    assert_eq!(status, reqwest::StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("review requirement not met"), "{body}");
+    let notices = h
+        .store
+        .list_messages(tid, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|m| m.metadata["notice"] == "transition_refused")
+        .count();
+    assert_eq!(notices, 1, "the refusal was not recorded on the thread");
+
+    let got_a = listen_a.collect(&thread_uri, Duration::from_secs(5)).await;
+    assert!(
+        got_a.contains(&thread_uri),
+        "A's subscriber missed the close refusal: {got_a}"
+    );
+    for (name, listener) in [
+        ("notifications", &mut listen_b),
+        ("streamable", &mut listen_b_get),
+    ] {
+        let got = listener.collect(UPDATED, Duration::from_millis(800)).await;
+        assert!(
+            !got.contains(UPDATED),
+            "B's {name} listener heard tenant A's close refusal: {got}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_rest_close_refusal_is_heard_by_its_own_workspace_only_on_sqlite() {
+    let h = sqlite_harness().await;
+    a_rest_close_refusal_is_heard_by_its_own_workspace_only(&h).await;
+    h.server.abort();
+}
+
+#[tokio::test]
+async fn a_rest_close_refusal_is_heard_by_its_own_workspace_only_on_postgres() {
+    let Some((_container, h)) = postgres_harness().await else {
+        return;
+    };
+    a_rest_close_refusal_is_heard_by_its_own_workspace_only(&h).await;
+    h.server.abort();
 }
 
 #[tokio::test]
