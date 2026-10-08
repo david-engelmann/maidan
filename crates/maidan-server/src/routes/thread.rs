@@ -1059,6 +1059,85 @@ pub async fn get_thread_status(
     }
 }
 
+/// `GET /threads/:id/version`: how many writes the thread's content has seen
+/// (messages, result, title and description, linked artifacts). A decision
+/// names the version it was shown. `workspace:read` + thread access.
+pub async fn get_thread_version(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<ThreadVersion>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let version = state.store.thread_version(thread_id).await?;
+    Ok(Json(ThreadVersion { thread_id, version }))
+}
+
+/// `GET /threads/:id/artifacts`: the artifacts linked to the thread as
+/// evidence, in the order they were linked. `workspace:read` + thread access.
+pub async fn list_thread_artifacts(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<Vec<ThreadArtifact>>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    Ok(Json(state.store.list_thread_artifacts(thread_id).await?))
+}
+
+/// A sha256 path segment in its one stored form, lowercase hex. A malformed
+/// one is a 400, not an artifact that does not exist.
+fn canonical_sha256(hex: &str) -> Result<String, ApiError> {
+    maidan_artifacts::Sha256::from_hex(hex)
+        .map(|sha| sha.to_hex())
+        .map_err(|e| ApiError::BadRequest(e.to_string()))
+}
+
+/// `PUT /threads/:id/artifacts/:sha256`: link an artifact the thread's
+/// workspace holds to the thread. `404` when the workspace holds no artifact
+/// with that hash. `200` with the link, new or already there.
+/// `workspace:write` + thread access.
+pub async fn link_thread_artifact(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath((id, sha256)): ApiPath<(uuid::Uuid, String)>,
+) -> ApiResult<Json<ThreadArtifact>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    let sha256 = canonical_sha256(&sha256)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let (link, _new) = state
+        .store
+        .link_thread_artifact(thread_id, &sha256, auth.member_id)
+        .await?;
+    Ok(Json(link))
+}
+
+/// `DELETE /threads/:id/artifacts/:sha256`: unlink an artifact from the
+/// thread. `204` when it was linked, `404` when it was not.
+/// `workspace:write` + thread access.
+pub async fn unlink_thread_artifact(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath((id, sha256)): ApiPath<(uuid::Uuid, String)>,
+) -> ApiResult<StatusCode> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    let sha256 = canonical_sha256(&sha256)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    if state
+        .store
+        .unlink_thread_artifact(thread_id, &sha256)
+        .await?
+    {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
 /// `DELETE /threads/:id/block` — clear the explicit block and emit
 /// `BlockedResolved` (bus-notify via `publish_stored`). `204` when it was
 /// blocked, `404` when it was not. `thread:transition` + thread access.

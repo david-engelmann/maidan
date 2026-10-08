@@ -345,8 +345,11 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
         .post(format!("{base}/mcp/streamable"))
         .header("Authorization", &reviewer_h)
         .header("mcp-protocol-version", "2026-07-28")
+        .header("mcp-method", "tools/call")
+        .header("mcp-name", "submit_review")
         .header("accept", "application/json")
         .json(&json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+            "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}},
             "name": "submit_review",
             "arguments": {"thread_id": second.id.0, "decision": "request_changes", "note": "again"}
         }}))

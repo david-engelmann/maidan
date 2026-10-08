@@ -1693,6 +1693,108 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `get_thread_version`
+
+**Get thread version.** How many writes the thread's content has seen: its messages, result, title and description, and linked artifacts. The database moves it on every such write, so a decision can name the version it was shown. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_thread_artifacts`
+
+**List thread artifacts.** The artifacts linked to the thread as evidence, in the order they were linked, each with who linked it. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `link_thread_artifact`
+
+**Link thread artifact.** Link an artifact your workspace holds to a thread as evidence, by its sha256. Upload it first; a hash your workspace does not hold is not found. Linking twice keeps the first link. Moves the thread's version. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "sha256": {
+      "description": "the artifact's sha256, hex",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "sha256"
+  ],
+  "type": "object"
+}
+```
+
+### `unlink_thread_artifact`
+
+**Unlink thread artifact.** Unlink an artifact from a thread. Returns whether it was linked. Moves the thread's version when it was. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "sha256": {
+      "description": "the artifact's sha256, hex",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "sha256"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_wip_limit`
 
 **Set WIP limit.** Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.
@@ -5146,7 +5248,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `cast_vote`
 
-**Cast vote.** Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.
+**Cast vote.** Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. You hold at most one verdict per message: approve replaces your request_changes and the other way round, and ack stands beside either. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence. retract_vote takes a vote back.
 
 **Capability:** `workspace:write`
 
@@ -5163,6 +5265,39 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "kind": {
       "description": "approve, request_changes, or ack. Any other kind is rejected",
+      "enum": [
+        "approve",
+        "request_changes",
+        "ack"
+      ],
+      "type": "string"
+    },
+    "message_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "message_id",
+    "kind"
+  ],
+  "type": "object"
+}
+```
+
+### `retract_vote`
+
+**Retract vote.** Take back your own vote of one kind on a message. Removing a vote you do not hold changes nothing. Returns whether a vote was removed.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "kind": {
+      "description": "the kind of your vote to take back",
       "enum": [
         "approve",
         "request_changes",

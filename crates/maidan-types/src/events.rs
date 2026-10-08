@@ -186,6 +186,7 @@ pub enum EventKind {
     MessageTombstoned,
     MentionRecorded,
     VoteCast,
+    VoteRetracted,
     ReactionAdded,
     ReactionRemoved,
     MessagePinned,
@@ -227,6 +228,7 @@ impl EventKind {
             Self::MessageTombstoned => "message_tombstoned",
             Self::MentionRecorded => "mention_recorded",
             Self::VoteCast => "vote_cast",
+            Self::VoteRetracted => "vote_retracted",
             Self::ReactionAdded => "reaction_added",
             Self::ReactionRemoved => "reaction_removed",
             Self::MessagePinned => "message_pinned",
@@ -268,6 +270,7 @@ impl EventKind {
             "message_tombstoned" => Some(Self::MessageTombstoned),
             "mention_recorded" => Some(Self::MentionRecorded),
             "vote_cast" => Some(Self::VoteCast),
+            "vote_retracted" => Some(Self::VoteRetracted),
             "reaction_added" => Some(Self::ReactionAdded),
             "reaction_removed" => Some(Self::ReactionRemoved),
             "message_pinned" => Some(Self::MessagePinned),
@@ -334,6 +337,7 @@ impl EventKind {
         Self::MessageTombstoned,
         Self::MentionRecorded,
         Self::VoteCast,
+        Self::VoteRetracted,
         Self::ReactionAdded,
         Self::ReactionRemoved,
         Self::MessagePinned,
@@ -367,6 +371,7 @@ impl EventKind {
             | Self::MessageTombstoned
             | Self::MentionRecorded
             | Self::VoteCast
+            | Self::VoteRetracted
             | Self::ReactionAdded
             | Self::ReactionRemoved
             | Self::MessagePinned
@@ -812,6 +817,15 @@ pub enum Event {
         member_id: MemberId,
         vote_kind: String,
     },
+    /// A member took back a vote; the row is gone. `vote_kind` is the kind removed.
+    VoteRetracted {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        thread_id: ThreadId,
+        message_id: MessageId,
+        member_id: MemberId,
+        vote_kind: String,
+    },
     ReactionAdded {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -897,6 +911,7 @@ impl Event {
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
             Self::MentionRecorded { .. } => EventKind::MentionRecorded,
             Self::VoteCast { .. } => EventKind::VoteCast,
+            Self::VoteRetracted { .. } => EventKind::VoteRetracted,
             Self::ReactionAdded { .. } => EventKind::ReactionAdded,
             Self::ReactionRemoved { .. } => EventKind::ReactionRemoved,
             Self::MessagePinned { .. } => EventKind::MessagePinned,
@@ -938,6 +953,7 @@ impl Event {
             | Self::MessageTombstoned { occurred_at, .. }
             | Self::MentionRecorded { occurred_at, .. }
             | Self::VoteCast { occurred_at, .. }
+            | Self::VoteRetracted { occurred_at, .. }
             | Self::ReactionAdded { occurred_at, .. }
             | Self::ReactionRemoved { occurred_at, .. }
             | Self::MessagePinned { occurred_at, .. }
@@ -979,6 +995,7 @@ impl Event {
             | Self::MessageTombstoned { workspace_id, .. }
             | Self::MentionRecorded { workspace_id, .. }
             | Self::VoteCast { workspace_id, .. }
+            | Self::VoteRetracted { workspace_id, .. }
             | Self::ReactionAdded { workspace_id, .. }
             | Self::ReactionRemoved { workspace_id, .. }
             | Self::MessagePinned { workspace_id, .. }
@@ -1042,6 +1059,7 @@ impl Event {
             | Self::MessageTombstoned { thread_id, .. }
             | Self::MentionRecorded { thread_id, .. }
             | Self::VoteCast { thread_id, .. }
+            | Self::VoteRetracted { thread_id, .. }
             | Self::ReactionAdded { thread_id, .. }
             | Self::ReactionRemoved { thread_id, .. }
             | Self::MessagePinned { thread_id, .. }
@@ -1085,6 +1103,7 @@ impl Event {
             Self::ThreadSpawnDenied { member_id, .. } => *member_id,
             Self::MentionRecorded { member_id, .. }
             | Self::VoteCast { member_id, .. }
+            | Self::VoteRetracted { member_id, .. }
             | Self::ReactionAdded { member_id, .. }
             | Self::ReactionRemoved { member_id, .. }
             | Self::MessagePinned { member_id, .. }
@@ -1466,6 +1485,7 @@ mod kind_tests {
                 | EventKind::MessageTombstoned
                 | EventKind::MentionRecorded
                 | EventKind::VoteCast
+                | EventKind::VoteRetracted
                 | EventKind::ReactionAdded
                 | EventKind::ReactionRemoved
                 | EventKind::MessagePinned

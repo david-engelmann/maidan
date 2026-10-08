@@ -67,5 +67,6 @@ ready = client.wait_for_ready(wid)  # event dict or None on timeout
   `renew_claim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,
   `list_events`, `follow` (HTTP backfill then WS), and the `wait_for_*` helpers. See the
   repo's `docs/Client Contract.md`.
+- Caching (0.3.0): `client.channels.boot(cid)` returns the channel's boot prefix as served, with its sha256 (for `evidence.pack_sha256`). `cached_prefix(provider, text, ttl=None)` places it with a cache breakpoint, `cache_key(workspace_id, group)` and `cache_key_fields(provider, key)` give one cache key per shared-prefix group, never shared across workspaces, and `gateway_session(gateway, thread_id)` passes the thread id as an OpenRouter, Helicone, LiteLLM or TensorZero session id. See the repo's `docs/Harness Caching.md` for where each harness puts Maidan's bytes.
 
 Versioned independently of the server. `0.1.0` is the first usable release.

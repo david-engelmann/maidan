@@ -106,6 +106,70 @@ fn hero_loop_post_list_context() {
 }
 
 #[test]
+fn channels_boot_returns_the_served_boot_bytes_and_their_sha256() {
+    let Some(base) = base() else {
+        eprintln!("skip: MAIDAN_URL unset");
+        return;
+    };
+    let c = Client::new(&base, token());
+    let (wid, _member, channel, _thread) = seed(&c, &base);
+    let boot = c.channels().boot(&channel.id).unwrap();
+    let parsed: Value = serde_json::from_str(&boot.text).unwrap();
+    assert_eq!(parsed["workspace_id"], wid.as_str());
+    assert_eq!(parsed["channel_id"], channel.id.as_str());
+    assert!(
+        boot.text.starts_with(r#"{"workspace_id":"#),
+        "the bytes are the server's, not re-serialized"
+    );
+    assert_eq!(boot.sha256.len(), 64);
+    assert!(boot.sha256.bytes().all(|b| b.is_ascii_hexdigit()));
+}
+
+#[test]
+fn channels_boot_from_a_second_workspace_sees_nothing_of_the_first() {
+    let Some(base) = base() else {
+        eprintln!("skip: MAIDAN_URL unset");
+        return;
+    };
+    let other_token = std::env::var("MAIDAN_OTHER_TOKEN").unwrap_or_default();
+    let other_wid = std::env::var("MAIDAN_OTHER_WORKSPACE").unwrap_or_default();
+    assert!(
+        !other_token.is_empty() && !other_wid.is_empty(),
+        "scripts/sdk-test.sh provisions a second workspace"
+    );
+    let c = Client::new(&base, token());
+    let (wid, _member, channel, _thread) = seed(&c, &base);
+    let first = c.channels().boot(&channel.id).unwrap();
+    let other = Client::new(&base, other_token);
+    let err = other.channels().boot(&channel.id).unwrap_err();
+    assert!(
+        matches!(err.status(), 403 | 404),
+        "expected a 403 or 404 from the second workspace, got {err:?}"
+    );
+    let body = format!("{:?}", err.problem());
+    assert!(
+        !body.contains(&wid),
+        "the refusal names the first workspace"
+    );
+    assert!(
+        !body.contains(&first.sha256),
+        "the refusal carries the first boot's hash"
+    );
+    let own = other
+        .channels()
+        .create(&other_wid, &unique("rust-sdk-other"), false)
+        .unwrap();
+    let boot = other.channels().boot(&own.id).unwrap();
+    let parsed: Value = serde_json::from_str(&boot.text).unwrap();
+    assert_eq!(parsed["workspace_id"], other_wid.as_str());
+    assert!(
+        !boot.text.contains(&wid) && !boot.text.contains(&channel.id),
+        "the second workspace's boot names the first"
+    );
+    assert_ne!(boot.sha256, first.sha256);
+}
+
+#[test]
 fn get_result_unset_is_404() {
     // Exercise the result route and client error path before a result exists.
     let Some(base) = base() else {

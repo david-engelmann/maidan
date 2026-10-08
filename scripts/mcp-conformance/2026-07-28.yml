@@ -77,27 +77,10 @@ server:
   # never returns an InputRequiredResult. A human is asked through a durable approval gate.
   - input-required-result-missing-input-response:sep-2322-missing-response-rerequests
   - input-required-result-multi-round:sep-2322-multi-round-r1
-  # Real gaps, tracked in Open Work as 2026-07-28 conformance. Remove each entry with its fix:
-  # per-request _meta is not validated (SEP-2575); a method 2026-07-28 removed is not answered 404 with -32601; a routing-header
-  # mismatch is a problem+json 400 or a 200, not a JSON-RPC -32020 (SEP-2243); tasks/* is not
-  # answered -32021 for an undeclared capability and the extensions capability is not
-  # advertised (SEP-2663).
-  - http-header-validation:sep-2243-server-reject-error-code
-  - http-header-validation:sep-2243-server-reject-invalid-headers
-  - server-stateless:sep-2575-http-server-header-mismatch-400
-  - server-stateless:sep-2575-http-server-meta-invalid-400
-  - server-stateless:sep-2575-http-server-method-not-found-404
-  - server-stateless:sep-2575-http-server-method-not-found-404-initialize
-  - server-stateless:sep-2575-http-server-method-not-found-404-logging-setlevel
-  - server-stateless:sep-2575-http-server-method-not-found-404-ping
-  - server-stateless:sep-2575-http-server-method-not-found-404-resources-subscribe
-  - server-stateless:sep-2575-http-server-method-not-found-404-resources-unsubscribe
-  - server-stateless:sep-2575-request-meta-invalid-missing-client-capabilities
-  - server-stateless:sep-2575-request-meta-invalid-missing-meta
-  - server-stateless:sep-2575-request-meta-invalid-missing-protocol-version
-  - server-stateless:sep-2575-server-unsupported-version-error
+  # Maidan does not implement the optional tasks extension
+  # (io.modelcontextprotocol/tasks), so it does not advertise it and answers tasks/* as an
+  # unknown method. Answering -32021 instead would tell clients to declare an extension
+  # Maidan does not offer.
   - tasks-capability-negotiation:sep-2663-tasks-methods-non-declaring
   - tasks-capability-negotiation:tasks-extension-advertised
   - tasks-dispatch-and-envelope:sep-2663-tasks-get-invalid-task-id-32602
-  - tasks-request-headers:tasks-headers-reject-mismatched-method
-  - tasks-request-headers:wire-schema-valid

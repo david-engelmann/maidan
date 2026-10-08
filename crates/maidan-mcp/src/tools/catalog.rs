@@ -1046,6 +1046,80 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "get_thread_version",
+            "description": "How many writes the thread's content has seen: its messages, result, title and description, and linked artifacts. The database moves it on every such write, so a decision can name the version it was shown. Requires workspace:read.",
+            "annotations": {
+                "title": "Get thread version",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "list_thread_artifacts",
+            "description": "The artifacts linked to the thread as evidence, in the order they were linked, each with who linked it. Requires workspace:read.",
+            "annotations": {
+                "title": "List thread artifacts",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
+            "name": "link_thread_artifact",
+            "description": "Link an artifact your workspace holds to a thread as evidence, by its sha256. Upload it first; a hash your workspace does not hold is not found. Linking twice keeps the first link. Moves the thread's version. Requires workspace:write.",
+            "annotations": {
+                "title": "Link thread artifact",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "sha256": {"type": "string", "description": "the artifact's sha256, hex"}
+                },
+                "required": ["thread_id", "sha256"]
+            }
+        }),
+        json!({
+            "name": "unlink_thread_artifact",
+            "description": "Unlink an artifact from a thread. Returns whether it was linked. Moves the thread's version when it was. Requires workspace:write.",
+            "annotations": {
+                "title": "Unlink thread artifact",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "sha256": {"type": "string", "description": "the artifact's sha256, hex"}
+                },
+                "required": ["thread_id", "sha256"]
+            }
+        }),
+        json!({
             "name": "set_wip_limit",
             "description": "Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.",
             "annotations": {
@@ -3370,7 +3444,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "cast_vote",
-            "description": "Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.",
+            "description": "Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. You hold at most one verdict per message: approve replaces your request_changes and the other way round, and ack stands beside either. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence. retract_vote takes a vote back.",
             "annotations": {
                 "title": "Cast vote",
                 "readOnlyHint": false,
@@ -3384,6 +3458,25 @@ pub fn catalog() -> Vec<Value> {
                     "message_id": {"type": "string", "format": "uuid"},
                     "kind": {"type": "string", "enum": ["approve", "request_changes", "ack"], "description": "approve, request_changes, or ack. Any other kind is rejected"},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "optional confidence weight for weighted consensus"}
+                },
+                "required": ["message_id", "kind"]
+            }
+        }),
+        json!({
+            "name": "retract_vote",
+            "description": "Take back your own vote of one kind on a message. Removing a vote you do not hold changes nothing. Returns whether a vote was removed.",
+            "annotations": {
+                "title": "Retract vote",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "kind": {"type": "string", "enum": ["approve", "request_changes", "ack"], "description": "the kind of your vote to take back"}
                 },
                 "required": ["message_id", "kind"]
             }

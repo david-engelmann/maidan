@@ -10,6 +10,7 @@
 - [Integration protocols](docs/Protocols.md)
 - [Connecting MCP clients](docs/Clients.md)
 - [Framework integrations](docs/Framework-Integrations.md)
+- [Harness caching](docs/Harness-Caching.md)
 - [Result delivery (external last mile)](docs/Result-Delivery.md)
 
 # Reference

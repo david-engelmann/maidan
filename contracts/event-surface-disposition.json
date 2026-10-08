@@ -231,6 +231,13 @@
     "note": "Both social-write surfaces use cast_vote_with_event."
   },
   {
+    "kind": "vote_retracted",
+    "disposition": "both",
+    "rest_evidence": "crates/maidan-server/tests/vote_integrity_e2e.rs#a_member_holds_one_verdict_and_can_take_it_back",
+    "mcp_evidence": "crates/maidan-mcp/src/server.rs#mcp_write_tools_emit_domain_events",
+    "note": "A retract, or a verdict that replaces the member's opposing one, appends it in the vote's own transaction."
+  },
+  {
     "kind": "wait_timed_out",
     "disposition": "internal_only",
     "internal_evidence": "crates/maidan-server/tests/wait_sweeper_e2e.rs#wait_sweeper_fires_due_waits_parks_and_notifies",

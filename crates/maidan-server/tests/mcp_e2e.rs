@@ -1057,3 +1057,26 @@ async fn profile_endpoints_serve_a_fixed_tool_list() {
 
     server.abort();
 }
+
+/// A batch is not part of `2026-07-28`, so one sent on that revision is refused
+/// whole, before any item could skip the checks a single request gets. The same
+/// batch on an earlier revision is still served.
+#[tokio::test]
+async fn a_batch_on_2026_07_28_is_refused_whole() {
+    let (addr, client, server, _dir) = spawn().await;
+    let batch = json!([{ "jsonrpc": "2.0", "id": 1, "method": "ping" }]);
+    let send = |version: &'static str| {
+        client
+            .post(format!("http://{addr}/mcp"))
+            .header("MCP-Protocol-Version", version)
+            .json(&batch)
+            .send()
+    };
+    let current = send("2026-07-28").await.unwrap();
+    assert_eq!(current.status(), reqwest::StatusCode::BAD_REQUEST);
+    let body: Value = current.json().await.unwrap();
+    assert_eq!(body["error"]["code"], -32600, "{body}");
+    let legacy: Value = send("2025-11-25").await.unwrap().json().await.unwrap();
+    assert_eq!(legacy[0]["result"], json!({}), "{legacy}");
+    server.abort();
+}

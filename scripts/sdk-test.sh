@@ -5,6 +5,8 @@
 #
 # Usage:  scripts/sdk-test.sh [typescript|python|go|rust]   (default: typescript)
 # Env:    MAIDAN_SDK_PORT (default 8080).
+# Gives the suites MAIDAN_URL, MAIDAN_TOKEN and MAIDAN_WORKSPACE, and a second
+# workspace's MAIDAN_OTHER_TOKEN and MAIDAN_OTHER_WORKSPACE.
 #         CARGO_TARGET_DIR (the built binaries are read from there).
 #
 # Build first, then run the binary, so the health-wait covers only boot (a cold
@@ -51,9 +53,21 @@ for _ in $(seq 1 60); do
 done
 [ "$up" -eq 1 ] || { echo "server/token did not become ready within 60s" >&2; exit 1; }
 
+# A second workspace with its own admin token, so a suite can show that what
+# it reads in the first is invisible from the second.
+other_json="$(curl -sf -X POST -H "authorization: Bearer ${admin_token}" \
+  -H "content-type: application/json" \
+  -d '{"name":"sdk-tests-other","admin_handle":"other-admin"}' "${base}/operator/workspaces")"
+other_token="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["token"]["secret"])' <<<"${other_json}")"
+other_workspace="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["workspace"]["id"])' <<<"${other_json}")"
+test -n "${other_token}"
+test -n "${other_workspace}"
+
 export MAIDAN_URL="${base}"
 export MAIDAN_TOKEN="${admin_token}"
 export MAIDAN_WORKSPACE="${workspace_id}"
+export MAIDAN_OTHER_TOKEN="${other_token}"
+export MAIDAN_OTHER_WORKSPACE="${other_workspace}"
 echo "=== running ${lang} SDK tests ==="
 case "$lang" in
   typescript) (cd sdk/typescript && node --test --test-concurrency=1) ;;

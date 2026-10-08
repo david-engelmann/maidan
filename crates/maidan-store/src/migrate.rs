@@ -212,6 +212,10 @@ const POSTGRES_UP_V140: &str =
 const POSTGRES_UP_V141: &str = include_str!("../../../migrations/postgres/0141_thread_status.sql");
 const POSTGRES_UP_V142: &str =
     include_str!("../../../migrations/postgres/0142_thread_description.sql");
+const POSTGRES_UP_V143: &str =
+    include_str!("../../../migrations/postgres/0143_one_verdict_per_member.sql");
+const POSTGRES_UP_V144: &str =
+    include_str!("../../../migrations/postgres/0144_thread_state_version.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -381,6 +385,10 @@ const SQLITE_UP_V139: &str =
 const SQLITE_UP_V140: &str = include_str!("../../../migrations/sqlite/0140_thread_block_note.sql");
 const SQLITE_UP_V141: &str = include_str!("../../../migrations/sqlite/0141_thread_status.sql");
 const SQLITE_UP_V142: &str = include_str!("../../../migrations/sqlite/0142_thread_description.sql");
+const SQLITE_UP_V143: &str =
+    include_str!("../../../migrations/sqlite/0143_one_verdict_per_member.sql");
+const SQLITE_UP_V144: &str =
+    include_str!("../../../migrations/sqlite/0144_thread_state_version.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -579,6 +587,8 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 140, POSTGRES_UP_V140).await?;
     apply_postgres(pool, 141, POSTGRES_UP_V141).await?;
     apply_postgres(pool, 142, POSTGRES_UP_V142).await?;
+    apply_postgres(pool, 143, POSTGRES_UP_V143).await?;
+    apply_postgres(pool, 144, POSTGRES_UP_V144).await?;
     Ok(())
 }
 
@@ -735,6 +745,8 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 140, SQLITE_UP_V140).await?;
     apply_sqlite(pool, 141, SQLITE_UP_V141).await?;
     apply_sqlite(pool, 142, SQLITE_UP_V142).await?;
+    apply_sqlite(pool, 143, SQLITE_UP_V143).await?;
+    apply_sqlite(pool, 144, SQLITE_UP_V144).await?;
     Ok(())
 }
 

@@ -6,7 +6,8 @@
 //!
 //! Rust's standard library has no HTTP or TLS client, so this crate takes a small,
 //! well-vetted synchronous stack ([`ureq`] for REST over rustls, [`tungstenite`] for
-//! the WebSocket). That's the one place the four SDKs diverge from "stdlib only".
+//! the WebSocket, and `sha2` for the boot prefix's hash). That's the one place the
+//! four SDKs diverge from "stdlib only".
 //!
 //! Responses are the typed models in [`models`] (re-exported at the root), and
 //! a failure is the [`MaidanError`] variant its RFC 9457 problem `type` names.
@@ -38,6 +39,7 @@ use std::time::Duration;
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
+mod cache;
 mod error;
 pub mod models;
 mod subscribe;
@@ -48,6 +50,12 @@ pub use subscribe::{Follow, Subscription};
 pub use usage::{
     normalize_usage, usd_micros, NormalizedUsage, PriceSnapshot, TokenUsage, UsageError,
     UsageEvidence, UsageOptions, USAGE_PROVIDERS,
+};
+
+// Provider-cache helpers: pure functions beside the client.
+pub use cache::{
+    cache_key, cache_key_fields, cached_prefix, gateway_session, BootPrefix, CacheError,
+    RequestFields,
 };
 
 /// The client version, tracked independently of the server.
@@ -650,6 +658,12 @@ impl Channels<'_> {
             &format!("/workspaces/{workspace_id}/channels"),
             Some(&json!({ "name": name, "private": private })),
         )
+    }
+    /// The channel's boot prefix, byte for byte as served, with its sha256.
+    pub fn boot(&self, channel_id: &str) -> Result<BootPrefix> {
+        let bytes = self.c.get_bytes(&format!("/channels/{channel_id}/boot"))?;
+        let text = String::from_utf8(bytes).map_err(|e| MaidanError::Decode(e.to_string()))?;
+        Ok(BootPrefix::new(text))
     }
 }
 

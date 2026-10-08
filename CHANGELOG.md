@@ -43,6 +43,12 @@ Refs #1253
 - **Changed:** accepting an approval gate (`POST /approval-gates/{id}/answer`, `accept`) needs the member the token acts as to be a human, or the token to hold the new `approval:grant` capability. A delegate acting for a human passes. Before, `workspace:write` was enough, so one worker agent could accept another's gate with no human involved. Declining and cancelling are unchanged.
 - **Added:** `approval:grant`, an authority capability in no preset and never delegatable, for an automated approver an admin deliberately trusts.
 
+### A member holds one verdict on a message, and can take a vote back
+
+- **Changed:** `approve` and `request_changes` on a message replace each other for the same member. `ack` stands beside either. Before, a member could hold both verdicts at once, and a tally counted them twice. Migration 0143 keeps the later verdict where both existed and adds a unique index so it cannot recur.
+- **Added:** `DELETE /messages/{id}/votes` with `{"kind": …}` and the MCP tool `retract_vote` take back the caller's own vote. A second retract changes nothing.
+- **Added:** The `vote_retracted` event, appended when a vote is taken back or replaced, before the replacing `vote_cast`. It federates like `vote_cast`.
+
 ### A blocked agent reaches a human
 
 - **Added:** `set_thread_block` takes an optional `note` explaining why the thread is blocked. Setting a block emits `ThreadBlocked` (non-federatable, like `BlockedResolved`).
@@ -89,6 +95,11 @@ Refs #1253
 - **Added:** `<NAME>_FILE` now works for every secret the server and `maidan` read, not only the first seven. The new ones are `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`.
 - **Changed:** The Helm chart and `k8s/base` mount secrets as files under `/run/secrets/maidan` and name each in `<KEY>_FILE`, so no secret is in the pod's environment. An `existingSecret` is mounted with the keys in `secretFiles.existingSecretKeys`, and more Secrets go in `secretFiles.extra`. A key a Secret lacks stops the pod, and the render refuses a key the server cannot read from a file. `secretFiles.enabled: false` keeps envFrom. `maidan-stack` splits its datastores into a Secret, read as files, and a ConfigMap.
 - **Added:** `every_secret_the_server_reads_can_come_from_a_file` fails when a server variable whose name looks secret has no `_FILE` form, unless a reviewed list says why it is not a secret.
+
+### MCP `2026-07-28` requests are held to their revision
+
+- **Changed:** Each MCP request is placed in its revision. A `2026-07-28` request (that revision in `MCP-Protocol-Version`, or in `params._meta` with no header) must carry `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` in `_meta`, an `Mcp-Method` header, and an `Mcp-Name` header where the method names a target. A refusal is a JSON-RPC error with the request's id and HTTP 400: -32602 for missing `_meta` keys, -32020 for a missing or mismatched header, and -32022 with `requested` and `supported` for an unsupported revision. `initialize`, `ping`, `logging/setLevel`, `resources/subscribe` and `resources/unsubscribe` answer 404 with -32601 on that revision, as does an unknown method. Requests on earlier revisions are unchanged.
+- **Changed:** The official conformance suite passes 102 of 167 `2026-07-28` checks (from 78). The rest are fixture scenarios, features Maidan does not declare, and the optional tasks extension.
 
 ### `maidan mcp-stdio` speaks only JSON-RPC on stdout
 
@@ -282,6 +293,10 @@ Refs #1253
   workspace (a bypass caller still is; a token for another workspace is not).
   An unverified bearer shares the client-IP bucket instead of opening one per
   invented secret.
+
+### Harness caching: boot prefix, cache keys and gateway sessions in the SDKs
+
+- **Added:** `channels.boot` (`Channels.Boot` in Go) returns a channel's boot prefix byte for byte with its sha256; `cachedPrefix` / `cached_prefix` / `CachedPrefix` place it with a cache breakpoint per provider; `cacheKey` and `cacheKeyFields` give one cache key per shared-prefix group, hashed with the workspace id so it never spans workspaces (OpenAI and Mistral `prompt_cache_key`, xAI `x-grok-conv-id`, DeepSeek `user_id`, vLLM `cache_salt`); `gatewaySession` passes the thread id as the OpenRouter, Helicone, LiteLLM or TensorZero session id. All four SDKs agree on `sdk/cache-fixtures/cases.json`, and `scripts/sdk-test.sh` now provisions a second workspace so the suites show it sees nothing of the first. **Docs:** Harness Caching, with recipes for Claude Code, the Agent SDK (`excludeDynamicSections`, fork over spawn), Codex, Goose and OpenHands.
 
 ### A claim's worked time is charged however it ends
 
@@ -1822,6 +1837,11 @@ Refs #1253
 
 - **Added:** A `question` item in the waiting inbox (`get_waiting_inbox`, `GET /members/:id/waiting`) for each thread whose agent declared `needs_input`, with the thread's title and the question as its `summary` and the question alone as its new `detail`. It reaches the thread's owner, or the workspace's admins when the thread has no owner or the owner asked, and never the asker or anyone who cannot open the thread. A person's reply in the thread clears it.
 - **Changed:** Needs you in the console shows those questions, with Answer opening the thread at the composer, and splits the queue under "Needs your decision", "Needs your action" and "An agent asked" when more than one kind waits.
+
+### A thread has a version, and evidence linked by hash
+
+- **Added:** A thread's version (`get_thread_version`, `GET /threads/:id/version`) counts the writes to its messages, result, title and description, and linked artifacts. Database triggers move it, so no write path can change that content without it. It is the first part of evidence-bound approvals (Open Work Next 3), where a decision names the version it was shown.
+- **Added:** `link_thread_artifact`, `unlink_thread_artifact` and `list_thread_artifacts` (REST `PUT`, `DELETE` and `GET` under `/threads/:id/artifacts`) attach an artifact to a thread as evidence. Only an artifact the thread's workspace holds can be linked, and a hash is stored as lowercase hex.
 
 ## [412.0.0] — 2026-09-28
 

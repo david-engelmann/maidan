@@ -22,6 +22,7 @@ import time
 import uuid
 from typing import Any, Callable, Iterator, List, Optional
 
+from .cache import BootPrefix, boot_prefix
 from .errors import PROBLEM_BASE, MaidanError, problem_error
 from .models import (
     Artifact,
@@ -163,6 +164,10 @@ class _Channels:
         return Channel.from_dict(
             self._c._req("POST", f"/workspaces/{workspace_id}/channels", {"name": name, "private": private})
         )
+
+    def boot(self, channel_id: str) -> BootPrefix:
+        """The channel's boot prefix, byte for byte as served, with its sha256."""
+        return boot_prefix(self._c._req_raw("GET", f"/channels/{channel_id}/boot"))
 
 
 class _Members:

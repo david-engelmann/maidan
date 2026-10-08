@@ -318,6 +318,20 @@ pub async fn erase_for_workspace(
     .bind(workspace_id.0)
     .execute(&mut *tx)
     .await?;
+    // Threads here stop listing the artifact as evidence; their versions move.
+    // Another workspace's links to the same bytes stay.
+    sqlx::query(
+        "DELETE FROM maidan_thread_artifacts
+         WHERE sha256 = ?1
+           AND thread_id IN (
+             SELECT t.id FROM maidan_threads t
+             JOIN maidan_channels c ON c.id = t.channel_id
+             WHERE c.workspace_id = ?2)",
+    )
+    .bind(sha256)
+    .bind(workspace_id.0)
+    .execute(&mut *tx)
+    .await?;
     // A row nobody references reads as unscoped (readable by any workspace),
     // so the last reference must take the row with it.
     let last_reference = sqlx::query(

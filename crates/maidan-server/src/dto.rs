@@ -475,6 +475,12 @@ pub struct RemoveReaction {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
+pub struct RetractVote {
+    pub kind: VoteKind,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PinMessage {
     pub message_id: uuid::Uuid,
 }

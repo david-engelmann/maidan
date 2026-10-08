@@ -31,6 +31,7 @@
   "thread_state_changed",
   "usage_reported",
   "vote_cast",
+  "vote_retracted",
   "wait_timed_out",
   "workspace_created"
 ]

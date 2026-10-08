@@ -165,6 +165,27 @@ pub struct ThreadStatusDeclaration {
     pub declared_at: DateTime<Utc>,
 }
 
+/// A thread's version: how many writes its content has seen. The database
+/// bumps it on every write to the thread's messages, result, title or
+/// description, or linked artifacts, so a decision can name the version it was
+/// shown. A thread nothing has written to is at 0.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadVersion {
+    pub thread_id: ThreadId,
+    pub version: i64,
+}
+
+/// An artifact linked to a thread as evidence, by content hash.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadArtifact {
+    pub thread_id: ThreadId,
+    pub sha256: String,
+    pub linked_by: MemberId,
+    pub linked_at: DateTime<Utc>,
+}
+
 impl ThreadState {
     pub fn as_str(&self) -> &'static str {
         match self {

@@ -3,12 +3,15 @@ package maidan
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -410,4 +413,73 @@ func TestTheServersProblemTypesArriveAsTheirErrorTypes(t *testing.T) {
 	check("second workspace", err, &fb, 403, "forbidden")
 	_, err = c.Workspaces.Import(bundle, ImportRestore)
 	check("restore over itself", err, &cfl, 409, "conflict")
+}
+
+func TestChannelsBootReturnsTheServedBootBytesAndTheirSHA256(t *testing.T) {
+	c := testClient(t)
+	wid, _, channel, _ := seed(t, c)
+	boot, err := c.Channels.Boot(channel.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		WorkspaceID string `json:"workspace_id"`
+		ChannelID   string `json:"channel_id"`
+	}
+	if err := json.Unmarshal([]byte(boot.Text), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.WorkspaceID != wid || parsed.ChannelID != channel.ID {
+		t.Fatalf("boot names %+v", parsed)
+	}
+	if !bytes.HasPrefix([]byte(boot.Text), []byte(`{"workspace_id":`)) {
+		t.Fatal("the bytes are the server's, not re-serialized")
+	}
+	sum := sha256.Sum256([]byte(boot.Text))
+	if want := hex.EncodeToString(sum[:]); boot.SHA256 != want {
+		t.Fatalf("sha256 %q, want %q", boot.SHA256, want)
+	}
+}
+
+func TestChannelsBootFromASecondWorkspaceSeesNothingOfTheFirst(t *testing.T) {
+	c := testClient(t)
+	otherToken, otherWID := os.Getenv("MAIDAN_OTHER_TOKEN"), os.Getenv("MAIDAN_OTHER_WORKSPACE")
+	if otherToken == "" || otherWID == "" {
+		t.Fatal("scripts/sdk-test.sh provisions a second workspace")
+	}
+	wid, _, channel, _ := seed(t, c)
+	first, err := c.Channels.Boot(channel.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := New(os.Getenv("MAIDAN_URL"), otherToken)
+	_, err = other.Channels.Boot(channel.ID)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || (apiErr.Status != 403 && apiErr.Status != 404) {
+		t.Fatalf("expected a 403 or 404 from the second workspace, got %v", err)
+	}
+	body, _ := json.Marshal(apiErr.Problem)
+	if strings.Contains(string(body), wid) || strings.Contains(string(body), first.SHA256) {
+		t.Fatalf("the refusal leaks the first workspace: %s", body)
+	}
+	own, err := other.Channels.Create(otherWID, unique("go-sdk-other"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boot, err := other.Channels.Boot(own.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		WorkspaceID string `json:"workspace_id"`
+	}
+	if err := json.Unmarshal([]byte(boot.Text), &parsed); err != nil || parsed.WorkspaceID != otherWID {
+		t.Fatalf("the second workspace's boot names %q (%v)", parsed.WorkspaceID, err)
+	}
+	if strings.Contains(boot.Text, wid) || strings.Contains(boot.Text, channel.ID) {
+		t.Fatal("the second workspace's boot names the first")
+	}
+	if boot.SHA256 == first.SHA256 {
+		t.Fatal("two workspaces' boots share a hash")
+	}
 }

@@ -1406,6 +1406,31 @@ pub trait ThreadStore: Send + Sync {
         workspace_id: WorkspaceId,
         readable_by: Option<MemberId>,
     ) -> Result<ChannelOccupancy, StoreError>;
+
+    /// The thread's version: the number of writes to its messages, result,
+    /// title and description, and linked artifacts. The database bumps it, so
+    /// every write path moves it. 0 before any. `NotFound` for no such thread.
+    async fn thread_version(&self, thread_id: ThreadId) -> Result<i64, StoreError>;
+    /// Link an artifact the thread's workspace holds to the thread. `NotFound`
+    /// when the workspace holds no artifact with that hash. Returns the link
+    /// and whether it is new.
+    async fn link_thread_artifact(
+        &self,
+        thread_id: ThreadId,
+        sha256: &str,
+        linked_by: MemberId,
+    ) -> Result<(ThreadArtifact, bool), StoreError>;
+    /// Unlink an artifact from a thread; `false` when it was not linked.
+    async fn unlink_thread_artifact(
+        &self,
+        thread_id: ThreadId,
+        sha256: &str,
+    ) -> Result<bool, StoreError>;
+    /// The artifacts linked to a thread, in the order they were linked.
+    async fn list_thread_artifacts(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ThreadArtifact>, StoreError>;
 }
 
 #[async_trait]
@@ -2305,8 +2330,17 @@ pub trait MentionInboxStore: Send + Sync {
 #[async_trait]
 pub trait SocialStore: Send + Sync {
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError>;
-    /// Cast a vote and append its `VoteCast` event atomically.
-    async fn cast_vote_with_event(&self, new: NewVote) -> Result<StoredEvent, StoreError>;
+    /// Cast a vote and append its events atomically: a `VoteRetracted` for the
+    /// opposing verdict it replaced, if any, then its `VoteCast`.
+    async fn cast_vote_with_event(&self, new: NewVote) -> Result<Vec<StoredEvent>, StoreError>;
+    /// Take back the member's vote of `kind`, appending `VoteRetracted`
+    /// atomically **iff** a row was removed. `(removed, event)`.
+    async fn retract_vote_with_event(
+        &self,
+        message_id: MessageId,
+        member_id: MemberId,
+        kind: VoteKind,
+    ) -> Result<(bool, Option<StoredEvent>), StoreError>;
     async fn list_votes_for_message(&self, message_id: MessageId) -> Result<Vec<Vote>, StoreError>;
 
     async fn add_reaction(&self, new: NewReaction) -> Result<(), StoreError>;

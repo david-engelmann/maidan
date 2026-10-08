@@ -1728,6 +1728,34 @@ macro_rules! store_delegations {
                 )
                 .await
             }
+
+            async fn thread_version(&self, thread_id: ThreadId) -> Result<i64, StoreError> {
+                evidence::version(self.pool(), thread_id).await
+            }
+
+            async fn link_thread_artifact(
+                &self,
+                thread_id: ThreadId,
+                sha256: &str,
+                linked_by: MemberId,
+            ) -> Result<(ThreadArtifact, bool), StoreError> {
+                evidence::link(self.pool(), thread_id, sha256, linked_by).await
+            }
+
+            async fn unlink_thread_artifact(
+                &self,
+                thread_id: ThreadId,
+                sha256: &str,
+            ) -> Result<bool, StoreError> {
+                evidence::unlink(self.pool(), thread_id, sha256).await
+            }
+
+            async fn list_thread_artifacts(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<ThreadArtifact>, StoreError> {
+                evidence::list(self.read_pool(), thread_id).await
+            }
         }
     };
     ($store:ty, TaskScheduleStore) => {
@@ -2810,8 +2838,20 @@ macro_rules! store_delegations {
                 votes::cast(self.pool(), new).await
             }
 
-            async fn cast_vote_with_event(&self, new: NewVote) -> Result<StoredEvent, StoreError> {
+            async fn cast_vote_with_event(
+                &self,
+                new: NewVote,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
                 votes::cast_with_event(self.pool(), new).await
+            }
+
+            async fn retract_vote_with_event(
+                &self,
+                message_id: MessageId,
+                member_id: MemberId,
+                kind: VoteKind,
+            ) -> Result<(bool, Option<StoredEvent>), StoreError> {
+                votes::retract_with_event(self.pool(), message_id, member_id, kind).await
             }
 
             async fn list_votes_for_message(

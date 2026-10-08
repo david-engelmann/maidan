@@ -279,11 +279,13 @@ async fn an_agent_rotates_its_own_token_over_mcp() {
         .post(format!("http://{}/mcp", h.addr))
         .bearer_auth(&old_secret)
         .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", "tools/call")
+        .header("Mcp-Name", "rotate_token")
         .json(&json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": { "name": "rotate_token", "arguments": {} }
+            "params": { "_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {}}, "name": "rotate_token", "arguments": {} }
         }))
         .send()
         .await

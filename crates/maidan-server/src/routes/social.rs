@@ -40,11 +40,37 @@ pub async fn cast_vote(
             confidence: body.confidence,
         })
         .await?;
-    publish_stored(&state, stored).await;
+    for event in stored {
+        publish_stored(&state, event).await;
+    }
     let uris =
         maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), MessageId(message_id))
             .await;
     state.mcp.publish_resource_uris(uris).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Take back the caller's own vote of one kind. Only the voter retracts: the
+/// row is keyed on the caller, so nobody can remove another member's vote.
+pub async fn retract_vote(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(message_id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<RetractVote>,
+) -> ApiResult<StatusCode> {
+    let message_id = MessageId(message_id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    maidan_auth::ensure_message_access(state.store.as_ref(), &auth, message_id).await?;
+    let (_removed, stored) = state
+        .store
+        .retract_vote_with_event(message_id, auth.member_id, body.kind)
+        .await?;
+    if let Some(stored) = stored {
+        publish_stored(&state, stored).await;
+        let uris =
+            maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), message_id).await;
+        state.mcp.publish_resource_uris(uris).await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
