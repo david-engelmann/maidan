@@ -108,8 +108,7 @@ echoes a secret back in a slash response puts it in `metadata.slash_response`
 first-attempt floods (#1122, documented); the 0124 backfill ordering has no
 test of its own (#1132); the MCP test
 `a_stateless_subscription_lives_while_any_replica_listens_then_lapses` (#1131)
-fails under load with its 300 ms lifetime, and `crypto_shredding` `blob_reap::sqlite_backend` can fail with `database is locked` in the coverage job (seen on #1155, whose change touches no store code); `remove_channel_member` and
-`unfollow_member` answer success for an unknown member (leaks nothing, #1152).
+fails under load with its 300 ms lifetime, and `crypto_shredding` `blob_reap::sqlite_backend` can fail with `database is locked` in the coverage job (seen on #1155, whose change touches no store code).
 
 ## Later: by program
 
