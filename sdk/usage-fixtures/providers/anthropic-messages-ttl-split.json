@@ -1,0 +1,44 @@
+{
+  "name": "anthropic-messages-ttl-split",
+  "provider": "anthropic",
+  "source": "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+  "recorded": "verbatim",
+  "note": "The prompt-caching guide's usage object, which mixes a 5-minute and a 1-hour write. The guide shows the usage object alone, so the model is passed in.",
+  "options": {
+    "model": "claude-opus-5"
+  },
+  "response": {
+    "usage": {
+      "input_tokens": 2048,
+      "cache_read_input_tokens": 1800,
+      "cache_creation_input_tokens": 248,
+      "output_tokens": 503,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 148,
+        "ephemeral_1h_input_tokens": 100
+      }
+    }
+  },
+  "price_snapshot": {
+    "input_usd_micros_per_million": 5000000,
+    "output_usd_micros_per_million": 25000000,
+    "cache_read_usd_micros_per_million": 500000,
+    "cache_write_5m_usd_micros_per_million": 6250000,
+    "cache_write_1h_usd_micros_per_million": 10000000
+  },
+  "expected": {
+    "model": "claude-opus-5",
+    "tokens": {
+      "input": 2048,
+      "output": 503,
+      "cache_read": 1800,
+      "cache_write_5m": 148,
+      "cache_write_1h": 100
+    },
+    "evidence": {
+      "provider": "anthropic"
+    },
+    "usd_micros": 25640
+  },
+  "retrieved": "2026-10-04"
+}

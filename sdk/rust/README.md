@@ -72,6 +72,7 @@ fn main() -> Result<(), MaidanError> {
   `serde_json::Value`, and so do event frames from `subscribe`, whose shape follows `kind`.
 - `threads().transition(id, action)` takes the action string; `claim_next_thread(cid,
   lease_secs)` takes an optional lease length.
+- Usage (0.3.0): `normalize_usage(provider, &response, &UsageOptions { model, provider })` turns an Anthropic, Bedrock Converse, OpenAI Responses or Chat Completions, Gemini, DeepSeek, Mistral, xAI or vLLM response into a `NormalizedUsage` (the `model`, `tokens` and `evidence` of a `report_usage` body), and `usd_micros(&tokens, &price)` is the charge the server checks. A response it cannot read is a `UsageError`. `input` comes out uncached and cache writes split into 5-minute and 1-hour tiers, as the ledger counts them. See "Normalizing provider usage" in the repo's `docs/Integration.md`.
 - Surface (frozen v1): `workspaces().{create,get,import}`, `channels().{list,create}`,
   `threads().{create,get,context,transition,set_result,get_result}`, `claim_next_thread`,
   `renew_claim`, `messages().{list,post}`, `artifacts().{upload,get,meta}`, `subscribe`,

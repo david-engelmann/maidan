@@ -237,6 +237,10 @@ Refs #1253
   `data-ui-version` versions it, or that captured screenshots of it exist.
   The Playwright suite does not replace the PR template's checklist.
 
+### SDK usage normalizers that agree with the ledger
+
+- **Added:** `normalizeUsage` (TypeScript), `normalize_usage` (Python, Rust) and `NormalizeUsage` (Go) turn an Anthropic, Bedrock Converse, OpenAI Responses or Chat Completions, Gemini, DeepSeek, Mistral, xAI or vLLM response into the `model`, `tokens` and `evidence` of a `report_usage` body, and `usdMicros` / `usd_micros` / `USDMicros` compute the charge in integers; all four SDKs and the ledger agree on the recorded responses in `sdk/usage-fixtures/`. **Fixed:** the ledger's GenAI reader (`POST /threads/{id}/usage/otel`) now reads Bedrock's `cacheReadInputTokens` and `cacheDetails` TTL split, OpenAI Responses' `input_tokens_details.cached_tokens` and `cache_write_tokens`, Gemini's `thoughtsTokenCount` as output, and xAI's `reasoning_tokens`, which its `completion_tokens` leave out.
+
 ### Program C: context economics
 
 - **Added:** `docs/Context Economics.md`, the design for making agents

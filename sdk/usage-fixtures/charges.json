@@ -1,0 +1,77 @@
+{
+  "note": "usd_micros = ceil(sum(tokens x rate) / 1_000_000), rates in micro-USD per million tokens, as the ledger checks it. The last case's products pass 2^53, so a normalizer must multiply in integers, not floats.",
+  "cases": [
+    {
+      "name": "rounds a fractional micro-dollar up",
+      "tokens": {
+        "input": 1000000,
+        "output": 500000,
+        "cache_read": 250000,
+        "cache_write_5m": 1,
+        "cache_write_1h": 1
+      },
+      "price_snapshot": {
+        "input_usd_micros_per_million": 10,
+        "output_usd_micros_per_million": 20,
+        "cache_read_usd_micros_per_million": 4,
+        "cache_write_5m_usd_micros_per_million": 1,
+        "cache_write_1h_usd_micros_per_million": 1
+      },
+      "usd_micros": 22
+    },
+    {
+      "name": "zero tokens cost nothing",
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write_5m": 0,
+        "cache_write_1h": 0
+      },
+      "price_snapshot": {
+        "input_usd_micros_per_million": 5000000,
+        "output_usd_micros_per_million": 25000000,
+        "cache_read_usd_micros_per_million": 500000,
+        "cache_write_5m_usd_micros_per_million": 6250000,
+        "cache_write_1h_usd_micros_per_million": 10000000
+      },
+      "usd_micros": 0
+    },
+    {
+      "name": "every tier priced at its own rate",
+      "tokens": {
+        "input": 10,
+        "output": 5,
+        "cache_read": 20,
+        "cache_write_5m": 3,
+        "cache_write_1h": 2
+      },
+      "price_snapshot": {
+        "input_usd_micros_per_million": 1000000,
+        "output_usd_micros_per_million": 2000000,
+        "cache_read_usd_micros_per_million": 100000,
+        "cache_write_5m_usd_micros_per_million": 1250000,
+        "cache_write_1h_usd_micros_per_million": 2000000
+      },
+      "usd_micros": 30
+    },
+    {
+      "name": "exact when the products pass 2^53",
+      "tokens": {
+        "input": 3000000000,
+        "output": 1,
+        "cache_read": 0,
+        "cache_write_5m": 0,
+        "cache_write_1h": 0
+      },
+      "price_snapshot": {
+        "input_usd_micros_per_million": 75000000,
+        "output_usd_micros_per_million": 1,
+        "cache_read_usd_micros_per_million": 0,
+        "cache_write_5m_usd_micros_per_million": 0,
+        "cache_write_1h_usd_micros_per_million": 0
+      },
+      "usd_micros": 225000000001
+    }
+  ]
+}

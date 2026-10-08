@@ -61,6 +61,7 @@ const ready = await client.waitForReady(wid); // event or null on timeout
   `test.mjs`. At runtime they are the server's JSON, so members added to the server later
   are still there; string enums (`ThreadState`, …) accept values this client does not list.
 - **0.3.0 (unreleased; 0.2.0 was never tagged):** writes send an `Idempotency-Key` reused across retries; requests retry up to `maxRetries` (default 2) on transport failures, 408, 429 (`Retry-After`), 500, 502, 503, 504 and 409 `idempotency-key-in-flight`. `threads.listAll(cid)` and `workspaces.eventsAll(wid)` are async iterators over every page, asking for at most `MAX_PAGE_SIZE` (500, the server's cap) per page. Typed responses and the error classes are new since 0.1.
+- Usage (0.3.0): `normalizeUsage(provider, response, { model, provider })` turns an Anthropic, Bedrock Converse, OpenAI Responses or Chat Completions, Gemini, DeepSeek, Mistral, xAI or vLLM response into the `model`, `tokens` and `evidence` of a `report_usage` body, and `usdMicros(tokens, priceSnapshot)` is the charge the server checks. A response it cannot read throws `UsageError`. `input` comes out uncached and cache writes split into 5-minute and 1-hour tiers, as the ledger counts them. See "Normalizing provider usage" in the repo's `docs/Integration.md`.
 - Surface (frozen v1): `workspaces.{create,get,import}`, `channels.{list,create}`,
   `threads.{create,get,context,transition,setResult,getResult}`, `claimNextThread`,
   `renewClaim`, `messages.{list,post}`, `artifacts.{upload,get,meta}`, `subscribe`,

@@ -1,0 +1,35 @@
+{
+  "name": "vllm-chat",
+  "provider": "vllm",
+  "source": "https://github.com/vllm-project/vllm/issues/18062",
+  "recorded": "verbatim",
+  "note": "A vLLM chat completion from Qwen/Qwen3-8B served with --enable-prompt-tokens-details, as posted in the issue, with the choices left out. prompt_tokens_details is null, the case the issue reports, so nothing is read from the cache tier.",
+  "response": {
+    "id": "chatcmpl-c47b4685b8524e778c3da69c27cc32fb",
+    "object": "chat.completion",
+    "created": 1747129556,
+    "model": "Qwen/Qwen3-8B",
+    "usage": {
+      "prompt_tokens": 14,
+      "total_tokens": 176,
+      "completion_tokens": 162,
+      "prompt_tokens_details": null
+    },
+    "prompt_logprobs": null,
+    "kv_transfer_params": null
+  },
+  "expected": {
+    "model": "Qwen/Qwen3-8B",
+    "tokens": {
+      "input": 14,
+      "output": 162,
+      "cache_read": 0,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "vllm"
+    }
+  },
+  "retrieved": "2026-10-07"
+}
