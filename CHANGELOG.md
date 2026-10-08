@@ -30,6 +30,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Refs #1253
 
+### A design for Maidan's OAuth authorization server, and a local provider to build it against
+
+- **Docs:** `docs/OAuth-Authorization-Server.md` (in the book under Design) researches what MCP clients and the directories require of an OAuth authorization server (MCP authorization through 2026-07-28, RFC 9728, RFC 8414, PKCE, RFC 8707, metadata documents and dynamic registration), compares an embedded server, delegating to the operator's identity provider and a separate server, and recommends the embedded one. It maps scopes onto the delegatable capabilities and one workspace per grant, keeps authority capabilities out of OAuth, designs per-decision step-up for `approval_decide`, lists the maintainer's decisions with defaults, and sets out the build as eight ordered PRs. Nothing in the server changes.
+- **Added:** `scripts/oauth-dev-provider.sh`, `examples/oauth-dev/compose.yaml` and the realm `examples/keycloak/maidan-mcp-reference-realm.json` run Keycloak 26.8 with its experimental metadata document and resource indicator features as a reference authorization server, through Docker Compose or a Keycloak distribution. `scripts/mcp-oauth-smoke.sh` walks the MCP authorization flow with curl and marks each step PASS, GAP (with the build PR that closes it), NOTE or FAIL; `STRICT=1` fails on gaps.
+
 ### A board harness fails when the page writes
 
 - **Tests:** the seven inline Node harnesses in `crates/maidan-server/tests/ui_js_contract.rs` now start from one shared prelude that stubs `api` and `writeApi`. A write through `writeApi`, or a non-GET through `api`, is recorded and refused, and the harness exits non-zero naming each write, even when the page function catches the error and paints a sentence. Before, `writeApi` was undefined there, so a page function that wrote and caught its own failure passed. A contract test checks that every inline harness in the file runs with the prelude (Open Work, "Found reviewing #1273 to #1275").

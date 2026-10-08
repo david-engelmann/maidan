@@ -36,6 +36,7 @@
 - [Architecture history](docs/Architecture-history.md)
 - [Claims & evidence](docs/Claims.md)
 - [Decisions](docs/Decisions.md)
+- [OAuth authorization server (design)](docs/OAuth-Authorization-Server.md)
 - [Conventions](docs/Conventions.md)
 - [Operations](docs/Operations.md)
 - [Dependencies](docs/Dependencies.md)

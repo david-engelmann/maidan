@@ -418,15 +418,15 @@ if [ -n "${dcr_access:-}" ]; then
     else
       fail "Maidan answered $code to a token another server issued"
     fi
-    gap "Maidan issues no tokens of its own (build PRs 3 to 5)"
+    gap "Maidan issues no tokens of its own (build PRs 2 to 5)"
   fi
 fi
 
 # 12. Too little scope is a 403 naming the scopes the call needs.
 if [ "$as_is_maidan" = 1 ]; then
-  note "check insufficient_scope with a read-only token on a write tool (build PR 7 adds the check)"
+  note "check insufficient_scope with a read-only token on a write tool (build PR 4 adds the challenge)"
 else
-  gap "no insufficient_scope challenge to test without Maidan's tokens (build PR 7)"
+  gap "no insufficient_scope challenge to test without Maidan's tokens (build PR 4)"
 fi
 
 echo "== $fails failed, $gaps gaps"

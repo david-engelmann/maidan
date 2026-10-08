@@ -43,6 +43,7 @@ top_pages=(
   "Dependencies" "Open Work" "Roadmap" "README" "Claims"
   "Providers" "Protocols" "Clients"
   "Framework Integrations" "Harness Caching" "WASI-Handlers"
+  "OAuth-Authorization-Server"
 )
 for name in "${top_pages[@]}"; do
   cp "$repo_root/docs/$name.md" "$src_docs/${name// /-}.md"
@@ -65,6 +66,7 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   perl -pi -e 's{\]\(\.\./(CHANGELOG\.md|CLAUDE\.md|CONTRIBUTING\.md|AGENTS\.md|README\.md|rust-toolchain\.toml|deny\.toml)(#[^)]*)?\)}{]($ENV{GH}/$1$2)}g' "$f"
   perl -pi -e 's{\]\(\.\./contracts/}{]($ENV{GH}/contracts/}g' "$f"
   perl -pi -e 's{\]\(\.\./\.github/}{]($ENV{GH}/.github/}g' "$f"
+  perl -pi -e 's{\]\(\.\./(scripts|examples)/}{]($ENV{GH}/$1/}g' "$f"
   perl -pi -e 's{\]\(\.\./\.\./crates/}{]($ENV{GH}/crates/}g' "$f"
 
   # 2) links to the hyphen-renamed space-files (any `docs/` prefix, %20-encoded)
