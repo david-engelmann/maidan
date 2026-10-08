@@ -43,8 +43,34 @@ pub(super) async fn cast_vote(
             confidence: a.confidence,
         })
         .await?;
-    server.publish_stored(&stored).await;
+    for event in &stored {
+        server.publish_stored(event).await;
+    }
     Ok(content_json(&json!({"ok": true})))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetractVoteArgs {
+    message_id: uuid::Uuid,
+    kind: VoteKind,
+}
+
+/// Take back the caller's own vote. Twin of `DELETE /messages/{id}/votes`.
+pub(super) async fn retract_vote(
+    server: &crate::server::McpServer,
+    auth: &maidan_auth::AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: RetractVoteArgs = crate::tools::parse_args(args)?;
+    let (removed, stored) = server
+        .store
+        .retract_vote_with_event(MessageId(a.message_id), auth.member_id, a.kind)
+        .await?;
+    if let Some(stored) = stored {
+        server.publish_stored(&stored).await;
+    }
+    Ok(content_json(&json!({"removed": removed})))
 }
 
 #[derive(Deserialize)]

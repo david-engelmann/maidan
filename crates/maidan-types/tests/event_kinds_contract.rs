@@ -40,6 +40,7 @@ fn event_kinds_match_contract_file() {
         EventKind::MessageTombstoned,
         EventKind::MentionRecorded,
         EventKind::VoteCast,
+        EventKind::VoteRetracted,
         EventKind::ReactionAdded,
         EventKind::ReactionRemoved,
         EventKind::MessagePinned,

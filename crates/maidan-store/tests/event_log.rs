@@ -318,7 +318,7 @@ async fn social_with_event_appends_atomically() {
         .await
         .expect("msg");
 
-    let vote_event = store
+    let [vote_event] = store
         .cast_vote_with_event(NewVote {
             message_id: msg.id,
             member_id: MemberId(author.id.0),
@@ -326,7 +326,9 @@ async fn social_with_event_appends_atomically() {
             confidence: None,
         })
         .await
-        .expect("vote");
+        .expect("vote")
+        .try_into()
+        .expect("a first vote replaces nothing");
     assert_eq!(vote_event.kind, EventKind::VoteCast);
 
     let react_event = store

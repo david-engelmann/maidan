@@ -540,6 +540,12 @@
     "surface": "http"
   },
   {
+    "method": "DELETE",
+    "path": "/messages/{id}/votes",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/messages/{id}/votes",
     "capability": "workspace:read",

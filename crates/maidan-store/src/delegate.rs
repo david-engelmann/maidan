@@ -2795,8 +2795,20 @@ macro_rules! store_delegations {
                 votes::cast(self.pool(), new).await
             }
 
-            async fn cast_vote_with_event(&self, new: NewVote) -> Result<StoredEvent, StoreError> {
+            async fn cast_vote_with_event(
+                &self,
+                new: NewVote,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
                 votes::cast_with_event(self.pool(), new).await
+            }
+
+            async fn retract_vote_with_event(
+                &self,
+                message_id: MessageId,
+                member_id: MemberId,
+                kind: VoteKind,
+            ) -> Result<(bool, Option<StoredEvent>), StoreError> {
+                votes::retract_with_event(self.pool(), message_id, member_id, kind).await
             }
 
             async fn list_votes_for_message(

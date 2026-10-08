@@ -53,7 +53,7 @@ pub async fn uris_for_tool_mutation(
                 }
             }
         }
-        "record_mention" | "cast_vote" | "add_reaction" | "remove_reaction" => {
+        "record_mention" | "cast_vote" | "retract_vote" | "add_reaction" | "remove_reaction" => {
             if let Some(mid) = uuid_arg(args, "message_id") {
                 if let Ok(msg) = store.get_message(MessageId(mid)).await {
                     push_thread_chain(store, msg.thread_id, &mut uris).await;

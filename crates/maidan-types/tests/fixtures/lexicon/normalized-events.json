@@ -490,6 +490,16 @@
     "vote_kind": "approve",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.vote_retracted/1": {
+    "$type": "maidan.event.vote_retracted/1",
+    "kind": "vote_retracted",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "message_id": "00000000-0000-0000-0000-000000000005",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "vote_kind": "approve",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.wait_timed_out/1": {
     "$type": "maidan.event.wait_timed_out/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",

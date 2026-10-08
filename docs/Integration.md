@@ -1990,6 +1990,15 @@ exactly `approve`, `request_changes`, and `ack`. Any other value is rejected: `u
 the hyphenated `request-changes`, and a custom emoji. An emoji belongs on
 `POST /messages/{id}/reactions`, not on a vote. There is no alias and no older open string.
 
+A member holds **one verdict** on a message. `approve` and `request_changes` replace each
+other, and `ack` stands beside either, so a count of each kind counts each member once.
+Changing a verdict appends a `vote_retracted` event for the old one, then the `vote_cast`
+for the new one, in the vote's own transaction, so a consumer that folds the log keeps the
+same state as `GET /messages/{id}/votes`. Take a vote back with
+`DELETE /messages/{id}/votes` and body `{"kind": "approve"}`, or MCP `retract_vote`. Only
+your own vote is removed, a second retract removes nothing and appends no event, and the
+answer is 204 either way (MCP returns `{"removed": bool}`).
+
 An **`ack` vote** (`POST /messages/{id}/votes` with `kind: "ack"`) is a grounding act: the
 voter asserts "I have read and stand on this message **as it is now**." Add an optional
 `confidence` to weight it. An ack is **version-pinned by time**: it grounds the

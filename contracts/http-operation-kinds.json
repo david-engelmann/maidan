@@ -120,6 +120,7 @@
   {"method":"GET","path":"/messages/{id}/reactions","kind":"reads"},
   {"method":"POST","path":"/messages/{id}/reactions","kind":"changes"},
   {"method":"POST","path":"/messages/{id}/seed","kind":"changes"},
+  {"method":"DELETE","path":"/messages/{id}/votes","kind":"changes"},
   {"method":"GET","path":"/messages/{id}/votes","kind":"reads"},
   {"method":"POST","path":"/messages/{id}/votes","kind":"changes"},
   {"method":"GET","path":"/metrics","kind":"reads"},

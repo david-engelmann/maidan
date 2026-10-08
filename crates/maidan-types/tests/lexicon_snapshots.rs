@@ -406,6 +406,14 @@ fn sample_event(kind: EventKind) -> Event {
             member_id,
             vote_kind: "approve".into(),
         },
+        EventKind::VoteRetracted => Event::VoteRetracted {
+            occurred_at,
+            workspace_id,
+            thread_id,
+            message_id,
+            member_id,
+            vote_kind: "approve".into(),
+        },
         EventKind::ReactionAdded => Event::ReactionAdded {
             occurred_at,
             workspace_id,
@@ -511,6 +519,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::MessageTombstoned
             | EventKind::MentionRecorded
             | EventKind::VoteCast
+            | EventKind::VoteRetracted
             | EventKind::ReactionAdded
             | EventKind::ReactionRemoved
             | EventKind::MessagePinned

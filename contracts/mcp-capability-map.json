@@ -179,6 +179,7 @@
   "request_approval": "workspace:read",
   "require_land_gate": "thread:transition",
   "resolve_secret": "secret:read",
+  "retract_vote": "workspace:write",
   "revoke_delegation_grant": "token:admin",
   "revoke_fsm_hook": "workspace:write",
   "revoke_secret_egress_host": "secret:admin",
