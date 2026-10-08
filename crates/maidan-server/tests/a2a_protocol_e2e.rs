@@ -260,6 +260,7 @@ impl H {
                 requested_by: self.member,
                 prompt: "Deploy?".into(),
                 schema: None,
+                risk: Default::default(),
             })
             .await
             .unwrap()
@@ -1165,6 +1166,7 @@ async fn a_pending_gate_is_an_input_required_task() {
             requested_by: h.member,
             prompt: "Deploy to prod?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .unwrap();
@@ -1453,6 +1455,7 @@ async fn list_tasks_never_crosses_tenants() {
             requested_by: them,
             prompt: "Deploy?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .unwrap();

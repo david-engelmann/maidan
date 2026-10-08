@@ -6,7 +6,7 @@ import { keyActivates, responseError, showError } from "./feedback.js";
 import { ago, authorId, personEl } from "./people.js";
 import { sessionMemberId } from "./session.js";
 import { NY_KINDS, NY_RETRY_MAX_MS, NY_RETRY_MIN_MS } from "./state.js";
-import { answerGate } from "./tools.js";
+import { answerGate, modelRequestLine } from "./tools.js";
 
 
 
@@ -323,6 +323,13 @@ import { answerGate } from "./tools.js";
         } else {
           const view = pendingGateViews.get(item.gate_id);
           if (view && view.gate.requested_by) sub.append("asked by ", personEl(view.gate.requested_by));
+          const askedByModel = modelRequestLine(view && view.model_request);
+          if (askedByModel) {
+            const note = document.createElement("span");
+            note.className = "model-request";
+            note.textContent = askedByModel;
+            sub.appendChild(note);
+          }
           if (th && th.title) {
             const on = document.createElement("span");
             on.className = "ny-on";

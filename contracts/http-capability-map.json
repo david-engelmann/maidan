@@ -1171,6 +1171,18 @@
   },
   {
     "method": "PUT",
+    "path": "/workspaces/{id}/approval-policy",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/approval-policy",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
     "path": "/workspaces/{id}/delegation-policy",
     "capability": "token:admin",
     "surface": "http"

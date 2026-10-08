@@ -6221,6 +6221,15 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "description": "what the human is being asked to approve",
       "type": "string"
     },
+    "risk": {
+      "description": "how much a wrong accept would cost; omitted means high. The workspace's approval policy decides from it whether a model's accept through approval_decide needs a person to confirm it in the console",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "type": "string"
+    },
     "schema": {
       "description": "optional JSON Schema for structured detail the human may supply alongside their decision",
       "type": "object"
@@ -6256,6 +6265,43 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   },
   "required": [
     "gate_id"
+  ],
+  "type": "object"
+}
+```
+
+### `approval_decide`
+
+**Decide an approval gate.** Decide a pending approval gate: accept or decline, with an optional note. Decline takes effect at once. Accept takes effect at once only for a token holding approval:grant, on a gate below the workspace's confirmation threshold (by default every gate is at or above it). Otherwise you get {status: confirmation_required, confirmation_url}: a one-time link the person opens in the Maidan console and confirms, signed in as themselves. Clients that declare URL-mode elicitation are shown the same link through elicitation. You cannot confirm for the person; do not retry, poll get_approval_gate. Nobody accepts a gate they requested. The decision records which client you used and that a model asked.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "decision": {
+      "description": "accept or decline; cancelling stays with whoever opened the gate",
+      "enum": [
+        "accept",
+        "decline"
+      ],
+      "type": "string"
+    },
+    "gate_id": {
+      "description": "the pending gate to decide",
+      "format": "uuid",
+      "type": "string"
+    },
+    "note": {
+      "description": "optional note kept on the gate with the decision, at most 2000 characters",
+      "type": "string"
+    }
+  },
+  "required": [
+    "gate_id",
+    "decision"
   ],
   "type": "object"
 }

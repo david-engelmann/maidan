@@ -10,6 +10,7 @@
   "add_thread_required_skill",
   "advise_land_gate",
   "allow_secret_egress_host",
+  "approval_decide",
   "assign_thread",
   "attach_memory_block",
   "attenuate_token",

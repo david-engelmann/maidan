@@ -327,6 +327,36 @@ pub fn set_wip_limit() {}
 )]
 pub fn get_wip_limit() {}
 
+/// Set a workspace's approval policy
+#[utoipa::path(
+    put,
+    path = "/workspaces/{id}/approval-policy",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = SetApprovalPolicy,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ApprovalPolicy, description = "The confirmation threshold now in force"),
+        (status = 400, response = BadRequest),
+        (status = 403, description = "Requires token:admin", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn set_approval_policy() {}
+
+/// Get a workspace's approval policy
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/approval-policy",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ApprovalPolicy, description = "The lowest gate risk at which a model's accept through approval_decide needs a person to confirm it"),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn get_approval_policy() {}
+
 /// Set a workspace's delegation policy
 #[utoipa::path(
     put,

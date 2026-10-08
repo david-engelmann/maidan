@@ -11,7 +11,7 @@ import { connectWs, disconnectWs, reconnectNowIfWanted, setPresence } from "./re
 import { loadServerAuth, oidcLoginPath, saveWorkspaceName, sessionMemberId, showConnection, showSecretOnce, start } from "./session.js";
 import { WORKER_PRESET, baseInput, onMac } from "./state.js";
 import { loadMessages } from "./thread.js";
-import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkDepth, loadWorkThreads, markAllNotificationsRead, myCapabilities, parseCaps, pollReindex, registerSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, startReindex } from "./tools.js";
+import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, openConfirmation, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkDepth, loadWorkThreads, markAllNotificationsRead, myCapabilities, parseCaps, pollReindex, registerSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, startReindex } from "./tools.js";
 
 
       setInterval(refreshTeamSoon, 30000);
@@ -31,7 +31,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           if (btn.dataset.tab === "prefs") loadPrefs();
           if (btn.dataset.tab === "glass") loadGlass();
           if (btn.dataset.tab === "notifications") loadNotifications();
-          if (btn.dataset.tab === "approvals") loadApprovals();
+          if (btn.dataset.tab === "approvals") loadApprovals().then(() => openConfirmation());
           if (btn.dataset.tab === "session") loadSession();
           if (btn.dataset.tab === "tokens") loadAttenuationCeiling();
         };
@@ -299,6 +299,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       document.getElementById("notif-refresh").onclick = () => loadNotifications();
 
       document.getElementById("approvals-refresh").onclick = () => loadApprovals();
+
 
       document.getElementById("session-refresh").onclick = () => loadSession();
 
@@ -869,6 +870,19 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
 
       document.getElementById("workspace-name-save").onclick = () => saveWorkspaceName();
 
-      start().then(() => registerBrowserPush(authorId()));
+      start().then(() => {
+        registerBrowserPush(authorId());
+        // A confirmation link lands here, #confirm-approval=<gate>.<token>,
+        // once the session has named its workspace.
+        if (typeof location !== "undefined" && location.hash.startsWith("#confirm-approval=")) openTool("approvals");
+      });
+
+      // The link is a fragment, so opening it in a console that is already
+      // loaded does not run start() again.
+      if (typeof window !== "undefined") {
+        window.addEventListener("hashchange", () => {
+          if (typeof location !== "undefined" && location.hash.startsWith("#confirm-approval=")) openTool("approvals");
+        });
+      }
 
     
