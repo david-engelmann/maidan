@@ -327,7 +327,7 @@ pub async fn get_tool_transcript(
 }
 
 /// Same record as the MCP path: the refusal text, on the thread, so `/ui`
-/// can show it. Best-effort.
+/// can show it, and the same resource update for MCP subscribers. Best-effort.
 async fn record_close_refusal(
     state: &AppState,
     member_id: MemberId,
@@ -354,7 +354,16 @@ async fn record_close_refusal(
         )
         .await
     {
-        Ok((_, stored)) => publish_stored(state, stored).await,
+        Ok((message, stored)) => {
+            publish_stored(state, stored).await;
+            // The handler is about to return the refusal, so the success path
+            // that notifies MCP resource subscribers will not run. The notice
+            // is still a new message on the thread.
+            let uris =
+                maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), message.id)
+                    .await;
+            state.mcp.publish_resource_uris(uris).await;
+        }
         Err(note_err) => {
             tracing::warn!(error = %note_err, %thread_id, "close refusal was not recorded on the thread");
         }
