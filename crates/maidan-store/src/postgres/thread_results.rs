@@ -36,7 +36,11 @@ pub async fn set(
     .bind(result_kind)
     // The delegate that carried a borrowed token, so a hand-off can tell a
     // worker's result from one a non-worker produced.
-    .bind(crate::attribution::delegate_acting_for(produced_by).map(|m| m.0))
+    .bind(
+        crate::attribution::delegate_acting_for(produced_by)
+            .unwrap_or(produced_by)
+            .0,
+    )
     .fetch_one(pool)
     .await?;
     Ok(row_to_result(&row))

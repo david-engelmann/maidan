@@ -418,6 +418,109 @@ async fn run_suite(store: &dyn Store) {
     assert!(!nothing.self_reported_only);
 }
 
+const BY_DELEGATOR: &str = "4444444444444444444444444444444444444444444444444444444444444444";
+const BY_PLAIN: &str = "5555555555555555555555555555555555555555555555555555555555555555";
+
+/// Links from two members who never worked the thread: one has delegated to
+/// the thread's worker, one never delegated. Returns the thread; the caller
+/// then strips the recorded actors, as rows written before migration 0147 are.
+async fn legacy_setup(store: &dyn Store) -> (ThreadId, MemberId) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "legacy".into(),
+        })
+        .await
+        .expect("workspace")
+        .id;
+    let mut ids = Vec::new();
+    for handle in ["owner", "worker", "delegator", "plain"] {
+        ids.push(
+            store
+                .create_member(NewMember {
+                    workspace_id: ws,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .expect("member")
+                .id,
+        );
+    }
+    let [owner, worker, delegator, plain] = ids[..] else {
+        unreachable!()
+    };
+    store
+        .create_delegation_grant(NewDelegationGrant {
+            workspace_id: ws,
+            subject_id: delegator,
+            delegate_id: worker,
+            capabilities: vec!["workspace:write".into()],
+            purpose: "cover the shift".into(),
+            authorized_by: owner,
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(8),
+        })
+        .await
+        .expect("grant");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: "old".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel")
+        .id;
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel,
+            parent_thread_id: None,
+            title: Some("legacy".into()),
+            description: None,
+        })
+        .await
+        .expect("thread")
+        .id;
+    store.claim_thread(thread, worker).await.expect("claim");
+    for (sha, by) in [(BY_DELEGATOR, delegator), (BY_PLAIN, plain)] {
+        store.record_artifact_ref(ws, sha).await.expect("held");
+        store
+            .link_thread_artifact(thread, sha, by)
+            .await
+            .expect("link");
+    }
+    (thread, worker)
+}
+
+/// A row without an actor predates migration 0147. From a member who never
+/// delegated, the member acted, so the link is attached. From one who did, a
+/// delegate (here the thread's own worker) may have carried it, so it is not
+/// shown to be independent and counts as self-reported.
+async fn legacy_check(store: &dyn Store, thread: ThreadId, worker: MemberId) {
+    store
+        .transition_thread(thread, worker, ThreadAction::StartReview)
+        .await
+        .expect("hand off");
+    let packet = packet(store, thread).await;
+    assert_eq!(
+        tiers(&packet),
+        vec![
+            (
+                EvidenceKind::Artifact,
+                Some(BY_DELEGATOR),
+                AttestationTier::SelfReported
+            ),
+            (
+                EvidenceKind::Artifact,
+                Some(BY_PLAIN),
+                AttestationTier::Attached
+            ),
+        ],
+        "an unrecorded actor is independent only when no delegate could have acted"
+    );
+}
+
 #[tokio::test]
 async fn evidence_is_tiered_once_at_the_hand_off_on_sqlite() {
     let pool = SqlitePoolOptions::new()
@@ -429,7 +532,28 @@ async fn evidence_is_tiered_once_at_the_hand_off_on_sqlite() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    run_suite(&SqliteStore::for_tests(pool)).await;
+    let store = SqliteStore::for_tests(pool.clone());
+    run_suite(&store).await;
+
+    let (thread, worker) = legacy_setup(&store).await;
+    let unrecorded: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM maidan_thread_artifacts
+         WHERE thread_id = ?1 AND (linked_actor_id IS NULL OR linked_actor_id <> linked_by)",
+    )
+    .bind(thread.0)
+    .fetch_one(&pool)
+    .await
+    .expect("count");
+    assert_eq!(
+        unrecorded, 0,
+        "a direct link records its member as the actor"
+    );
+    sqlx::query("UPDATE maidan_thread_artifacts SET linked_actor_id = NULL WHERE thread_id = ?1")
+        .bind(thread.0)
+        .execute(&pool)
+        .await
+        .expect("strip actors");
+    legacy_check(&store, thread, worker).await;
 }
 
 #[tokio::test]
@@ -460,5 +584,26 @@ async fn evidence_is_tiered_once_at_the_hand_off_on_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    run_suite(&PostgresStore::for_tests(pool)).await;
+    let store = PostgresStore::for_tests(pool.clone());
+    run_suite(&store).await;
+
+    let (thread, worker) = legacy_setup(&store).await;
+    let unrecorded: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM maidan_thread_artifacts
+         WHERE thread_id = $1 AND (linked_actor_id IS NULL OR linked_actor_id <> linked_by)",
+    )
+    .bind(thread.0)
+    .fetch_one(&pool)
+    .await
+    .expect("count");
+    assert_eq!(
+        unrecorded, 0,
+        "a direct link records its member as the actor"
+    );
+    sqlx::query("UPDATE maidan_thread_artifacts SET linked_actor_id = NULL WHERE thread_id = $1")
+        .bind(thread.0)
+        .execute(&pool)
+        .await
+        .expect("strip actors");
+    legacy_check(&store, thread, worker).await;
 }
