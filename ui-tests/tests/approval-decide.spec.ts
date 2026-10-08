@@ -82,12 +82,12 @@ test("a model's accept through approval_decide asks the signed-in person to conf
   expect(confirms[0]).toContain("/auth/approval-confirmations/confirm");
 
   // The gate left the pending list.
-  await expect(page.locator("#approval-list li.approval-row").filter({ hasText: prompt })).toHaveCount(0);
+  await expect(page.locator("#approval-list li.approval-row:not(.confirmation)").filter({ hasText: prompt })).toHaveCount(0);
 
   // The link is spent: opening it again confirms nothing.
   await page.goto(asked.confirmation_url!);
   const again = page.locator("#approval-list li.confirmation").last();
   await expect(again).toBeVisible();
-  await again.locator("button.gate-confirm").click();
-  await expect(page.locator("#toasts [role=alert]")).toBeVisible();
+  await expect(again).toContainText("no longer pending");
+  await expect(again.locator("button.gate-confirm")).toHaveCount(0);
 });

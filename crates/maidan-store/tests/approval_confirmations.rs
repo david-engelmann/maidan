@@ -320,12 +320,13 @@ async fn run_suite(store: &dyn Store) {
 }
 
 #[tokio::test]
-async fn approval_confirmations_sqlite() {
+async fn a_confirmation_is_issued_once_spent_once_and_refused_when_expired_or_foreign_on_sqlite() {
     run_suite(&sqlite().await).await;
 }
 
 #[tokio::test]
-async fn approval_confirmations_postgres() {
+async fn a_confirmation_is_issued_once_spent_once_and_refused_when_expired_or_foreign_on_postgres()
+{
     use maidan_store::{run_postgres_migrations, PostgresStore};
     use sqlx::postgres::PgPoolOptions;
     use std::time::Duration;

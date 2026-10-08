@@ -1715,7 +1715,7 @@ a gate over MCP. `decision` is `accept` or `decline`.
   `{console origin}/ui/#confirm-approval={gate_id}.{token}`. The token is in the
   URL fragment, so it never reaches a log. It is bound to the workspace, the
   gate and the member whose credential the model used, stored only as a hash,
-  and it expires (ten minutes by default). A repeat call while it is live
+  and it expires after ten minutes. A repeat call while it is live
   returns the same link. It is refused after use, after expiry, and once the
   gate resolves, and another workspace's caller cannot tell it from no link.
   The signed-in person confirms at `POST /auth/approval-confirmations/confirm`

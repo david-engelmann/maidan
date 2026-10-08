@@ -877,4 +877,12 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         if (typeof location !== "undefined" && location.hash.startsWith("#confirm-approval=")) openTool("approvals");
       });
 
+      // The link is a fragment, so opening it in a console that is already
+      // loaded does not run start() again.
+      if (typeof window !== "undefined") {
+        window.addEventListener("hashchange", () => {
+          if (typeof location !== "undefined" && location.hash.startsWith("#confirm-approval=")) openTool("approvals");
+        });
+      }
+
     
