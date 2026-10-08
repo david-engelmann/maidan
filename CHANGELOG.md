@@ -1876,10 +1876,36 @@ Refs #1253
 - **Fixed:** A close refused over REST (`POST /threads/:id`, a review requirement not met or an unresolved `refutes`) now notifies the thread's MCP resource subscribers of the notice message it posts, as the MCP `transition_thread` refusal already did. Subscribers in another workspace hear nothing.
 - **Added:** The server logs a warning at boot when `MAIDAN_MARK_READY_APP_ID` is set and `MAIDAN_MARK_READY_BASES` pins no base (unset or blank), because every mark-ready flip then follows the workspace egress allowlist alone. Boot still succeeds.
 
+### The compose recipes' MCP calls meet the 2026-07-28 revision
+
+- **Fixed:** `examples/recipes/maidan_http.py` sent `MCP-Protocol-Version: 2026-07-28` with nothing else the revision requires, so since the revision hold (#1302) the server refused every recipe tool call with `params._meta must carry io.modelcontextprotocol/protocolVersion`, and the deploy recipe's agent could not open or read its gate. The helper now states the revision in `params._meta` beside the client's capabilities and sends the `Mcp-Method` and `Mcp-Name` headers. `crates/maidan-server/tests/recipes_mcp_e2e.rs` runs the deploy recipe's agent against a real server with auth on, so the recipes' MCP calls are tested in the integration-test job whenever code changes.
+
 ### Accepting an approval gate is a property of the credential
 
 - **Security:** `POST /approval-gates/:id/answer` with `accept` needs a token holding `approval:grant` (or a session made from one), or a browser session the person signed in to through the identity provider, sent from the console page with the strict origin check (`Sec-Fetch-Site` must be `same-origin` when present; only when it is absent must `Origin` match the host; a request naming neither is refused). A plain bearer token whose member is a human, a delegated token, and a session made from a plain token with `POST /auth/session/from-token` are refused with 403 `missing capability: approval:grant. …`, because they are the credentials a person hands an agent. Declining and cancelling are unchanged, and nobody accepts their own request. Next 17, part one.
 - **Changed:** The console says what accepting needs when a pasted token is refused, and still declines and cancels with it. The admin token `maidan init` prints holds every capability, `approval:grant` included, so `examples/recipes/approve.py` still accepts with it; its docstring now says so and why that token never goes to an agent.
+
+### An approval card says how far to trust each piece of evidence
+
+- **Added:** A review packet records an attestation tier for each piece of evidence, judged once at the hand-off: `verified` for a land-gate pass the close gate would accept (its own `land_gate` item, with the pass's `artifact_sha` and recorder), `attached` for a result or artifact from a member who never worked the thread, and `self_reported` for a worker's own result or link. A delegate that worked the thread and links with someone else's token is judged as itself, so its link is still self-reported (migration 0147 records a link's and a result's delegate actor). The packet's `self_reported_only` is true when it holds evidence and every item is self-reported. Both appear on `get_review_packet`, `GET /threads/:id/review-packet` and `GET /ui/api/threads/:tid/review-packet`. This is the fourth part of evidence-bound approvals (Open Work Next 3).
+- **Changed:** The tiers are inside the evidence root, so the same evidence handed over again under different tiers is a new root, and an approval names the tiers it was shown. Packets from before tiers keep their roots and carry no tiers. A close compares the evidence with what the packet pinned rather than judging the tiers again, so a land-gate pass or a membership change after the hand-off neither moves a packet nor refuses a close.
+- **Added:** Needs you in the console shows each item's tier on the approval card, a land-gate pass as its own line with its recorder, and warns when the server says the approval would rest on self-reported evidence only.
+### A model can decide an approval gate, and a person confirms it
+
+- **Added:** MCP `approval_decide {gate_id, decision, note?}`. Declining works on any member credential that can decline over REST, with the note recorded on the gate. Accepting happens directly only for a token holding `approval:grant`, on a gate whose risk is below the workspace's confirmation threshold. Every other accept gets a `confirmation_required` result, not an error: a one-time console link, short-lived, bound to the workspace, the gate and the member, stored hashed, refused after use, after expiry and once the gate resolves. A repeat call while the link is live returns it again. Nobody accepts their own request. Next 17, part two.
+- **Security:** The link is spent only at `POST /auth/approval-confirmations/confirm`, by the bound person's signed-in console session, sent from the console page with the strict origin check. A bearer, and a session made from a token, are refused, so the model holding the token cannot finish it. Another workspace's caller cannot tell the link or the gate from none.
+- **Added:** A `2026-07-28` client that declared URL-mode elicitation gets the link as an `input_required` URL elicitation; form mode is never used. `MAIDAN_CONSOLE_ORIGIN` (falling back to the origin of `MAIDAN_OIDC_REDIRECT_URI`) makes the link absolute.
+- **Added:** Gates carry a risk (`low`, `medium`, `high`; default `high`, settable on `request_approval`). `GET`/`PUT /workspaces/{id}/approval-policy` reads and sets the threshold (`token:admin` to set, audited). The default threshold is `low`, so every acceptance a model asks for needs a person until an admin raises it. Migration 0148 on SQLite and Postgres.
+- **Added:** The gate's `decided_via` and the audit rows record the client's name and version and that a model asked. The console shows a model's pending request on the gate's card and says "decided via <client>, requested by a model" once confirmed.
+
+### A workspace admin cannot reach across tenants through an app
+
+- **Security:** Installing an app, and minting a token from an installation, grant only what the caller could mint directly. A `token:admin` holder without `operator:global` or `audit:read-global` could install an app with either capability and mint the bot a token that operated or read across every workspace. Both routes now answer 400 for a capability the caller cannot grant, including one an operator put in the installation's grant.
+- **Security:** The installed-app code exchange (`POST /oauth/app/token`) mints with no member behind it, so it never issues `operator:global` or `audit:read-global`, whatever the installation's grant says.
+
+### Removing a channel member names a member of the channel's workspace
+
+- **Fixed:** `DELETE /channels/:cid/members/:mid` and the MCP `remove_channel_member` answer an id that is no member of the channel's workspace, unknown or another workspace's, as not found. They used to answer success and write a `channel_member.remove` audit row naming the id.
 
 ## [412.0.0] — 2026-09-28
 
