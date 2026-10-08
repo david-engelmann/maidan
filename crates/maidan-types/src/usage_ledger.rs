@@ -563,6 +563,12 @@ fn ppm(part: i64, whole: i64) -> Result<Option<i64>, String> {
 /// input. `gcp.vertex_ai` is not classified: Vertex serves both shapes.
 /// A write total that is not split by TTL is recorded on the 5-minute tier,
 /// which is Anthropic's default and the 1.25x write the other providers publish.
+///
+/// A provider's own usage object, flattened with dotted keys, is also read:
+/// Bedrock's `cacheDetails` splits its writes by TTL, Gemini's
+/// `thoughtsTokenCount` is output, and so is xAI's `reasoning_tokens`, which
+/// its `completion_tokens` leave out. The SDK normalizers in `sdk/` agree with
+/// this function on the fixtures in `sdk/usage-fixtures/`.
 pub fn token_usage_from_genai(
     attrs: &Map<String, Value>,
 ) -> Result<(TokenUsage, UsageEvidence, String), String> {
@@ -588,11 +594,14 @@ pub fn token_usage_from_genai(
             "gen_ai.usage.cached_tokens",
             "cached_tokens",
             "prompt_tokens_details.cached_tokens",
+            "input_tokens_details.cached_tokens",
             "prompt_cache_hit_tokens",
             "cachedContentTokenCount",
+            "cacheReadInputTokens",
         ],
     )?
     .unwrap_or(0);
+    let (details_5m, details_1h) = bedrock_cache_details(attrs.get("cacheDetails"))?;
     let mut write_5m = attr_i64(
         attrs,
         &[
@@ -602,7 +611,7 @@ pub fn token_usage_from_genai(
         ],
     )?
     .unwrap_or(0);
-    let write_1h = attr_i64(
+    let mut write_1h = attr_i64(
         attrs,
         &[
             "gen_ai.usage.cache_creation.ephemeral_1h_input_tokens",
@@ -612,6 +621,9 @@ pub fn token_usage_from_genai(
     )?
     .unwrap_or(0);
     if write_5m == 0 && write_1h == 0 {
+        (write_5m, write_1h) = (details_5m, details_1h);
+    }
+    if write_5m == 0 && write_1h == 0 {
         write_5m = attr_i64(
             attrs,
             &[
@@ -620,6 +632,7 @@ pub fn token_usage_from_genai(
                 "cache_write_input_tokens",
                 "cacheWriteInputTokens",
                 "prompt_tokens_details.cache_write_tokens",
+                "input_tokens_details.cache_write_tokens",
                 "gen_ai.usage.cache_write.input_tokens",
             ],
         )?
@@ -644,7 +657,7 @@ pub fn token_usage_from_genai(
             "gen_ai.usage.prompt_cache_miss_tokens",
         ],
     )?;
-    let output = attr_i64(
+    let answer = attr_i64(
         attrs,
         &[
             "gen_ai.usage.output_tokens",
@@ -657,6 +670,26 @@ pub fn token_usage_from_genai(
     .unwrap_or(0);
 
     let provider_key = provider.as_deref().map(str::to_ascii_lowercase);
+    // Gemini counts thoughts apart from the candidates, and xAI's reference
+    // example totals `prompt + completion + reasoning`; both bill thinking as
+    // output. OpenAI, Anthropic, DeepSeek and vLLM already include it.
+    let thoughts = attr_i64(attrs, &["thoughtsTokenCount"])?.unwrap_or(0);
+    let reasoning = if matches!(provider_key.as_deref(), Some("xai" | "x_ai")) {
+        attr_i64(
+            attrs,
+            &[
+                "completion_tokens_details.reasoning_tokens",
+                "output_tokens_details.reasoning_tokens",
+            ],
+        )?
+        .unwrap_or(0)
+    } else {
+        0
+    };
+    let output = answer
+        .checked_add(thoughts)
+        .and_then(|n| n.checked_add(reasoning))
+        .ok_or_else(|| "token total overflow".to_string())?;
     let inclusive = matches!(
         provider_key.as_deref(),
         Some(
@@ -771,6 +804,31 @@ pub fn token_usage_from_genai(
     };
     evidence.validate()?;
     Ok((tokens, evidence, model))
+}
+
+/// Bedrock Converse's `cacheDetails`: one `{ttl, inputTokens}` per TTL written.
+fn bedrock_cache_details(value: Option<&Value>) -> Result<(i64, i64), String> {
+    let items = match value {
+        None | Some(Value::Null) => return Ok((0, 0)),
+        Some(Value::Array(items)) => items,
+        Some(_) => return Err("cacheDetails must be an array".into()),
+    };
+    let (mut five, mut hour) = (0_i64, 0_i64);
+    for item in items {
+        let Value::Object(detail) = item else {
+            return Err("cacheDetails entries must be objects".into());
+        };
+        let tokens = attr_i64(detail, &["inputTokens"])?.unwrap_or(0);
+        let tier = match detail.get("ttl").and_then(Value::as_str) {
+            Some("5m") => &mut five,
+            Some("1h") => &mut hour,
+            _ => return Err("cacheDetails ttl must be 5m or 1h".into()),
+        };
+        *tier = tier
+            .checked_add(tokens)
+            .ok_or_else(|| "token total overflow".to_string())?;
+    }
+    Ok((five, hour))
 }
 
 fn pack_shas(value: Option<&Value>) -> Result<Vec<String>, String> {

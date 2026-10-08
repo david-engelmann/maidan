@@ -1,4 +1,4 @@
-//! REST run lineage. A PUT result carrying the pi fixture `run_id` homes
+//! REST run lineage. A PUT result carrying the waiter fixture's `run_id` homes
 //! `parent_run_id` on the thread (no minted id). Nested occupancy attributes a
 //! child that shares the value. F7 mute is orthogonal. Auth ENABLED (real
 //! token).
@@ -20,7 +20,7 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
 
-const PI_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
+const PRODUCER_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
 const FIXTURE: &str = include_str!("../../maidan-types/tests/fixtures/waiter_result_v1.json");
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
@@ -134,7 +134,7 @@ async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
     assert_eq!(miss.status(), StatusCode::NOT_FOUND);
 
     let fixture: Value = serde_json::from_str(FIXTURE).expect("fixture");
-    assert_eq!(fixture["run_id"], json!(PI_RUN_ID));
+    assert_eq!(fixture["run_id"], json!(PRODUCER_RUN_ID));
 
     let set = client
         .put(format!("{base}/threads/{}/result", parent.id.0))
@@ -154,13 +154,13 @@ async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
         .json()
         .await
         .unwrap();
-    assert_eq!(lined["parent_run_id"], json!(PI_RUN_ID));
+    assert_eq!(lined["parent_run_id"], json!(PRODUCER_RUN_ID));
     assert_eq!(lined["thread_id"], json!(parent.id.0));
 
     let nest = client
         .put(format!("{base}/threads/{}/lineage", child.id.0))
         .header("Authorization", &bearer)
-        .json(&json!({ "parent_run_id": PI_RUN_ID }))
+        .json(&json!({ "parent_run_id": PRODUCER_RUN_ID }))
         .send()
         .await
         .unwrap();
@@ -168,7 +168,7 @@ async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
 
     let listed: Value = client
         .get(format!(
-            "{base}/workspaces/{}/run-threads?parent_run_id={PI_RUN_ID}",
+            "{base}/workspaces/{}/run-threads?parent_run_id={PRODUCER_RUN_ID}",
             ws.id.0
         ))
         .header("Authorization", &bearer)
@@ -192,7 +192,7 @@ async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
 
     let occ: Value = client
         .get(format!(
-            "{base}/workspaces/{}/run-occupancy?parent_run_id={PI_RUN_ID}",
+            "{base}/workspaces/{}/run-occupancy?parent_run_id={PRODUCER_RUN_ID}",
             ws.id.0
         ))
         .header("Authorization", &bearer)
@@ -202,14 +202,14 @@ async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
         .json()
         .await
         .unwrap();
-    assert_eq!(occ["parent_run_id"], json!(PI_RUN_ID));
+    assert_eq!(occ["parent_run_id"], json!(PRODUCER_RUN_ID));
     assert_eq!(occ["open"], json!(2));
     assert_eq!(occ["queued"], json!(2));
 
     store.mute_thread(member.id, child.id).await.unwrap();
     let occ_muted: Value = client
         .get(format!(
-            "{base}/workspaces/{}/run-occupancy?parent_run_id={PI_RUN_ID}",
+            "{base}/workspaces/{}/run-occupancy?parent_run_id={PRODUCER_RUN_ID}",
             ws.id.0
         ))
         .header("Authorization", &bearer)

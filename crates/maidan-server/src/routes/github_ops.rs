@@ -1,6 +1,7 @@
 //! The change flow's mark-ready action: flip a draft agent pull request to
-//! ready for review. Callable only by the Soundcheck app, whose own token
-//! cannot mark ready.
+//! ready for review. Callable only by the mark-ready app (the
+//! operator-designated app named by `MAIDAN_MARK_READY_APP_ID`), whose own
+//! token cannot mark ready.
 
 use axum::{extract::State, Extension, Json};
 use maidan_auth::AuthContext;
@@ -140,11 +141,11 @@ pub async fn flip_pull_ready_guarded(
 }
 
 /// Whether the caller is an installation of the operator-designated app
-/// (`MAIDAN_MARK_READY_APP_ID`, Soundcheck in the change flow). A member
+/// (`MAIDAN_MARK_READY_APP_ID`, the mark-ready app). A member
 /// token, a session, another app's token, or an app that merely shares the
 /// designated app's slug in another workspace is refused, whatever
 /// capabilities it carries. No designated app refuses every call.
-async fn soundcheck_caller(state: &AppState, auth: &AuthContext) -> ApiResult<()> {
+async fn require_mark_ready_app(state: &AppState, auth: &AuthContext) -> ApiResult<()> {
     let refused = || {
         ApiError::Forbidden("only the operator-designated app may mark pull requests ready".into())
     };
@@ -234,7 +235,7 @@ fn valid_repo_shape(repo: &str) -> bool {
 /// `POST /operator/github/mark-ready` — flip a draft pull request to ready
 /// for review.
 ///
-/// Soundcheck-only. The flip lands only on a `feature/agent-*` head into the
+/// Mark-ready app only. The flip lands only on a `feature/agent-*` head into the
 /// workspace's allowlisted base for that repo — never prod, never a merge,
 /// never any other PR mutation. Every call that reaches the handler is
 /// audited, including refusals: this endpoint is the sole gate for a PR
@@ -249,7 +250,7 @@ pub async fn mark_pull_ready(
     let repo = body.repo.trim().to_string();
     let pull_number = body.pull_number;
 
-    if let Err(err) = soundcheck_caller(&state, &auth).await {
+    if let Err(err) = require_mark_ready_app(&state, &auth).await {
         audit_mark_ready(
             &state,
             &auth,

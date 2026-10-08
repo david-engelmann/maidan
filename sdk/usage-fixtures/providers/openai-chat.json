@@ -1,0 +1,44 @@
+{
+  "name": "openai-chat",
+  "provider": "openai-chat",
+  "source": "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create",
+  "recorded": "verbatim",
+  "note": "The reference's default example, with choices left out.",
+  "response": {
+    "id": "chatcmpl-B9MBs8CjcvOU2jLn4n570S5qMJKcT",
+    "object": "chat.completion",
+    "created": 1741569952,
+    "model": "gpt-6-astra",
+    "usage": {
+      "prompt_tokens": 19,
+      "completion_tokens": 10,
+      "total_tokens": 29,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "service_tier": "default"
+  },
+  "expected": {
+    "model": "gpt-6-astra",
+    "tokens": {
+      "input": 19,
+      "output": 10,
+      "cache_read": 0,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "openai",
+      "service_tier": "default"
+    }
+  },
+  "retrieved": "2026-10-04"
+}

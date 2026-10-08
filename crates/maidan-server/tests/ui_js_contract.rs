@@ -659,8 +659,10 @@ fn ui_js_puts_the_decisions_agents_wait_on_first() {
     assert!(needs < board, "Needs you sits above the board");
     assert!(
         s.contains("uiReadPath(`/members/${me}/waiting`)")
-            && s.contains("new Set([\"review_request\", \"unassigned_review\", \"open_gate\"])"),
-        "the queue reads the waiting inbox and keeps the decisions: reviews, unassigned reviews and gates"
+            && s.contains(
+                "new Set([\"review_request\", \"unassigned_review\", \"open_gate\", \"blocked\"])"
+            ),
+        "the queue reads the waiting inbox and keeps the decisions and actions: reviews, unassigned reviews, gates and blocks"
     );
     assert!(
         s.contains("apiWritePath(`/threads/${tid}/reviews`)")
@@ -909,7 +911,7 @@ fn ui_js_socket_retries_with_backoff_ignores_replaced_sockets_and_stops_on_refus
 fn ui_js_gate_rows_lead_with_the_question() {
     let s = script(HTML);
     assert!(
-        s.contains("title.textContent = isGate ? item.summary : (th && th.title) || item.summary;"),
+        s.contains("title.textContent = isGate ? item.summary : (th && th.title) || (block && block.title) || item.summary;"),
         "a gate row shows the question being approved, not only its task title"
     );
 }
@@ -936,8 +938,19 @@ fn ui_js_board_has_its_own_loading_and_error_states() {
 fn ui_js_missing_token_admin_does_not_send_you_back_to_tokens() {
     let s = script(HTML);
     assert!(
-        s.contains("if (status === 403 && needs && needs[1] === \"token:admin\")"),
-        "minting needs token:admin, so a token:admin refusal must not say mint one in Tokens"
+        s.contains("if (status === 403) return refusal(needs ? needs[1] : null, mode);"),
+        "every 403 goes through the one refusal sentence"
+    );
+    let refusal = function_body(s, "refusal");
+    let admin = refusal
+        .find("if (cap === \"token:admin\")")
+        .expect("a token:admin branch");
+    let mint = refusal
+        .find("Mint a token with it in Tokens")
+        .expect("the mint sentence");
+    assert!(
+        admin < mint,
+        "minting needs token:admin, so a token:admin refusal must not say mint one in Tokens, in any mode"
     );
 }
 
@@ -1274,8 +1287,10 @@ fn ui_js_reports_errors_without_blocking_dialogs() {
         panic!("a blocking dialog call at byte {at}: use showError or an inline confirmation");
     }
     assert!(
-        page().contains(r#"<div id="toasts"></div>"#),
-        "the toast region"
+        page().contains(
+            r#"<div id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>"#
+        ),
+        "the toast region, a polite live region"
     );
 }
 
@@ -2089,7 +2104,7 @@ fn render_team_in_page(
     });
     let mut child = std::process::Command::new("node")
         .arg("-e")
-        .arg(TEAM_PAGE_HARNESS)
+        .arg(with_prelude(TEAM_PAGE_HARNESS))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -2402,7 +2417,7 @@ fn sidebar_after_load_channels(counts: &[usize]) -> std::collections::BTreeMap<u
         "css": UI_CSS, "counts": counts });
     let mut child = std::process::Command::new("node")
         .arg("-e")
-        .arg(SIDEBAR_PAGE_HARNESS)
+        .arg(with_prelude(SIDEBAR_PAGE_HARNESS))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -2553,7 +2568,7 @@ const loadChannels = new Function(
     function syncCollabPanel() {}
     function unreachable(e) { return String(e && e.message || e); }
     function loadThreads() {}
-    function api(url, options) { return fetch(url, options); }
+    const api = harnessReads(fetch);
     ${functionSource("loadChannels")}
     return loadChannels;
   `
@@ -2790,7 +2805,7 @@ fn board_after_refusals(steps: &[RefusalStep]) -> Vec<RefusalView> {
     });
     let mut child = std::process::Command::new("node")
         .arg("-e")
-        .arg(REFUSAL_PAGE_HARNESS)
+        .arg(with_prelude(REFUSAL_PAGE_HARNESS))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -3348,7 +3363,7 @@ fn person_facing_errors() -> serde_json::Value {
     let payload = serde_json::json!({ "html": HTML, "js": script(HTML), "css": UI_CSS });
     let mut child = std::process::Command::new("node")
         .arg("-e")
-        .arg(ERROR_SURFACE_HARNESS)
+        .arg(with_prelude(ERROR_SURFACE_HARNESS))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -3409,7 +3424,7 @@ fn empty_boards_in_page() -> Vec<EmptyBoardView> {
     let payload = serde_json::json!({ "html": HTML, "js": script(HTML), "css": UI_CSS });
     let mut child = std::process::Command::new("node")
         .arg("-e")
-        .arg(EMPTY_BOARD_HARNESS)
+        .arg(with_prelude(EMPTY_BOARD_HARNESS))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -4202,7 +4217,7 @@ fn identity_as_shown() -> IdentityShown {
     let payload = serde_json::json!({ "html": HTML, "js": script(HTML), "css": UI_CSS });
     let mut child = std::process::Command::new("node")
         .arg("-e")
-        .arg(IDENTITY_HARNESS)
+        .arg(with_prelude(IDENTITY_HARNESS))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -4605,7 +4620,7 @@ const renderIdentity = new Function(
     "function token() { return false; }\n" +
     "function headers() { return {}; }\n" +
     "function apiReadPath(suffix) { return suffix; }\n" +
-    "function api(url, options) { return fetch(url, options); }\n" +
+    "const api = harnessReads(fetch);\n" +
     functionSource("renderIdentity") + "\n" +
     "return renderIdentity;"
 )(document, fetch, memberDirectory, null);
@@ -4689,7 +4704,7 @@ fn signed_in_line(member_id: &str, display_name: Option<&str>) -> SignedInLine {
     });
     let mut child = std::process::Command::new("node")
         .arg("-e")
-        .arg(SIGNED_IN_HARNESS)
+        .arg(with_prelude(SIGNED_IN_HARNESS))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -4732,7 +4747,7 @@ const refreshSession = new Function(
   "fetch",
   "base",
   "wid",
-  "function api(url, options) { return fetch(url, options); }\n" + input.refresh + "\nreturn refreshSession;"
+  "const api = harnessReads(fetch);\n" + input.refresh + "\nreturn refreshSession;"
 )(document, async () => ({
   ok: true,
   json: async () => ({
@@ -4979,4 +4994,151 @@ fn ui_js_signs_in_on_enter_or_button_and_asks_nothing_without_a_credential() {
     let request = load.find("await api(").expect("the channels request");
     assert!(guard < request, "the guard comes before any request");
     assert!(load.contains("\"Paste your token to connect.\""));
+}
+
+/// Put before every inline Node harness in this file (`with_prelude`).
+///
+/// The harnesses lift page functions out of the board and run them on stubbed
+/// globals. Until this prelude none of them defined `writeApi`, so a page
+/// function that wrote threw `ReferenceError`, and a page function that
+/// catches its own failure painted "could not reach the server" and passed.
+/// Here `writeApi`, and a non-GET through `api`, are recorded and refused, and
+/// a harness that saw one exits non-zero naming each write, even when the page
+/// caught the error. A harness that reads builds its `api` with `harnessReads`
+/// over its own `fetch` stub. `ERROR_SURFACE_HARNESS` runs the whole page,
+/// whose `api.js` defines its own `api` and `writeApi`: its writes are the
+/// refused-write paths it tests, through its own `fetch`.
+const HARNESS_PRELUDE: &str = r#####"
+const harnessWrites = [];
+function harnessMethod(options) {
+  return String((options && options.method) || "GET").toUpperCase();
+}
+function harnessReads(fetchImpl) {
+  return function api(url, options) {
+    const method = harnessMethod(options);
+    if (method !== "GET" && method !== "HEAD") {
+      harnessWrites.push(method + " " + url);
+      return Promise.reject(new Error("this harness takes no writes"));
+    }
+    return fetchImpl(url, options);
+  };
+}
+function api(url, options) {
+  return harnessReads(function () {
+    return Promise.reject(new Error("this harness stubs no read of " + url));
+  })(url, options);
+}
+async function writeApi(_button, url, options) {
+  harnessWrites.push(String((options && options.method) || "POST").toUpperCase() + " " + url);
+  throw new Error("this harness takes no writes");
+}
+process.on("exit", function (code) {
+  if (code === 0 && harnessWrites.length) {
+    process.stderr.write("the page script wrote, and this harness takes no writes: " + harnessWrites.join(", ") + "\n");
+    process.exitCode = 1;
+  }
+});
+"#####;
+
+fn with_prelude(harness: &str) -> String {
+    format!("{HARNESS_PRELUDE}\n{harness}")
+}
+
+fn run_bare_harness(source: &str) -> std::process::Output {
+    std::process::Command::new("node")
+        .arg("-e")
+        .arg(with_prelude(source))
+        .output()
+        .unwrap_or_else(|err| panic!("node is required to run the harness prelude: {err}"))
+}
+
+/// A page function that writes and catches its own failure, the way the
+/// board's review, close and unblock paths do, must not pass a harness.
+#[test]
+fn an_inline_harness_fails_when_the_page_script_writes() {
+    let caught = run_bare_harness(
+        r#"
+async function closeTask() {
+  try {
+    await writeApi(null, "/threads/t-1", { method: "POST", body: "{}" });
+    return "closed";
+  } catch (_e) {
+    return "Not closed: could not reach the server.";
+  }
+}
+closeTask().then((painted) => process.stdout.write(JSON.stringify({ painted })));
+"#,
+    );
+    let stderr = String::from_utf8_lossy(&caught.stderr);
+    assert!(
+        !caught.status.success(),
+        "a write the page caught still fails the harness"
+    );
+    assert!(
+        stderr.contains("POST /threads/t-1"),
+        "the failure names the write: {stderr}"
+    );
+
+    let through_api = run_bare_harness(
+        r#"
+const read = harnessReads(async () => ({ ok: true, json: async () => [] }));
+read("/threads/t-1/block", { method: "DELETE" }).catch(() => {});
+"#,
+    );
+    let stderr = String::from_utf8_lossy(&through_api.stderr);
+    assert!(
+        !through_api.status.success() && stderr.contains("DELETE /threads/t-1/block"),
+        "a non-GET through api fails the harness too: {stderr}"
+    );
+
+    let unstubbed = run_bare_harness(
+        r#"
+api("/threads/t-1", { method: "PATCH" }).catch(() => {});
+"#,
+    );
+    assert!(
+        !unstubbed.status.success(),
+        "the prelude's own api refuses a write as well"
+    );
+}
+
+/// The prelude takes nothing away from a harness that only reads.
+#[test]
+fn an_inline_harness_that_only_reads_still_passes() {
+    let read = run_bare_harness(
+        r#"
+const read = harnessReads(async (url) => ({ ok: true, json: async () => ({ url }) }));
+read("/workspaces/ws-1", { headers: {} })
+  .then((res) => res.json())
+  .then((body) => process.stdout.write(JSON.stringify(body)));
+"#,
+    );
+    let stdout = String::from_utf8_lossy(&read.stdout);
+    let stderr = String::from_utf8_lossy(&read.stderr);
+    assert!(read.status.success(), "a read passes: {stderr}");
+    assert_eq!(stdout, r#"{"url":"/workspaces/ws-1"}"#);
+}
+
+/// Every inline harness in this file starts with the prelude, so a new one
+/// cannot leave `writeApi` undefined again.
+#[test]
+fn every_inline_harness_runs_with_the_write_guard() {
+    const SELF: &str = include_str!("ui_js_contract.rs");
+    let mut harnesses = 0;
+    let mut rest = SELF;
+    let probe = concat!(".arg(", "\"-e\")");
+    while let Some(at) = rest.find(probe) {
+        let after = rest[at + probe.len()..].trim_start();
+        harnesses += 1;
+        assert!(
+            after.starts_with(".arg(with_prelude("),
+            "an inline harness runs without with_prelude: {}",
+            &after[..after.len().min(80)]
+        );
+        rest = &rest[at + probe.len()..];
+    }
+    assert_eq!(
+        harnesses, 8,
+        "the seven page harnesses and run_bare_harness each go through with_prelude"
+    );
 }

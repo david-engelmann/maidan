@@ -69,7 +69,7 @@ Selectors today: `#shell`, `aside`, `#channel-list`, `#live-panel`, `#ws-status`
 
 ### Needs you
 
-Primary action: **Approve** on the first row (review) or the gate. **Request changes** and **Decline** are ghosts. While the change note is open, **Send back** is the only filled button. After approval, **Close task** replaces Approve as the only filled button. This button behavior is already on main. Do not rebuild it.
+Primary action: **Approve** on the first row (review) or the gate. **Request changes**, **Approve with note** and **Decline** are ghosts. While a note is open, its button (**Send back**, or **Approve** for an approval note) is the only filled button. Send back stays disabled until the note has text, and an approval note may stay empty. After approval, **Close task** replaces Approve as the only filled button. This button behavior is already on main. Do not rebuild it.
 
 Selectors: `#needs-you`, `#needs-you-quiet`, `#needs-you-head`, `#needs-you-state`, `#needs-you-title`, `#needs-you-count`, `#needs-you-list`, `.ny-item`, `.ny-kind`, `.ny-title`, `.ny-actions`, `.ny-note`, `.ny-err`. Built by `renderNeedsYou` / `needsYouRow`.
 

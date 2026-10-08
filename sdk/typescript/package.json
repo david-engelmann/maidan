@@ -6,7 +6,7 @@
   "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
-  "files": ["index.js", "index.d.ts", "README.md"],
+  "files": ["index.js", "usage.js", "index.d.ts", "README.md"],
   "keywords": ["maidan", "agents", "ai-agents", "mcp", "a2a"],
   "repository": {"type": "git", "url": "git+https://github.com/david-engelmann/maidan.git"},
   "homepage": "https://david-engelmann.github.io/maidan/",

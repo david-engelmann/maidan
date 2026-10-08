@@ -205,7 +205,7 @@ test("a socket dropped before its first ack is retried", async ({ page }) => {
 test("phone width: one column, no sideways scroll, Needs you buttons on screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page);
-  const approve = page.locator("#needs-you-list .ny-item").first().getByRole("button", { name: "Approve" });
+  const approve = page.locator("#needs-you-list .ny-item").first().getByRole("button", { name: "Approve", exact: true });
   await expect(approve).toBeVisible();
   const box = await approve.boundingBox();
   expect(box!.x + box!.width).toBeLessThanOrEqual(390);

@@ -1,0 +1,33 @@
+{
+  "name": "bedrock-converse-cache-write",
+  "provider": "bedrock-converse",
+  "source": "https://repost.aws/questions/QUlc00UNgAR4anmq9S8MF-bw/bedrock-java-converse-api-cache-not-working",
+  "recorded": "transcribed",
+  "note": "A Nova Pro Converse call with a cache point, as printed by the AWS SDK for Java (TokenUsage(InputTokens=1741, ...)) in the accepted answer's follow-up; the field names are the Converse JSON names. The two calls are the first (a write) and the second (a read). totalTokens counts input, output and the cache tiers. A Converse response names no model, so it is passed in.",
+  "options": {
+    "model": "amazon.nova-pro-v1:0"
+  },
+  "response": {
+    "usage": {
+      "inputTokens": 1741,
+      "outputTokens": 120,
+      "totalTokens": 2140,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokens": 279
+    }
+  },
+  "expected": {
+    "model": "amazon.nova-pro-v1:0",
+    "tokens": {
+      "input": 1741,
+      "output": 120,
+      "cache_read": 0,
+      "cache_write_5m": 279,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "aws.bedrock"
+    }
+  },
+  "retrieved": "2026-10-07"
+}

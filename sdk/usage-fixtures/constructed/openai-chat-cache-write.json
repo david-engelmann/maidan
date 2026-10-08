@@ -1,0 +1,43 @@
+{
+  "name": "openai-chat-cache-write",
+  "provider": "openai-chat",
+  "source": "https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create",
+  "recorded": "constructed",
+  "note": "Constructed, not a response: no published Chat Completions example shows a cache read or write, so the numbers are chosen. prompt_tokens_details.cache_write_tokens is the reference's field.",
+  "response": {
+    "object": "chat.completion",
+    "model": "gpt-6-astra",
+    "usage": {
+      "prompt_tokens": 2006,
+      "completion_tokens": 120,
+      "total_tokens": 2126,
+      "prompt_tokens_details": {
+        "cached_tokens": 1536,
+        "cache_write_tokens": 256,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 64,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "service_tier": "default"
+  },
+  "expected": {
+    "model": "gpt-6-astra",
+    "tokens": {
+      "input": 214,
+      "output": 120,
+      "cache_read": 1536,
+      "cache_write_5m": 256,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "openai",
+      "service_tier": "default"
+    }
+  },
+  "retrieved": "2026-10-04"
+}

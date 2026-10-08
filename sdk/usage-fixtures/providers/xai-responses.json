@@ -1,0 +1,37 @@
+{
+  "name": "xai-responses",
+  "provider": "xai",
+  "source": "https://docs.x.ai/developers/advanced-api-usage/prompt-caching/usage-and-pricing",
+  "recorded": "verbatim",
+  "note": "The page's Responses API usage object. Its reasoning_tokens is 0, so it cannot show whether output_tokens includes reasoning; the normalizer treats it as the Chat Completions example shows. The page shows the usage object alone, so the model is passed in.",
+  "options": {
+    "model": "grok-4.7"
+  },
+  "response": {
+    "usage": {
+      "input_tokens": 125,
+      "output_tokens": 48,
+      "total_tokens": 173,
+      "input_tokens_details": {
+        "cached_tokens": 98
+      },
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    }
+  },
+  "expected": {
+    "model": "grok-4.7",
+    "tokens": {
+      "input": 27,
+      "output": 48,
+      "cache_read": 98,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "x_ai"
+    }
+  },
+  "retrieved": "2026-10-04"
+}

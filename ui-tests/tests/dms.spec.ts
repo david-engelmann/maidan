@@ -4,17 +4,21 @@ import { openMoreTools, signIn } from "./_tools";
 
 const fx = fixtures();
 
-// Open a DM with the seeded Deployer and post into it. The conversation
-// names the other person, not a raw id.
+// Open a DM with the seeded Deployer and post into it. The person picks the
+// Deployer by name from the member picker; nobody types an id. The
+// conversation names the other person, not a raw id.
 test("opening a DM selects it and a message shows in the conversation", async ({ page }) => {
   await signIn(page, fx.workspace_id, fx.admin_token);
   await openMoreTools(page);
   await page.click('.tabs button[data-tab="dms"]');
 
-  await page.fill("#dm-other-id", fx.requester_id);
+  await page.fill("#dm-member-search", "deploy");
+  await page.click(`#dm-member-options [role="option"][data-member-id="${fx.requester_id}"]`);
+  await expect(page.locator(`#dm-picked [data-member-id="${fx.requester_id}"]`)).toContainText("Deployer");
   await page.click("#dm-open");
   await expect(page.locator("#dm-selected")).toContainText("Deployer");
-  await expect(page.locator("#status")).toHaveText("DM opened");
+  await expect(page.locator("#toasts .toast-success", { hasText: "DM opened" })).toHaveAttribute("role", "status");
+  await expect(page.locator("#dm-picked li")).toHaveCount(0);
 
   const body = `hello from the board ${Date.now()}`;
   await page.fill("#dm-body", body);

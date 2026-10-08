@@ -2,7 +2,7 @@
 import { api, apiWritePath, base, headers, persist, requireAuthForWrite, token, uiReadPath } from "./api.js";
 import { artifactCard, artifactShasFromMetadata } from "./artifacts.js";
 import { selectedThreadId } from "./board.js";
-import { clearLoading, renderState, responseError, setLoading, setStatus, unreachable } from "./feedback.js";
+import { clearLoading, renderState, responseError, setLoading, showError, unreachable } from "./feedback.js";
 import { authorId, avatarEl, personEl } from "./people.js";
 import { QUICK_REACTIONS, THREAD_CONTENT_KINDS } from "./state.js";
 import { loadMessageEdits } from "./tools.js";
@@ -241,9 +241,9 @@ import { loadMessageEdits } from "./tools.js";
             credentials: "include",
             body: JSON.stringify({ emoji }),
           });
-          if (!res.ok) setStatus(`HTTP ${res.status}`, "err");
+          if (!res.ok) showError(await responseError(res, "Could not change that reaction"));
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
         }
         await loadReactions(messageId, el);
       }
@@ -277,11 +277,11 @@ import { loadMessageEdits } from "./tools.js";
             body: JSON.stringify({ message_id: messageId }),
           });
           if (!res.ok) {
-            setStatus(`HTTP ${res.status}`, "err");
+            showError(await responseError(res, pinned ? "Could not unpin that message" : "Could not pin that message"));
             return;
           }
         } catch (e) {
-          setStatus(String(e), "err");
+          showError(unreachable(e));
           return;
         }
         await loadMessages();
