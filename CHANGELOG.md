@@ -1908,6 +1908,10 @@ Refs #1253
 - **Fixed:** A hand-off read each result and linked artifact twice, once for the review packet's manifest and once for who put it there. A concurrent write between the two reads could pair one version's hash with another version's author and tier. Each row is now read once, and the manifest and its tiers are built from that one read.
 - **Fixed:** Evidence written before migration 0147 has no recorded actor, so evidence a delegate wrote with another member's token could read as `attached`. Every write now records who acted (the delegate, or the member itself). At a hand-off, a row with no actor from a member who never delegated counts as the member's own act. A row from a member who has delegated counts as `self_reported`, because its independence cannot be shown. This addresses CodeRabbit's two concerns on #1327.
 
+### The board specs wait until the console has finished signing in
+
+- **Fixed:** `ui-tests/tests/board.spec.ts` opened the board by filling the token and clicking Refresh. Leaving the field already signs in and loads the channels, so Refresh started a second load, and the row click waited on neither request. On a busy full run "a refused subscribe shows the server's reason" timed out on the channel row; alone, it passed. The helper now waits for the page's first session read, signs in by leaving the token field, and clicks the row only after that sign-in's channel response.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
