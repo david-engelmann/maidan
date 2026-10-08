@@ -1363,10 +1363,6 @@ pub fn router(state: AppState) -> Router {
         .route("/.well-known/maidan-room", get(routes::well_known_room))
         .route("/.well-known/agent-card.json", get(a2a_agent::agent_card))
         .route(
-            "/.well-known/oauth-protected-resource",
-            get(oauth::oauth_protected_resource),
-        )
-        .route(
             "/.well-known/oauth-protected-resource/mcp/streamable",
             get(oauth::oauth_protected_resource),
         )

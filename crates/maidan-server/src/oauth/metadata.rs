@@ -33,30 +33,41 @@ pub const MCP_RESOURCE_PATH: &str = "/mcp/streamable";
 pub const RESOURCE_METADATA_PATH: &str = "/.well-known/oauth-protected-resource/mcp/streamable";
 
 /// Parse `MAIDAN_PUBLIC_ORIGIN`: `https://host[:port]`, or `http://` on a
-/// loopback host for local work, with no path, query or fragment. Unset or
-/// blank is `None`. Anything else refuses boot.
+/// loopback host for local work, with no path, query, fragment or
+/// credentials. Unset or blank is `None`. Anything else refuses boot.
 pub fn public_origin_from(raw: Option<&str>) -> Result<Option<String>, String> {
     let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(None);
     };
-    let origin = raw.trim_end_matches('/');
-    let (scheme, rest) = origin
-        .split_once("://")
-        .ok_or_else(|| format!("MAIDAN_PUBLIC_ORIGIN must be an origin such as https://maidan.example.com, not {raw:?}"))?;
-    if rest.is_empty() || rest.contains(['/', '?', '#', '@']) {
+    let url = url::Url::parse(raw).map_err(|e| {
+        format!("MAIDAN_PUBLIC_ORIGIN must be an origin such as https://maidan.example.com, not {raw:?}: {e}")
+    })?;
+    if !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
         return Err(format!(
             "MAIDAN_PUBLIC_ORIGIN must be a scheme and host with no path, query or credentials, not {raw:?}"
         ));
     }
-    let host = rest.rsplit_once(':').map_or(rest, |(h, _)| h);
-    let loopback = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
-    match scheme {
-        "https" => Ok(Some(origin.to_string())),
-        "http" if loopback => Ok(Some(origin.to_string())),
-        _ => Err(format!(
-            "MAIDAN_PUBLIC_ORIGIN must use https (http only on a loopback host), not {raw:?}"
-        )),
+    let loopback = match url.host() {
+        Some(url::Host::Domain(d)) => d == "localhost",
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    };
+    match url.scheme() {
+        "https" => {}
+        "http" if loopback => {}
+        _ => {
+            return Err(format!(
+                "MAIDAN_PUBLIC_ORIGIN must use https (http only on a loopback host), not {raw:?}"
+            ))
+        }
     }
+    Ok(Some(url.origin().ascii_serialization()))
 }
 
 /// RFC 9728 protected-resource metadata for the MCP endpoint.
@@ -92,14 +103,14 @@ pub fn challenge_value(origin: &str) -> String {
     format!("Bearer resource_metadata=\"{origin}{RESOURCE_METADATA_PATH}\"")
 }
 
-/// Add the RFC 9728 challenge to a 401 from an MCP route, so a client learns
-/// where the resource's metadata is. Other 401s, such as a webhook's failed
-/// signature, are not about a bearer token and get none.
+/// Add the RFC 9728 challenge to a 401 from the MCP endpoint, so a client
+/// learns where the resource's metadata is. Only the endpoint the metadata
+/// names gets one: a client must reject metadata whose `resource` is not the
+/// URL it asked, so pointing `/mcp` or another route at it would send that
+/// client to a document it has to refuse. Other 401s, such as a webhook's
+/// failed signature, are not about a bearer token and get none.
 pub async fn challenge(State(state): State<AppState>, req: Request, next: Next) -> Response {
-    let mcp = {
-        let path = req.uri().path();
-        path == "/mcp" || path.starts_with("/mcp/")
-    };
+    let mcp = req.uri().path() == MCP_RESOURCE_PATH;
     let mut response = next.run(req).await;
     if mcp && response.status() == StatusCode::UNAUTHORIZED {
         if let Some(origin) = state.public_origin.as_deref() {
@@ -129,11 +140,29 @@ mod tests {
             public_origin_from(Some("http://127.0.0.1:8080")),
             Ok(Some("http://127.0.0.1:8080".into()))
         );
+        assert_eq!(
+            public_origin_from(Some("http://[::1]")),
+            Ok(Some("http://[::1]".into()))
+        );
+        assert_eq!(
+            public_origin_from(Some("http://[::1]:8080/")),
+            Ok(Some("http://[::1]:8080".into()))
+        );
+        assert_eq!(
+            public_origin_from(Some("https://maidan.example.com:443")),
+            Ok(Some("https://maidan.example.com".into())),
+            "the default port is not part of the origin"
+        );
         for bad in [
             "maidan.example.com",
             "http://maidan.example.com",
             "https://maidan.example.com/mcp",
             "https://user@maidan.example.com",
+            "https://maidan.example.com?x=1",
+            "https://maidan.example.com#top",
+            "https://maidan.example.com:abc",
+            "https://maidan.example.com:99999",
+            "http://[::2]",
             "ftp://maidan.example.com",
             "https://",
         ] {

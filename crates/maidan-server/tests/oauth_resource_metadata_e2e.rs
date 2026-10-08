@@ -79,24 +79,31 @@ async fn with_a_public_origin_the_mcp_resource_describes_itself_and_its_401_poin
     let base = spawn(Some(origin)).await;
     let client = reqwest::Client::new();
 
-    for path in [
-        "/.well-known/oauth-protected-resource",
-        "/.well-known/oauth-protected-resource/mcp/streamable",
-    ] {
-        let doc: Value = client
-            .get(format!("{base}{path}"))
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
-        assert_eq!(
-            doc["resource"], "https://maidan.example.com/mcp/streamable",
-            "{path}"
-        );
-        assert!(doc.get("authorization_servers").is_none(), "{doc}");
-    }
+    // RFC 9728 section 3.1: the metadata lives at the well-known prefix
+    // inserted before the resource's path, and a client rejects a document
+    // whose `resource` is not the identifier it derived that URL from.
+    let resource = "https://maidan.example.com/mcp/streamable";
+    let doc: Value = client
+        .get(format!(
+            "{base}/.well-known/oauth-protected-resource/mcp/streamable"
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(doc["resource"], resource);
+    assert!(doc.get("authorization_servers").is_none(), "{doc}");
+    // The root form would describe the resource `<origin>`, which this
+    // document is not, so it is not served.
+    let root = client
+        .get(format!("{base}/.well-known/oauth-protected-resource"))
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(root, StatusCode::NOT_FOUND);
     // No authorization-server document until the flows exist.
     let s = client
         .get(format!("{base}/.well-known/oauth-authorization-server"))
@@ -107,23 +114,30 @@ async fn with_a_public_origin_the_mcp_resource_describes_itself_and_its_401_poin
     assert_eq!(s, StatusCode::NOT_FOUND);
 
     let expected = "Bearer resource_metadata=\"https://maidan.example.com/.well-known/oauth-protected-resource/mcp/streamable\"";
-    for path in ["/mcp", "/mcp/streamable"] {
-        let refused = client
-            .post(format!("{base}{path}"))
-            .body("{}")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(refused.status(), StatusCode::UNAUTHORIZED, "{path}");
-        assert_eq!(
-            refused
-                .headers()
-                .get(WWW_AUTHENTICATE)
-                .map(|v| v.to_str().unwrap()),
-            Some(expected),
-            "{path}"
-        );
-    }
+    let refused = client
+        .post(format!("{base}/mcp/streamable"))
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        refused
+            .headers()
+            .get(WWW_AUTHENTICATE)
+            .map(|v| v.to_str().unwrap()),
+        Some(expected)
+    );
+    // `/mcp` is another URL than the resource the metadata names, so a client
+    // following a challenge from it would have to reject the document.
+    let legacy = client
+        .post(format!("{base}/mcp"))
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(legacy.status(), StatusCode::UNAUTHORIZED);
+    assert!(legacy.headers().get(WWW_AUTHENTICATE).is_none());
     // A 401 that is not about an MCP bearer token carries no challenge.
     let elsewhere = client
         .get(format!(
