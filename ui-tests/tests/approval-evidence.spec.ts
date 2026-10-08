@@ -47,7 +47,7 @@ test("a review row lists the packet's evidence: the result, then each artifact",
   await expect(shot.locator(".ny-ev-kind")).toHaveText("screenshot");
   await expect(shot.locator(".ny-ev-name")).toHaveText("login-after.png");
   await expect(shot.locator(".ny-ev-size")).toHaveText("2.0 KB");
-  await expect(shot.locator(".ny-ev-by")).toContainText("linked by");
+  await expect(shot.locator(".ny-ev-by")).toContainText("uploaded by");
   await expect(shot.locator(".ny-ev-by .person .name")).toHaveText("Deployer");
   await expect(shot.locator(".ny-ev-by")).toContainText(/(just now|\d+[mhd] ago)$/);
   const log = evidence.locator(`.ny-ev-item[data-sha="${fx.proof_transcript_sha}"]`);
@@ -188,7 +188,6 @@ test("workspace B's console cannot load workspace A's packet or artifact details
       const paths = [
         `/threads/${tid}/review-packet`,
         `/ui/api/threads/${tid}/review-packet`,
-        `/threads/${tid}/artifacts`,
         `/artifacts/${sha}/meta`,
         `/ui/api/artifacts/${sha}/meta`,
       ];

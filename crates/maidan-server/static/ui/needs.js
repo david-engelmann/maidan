@@ -510,25 +510,6 @@ import { answerGate } from "./tools.js";
         }
       }
 
-      // Who linked each artifact and when. Only the bearer tree lists a
-      // thread's links; a sign-in session has no such read under /ui/api,
-      // so its rows fall back to who uploaded the bytes. null: not known.
-      async function threadLinks(tid) {
-        if (!token()) return null;
-        try {
-          const res = await api(apiReadPath(`/threads/${tid}/artifacts`), {
-            headers: headers(),
-            credentials: "include",
-          });
-          if (!res.ok) return null;
-          const links = new Map();
-          for (const link of await res.json()) links.set(link.sha256, link);
-          return links;
-        } catch (_e) {
-          return null;
-        }
-      }
-
       // One artifact's metadata, or why it could not be read. Not cached: a
       // failed read is retried the next time the row is drawn.
       async function evidenceMeta(sha) {
@@ -636,12 +617,16 @@ import { answerGate } from "./tools.js";
           list.appendChild(a);
           return a;
         });
-        const [links, metas] = await Promise.all([threadLinks(tid), Promise.all(shas.map(evidenceMeta))]);
-        shas.forEach((sha, i) => renderEvidenceArtifact(rows[i], sha, metas[i], links));
+        const metas = await Promise.all(shas.map(evidenceMeta));
+        shas.forEach((sha, i) => renderEvidenceArtifact(rows[i], sha, metas[i]));
         renderDecider(li);
       }
 
-      function renderEvidenceArtifact(row, sha, read, links) {
+      // Who uploaded the bytes and when, from the workspace's own metadata.
+      // Who linked them to the task is on the bearer tree only: the session
+      // proxy serves no read of a thread's links, and every page read goes
+      // through it.
+      function renderEvidenceArtifact(row, sha, read) {
         row.removeAttribute("aria-busy");
         row.replaceChildren();
         if (read.why) {
@@ -663,20 +648,12 @@ import { answerGate } from "./tools.js";
         size.className = "ny-ev-size";
         size.textContent = formatBytes(Number(meta.size_bytes));
         row.append(kind, name, size, hashEl(sha, "ny-ev-hash"));
-        const link = links && links.get(sha);
-        const by = document.createElement("span");
-        by.className = "ny-ev-by";
-        if (link) {
-          by.append("linked by ", personEl(link.linked_by, { avatar: false, tag: true }), ` ${ago(link.linked_at)}`);
-        } else if (links) {
-          // The packet pinned it, and the thread no longer links it: an
-          // approval of this packet is refused until it is handed over again.
-          by.classList.add("ny-warn");
-          by.textContent = "no longer linked to the task";
-        } else if (meta.uploaded_by) {
+        if (meta.uploaded_by) {
+          const by = document.createElement("span");
+          by.className = "ny-ev-by";
           by.append("uploaded by ", personEl(meta.uploaded_by, { avatar: false, tag: true }), ` ${ago(meta.created_at)}`);
+          row.appendChild(by);
         }
-        if (by.childNodes.length) row.appendChild(by);
       }
 
       // Who decided, for each task this page saw a verdict on: from the

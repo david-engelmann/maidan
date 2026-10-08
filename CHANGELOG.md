@@ -1835,7 +1835,7 @@ Refs #1253
 
 ### The approval card shows the evidence it approves
 
-- **Changed:** A review row in the console's Needs you shows the review packet it approves: the evidence root that Approve sends, the result's hash and who produced it, and each linked artifact's kind, filename, size and who linked it and when (who uploaded it, for a sign-in session). An empty hand-off says so. An artifact whose details fail to load says so on its own line, and the rest of the evidence still shows. A failed packet read shows an error with Retry. The row names who decided, from the review the decision returned or a live `review_submitted` event. Attestation tiers are not shown, because the server does not define any yet (Open Work Next 3).
+- **Changed:** A review row in the console's Needs you shows the review packet it approves: the evidence root that Approve sends, the result's hash and who produced it, and each linked artifact's kind, filename, size, and who uploaded it and when. An empty hand-off says so. An artifact whose details fail to load says so on its own line, and the rest of the evidence still shows. A failed packet read shows an error with Retry. The row names who decided, from the review the decision returned or a live `review_submitted` event. Attestation tiers are not shown, because the server does not define any yet (Open Work Next 3).
 
 ### An agent's question reaches a person
 
