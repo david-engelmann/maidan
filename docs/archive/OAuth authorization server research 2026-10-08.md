@@ -1,13 +1,15 @@
 # Maidan OAuth Authorization Server — Architecture Research
 
+> **A research snapshot, kept as written on 2026-10-08.** The plan is `docs/OAuth.md`, and where they disagree the plan is right: phase numbering, the resource identifier (`<origin>/mcp/streamable`), and when the authorization-server document is served all changed after this was written. What Maidan does today is in `docs/Claims.md`. In particular, the installed-app flow's PKCE is optional, not required, and its code exchange consumes the code before checking the verifier, which the plan's acceptance criteria correct.
+
 **Date:** 2026-10-08
-**Decision context:** David (2026-10-08) asked for full research before deciding on the OAuth AS revisit. "I want it perfectly architectured and planned out, add tools needed to local setup and document what would be needed to make it real."
+**Decision context:** The maintainer (2026-10-08) asked for full research before deciding on the OAuth AS revisit. "I want it perfectly architectured and planned out, add tools needed to local setup and document what would be needed to make it real."
 
 ---
 
 ## 1. Executive Summary
 
-**Recommendation: BUILD, don't adopt.** Maidan already owns ~70% of an OAuth authorization server. The missing 30% is protocol surface (endpoints, metadata, consent), not cryptography or token machinery. No existing Rust crate fits: `oxide-auth` is actix-oriented, OAuth 2.0 (not 2.1), has no axum frontend, and can't mint Maidan's capability-scoped tokens. Building on the existing `app_oauth.rs` foundation is smaller, safer, and preserves Maidan's audit and capability invariants.
+**Recommendation: BUILD, don't adopt.** Maidan already has much of what an OAuth authorization server needs. What is missing is protocol surface (endpoints, metadata, consent), not cryptography or token machinery. No existing Rust crate fits: `oxide-auth` is actix-oriented, OAuth 2.0 (not 2.1), has no axum frontend, and can't mint Maidan's capability-scoped tokens. Building on the existing `app_oauth.rs` foundation is smaller, safer, and preserves Maidan's audit and capability invariants.
 
 **What "done" looks like:** Maidan becomes an OAuth 2.1 authorization server (RFC 8414 metadata, PKCE-only code flow, CIMD client registration, refresh rotation) while remaining its own resource server. The MCP endpoint advertises RFC 9728 protected-resource metadata so MCP clients auto-discover the AS. Capabilities become the OAuth scope vocabulary — no parallel ACL.
 
@@ -17,18 +19,18 @@
 
 | Component | Status | Location |
 |---|---|---|
-| OIDC relying party (auth code + PKCE) | ✅ Production | `crates/maidan-server/src/oidc/` |
-| OAuth-style auth code flow for installed apps | ✅ Production | `crates/maidan-server/src/app_oauth.rs` |
-| PKCE S256 verification | ✅ Production | `app_oauth.rs::s256_challenge` |
-| Persisted, hashed, single-use, TTL'd auth codes (cross-replica) | ✅ Production | `maidan_oauth_codes` table, `OAuthCodeStore` trait (pg + sqlite) |
-| Token minting with capability scoping | ✅ Production | `routes/token.rs::mint_api_token` |
-| Token attenuation (holder-side, no amplification) | ✅ Production | `routes/token.rs::attenuate_api_token` |
-| Delegation grants (short-lived, one-hop) | ✅ Production | `routes/token.rs`, `from_delegated_token` |
-| Token revocation (instant, audited) | ✅ Production | `revoke_api_token` |
-| Token rotation | ✅ Production | `rotate_api_token` |
-| Audit trail on every token operation | ✅ Production | `*_audited` store methods |
-| Anonymous read-only dev mode for MCP | ✅ Production | `AuthContext::anonymous_reader` |
-| App installation model (bot member + granted caps) | ✅ Production | `maidan_apps`, `app_installations` |
+| OIDC relying party (auth code + PKCE) | ✅ Shipped | `crates/maidan-server/src/oidc/` |
+| OAuth-style auth code flow for installed apps | ✅ Shipped | `crates/maidan-server/src/app_oauth.rs` |
+| PKCE S256 verification | ✅ Shipped | `app_oauth.rs::s256_challenge` |
+| Persisted, hashed, single-use, TTL'd auth codes (cross-replica) | ✅ Shipped | `maidan_oauth_codes` table, `OAuthCodeStore` trait (pg + sqlite) |
+| Token minting with capability scoping | ✅ Shipped | `routes/token.rs::mint_api_token` |
+| Token attenuation (holder-side, no amplification) | ✅ Shipped | `routes/token.rs::attenuate_api_token` |
+| Delegation grants (short-lived, one-hop) | ✅ Shipped | `routes/token.rs`, `from_delegated_token` |
+| Token revocation (instant, audited) | ✅ Shipped | `revoke_api_token` |
+| Token rotation | ✅ Shipped | `rotate_api_token` |
+| Audit trail on every token operation | ✅ Shipped | `*_audited` store methods |
+| Anonymous read-only dev mode for MCP | ✅ Shipped | `AuthContext::anonymous_reader` |
+| App installation model (bot member + granted caps) | ✅ Shipped | `maidan_apps`, `app_installations` |
 
 ### The `app_oauth.rs` flow (today)
 
@@ -257,7 +259,7 @@ CREATE TABLE maidan_oauth_refresh_tokens (
 ## 7. Security Considerations
 
 1. **No second ACL.** Capabilities are the scope vocabulary. The `is_delegatable` filter applies — OAuth can never grant `token:admin` or cross-tenant caps.
-2. **PKCE required for public clients.** S256 only (plain rejected). Already implemented in `app_oauth.rs`.
+2. **PKCE required for public clients.** S256 only (plain rejected). New for these flows: the installed-app exchange in `app_oauth.rs` makes PKCE optional.
 3. **Redirect URI validation.** Exact match for confidential clients; loopback (`http://127.0.0.1:*`, `http://localhost:*`) allows any port per RFC 8252 §7.3 (CLI client requirement). HTTPS required for non-loopback.
 4. **CIMD fetching is SSRF-guarded.** Allowlist schemes (https only), no private IPs, response size cap, cache with TTL, `client_id` must equal the fetch URL.
 5. **Resource binding.** `resource` param must equal the AS's canonical base URL. Tokens are bound to the issuing Maidan instance — never accepted from another issuer.
@@ -302,7 +304,7 @@ MAIDAN_OAUTH_ALLOW_HTTP_REDIRECTS=1  # dev only, loopback
 | **P4: Token endpoint** | `POST /oauth/token` (code exchange + refresh rotation), `POST /oauth/revoke` | M (1 week) | P3 |
 | **P5: Consent management** | `maidan_oauth_consents` table, console UI for grant/revoke | S (3 days) | P3 |
 | **P6: Hardening** | Rate limits, SSRF guards, audit coverage, scope contract tests | S (3–4 days) | P4 |
-| **P7: Validation record** | E2E against MCP clients with real OAuth (feeds Next 14) | S (2–3 days) | P6, public instance |
+| **P7: Validation record** | E2E against MCP clients with real OAuth (feeds the validation record before any listing) | S (2–3 days) | P6, public instance |
 
 **Total: ~5–6 weeks** for a production-ready OAuth 2.1 AS, phased so P0–P1 ship independently.
 
@@ -315,11 +317,11 @@ MAIDAN_OAUTH_ALLOW_HTTP_REDIRECTS=1  # dev only, loopback
 
 ---
 
-## 10. Open Questions for David — DECIDED 2026-10-08
+## 10. Open questions for the maintainer, decided 2026-10-08
 
 1. **Scope of v1:** **A — Full OAuth 2.1, all 7 phases** (~5–6 weeks), landing P0–P1 as an early reviewable milestone.
 2. **Consent UX:** **B — Integrate into the existing `/ui` console.** The console is the trust root; no second surface.
-3. **Client secrets:** **B — Both public and confidential clients from day one.** (Research had recommended public-only first; David overruled — build both.)
+3. **Client secrets:** **B — Both public and confidential clients from day one.** (Research had recommended public-only first; the maintainer chose otherwise — build both.)
 4. **DCR:** **A — CIMD + pre-registered only, skip DCR.** Spec deprecates it.
 
 ---
