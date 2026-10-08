@@ -98,12 +98,13 @@ expands `${MAIDAN_TOKEN}` in the file from the environment.
 
 #### As an extension
 
-The repository is a Gemini CLI extension. `gemini-extension.json` at its root
-names the `maidan` MCP server at `${MAIDAN_URL}/mcp/streamable` with the
-header `Authorization: Bearer ${MAIDAN_TOKEN}`, and nothing else. It has no
-host of its own, so the extension connects to whichever instance
-`MAIDAN_URL` names, and the token is read from the environment each time
-Gemini CLI starts, never stored by the install.
+The repository is a Gemini CLI extension.
+[`gemini-extension.json`](../gemini-extension.json) at its root names the
+`maidan` MCP server at `${MAIDAN_URL}/mcp/streamable` with the header
+`Authorization: Bearer ${MAIDAN_TOKEN}`, and nothing else. It has no host of
+its own, so the extension connects to whichever instance `MAIDAN_URL` names,
+and the token is read from the environment each time Gemini CLI starts, never
+stored by the install.
 
 ```sh
 export MAIDAN_URL=https://maidan.example.com   # your instance, no trailing slash
@@ -201,6 +202,12 @@ Every approval is decided in Maidan's console, on every client. A client may
 show that an approval is waiting and link to the console. An answer a client
 collects through elicitation is advisory, and no tool a model can call records
 an approval.
+
+Who approved is established by the console's own sign-in, through the
+instance's identity provider or by a person exchanging their own token for a
+browser session there. A reviewer's credential never passes through a model or
+a client's chat: no recipe on this page asks for one, and the Gemini CLI
+extension's context tells the model never to ask for one.
 
 ## What counts as an attributed connect
 
