@@ -3,7 +3,8 @@
 //! This is **test support, not a shipped binary**: it stands up the real
 //! `maidan-server` router on an in-memory SQLite store, seeds a deterministic
 //! workspace / channel / thread / pending approval gate (plus a `build` channel
-//! with one thread per board lane), mints a bearer token,
+//! with one thread per board lane, and a second workspace for isolation
+//! checks), mints a bearer token,
 //! writes the fixtures to a JSON file, and then serves forever so a headless
 //! browser can drive the actual `/ui`. Playwright's `webServer` starts it,
 //! waits for `/ui/`, runs the specs, and kills it.
@@ -21,8 +22,8 @@ use maidan_fsm::ThreadAction;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewMessage, NewThread,
-    NewWebhookSubscription, NewWorkspace, ReviewDecision,
+    BlockedReason, MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewMessage,
+    NewThread, NewWebhookSubscription, NewWorkspace, ReviewDecision,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -319,6 +320,95 @@ async fn main() {
         triage_threads.push(t);
     }
 
+    // A task the operator owns, for the Unblock row in Needs you. It starts
+    // unblocked: the spec blocks it, so a retry starts from the same place.
+    // Its own channel, so the blocked marker on its card moves no other spec.
+    let hold = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "hold".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("hold channel");
+    let hold_thread = store
+        .create_thread(NewThread {
+            channel_id: hold.id,
+            parent_thread_id: None,
+            title: Some("Held up: the signing key needs a person".into()),
+            description: None,
+        })
+        .await
+        .expect("hold thread");
+    store
+        .set_thread_owner(hold_thread.id, Some(member.id))
+        .await
+        .expect("hold owner");
+
+    // A second workspace, so a spec can show that one workspace sees nothing
+    // of another. Its member owns a task that is already blocked, which its
+    // own Needs you lists and the first workspace's never does.
+    let second_ws = store
+        .create_workspace(NewWorkspace {
+            name: "Second UI Test Workspace".into(),
+        })
+        .await
+        .expect("second ws");
+    let stranger = store
+        .create_member(NewMember {
+            workspace_id: second_ws.id,
+            handle: "stranger".into(),
+            display_name: Some("Stranger".into()),
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("stranger");
+    let afar = store
+        .create_channel(NewChannel {
+            workspace_id: second_ws.id,
+            name: "afar".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("second channel");
+    let second_thread = store
+        .create_thread(NewThread {
+            channel_id: afar.id,
+            parent_thread_id: None,
+            title: Some("Afar: the second workspace's blocked task".into()),
+            description: None,
+        })
+        .await
+        .expect("second thread");
+    store
+        .set_thread_owner(second_thread.id, Some(stranger.id))
+        .await
+        .expect("second owner");
+    store
+        .set_thread_block(
+            second_thread.id,
+            BlockedReason::Human,
+            stranger.id,
+            Some("only the second workspace may see this".into()),
+        )
+        .await
+        .expect("second block");
+    let second_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: second_ws.id,
+            member_id: stranger.id,
+            app_installation_id: None,
+            token_hash: hash_secret(second_secret.as_str()),
+            label: Some("ui-test-second".into()),
+            capabilities: capability::all(),
+            expires_at: None,
+        })
+        .await
+        .expect("second token");
+
     // An empty channel, for the onboarding state a channel shows before its
     // first task.
     let quiet = store
@@ -592,6 +682,12 @@ async fn main() {
         "triage_channel_id": triage.id.0.to_string(),
         "triage_owned_thread_id": triage_threads[0].id.0.to_string(),
         "triage_ownerless_thread_id": triage_threads[1].id.0.to_string(),
+        "hold_channel_id": hold.id.0.to_string(),
+        "hold_thread_id": hold_thread.id.0.to_string(),
+        "second_workspace_id": second_ws.id.0.to_string(),
+        "second_member_id": stranger.id.0.to_string(),
+        "second_token": second_secret.as_str(),
+        "second_thread_id": second_thread.id.0.to_string(),
         "floor_channel_id": floor.id.0.to_string(),
         "floor_held_thread_id": floor_threads[0].id.0.to_string(),
         "floor_glide_thread_id": floor_threads[1].id.0.to_string(),

@@ -659,8 +659,10 @@ fn ui_js_puts_the_decisions_agents_wait_on_first() {
     assert!(needs < board, "Needs you sits above the board");
     assert!(
         s.contains("uiReadPath(`/members/${me}/waiting`)")
-            && s.contains("new Set([\"review_request\", \"unassigned_review\", \"open_gate\"])"),
-        "the queue reads the waiting inbox and keeps the decisions: reviews, unassigned reviews and gates"
+            && s.contains(
+                "new Set([\"review_request\", \"unassigned_review\", \"open_gate\", \"blocked\"])"
+            ),
+        "the queue reads the waiting inbox and keeps the decisions and actions: reviews, unassigned reviews, gates and blocks"
     );
     assert!(
         s.contains("apiWritePath(`/threads/${tid}/reviews`)")
@@ -909,7 +911,7 @@ fn ui_js_socket_retries_with_backoff_ignores_replaced_sockets_and_stops_on_refus
 fn ui_js_gate_rows_lead_with_the_question() {
     let s = script(HTML);
     assert!(
-        s.contains("title.textContent = isGate ? item.summary : (th && th.title) || item.summary;"),
+        s.contains("title.textContent = isGate ? item.summary : (th && th.title) || (block && block.title) || item.summary;"),
         "a gate row shows the question being approved, not only its task title"
     );
 }

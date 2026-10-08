@@ -10,8 +10,9 @@ import { answerGate } from "./tools.js";
 
 
       // ---- Needs you -------------------------------------------------------
-      // The decisions agents are waiting on, from the waiting inbox of this member:
-      // reviews requested from them and open approval gates. Each row carries
+      // The decisions and actions agents are waiting on, from the waiting inbox
+      // of this member: reviews requested from them, open approval gates, and
+      // tasks blocked until a person clears them. Each row carries
       // its own buttons. The count also lands in the tab title and favicon, so
       // a waiting agent is visible from another tab.
       let needsYou = [];
@@ -181,7 +182,8 @@ import { answerGate } from "./tools.js";
         // A gate row leads with its question: that is what the human answers.
         // A review row leads with the task. (The task of a gate shows as context.)
         const isGate = item.kind === "open_gate";
-        title.textContent = isGate ? item.summary : (th && th.title) || item.summary;
+        const block = item.kind === "blocked" ? splitBlockSummary(item.summary) : null;
+        title.textContent = isGate ? item.summary : (th && th.title) || (block && block.title) || item.summary;
         if (item.thread_id) {
           title.onclick = () => selectThread(item.thread_id, (th && th.title) || title.textContent);
           keyActivates(title, "link"); // it opens the task
@@ -217,9 +219,9 @@ import { answerGate } from "./tools.js";
           if (item.kind === "unassigned_review") ownerActions(item, li, sub, approve, changes);
         } else if (item.kind === "blocked") {
           // A human/gate block: show the reason and note, offer to clear it.
-          // The item.summary already carries "title — blocked (reason): note".
+          // The title is already the row's title, so it is not repeated here.
           const ctx = document.createElement("span");
-          ctx.textContent = item.summary;
+          ctx.textContent = block ? block.why : item.summary;
           sub.appendChild(ctx);
           sub.appendChild(when);
           const clear = document.createElement("button");
@@ -235,19 +237,19 @@ import { answerGate } from "./tools.js";
                 credentials: "include",
               });
             } catch (_e) {
-              showRowError(li, "Could not unblock: the server did not answer. Try again.");
+              showRowError(rowOnScreen(item, li), "Could not unblock: the server did not answer. Try again.");
               return;
             }
             if (!res.ok) {
-              showRowError(li, await responseError(res, "Could not unblock"));
+              showRowError(rowOnScreen(item, li), await responseError(res, "Could not unblock"));
               return;
             }
-            // Remove from state and re-render; schedule a board refresh so
-            // the card loses its blocked marker.
-            const idx = needsYou.findIndex((i) => i === item);
-            if (idx >= 0) needsYou.splice(idx, 1);
-            renderNeedsYou();
-            if (typeof scheduleBoardRefresh === "function") scheduleBoardRefresh();
+            // dropRow marks the row as leaving. A row that showed an error is
+            // otherwise kept across a re-render, so after a failed try and a
+            // good one the unblocked row stayed up under its old error.
+            dropRow(item, rowOnScreen(item, li));
+            // The card loses its blocked marker on the next board load.
+            scheduleBoardRefresh();
           };
           actions.append(clear);
         } else {
@@ -283,6 +285,16 @@ import { answerGate } from "./tools.js";
           }
         }
         return li;
+      }
+
+      // A blocked item's summary is "title — blocked (reason): note", or
+      // "title — blocked: reason" with no note. The title leads the row, and
+      // the rest says why. A title of a channel not loaded yet comes from here.
+      function splitBlockSummary(summary) {
+        const s = String(summary || "");
+        const at = s.indexOf(" — blocked");
+        if (at < 0) return { title: s, why: s };
+        return { title: s.slice(0, at), why: s.slice(at + 3) };
       }
 
       // Who handed the work off and what they reported, from the result. A

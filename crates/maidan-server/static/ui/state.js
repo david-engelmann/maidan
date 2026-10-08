@@ -85,7 +85,10 @@
         "claim_expired",
       ]);
 
-      const NY_KINDS = new Set(["review_request", "unassigned_review", "open_gate"]);
+      // The waiting kinds Needs you shows: a decision (a review or an approval
+      // gate) or an action (a block only a person can clear). Assigned threads
+      // and mentions have their own places on the page.
+      const NY_KINDS = new Set(["review_request", "unassigned_review", "open_gate", "blocked"]);
 
       // A Needs you load that could not reach the server retries on its own,
       // backing off to once a minute.
