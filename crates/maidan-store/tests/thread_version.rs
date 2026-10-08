@@ -54,9 +54,20 @@ async fn workspace(store: &dyn Store, name: &str) -> (WorkspaceId, MemberId, Thr
     (ws, member, thread)
 }
 
+fn erase_audit(erasure: &ArtifactErasure) -> NewAuditEvent {
+    NewAuditEvent {
+        scope: AuditScope::Workspace(erasure.workspace_id),
+        actor_id: None,
+        action: "artifact.erase".into(),
+        target_kind: Some("workspace".into()),
+        target_id: Some(erasure.workspace_id.0),
+        metadata: json!({ "last_reference": erasure.last_reference }),
+    }
+}
+
 async fn run_suite(store: &dyn Store) {
     let (ws, worker, thread) = workspace(store, "evidence").await;
-    let (other_ws, _, other_thread) = workspace(store, "elsewhere").await;
+    let (other_ws, other_worker, other_thread) = workspace(store, "elsewhere").await;
     let version = |t| async move { store.thread_version(t).await.expect("version") };
     assert_eq!(version(thread).await, 0, "nothing written yet");
 
@@ -159,6 +170,43 @@ async fn run_suite(store: &dyn Store) {
         store.thread_version(ThreadId(uuid::Uuid::now_v7())).await,
         Err(StoreError::NotFound)
     ));
+
+    // Erasing the artifact from this workspace takes its links here with it,
+    // and leaves another workspace's link to the same bytes alone.
+    store
+        .link_thread_artifact(thread, HELD, worker)
+        .await
+        .expect("relink");
+    store
+        .record_artifact_ref(other_ws, HELD)
+        .await
+        .expect("held there too");
+    store
+        .link_thread_artifact(other_thread, HELD, other_worker)
+        .await
+        .expect("linked there");
+    store
+        .erase_artifact_audited(ws, HELD, Box::new(erase_audit))
+        .await
+        .expect("erase the artifact here");
+    assert!(
+        store
+            .list_thread_artifacts(thread)
+            .await
+            .expect("list")
+            .is_empty(),
+        "an erased artifact is no longer evidence here"
+    );
+    assert_eq!(version(thread).await, 10, "the relink and the erase");
+    assert_eq!(
+        store
+            .list_thread_artifacts(other_thread)
+            .await
+            .expect("list there")
+            .len(),
+        1,
+        "another workspace keeps its link"
+    );
 
     // The triggers do not stand in the way of erasing a workspace.
     store.erase_workspace(ws).await.expect("erase");

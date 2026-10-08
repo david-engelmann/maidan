@@ -43,6 +43,12 @@ pub async fn link(
     linked_by: MemberId,
 ) -> Result<(ThreadArtifact, bool), StoreError> {
     let mut tx = pool.begin().await?;
+    // An erase of these bytes holds this row FOR UPDATE, so a link waits for
+    // it and then finds the reference gone, never linking what was erased.
+    sqlx::query("SELECT 1 FROM maidan_artifacts WHERE sha256 = $1 FOR SHARE")
+        .bind(sha256)
+        .fetch_optional(&mut *tx)
+        .await?;
     let held = sqlx::query(
         "SELECT 1 FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
