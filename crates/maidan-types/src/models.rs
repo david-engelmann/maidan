@@ -2899,6 +2899,10 @@ pub struct ApiToken {
     pub revoked_at: Option<DateTime<Utc>>,
     /// Present for a grant-exchanged token and every attenuated descendant.
     pub delegation_grant_id: Option<DelegationGrantId>,
+    /// Present for a token minted through the OAuth 2.1 authorization server
+    /// (`docs/OAuth.md`): the grant it was issued under. Such tokens never
+    /// carry `approval:grant` (stripped at mint, see `OAuthAsStore`).
+    pub oauth_grant_id: Option<OAuthGrantId>,
 }
 
 #[derive(Debug, Clone)]
@@ -2932,6 +2936,85 @@ pub struct OAuthCode {
     pub redirect_uri: String,
     pub code_challenge: Option<String>,
     pub expires_at: DateTime<Utc>,
+}
+
+/// A pre-registered OAuth 2.1 client (`docs/OAuth.md`). No dynamic client
+/// registration: rows are inserted by the operator, never by the protocol.
+#[derive(Debug, Clone)]
+pub struct NewOAuthClient {
+    pub client_id: String,
+    pub name: String,
+    pub redirect_uris: Vec<String>,
+    /// `None` for public clients (PKCE is their only credential); a SHA-256 hex
+    /// digest of the secret for confidential clients.
+    pub client_secret_hash: Option<String>,
+    pub allowed_scopes: Vec<String>,
+}
+
+/// A registered OAuth 2.1 client (see [`NewOAuthClient`]).
+#[derive(Debug, Clone)]
+pub struct OAuthClient {
+    pub id: uuid::Uuid,
+    pub client_id: String,
+    pub name: String,
+    pub redirect_uris: Vec<String>,
+    pub client_secret_hash: Option<String>,
+    pub allowed_scopes: Vec<String>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+/// An OAuth 2.1 authorization code. Only the SHA-256 hash of the code is
+/// stored; PKCE is S256-only, enforced by the schema.
+#[derive(Debug, Clone)]
+pub struct NewOAuthAuthorizationCode {
+    pub code_hash: String,
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub scope: Vec<String>,
+    /// RFC 8707 resource indicator the grant is bound to.
+    pub resource: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// A stored OAuth 2.1 authorization code (see [`NewOAuthAuthorizationCode`]).
+#[derive(Debug, Clone)]
+pub struct OAuthAuthorizationCode {
+    pub code_hash: String,
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub scope: Vec<String>,
+    pub resource: Option<String>,
+    pub expires_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+}
+
+/// A member's standing consent for a client: the scopes the member granted it.
+/// Tokens minted under the grant carry its lineage id.
+#[derive(Debug, Clone)]
+pub struct NewOAuthGrant {
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub scope: Vec<String>,
+    pub lineage_id: uuid::Uuid,
+}
+
+/// A stored OAuth grant (see [`NewOAuthGrant`]).
+#[derive(Debug, Clone)]
+pub struct OAuthGrant {
+    pub id: OAuthGrantId,
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub scope: Vec<String>,
+    pub lineage_id: uuid::Uuid,
+    pub revoked_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -3408,6 +3408,99 @@ macro_rules! store_delegations {
             }
         }
     };
+    ($store:ty, OAuthAsStore) => {
+        #[::async_trait::async_trait]
+        impl OAuthAsStore for $store {
+            async fn create_oauth_client(
+                &self,
+                new: NewOAuthClient,
+            ) -> Result<OAuthClient, StoreError> {
+                oauth_as::insert_client(self.pool(), new).await
+            }
+
+            async fn get_oauth_client_by_client_id(
+                &self,
+                client_id: &str,
+            ) -> Result<Option<OAuthClient>, StoreError> {
+                oauth_as::get_client_by_client_id(self.read_pool(), client_id).await
+            }
+
+            async fn create_oauth_authorization_code(
+                &self,
+                new: NewOAuthAuthorizationCode,
+            ) -> Result<(), StoreError> {
+                oauth_as::insert_code(self.pool(), new).await
+            }
+
+            async fn get_oauth_authorization_code(
+                &self,
+                code_hash: &str,
+            ) -> Result<Option<OAuthAuthorizationCode>, StoreError> {
+                oauth_as::get_code(self.read_pool(), code_hash).await
+            }
+
+            async fn consume_oauth_authorization_code(
+                &self,
+                code_hash: &str,
+            ) -> Result<Option<OAuthAuthorizationCode>, StoreError> {
+                oauth_as::consume_code(self.pool(), code_hash).await
+            }
+
+            async fn create_oauth_grant(
+                &self,
+                new: NewOAuthGrant,
+            ) -> Result<OAuthGrant, StoreError> {
+                oauth_as::insert_grant(self.pool(), new).await
+            }
+
+            async fn create_oauth_grant_audited(
+                &self,
+                new: NewOAuthGrant,
+                audit: crate::AuditFor<OAuthGrant>,
+            ) -> Result<OAuthGrant, StoreError> {
+                oauth_as::insert_grant_audited(self.pool(), new, audit).await
+            }
+
+            async fn get_oauth_grant(
+                &self,
+                grant_id: OAuthGrantId,
+            ) -> Result<Option<OAuthGrant>, StoreError> {
+                oauth_as::get_grant(self.read_pool(), grant_id).await
+            }
+
+            async fn find_oauth_grant(
+                &self,
+                client_id: &str,
+                member_id: MemberId,
+                workspace_id: WorkspaceId,
+                scope: &[String],
+            ) -> Result<Option<OAuthGrant>, StoreError> {
+                oauth_as::find_grant(self.read_pool(), client_id, member_id, workspace_id, scope)
+                    .await
+            }
+
+            async fn revoke_oauth_grant(&self, grant_id: OAuthGrantId) -> Result<(), StoreError> {
+                oauth_as::revoke_grant(self.pool(), grant_id).await
+            }
+
+            async fn mint_oauth_token(
+                &self,
+                new: NewApiToken,
+                grant_id: OAuthGrantId,
+            ) -> Result<ApiToken, StoreError> {
+                oauth_as::mint_token(self.pool(), new, grant_id).await
+            }
+
+            async fn mint_oauth_token_audited(
+                &self,
+                new: NewApiToken,
+                grant_id: OAuthGrantId,
+                audit: crate::AuditFor<ApiToken>,
+            ) -> Result<ApiToken, StoreError> {
+                oauth_as::mint_token_audited(self.pool(), new, grant_id, audit).await
+            }
+        }
+    };
     ($store:ty, ReindexStore) => {
         #[::async_trait::async_trait]
         impl ReindexStore for $store {

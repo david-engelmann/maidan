@@ -885,3 +885,130 @@ async fn another_workspaces_session_or_approval_grant_cannot_see_or_accept_a_gat
         .await;
     assert_eq!(accepted.status(), StatusCode::OK);
 }
+
+/// An OAuth-issued token is a token, so it can never accept an approval gate.
+/// The token endpoint strips `approval:grant` at mint, and the authorize
+/// step refuses it as a scope: even a grant for a member who holds the
+/// capability cannot carry it into an OAuth token.
+#[tokio::test]
+async fn an_oauth_token_cannot_accept_a_gate() {
+    let (addr, client, store) = spawn().await;
+    let api = Api {
+        base: format!("http://{addr}"),
+        client,
+    };
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "oauth-gate".into(),
+        })
+        .await
+        .unwrap();
+    let human = member(store.as_ref(), ws.id, "owner", MemberKind::Human).await;
+    let agent = member(store.as_ref(), ws.id, "worker", MemberKind::Agent).await;
+
+    // The human holds approval:grant (like an admin), and the OAuth client
+    // is allowed workspace:write. The grant must still not carry approval:grant.
+    let human_token = mint(
+        store.as_ref(),
+        ws.id,
+        human,
+        caps(&["workspace:read", "workspace:write", "approval:grant"]),
+    )
+    .await;
+    let human_bearer = Cred::Bearer(&human_token);
+
+    store
+        .create_oauth_client(maidan_types::NewOAuthClient {
+            client_id: "test-mcp-client".into(),
+            name: "Test MCP client".into(),
+            redirect_uris: vec!["https://client.example/callback".into()],
+            client_secret_hash: None,
+            allowed_scopes: vec!["workspace:read".into(), "workspace:write".into()],
+        })
+        .await
+        .unwrap();
+
+    // PKCE: S256 challenge from a random verifier.
+    let verifier: String = {
+        use base64::Engine;
+        use rand::RngCore;
+        let mut raw = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut raw);
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(raw)
+    };
+    let challenge = {
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+    };
+
+    // Authorize: the human's bearer goes in, a code comes back via redirect.
+    // A no-redirect client: the redirect target is a fake client URL.
+    let no_redirect = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let auth_url = format!(
+        "{}/oauth/authorize?client_id=test-mcp-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread%20workspace%3Awrite&state=xyz",
+        api.base,
+        urlencoding::encode("https://client.example/callback"),
+        challenge,
+    );
+    let resp = no_redirect
+        .get(&auth_url)
+        .header("Authorization", format!("Bearer {human_token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+    let location = resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let code = location
+        .split("code=")
+        .nth(1)
+        .unwrap()
+        .split('&')
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(!code.is_empty());
+
+    // Exchange the code for a token.
+    let token_resp = api
+        .client
+        .post(format!("{}/oauth/token", api.base))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code.as_str()),
+            ("redirect_uri", "https://client.example/callback"),
+            ("client_id", "test-mcp-client"),
+            ("code_verifier", verifier.as_str()),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(token_resp.status(), StatusCode::OK);
+    let token_body: Value = token_resp.json().await.unwrap();
+    let oauth_token = token_body["access_token"].as_str().unwrap().to_string();
+    let oauth_bearer = Cred::Bearer(&oauth_token);
+
+    // The OAuth token cannot accept a gate, even though the human behind it
+    // holds approval:grant. The capability was stripped at mint.
+    let gate = open_gate(store.as_ref(), ws.id, agent).await;
+    let state = api.request_state(ws.id, &gate, &human_bearer).await;
+    assert_refused_with(
+        api.answer(&gate, &state, "accept", &oauth_bearer).await,
+        "missing capability: approval:grant",
+    )
+    .await;
+    assert_pending(store.as_ref(), &gate).await;
+
+    // Declining and cancelling are not accepting, and are unchanged.
+    let declined = api.answer(&gate, &state, "decline", &oauth_bearer).await;
+    assert_eq!(declined.status(), StatusCode::OK);
+}

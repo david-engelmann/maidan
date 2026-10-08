@@ -67,3 +67,4 @@ id_newtype!(MemoryBlockId);
 id_newtype!(ShareTicketId);
 id_newtype!(LegalHoldId);
 id_newtype!(DelegationGrantId);
+id_newtype!(OAuthGrantId);

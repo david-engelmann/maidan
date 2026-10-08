@@ -22,7 +22,7 @@ pub(crate) async fn create_on(
             (id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities, created_at, expires_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at, delegation_grant_id",
+                   created_at, expires_at, revoked_at, delegation_grant_id, oauth_grant_id",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -68,7 +68,7 @@ pub(crate) async fn create_attenuated_on(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                  (SELECT delegation_grant_id FROM maidan_api_tokens WHERE id = ?))
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at, delegation_grant_id",
+                   created_at, expires_at, revoked_at, delegation_grant_id, oauth_grant_id",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -137,7 +137,7 @@ pub(crate) async fn create_delegated_on(
                  AND p.revoked_at IS NULL
                  AND (p.expires_at IS NULL OR datetime(p.expires_at) >= datetime(?8))))
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label,
-                   capabilities, created_at, expires_at, revoked_at, delegation_grant_id",
+                   capabilities, created_at, expires_at, revoked_at, delegation_grant_id, oauth_grant_id",
     )
     .bind(id)
     .bind(new.workspace_id.0)
@@ -160,7 +160,7 @@ pub(crate) async fn create_delegated_on(
 pub async fn get_by_id(pool: &SqlitePool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
     let row = sqlx::query(
         "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                created_at, expires_at, revoked_at, delegation_grant_id
+                created_at, expires_at, revoked_at, delegation_grant_id, oauth_grant_id, oauth_grant_id
          FROM maidan_api_tokens
          WHERE id = ?",
     )
@@ -178,7 +178,7 @@ pub async fn get_active_by_hash(
     let now = Utc::now();
     let row = sqlx::query(
         "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label,
-                capabilities, created_at, expires_at, revoked_at, delegation_grant_id
+                capabilities, created_at, expires_at, revoked_at, delegation_grant_id, oauth_grant_id, oauth_grant_id
          FROM maidan_api_tokens
          WHERE token_hash = ?
            AND revoked_at IS NULL
@@ -189,6 +189,14 @@ pub async fn get_active_by_hash(
                SELECT 1 FROM maidan_delegation_grants g
                WHERE g.id = maidan_api_tokens.delegation_grant_id
                  AND g.revoked_at IS NULL AND datetime(g.expires_at) > datetime(?)
+             )
+           )
+           AND (
+             oauth_grant_id IS NULL
+             OR EXISTS (
+               SELECT 1 FROM oauth_grants g
+               WHERE g.id = maidan_api_tokens.oauth_grant_id
+                 AND g.revoked_at IS NULL
              )
            )
            AND (
@@ -235,7 +243,7 @@ pub async fn list_for_member(
 ) -> Result<Vec<ApiToken>, StoreError> {
     let rows = sqlx::query(
         "SELECT id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                created_at, expires_at, revoked_at, delegation_grant_id
+                created_at, expires_at, revoked_at, delegation_grant_id, oauth_grant_id, oauth_grant_id
          FROM maidan_api_tokens
          WHERE workspace_id = ? AND member_id = ?
          ORDER BY created_at DESC",
@@ -282,7 +290,7 @@ pub(crate) async fn revoke_on(
          SET revoked_at = ?
          WHERE id = ? AND revoked_at IS NULL
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at, delegation_grant_id",
+                   created_at, expires_at, revoked_at, delegation_grant_id, oauth_grant_id",
     )
     .bind(now.to_rfc3339())
     .bind(id.0)
@@ -306,7 +314,7 @@ pub(crate) async fn revoke_on(
     row_to_token(&row)
 }
 
-fn map_token_err(err: sqlx::Error) -> StoreError {
+pub(crate) fn map_token_err(err: sqlx::Error) -> StoreError {
     if let sqlx::Error::Database(ref db) = err {
         if db.is_unique_violation() {
             return StoreError::Conflict("token hash already exists".into());
@@ -315,7 +323,7 @@ fn map_token_err(err: sqlx::Error) -> StoreError {
     StoreError::Database(err)
 }
 
-fn row_to_token(row: &sqlx::sqlite::SqliteRow) -> Result<ApiToken, StoreError> {
+pub(crate) fn row_to_token(row: &sqlx::sqlite::SqliteRow) -> Result<ApiToken, StoreError> {
     let capabilities_json: String = row.get("capabilities");
     let capabilities: Vec<String> = serde_json::from_str(&capabilities_json).map_err(|e| {
         StoreError::InvalidInput(format!("invalid capabilities JSON in database: {e}"))
@@ -336,6 +344,9 @@ fn row_to_token(row: &sqlx::sqlite::SqliteRow) -> Result<ApiToken, StoreError> {
         delegation_grant_id: row
             .get::<Option<Uuid>, _>("delegation_grant_id")
             .map(maidan_types::DelegationGrantId),
+        oauth_grant_id: row
+            .get::<Option<Uuid>, _>("oauth_grant_id")
+            .map(maidan_types::OAuthGrantId),
     })
 }
 
@@ -448,7 +459,7 @@ pub async fn rotate_audited(
                 ?4, expires_at, parent_token_id
          FROM maidan_api_tokens WHERE id = ?1
          RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label, capabilities,
-                   created_at, expires_at, revoked_at, delegation_grant_id",
+                   created_at, expires_at, revoked_at, delegation_grant_id, oauth_grant_id",
     )
     .bind(id.0)
     .bind(successor)

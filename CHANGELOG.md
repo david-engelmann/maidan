@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### OAuth authorization server, phase two: authorization-code flow
+
+- **Added:** `GET /oauth/authorize` and `POST /oauth/token` implement the OAuth 2.1 authorization-code flow with PKCE S256 only. Clients are pre-registered (no dynamic registration); redirect URIs match exactly; codes are single-use with a ten-minute expiry and are consumed atomically. Scopes are delegatable capabilities, never wider than the member's own.
+- **Security:** A token issued through OAuth never carries `approval:grant` (stripped at mint), so it can never accept an approval gate — only a signed-in browser session or a token holding `approval:grant` can (#1325). Covered by `an_oauth_token_cannot_accept_a_gate` in `approval_gate_e2e.rs`.
+- New tables: `oauth_clients`, `oauth_authorization_codes`, `oauth_grants` (migration 0150); `maidan_api_tokens.oauth_grant_id` ties a token to its grant.
+
 ### The change flow can mark a draft ready (mark-ready app only)
 
 - **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the mark-ready app (the operator-designated client, `MAIDAN_MARK_READY_APP_ID`); the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; the mark-ready app stays without `contents:write`.
@@ -15,7 +21,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Writes go only to operator-named repositories.** `MAIDAN_GITHUB_WRITE_REPOS` lists the only repositories the instance's GitHub token may write to. The client refuses any other write before a request is made, whichever workspace asks, and with no list it writes nowhere. A workspace's egress allowlist narrows the list and can never widen it.
 - **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to an app slug, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
-- **Mark-ready bases are the operator's.** `MAIDAN_MARK_READY_BASES` (comma-separated `owner/name=branch`) pins the base each listed repository's agent pull requests may be marked ready into, replacing the table compiled into `maidan-types`. A repository not listed is held to no base there, and the workspace egress allowlist decides its flips, as before. A malformed entry, a `prod` base or a repository listed twice refuses boot.
 
 ### DMs are opened by picking people, not pasting ids
 
@@ -1867,30 +1872,20 @@ Refs #1253
 - **Changed:** Only an approval bound to the thread's latest packet counts toward a review requirement, in `review_status` and at close, and a close is refused while the evidence differs from what that packet pinned. A comment after an approval does not undo it, since the evidence root covers the result and linked artifacts, not messages. This is the third part of evidence-bound approvals (Open Work Next 3).
 - **Changed:** Needs you in the console approves the packet the row showed, so evidence that changed after the row was drawn is refused with a reason instead of approved.
 
+### OAuth phase one: the MCP endpoint describes itself as a protected resource
+
+- **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` (and the root form) serves the MCP endpoint's RFC 9728 metadata, and a 401 from an MCP route carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. Other 401s carry no challenge. Unset, neither is served. The authorization-server document arrives with the token endpoint (phase three).
+- **Added:** `docs/OAuth.md`, the seven-phase plan (Open Work Next 23).
+
 ### A refused close reaches MCP subscribers, and an unpinned mark-ready app is named at boot
 
 - **Fixed:** A close refused over REST (`POST /threads/:id`, a review requirement not met or an unresolved `refutes`) now notifies the thread's MCP resource subscribers of the notice message it posts, as the MCP `transition_thread` refusal already did. Subscribers in another workspace hear nothing.
 - **Added:** The server logs a warning at boot when `MAIDAN_MARK_READY_APP_ID` is set and `MAIDAN_MARK_READY_BASES` pins no base (unset or blank), because every mark-ready flip then follows the workspace egress allowlist alone. Boot still succeeds.
 
-### The compose recipes' MCP calls meet the 2026-07-28 revision
-
-- **Fixed:** `examples/recipes/maidan_http.py` sent `MCP-Protocol-Version: 2026-07-28` with nothing else the revision requires, so since the revision hold (#1302) the server refused every recipe tool call with `params._meta must carry io.modelcontextprotocol/protocolVersion`, and the deploy recipe's agent could not open or read its gate. The helper now states the revision in `params._meta` beside the client's capabilities and sends the `Mcp-Method` and `Mcp-Name` headers. `crates/maidan-server/tests/recipes_mcp_e2e.rs` runs the deploy recipe's agent against a real server with auth on, so the recipes' MCP calls are tested in the integration-test job whenever code changes.
-
 ### Accepting an approval gate is a property of the credential
 
 - **Security:** `POST /approval-gates/:id/answer` with `accept` needs a token holding `approval:grant` (or a session made from one), or a browser session the person signed in to through the identity provider, sent from the console page with the strict origin check (`Sec-Fetch-Site` must be `same-origin` when present; only when it is absent must `Origin` match the host; a request naming neither is refused). A plain bearer token whose member is a human, a delegated token, and a session made from a plain token with `POST /auth/session/from-token` are refused with 403 `missing capability: approval:grant. …`, because they are the credentials a person hands an agent. Declining and cancelling are unchanged, and nobody accepts their own request. Next 17, part one.
 - **Changed:** The console says what accepting needs when a pasted token is refused, and still declines and cancels with it. The admin token `maidan init` prints holds every capability, `approval:grant` included, so `examples/recipes/approve.py` still accepts with it; its docstring now says so and why that token never goes to an agent.
-
-### An approval card says how far to trust each piece of evidence
-
-- **Added:** A review packet records an attestation tier for each piece of evidence, judged once at the hand-off: `verified` for a land-gate pass the close gate would accept (its own `land_gate` item, with the pass's `artifact_sha` and recorder), `attached` for a result or artifact from a member who never worked the thread, and `self_reported` for a worker's own result or link. A delegate that worked the thread and links with someone else's token is judged as itself, so its link is still self-reported (migration 0147 records a link's and a result's delegate actor). The packet's `self_reported_only` is true when it holds evidence and every item is self-reported. Both appear on `get_review_packet`, `GET /threads/:id/review-packet` and `GET /ui/api/threads/:tid/review-packet`. This is the fourth part of evidence-bound approvals (Open Work Next 3).
-- **Changed:** The tiers are inside the evidence root, so the same evidence handed over again under different tiers is a new root, and an approval names the tiers it was shown. Packets from before tiers keep their roots and carry no tiers. A close compares the evidence with what the packet pinned rather than judging the tiers again, so a land-gate pass or a membership change after the hand-off neither moves a packet nor refuses a close.
-- **Added:** Needs you in the console shows each item's tier on the approval card, a land-gate pass as its own line with its recorder, and warns when the server says the approval would rest on self-reported evidence only.
-
-### A workspace admin cannot reach across tenants through an app
-
-- **Security:** Installing an app, and minting a token from an installation, grant only what the caller could mint directly. A `token:admin` holder without `operator:global` or `audit:read-global` could install an app with either capability and mint the bot a token that operated or read across every workspace. Both routes now answer 400 for a capability the caller cannot grant, including one an operator put in the installation's grant.
-- **Security:** The installed-app code exchange (`POST /oauth/app/token`) mints with no member behind it, so it never issues `operator:global` or `audit:read-global`, whatever the installation's grant says.
 
 ## [412.0.0] — 2026-09-28
 
