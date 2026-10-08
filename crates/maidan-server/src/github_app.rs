@@ -186,6 +186,17 @@ impl GithubAppAuth {
         }
     }
 
+    /// Cache `token` as if GitHub had just issued it for an hour.
+    #[cfg(test)]
+    pub(crate) fn seed_token_for_test(&self, token: &str) {
+        if let Ok(mut current) = self.current.lock() {
+            *current = Some(InstallationToken {
+                token: token.to_string(),
+                refresh_after: Utc::now() + Duration::minutes(55),
+            });
+        }
+    }
+
     fn fresh(&self, now: DateTime<Utc>) -> Option<String> {
         let current = self.current.lock().ok()?;
         current
@@ -336,7 +347,7 @@ fn pem_body(pem: &str) -> Option<(String, String)> {
 /// The throwaway key the tests sign with, shared with the integration tests.
 #[cfg(test)]
 #[path = "../tests/github_app_key/mod.rs"]
-mod github_app_key;
+pub(crate) mod github_app_key;
 
 #[cfg(test)]
 mod tests {

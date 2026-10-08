@@ -1650,6 +1650,22 @@ mod tests {
         assert!(!err.to_string().contains("ghp_secretvalue"), "{err}");
     }
 
+    #[test]
+    fn the_app_installation_token_never_reaches_an_error() {
+        let app = std::sync::Arc::new(
+            crate::github_app::GithubAppAuth::new(
+                "1",
+                "2",
+                &crate::github_app::github_app_key::test_key().pkcs1_pem,
+            )
+            .unwrap(),
+        );
+        app.seed_token_for_test("ghs_installationsecret");
+        let client = GithubApiClient::with_app(app);
+        let err = client.http_error("request to https://x/?t=ghs_installationsecret failed");
+        assert!(!err.to_string().contains("ghs_installationsecret"), "{err}");
+    }
+
     #[tokio::test]
     async fn the_client_writes_only_agent_branches_and_never_opens_a_pull_into_prod() {
         // No server: a refused write must not reach the network at all.
