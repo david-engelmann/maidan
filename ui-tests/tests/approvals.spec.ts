@@ -47,9 +47,9 @@ test("the Approvals tab lists a pending gate and resolves it on Accept", async (
   });
   await page.goto("/ui/");
   await expect(page.locator("#identity-mode")).toHaveText("session");
-  // Point at the seeded workspace before opening the tab (it loads on click,
-  // reading #workspace).
-  await page.fill("#workspace", fx.workspace_id);
+  // The session names its workspace and the page fills the hidden #workspace
+  // from it; the tab loads on click, reading #workspace.
+  await expect(page.locator("#workspace")).toHaveValue(fx.workspace_id);
   await openMoreTools(page);
   await page.click('.tabs button[data-tab="approvals"]');
 
