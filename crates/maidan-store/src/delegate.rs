@@ -3400,6 +3400,13 @@ macro_rules! store_delegations {
                 oauth_codes::insert(self.pool(), new).await
             }
 
+            async fn get_oauth_code(
+                &self,
+                code_hash: &str,
+            ) -> Result<Option<OAuthCode>, StoreError> {
+                oauth_codes::get(self.pool(), code_hash).await
+            }
+
             async fn consume_oauth_code(
                 &self,
                 code_hash: &str,
@@ -3498,6 +3505,27 @@ macro_rules! store_delegations {
                 audit: crate::AuditFor<ApiToken>,
             ) -> Result<ApiToken, StoreError> {
                 oauth_as::mint_token_audited(self.pool(), new, grant_id, audit).await
+            }
+
+            async fn create_oauth_pending_request(
+                &self,
+                new: NewOAuthPendingRequest,
+            ) -> Result<OAuthPendingRequest, StoreError> {
+                oauth_as::create_pending_request(self.pool(), new).await
+            }
+
+            async fn get_oauth_pending_request(
+                &self,
+                id: OAuthPendingRequestId,
+            ) -> Result<Option<OAuthPendingRequest>, StoreError> {
+                oauth_as::get_pending_request(self.pool(), id).await
+            }
+
+            async fn delete_oauth_pending_request(
+                &self,
+                id: OAuthPendingRequestId,
+            ) -> Result<(), StoreError> {
+                oauth_as::delete_pending_request(self.pool(), id).await
             }
         }
     };

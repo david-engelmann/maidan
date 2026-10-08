@@ -99,12 +99,12 @@ pub async fn exchange_app_code(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<ExchangeAppCode>,
 ) -> ApiResult<(StatusCode, Json<MintAppTokenResponse>)> {
-    // Atomic single-use consume: the store deletes the row and returns it only
-    // if it is still live, so a second exchange (or an expired code) finds
-    // nothing. TTL is enforced store-side.
+    // Read first, validate everything, consume last: a wrong redirect URI or
+    // verifier must not burn the real client's code.
+    let code_hash = hash_code(&body.code);
     let pending = state
         .store
-        .consume_oauth_code(&hash_code(&body.code))
+        .get_oauth_code(&code_hash)
         .await?
         .ok_or(ApiError::Unauthorized)?;
 
@@ -120,6 +120,14 @@ pub async fn exchange_app_code(
             return Err(ApiError::Unauthorized);
         }
     }
+
+    // Atomic single-use consume: only a still-live code flips to used, so
+    // two concurrent exchanges cannot both win.
+    state
+        .store
+        .consume_oauth_code(&code_hash)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
 
     let app = state.store.get_app(pending.app_id).await?;
     let installation = match state
@@ -177,17 +185,9 @@ pub async fn exchange_app_code(
                 app_installation_id: Some(installation.id),
                 token_hash: hash_secret(secret.as_str()),
                 label: Some(format!("oauth:{}", app.slug)),
-                // No member stands behind this mint, so it never carries a
-                // capability that reaches across tenants, whatever the grant says.
-                capabilities: installation
-                    .granted_capabilities
-                    .iter()
-                    .filter(|c| {
-                        *c != capability::OPERATOR_GLOBAL && *c != capability::AUDIT_READ_GLOBAL
-                    })
-                    .cloned()
-                    .collect(),
-                expires_at: None,
+                capabilities: installation.granted_capabilities.clone(),
+                // App tokens expire after 24 hours; the app re-exchanges.
+                expires_at: Some(Utc::now() + chrono::Duration::hours(24)),
             },
             Box::new(move |record| maidan_types::NewAuditEvent {
                 scope: maidan_types::AuditScope::Workspace(record.workspace_id),

@@ -2,28 +2,22 @@
 //! (`docs/OAuth.md`, phase two).
 //!
 //! The client redirects the member's browser here. The member is already
-//! authenticated (the bearer middleware ran before this route), so this is
-//! the consent step: the requested scopes must be delegatable capabilities
-//! the member actually holds and the client is allowed. Phase two
-//! auto-approves — the consent page in `/ui` arrives with P4 — but the grant
-//! is recorded either way.
-//!
-//! The issued code is single-use, bound to the client, redirect URI, PKCE
-//! challenge and resource, and expires in ten minutes.
+//! authenticated (the bearer middleware ran before this route). This step
+//! validates everything — client, exact redirect URI, S256 PKCE, scopes as
+//! delegatable capabilities the member holds and the client allows — then
+//! stores a pending request and redirects to the consent page. No code is
+//! issued here; the member approves or denies with a same-origin POST on
+//! their signed-in session (`oauth::consent`).
 
 use axum::{
     extract::State,
     response::{IntoResponse, Redirect},
     Extension,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
 use maidan_auth::{capability, AuthContext};
-use maidan_types::{AuditScope, NewAuditEvent, NewOAuthAuthorizationCode, NewOAuthGrant};
-use rand::RngCore;
+use maidan_types::NewOAuthPendingRequest;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
-use uuid::Uuid;
 
 use crate::error::ApiError;
 use crate::extract::ApiQuery;
@@ -31,8 +25,9 @@ use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
 
-/// Codes live this long before the token endpoint refuses them.
-const CODE_TTL_SECS: i64 = 600;
+/// Pending consent requests live this long before the consent page refuses
+/// them.
+const PENDING_TTL_SECS: i64 = 600;
 
 #[derive(Debug, Deserialize)]
 pub struct AuthorizeQuery {
@@ -48,18 +43,16 @@ pub struct AuthorizeQuery {
     pub resource: Option<String>,
 }
 
-/// Issue an authorization code for a validated request, recording the
-/// member's grant, then redirect back to the client.
+/// Validate the authorization request, store it pending the member's
+/// consent decision, and redirect to the consent page. Never issues a code.
 pub async fn authorize(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiQuery(query): ApiQuery<AuthorizeQuery>,
 ) -> ApiResult<impl IntoResponse> {
-    let client = state
-        .store
-        .get_oauth_client_by_client_id(&query.client_id)
-        .await?
-        .ok_or_else(|| ApiError::BadRequest("unknown client_id".into()))?;
+    // P1: pre-registered clients first, then CIMD via the egress guard.
+    let client =
+        super::registry::resolve_client(&state, auth.workspace_id, &query.client_id).await?;
 
     // Exact match: no prefix games, no path confusion.
     if !client.redirect_uris.contains(&query.redirect_uri) {
@@ -118,76 +111,24 @@ pub async fn authorize(
         }
     }
 
-    // One grant per client, member, workspace and scope set: a second
-    // authorize with the same parameters reuses it instead of piling up rows.
-    if state
+    // Store the validated request pending the member's decision. The grant
+    // and the code are created only when the member approves on the consent
+    // page (`oauth::consent`), never here.
+    let pending = state
         .store
-        .find_oauth_grant(&client.client_id, auth.member_id, auth.workspace_id, &scope)
-        .await?
-        .is_none()
-    {
-        let (client_id, scope_meta, workspace_id, member_id) = (
-            client.client_id.clone(),
-            scope.clone(),
-            auth.workspace_id,
-            auth.member_id,
-        );
-        state
-            .store
-            .create_oauth_grant_audited(
-                NewOAuthGrant {
-                    client_id: client.client_id.clone(),
-                    member_id: auth.member_id,
-                    workspace_id: auth.workspace_id,
-                    scope: scope.clone(),
-                    lineage_id: Uuid::now_v7(),
-                },
-                Box::new(move |grant| NewAuditEvent {
-                    scope: AuditScope::Workspace(workspace_id),
-                    actor_id: Some(member_id),
-                    action: "oauth_grant.create".into(),
-                    target_kind: Some("oauth_grant".into()),
-                    target_id: Some(grant.id.0),
-                    metadata: serde_json::json!({
-                        "client_id": client_id,
-                        "scope": scope_meta,
-                        "lineage_id": grant.lineage_id,
-                        "member_id": member_id.0,
-                    }),
-                }),
-            )
-            .await?;
-    }
-
-    let mut raw = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut raw);
-    let code = URL_SAFE_NO_PAD.encode(raw);
-    state
-        .store
-        .create_oauth_authorization_code(NewOAuthAuthorizationCode {
-            code_hash: URL_SAFE_NO_PAD.encode(Sha256::digest(code.as_bytes())),
-            client_id: client.client_id,
+        .create_oauth_pending_request(NewOAuthPendingRequest {
+            client_id: client.client_id.clone(),
             member_id: auth.member_id,
             workspace_id: auth.workspace_id,
-            redirect_uri: query.redirect_uri.clone(),
+            redirect_uri: query.redirect_uri,
             code_challenge: query.code_challenge,
             scope,
             resource: query.resource,
-            expires_at: Utc::now() + chrono::Duration::seconds(CODE_TTL_SECS),
+            state: query.state,
+            expires_at: Utc::now() + chrono::Duration::seconds(PENDING_TTL_SECS),
         })
         .await?;
 
-    let separator = if query.redirect_uri.contains('?') {
-        '&'
-    } else {
-        '?'
-    };
-    let location = format!(
-        "{}{}code={}&state={}",
-        query.redirect_uri,
-        separator,
-        urlencoding::encode(&code),
-        urlencoding::encode(&query.state),
-    );
+    let location = format!("/ui/oauth/consent?request={}", pending.id.0);
     Ok(Redirect::temporary(&location).into_response())
 }

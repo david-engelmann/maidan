@@ -8,7 +8,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiToken, MemberId, NewApiToken, NewOAuthAuthorizationCode, NewOAuthClient, NewOAuthGrant,
-    OAuthAuthorizationCode, OAuthClient, OAuthGrant, OAuthGrantId, WorkspaceId,
+    NewOAuthPendingRequest, OAuthAuthorizationCode, OAuthClient, OAuthGrant, OAuthGrantId,
+    OAuthPendingRequest, OAuthPendingRequestId, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -314,4 +315,76 @@ pub async fn mint_token_audited(
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;
     Ok(token)
+}
+
+const PENDING_COLUMNS: &str = "id, client_id, member_id, workspace_id, redirect_uri, code_challenge, scope, resource, state, expires_at";
+
+fn row_to_pending(row: &sqlx::postgres::PgRow) -> Result<OAuthPendingRequest, StoreError> {
+    Ok(OAuthPendingRequest {
+        id: OAuthPendingRequestId(row.get::<Uuid, _>("id")),
+        client_id: row.get("client_id"),
+        member_id: MemberId(row.get::<Uuid, _>("member_id")),
+        workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
+        redirect_uri: row.get("redirect_uri"),
+        code_challenge: row.get("code_challenge"),
+        scope: scopes_from(&row.get::<String, _>("scope"))?,
+        resource: row.get("resource"),
+        state: row.get("state"),
+        expires_at: row.get::<DateTime<Utc>, _>("expires_at"),
+    })
+}
+
+/// Store a validated authorize request while the member decides.
+pub async fn create_pending_request(
+    pool: &PgPool,
+    new: NewOAuthPendingRequest,
+) -> Result<OAuthPendingRequest, StoreError> {
+    let id = Uuid::now_v7();
+    let scope = serde_json::to_string(&new.scope)?;
+    let row = sqlx::query(&format!(
+        "INSERT INTO oauth_pending_requests
+            (id, client_id, member_id, workspace_id, redirect_uri, code_challenge,
+             scope, resource, state, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING {PENDING_COLUMNS}"
+    ))
+    .bind(id)
+    .bind(&new.client_id)
+    .bind(new.member_id.0)
+    .bind(new.workspace_id.0)
+    .bind(&new.redirect_uri)
+    .bind(&new.code_challenge)
+    .bind(&scope)
+    .bind(new.resource.as_deref())
+    .bind(&new.state)
+    .bind(new.expires_at)
+    .fetch_one(pool)
+    .await?;
+    row_to_pending(&row)
+}
+
+/// A pending request by id, or `None`.
+pub async fn get_pending_request(
+    pool: &PgPool,
+    id: OAuthPendingRequestId,
+) -> Result<Option<OAuthPendingRequest>, StoreError> {
+    let row = sqlx::query(&format!(
+        "SELECT {PENDING_COLUMNS} FROM oauth_pending_requests WHERE id = $1"
+    ))
+    .bind(id.0)
+    .fetch_optional(pool)
+    .await?;
+    row.map(|r| row_to_pending(&r)).transpose()
+}
+
+/// Delete a pending request (single use).
+pub async fn delete_pending_request(
+    pool: &PgPool,
+    id: OAuthPendingRequestId,
+) -> Result<(), StoreError> {
+    sqlx::query("DELETE FROM oauth_pending_requests WHERE id = $1")
+        .bind(id.0)
+        .execute(pool)
+        .await?;
+    Ok(())
 }

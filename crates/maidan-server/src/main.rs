@@ -596,6 +596,16 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.allowed_hosts = maidan_server::rebinding::allowed_hosts_from(
         &std::env::var("MAIDAN_ALLOWED_HOSTS").unwrap_or_default(),
     );
+    state.public_origin = maidan_server::oauth::metadata::public_origin_from(
+        std::env::var("MAIDAN_PUBLIC_ORIGIN").ok().as_deref(),
+    )
+    .map_err(anyhow::Error::msg)?;
+    let oauth_clients = maidan_server::oauth::registry::load_preregistered_clients(&state)
+        .await
+        .map_err(|e| anyhow::anyhow!("loading pre-registered OAuth clients: {e:?}"))?;
+    if oauth_clients > 0 {
+        tracing::info!("loaded {oauth_clients} pre-registered OAuth clients");
+    }
     state.dev_anonymous_reader =
         maidan_server::dev_anonymous::from_env(state.store.as_ref(), auth_disabled).await?;
     if let Some(reader) = &state.dev_anonymous_reader {

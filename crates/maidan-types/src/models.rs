@@ -3017,6 +3017,36 @@ pub struct OAuthGrant {
     pub revoked_at: Option<DateTime<Utc>>,
 }
 
+/// A validated authorize request waiting for the member's consent decision.
+/// Created by `GET /oauth/authorize`, consumed by `POST /ui/api/oauth/consent`.
+#[derive(Debug, Clone)]
+pub struct NewOAuthPendingRequest {
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub scope: Vec<String>,
+    pub resource: Option<String>,
+    pub state: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// A stored pending OAuth request (see [`NewOAuthPendingRequest`]).
+#[derive(Debug, Clone)]
+pub struct OAuthPendingRequest {
+    pub id: OAuthPendingRequestId,
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub scope: Vec<String>,
+    pub resource: Option<String>,
+    pub state: String,
+    pub expires_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TokenQuota {

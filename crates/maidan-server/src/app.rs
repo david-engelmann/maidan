@@ -1070,7 +1070,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/auth/session/mint",
-            post(session::mint_first_admin_token).layer(session_auth),
+            post(session::mint_first_admin_token).layer(session_auth.clone()),
         );
 
     let ui_api_read = Router::new()
@@ -1368,6 +1368,19 @@ pub fn router(state: AppState) -> Router {
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
         .route("/ui/static/{name}", get(ui_asset))
+        // OAuth 2.1 consent page: the member approves or denies a pending
+        // authorization request. Signed-in session only (never a bearer);
+        // the handler checks `SessionContext::token.is_none()`.
+        .route(
+            "/ui/oauth/consent",
+            get(oauth::consent::consent_page).layer(session_auth.clone()),
+        )
+        // OAuth 2.1 consent decision: same-origin POST on the signed-in
+        // session. Consumes the pending request (single use).
+        .route(
+            "/ui/api/oauth/consent",
+            post(oauth::consent::decide_consent).layer(session_auth.clone()),
+        )
         .route("/llms.txt", get(llms_txt))
         .merge({
             #[cfg(feature = "bootstrap")]

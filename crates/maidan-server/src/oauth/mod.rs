@@ -13,7 +13,9 @@
 //! the two flows touch disjoint files.
 
 pub mod authorize;
+pub mod consent;
 pub mod metadata;
+pub mod registry;
 pub mod token;
 
 pub use metadata::{challenge, oauth_protected_resource};

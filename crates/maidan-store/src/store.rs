@@ -2788,6 +2788,11 @@ pub trait OAuthCodeStore: Send + Sync {
     /// stored — `code_hash` is its SHA-256 digest.
     async fn insert_oauth_code(&self, new: NewOAuthCode) -> Result<(), StoreError>;
 
+    /// Read a non-expired authorization code by hash, without consuming it.
+    /// Returns `None` if the code is unknown or expired. Use this to validate
+    /// before consuming: a failed validation must not burn the code.
+    async fn get_oauth_code(&self, code_hash: &str) -> Result<Option<OAuthCode>, StoreError>;
+
     /// Atomically consume (delete) a non-expired authorization code by hash.
     /// Returns `None` if the code is unknown, already consumed, or expired —
     /// guaranteeing single use across replicas.
@@ -2881,6 +2886,27 @@ pub trait OAuthAsStore: Send + Sync {
         grant_id: OAuthGrantId,
         audit: crate::AuditFor<ApiToken>,
     ) -> Result<ApiToken, StoreError>;
+
+    /// Store a validated authorize request while the member decides on the
+    /// consent page. The member_id comes from the session, binding the
+    /// request to the member who must approve it.
+    async fn create_oauth_pending_request(
+        &self,
+        new: NewOAuthPendingRequest,
+    ) -> Result<OAuthPendingRequest, StoreError>;
+
+    /// A pending request by id, or `None`. The consent handlers check expiry
+    /// and member binding themselves.
+    async fn get_oauth_pending_request(
+        &self,
+        id: OAuthPendingRequestId,
+    ) -> Result<Option<OAuthPendingRequest>, StoreError>;
+
+    /// Delete a pending request (single use: the consent POST consumes it).
+    async fn delete_oauth_pending_request(
+        &self,
+        id: OAuthPendingRequestId,
+    ) -> Result<(), StoreError>;
 }
 
 #[async_trait]

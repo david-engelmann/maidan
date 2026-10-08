@@ -942,8 +942,9 @@ async fn an_oauth_token_cannot_accept_a_gate() {
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
     };
 
-    // Authorize: the human's bearer goes in, a code comes back via redirect.
-    // A no-redirect client: the redirect target is a fake client URL.
+    // Authorize: the human's bearer goes in, a pending request comes out via
+    // redirect to the consent page. A no-redirect client: we read the
+    // Location header ourselves.
     let no_redirect = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -968,7 +969,28 @@ async fn an_oauth_token_cannot_accept_a_gate() {
         .to_str()
         .unwrap()
         .to_string();
-    let code = location
+    assert!(
+        location.starts_with("/ui/oauth/consent?request="),
+        "authorize redirects to consent, got {location}"
+    );
+    let request_id = location.split("request=").nth(1).unwrap().to_string();
+
+    // Consent: the human approves on their signed-in session (a cookie, not
+    // a bearer), via same-origin POST as the console page sends it.
+    let cookie = signed_in(store.as_ref(), ws.id, human).await;
+    let consent_resp = api
+        .client
+        .post(format!("{}/ui/api/oauth/consent", api.base))
+        .header("Cookie", &cookie)
+        .header("Sec-Fetch-Site", "same-origin")
+        .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(consent_resp.status(), StatusCode::OK);
+    let consent_body: Value = consent_resp.json().await.unwrap();
+    let redirect_to = consent_body["redirect_to"].as_str().unwrap();
+    let code = redirect_to
         .split("code=")
         .nth(1)
         .unwrap()
