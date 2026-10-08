@@ -1,12 +1,30 @@
 // @ts-check
 import { api, apiWritePath, base, headers, requireAuthForWrite, token, uiReadPath, wid, writeApi } from "./api.js";
 import { renderState, responseError, showError, unreachable } from "./feedback.js";
-import { authorId, loadMembers, memberName } from "./people.js";
+import { authorId, loadMembers, memberName, memberPicker } from "./people.js";
 
 
       let selectedGdm = null;
 
       let selectedDm = null;
+
+      // Who a new DM or group DM is with, picked by name from the workspace's
+      // members. Built once the page has its elements.
+      let dmPicker = null;
+
+      let gdmPicker = null;
+
+      function initDmPickers() {
+        const notMe = () => [authorId()].filter(Boolean);
+        dmPicker = memberPicker({ input: "dm-member-search", list: "dm-member-options", picked: "dm-picked", multiple: false, exclude: notMe });
+        gdmPicker = memberPicker({ input: "gdm-member-search", list: "gdm-member-options", picked: "gdm-picked", multiple: true, exclude: notMe });
+      }
+
+      // A member picked in one workspace is not a member of the next.
+      function clearDmPickers() {
+        if (dmPicker) dmPicker.clear();
+        if (gdmPicker) gdmPicker.clear();
+      }
 
 
       function dmOther(c) {
@@ -104,8 +122,8 @@ import { authorId, loadMembers, memberName } from "./people.js";
         if (!requireAuthForWrite()) return;
         const me = authorId();
         if (!me) return showError("Sign in or set a valid bearer token");
-        const other = document.getElementById("dm-other-id").value.trim();
-        if (!other) return showError("Enter the other member's ID");
+        const other = dmPicker ? dmPicker.selected()[0] : "";
+        if (!other) return showError("Choose who to message");
         if (other === me) return showError("Cannot open a DM with yourself");
         try {
           const res = await writeApi("dm-open", apiWritePath(`/workspaces/${wid()}/dm`), {
@@ -120,6 +138,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
           }
           const opened = await res.json();
           showError("DM opened", "success");
+          if (dmPicker) dmPicker.clear();
           await loadMembers();
           await loadDms();
           selectDm(opened);
@@ -209,11 +228,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
         if (!requireAuthForWrite()) return;
         const me = authorId();
         if (!me) return showError("Sign in or set a valid bearer token");
-        const ids = document
-          .getElementById("gdm-member-ids")
-          .value.split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
+        const ids = gdmPicker ? gdmPicker.selected() : [];
         if (!ids.includes(me)) ids.push(me);
         // The store refuses fewer than three members. Say so here, before the request.
         if (ids.length < 3) return showError("A group DM needs at least 3 members");
@@ -231,6 +246,8 @@ import { authorId, loadMembers, memberName } from "./people.js";
           }
           const opened = await res.json();
           showError("Group DM opened", "success");
+          if (gdmPicker) gdmPicker.clear();
+          document.getElementById("gdm-title").value = "";
           await loadMembers();
           await loadGroupDms();
           selectGroupDm(opened);
@@ -265,4 +282,4 @@ import { authorId, loadMembers, memberName } from "./people.js";
         }
       }
 
-export { dmOther, loadConversationMessages, loadDmMessages, loadDms, loadGroupDmMessages, loadGroupDms, openDm, openGroupDm, selectDm, selectGroupDm, selectedDm, selectedGdm, sendDmMessage, sendGroupDmMessage };
+export { clearDmPickers, dmOther, initDmPickers, loadConversationMessages, loadDmMessages, loadDms, loadGroupDmMessages, loadGroupDms, openDm, openGroupDm, selectDm, selectGroupDm, selectedDm, selectedGdm, sendDmMessage, sendGroupDmMessage };

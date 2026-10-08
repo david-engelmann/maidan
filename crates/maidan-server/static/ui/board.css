@@ -374,6 +374,22 @@
       .avatar.lg { width: 1.9rem; height: 1.9rem; font-size: 0.75rem; }
       .person { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--ink); font-weight: 550; }
       .kind-tag { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border: 1px solid var(--line); border-radius: 0.3rem; padding: 0 0.25rem; font-weight: 600; }
+      /* Member picker (DMs and group DMs). The list overlays the form, so
+         opening and closing it never moves the button under the pointer. */
+      .member-picker { position: relative; max-width: 28rem; }
+      .member-picker input { width: 100%; box-sizing: border-box; }
+      .picker-options { position: absolute; z-index: 5; left: 0; right: 0; margin: 0.15rem 0 0; padding: 0.2rem; list-style: none; max-height: 14rem; overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+      .picker-options [role="option"] { display: flex; align-items: center; gap: 0.45rem; padding: 0.3rem 0.4rem; border-radius: 0.3rem; cursor: pointer; }
+      .picker-options [role="option"][aria-selected="true"] { background: #e6efe8; color: var(--accent); }
+      .picker-options .handle { color: var(--muted); font-size: 0.8rem; }
+      .picker-options .picker-empty { padding: 0.3rem 0.4rem; color: var(--muted); }
+      .kind-badge { margin-left: auto; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; border: 1px solid var(--line); border-radius: 0.3rem; padding: 0 0.3rem; color: var(--muted); }
+      .kind-badge.human { border-style: dashed; }
+      .picked-members { display: flex; flex-wrap: wrap; gap: 0.35rem; list-style: none; margin: 0.35rem 0; padding: 0; }
+      .picked-members:empty { display: none; }
+      .picked-member { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.15rem 0.2rem 0.15rem 0.4rem; border: 1px solid var(--line); border-radius: 999px; }
+      .picked-member .kind-badge { margin-left: 0; }
+      .picked-remove { border: 0; background: none; cursor: pointer; padding: 0 0.3rem; font-size: 1rem; line-height: 1; color: var(--muted); }
       /* Thread */
       #collab-panel { max-height: none; flex: 1; margin: 0.5rem 1rem 1rem; border: 1px solid var(--line); border-radius: var(--radius); padding: 0.9rem 1rem; box-shadow: var(--shadow); }
       #thread-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }

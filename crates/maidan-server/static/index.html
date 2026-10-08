@@ -493,9 +493,14 @@
       <section id="panel-dms" class="panel">
         <details open>
           <summary>Open a direct message</summary>
-          <label>Other member ID (UUID; yours is the signed-in actor)
-            <input id="dm-other-id" placeholder="other member uuid" />
-          </label>
+          <label for="dm-member-search">Who to message</label>
+          <ul id="dm-picked" class="picked-members" aria-label="Chosen member" aria-live="polite"></ul>
+          <div class="member-picker">
+            <input id="dm-member-search" type="text" role="combobox" autocomplete="off"
+              aria-autocomplete="list" aria-expanded="false" aria-controls="dm-member-options"
+              placeholder="Search people and agents by name or handle" />
+            <ul id="dm-member-options" class="picker-options" role="listbox" aria-label="Members" hidden></ul>
+          </div>
           <button id="dm-open" type="button">Open DM</button>
         </details>
         <details open>
@@ -514,9 +519,14 @@
       <section id="panel-group-dms" class="panel">
         <details open>
           <summary>Open a group DM</summary>
-          <label>Member IDs (comma-separated UUIDs, at least two others; yours is added if signed in)
-            <input id="gdm-member-ids" placeholder="uuid, uuid, …" />
-          </label>
+          <label for="gdm-member-search">Members (at least two others; you are added)</label>
+          <ul id="gdm-picked" class="picked-members" aria-label="Chosen members" aria-live="polite"></ul>
+          <div class="member-picker">
+            <input id="gdm-member-search" type="text" role="combobox" autocomplete="off"
+              aria-autocomplete="list" aria-expanded="false" aria-controls="gdm-member-options"
+              placeholder="Search people and agents by name or handle" />
+            <ul id="gdm-member-options" class="picker-options" role="listbox" aria-label="Members" hidden></ul>
+          </div>
           <label>Title (optional) <input id="gdm-title" placeholder="optional" /></label>
           <button id="gdm-open" type="button">Open group DM</button>
         </details>

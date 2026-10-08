@@ -12,6 +12,10 @@
 //! Env: `UI_TEST_PORT` (default 8899), `UI_TEST_FIXTURES` (default
 //! `ui-tests/.fixtures.json`). Run via `cargo run --example ui_test_server`.
 
+// The fixtures `json!` literal outgrew the default macro recursion limit once
+// the member-picker and feedback fixtures both landed.
+#![recursion_limit = "256"]
+
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
@@ -497,6 +501,62 @@ async fn main() {
         .await
         .expect("lab gate");
 
+    // A second person, so the member picker offers a human beside the agents.
+    let rae = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "rae".into(),
+            display_name: Some("Rae Reviewer".into()),
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("rae");
+
+    // A second workspace with its own people and token. The member picker and
+    // the DM lists signed in here must show nothing of the first workspace,
+    // and the first must show nothing of this one.
+    let other_ws = store
+        .create_workspace(NewWorkspace {
+            name: "UI Test Neighbour".into(),
+        })
+        .await
+        .expect("other ws");
+    let visitor = store
+        .create_member(NewMember {
+            workspace_id: other_ws.id,
+            handle: "visitor".into(),
+            display_name: Some("Visitor".into()),
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("visitor");
+    let outsider = store
+        .create_member(NewMember {
+            workspace_id: other_ws.id,
+            handle: "outsider".into(),
+            display_name: Some("Outsider".into()),
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("outsider");
+    let other_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: other_ws.id,
+            member_id: visitor.id,
+            app_installation_id: None,
+            token_hash: hash_secret(other_secret.as_str()),
+            label: Some("ui-test-neighbour".into()),
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::WORKSPACE_WRITE.into(),
+                capability::MESSAGE_POST.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .expect("neighbour token");
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -696,6 +756,11 @@ async fn main() {
         "lab_channel_id": lab.id.0.to_string(),
         "lab_thread_id": lab_thread.id.0.to_string(),
         "lab_member_id": mallory.id.0.to_string(),
+        "rae_member_id": rae.id.0.to_string(),
+        "other_workspace_id": other_ws.id.0.to_string(),
+        "other_member_id": visitor.id.0.to_string(),
+        "outsider_member_id": outsider.id.0.to_string(),
+        "other_token": other_secret.as_str(),
         "admin_token": admin_secret.as_str(),
         "delivery_id": delivery_id,
         "delivery_url": "https://hooks.example.test/maidan",
