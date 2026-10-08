@@ -118,6 +118,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "get_thread_result",
     "get_thread_status",
     "get_thread_steer",
+    "get_thread_version",
     "get_tool_transcript",
     "get_unread_count",
     "get_wait",
@@ -170,6 +171,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_slack_channel_links",
     "list_slash_commands",
     "list_task_schedules",
+    "list_thread_artifacts",
     "list_thread_dependencies",
     "list_thread_dependents",
     "list_thread_follows",
@@ -307,6 +309,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "list_blocked_threads"
         | "get_thread_block"
         | "get_thread_status"
+        | "get_thread_version"
+        | "list_thread_artifacts"
         | "get_wait"
         | "get_priority"
         | "list_thread_dependencies"
@@ -403,6 +407,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "retract_vote"
         | "add_reaction"
         | "remove_reaction"
+        | "link_thread_artifact"
+        | "unlink_thread_artifact"
         | "pin_message"
         | "unpin_message"
         | "add_reference"
@@ -819,6 +825,10 @@ async fn enforce_channel_access(
         | "clear_thread_block"
         | "declare_status"
         | "get_thread_status"
+        | "get_thread_version"
+        | "list_thread_artifacts"
+        | "link_thread_artifact"
+        | "unlink_thread_artifact"
         | "set_wait"
         | "cancel_wait"
         | "get_wait"
@@ -965,6 +975,10 @@ pub async fn dispatch(
         "list_blocked_threads" => thread::list_blocked_threads(store, args).await,
         "declare_status" => thread::declare_status(server, auth, args).await,
         "get_thread_status" => thread::get_thread_status(store, args).await,
+        "get_thread_version" => thread::get_thread_version(store, args).await,
+        "list_thread_artifacts" => thread::list_thread_artifacts(store, args).await,
+        "link_thread_artifact" => thread::link_thread_artifact(store, auth, args).await,
+        "unlink_thread_artifact" => thread::unlink_thread_artifact(store, args).await,
         "set_wait" => thread::set_wait(store, auth, args).await,
         "cancel_wait" => thread::cancel_wait(store, args).await,
         "get_wait" => thread::get_wait(store, args).await,

@@ -1605,6 +1605,25 @@
         "reason": "confined to Maidan's store; no outbound call"
       }
     },
+    "get_thread_version": {
+      "title": "Get thread version",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.thread_version"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
     "get_tool_transcript": {
       "title": "Get tool transcript",
       "readOnlyHint": {
@@ -1831,6 +1850,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "store write only; no Slack API call in the handler or link store method"
+      }
+    },
+    "link_thread_artifact": {
+      "title": "Link thread artifact",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "inserts a maidan_thread_artifacts row, which moves the thread version"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "additive: adds a link and overwrites nothing"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "ON CONFLICT DO NOTHING: a second link of the same hash changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
       }
     },
     "list_assigned_threads": {
@@ -2667,6 +2705,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "only reads Maidan's store"
+      }
+    },
+    "list_thread_artifacts": {
+      "title": "List thread artifacts",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_thread_artifacts"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
       }
     },
     "list_thread_dependencies": {
@@ -4244,6 +4301,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "store only; no Slack API call"
+      }
+    },
+    "unlink_thread_artifact": {
+      "title": "Unlink thread artifact",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "DELETEs a maidan_thread_artifacts row, which moves the thread version"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "removes a link other members may rely on as evidence"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a second call finds no row and changes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
       }
     },
     "unmute_channel": {

@@ -1693,6 +1693,108 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `get_thread_version`
+
+**Get thread version.** How many writes the thread's content has seen: its messages, result, title and description, and linked artifacts. The database moves it on every such write, so a decision can name the version it was shown. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `list_thread_artifacts`
+
+**List thread artifacts.** The artifacts linked to the thread as evidence, in the order they were linked, each with who linked it. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
+### `link_thread_artifact`
+
+**Link thread artifact.** Link an artifact your workspace holds to a thread as evidence, by its sha256. Upload it first; a hash your workspace does not hold is not found. Linking twice keeps the first link. Moves the thread's version. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "sha256": {
+      "description": "the artifact's sha256, hex",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "sha256"
+  ],
+  "type": "object"
+}
+```
+
+### `unlink_thread_artifact`
+
+**Unlink thread artifact.** Unlink an artifact from a thread. Returns whether it was linked. Moves the thread's version when it was. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "sha256": {
+      "description": "the artifact's sha256, hex",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "sha256"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_wip_limit`
 
 **Set WIP limit.** Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.

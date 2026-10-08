@@ -664,6 +664,66 @@ pub(super) async fn declare_status(
     Ok(content_json(&declaration))
 }
 
+/// How many writes the thread's content has seen. Twin of
+/// `GET /threads/{id}/version`. `workspace:read`; thread access enforced.
+pub(super) async fn get_thread_version(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
+    let thread_id = ThreadId(a.thread_id);
+    let version = store.thread_version(thread_id).await?;
+    Ok(content_json(&ThreadVersion { thread_id, version }))
+}
+
+/// The artifacts linked to a thread. Twin of `GET /threads/{id}/artifacts`.
+/// `workspace:read`; thread access enforced.
+pub(super) async fn list_thread_artifacts(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
+    let links = store.list_thread_artifacts(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&links))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ThreadArtifactArgs {
+    thread_id: uuid::Uuid,
+    #[serde(deserialize_with = "super::artifact::sha256_hex")]
+    sha256: String,
+}
+
+/// Link an artifact the thread's workspace holds to the thread. Twin of
+/// `PUT /threads/{id}/artifacts/{sha256}`. `workspace:write`; thread access
+/// enforced.
+pub(super) async fn link_thread_artifact(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadArtifactArgs = crate::tools::parse_args(args)?;
+    let (link, _new) = store
+        .link_thread_artifact(ThreadId(a.thread_id), &a.sha256, auth.member_id)
+        .await?;
+    Ok(content_json(&link))
+}
+
+/// Unlink an artifact from a thread; `{removed}` is false when it was not
+/// linked. Twin of `DELETE /threads/{id}/artifacts/{sha256}`.
+/// `workspace:write`; thread access enforced.
+pub(super) async fn unlink_thread_artifact(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadArtifactArgs = crate::tools::parse_args(args)?;
+    let removed = store
+        .unlink_thread_artifact(ThreadId(a.thread_id), &a.sha256)
+        .await?;
+    Ok(content_json(&json!({ "removed": removed })))
+}
+
 /// The thread's active status declaration, or null. `workspace:read`; thread
 /// access enforced.
 pub(super) async fn get_thread_status(

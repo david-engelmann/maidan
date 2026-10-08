@@ -548,6 +548,15 @@ pub fn router(state: AppState) -> Router {
             "/threads/{id}/status",
             put(routes::declare_thread_status).merge(get(routes::get_thread_status)),
         )
+        .route("/threads/{id}/version", get(routes::get_thread_version))
+        .route(
+            "/threads/{id}/artifacts",
+            get(routes::list_thread_artifacts),
+        )
+        .route(
+            "/threads/{id}/artifacts/{sha256}",
+            put(routes::link_thread_artifact).merge(delete(routes::unlink_thread_artifact)),
+        )
         .route(
             "/threads/{id}/wait",
             put(routes::set_thread_wait)

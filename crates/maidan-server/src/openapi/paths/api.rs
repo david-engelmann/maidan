@@ -1477,6 +1477,58 @@ pub fn get_thread_block() {}
     ))]
 pub fn clear_thread_block() {}
 
+/// A thread's version
+#[utoipa::path(get, path = "/threads/{id}/version", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "How many writes the thread's content has seen", body = ThreadVersion),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_thread_version() {}
+
+/// A thread's linked artifacts
+#[utoipa::path(get, path = "/threads/{id}/artifacts", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Vec<ThreadArtifact>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn list_thread_artifacts() {}
+
+/// Link an artifact to a thread
+#[utoipa::path(put, path = "/threads/{id}/artifacts/{sha256}", tag = "threads",
+    params(
+        ("id" = Uuid, Path, description = "Thread id"),
+        ("sha256" = String, Path, description = "Artifact sha256, hex"),
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "The link, new or already there", body = ThreadArtifact),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "No such thread, or the workspace holds no artifact with that hash", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn link_thread_artifact() {}
+
+/// Unlink an artifact from a thread
+#[utoipa::path(delete, path = "/threads/{id}/artifacts/{sha256}", tag = "threads",
+    params(
+        ("id" = Uuid, Path, description = "Thread id"),
+        ("sha256" = String, Path, description = "Artifact sha256, hex"),
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204, description = "Unlinked"),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "Was not linked", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn unlink_thread_artifact() {}
+
 /// Set a thread's wait
 #[utoipa::path(put, path = "/threads/{id}/wait", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

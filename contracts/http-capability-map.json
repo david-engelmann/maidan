@@ -684,6 +684,30 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/threads/{id}/version",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/artifacts",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/threads/{id}/artifacts/{sha256}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/threads/{id}/artifacts/{sha256}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/threads/{id}/block",
     "capability": "thread:transition",

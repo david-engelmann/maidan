@@ -210,12 +210,14 @@ struct GetArtifactMetadataArgs {
     sha256: String,
 }
 
-/// A sha256 hex digest, refused while parsing so a malformed one says so
-/// instead of reading as an artifact that does not exist.
-fn sha256_hex<'de, D: serde::Deserializer<'de>>(de: D) -> Result<String, D::Error> {
+/// A sha256 hex digest in its one stored form, lowercase, refused while
+/// parsing so a malformed one says so instead of reading as an artifact that
+/// does not exist.
+pub(super) fn sha256_hex<'de, D: serde::Deserializer<'de>>(de: D) -> Result<String, D::Error> {
     let hex = String::deserialize(de)?;
-    maidan_artifacts::Sha256::from_hex(&hex).map_err(serde::de::Error::custom)?;
-    Ok(hex)
+    maidan_artifacts::Sha256::from_hex(&hex)
+        .map(|sha| sha.to_hex())
+        .map_err(serde::de::Error::custom)
 }
 
 pub(super) async fn get_artifact_metadata(

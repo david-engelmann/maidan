@@ -1406,6 +1406,31 @@ pub trait ThreadStore: Send + Sync {
         workspace_id: WorkspaceId,
         readable_by: Option<MemberId>,
     ) -> Result<ChannelOccupancy, StoreError>;
+
+    /// The thread's version: the number of writes to its messages, result,
+    /// title and description, and linked artifacts. The database bumps it, so
+    /// every write path moves it. 0 before any. `NotFound` for no such thread.
+    async fn thread_version(&self, thread_id: ThreadId) -> Result<i64, StoreError>;
+    /// Link an artifact the thread's workspace holds to the thread. `NotFound`
+    /// when the workspace holds no artifact with that hash. Returns the link
+    /// and whether it is new.
+    async fn link_thread_artifact(
+        &self,
+        thread_id: ThreadId,
+        sha256: &str,
+        linked_by: MemberId,
+    ) -> Result<(ThreadArtifact, bool), StoreError>;
+    /// Unlink an artifact from a thread; `false` when it was not linked.
+    async fn unlink_thread_artifact(
+        &self,
+        thread_id: ThreadId,
+        sha256: &str,
+    ) -> Result<bool, StoreError>;
+    /// The artifacts linked to a thread, in the order they were linked.
+    async fn list_thread_artifacts(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ThreadArtifact>, StoreError>;
 }
 
 #[async_trait]
