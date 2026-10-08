@@ -1872,6 +1872,10 @@ Refs #1253
 - **Fixed:** A close refused over REST (`POST /threads/:id`, a review requirement not met or an unresolved `refutes`) now notifies the thread's MCP resource subscribers of the notice message it posts, as the MCP `transition_thread` refusal already did. Subscribers in another workspace hear nothing.
 - **Added:** The server logs a warning at boot when `MAIDAN_MARK_READY_APP_ID` is set and `MAIDAN_MARK_READY_BASES` pins no base (unset or blank), because every mark-ready flip then follows the workspace egress allowlist alone. Boot still succeeds.
 
+### The compose recipes' MCP calls meet the 2026-07-28 revision
+
+- **Fixed:** `examples/recipes/maidan_http.py` sent `MCP-Protocol-Version: 2026-07-28` with nothing else the revision requires, so since the revision hold (#1302) the server refused every recipe tool call with `params._meta must carry io.modelcontextprotocol/protocolVersion`, and the deploy recipe's agent could not open or read its gate. The helper now states the revision in `params._meta` beside the client's capabilities and sends the `Mcp-Method` and `Mcp-Name` headers. `crates/maidan-server/tests/recipes_mcp_e2e.rs` runs the deploy recipe's agent against a real server with auth on, so the recipes' MCP calls are tested on every CI run.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
