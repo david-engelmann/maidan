@@ -488,7 +488,27 @@ async fn no_one_accepts_their_own_approval_request() {
         StatusCode::FORBIDDEN,
         "nor can a delegate acting as the requester"
     );
-    let accepted = w.answer(&w.reviewer_tok, &gate, "accept").await;
+    // approval:grant does not lift the rule: it is the requester's own request.
+    let worker_grant = mint(
+        &w.store,
+        w.ws,
+        w.worker,
+        &[capability::WORKSPACE_WRITE, capability::APPROVAL_GRANT],
+    )
+    .await;
+    assert_eq!(
+        w.answer(&worker_grant, &gate, "accept").await.status(),
+        StatusCode::FORBIDDEN,
+        "nor can the requester with approval:grant"
+    );
+    let reviewer_grant = mint(
+        &w.store,
+        w.ws,
+        w.reviewer,
+        &[capability::WORKSPACE_WRITE, capability::APPROVAL_GRANT],
+    )
+    .await;
+    let accepted = w.answer(&reviewer_grant, &gate, "accept").await;
     assert_eq!(accepted.status(), StatusCode::OK);
 
     // Withdrawing your own request is not approving it.
@@ -500,8 +520,10 @@ async fn no_one_accepts_their_own_approval_request() {
 }
 
 /// A gate opened by a delegate for the worker records the delegate, and the
-/// delegate cannot then accept it under a reviewer's borrowed token — while an
-/// independent delegate for that reviewer can.
+/// delegate cannot then accept it under a reviewer's borrowed token. Since
+/// acceptance became a property of the credential (Next 17), no delegate
+/// accepts: `approval:grant` is not delegatable and a delegated token is not a
+/// signed-in session. The reviewer's own `approval:grant` token does.
 #[tokio::test]
 async fn a_delegate_cannot_accept_a_request_it_made_under_another_identity() {
     let w = world().await;
@@ -554,13 +576,31 @@ async fn a_delegate_cannot_accept_a_request_it_made_under_another_identity() {
             .status(),
         StatusCode::FORBIDDEN
     );
+    let borrowed = w.answer(&w.outsider_as_reviewer, &gate, "accept").await;
+    assert_eq!(borrowed.status(), StatusCode::FORBIDDEN);
+    let body: Value = borrowed.json().await.unwrap();
+    assert!(
+        body.to_string()
+            .contains("missing capability: approval:grant"),
+        "{body}"
+    );
+    let reviewer_grant = mint(
+        &w.store,
+        w.ws,
+        w.reviewer,
+        &[capability::WORKSPACE_WRITE, capability::APPROVAL_GRANT],
+    )
+    .await;
     let accepted: Value = w
-        .answer(&w.outsider_as_reviewer, &gate, "accept")
+        .answer(&reviewer_grant, &gate, "accept")
         .await
         .json()
         .await
         .unwrap();
     assert_eq!(accepted["state"], "accepted", "{accepted}");
     assert_eq!(accepted["resolved_by"], json!(w.reviewer.0));
-    assert_eq!(accepted["resolved_actor_id"], json!(w.outsider.0));
+    assert!(
+        accepted["resolved_actor_id"].is_null(),
+        "the reviewer acted for itself: {accepted}"
+    );
 }

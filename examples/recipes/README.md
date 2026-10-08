@@ -32,7 +32,9 @@ coding-agent-1  | coding-agent: done …, artifacts ['…']
 ```sh
 docker compose -f examples/recipes/deploy.yaml up --build
 # the agent now waits on a gate; in another terminal, be the person who says yes:
-docker compose -f examples/recipes/deploy.yaml run --rm approve            # or --decline
+# accepting needs a token holding approval:grant: run approve once without it to print the mint command
+docker compose -f examples/recipes/deploy.yaml run --rm -e MAIDAN_APPROVAL_TOKEN=maid_… approve
+docker compose -f examples/recipes/deploy.yaml run --rm approve --decline   # the admin token declines
 ```
 
 ```
@@ -72,7 +74,7 @@ credentials) needs an image that has it. Replace the service's `image:`.
 | `Dockerfile.source` | The quickstart image's layout, built from this checkout |
 | `provision.py` | As the admin: create the agent's member, mint it a token scoped to its job, file the task |
 | `coding_agent.py`, `deploy_agent.py` | The agents |
-| `approve.py` | The terminal version of the `/ui` approval card |
+| `approve.py` | The terminal version of the `/ui` approval card: declines as the admin, accepts with a token an admin granted `approval:grant` |
 | `maidan_http.py` | A standard-library client (REST, stateless MCP, the claim lifecycle) |
 
 The admin token never reaches an agent's container. It stays on the server's

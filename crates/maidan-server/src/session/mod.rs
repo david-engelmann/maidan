@@ -133,6 +133,32 @@ pub fn refuse_cross_origin(headers: &HeaderMap) -> Result<(), ApiError> {
     }
 }
 
+/// The origin test a session request must pass to accept an approval gate.
+/// Stricter than [`refuse_cross_origin`]: a request that names no origin at
+/// all is refused, because the fallback that lets a non-browser client holding
+/// the cookie through is exactly the client an acceptance must not come from.
+/// `Sec-Fetch-Site` decides when present and must be `same-origin`; without
+/// it, `Origin` must name this host.
+pub fn require_same_origin(headers: &HeaderMap) -> Result<(), ApiError> {
+    let refused = || {
+        ApiError::Forbidden(
+            "accepting an approval gate from a browser session needs the request to come \
+             from the console page: it named no matching origin"
+                .into(),
+        )
+    };
+    if let Some(site) = headers.get("sec-fetch-site") {
+        return match site.to_str() {
+            Ok("same-origin") => Ok(()),
+            _ => Err(refused()),
+        };
+    }
+    if headers.get(header::ORIGIN).is_none() {
+        return Err(refused());
+    }
+    refuse_cross_origin(headers).map_err(|_| refused())
+}
+
 pub fn parse_session_cookie(headers: &HeaderMap, secret: &[u8]) -> Option<SessionId> {
     let raw = headers
         .get(header::COOKIE)?
@@ -233,6 +259,36 @@ mod tests {
         assert!(check_request_origin(&delete, &proxied).is_ok());
         // No Origin and no Sec-Fetch-Site: accepted, not an origin guarantee.
         assert!(check_request_origin(&delete, &HeaderMap::new()).is_ok());
+    }
+
+    #[test]
+    fn accepting_a_gate_needs_a_positive_same_origin_signal() {
+        for same in [
+            headers(&[("sec-fetch-site", "same-origin")]),
+            headers(&[
+                ("host", "maidan.example"),
+                ("origin", "https://maidan.example"),
+            ]),
+        ] {
+            assert!(require_same_origin(&same).is_ok(), "{same:?}");
+        }
+        for other in [
+            HeaderMap::new(),
+            headers(&[("host", "maidan.example")]),
+            headers(&[("sec-fetch-site", "none")]),
+            headers(&[("sec-fetch-site", "same-site")]),
+            headers(&[
+                ("sec-fetch-site", "cross-site"),
+                ("host", "maidan.example"),
+                ("origin", "https://maidan.example"),
+            ]),
+            headers(&[
+                ("host", "maidan.example"),
+                ("origin", "https://evil.example"),
+            ]),
+        ] {
+            assert!(require_same_origin(&other).is_err(), "{other:?}");
+        }
     }
 
     #[test]

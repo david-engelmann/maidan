@@ -340,7 +340,11 @@ Signing out (`POST /auth/logout`) deletes the row. CSRF is handled by
 `SameSite=Lax`, JSON request bodies, and refusing an unsafe session request or a
 session WebSocket from another origin; the session keeps no CSRF secret. Behind
 a proxy that rewrites `Host`, browsers still send `Sec-Fetch-Site`, which the
-check prefers. Creating a session writes an audit row in the same transaction
+check prefers. Accepting an approval gate takes the strict form of the check: a
+request that names no origin is refused, and only a session signed in through
+the identity provider (not one made from a token) accepts without
+`approval:grant`. Signing in to the console with a pasted token still declines
+and cancels gates. Creating a session writes an audit row in the same transaction
 (`session.from_token`, or `session.create` for an OIDC login).
 Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 

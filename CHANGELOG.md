@@ -1866,6 +1866,11 @@ Refs #1253
 - **Changed:** Only an approval bound to the thread's latest packet counts toward a review requirement, in `review_status` and at close, and a close is refused while the evidence differs from what that packet pinned. A comment after an approval does not undo it, since the evidence root covers the result and linked artifacts, not messages. This is the third part of evidence-bound approvals (Open Work Next 3).
 - **Changed:** Needs you in the console approves the packet the row showed, so evidence that changed after the row was drawn is refused with a reason instead of approved.
 
+### Accepting an approval gate is a property of the credential
+
+- **Security:** `POST /approval-gates/:id/answer` with `accept` needs a token holding `approval:grant` (or a session made from one), or a browser session the person signed in to through the identity provider, sent from the console page with the strict origin check (`Sec-Fetch-Site: same-origin`, or a matching `Origin`; a request naming no origin is refused). A plain bearer token whose member is a human, a delegated token, and a session made from a plain token with `POST /auth/session/from-token` are refused with 403 `missing capability: approval:grant. …`, because they are the credentials a person hands an agent. Declining and cancelling are unchanged, and nobody accepts their own request. Next 17, part one.
+- **Changed:** The console says what accepting needs when a pasted token is refused, and still declines and cancels with it. `examples/recipes/approve.py` declines as the admin and accepts with a token in `MAIDAN_APPROVAL_TOKEN` that an admin granted `approval:grant`.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

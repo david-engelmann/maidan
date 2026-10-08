@@ -1,6 +1,7 @@
 # An approval-gated deploy. `docker compose -f examples/recipes/deploy.yaml up`
 # boots Maidan and files a deploy; the agent opens a gate and waits for a person.
-# Approve in /ui, or: docker compose -f examples/recipes/deploy.yaml run --rm approve
+# Approve in /ui signed in through an identity provider, or with a token holding
+# approval:grant: docker compose -f examples/recipes/deploy.yaml run --rm -e MAIDAN_APPROVAL_TOKEN=… approve
 name: maidan-recipe-deploy
 include:
   - base.yaml
@@ -42,6 +43,7 @@ services:
     profiles: ["manual"]
     environment:
       MAIDAN_URL: http://maidan:8080
+      MAIDAN_APPROVAL_TOKEN: ${MAIDAN_APPROVAL_TOKEN:-}
     working_dir: /recipe
     entrypoint: ["python", "-B", "approve.py"]
     volumes:
