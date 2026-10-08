@@ -53,7 +53,6 @@ CI ran.
 
 | PR | What it does | State (2026-10-08) | Merge after |
 |---|---|---|---|
-| #1330 | A workspace admin could install an app with `operator:global` or `audit:read-global` and mint the bot a cross-tenant token. Install and app-token mint now grant only what the caller could mint directly, and the installed-app code exchange never mints either capability | Merge loop | — |
 | #1324 | OAuth phase zero (Next 23): RFC 9728 resource metadata and the MCP `WWW-Authenticate` challenge, off until `MAIDAN_PUBLIC_ORIGIN` is set, and `docs/OAuth.md` as the plan | Merge loop. Recount the `.route(` pin if #1328 lands first | — |
 | #1328 | The approval card keeps its decider across a reload and says who linked each artifact (the two #1316 follow-ups) | Review | Recount the `.route(` pin if #1324 lands first |
 | #1329 | A local Keycloak provider for developing OAuth against a real server, moved out of #1321 | Review | #1324 |
