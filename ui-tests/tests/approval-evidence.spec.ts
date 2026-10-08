@@ -68,6 +68,7 @@ test("a packet with no result and no artifact says nothing was handed over", asy
   await expect(evidence.locator(".ny-ev-item")).toHaveCount(0);
   // The packet still has a root, so the empty hand-off is what Approve names.
   await expect(evidence.locator(".ny-ev-root")).toHaveAttribute("data-root", /^[0-9a-f]{64}$/);
+  await expect(row(page, fx.proof_empty_thread_id).getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
 });
 
 test("one artifact whose details fail says so, and the rest of the evidence still shows", async ({ page }) => {
@@ -104,11 +105,18 @@ test("a failed packet read shows an error with Retry, and Retry loads the eviden
     "Could not load the evidence: The server hit an error. Try again; if it keeps failing, check the server log.",
   );
   await expect(r).not.toHaveAttribute("data-evidence-root", /.+/);
+  // Nothing to bind an approval to: both approve buttons stay off, and a
+  // change request, which needs no packet, stays on.
+  await expect(r.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  await expect(r.getByRole("button", { name: "Approve with note" })).toBeDisabled();
+  await expect(r.getByRole("button", { name: "Request changes" })).toBeEnabled();
   fail = false;
   await evidence.getByRole("button", { name: "Retry" }).click();
   await expect(evidence).toHaveAttribute("data-state", "ready");
   await expect(evidence.locator('.ny-ev-item[data-ev="artifact"]')).toHaveCount(2);
   await expect(r).toHaveAttribute("data-evidence-root", /^[0-9a-f]{64}$/);
+  await expect(r.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+  await expect(r.getByRole("button", { name: "Approve with note" })).toBeEnabled();
 });
 
 test("Approve sends the root the row showed, and the row names who decided", async ({ page, request }) => {

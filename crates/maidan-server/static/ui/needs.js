@@ -256,16 +256,17 @@ import { answerGate } from "./tools.js";
           actions.append(approve, changes, approveNoted);
           // The approval names what this row showed: the packet as it stood
           // when the row was drawn. Until the row has it there is nothing to
-          // bind an approval to, so both approve buttons wait for it.
-          approve.disabled = true;
-          approveNoted.disabled = true;
+          // bind an approval to, so both approve buttons wait for it, and stay
+          // off while the evidence says why it is missing. Request changes
+          // needs no packet.
+          for (const b of [approve, approveNoted]) {
+            b.disabled = true;
+            b.dataset.needsRoot = "1";
+          }
           const evidence = document.createElement("div");
           evidence.className = "ny-evidence";
           main.appendChild(evidence);
-          loadEvidence(item.thread_id, li, evidence).then(() => {
-            approve.disabled = false;
-            approveNoted.disabled = false;
-          });
+          loadEvidence(item.thread_id, li, evidence);
           if (item.kind === "unassigned_review") ownerActions(item, li, sub, [approve, approveNoted], changes);
         } else if (item.kind === "blocked") {
           // A human/gate block: show the reason and note, offer to clear it.
@@ -578,6 +579,12 @@ import { answerGate } from "./tools.js";
         const manifest = packet.manifest || {};
         const shas = Array.isArray(manifest.artifacts) ? manifest.artifacts : [];
         li.dataset.evidenceRoot = packet.evidence_root;
+        // The approve buttons wait for a root; a retry that loads one turns them on.
+        if (packet.evidence_root) {
+          li.querySelectorAll("button[data-needs-root]").forEach((b) => {
+            if (b instanceof HTMLButtonElement) b.disabled = false;
+          });
+        }
         const head = document.createElement("div");
         head.className = "ny-ev-head";
         const root = hashEl(packet.evidence_root, "ny-ev-root");
