@@ -105,11 +105,18 @@ initialize='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVer
 echo "== Maidan as the protected resource: $resource"
 
 # 1. An unauthenticated MCP request gets 401 with a resource_metadata pointer.
+# A refused connection reads as 000, so an unreachable Maidan is a FAIL line,
+# not an abort under set -e.
+: >"$work/m1.head"
 code="$(curl -sS -o "$work/m1.body" -D "$work/m1.head" -w '%{http_code}' -X POST "$resource" \
   -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
-  --data "$initialize")"
+  --data "$initialize" 2>/dev/null || true)"
 challenge="$(tr -d '\r' <"$work/m1.head" | sed -n 's/^[Ww][Ww][Ww]-[Aa]uthenticate: //p' | head -n 1)"
-if [ "$code" != "401" ]; then
+if [ "$code" = "000" ] || [ -z "$code" ]; then
+  fail "Maidan does not answer at $resource; start it, or set MAIDAN_URL"
+  echo "== $fails failed, $gaps gaps"
+  exit 1
+elif [ "$code" != "401" ]; then
   fail "an unauthenticated MCP request answered $code, not 401"
 elif [[ "$challenge" == *resource_metadata=* ]]; then
   pass "401 with WWW-Authenticate: $challenge"
@@ -126,7 +133,7 @@ issuer=""
 for candidate in "$prm_url" "$maidan_url/.well-known/oauth-protected-resource$mcp_path" \
   "$maidan_url/.well-known/oauth-protected-resource"; do
   [ -n "$candidate" ] || continue
-  code="$(curl -sS -o "$work/prm.json" -w '%{http_code}' "$candidate")"
+  code="$(curl -sS -o "$work/prm.json" -w '%{http_code}' "$candidate" 2>/dev/null || true)"
   if [ "$code" = "200" ]; then
     if [ "$(json "$work/prm.json" 'd["resource"]')" = "$resource" ]; then
       issuer="$(json "$work/prm.json" 'd["authorization_servers"][0]')"
@@ -405,7 +412,7 @@ echo "== Maidan with a token in hand"
 if [ -n "${dcr_access:-}" ]; then
   code="$(curl -sS -o "$work/m3.body" -w '%{http_code}' -X POST "$resource" \
     -H "authorization: Bearer $dcr_access" -H 'content-type: application/json' \
-    -H 'accept: application/json, text/event-stream' --data "$initialize")"
+    -H 'accept: application/json, text/event-stream' --data "$initialize" 2>/dev/null || true)"
   if [ "$as_is_maidan" = 1 ]; then
     if [ "$code" = "200" ]; then
       pass "Maidan accepts the token its own server issued"

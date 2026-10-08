@@ -91,20 +91,31 @@ admin_token() {
 # Keycloak lets a token name the MCP resource (RFC 8707) only when the client's
 # tokens already carry the resource server's audience. A realm file that lists
 # client scopes replaces Keycloak's built-in ones, so the audience scope that
-# dynamically registered clients inherit is added here, after the import.
+# dynamically registered clients inherit is added here, after the import, on
+# every up, and left alone when it is already there.
 # (Client ID Metadata Document clients get it from their executor instead.)
-add_audience_scope() {
+audience_scope_id() {
+  curl -sS -f -H @"$1" "$kc_url/admin/realms/$realm/client-scopes" |
+    python3 -c 'import json, sys; print(next((s["id"] for s in json.load(sys.stdin) if s["name"] == "maidan-mcp-audience"), ""))'
+}
+
+ensure_audience_scope() {
   local auth="$1" base="$kc_url/admin/realms/$realm" id
-  curl -sS -f -o /dev/null -H @"$auth" -H 'content-type: application/json' \
-    -X POST "$base/client-scopes" --data '{"name":"maidan-mcp-audience","protocol":"openid-connect",
-      "description":"Puts the Maidan MCP resource server in the audience of every new client",
-      "attributes":{"include.in.token.scope":"false","display.on.consent.screen":"false"},
-      "protocolMappers":[{"name":"maidan-mcp audience","protocol":"openid-connect",
-        "protocolMapper":"oidc-audience-mapper","config":{"included.client.audience":"maidan-mcp",
-        "access.token.claim":"true","id.token.claim":"false","introspection.token.claim":"true"}}]}'
-  id="$(curl -sS -f -H @"$auth" "$base/client-scopes" |
-    python3 -c 'import json, sys; print(next(s["id"] for s in json.load(sys.stdin) if s["name"] == "maidan-mcp-audience"))')"
-  curl -sS -f -o /dev/null -H @"$auth" -X PUT "$base/default-default-client-scopes/$id"
+  id="$(audience_scope_id "$auth")"
+  if [ -z "$id" ]; then
+    curl -sS -f -o /dev/null -H @"$auth" -H 'content-type: application/json' \
+      -X POST "$base/client-scopes" --data '{"name":"maidan-mcp-audience","protocol":"openid-connect",
+        "description":"Puts the Maidan MCP resource server in the audience of every new client",
+        "attributes":{"include.in.token.scope":"false","display.on.consent.screen":"false"},
+        "protocolMappers":[{"name":"maidan-mcp audience","protocol":"openid-connect",
+          "protocolMapper":"oidc-audience-mapper","config":{"included.client.audience":"maidan-mcp",
+          "access.token.claim":"true","id.token.claim":"false","introspection.token.claim":"true"}}]}'
+    id="$(audience_scope_id "$auth")"
+  fi
+  # Keycloak answers 409 when the scope is already a realm default.
+  if ! curl -sS -f -H @"$auth" "$base/default-default-client-scopes" | grep -q "\"$id\""; then
+    curl -sS -f -o /dev/null -H @"$auth" -X PUT "$base/default-default-client-scopes/$id"
+  fi
 }
 
 # Import each realm that is not there yet, then one person in the reference
@@ -121,9 +132,9 @@ import_realms_and_user() {
       curl -sS -f -o /dev/null -H @"$auth" -H 'content-type: application/json' \
         -X POST "$kc_url/admin/realms" --data-binary @"$file"
       echo "Imported realm $name"
-      [ "$name" = "$realm" ] && add_audience_scope "$auth"
     fi
   done
+  ensure_audience_scope "$auth"
   exists="$(curl -sS -f -H @"$auth" "$kc_url/admin/realms/$realm/users?username=$dev_user&exact=true")"
   if [ "$exists" = "[]" ]; then
     body="$(python3 -c 'import json, sys; print(json.dumps({
