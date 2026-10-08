@@ -305,6 +305,10 @@ async fn mcp_search_messages_tool_works() {
             .unwrap()
             .to_lowercase()
             .contains("rust"));
+        // Names, not only ids, so a model can tell a person where it found it.
+        assert_eq!(hit["channel_name"], "general", "{hit}");
+        assert_eq!(hit["thread_title"], "search-thread", "{hit}");
+        assert_eq!(hit["author_handle"], "alice", "{hit}");
     }
 
     server.abort();
