@@ -2184,3 +2184,37 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Integration "Linking evidence to a thread".
 
+
+### Model-callable approval tool (2026-10-08)
+
+**Decision.** The maintainer chose on 2026-10-08 to add a model-callable `approval_decide` tool (and a ChatGPT inline approve card), reversing the earlier direction that kept every approval in Maidan's console.
+
+**Alternative.** Keep every approval in the console, with platform widgets and elicitation only showing the approval and linking there.
+
+**Why.** Agents need to be able to handle everything on their own. A console-only approval flow forces a human into the loop on every gate, which breaks autonomous operation.
+
+**Mitigations.** The trust-model implications (a supervised agent satisfying its own approval) must be designed as part of Next 14/17: only a human member or an `approval:grant` token can accept a gate, and nobody accepts their own request (per `docs/Claims.md`).
+
+**Record.** Open Work Next 14, Next 17.
+
+### OAuth authorization server: build, full scope (2026-10-08)
+
+**Decision.** The maintainer chose on 2026-10-08 to build the OAuth authorization server (not adopt a crate), at full OAuth 2.1 scope across 7 phases (~5–6 weeks), with P0–P1 landing first as a reviewable milestone.
+
+**Alternative.** Adopt `oxide-auth` or another Rust crate; or build P0–P1 (discovery only) and defer the flows.
+
+**Why.** Research found Maidan already owns ~70% of an AS (PKCE auth-code flow, persisted codes, capability-scoped token minting). No crate fits Maidan's capability model. Full scope is needed because the directories require working flows, not just discovery.
+
+**Scope answers.** Consent UX lives in the `/ui` console (the trust root). Both public and confidential clients are supported from day one. DCR is skipped (deprecated; CIMD + pre-registered only).
+
+**Record.** Open Work (Decisions pending the maintainer); research at `~/workspace/maidan-oauth-as-research.md` (outside repo).
+
+### Cost-per-success benchmark pilot (2026-10-08)
+
+**Decision.** The maintainer chose on 2026-10-08 to run the pilot (a few tasks, every arm, three repetitions) under a fixed cap, using the MiniMax subscription as needed. C3 (the usage ledger) has landed, so the pilot is unblocked.
+
+**Alternative.** No runs; publish the protocol only.
+
+**Why.** Without a measured number, the program's public claim stays at what the code can show.
+
+**Record.** Open Work (Decisions pending the maintainer).
