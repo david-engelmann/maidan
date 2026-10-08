@@ -419,10 +419,20 @@ async fn a_rest_close_refusal_is_heard_by_its_own_workspace_only(h: &Harness) {
 
     // One approval is required and none is given, so close is refused.
     let tid = maidan_types::ThreadId(uuid::Uuid::parse_str(&thread_a).unwrap());
-    let owner = h.store.get_thread(tid).await.unwrap().owner_id.unwrap();
+    let whoami = h
+        .rpc(
+            &token_a,
+            "tools/call",
+            json!({ "name": "whoami", "arguments": {} }),
+        )
+        .await;
+    let me: Value =
+        serde_json::from_str(whoami["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let producer =
+        maidan_types::MemberId(uuid::Uuid::parse_str(me["member_id"].as_str().unwrap()).unwrap());
     h.store.set_review_requirement(tid, 1).await.unwrap();
     h.store
-        .set_thread_result(tid, owner, &json!({ "done": true }))
+        .set_thread_result(tid, producer, &json!({ "done": true }))
         .await
         .unwrap();
 
