@@ -7,7 +7,8 @@ const fx = fixtures();
 // A review row in Needs you shows the evidence it approves: the review
 // packet's root, the result's hash and who produced it, then each linked
 // artifact. Approve sends the root the row showed, and the row names who
-// decided. Attestation tiers are not here: nothing on the server defines one.
+// decided. Attestation tiers and the self-reported warning are in
+// approval-tiers.spec.ts.
 
 // The decide spec approves a seeded task, so a retry would find it decided.
 test.describe.configure({ retries: 0 });

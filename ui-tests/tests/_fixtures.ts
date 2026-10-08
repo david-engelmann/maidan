@@ -84,6 +84,18 @@ export interface Fixtures {
   other_member_id: string;
   outsider_member_id: string;
   other_token: string;
+  /** The `tiers` channel: hand-offs whose evidence the server tiers differently, for the approval card. */
+  tiers_channel_id: string;
+  /** The deployer's result plus a screenshot Rae linked: self-reported, then attached. */
+  tiers_attached_thread_id: string;
+  /** The deployer's result plus the Verifier's land-gate pass naming the transcript: verified. */
+  tiers_verified_thread_id: string;
+  /** Only the deployer's own result and link: every item self-reported, so the card warns. */
+  tiers_self_thread_id: string;
+  /** The Verifier, an agent with the land_gate skill who never worked a tier task. */
+  verifier_member_id: string;
+  /** The neighbour's own hand-off, the Outsider's result and link, the Visitor reviewing. */
+  other_tiers_thread_id: string;
   /** Admin grant (token:admin and the worker preset). Connect an agent uses it. */
   admin_token: string;
   /** A dead-lettered webhook delivery the Operator tab can replay. */

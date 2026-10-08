@@ -1411,6 +1411,18 @@ conversation around the evidence, so they move the version but not the root.
 `get_review_packet` (REST `GET /threads/:id/review-packet`) returns the latest.
 A packet is never changed. A later hand-off writes a new one.
 
+The manifest also records an attestation tier for each piece of evidence,
+judged once at the hand-off. `verified` is a land-gate pass the close gate
+would accept, recorded as its own `land_gate` item with the pass's
+`artifact_sha` and its recorder. `attached` is an artifact or result from a
+member who never worked the thread. `self_reported` is a worker's own result
+or link, including one a delegate that worked the thread wrote with someone
+else's token. The packet's `self_reported_only` is true when it holds evidence
+and every item is self-reported, and the console warns on it. The tiers are
+inside the root, so the same evidence handed over again under different tiers
+is a new root, and an approval names the tiers it was shown. Nothing after the
+hand-off moves them: a pass recorded later appears at the next `start_review`.
+
 **An approval names the evidence it approves.** `submit_review` with
 `decision: "approve"` needs `evidence_root`, the root from the packet you were
 shown (REST 400 or MCP -32602 without it). It is refused with 409 when the

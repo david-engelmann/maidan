@@ -718,6 +718,161 @@ async fn main() {
         .await
         .expect("neighbour token");
 
+    // A tier desk: tasks handed to review whose evidence the server tiers
+    // differently, each naming the operator as a reviewer. `attached` has a
+    // link from Rae, who never worked it. `verified` carries a land-gate pass
+    // from the Verifier, recorded before the hand-off. `self` is only the
+    // deployer's own result and link, so its card warns. Its own channel, and
+    // only looked at, so no other spec's row moves.
+    let verifier = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "verifier".into(),
+            display_name: Some("Verifier".into()),
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("verifier");
+    store
+        .add_member_skill(verifier.id, maidan_types::LAND_GATE_SKILL)
+        .await
+        .expect("land-gate skill");
+    let tiers = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "tiers".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("tiers channel");
+    let mut tier_threads = Vec::new();
+    for title in [
+        "Tiers: a link from someone who never worked it",
+        "Tiers: a land-gate pass at the hand-off",
+        "Tiers: only the worker's own account",
+    ] {
+        let t = store
+            .create_thread(NewThread {
+                channel_id: tiers.id,
+                parent_thread_id: None,
+                title: Some(title.into()),
+                description: None,
+            })
+            .await
+            .expect("tier thread");
+        store.claim_thread(t.id, requester.id).await.expect("claim");
+        store
+            .set_thread_result(
+                t.id,
+                requester.id,
+                &serde_json::json!({ "status": "fixed" }),
+            )
+            .await
+            .expect("tier result");
+        tier_threads.push(t);
+    }
+    store
+        .link_thread_artifact(tier_threads[0].id, &screenshot, rae.id)
+        .await
+        .expect("rae links");
+    store
+        .require_land_gate(tier_threads[1].id)
+        .await
+        .expect("arm the land gate");
+    store
+        .set_land_gate_pointer(
+            tier_threads[1].id,
+            verifier.id,
+            maidan_types::LandGateStatus::Pass,
+            Some(&transcript),
+            None,
+        )
+        .await
+        .expect("verifier passes");
+    store
+        .link_thread_artifact(tier_threads[2].id, &transcript, requester.id)
+        .await
+        .expect("deployer links");
+    for t in &tier_threads {
+        store
+            .transition_thread(t.id, requester.id, ThreadAction::StartReview)
+            .await
+            .expect("tier review");
+        store
+            .set_review_requirement(t.id, 1)
+            .await
+            .expect("requirement");
+        store.add_reviewer(t.id, member.id).await.expect("reviewer");
+    }
+
+    // The neighbour's own tiered hand-off: the Outsider's result and link,
+    // with the Visitor as reviewer. Its card warns in its own console, and
+    // the first workspace sees none of it.
+    let yard = store
+        .create_channel(NewChannel {
+            workspace_id: other_ws.id,
+            name: "yard".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("yard channel");
+    let yard_thread = store
+        .create_thread(NewThread {
+            channel_id: yard.id,
+            parent_thread_id: None,
+            title: Some("Neighbour: the outsider's own account".into()),
+            description: None,
+        })
+        .await
+        .expect("yard thread");
+    let yard_body = b"neighbour evidence\n";
+    let yard_sha = store
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: hex::encode(Sha256::digest(yard_body)),
+                size_bytes: i64::try_from(yard_body.len()).expect("size"),
+                mime_type: Some("text/plain".into()),
+                filename: Some("yard.log".into()),
+                kind: ArtifactKind::Transcript,
+                uploaded_by: Some(outsider.id),
+            },
+            Some(other_ws.id),
+        )
+        .await
+        .expect("yard artifact")
+        .0
+        .sha256;
+    store
+        .claim_thread(yard_thread.id, outsider.id)
+        .await
+        .expect("outsider claims");
+    store
+        .set_thread_result(
+            yard_thread.id,
+            outsider.id,
+            &serde_json::json!({ "status": "done" }),
+        )
+        .await
+        .expect("yard result");
+    store
+        .link_thread_artifact(yard_thread.id, &yard_sha, outsider.id)
+        .await
+        .expect("outsider links");
+    store
+        .transition_thread(yard_thread.id, outsider.id, ThreadAction::StartReview)
+        .await
+        .expect("yard review");
+    store
+        .set_review_requirement(yard_thread.id, 1)
+        .await
+        .expect("yard requirement");
+    store
+        .add_reviewer(yard_thread.id, visitor.id)
+        .await
+        .expect("yard reviewer");
+
     let secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -933,6 +1088,12 @@ async fn main() {
         "other_member_id": visitor.id.0.to_string(),
         "outsider_member_id": outsider.id.0.to_string(),
         "other_token": other_secret.as_str(),
+        "tiers_channel_id": tiers.id.0.to_string(),
+        "tiers_attached_thread_id": tier_threads[0].id.0.to_string(),
+        "tiers_verified_thread_id": tier_threads[1].id.0.to_string(),
+        "tiers_self_thread_id": tier_threads[2].id.0.to_string(),
+        "verifier_member_id": verifier.id.0.to_string(),
+        "other_tiers_thread_id": yard_thread.id.0.to_string(),
         "admin_token": admin_secret.as_str(),
         "delivery_id": delivery_id,
         "delivery_url": "https://hooks.example.test/maidan",
