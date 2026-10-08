@@ -414,7 +414,7 @@ pub struct ModelRequestView {
     pub expires_at: DateTime<Utc>,
 }
 
-/// Body for `POST /ui/api/approval-confirmations/confirm`: the gate and the
+/// Body for `POST /auth/approval-confirmations/confirm`: the gate and the
 /// token from a confirmation link's fragment.
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]

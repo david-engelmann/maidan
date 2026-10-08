@@ -79,7 +79,7 @@ test("a model's accept through approval_decide asks the signed-in person to conf
   await expect(panel).toContainText("was accepted");
   await expect(panel.locator(".model-request")).toContainText("decided via an unidentified MCP client, requested by a model");
   expect(confirms.length).toBe(1);
-  expect(confirms[0]).toContain("/ui/api/approval-confirmations/confirm");
+  expect(confirms[0]).toContain("/auth/approval-confirmations/confirm");
 
   // The gate left the pending list.
   await expect(page.locator("#approval-list li.approval-row").filter({ hasText: prompt })).toHaveCount(0);

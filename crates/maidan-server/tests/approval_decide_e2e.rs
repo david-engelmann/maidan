@@ -243,10 +243,7 @@ impl Env {
     async fn confirm(&self, cookie: &str, from_console: bool, body: Value) -> reqwest::Response {
         let mut b = self
             .client
-            .post(format!(
-                "{}/ui/api/approval-confirmations/confirm",
-                self.base
-            ))
+            .post(format!("{}/auth/approval-confirmations/confirm", self.base))
             .header(reqwest::header::COOKIE, cookie);
         if from_console {
             b = b
@@ -639,17 +636,15 @@ async fn the_link_is_confirmed_once_by_the_bound_persons_session() {
     // has the bearer.
     let res = env
         .client
-        .post(format!(
-            "{}/ui/api/approval-confirmations/confirm",
-            env.base
-        ))
+        .post(format!("{}/auth/approval-confirmations/confirm", env.base))
         .bearer_auth(&t.approver_grant)
         .header(reqwest::header::ORIGIN, env.base.clone())
         .json(&body)
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    // The route is on the session-only tree: a bearer is not a session.
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 
     // Nor a session made from the bearer.
     let res = env

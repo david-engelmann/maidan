@@ -271,11 +271,11 @@ pub async fn get_approval_policy(
 const CONFIRM_NEEDS: &str = "confirming a model's approval request needs the signed-in console \
      session of the person it was sent to, not a bearer token";
 
-/// `POST /ui/api/approval-confirmations/confirm`: a person confirms a model's
+/// `POST /auth/approval-confirmations/confirm`: a person confirms a model's
 /// request to accept a gate, from the link `approval_decide` gave them.
 ///
-/// It takes the console session, not a token: the request has to carry the
-/// session cookie, come from the console page (the strict origin check), and
+/// It is on the session-only tree: the request has to carry the session
+/// cookie, come from the console page (the strict origin check), and
 /// pass [`acceptance_credential`] as a human member. It must be a session the
 /// person signed in to: one made from a token is refused, since the model
 /// holding that token could otherwise finish the confirmation itself. The link is
@@ -288,20 +288,23 @@ const CONFIRM_NEEDS: &str = "confirming a model's approval request needs the sig
 /// one of the caller's own.
 pub async fn confirm_approval_gate(
     State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
-    session: Option<Extension<SessionContext>>,
+    Extension(session): Extension<SessionContext>,
     headers: HeaderMap,
     ApiJson(body): ApiJson<ConfirmApprovalGate>,
 ) -> ApiResult<Json<ApprovalGate>> {
-    cap(&auth, WORKSPACE_WRITE)?;
     // Only a person's signed-in console session confirms. A session minted
     // from a token carries that token's authority, so a model holding the
     // token could otherwise exchange it and finish the confirmation itself,
     // approval:grant or not.
-    let session = session
-        .map(|Extension(s)| s)
-        .filter(|s| s.token.is_none() && auth.token_id.is_none())
-        .ok_or_else(|| ApiError::Forbidden(CONFIRM_NEEDS.into()))?;
+    if session.token.is_some() {
+        return Err(ApiError::Forbidden(CONFIRM_NEEDS.into()));
+    }
+    // The person's authority on this route: what an OIDC session writes with.
+    let auth = AuthContext::from_session(
+        session.member_id,
+        session.workspace_id,
+        vec![WORKSPACE_READ.into(), WORKSPACE_WRITE.into()],
+    );
     require_same_origin(&headers)?;
     let token_hash = maidan_auth::approval_confirmation::token_hash(body.token.trim());
     let confirmation = state

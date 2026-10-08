@@ -597,6 +597,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::oidc_logout,
         paths::get_auth_session,
         paths::mint_auth_session_token,
+        paths::confirm_approval,
         paths::session_from_token,
         paths::ui_list_events,
         paths::ui_list_channels,

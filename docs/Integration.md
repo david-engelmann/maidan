@@ -1718,7 +1718,7 @@ a gate over MCP. `decision` is `accept` or `decline`.
   and it expires (ten minutes by default). A repeat call while it is live
   returns the same link. It is refused after use, after expiry, and once the
   gate resolves, and another workspace's caller cannot tell it from no link.
-  The signed-in person confirms at `POST /ui/api/approval-confirmations/confirm`
+  The signed-in person confirms at `POST /auth/approval-confirmations/confirm`
   with the session cookie, from the console page: the strict origin check, a
   human member, and a session the person signed in to. A bearer, and a session
   made from a token, are refused, so the model cannot finish it.

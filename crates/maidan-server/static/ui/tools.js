@@ -1030,7 +1030,7 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
           try {
             // The session cookie alone: a bearer here would be the very
             // credential the model holds, and the server refuses it.
-            res = await writeApi(confirm, uiReadPath("/approval-confirmations/confirm"), {
+            res = await writeApi(confirm, `${base()}/auth/approval-confirmations/confirm`, {
               method: "POST",
               headers: { Accept: "application/json", "Content-Type": "application/json" },
               credentials: "include",

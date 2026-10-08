@@ -1076,7 +1076,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/auth/session/mint",
-            post(session::mint_first_admin_token).layer(session_auth),
+            post(session::mint_first_admin_token).layer(session_auth.clone()),
+        )
+        // A model's confirmation link is spent here, by the signed-in person
+        // only: the session cookie, never a bearer. The handler checks the
+        // strict origin and the accepting credential itself.
+        .route(
+            "/auth/approval-confirmations/confirm",
+            post(routes::confirm_approval_gate).layer(session_auth),
         );
 
     let ui_api_read = Router::new()
@@ -1296,10 +1303,6 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/approval-gates/{id}/answer",
             post(routes::answer_approval_gate),
-        )
-        .route(
-            "/ui/api/approval-confirmations/confirm",
-            post(routes::confirm_approval_gate),
         )
         // Prefs console: self-only writes.
         .route(
