@@ -1,10 +1,11 @@
 //! Message search (lexical + semantic) tool handler.
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use maidan_auth::AuthContext;
-use maidan_store::Store;
+use maidan_store::{Store, StoreError};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -149,7 +150,53 @@ pub(super) async fn search_messages(
     } else {
         hits
     };
-    Ok(content_json(&hits))
+    Ok(content_json(&with_names(store.as_ref(), hits).await?))
+}
+
+/// Each hit with the names a reader asks for: its channel's name, its thread's
+/// title and its author's handle. With ids alone, a model answering "what did
+/// search find?" reports UUIDs. Every hit here already passed the access
+/// check, so naming its channel, thread and author tells the caller nothing it
+/// cannot read. A name that no longer resolves (an erased member) is left out
+/// rather than failing the search.
+async fn with_names(
+    store: &dyn Store,
+    hits: Vec<maidan_search::SearchHit>,
+) -> Result<Vec<Value>, McpError> {
+    fn found<T>(result: Result<T, StoreError>) -> Result<Option<T>, McpError> {
+        match result {
+            Ok(value) => Ok(Some(value)),
+            Err(StoreError::NotFound) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+    let mut channels: HashMap<ChannelId, Option<String>> = HashMap::new();
+    let mut threads: HashMap<ThreadId, Option<String>> = HashMap::new();
+    let mut authors: HashMap<MemberId, Option<String>> = HashMap::new();
+    let mut named = Vec::with_capacity(hits.len());
+    for hit in hits {
+        if let Entry::Vacant(slot) = channels.entry(hit.channel_id) {
+            slot.insert(found(store.get_channel(hit.channel_id).await)?.map(|c| c.name));
+        }
+        if let Entry::Vacant(slot) = threads.entry(hit.thread_id) {
+            slot.insert(found(store.get_thread(hit.thread_id).await)?.and_then(|t| t.title));
+        }
+        if let Entry::Vacant(slot) = authors.entry(hit.author_id) {
+            slot.insert(found(store.get_member(hit.author_id).await)?.map(|m| m.handle));
+        }
+        let mut value = serde_json::to_value(&hit)?;
+        for (key, name) in [
+            ("channel_name", &channels[&hit.channel_id]),
+            ("thread_title", &threads[&hit.thread_id]),
+            ("author_handle", &authors[&hit.author_id]),
+        ] {
+            if let Some(name) = name {
+                value[key] = Value::String(name.clone());
+            }
+        }
+        named.push(value);
+    }
+    Ok(named)
 }
 
 #[cfg(test)]

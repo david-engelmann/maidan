@@ -97,6 +97,10 @@ Refs #1253
 - **Fixed:** A malformed `sha256` on `get_artifact` and `get_artifact_metadata` is an invalid argument, not "resource not found".
 - **Added:** `scripts/mcp-inspector.sh` makes one valid call and one invalid call per tool group through the official Inspector. It fails if an invalid call's error does not name the argument it got wrong, and it fails if a new tool module has no probe.
 
+### MCP search names what it found
+
+- **Changed:** Each `search_messages` hit carries `channel_name`, `thread_title` and `author_handle` beside the ids. A name that no longer resolves is left out rather than failing the search. Found running Claude clients, which could only report UUIDs back to the person asking.
+
 ### A rotated token stays on the connection that asked for it
 
 - **Fixed:** `rotateToken` records the token, the API base, the workspace, and the token id when the request starts. The new secret is exchanged only if those four are still the same when the response arrives. The secret is still shown once, so it is not lost. A network failure is a sentence, not an unhandled rejection. Changing the token field clears the cached token id.
