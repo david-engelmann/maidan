@@ -151,6 +151,7 @@ async fn list_and_answer_an_approval_gate() {
             requested_by: agent.id,
             prompt: "Deploy v9 to prod?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .unwrap();
@@ -285,6 +286,7 @@ async fn an_agent_cannot_accept_another_agents_gate_without_approval_grant() {
                     requested_by: requester.id,
                     prompt: prompt.into(),
                     schema: None,
+                    risk: Default::default(),
                 })
                 .await
                 .unwrap()
@@ -390,6 +392,7 @@ async fn open_gate(store: &dyn Store, ws: WorkspaceId, requested_by: MemberId) -
             requested_by,
             prompt: "Deploy v9 to prod?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .unwrap()
