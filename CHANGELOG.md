@@ -1892,6 +1892,11 @@ Refs #1253
 - **Security:** Installing an app, and minting a token from an installation, grant only what the caller could mint directly. A `token:admin` holder without `operator:global` or `audit:read-global` could install an app with either capability and mint the bot a token that operated or read across every workspace. Both routes now answer 400 for a capability the caller cannot grant, including one an operator put in the installation's grant.
 - **Security:** The installed-app code exchange (`POST /oauth/app/token`) mints with no member behind it, so it never issues `operator:global` or `audit:read-global`, whatever the installation's grant says.
 
+### The approval card names who decided after a reload, and who linked each artifact
+
+- **Added:** `GET /ui/api/threads/{tid}/reviews` and `GET /ui/api/threads/{tid}/artifacts`, the bearer tree's reads of a task's reviews and artifact links behind the session proxy. They run the same handlers, so a caller gets exactly what the review packet read gives them: `workspace:read`, the thread's workspace, and membership of a private channel. Another workspace's session gets the packet read's refusal and none of the data.
+- **Changed:** A review row in Needs you names who decided from the task's reviews when it loads, so a reload keeps the decider. A dismissed review, or an approval of an earlier hand-off, names nobody. Each artifact line says who linked it to the task and when. A hash the packet pinned that the task no longer links says "no longer linked to the task" again, since approving that packet is refused. When the links can't be read, the line says who uploaded the bytes and flags nothing. These are the follow-ups #1316 deferred.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
