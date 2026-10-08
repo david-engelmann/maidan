@@ -359,6 +359,10 @@ Refs #1253
   session can do both. A token the server accepts clears the rejection shown
   for the previous one.
 
+### A late channel lookup no longer undoes a channel picked since
+
+- **Fixed:** opening a task that is not on the board (a Needs you row, for one) looks up its channel first. If the person picked another channel or task before that answer came back, the late answer used to pull the board back to the task's channel. Now it is dropped. This was the intermittent `palette.spec.ts` failure (1 of 30 runs failed before the fix, none after), and a new spec holds the lookup to show it.
+
 ### One store delegation list (#1100)
 
 - **Changed:** the Postgres and SQLite store impls expand from one
