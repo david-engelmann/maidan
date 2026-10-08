@@ -138,11 +138,12 @@ pub(super) async fn submit_review(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SubmitReviewArgs = crate::tools::parse_args(args)?;
-    let note = a.note.as_deref().map(str::trim).filter(|n| !n.is_empty());
+    let note = maidan_types::review_note(a.decision, a.note.as_deref())
+        .map_err(McpError::InvalidParams)?;
     let thread_id = ThreadId(a.thread_id);
     let submission = server
         .store
-        .submit_review(thread_id, auth.member_id, a.decision, note)
+        .submit_review(thread_id, auth.member_id, a.decision, note.as_deref())
         .await?;
     for stored in submission.events() {
         server.publish_stored(stored).await;

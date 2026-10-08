@@ -7312,7 +7312,7 @@ mod tests {
             .call_tool(
                 &rev,
                 "submit_review",
-                &json!({ "thread_id": tid, "decision": "request_changes" }),
+                &json!({ "thread_id": tid, "decision": "request_changes", "note": "cover the empty case" }),
             )
             .await
             .unwrap();
@@ -8108,12 +8108,26 @@ mod tests {
             }
         }
 
-        for (decision, sent) in [("request_changes", true), ("approve", false)] {
+        // A change request that does not say what to change is refused.
+        let refused = server
+            .call_tool(
+                &rev,
+                "submit_review",
+                &json!({ "thread_id": thread.id.0, "decision": "request_changes", "note": "  " }),
+            )
+            .await
+            .unwrap_err();
+        assert!(refused.to_string().contains("needs a note"), "{refused}");
+
+        for (decision, note, sent) in [
+            ("request_changes", Some("handle the empty list"), true),
+            ("approve", None, false),
+        ] {
             server
                 .call_tool(
                     &rev,
                     "submit_review",
-                    &json!({ "thread_id": thread.id.0, "decision": decision }),
+                    &json!({ "thread_id": thread.id.0, "decision": decision, "note": note }),
                 )
                 .await
                 .unwrap();
