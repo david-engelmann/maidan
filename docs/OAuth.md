@@ -1,51 +1,52 @@
-# OAuth Authorization Server
+# OAuth authorization server
 
-Maidan is becoming an OAuth 2.1 authorization server (Next 23, decided
-2026-10-08), so connected-app directories can authenticate users against it.
-The research is archived at
-`docs/archive/OAuth authorization server research 2026-10-08.md`.
+Maidan is becoming an OAuth 2.1 authorization server (Open Work Next 23,
+decided 2026-10-08), so MCP clients and connected-app directories can sign
+people in against it. The research behind this plan is archived under
+`docs/archive/`.
 
-## Design decisions (2026-10-08)
+## Decisions (2026-10-08)
 
-- **Build, don't adopt.** Maidan already owns ~70% of an AS (PKCE auth-code
-  flow in `app_oauth.rs`, persisted codes, capability-scoped token minting).
-  No Rust crate fits the capability model.
-- **Full OAuth 2.1 scope**, seven phases, P0–P1 landing first as a reviewable
-  milestone.
-- **Consent UX lives in the `/ui` console** (the trust root).
-- **Public and confidential clients** from day one.
-- **No DCR** (deprecated by spec); CIMD + pre-registered clients only.
-- **Capabilities are the OAuth scopes** — no parallel ACL.
+- **Build it, rather than adopt a crate.** Tokens are capability-scoped, which
+  a generic crate does not model. What exists today is the installed-app
+  one-time code exchange with optional PKCE (see Claims).
+- **Full OAuth 2.1 scope, in seven phases.**
+- **Consent happens in the `/ui` console.**
+- **Public and confidential clients** from the start.
+- **No dynamic client registration, by choice.** Clients register through
+  client metadata documents or pre-registration.
+- **Capabilities are the scopes**, never wider than the member's own.
+- **An OAuth token never accepts an approval gate.** Only a signed-in browser
+  session or a token holding `approval:grant` can (#1325).
 
-## Phase plan
+## Phases
 
-| Phase | What ships | Size | Acceptance criteria | Depends on |
-|---|---|---|---|---|
-| **P0: Resource-server compliance** | `WWW-Authenticate` on MCP 401s; `/.well-known/oauth-protected-resource` (RFC 9728) | XS (1–2 days) | An unauthenticated `GET /mcp` returns 401 with `WWW-Authenticate: Bearer resource_metadata="..."`; the metadata document validates against RFC 9728 | Nothing |
-| **P1: AS metadata** | `/.well-known/oauth-authorization-server` (RFC 8414) | XS (1 day) | The document validates against RFC 8414; it advertises no grant type, endpoint, or registration method that is not served | P0 |
-| **P2: Client registry** | `maidan_oauth_clients` table + CRUD routes + CIMD fetcher | S (3–4 days) | Pre-registered clients persist; CIMD documents fetch through the egress guard with SSRF protection; client IDs resolve | P1 |
-| **P3: Authorize + consent** | `GET /oauth/authorize`, consent screen in `/ui`, code minting (generalizes `app_oauth.rs`) | M (1 week) | PKCE S256 required for public clients; exact redirect-URI match; consent page cannot be framed; grants never exceed the member's capabilities | P2, OIDC session |
-| **P4: Token endpoint** | `POST /oauth/token` (code exchange + refresh rotation), `POST /oauth/revoke` | M (1 week) | Refresh rotation per OAuth 2.1 §4.3.1 (reuse revokes the family); RFC 8707 resource binding; `iss` on responses (RFC 9207) | P3 |
-| **P5: Consent management** | `maidan_oauth_consents` table, console UI for grant/revoke | S (3 days) | Users can list and revoke their grants; revocation takes effect immediately | P3 |
-| **P6: Hardening** | Rate limits, SSRF guards, audit coverage, scope contract tests | S (3–4 days) | Metadata fetched only through the egress guard; contract tests fail on unscoped grants | P4 |
-| **P7: Validation record** | End-to-end against MCP clients with real OAuth (feeds Next 14) | S (2–3 days) | Full flow works against a public instance; record names the commit | P6, public instance |
+Phase zero is on `main`. Each later phase is its own PR, held to the security
+controls in Next 23.
 
-**Total:** ~5–6 weeks.
+| Phase | What ships | Acceptance criteria |
+|---|---|---|
+| P0, resource metadata | RFC 9728 metadata for the MCP endpoint at `/.well-known/oauth-protected-resource/mcp/streamable` (and the root form), and a `WWW-Authenticate` challenge on a 401 from an MCP route, both off until `MAIDAN_PUBLIC_ORIGIN` is set | An unauthenticated `POST /mcp/streamable` answers 401 with `Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. Other 401s carry no challenge. The document names no authorization server yet (`oauth_resource_metadata_e2e`) |
+| P1, client registry | Pre-registered clients and client metadata documents | Metadata documents are fetched only through the egress guard. A client id resolves to exactly one client |
+| P2, authorize and consent | `GET /oauth/authorize` and the consent page in `/ui` | PKCE S256 only. Redirect URIs match exactly. The consent page cannot be framed. A grant never exceeds the member's capabilities |
+| P3, token endpoint and server metadata | `POST /oauth/token`, `POST /oauth/revoke`, and the RFC 8414 document, which lists only the endpoints and grants that now exist | Refresh tokens rotate and a reused one revokes its family. Tokens are bound to the MCP resource (RFC 8707). Responses carry `iss` (RFC 9207). The resource document gains `authorization_servers` |
+| P4, consent management | Listing and revoking grants in the console | A revoked grant stops working on the next request |
+| P5, hardening | Rate limits on the new endpoints, audit rows, scope contract tests | A contract fails on a grant wider than its member |
+| P6, validation record | The full flow from real MCP clients against a public instance | The record names the commit it ran |
 
-## Phase dependencies
+The authorization-server document waits for P3 because RFC 8414 requires
+`response_types_supported` and an authorization endpoint, and before P3 any
+such document would either be invalid or advertise endpoints that do not exist.
 
-P0–P1 ship independently (this PR). P2–P7 wait for Next 17 (grokbot):
-a model holding an OAuth token must not be able to accept gates until the
-credential rule lands.
+## Configuration
+
+`MAIDAN_PUBLIC_ORIGIN` is the instance's public origin, for example
+`https://maidan.example.com`: `https` and a host with no path (`http` only on a
+loopback host). OAuth identifiers are built from it, never from a request's
+`Host`, so a forged header cannot make the server name another origin. A
+malformed value refuses boot.
 
 ## Code layout
 
-New code lives in `crates/maidan-server/src/oauth/`, not `app_oauth.rs`,
-so the OAuth AS and the installed-app flow touch disjoint files:
-
-- `oauth/mod.rs` — module root
-- `oauth/metadata.rs` — RFC 8414 + RFC 9728 discovery documents
-- (later) `oauth/authorize.rs`, `oauth/token.rs`, `oauth/clients.rs`,
-  `oauth/consent.rs`
-
-Migrations for this track use numbers 0150–0159 (grokbot holds 0147–0149).
+New code lives in `crates/maidan-server/src/oauth/`, apart from the
+installed-app flow in `app_oauth.rs`. Migrations for this work use 0150 to 0159.

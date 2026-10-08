@@ -1917,10 +1917,10 @@ Refs #1253
 
 ### OAuth authorization server, phase one: discovery and metadata
 
-- **Added:** `GET /.well-known/oauth-authorization-server` (RFC 8414) and `GET /.well-known/oauth-protected-resource` (RFC 9728) discovery documents. The metadata advertises no grant type, endpoint, or registration method that is not served.
-- **Added:** `WWW-Authenticate: Bearer resource_metadata="..."` on 401 responses, so MCP clients discover the authorization server from the challenge (RFC 9728 §5.1).
-- **Added:** `docs/OAuth.md` with the seven-phase build plan (Next 23).
-- New code lives in `crates/maidan-server/src/oauth/`; the installed-app flow in `app_oauth.rs` is untouched.
+### OAuth phase one: the MCP endpoint describes itself as a protected resource
+
+- **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` (and the root form) serves the MCP endpoint's RFC 9728 metadata, and a 401 from an MCP route carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. Other 401s carry no challenge. Unset, neither is served. The authorization-server document arrives with the token endpoint (phase three).
+- **Added:** `docs/OAuth.md`, the seven-phase plan (Open Work Next 23).
 
 ## [412.0.0] — 2026-09-28
 

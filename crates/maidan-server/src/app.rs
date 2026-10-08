@@ -922,6 +922,11 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             consistency::middleware,
+        ))
+        // Outermost, so it sees the auth layer's 401.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            oauth::challenge,
         ));
 
     let a2a = Router::new()
@@ -1358,11 +1363,11 @@ pub fn router(state: AppState) -> Router {
         .route("/.well-known/maidan-room", get(routes::well_known_room))
         .route("/.well-known/agent-card.json", get(a2a_agent::agent_card))
         .route(
-            "/.well-known/oauth-authorization-server",
-            get(oauth::oauth_authorization_server),
+            "/.well-known/oauth-protected-resource",
+            get(oauth::oauth_protected_resource),
         )
         .route(
-            "/.well-known/oauth-protected-resource",
+            "/.well-known/oauth-protected-resource/mcp/streamable",
             get(oauth::oauth_protected_resource),
         )
         .route("/oauth/app/token", post(app_oauth::exchange_app_code))

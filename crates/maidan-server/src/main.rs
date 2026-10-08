@@ -597,6 +597,10 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.allowed_hosts = maidan_server::rebinding::allowed_hosts_from(
         &std::env::var("MAIDAN_ALLOWED_HOSTS").unwrap_or_default(),
     );
+    state.public_origin = maidan_server::oauth::metadata::public_origin_from(
+        std::env::var("MAIDAN_PUBLIC_ORIGIN").ok().as_deref(),
+    )
+    .map_err(anyhow::Error::msg)?;
     state.dev_anonymous_reader =
         maidan_server::dev_anonymous::from_env(state.store.as_ref(), auth_disabled).await?;
     if let Some(reader) = &state.dev_anonymous_reader {
