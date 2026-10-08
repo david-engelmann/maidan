@@ -1903,6 +1903,10 @@ Refs #1253
 
 - **Fixed:** `DELETE /channels/:cid/members/:mid` and the MCP `remove_channel_member` answer an id that is no member of the channel's workspace, unknown or another workspace's, as not found. They used to answer success and write a `channel_member.remove` audit row naming the id.
 
+### Outbound GitHub calls can authenticate as a GitHub App
+
+- **Added:** with `MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` set (the key also from `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`), the change flow, comments, reviews and check runs authenticate as the app instead of with `MAIDAN_GITHUB_TOKEN`. Maidan signs an RS256 JWT with the app key, exchanges it for an installation token, and keeps the token until five minutes before it expires, with one exchange at a time. `MAIDAN_GITHUB_WRITE_REPOS` still bounds every write before a token is fetched. A partial app config or a key that does not parse refuses boot, naming the variable and never the value. A refused exchange is a misconfiguration; a rate-limited or failing one is retried. Without the app, `MAIDAN_GITHUB_TOKEN` works as before. Signing uses `ring`, not the `rsa` crate.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

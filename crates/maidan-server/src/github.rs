@@ -290,7 +290,9 @@ pub enum GithubError {
     #[error("github http error: {0}")]
     Http(String),
     /// A write this client will not make, whatever the caller asked: a ref
-    /// that is not an agent branch.
+    /// that is not an agent branch. Also a GitHub App token exchange GitHub
+    /// refused (a wrong key or a removed installation): no call can succeed
+    /// until the operator fixes it.
     #[error("github write refused: {0}")]
     Refused(String),
     #[error("github api error: status {status}")]
@@ -606,7 +608,7 @@ pub struct GithubIssueComment {
 /// The production [`GithubSender`]: posts via the GitHub REST API
 /// `POST /repos/{repo}/issues/{n}/comments`.
 pub struct GithubApiClient {
-    token: String,
+    auth: GithubAuth,
     /// API base, `https://api.github.com` in production; overridable so the
     /// wire path can be tested against a loopback server.
     base_url: String,
@@ -617,6 +619,16 @@ pub struct GithubApiClient {
     /// workspace can point the token anywhere else. A new client writes
     /// nowhere until it is given a list.
     write_repos: WriteRepos,
+}
+
+/// How a [`GithubApiClient`] authenticates.
+enum GithubAuth {
+    /// `MAIDAN_GITHUB_TOKEN`: a personal access token or an installation
+    /// token someone else exchanged.
+    Token(String),
+    /// A GitHub App: a signed JWT exchanged for installation tokens
+    /// ([`crate::github_app`]).
+    App(std::sync::Arc<crate::github_app::GithubAppAuth>),
 }
 
 /// Where a [`GithubApiClient`] may write.
@@ -644,8 +656,25 @@ impl GithubApiClient {
     /// Build against a custom API base (test loopback server). `base_url` has no
     /// trailing slash; `/repos/{repo}/issues/{n}/comments` is appended.
     pub fn with_base_url(token: String, base_url: String) -> Self {
+        Self::with_auth(GithubAuth::Token(token), base_url)
+    }
+
+    /// Authenticate as a GitHub App instead of with a configured token.
+    pub fn with_app(app: std::sync::Arc<crate::github_app::GithubAppAuth>) -> Self {
+        Self::with_app_and_base_url(app, "https://api.github.com".to_string())
+    }
+
+    /// [`Self::with_app`] against a custom API base (test loopback server).
+    pub fn with_app_and_base_url(
+        app: std::sync::Arc<crate::github_app::GithubAppAuth>,
+        base_url: String,
+    ) -> Self {
+        Self::with_auth(GithubAuth::App(app), base_url)
+    }
+
+    fn with_auth(auth: GithubAuth, base_url: String) -> Self {
         Self {
-            token,
+            auth,
             base_url,
             // `build` fails only where `Client::new` would panic: no TLS backend.
             http: crate::egress_http::bounded()
@@ -710,7 +739,8 @@ impl GithubSender for GithubApiClient {
                 reqwest::Method::POST,
                 repo,
                 &format!("/issues/{issue_number}/comments"),
-            )?
+            )
+            .await?
             .json(&serde_json::json!({ "body": text }))
             .send()
             .await
@@ -747,7 +777,8 @@ impl GithubSender for GithubApiClient {
                 reqwest::Method::PATCH,
                 repo,
                 &format!("/issues/comments/{comment_id}"),
-            )?
+            )
+            .await?
             .json(&serde_json::json!({ "body": text }))
             .send()
             .await
@@ -776,7 +807,8 @@ impl GithubSender for GithubApiClient {
                     reqwest::Method::GET,
                     repo,
                     &format!("/issues/{issue_number}/comments?per_page=100&page={page}"),
-                )?
+                )
+                .await?
                 .send()
                 .await
                 .map_err(|e| self.http_error(e))?;
@@ -822,7 +854,8 @@ impl GithubSender for GithubApiClient {
                 reqwest::Method::POST,
                 repo,
                 &format!("/pulls/{pull_number}/reviews"),
-            )?
+            )
+            .await?
             .json(&serde_json::json!({
                 "commit_id": commit_id,
                 "event": GITHUB_REVIEW_EVENT_COMMENT,
@@ -848,7 +881,8 @@ impl GithubSender for GithubApiClient {
     ) -> Result<(), GithubError> {
         self.ensure_writable(repo)?;
         let resp = self
-            .request(reqwest::Method::POST, repo, "/check-runs")?
+            .request(reqwest::Method::POST, repo, "/check-runs")
+            .await?
             .json(&check_run_body(check))
             .send()
             .await
@@ -868,16 +902,17 @@ impl GithubApiClient {
     /// so it is refused unless the operator listed `repo`. Every request is
     /// built here or in [`Self::graphql`], and a test holds the HTTP client to
     /// [`Self::build`], so a write method added later cannot miss the check.
-    fn request(
+    async fn request(
         &self,
         method: reqwest::Method,
         repo: &str,
         path: &str,
     ) -> Result<reqwest::RequestBuilder, GithubError> {
         self.request_accepting(method, repo, path, "application/vnd.github+json")
+            .await
     }
 
-    fn request_accepting(
+    async fn request_accepting(
         &self,
         method: reqwest::Method,
         repo: &str,
@@ -887,35 +922,58 @@ impl GithubApiClient {
         if method != reqwest::Method::GET {
             self.ensure_writable(repo)?;
         }
-        Ok(self.build(method, &format!("/repos/{repo}{path}"), accept))
+        self.build(method, &format!("/repos/{repo}{path}"), accept)
+            .await
     }
 
     /// A GraphQL mutation on `repo`. The endpoint is not under the
     /// repository's path, so the repository is named and checked here.
-    fn graphql(&self, repo: &str) -> Result<reqwest::RequestBuilder, GithubError> {
+    async fn graphql(&self, repo: &str) -> Result<reqwest::RequestBuilder, GithubError> {
         self.ensure_writable(repo)?;
-        Ok(self.build(
+        self.build(
             reqwest::Method::POST,
             "/graphql",
             "application/vnd.github+json",
-        ))
+        )
+        .await
     }
 
     /// `.header` appends, so a second `Accept` would be sent beside the
     /// default rather than replace it: the media type is chosen once, here.
-    fn build(&self, method: reqwest::Method, path: &str, accept: &str) -> reqwest::RequestBuilder {
-        crate::trace_context::stamp(
+    /// The bearer is fetched here too, after the repository check, so a
+    /// refused write never costs a token exchange.
+    async fn build(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        accept: &str,
+    ) -> Result<reqwest::RequestBuilder, GithubError> {
+        let bearer = self.bearer().await?;
+        Ok(crate::trace_context::stamp(
             self.http
                 .request(method, format!("{}{path}", self.base_url)),
         )
-        .bearer_auth(&self.token)
+        .bearer_auth(bearer)
         .header("Accept", accept)
-        .header("User-Agent", "maidan-projector")
+        .header("User-Agent", "maidan-projector"))
+    }
+
+    /// The configured token, or the GitHub App's installation token, cached
+    /// until shortly before it expires.
+    async fn bearer(&self) -> Result<String, GithubError> {
+        match &self.auth {
+            GithubAuth::Token(token) => Ok(token.clone()),
+            GithubAuth::App(app) => app.installation_token(&self.http, &self.base_url).await,
+        }
     }
 
     /// A transport error, with the token cut out in case anything echoed it.
     fn http_error(&self, err: impl std::fmt::Display) -> GithubError {
-        GithubError::Http(redact(&err.to_string(), &self.token))
+        let text = err.to_string();
+        GithubError::Http(match &self.auth {
+            GithubAuth::Token(token) => redact(&text, token),
+            GithubAuth::App(app) => app.redact(&text),
+        })
     }
 
     async fn send_json(
@@ -934,7 +992,7 @@ impl GithubApiClient {
 }
 
 /// `text` with every occurrence of `secret` replaced.
-fn redact(text: &str, secret: &str) -> String {
+pub(crate) fn redact(text: &str, secret: &str) -> String {
     if secret.is_empty() {
         return text.to_string();
     }
@@ -1003,7 +1061,7 @@ impl GithubGit for GithubApiClient {
     async fn branch_head(&self, repo: &str, branch: &str) -> Result<Option<String>, GithubError> {
         let path = format!("/git/ref/heads/{}", encode_path(branch));
         match self
-            .send_json(self.request(reqwest::Method::GET, repo, &path)?)
+            .send_json(self.request(reqwest::Method::GET, repo, &path).await?)
             .await
         {
             Ok(value) => field(&value, "/object/sha").map(Some),
@@ -1016,7 +1074,8 @@ impl GithubGit for GithubApiClient {
         self.ensure_writable(repo)?;
         guard_ref(branch)?;
         let request = self
-            .request(reqwest::Method::POST, repo, "/git/refs")?
+            .request(reqwest::Method::POST, repo, "/git/refs")
+            .await?
             .json(&serde_json::json!({ "ref": format!("refs/heads/{branch}"), "sha": sha }));
         self.send_json(request).await.map(|_| ())
     }
@@ -1024,7 +1083,7 @@ impl GithubGit for GithubApiClient {
     async fn commit(&self, repo: &str, sha: &str) -> Result<GitCommit, GithubError> {
         let path = format!("/git/commits/{sha}");
         let value = self
-            .send_json(self.request(reqwest::Method::GET, repo, &path)?)
+            .send_json(self.request(reqwest::Method::GET, repo, &path).await?)
             .await?;
         let parents = value
             .get("parents")
@@ -1064,7 +1123,8 @@ impl GithubGit for GithubApiClient {
                 repo,
                 &url,
                 "application/vnd.github.raw+json",
-            )?
+            )
+            .await?
             .send()
             .await
             .map_err(|e| self.http_error(e))?;
@@ -1087,7 +1147,8 @@ impl GithubGit for GithubApiClient {
         self.ensure_writable(repo)?;
         use base64::Engine as _;
         let request = self
-            .request(reqwest::Method::POST, repo, "/git/blobs")?
+            .request(reqwest::Method::POST, repo, "/git/blobs")
+            .await?
             .json(&serde_json::json!({
                 "content": base64::engine::general_purpose::STANDARD.encode(content),
                 "encoding": "base64",
@@ -1114,7 +1175,8 @@ impl GithubGit for GithubApiClient {
             })
             .collect();
         let request = self
-            .request(reqwest::Method::POST, repo, "/git/trees")?
+            .request(reqwest::Method::POST, repo, "/git/trees")
+            .await?
             .json(&serde_json::json!({ "base_tree": base_tree, "tree": tree }));
         field(&self.send_json(request).await?, "/sha")
     }
@@ -1128,7 +1190,8 @@ impl GithubGit for GithubApiClient {
     ) -> Result<String, GithubError> {
         self.ensure_writable(repo)?;
         let request = self
-            .request(reqwest::Method::POST, repo, "/git/commits")?
+            .request(reqwest::Method::POST, repo, "/git/commits")
+            .await?
             .json(&serde_json::json!({ "message": message, "tree": tree, "parents": parents }));
         field(&self.send_json(request).await?, "/sha")
     }
@@ -1138,7 +1201,8 @@ impl GithubGit for GithubApiClient {
         guard_ref(branch)?;
         let path = format!("/git/refs/heads/{}", encode_path(branch));
         let request = self
-            .request(reqwest::Method::PATCH, repo, &path)?
+            .request(reqwest::Method::PATCH, repo, &path)
+            .await?
             .json(&serde_json::json!({ "sha": sha, "force": false }));
         self.send_json(request).await.map(|_| ())
     }
@@ -1148,7 +1212,7 @@ impl GithubGit for GithubApiClient {
         let head = urlencoding::encode(&format!("{owner}:{branch}")).into_owned();
         let path = format!("/pulls?head={head}&state=open&per_page=1");
         let value = self
-            .send_json(self.request(reqwest::Method::GET, repo, &path)?)
+            .send_json(self.request(reqwest::Method::GET, repo, &path).await?)
             .await?;
         value
             .as_array()
@@ -1168,15 +1232,16 @@ impl GithubGit for GithubApiClient {
         self.ensure_writable(repo)?;
         guard_ref(branch)?;
         guard_base(base)?;
-        let request =
-            self.request(reqwest::Method::POST, repo, "/pulls")?
-                .json(&serde_json::json!({
-                    "title": title,
-                    "body": body,
-                    "head": branch,
-                    "base": base,
-                    "draft": true,
-                }));
+        let request = self
+            .request(reqwest::Method::POST, repo, "/pulls")
+            .await?
+            .json(&serde_json::json!({
+                "title": title,
+                "body": body,
+                "head": branch,
+                "base": base,
+                "draft": true,
+            }));
         pull_from(&self.send_json(request).await?)
     }
 
@@ -1186,11 +1251,10 @@ impl GithubGit for GithubApiClient {
         pull_number: i64,
     ) -> Result<GithubPullBrief, GithubError> {
         let value = self
-            .send_json(self.request(
-                reqwest::Method::GET,
-                repo,
-                &format!("/pulls/{pull_number}"),
-            )?)
+            .send_json(
+                self.request(reqwest::Method::GET, repo, &format!("/pulls/{pull_number}"))
+                    .await?,
+            )
             .await?;
         let number = value
             .get("number")
@@ -1243,7 +1307,7 @@ impl GithubGit for GithubApiClient {
         // draft unchanged — so the flip goes through the GraphQL
         // `markPullRequestReadyForReview` mutation, on the same token.
         let request = self
-            .graphql(repo)?
+            .graphql(repo).await?
             .json(&serde_json::json!({
                 "query": "mutation($nodeId: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $nodeId}) { pullRequest { isDraft } } }",
                 "variables": { "nodeId": node_id },
@@ -1324,7 +1388,7 @@ fn review_comment_payload(comment: &GithubReviewComment) -> serde_json::Value {
 /// Whether a non-success GitHub response is a rate limit. GitHub signals a
 /// primary limit with `x-ratelimit-remaining: 0` and a secondary one with
 /// `retry-after`, both on a 403 — the same status as a permission failure.
-fn is_rate_limited(headers: &reqwest::header::HeaderMap) -> bool {
+pub(crate) fn is_rate_limited(headers: &reqwest::header::HeaderMap) -> bool {
     if headers.contains_key("retry-after") {
         return true;
     }
@@ -1478,7 +1542,9 @@ mod tests {
 
     /// Every request the client sends is made in `build`, and only the two
     /// builders that check `MAIDAN_GITHUB_WRITE_REPOS` call it, so a write
-    /// method added later cannot reach GitHub without the check.
+    /// method added later cannot reach GitHub without the check. The one
+    /// other use is `bearer` handing the client to the GitHub App's token
+    /// exchange, which writes to no repository.
     #[test]
     fn every_github_request_is_built_where_the_repository_is_checked() {
         let source = include_str!("github.rs");
@@ -1491,7 +1557,10 @@ mod tests {
                 !source[at + found.len()..].starts_with(|c: char| c == '_' || c.is_alphanumeric())
             })
             .count();
-        assert_eq!(http_uses, 1, "only `build` may use self.http");
+        assert_eq!(
+            http_uses, 2,
+            "only `build` and `bearer` (the GitHub App token exchange) may use self.http"
+        );
         assert_eq!(
             source.matches("self.build(").count(),
             2,
