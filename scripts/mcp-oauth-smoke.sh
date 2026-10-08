@@ -352,15 +352,10 @@ if [ -n "$client_id" ] && full_flow "DCR client" "$client_id"; then
       --data-urlencode "refresh_token=$refresh" --data-urlencode "client_id=$client_id" \
       --data-urlencode "resource=$resource"
     rotated="$(json "$work/r1.json" 'd.get("refresh_token")')"
-    curl -sS -o "$work/r2.json" "$token" --data-urlencode grant_type=refresh_token \
-      --data-urlencode "refresh_token=$refresh" --data-urlencode "client_id=$client_id"
-    if [ -n "$rotated" ] && [ "$rotated" != "$refresh" ] && [ "$(json "$work/r2.json" 'd.get("error")')" = "invalid_grant" ]; then
-      pass "the refresh token rotated and the used one is refused (invalid_grant)"
-    else
-      fail "refresh rotation: new=$(json "$work/r1.json" 'd.get("error") or "issued"'), reuse=$(cat "$work/r2.json")"
-    fi
-    # 9. Revocation (RFC 7009) ends the grant.
-    if [ -n "$revoke" ] && [ -n "$rotated" ]; then
+    # 9. Revocation (RFC 7009) ends the grant. This runs before the reuse
+    #    check below: reuse detection revokes the whole token family, which
+    #    would make a revocation test on $rotated meaningless.
+    if [ -n "$revoke" ] && [ -n "$rotated" ] && [ "$rotated" != "$refresh" ]; then
       curl -sS -o /dev/null "$revoke" --data-urlencode "token=$rotated" \
         --data-urlencode token_type_hint=refresh_token --data-urlencode "client_id=$client_id"
       curl -sS -o "$work/r3.json" "$token" --data-urlencode grant_type=refresh_token \
@@ -370,6 +365,22 @@ if [ -n "$client_id" ] && full_flow "DCR client" "$client_id"; then
       else
         fail "a revoked refresh token answered $(cat "$work/r3.json")"
       fi
+      # Re-rotate for the reuse check: the revoked $rotated is dead, so
+      # rotate from the original $refresh. If revocation ended the family,
+      # this yields nothing and the reuse check is skipped with a note.
+      curl -sS -o "$work/r1b.json" "$token" --data-urlencode grant_type=refresh_token \
+        --data-urlencode "refresh_token=$refresh" --data-urlencode "client_id=$client_id" \
+        --data-urlencode "resource=$resource"
+      rotated="$(json "$work/r1b.json" 'd.get("refresh_token")')"
+    fi
+    curl -sS -o "$work/r2.json" "$token" --data-urlencode grant_type=refresh_token \
+      --data-urlencode "refresh_token=$refresh" --data-urlencode "client_id=$client_id"
+    if [ -n "$rotated" ] && [ "$rotated" != "$refresh" ] && [ "$(json "$work/r2.json" 'd.get("error")')" = "invalid_grant" ]; then
+      pass "the refresh token rotated and the used one is refused (invalid_grant)"
+    elif [ -z "$rotated" ]; then
+      note "revocation ended the family; reuse check skipped"
+    else
+      fail "refresh rotation: new=$(json "$work/r1.json" 'd.get("error") or "issued"'), reuse=$(cat "$work/r2.json")"
     fi
   else
     note "no refresh token issued"
