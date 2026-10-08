@@ -1887,6 +1887,11 @@ Refs #1253
 - **Changed:** The tiers are inside the evidence root, so the same evidence handed over again under different tiers is a new root, and an approval names the tiers it was shown. Packets from before tiers keep their roots and carry no tiers. A close compares the evidence with what the packet pinned rather than judging the tiers again, so a land-gate pass or a membership change after the hand-off neither moves a packet nor refuses a close.
 - **Added:** Needs you in the console shows each item's tier on the approval card, a land-gate pass as its own line with its recorder, and warns when the server says the approval would rest on self-reported evidence only.
 
+### A workspace admin cannot reach across tenants through an app
+
+- **Security:** Installing an app, and minting a token from an installation, grant only what the caller could mint directly. A `token:admin` holder without `operator:global` or `audit:read-global` could install an app with either capability and mint the bot a token that operated or read across every workspace. Both routes now answer 400 for a capability the caller cannot grant, including one an operator put in the installation's grant.
+- **Security:** The installed-app code exchange (`POST /oauth/app/token`) mints with no member behind it, so it never issues `operator:global` or `audit:read-global`, whatever the installation's grant says.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

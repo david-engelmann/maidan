@@ -341,3 +341,82 @@ async fn a_revoked_app_reinstalls_onto_its_bot_member_with_new_grants() {
 
     h.server.abort();
 }
+
+/// `token:admin` is per-workspace. An app grant is minted later without its
+/// installer, so the grant, and every mint from it, stays within what the
+/// caller could mint directly: no workspace admin reaches across tenants
+/// through an app.
+#[tokio::test]
+async fn a_workspace_admin_cannot_grant_or_mint_cross_tenant_capabilities_through_an_app() {
+    let Some(h) = spawn().await else {
+        return;
+    };
+    let (wid, admin_secret) = seed_admin_token(h.store.as_ref()).await;
+    let client = reqwest::Client::new();
+    let auth = format!("Bearer {admin_secret}");
+    let app_id = register_app(&client, &h, wid, &auth).await;
+
+    for global in [capability::OPERATOR_GLOBAL, capability::AUDIT_READ_GLOBAL] {
+        let resp = install(
+            &client,
+            &h,
+            wid,
+            &app_id,
+            &auth,
+            &["workspace:read", global],
+        )
+        .await;
+        assert_eq!(resp.status(), 400, "installing with {global}");
+    }
+
+    // An operator may have granted more; the admin minting from it may not.
+    let installed = h
+        .store
+        .install_app_audited(
+            wid,
+            maidan_types::AppId(uuid::Uuid::parse_str(&app_id).unwrap()),
+            vec!["workspace:read".into(), capability::OPERATOR_GLOBAL.into()],
+            Box::new(|installed| maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(installed.installation.workspace_id),
+                actor_id: None,
+                action: "app_installation.install".into(),
+                target_kind: Some("app_installation".into()),
+                target_id: Some(installed.installation.id.0),
+                metadata: json!({}),
+            }),
+        )
+        .await
+        .unwrap();
+    let mint = |body: serde_json::Value| {
+        client
+            .post(format!(
+                "http://{}/workspaces/{}/app-installations/{}/tokens",
+                h.addr, wid.0, installed.installation.id.0
+            ))
+            .header("Authorization", &auth)
+            .json(&body)
+            .send()
+    };
+    assert_eq!(
+        mint(json!({})).await.unwrap().status(),
+        400,
+        "the full grant"
+    );
+    assert_eq!(
+        mint(json!({ "capabilities": [capability::OPERATOR_GLOBAL] }))
+            .await
+            .unwrap()
+            .status(),
+        400
+    );
+    assert_eq!(
+        mint(json!({ "capabilities": ["workspace:read"] }))
+            .await
+            .unwrap()
+            .status(),
+        201,
+        "the rest of the grant is still mintable"
+    );
+
+    h.server.abort();
+}
