@@ -2174,3 +2174,13 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Open Work Next 14 and Later CA.
 
+### An approval binds the evidence, and the evidence is the result and its links (2026-10-08)
+
+**Decision.** An approval names the evidence root of the review packet it was shown, and counts only while that packet is the thread's latest and the evidence is unchanged. The root covers the thread's result and its linked artifacts, by content hash. Messages are not evidence: they move the thread version, which the packet records, but not the root, so a comment after an approval leaves it standing. The store accepts a verdict with no root and keeps it, but it never counts once the thread has a packet. REST and MCP require the root on approve, so every client binds.
+
+**Why.** Before, an approval bound nothing it was shown, so work changed after an approval could land on it. The first build put the thread version, and so every message, under the root. Its own test showed a "thanks" after an approval blocking the close, and real recipes post status messages between approve and close. Evidence a reviewer judges is the result and what is explicitly linked to the thread, which the thread artifact link made first-class.
+
+**Held by.** `review_packets.rs` on both backends, `thread_evidence_e2e`, and the demo scripts run against a server.
+
+**Record.** Integration "Linking evidence to a thread".
+

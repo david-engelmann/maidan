@@ -208,9 +208,17 @@ pub async fn submit_review(
     // The reviewer is the caller; an owner/assignee may submit but it won't count.
     let note = maidan_types::review_note(body.decision, body.note.as_deref())
         .map_err(ApiError::BadRequest)?;
+    let root = maidan_types::review_evidence(body.decision, body.evidence_root.as_deref())
+        .map_err(ApiError::BadRequest)?;
     let submission = state
         .store
-        .submit_review(thread_id, auth.member_id, body.decision, note.as_deref())
+        .submit_review(
+            thread_id,
+            auth.member_id,
+            body.decision,
+            note.as_deref(),
+            root.as_deref(),
+        )
         .await?;
     for stored in submission.events() {
         super::publish_stored(&state, stored.clone()).await;

@@ -211,10 +211,16 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
         blocked.text().await.unwrap_or_default()
     );
 
+    let root = store
+        .latest_review_packet(thread.id)
+        .await
+        .unwrap()
+        .expect("handed to review")
+        .evidence_root;
     let approve = client
         .post(format!("{base}/threads/{tid}/reviews"))
         .header("Authorization", &human_h)
-        .json(&json!({ "decision": "approve" }))
+        .json(&json!({ "decision": "approve", "evidence_root": root }))
         .send()
         .await
         .unwrap();

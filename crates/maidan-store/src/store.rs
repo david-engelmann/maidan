@@ -1677,6 +1677,7 @@ pub trait ReviewStore: Send + Sync {
         reviewer_id: MemberId,
         decision: ReviewDecision,
         note: Option<&str>,
+        evidence_root: Option<&str>,
     ) -> Result<ReviewSubmission, StoreError>;
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
     /// Every review verdict on the thread, oldest first. `submit_review`

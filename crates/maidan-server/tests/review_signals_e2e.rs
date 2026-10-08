@@ -193,12 +193,25 @@ async fn hand_in(client: &reqwest::Client, base: &str, store: &Arc<dyn Store>, t
 }
 
 async fn review(client: &reqwest::Client, base: &str, t: &Tenant, decision: &str) {
+    let (s, packet) = call(
+        client,
+        Method::GET,
+        format!("{base}/threads/{}/review-packet", t.thread.0),
+        &t.reviewer_h,
+        None,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{packet}");
     let (s, body) = call(
         client,
         Method::POST,
         format!("{base}/threads/{}/reviews", t.thread.0),
         &t.reviewer_h,
-        Some(json!({"decision": decision, "note": "cover the empty input"})),
+        Some(json!({
+            "decision": decision,
+            "note": "cover the empty input",
+            "evidence_root": packet["evidence_root"],
+        })),
     )
     .await;
     assert_eq!(s, StatusCode::OK, "{body}");

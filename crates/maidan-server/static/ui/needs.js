@@ -253,6 +253,16 @@ import { answerGate } from "./tools.js";
           approveNoted.textContent = "Approve with note";
           approveNoted.onclick = () => askForNote(item, li, "approve");
           actions.append(approve, changes, approveNoted);
+          // The approval names what this row showed: the packet as it stood
+          // when the row was drawn. Until the row has it there is nothing to
+          // bind an approval to, so both approve buttons wait for it.
+          approve.disabled = true;
+          approveNoted.disabled = true;
+          reviewPacket(item.thread_id).then((packet) => {
+            if (packet) li.dataset.evidenceRoot = packet.evidence_root;
+            approve.disabled = false;
+            approveNoted.disabled = false;
+          });
           if (item.kind === "unassigned_review") ownerActions(item, li, sub, [approve, approveNoted], changes);
         } else if (item.kind === "blocked") {
           // A human/gate block: show the reason and note, offer to clear it.
@@ -470,17 +480,43 @@ import { answerGate } from "./tools.js";
       // Reviews and closes are thread transitions. An OIDC session carries
       // thread:transition; a token uses its own grant. The store still refuses
       // a self-approval, including one made with a borrowed token.
-      async function submitReview(tid, decision, note, button) {
+      // What the thread was handed to review with, or null before any review.
+      async function reviewPacket(tid) {
+        try {
+          const res = await api(apiReadPath(`/threads/${tid}/review-packet`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          return res.ok ? await res.json() : null;
+        } catch (_e) {
+          return null;
+        }
+      }
+
+      // An approval names the evidence it approves: the root of the packet the
+      // row showed, or, without one, the packet as it stands when clicked.
+      async function evidenceRootFor(tid, decision, shown) {
+        if (shown || decision !== "approve") return shown;
+        const packet = await reviewPacket(tid);
+        return packet && packet.evidence_root;
+      }
+
+      async function submitReview(tid, decision, note, button, evidenceRoot) {
         if (!token() && !sessionMemberId) {
           return { ok: false, why: "Sign in to approve." };
         }
+        const root = await evidenceRootFor(tid, decision, evidenceRoot);
+        if (decision === "approve" && !root) {
+          return { ok: false, why: "Nothing was handed to review yet, so there is nothing to approve." };
+        }
+        const body = { decision, ...(note && { note }), ...(root && { evidence_root: root }) };
         let res;
         try {
           res = await writeApi(button || null, apiWritePath(`/threads/${tid}/reviews`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
-            body: JSON.stringify(note ? { decision, note } : { decision }),
+            body: JSON.stringify(body),
           });
         } catch (e) {
           return { ok: false, why: "Review not recorded: could not reach the server. Check the connection and try again." };
@@ -518,8 +554,19 @@ import { answerGate } from "./tools.js";
       }
 
       async function approveFromInbox(item, li, reviewNote) {
+        // Only the packet this row showed is approved here; a row without one
+        // says so rather than approve whatever stands now.
+        if (!li.dataset.evidenceRoot) {
+          return showRowError(rowOnScreen(item, li), "Nothing was handed to review yet, or it could not be loaded, so there is nothing to approve. Reload and try again.");
+        }
         const actions = li.querySelector(".ny-actions");
-        const out = await submitReview(item.thread_id, "approve", reviewNote, actions.querySelectorAll("button"));
+        const out = await submitReview(
+          item.thread_id,
+          "approve",
+          reviewNote,
+          actions.querySelectorAll("button"),
+          li.dataset.evidenceRoot,
+        );
         const row = rowOnScreen(item, li);
         const liveActions = row.querySelector(".ny-actions");
         if (!out.ok) {
@@ -663,4 +710,4 @@ import { answerGate } from "./tools.js";
         document.getElementById("collab-panel").hidden = !selectedThreadId;
       }
 
-export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadNeedsYou, needsYou, needsYouGen, needsYouRow, nyKey, renderNeedsYou, renderThreadActions, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };
+export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadNeedsYou, needsYou, needsYouGen, needsYouRow, nyKey, renderNeedsYou, renderThreadActions, reviewPacket, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };

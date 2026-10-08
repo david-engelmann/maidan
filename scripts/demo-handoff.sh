@@ -143,8 +143,9 @@ done < <(jq -r '.messages[] | [.author_id, .body] | @tsv' <<<"$ctx")
 res=$(rest "$HT" GET "/threads/$tid/result")
 say "$(printf '%-9s' "result:")$(jq -c .result <<<"$res") by $(name "$(jq -r .produced_by <<<"$res")")"
 
-step "$M" "david" "MCP submit_review approve · REST POST /threads/:id {action: close}"
-mcp "$HT" submit_review "{\"thread_id\":\"$tid\",\"decision\":\"approve\"}" >/dev/null
+step "$M" "david" "MCP get_review_packet · submit_review approve · REST POST /threads/:id {action: close}"
+root=$(mcp "$HT" get_review_packet "{\"thread_id\":\"$tid\"}" | jq -r .evidence_root)
+mcp "$HT" submit_review "$(jq -nc --arg t "$tid" --arg r "$root" '{thread_id:$t,decision:"approve",evidence_root:$r}')" >/dev/null
 closed=$(rest "$HT" POST "/threads/$tid" '{"action":"close"}')
 say "${G}✓${R} approved · state=$(jq -r .state <<<"$closed")"
 

@@ -1845,7 +1845,13 @@ Refs #1253
 
 ### A hand-off to review records what the reviewers were handed
 
-- **Added:** Each `start_review` records a review packet in its own transaction, holding the thread's version, its result's content hash and its linked artifacts' hashes, with an evidence root over them. `get_review_packet` (REST `GET /threads/:id/review-packet`) returns the latest. The database refuses any update to a packet, and a later hand-off writes a new one. This is the second part of evidence-bound approvals (Open Work Next 3).
+- **Added:** Each `start_review` records a review packet in its own transaction, holding the thread's version and a manifest of the evidence (its result's content hash and its linked artifacts' hashes), with an evidence root over the manifest. `get_review_packet` (REST `GET /threads/:id/review-packet`) returns the latest. The database refuses any update to a packet, and a later hand-off writes a new one. This is the second part of evidence-bound approvals (Open Work Next 3).
+
+### An approval names the evidence it approves
+
+- **Changed:** `submit_review` with `approve` needs `evidence_root`, the root from `get_review_packet` (REST 400, MCP -32602 without it). It is refused with 409 when the root is stale, when nothing was handed to review, or when the result or linked artifacts changed after the hand-off. Each review and each verdict in the history records the root it was given against.
+- **Changed:** Only an approval bound to the thread's latest packet counts toward a review requirement, in `review_status` and at close, and a close is refused while the evidence differs from what that packet pinned. A comment after an approval does not undo it, since the evidence root covers the result and linked artifacts, not messages. This is the third part of evidence-bound approvals (Open Work Next 3).
+- **Changed:** Needs you in the console approves the packet the row showed, so evidence that changed after the row was drawn is refused with a reason instead of approved.
 
 ## [412.0.0] — 2026-09-28
 

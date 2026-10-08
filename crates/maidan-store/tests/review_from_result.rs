@@ -34,6 +34,16 @@ fn envelope(kind: &str, status: &str, severities: &[&str]) -> serde_json::Value 
     })
 }
 
+/// The root of the thread's latest review packet, which an approval binds to;
+/// `None` before the thread was handed to review.
+async fn handed_root(store: &dyn Store, thread_id: maidan_types::ThreadId) -> Option<String> {
+    store
+        .latest_review_packet(thread_id)
+        .await
+        .expect("packet")
+        .map(|p| p.evidence_root)
+}
+
 async fn run_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "w".into() })
@@ -173,7 +183,13 @@ async fn run_suite(store: &dyn Store) {
     // A human who is neither owner nor assignee resolves; the agent does not
     // auto-approve. Owner/assignee approvals still do not count (SoD).
     store
-        .submit_review(thread.id, owner.id, ReviewDecision::Approve, None)
+        .submit_review(
+            thread.id,
+            owner.id,
+            ReviewDecision::Approve,
+            None,
+            handed_root(store, thread.id).await.as_deref(),
+        )
         .await
         .unwrap();
     assert!(
@@ -181,7 +197,13 @@ async fn run_suite(store: &dyn Store) {
         "owner self-approve must not unblock"
     );
     store
-        .submit_review(thread.id, human.id, ReviewDecision::Approve, None)
+        .submit_review(
+            thread.id,
+            human.id,
+            ReviewDecision::Approve,
+            None,
+            handed_root(store, thread.id).await.as_deref(),
+        )
         .await
         .unwrap();
     assert!(store.review_status(thread.id).await.unwrap().approvals_met);

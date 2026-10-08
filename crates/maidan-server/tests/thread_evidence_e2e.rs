@@ -305,7 +305,7 @@ async fn a_hand_off_to_review_pins_what_was_handed_over() {
     .await;
     assert_eq!(s, StatusCode::OK, "{packet}");
     let version = store.thread_version(thread).await.unwrap();
-    assert_eq!(packet["manifest"]["thread_version"], version);
+    assert_eq!(packet["thread_version"], version);
     assert_eq!(packet["manifest"]["artifacts"], json!([held]));
     assert_eq!(
         packet["manifest"]["result"]["sha256"],

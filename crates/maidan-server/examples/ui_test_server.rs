@@ -176,8 +176,19 @@ async fn main() {
         .expect("review before close");
     // Approved before it closed, so the card is plain "done" and not "closed
     // without review".
+    let handed = store
+        .latest_review_packet(done_thread.id)
+        .await
+        .expect("packet")
+        .expect("handed to review");
     store
-        .submit_review(done_thread.id, requester.id, ReviewDecision::Approve, None)
+        .submit_review(
+            done_thread.id,
+            requester.id,
+            ReviewDecision::Approve,
+            None,
+            Some(&handed.evidence_root),
+        )
         .await
         .expect("approve before close");
     store

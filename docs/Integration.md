@@ -1403,12 +1403,23 @@ with `get_thread_version` (REST `GET /threads/:id/version`). The database moves
 it on every such write, whichever path made it, so a decision can name the
 version it was shown.
 
-Each `start_review` records a review packet of what the reviewers are handed,
-which is the thread's version, its result's content hash and its linked
-artifacts' hashes, and the evidence root, the sha256 of that manifest's
-canonical JSON. `get_review_packet` (REST `GET /threads/:id/review-packet`)
-returns the latest. A packet is never changed. A later hand-off writes a new
-one.
+Each `start_review` records a review packet of what the reviewers are handed.
+It holds the thread's version at the hand-off and a manifest of the evidence,
+which is the result's content hash and the linked artifacts' hashes, with the
+evidence root, the sha256 of that manifest's canonical JSON. Messages are the
+conversation around the evidence, so they move the version but not the root.
+`get_review_packet` (REST `GET /threads/:id/review-packet`) returns the latest.
+A packet is never changed. A later hand-off writes a new one.
+
+**An approval names the evidence it approves.** `submit_review` with
+`decision: "approve"` needs `evidence_root`, the root from the packet you were
+shown (REST 400 or MCP -32602 without it). It is refused with 409 when the
+thread was handed over again since (a stale root), when nothing was handed to
+review, or when the result or links changed after the hand-off. Only an
+approval bound to the latest packet counts toward a review requirement, and a
+close is refused while the evidence differs from what that packet pinned. A
+change of evidence needs a new hand-off and a new approval. A comment does
+not.
 
 ### 5. Deliver the result
 

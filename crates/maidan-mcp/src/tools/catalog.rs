@@ -2469,7 +2469,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "submit_review",
-            "description": "Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. request_changes needs a note saying what to change; approve may carry one. Every verdict appends a review_submitted event (the note stays in the review history), and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.",
+            "description": "Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. request_changes needs a note saying what to change; approve may carry one. approve also needs evidence_root, the root from get_review_packet of what you were shown: it is refused when the thread was handed over again or changed since, and only an approval bound to the latest packet counts toward the close. Every verdict appends a review_submitted event (the note stays in the review history), and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.",
             "annotations": {
                 "title": "Submit review",
                 "readOnlyHint": false,
@@ -2482,7 +2482,8 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "decision": {"type": "string", "enum": ["approve", "request_changes"]},
-                    "note": {"type": "string", "description": "what to change, required on request_changes; optional on approve"}
+                    "note": {"type": "string", "description": "what to change, required on request_changes; optional on approve"},
+                    "evidence_root": {"type": "string", "description": "the evidence_root from get_review_packet you are deciding on, required on approve"}
                 },
                 "required": ["thread_id", "decision"]
             }

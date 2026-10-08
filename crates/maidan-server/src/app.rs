@@ -1077,6 +1077,10 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/threads/{tid}/review-status",
             get(routes::get_review_status),
         )
+        .route(
+            "/ui/api/threads/{tid}/review-packet",
+            get(routes::get_review_packet),
+        )
         .route("/ui/api/workspaces/{wid}", get(routes::get_workspace))
         .route(
             "/ui/api/workspaces/{wid}/search",

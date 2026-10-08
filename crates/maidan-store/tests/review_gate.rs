@@ -23,6 +23,16 @@ async fn sqlite() -> SqliteStore {
     SqliteStore::for_tests(pool)
 }
 
+/// The root of the thread's latest review packet, which an approval binds to;
+/// `None` before the thread was handed to review.
+async fn handed_root(store: &dyn Store, thread_id: maidan_types::ThreadId) -> Option<String> {
+    store
+        .latest_review_packet(thread_id)
+        .await
+        .expect("packet")
+        .map(|p| p.evidence_root)
+}
+
 async fn run_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "w".into() })
@@ -102,7 +112,13 @@ async fn run_suite(store: &dyn Store) {
     );
     // An approval from the reviewer (!= owner/assignee) satisfies it.
     store
-        .submit_review(t.id, reviewer.id, ReviewDecision::Approve, None)
+        .submit_review(
+            t.id,
+            reviewer.id,
+            ReviewDecision::Approve,
+            None,
+            handed_root(store, t.id).await.as_deref(),
+        )
         .await
         .unwrap();
     let closed = store

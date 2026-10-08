@@ -93,7 +93,13 @@ async fn run_suite(store: &dyn Store) -> ThreadId {
 
     // r1 approves, then changes its mind; r2 requests changes.
     store
-        .submit_review(thread.id, r1.id, ReviewDecision::Approve, Some("lgtm"))
+        .submit_review(
+            thread.id,
+            r1.id,
+            ReviewDecision::Approve,
+            Some("lgtm"),
+            None,
+        )
         .await
         .expect("r1 approve");
     store
@@ -102,11 +108,12 @@ async fn run_suite(store: &dyn Store) -> ThreadId {
             r1.id,
             ReviewDecision::RequestChanges,
             Some("missed a case"),
+            None,
         )
         .await
         .expect("r1 flip");
     store
-        .submit_review(thread.id, r2.id, ReviewDecision::RequestChanges, None)
+        .submit_review(thread.id, r2.id, ReviewDecision::RequestChanges, None, None)
         .await
         .expect("r2");
 

@@ -86,6 +86,16 @@ async fn state(store: &dyn Store, thread: &Thread) -> ThreadState {
     store.get_thread(thread.id).await.expect("thread").state
 }
 
+/// The root of the thread's latest review packet, which an approval binds to;
+/// `None` before the thread was handed to review.
+async fn handed_root(store: &dyn Store, thread_id: maidan_types::ThreadId) -> Option<String> {
+    store
+        .latest_review_packet(thread_id)
+        .await
+        .expect("packet")
+        .map(|p| p.evidence_root)
+}
+
 async fn run_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "rc".into() })
@@ -101,7 +111,13 @@ async fn run_suite(store: &dyn Store) {
     let (t, channel) = in_review(store, ws, worker).await;
     store.set_review_requirement(t.id, 1).await.unwrap();
     store
-        .submit_review(t.id, outsider, ReviewDecision::Approve, None)
+        .submit_review(
+            t.id,
+            outsider,
+            ReviewDecision::Approve,
+            None,
+            handed_root(store, t.id).await.as_deref(),
+        )
         .await
         .unwrap();
     assert_eq!(store.review_status(t.id).await.unwrap().approvals, 1);
@@ -113,6 +129,7 @@ async fn run_suite(store: &dyn Store) {
             reviewer,
             ReviewDecision::RequestChanges,
             Some("handle the empty input"),
+            None,
         )
         .await
         .expect("request changes");
@@ -173,7 +190,13 @@ async fn run_suite(store: &dyn Store) {
         "a dismissed approval does not close the reworked thread"
     );
     store
-        .submit_review(t.id, outsider, ReviewDecision::Approve, None)
+        .submit_review(
+            t.id,
+            outsider,
+            ReviewDecision::Approve,
+            None,
+            handed_root(store, t.id).await.as_deref(),
+        )
         .await
         .unwrap();
     let renewed = store.list_reviews(t.id).await.unwrap();
@@ -191,7 +214,7 @@ async fn run_suite(store: &dyn Store) {
     // The implementer's own change request is recorded, not acted on.
     let (t, _) = in_review(store, ws, worker).await;
     let reopened = store
-        .submit_review(t.id, worker, ReviewDecision::RequestChanges, None)
+        .submit_review(t.id, worker, ReviewDecision::RequestChanges, None, None)
         .await
         .unwrap()
         .reopened;
@@ -201,7 +224,7 @@ async fn run_suite(store: &dyn Store) {
     // The owner may send it back, even with no requirement set.
     store.set_thread_owner(t.id, Some(owner)).await.unwrap();
     let reopened = store
-        .submit_review(t.id, owner, ReviewDecision::RequestChanges, None)
+        .submit_review(t.id, owner, ReviewDecision::RequestChanges, None, None)
         .await
         .unwrap()
         .reopened;
@@ -210,7 +233,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Nothing to send back on a thread that is not under review.
     let reopened = store
-        .submit_review(t.id, reviewer, ReviewDecision::RequestChanges, None)
+        .submit_review(t.id, reviewer, ReviewDecision::RequestChanges, None, None)
         .await
         .unwrap()
         .reopened;
@@ -221,14 +244,14 @@ async fn run_suite(store: &dyn Store) {
     let (t, _) = in_review(store, ws, worker).await;
     store.add_reviewer(t.id, reviewer).await.unwrap();
     let reopened = store
-        .submit_review(t.id, outsider, ReviewDecision::RequestChanges, None)
+        .submit_review(t.id, outsider, ReviewDecision::RequestChanges, None, None)
         .await
         .unwrap()
         .reopened;
     assert!(reopened.is_none(), "not a named reviewer");
     assert_eq!(state(store, &t).await, ThreadState::InReview);
     let reopened = store
-        .submit_review(t.id, reviewer, ReviewDecision::RequestChanges, None)
+        .submit_review(t.id, reviewer, ReviewDecision::RequestChanges, None, None)
         .await
         .unwrap()
         .reopened;
@@ -238,7 +261,13 @@ async fn run_suite(store: &dyn Store) {
     // An approval does not reopen anything.
     let (t, _) = in_review(store, ws, worker).await;
     let reopened = store
-        .submit_review(t.id, reviewer, ReviewDecision::Approve, None)
+        .submit_review(
+            t.id,
+            reviewer,
+            ReviewDecision::Approve,
+            None,
+            handed_root(store, t.id).await.as_deref(),
+        )
         .await
         .unwrap()
         .reopened;

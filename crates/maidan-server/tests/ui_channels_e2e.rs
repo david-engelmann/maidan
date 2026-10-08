@@ -674,11 +674,18 @@ async fn oidc_session_edits_uploads_and_transitions_through_the_proxy() {
         .set_review_requirement(ThreadId(thread_uuid), 1)
         .await
         .expect("requirement");
+    let root = h
+        .store
+        .latest_review_packet(ThreadId(thread_uuid))
+        .await
+        .expect("packet")
+        .expect("handed to review")
+        .evidence_root;
     let review = h
         .client
         .post(format!("{base}/ui/api/threads/{thread_id}/reviews"))
         .header(reqwest::header::COOKIE, &cookie)
-        .json(&json!({"decision": "approve"}))
+        .json(&json!({"decision": "approve", "evidence_root": root}))
         .send()
         .await
         .expect("review")
