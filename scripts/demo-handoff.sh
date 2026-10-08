@@ -14,7 +14,9 @@
 #
 # With MAIDAN_TOKEN and MAIDAN_WORKSPACE unset, the script runs `maidan init`
 # against DATABASE_URL and then creates the planner, the coder, and the human,
-# with tokens that can claim, post, transition, and review.
+# with tokens that can claim, post, transition, and review. With auth on, the
+# server creates members only while bootstrap is on, so start it with
+# MAIDAN_BOOTSTRAP=1 (and MAIDAN_RATE_LIMIT_MAX=0 for a fast run).
 #
 #   MAIDAN_TOKEN=<admin token> MAIDAN_WORKSPACE=<workspace id> ./scripts/demo-handoff.sh
 #

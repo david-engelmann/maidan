@@ -18,7 +18,9 @@
 # against DATABASE_URL (the same database the server is using) and reads the
 # workspace id and admin token from that output. It then creates the human,
 # every agent, and tokens that can claim, post, transition, and review.
-# Nothing here asks you to create a member or pick capabilities.
+# Nothing here asks you to create a member or pick capabilities. With auth on,
+# the server creates members only while bootstrap is on, so start it with
+# MAIDAN_BOOTSTRAP=1 (and MAIDAN_RATE_LIMIT_MAX=0 for a fast run).
 #
 #   MAIDAN_TOKEN=… MAIDAN_WORKSPACE=… ./scripts/demo-board.sh
 #
