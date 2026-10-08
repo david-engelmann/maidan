@@ -94,6 +94,18 @@ fn meta_version(request: &JsonRpcRequest) -> Option<&serde_json::Value> {
     request.params.get("_meta")?.get(META_PROTOCOL_VERSION)
 }
 
+/// A batch on `2026-07-28`, which has none: the header names that revision,
+/// or with no header an item states it in `_meta`. Refused whole, so no item
+/// skips the checks a single request gets.
+fn batch_is_current(headers: &HeaderMap, items: &[Result<JsonRpcRequest, JsonRpcError>]) -> bool {
+    match header(headers, "mcp-protocol-version") {
+        Some(version) => !LEGACY_VERSIONS.contains(&version),
+        None => items
+            .iter()
+            .any(|item| item.as_ref().is_ok_and(|r| meta_version(r).is_some())),
+    }
+}
+
 pub(crate) fn era(headers: &HeaderMap, request: &JsonRpcRequest) -> Era {
     match header(headers, "mcp-protocol-version") {
         Some(version) if LEGACY_VERSIONS.contains(&version) => Era::Legacy,
@@ -374,6 +386,18 @@ async fn json_rpc(
         // validated per single request, not against an array. Batches belong
         // to the earlier revisions, so a batch keeps their header check.
         Ok(RequestBody::Batch(items)) => {
+            if batch_is_current(&headers, &items) {
+                let error = JsonRpcError {
+                    code: -32600,
+                    message: "a batch is not part of protocol version 2026-07-28: send one request per POST".into(),
+                    data: None,
+                };
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(JsonRpcResponse::failure(serde_json::Value::Null, error)),
+                )
+                    .into_response();
+            }
             if let Err(err) = validate_protocol_version(&headers) {
                 return err.into_response();
             }
@@ -619,6 +643,25 @@ mod era_tests {
                 "{method} stays on 2025-11-25"
             );
         }
+    }
+
+    #[test]
+    fn a_batch_is_current_only_when_it_says_so() {
+        let plain = vec![Ok(request("tools/list", json!({})))];
+        assert!(!batch_is_current(&HeaderMap::new(), &plain));
+        assert!(!batch_is_current(
+            &headers(&[("mcp-protocol-version", "2025-11-25")]),
+            &plain
+        ));
+        assert!(batch_is_current(
+            &headers(&[("mcp-protocol-version", "2026-07-28")]),
+            &plain
+        ));
+        let stated = vec![Ok(request(
+            "tools/list",
+            json!({ "_meta": meta("2026-07-28") }),
+        ))];
+        assert!(batch_is_current(&HeaderMap::new(), &stated));
     }
 
     #[test]
