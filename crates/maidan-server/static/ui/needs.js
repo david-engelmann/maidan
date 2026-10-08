@@ -237,11 +237,6 @@ import { answerGate } from "./tools.js";
             sub.insertBefore(none, when);
           }
           fillReviewContext(item.thread_id, sub, when);
-          // The approval names what this row showed: the packet as it stood
-          // when the row was drawn.
-          reviewPacket(item.thread_id).then((packet) => {
-            if (packet) li.dataset.evidenceRoot = packet.evidence_root;
-          });
           const approve = document.createElement("button");
           approve.type = "button";
           approve.className = "primary";
@@ -258,6 +253,16 @@ import { answerGate } from "./tools.js";
           approveNoted.textContent = "Approve with note";
           approveNoted.onclick = () => askForNote(item, li, "approve");
           actions.append(approve, changes, approveNoted);
+          // The approval names what this row showed: the packet as it stood
+          // when the row was drawn. Until the row has it there is nothing to
+          // bind an approval to, so both approve buttons wait for it.
+          approve.disabled = true;
+          approveNoted.disabled = true;
+          reviewPacket(item.thread_id).then((packet) => {
+            if (packet) li.dataset.evidenceRoot = packet.evidence_root;
+            approve.disabled = false;
+            approveNoted.disabled = false;
+          });
           if (item.kind === "unassigned_review") ownerActions(item, li, sub, [approve, approveNoted], changes);
         } else if (item.kind === "blocked") {
           // A human/gate block: show the reason and note, offer to clear it.
@@ -549,6 +554,11 @@ import { answerGate } from "./tools.js";
       }
 
       async function approveFromInbox(item, li, reviewNote) {
+        // Only the packet this row showed is approved here; a row without one
+        // says so rather than approve whatever stands now.
+        if (!li.dataset.evidenceRoot) {
+          return showRowError(rowOnScreen(item, li), "Nothing was handed to review yet, or it could not be loaded, so there is nothing to approve. Reload and try again.");
+        }
         const actions = li.querySelector(".ny-actions");
         const out = await submitReview(
           item.thread_id,

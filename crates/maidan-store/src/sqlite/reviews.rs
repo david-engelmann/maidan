@@ -359,6 +359,20 @@ pub async fn list_reviews(
     rows.iter().map(row_to_review).collect()
 }
 
+/// Whether the thread's evidence differs from what its latest packet pinned.
+/// `false` before any hand-off.
+async fn evidence_changed(pool: &SqlitePool, thread_id: ThreadId) -> Result<bool, StoreError> {
+    let mut tx = pool.begin().await?;
+    let changed = match super::review_packets::latest_root_in_tx(&mut tx, thread_id).await? {
+        Some(root) => super::review_packets::ensure_unchanged_in_tx(&mut tx, thread_id, &root)
+            .await
+            .is_err(),
+        None => false,
+    };
+    tx.rollback().await?;
+    Ok(changed)
+}
+
 pub async fn review_status(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -423,6 +437,13 @@ pub async fn review_status(
     .fetch_one(pool)
     .await?
     .get::<i64, _>("approvals");
+    // As the close gate does: approvals of evidence that has since changed
+    // are approvals of something else, so none of them counts.
+    let approvals = if approvals > 0 && evidence_changed(pool, thread_id).await? {
+        0
+    } else {
+        approvals
+    };
 
     let approvals_met = required_count == 0 || approvals >= required_count;
     Ok(ReviewStatus {

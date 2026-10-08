@@ -352,6 +352,20 @@ pub async fn list_reviews(
 /// Count the distinct qualifying approvals + fold in the requirement. An approval
 /// qualifies when: decision = approve, the reviewer is neither the thread's owner
 /// nor assignee (SoD), and — when a named reviewer set exists — is in it.
+/// Whether the thread's evidence differs from what its latest packet pinned.
+/// `false` before any hand-off.
+async fn evidence_changed(pool: &PgPool, thread_id: ThreadId) -> Result<bool, StoreError> {
+    let mut tx = pool.begin().await?;
+    let changed = match super::review_packets::latest_root_in_tx(&mut tx, thread_id).await? {
+        Some(root) => super::review_packets::ensure_unchanged_in_tx(&mut tx, thread_id, &root)
+            .await
+            .is_err(),
+        None => false,
+    };
+    tx.rollback().await?;
+    Ok(changed)
+}
+
 pub async fn review_status(pool: &PgPool, thread_id: ThreadId) -> Result<ReviewStatus, StoreError> {
     let required_count: i64 = sqlx::query(
         "SELECT COALESCE(
@@ -409,6 +423,13 @@ pub async fn review_status(pool: &PgPool, thread_id: ThreadId) -> Result<ReviewS
     .fetch_one(pool)
     .await?
     .get::<i64, _>("approvals");
+    // As the close gate does: approvals of evidence that has since changed
+    // are approvals of something else, so none of them counts.
+    let approvals = if approvals > 0 && evidence_changed(pool, thread_id).await? {
+        0
+    } else {
+        approvals
+    };
 
     let approvals_met = required_count == 0 || approvals >= required_count;
     Ok(ReviewStatus {

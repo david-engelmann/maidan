@@ -213,6 +213,11 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
         .link_thread_artifact(thread, LATE, worker)
         .await
         .expect("late evidence");
+    assert_eq!(
+        store.review_status(thread).await.expect("status").approvals,
+        0,
+        "the status agrees with the close: an approval of other evidence counts for nothing"
+    );
     let close = store
         .transition_thread(thread, reviewer, ThreadAction::Close)
         .await;
