@@ -72,6 +72,7 @@ async fn run_suite(store: &dyn Store) {
             requested_by: agent.id,
             prompt: "Human sign-off before an agent works this?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .expect("gate");
@@ -142,6 +143,7 @@ async fn run_decline_unblocks(store: &dyn Store) {
             requested_by: agent.id,
             prompt: "?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .expect("gate");

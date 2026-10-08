@@ -196,8 +196,11 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
 /// Authenticated by the `maidan_session` cookie (the OIDC browser flow), not a
 /// bearer token — so they carry no bearer capability, but they are NOT public:
 /// each is gated by the `session_auth` layer in `app.rs`.
-const SESSION_OPERATIONS: &[(&str, &str)] =
-    &[("GET", "/auth/session"), ("POST", "/auth/session/mint")];
+const SESSION_OPERATIONS: &[(&str, &str)] = &[
+    ("GET", "/auth/session"),
+    ("POST", "/auth/session/mint"),
+    ("POST", "/auth/approval-confirmations/confirm"),
+];
 
 /// Every OpenAPI operation is **classified**: a bearer op (so it appears in the
 /// capability map, enforced above), a session-cookie op, or an explicitly public

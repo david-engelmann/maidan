@@ -132,6 +132,7 @@ async fn ui_api_lists_and_answers_an_approval_gate() {
             requested_by: agent.id,
             prompt: "Ship it?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .unwrap();

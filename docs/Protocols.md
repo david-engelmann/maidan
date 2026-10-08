@@ -75,7 +75,7 @@ One model, one capability map, four primary transports plus the IT surfaces.
 | App OAuth | `/oauth/app/token` | Production | Installed apps, not MCP resource-server OAuth (RFC 8707). |
 | Metrics | `GET /metrics` + OTLP smoke in CI | Production | Prometheus text. Plug into the scrape they already run. |
 
-MCP tool count is **246**. There is **no** MCP create workspace or member. An agent creates a channel with `create_channel` and a thread with `create_thread` (both `workspace:write`). Workspace and member bootstrap stay on REST or the CLI; then MCP for claim / wait / post / `transition_thread`.
+MCP tool count is **247**. There is **no** MCP create workspace or member. An agent creates a channel with `create_channel` and a thread with `create_thread` (both `workspace:write`). Workspace and member bootstrap stay on REST or the CLI; then MCP for claim / wait / post / `transition_thread`.
 
 Every tool in `tools/list` carries `annotations`: a `title` and explicit `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, the same on `/mcp`, `/mcp/streamable`, `/mcp/worker` and `/mcp/reviewer`. `openWorldHint` is true only for a tool that itself reaches outside Maidan, such as `post_message` running a slash command's HTTP receiver or `search_messages` calling a remote embedding provider. The reason for each value is in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`, and `tool_annotations_contract` fails when a tool lacks a hint or disagrees with that table.
 
@@ -91,8 +91,7 @@ means per-resource updates through `subscriptions/listen`, which Maidan does
 not implement. `initialize` for every 2025 revision and `2024-11-05` still
 sets `resources.subscribe` and still serves `resources/subscribe` and
 `resources/unsubscribe`, with the same instructions, on `POST /mcp` and on
-`POST /mcp/streamable`. Every result carries `resultType: "complete"`; Maidan
-never answers `input_required`.
+`POST /mcp/streamable`. Every result carries `resultType: "complete"`, except one: `approval_decide`, when a model asks to accept a gate that needs a person, answers a `2026-07-28` client that declared URL-mode elicitation with `resultType: "input_required"` carrying a URL-mode `elicitation/create` (never a form) pointing at a one-time console link. Any other client gets the link in the result. The model cannot complete the confirmation itself.
 
 Every result of the six cacheable operations carries a `ttlMs` and a
 `cacheScope` (SEP-2549; `CacheableResult` in the `2026-07-28` schema). The

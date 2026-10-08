@@ -2,6 +2,7 @@
 //! bearer resolution against the store.
 
 pub mod access;
+pub mod approval_confirmation;
 pub mod authorization;
 pub mod capability;
 pub mod capability_set;

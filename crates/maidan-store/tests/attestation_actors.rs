@@ -227,6 +227,7 @@ async fn run_suite(store: &dyn Store) {
             requested_by: worker,
             prompt: "ship it?".into(),
             schema: None,
+            risk: Default::default(),
         }),
     )
     .await
