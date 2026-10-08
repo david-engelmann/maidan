@@ -126,6 +126,12 @@ The extension also loads [`gemini-extension.md`](../gemini-extension.md) as
 context for the model: the work loop, and that approvals are decided by a
 person signed in to Maidan's console, never in the chat.
 
+Give `MAIDAN_URL` an `https://` address for any instance that is not on your
+own machine. The header carries the token on every request, and the manifest
+cannot refuse a plain `http://` value, so a token sent to a remote instance
+over `http://` can be read and replayed by anyone on the path. Plain
+`http://127.0.0.1` is fine for an instance on the same machine.
+
 If either variable is unset when Gemini CLI starts, the server's URL or header
 keeps the literal `${...}` text and the connection fails, so `gemini mcp list`
 shows `maidan` as disconnected. A server with the same name in your own

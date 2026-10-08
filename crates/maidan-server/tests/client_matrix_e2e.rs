@@ -244,6 +244,7 @@ fn the_gemini_extension_names_the_users_own_instance_and_an_environment_token() 
 fn the_gemini_cli_recipe_documents_the_extension_install_and_its_fallback() {
     let doc = std::fs::read_to_string(repo().join("docs/Clients.md")).expect("docs/Clients.md");
     let recipe = section(&doc, "### Gemini CLI").expect("a Gemini CLI recipe");
+    let recipe = recipe.split_whitespace().collect::<Vec<_>>().join(" ");
     for needle in [
         "gemini extensions install https://github.com/david-engelmann/maidan",
         "gemini extensions list",
@@ -251,6 +252,8 @@ fn the_gemini_cli_recipe_documents_the_extension_install_and_its_fallback() {
         "MAIDAN_URL",
         "MAIDAN_TOKEN",
         "gemini-extension.json",
+        // The manifest cannot refuse plain http, so the recipe says to use https.
+        "`https://` address for any instance that is not on your own machine",
     ] {
         assert!(
             recipe.contains(needle),
