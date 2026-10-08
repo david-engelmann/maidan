@@ -83,6 +83,10 @@ Refs #1253
 - **Changed:** Each MCP request is placed in its revision. A `2026-07-28` request (that revision in `MCP-Protocol-Version`, or in `params._meta` with no header) must carry `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` in `_meta`, an `Mcp-Method` header, and an `Mcp-Name` header where the method names a target. A refusal is a JSON-RPC error with the request's id and HTTP 400: -32602 for missing `_meta` keys, -32020 for a missing or mismatched header, and -32022 with `requested` and `supported` for an unsupported revision. `initialize`, `ping`, `logging/setLevel`, `resources/subscribe` and `resources/unsubscribe` answer 404 with -32601 on that revision, as does an unknown method. Requests on earlier revisions are unchanged.
 - **Changed:** The official conformance suite passes 101 of 167 `2026-07-28` checks (from 78). The rest are fixture scenarios, features Maidan does not declare, and the optional tasks extension.
 
+### `maidan mcp-stdio` speaks only JSON-RPC on stdout
+
+- **Fixed:** The `maidan` CLI wrote its log lines to stdout. For `mcp-stdio`, stdout is the protocol, so every stdio client got lines that were not JSON-RPC messages, one more per tool call since the request log. Logs now go to stderr for every `maidan` command, and `every_line_on_stdout_is_a_json_rpc_message` fails if one reaches stdout. Found running Maidan under a desktop MCP client.
+
 ### Opening a group DM selects it and asks for three members
 
 - **Fixed:** The page accepted two members and left the new group DM unselected. It now refuses fewer than three before the request, says that refusal as a sentence, and selects the conversation the server returns, the same way a one-to-one DM is selected. A browser spec opens one and posts in it.
@@ -101,6 +105,11 @@ Refs #1253
 - **Changed:** When a tool's arguments do not parse (a wrong type, a malformed id, a missing field), the error names the argument at fault, as in `workspace_id: UUID parsing failed ...`. Before, a malformed id said only "UUID parsing failed". All 218 tools that parse arguments go through one helper, `tools::parse_args`. A check a tool makes after parsing (such as `upload_artifact` decoding its base64) words its own error.
 - **Fixed:** A malformed `sha256` on `get_artifact` and `get_artifact_metadata` is an invalid argument, not "resource not found".
 - **Added:** `scripts/mcp-inspector.sh` makes one valid call and one invalid call per tool group through the official Inspector. It fails if an invalid call's error does not name the argument it got wrong, and it fails if a new tool module has no probe.
+
+### Connecting each MCP client is documented and tested
+
+- **Added:** `docs/Clients.md` has a recipe for Claude Code, Cursor, Gemini CLI, GitHub Copilot CLI, a claude.ai custom connector and ChatGPT developer mode. It also covers the dev instance for clients that cannot send a token, the five-minute check a person makes before each release, and what counts as an attributed connect.
+- **Added:** `contracts/mcp-clients.json` is the client matrix as test config. `client_matrix_e2e` checks each row, checks that every client has a recipe, a matrix row and its release step, and connects to a real server with auth enabled the way each client authenticates.
 
 ### MCP search names what it found
 
