@@ -162,6 +162,8 @@ pub(crate) async fn transition_in_tx(
     // pointer/requirement exists.
     if action == ThreadAction::StartReview {
         result_gate_in_tx(tx, thread_id).await?;
+        // What the reviewers are handed, pinned before the state moves.
+        super::review_packets::record_in_tx(tx, thread_id, actor_id).await?;
     }
     if to_state == ThreadState::Closed {
         review_gate_in_tx(tx, thread_id).await?;

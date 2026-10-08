@@ -676,6 +676,18 @@ pub(super) async fn get_thread_version(
     Ok(content_json(&ThreadVersion { thread_id, version }))
 }
 
+/// What the thread's current review was handed, or null before any review.
+/// Twin of `GET /threads/{id}/review-packet`. `workspace:read`; thread access
+/// enforced.
+pub(super) async fn get_review_packet(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
+    let packet = store.latest_review_packet(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&packet))
+}
+
 /// The artifacts linked to a thread. Twin of `GET /threads/{id}/artifacts`.
 /// `workspace:read`; thread access enforced.
 pub(super) async fn list_thread_artifacts(

@@ -138,3 +138,112 @@ pub struct ReviewStatus {
     /// `approvals >= required_count`).
     pub approvals_met: bool,
 }
+
+/// The result a review packet pins: the hash of its canonical JSON and who
+/// produced it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ResultEvidence {
+    pub sha256: String,
+    pub produced_by: MemberId,
+}
+
+/// What a thread put in front of its reviewers when it went to review: its
+/// version, its result and its linked artifacts, each by content hash. No
+/// timestamps, so recomputing it from unchanged content gives the same root on
+/// either backend.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EvidenceManifest {
+    pub thread_id: ThreadId,
+    pub thread_version: i64,
+    pub result: Option<ResultEvidence>,
+    /// Linked artifacts' sha256 hashes, sorted.
+    pub artifacts: Vec<String>,
+}
+
+impl EvidenceManifest {
+    /// The evidence root: the sha256 of the manifest's canonical JSON (keys
+    /// sorted, no whitespace). A decision that names it names exactly this
+    /// evidence.
+    pub fn root(&self) -> Result<String, crate::signed_export::SignedExportError> {
+        let value = serde_json::to_value(self)
+            .map_err(|e| crate::signed_export::SignedExportError::Json(e.to_string()))?;
+        Ok(sha256_hex(&crate::signed_export::canonical_json(&value)?))
+    }
+}
+
+/// The sha256 of a result's canonical JSON, so the same result hashes the same
+/// however a backend ordered its keys.
+pub fn result_sha256(
+    result: &serde_json::Value,
+) -> Result<String, crate::signed_export::SignedExportError> {
+    Ok(sha256_hex(&crate::signed_export::canonical_json(result)?))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// An immutable record of one hand-off to review: who started the review, the
+/// manifest of what it was handed, and that manifest's root. Each
+/// `start_review` writes one; nothing updates it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReviewPacket {
+    pub id: uuid::Uuid,
+    pub thread_id: ThreadId,
+    pub requested_by: MemberId,
+    pub manifest: EvidenceManifest,
+    pub evidence_root: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod packet_tests {
+    use super::*;
+
+    fn manifest() -> EvidenceManifest {
+        EvidenceManifest {
+            thread_id: ThreadId(uuid::Uuid::nil()),
+            thread_version: 3,
+            result: Some(ResultEvidence {
+                sha256: result_sha256(&serde_json::json!({"b": 1, "a": [true, null]})).unwrap(),
+                produced_by: MemberId(uuid::Uuid::nil()),
+            }),
+            artifacts: vec!["aa".repeat(32)],
+        }
+    }
+
+    #[test]
+    fn a_result_hashes_the_same_whatever_its_key_order() {
+        let ordered = serde_json::json!({"a": [true, null], "b": 1});
+        let shuffled: serde_json::Value =
+            serde_json::from_str(r#"{"b":1,"a":[true,null]}"#).unwrap();
+        assert_eq!(
+            result_sha256(&ordered).unwrap(),
+            result_sha256(&shuffled).unwrap()
+        );
+    }
+
+    #[test]
+    fn the_root_moves_with_any_part_of_the_manifest() {
+        let base = manifest();
+        let root = base.root().unwrap();
+        assert_eq!(root.len(), 64);
+        assert_eq!(root, manifest().root().unwrap(), "deterministic");
+        let mut later = manifest();
+        later.thread_version = 4;
+        let mut other_result = manifest();
+        other_result.result = None;
+        let mut more = manifest();
+        more.artifacts.push("bb".repeat(32));
+        for changed in [later, other_result, more] {
+            assert_ne!(changed.root().unwrap(), root, "{changed:?}");
+        }
+    }
+}

@@ -1390,6 +1390,13 @@ with `get_thread_version` (REST `GET /threads/:id/version`). The database moves
 it on every such write, whichever path made it, so a decision can name the
 version it was shown.
 
+Each `start_review` records a review packet of what the reviewers are handed,
+which is the thread's version, its result's content hash and its linked
+artifacts' hashes, and the evidence root, the sha256 of that manifest's
+canonical JSON. `get_review_packet` (REST `GET /threads/:id/review-packet`)
+returns the latest. A packet is never changed. A later hand-off writes a new
+one.
+
 ### 5. Deliver the result
 
 `set_thread_result {thread_id, result}` attaches one structured JSON result to the

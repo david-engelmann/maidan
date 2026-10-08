@@ -1377,6 +1377,25 @@
         "reason": "confined to Maidan's database; no outbound call"
       }
     },
+    "get_review_packet": {
+      "title": "Get review packet",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.latest_review_packet"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
     "get_review_requirement": {
       "title": "Get review requirement",
       "readOnlyHint": {

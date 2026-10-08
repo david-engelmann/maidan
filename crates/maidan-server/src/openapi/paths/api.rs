@@ -1488,6 +1488,17 @@ pub fn clear_thread_block() {}
     ))]
 pub fn get_thread_version() {}
 
+/// A thread's review packet
+#[utoipa::path(get, path = "/threads/{id}/review-packet", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "What the thread's current review was handed, by content hash", body = ReviewPacket),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "No such thread, or it has not gone to review", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn get_review_packet() {}
+
 /// A thread's linked artifacts
 #[utoipa::path(get, path = "/threads/{id}/artifacts", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

@@ -1087,6 +1087,26 @@ pub async fn list_thread_artifacts(
     Ok(Json(state.store.list_thread_artifacts(thread_id).await?))
 }
 
+/// `GET /threads/:id/review-packet`: what the thread's current review was
+/// handed (its version, result hash and linked artifacts) and the root of that
+/// manifest, recorded at `start_review`. `404` before any review.
+/// `workspace:read` + thread access.
+pub async fn get_review_packet(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<ReviewPacket>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    state
+        .store
+        .latest_review_packet(thread_id)
+        .await?
+        .map(Json)
+        .ok_or(ApiError::NotFound)
+}
+
 /// A sha256 path segment in its one stored form, lowercase hex. A malformed
 /// one is a 400, not an artifact that does not exist.
 fn canonical_sha256(hex: &str) -> Result<String, ApiError> {
