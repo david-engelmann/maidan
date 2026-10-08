@@ -243,6 +243,17 @@ impl IntoResponse for ApiError {
             header::CONTENT_TYPE,
             header::HeaderValue::from_static("application/problem+json"),
         );
+        // RFC 9728 section 5.1: a protected resource signals the
+        // authorization server via WWW-Authenticate so clients discover
+        // it from the 401.
+        if status == StatusCode::UNAUTHORIZED {
+            response.headers_mut().insert(
+                header::WWW_AUTHENTICATE,
+                header::HeaderValue::from_static(
+                    "Bearer resource_metadata=\"/.well-known/oauth-protected-resource\"",
+                ),
+            );
+        }
         response
     }
 }

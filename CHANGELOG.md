@@ -15,7 +15,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Writes go only to operator-named repositories.** `MAIDAN_GITHUB_WRITE_REPOS` lists the only repositories the instance's GitHub token may write to. The client refuses any other write before a request is made, whichever workspace asks, and with no list it writes nowhere. A workspace's egress allowlist narrows the list and can never widen it.
 - **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to an app slug, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
-- **Mark-ready bases are the operator's.** `MAIDAN_MARK_READY_BASES` (comma-separated `owner/name=branch`) pins the base each listed repository's agent pull requests may be marked ready into, replacing the table compiled into `maidan-types`. A repository not listed is held to no base there, and the workspace egress allowlist decides its flips, as before. A malformed entry, a `prod` base or a repository listed twice refuses boot.
 
 ### DMs are opened by picking people, not pasting ids
 
@@ -1915,6 +1914,13 @@ Refs #1253
 ### Outbound GitHub calls can authenticate as a GitHub App
 
 - **Added:** with `MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` set (the key also from `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`), the change flow, comments, reviews and check runs authenticate as the app instead of with `MAIDAN_GITHUB_TOKEN`. Maidan signs an RS256 JWT with the app key, exchanges it for an installation token, and keeps the token until five minutes before it expires, with one exchange at a time. `MAIDAN_GITHUB_WRITE_REPOS` still bounds every write before a token is fetched. A partial app config or a key that does not parse refuses boot, naming the variable and never the value. A refused exchange is a misconfiguration; a rate-limited or failing one is retried. Without the app, `MAIDAN_GITHUB_TOKEN` works as before. Signing uses `ring`, not the `rsa` crate.
+
+### OAuth authorization server, phase one: discovery and metadata
+
+- **Added:** `GET /.well-known/oauth-authorization-server` (RFC 8414) and `GET /.well-known/oauth-protected-resource` (RFC 9728) discovery documents. The metadata advertises no grant type, endpoint, or registration method that is not served.
+- **Added:** `WWW-Authenticate: Bearer resource_metadata="..."` on 401 responses, so MCP clients discover the authorization server from the challenge (RFC 9728 §5.1).
+- **Added:** `docs/OAuth.md` with the seven-phase build plan (Next 23).
+- New code lives in `crates/maidan-server/src/oauth/`; the installed-app flow in `app_oauth.rs` is untouched.
 
 ## [412.0.0] — 2026-09-28
 
