@@ -109,6 +109,11 @@ pub(super) async fn remove_channel_member(
 ) -> Result<Value, McpError> {
     let a: ChannelMemberRefArgs = crate::tools::parse_args(args)?;
     let channel = own_channel(store, auth, ChannelId(a.channel_id)).await?;
+    // An id from no member of this workspace is answered as not found, so the
+    // call neither claims a removal nor writes an audit row naming it.
+    store
+        .get_member_in(channel.workspace_id, MemberId(a.member_id))
+        .await?;
     store
         .remove_channel_member_audited(
             channel.id,

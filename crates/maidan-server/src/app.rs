@@ -51,6 +51,17 @@ pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src
 /// Tested in `tests/health_e2e.rs` by binding the router to a TCP port
 /// and curling it; the binary's `main.rs` uses the same router.
 pub fn router(state: AppState) -> Router {
+    // `approval_decide` derives its confirmation links with the same secret
+    // the gate's `requestState` is signed with. Without one, its confirmation
+    // path refuses, as the answer route does.
+    if let Some(secret) = state.subscribe_resume_secret() {
+        state
+            .mcp
+            .set_approval_confirmations(maidan_mcp::ApprovalConfirmationKeys::new(
+                secret,
+                state.console_origin.clone(),
+            ));
+    }
     #[cfg(feature = "bootstrap")]
     let bootstrap = Router::new()
         .route("/workspaces", post(routes::create_workspace))
@@ -177,6 +188,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/{id}/wip-limit",
             put(routes::set_wip_limit).merge(get(routes::get_wip_limit)),
+        )
+        .route(
+            "/workspaces/{id}/approval-policy",
+            put(routes::set_approval_policy).merge(get(routes::get_approval_policy)),
         )
         .route(
             "/workspaces/{id}/delegation-policy",
@@ -1061,7 +1076,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/auth/session/mint",
-            post(session::mint_first_admin_token).layer(session_auth),
+            post(session::mint_first_admin_token).layer(session_auth.clone()),
+        )
+        // A model's confirmation link is spent here, by the signed-in person
+        // only: the session cookie, never a bearer. The handler checks the
+        // strict origin and the accepting credential itself.
+        .route(
+            "/auth/approval-confirmations/confirm",
+            post(routes::confirm_approval_gate).layer(session_auth),
         );
 
     let ui_api_read = Router::new()

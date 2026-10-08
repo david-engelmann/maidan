@@ -546,6 +546,59 @@ pub trait ApprovalGateStore: Send + Sync {
         state: ApprovalGateState,
         content: Option<&serde_json::Value>,
     ) -> Result<Option<ApprovalGate>, StoreError>;
+    /// [`Self::resolve_approval_gate`] for a decision a model made through
+    /// `approval_decide`: records the client it came through and that a model
+    /// asked, with `audit` in the same transaction when the gate resolved.
+    async fn resolve_approval_gate_audited(
+        &self,
+        id: ApprovalGateId,
+        resolved_by: MemberId,
+        state: ApprovalGateState,
+        content: Option<&serde_json::Value>,
+        via: &GateDecisionVia,
+        audit: crate::AuditFor<ApprovalGate>,
+    ) -> Result<Option<ApprovalGate>, StoreError>;
+    /// The workspace's `approval_decide` threshold; `low` when unset.
+    async fn get_approval_policy(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<ApprovalPolicy, StoreError>;
+    /// Set the threshold, or restore the default with `None`, audited.
+    async fn set_approval_policy_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        confirm_at: Option<ApprovalRisk>,
+        audit: crate::AuditFor<ApprovalPolicy>,
+    ) -> Result<ApprovalPolicy, StoreError>;
+    /// Issue a confirmation for `new`'s gate and member, or return the live
+    /// one (`false`): one live link per gate and member, whatever a model
+    /// does. `audit` is written only for a new one.
+    async fn issue_approval_confirmation(
+        &self,
+        new: &NewApprovalConfirmation,
+        audit: crate::AuditFor<ApprovalConfirmation>,
+    ) -> Result<(ApprovalConfirmation, bool), StoreError>;
+    /// The confirmation whose token hashes to `token_hash`, live or not.
+    async fn get_approval_confirmation_by_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<ApprovalConfirmation>, StoreError>;
+    /// The workspace's unused, unexpired confirmations at `now`.
+    async fn list_live_approval_confirmations(
+        &self,
+        workspace_id: WorkspaceId,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<ApprovalConfirmation>, StoreError>;
+    /// Spend a live confirmation bound to `workspace_id` and `member_id` and
+    /// accept its gate atomically, with `audit` when it accepted.
+    async fn confirm_approval_gate(
+        &self,
+        token_hash: &str,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        now: DateTime<Utc>,
+        audit: crate::AuditFor<ApprovalGate>,
+    ) -> Result<ConfirmOutcome, StoreError>;
 }
 
 #[async_trait]
