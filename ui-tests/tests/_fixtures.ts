@@ -5,6 +5,11 @@ import { resolve } from "path";
 export interface Fixtures {
   base_url: string;
   token: string;
+  /**
+   * The `maidan_session` cookie value of the operator's signed-in session (a
+   * person's sign-in, with no token behind it). Accepting a gate needs it.
+   */
+  session_cookie: string;
   /** A second member's token, for opening a gate the operator then answers. */
   requester_token: string;
   /** The operator with workspace:read + event:subscribe, for the Live bar. */

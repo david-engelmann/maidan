@@ -175,9 +175,10 @@ Readable per channel, per member and per run.
 
 A durable request for a human answer. `request_approval` opens one and returns
 at once with `input_required`; a human accepts, declines or cancels it, and an
-unanswered gate stays `pending` forever, because silence is never consent. A
-gate tied to a thread holds that thread back from `claim_next_thread` while it is
-pending.
+unanswered gate stays `pending` forever, because silence is never consent.
+Accepting needs a browser session the person signed in to, or a token holding
+`approval:grant`; a plain bearer token only declines or cancels. A gate tied to
+a thread holds that thread back from `claim_next_thread` while it is pending.
 
 ## Spawn budget
 

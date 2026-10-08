@@ -476,17 +476,15 @@ whose behalf, and under which grant — for refusals as well as successes.
 
 **Approvals can be borrowed, but never used on your own work.** A delegate
 holding a reviewer's grant can submit that reviewer's review, record a land-gate
-pass (the reviewer needs the `land_gate` skill), or answer an approval gate. But
-the gates judge the delegate as well as the member it acts as. A review or pass
-does not count if the delegate owns, holds or has ever worked the thread — and
-claiming a thread for a member counts as working it. Nobody can accept an
-approval gate they requested, directly or through a delegate (403). Declining or
-cancelling your own request is allowed. Accepting needs a human member or a
-deliberate grant. Either the member the token acts as is a human (a delegate
-acting for a human passes), or the token holds `approval:grant`, which an admin
-grants to a trusted automated approver. An agent without that grant can decline
-another agent's gate but never accept it (403), even though its
-`workspace:write` covers declining. Reviews and approval gates report the
+pass (the reviewer needs the `land_gate` skill), or decline or cancel an
+approval gate. But the gates judge the delegate as well as the member it acts
+as. A review or pass does not count if the delegate owns, holds or has ever
+worked the thread — and claiming a thread for a member counts as working it.
+Nobody can accept an approval gate they requested, directly or through a
+delegate (403). Declining or cancelling your own request is allowed. Accepting
+a gate is a property of the credential, not of the member (see [Asking a human
+mid-loop](#asking-a-human-mid-loop)), so a delegated token does not accept one:
+`approval:grant` is never delegatable. Reviews and approval gates report the
 delegate that actually acted as `actor_id`, `requested_actor_id` and
 `resolved_actor_id`; these are absent when the member acted for itself.
 
@@ -1668,9 +1666,27 @@ way to send work back.
 `request_approval {prompt, schema?, thread_id?}` opens a durable gate and returns
 `{status: "input_required", gate_id}` immediately. It does not block, and the
 server never calls back into your client — poll `get_approval_gate {gate_id}` for
-the answer. A human resolves the gate as accepted, declined, or cancelled over the
-`/ui` or `POST /approval-gates/:id/answer`; silence is never consent, so an
-unanswered gate stays `pending` indefinitely.
+the answer. A human resolves the gate as accepted, declined, or cancelled in the
+`/ui` console or with `POST /approval-gates/:id/answer`; silence is never
+consent, so an unanswered gate stays `pending` indefinitely.
+
+Accepting is a property of the credential. The token a person gives an agent
+names that person, so a human member behind the token proves nothing about who
+decided. Accepting needs one of:
+
+| Credential | How it is checked |
+|---|---|
+| A browser session the person signed in to through the identity provider | The `HttpOnly` `maidan_session` cookie of an OIDC sign-in, on `POST /ui/api/approval-gates/:id/answer`, with the strict origin check: `Sec-Fetch-Site: same-origin`, or with no `Sec-Fetch-Site` an `Origin` naming this host. A request that names no origin is refused, though the same cookie can still decline. The member must be human |
+| A token holding `approval:grant` | On either answer route, or a session made from that token. An admin grants it deliberately to an automated approver the workspace trusts; it is in no preset and never delegatable. The admin token `maidan init` prints holds every capability, this one included, so it accepts: keep it away from agents |
+
+A plain bearer token, a delegated token, and a session made from a token with
+`POST /auth/session/from-token` (anyone holding the token can make one) decline
+and cancel but do not accept. They get `403` with the detail
+`missing capability: approval:grant. Accepting an approval gate needs a browser
+session a person signed in to, or a token holding approval:grant. …`. Nobody
+accepts their own request, whatever the credential. A fresh confirmation the
+person gives outside the model, as a link, is planned with the model-callable
+`approval_decide` tool; until then those two are the only ways to accept.
 
 Pass `thread_id` to make it a claim gate: while that gate is pending,
 `claim_next_thread` hands the thread to nobody. That protects the task but not
