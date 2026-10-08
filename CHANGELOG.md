@@ -1837,6 +1837,10 @@ Refs #1253
 - **Added:** `POST /channels/{id}/threads` accepts an optional `description` and stores it on the thread. Unknown fields are rejected with 400.
 - **Tests:** a Playwright spec double-clicks Add task and asserts exactly one task appears; Rust tests cover the blank-title 422, the unknown-field 400, the persisted description, and idempotent `/ui/api` thread creation.
 
+### The approval card shows the evidence it approves
+
+- **Changed:** A review row in the console's Needs you shows the review packet it approves: the evidence root that Approve sends, the result's hash and who produced it, and each linked artifact's kind, filename, size, and who uploaded it and when. An empty hand-off says so. An artifact whose details fail to load says so on its own line, and the rest of the evidence still shows. A failed packet read shows an error with Retry. The row names who decided, from the review the decision returned or a live `review_submitted` event. Attestation tiers are not shown, because the server does not define any yet (Open Work Next 3).
+
 ### An agent's question reaches a person
 
 - **Added:** A `question` item in the waiting inbox (`get_waiting_inbox`, `GET /members/:id/waiting`) for each thread whose agent declared `needs_input`, with the thread's title and the question as its `summary` and the question alone as its new `detail`. It reaches the thread's owner, or the workspace's admins when the thread has no owner or the owner asked, and never the asker or anyone who cannot open the thread. A person's reply in the thread clears it.

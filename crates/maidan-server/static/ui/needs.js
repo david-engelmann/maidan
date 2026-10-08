@@ -1,5 +1,6 @@
 // @ts-check
 import { api, apiReadPath, apiWritePath, headers, token, uiReadPath, wid, writeApi } from "./api.js";
+import { formatBytes } from "./artifacts.js";
 import { fetchPendingGatesByThread, pendingGateViews, renderResult, renderTeam, renderThreadHeader, scheduleBoardRefresh, selectThread, selectedThreadId, setAttention, threadsById } from "./board.js";
 import { keyActivates, responseError, showError } from "./feedback.js";
 import { ago, authorId, personEl } from "./people.js";
@@ -255,14 +256,17 @@ import { answerGate } from "./tools.js";
           actions.append(approve, changes, approveNoted);
           // The approval names what this row showed: the packet as it stood
           // when the row was drawn. Until the row has it there is nothing to
-          // bind an approval to, so both approve buttons wait for it.
-          approve.disabled = true;
-          approveNoted.disabled = true;
-          reviewPacket(item.thread_id).then((packet) => {
-            if (packet) li.dataset.evidenceRoot = packet.evidence_root;
-            approve.disabled = false;
-            approveNoted.disabled = false;
-          });
+          // bind an approval to, so both approve buttons wait for it, and stay
+          // off while the evidence says why it is missing. Request changes
+          // needs no packet.
+          for (const b of [approve, approveNoted]) {
+            b.disabled = true;
+            b.dataset.needsRoot = "1";
+          }
+          const evidence = document.createElement("div");
+          evidence.className = "ny-evidence";
+          main.appendChild(evidence);
+          loadEvidence(item.thread_id, li, evidence);
           if (item.kind === "unassigned_review") ownerActions(item, li, sub, [approve, approveNoted], changes);
         } else if (item.kind === "blocked") {
           // A human/gate block: show the reason and note, offer to clear it.
@@ -482,14 +486,228 @@ import { answerGate } from "./tools.js";
       // a self-approval, including one made with a borrowed token.
       // What the thread was handed to review with, or null before any review.
       async function reviewPacket(tid) {
+        const read = await readReviewPacket(tid);
+        return read.packet || null;
+      }
+
+      // The packet as a result the row can tell apart: a packet, nothing
+      // handed over yet (404), or a read that failed and says why.
+      async function readReviewPacket(tid) {
+        let res;
         try {
-          const res = await api(apiReadPath(`/threads/${tid}/review-packet`), {
+          res = await api(apiReadPath(`/threads/${tid}/review-packet`), {
             headers: headers(),
             credentials: "include",
           });
-          return res.ok ? await res.json() : null;
         } catch (_e) {
-          return null;
+          return { why: "Could not load the evidence: the server did not answer" };
+        }
+        if (res.status === 404) return { none: true };
+        if (!res.ok) return { why: await responseError(res, "Could not load the evidence") };
+        try {
+          return { packet: await res.json() };
+        } catch (_e) {
+          return { why: "Could not load the evidence: the server sent something unreadable" };
+        }
+      }
+
+      // One artifact's metadata, or why it could not be read. Not cached: a
+      // failed read is retried the next time the row is drawn.
+      async function evidenceMeta(sha) {
+        try {
+          const res = await api(uiReadPath(`/artifacts/${encodeURIComponent(sha)}/meta`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) return { why: await responseError(res, "Could not load this artifact's details") };
+          return { meta: await res.json() };
+        } catch (_e) {
+          return { why: "Could not load this artifact's details: the server did not answer" };
+        }
+      }
+
+      function shortHash(h) {
+        return `${String(h || "").slice(0, 12)}…`;
+      }
+
+      function hashEl(h, cls) {
+        const code = document.createElement("code");
+        code.className = cls;
+        code.textContent = shortHash(h);
+        code.title = h || "";
+        return code;
+      }
+
+      // The evidence a review row is approving: the packet the thread was
+      // handed to review with, the result's hash and who produced it, then
+      // each linked artifact. The root it shows is the root Approve sends.
+      // One artifact that cannot be read says so in its own line; the rest
+      // of the evidence still shows.
+      async function loadEvidence(tid, li, box) {
+        box.replaceChildren();
+        box.dataset.state = "loading";
+        box.setAttribute("aria-busy", "true");
+        const read = await readReviewPacket(tid);
+        box.removeAttribute("aria-busy");
+        if (read.why) {
+          delete li.dataset.evidenceRoot;
+          box.dataset.state = "error";
+          const err = document.createElement("span");
+          err.className = "ny-ev-err";
+          err.setAttribute("role", "alert");
+          err.textContent = `${read.why}.`;
+          const retry = document.createElement("button");
+          retry.type = "button";
+          retry.className = "ghost ny-ev-retry";
+          retry.textContent = "Retry";
+          retry.onclick = () => loadEvidence(tid, li, box);
+          box.append(err, retry);
+          renderDecider(li);
+          return;
+        }
+        if (read.none) {
+          delete li.dataset.evidenceRoot;
+          box.dataset.state = "none";
+          const none = document.createElement("span");
+          none.className = "ny-ev-empty";
+          none.textContent = "Nothing was handed to review yet, so there is no evidence to show.";
+          box.appendChild(none);
+          renderDecider(li);
+          return;
+        }
+        const packet = read.packet;
+        const manifest = packet.manifest || {};
+        const shas = Array.isArray(manifest.artifacts) ? manifest.artifacts : [];
+        li.dataset.evidenceRoot = packet.evidence_root;
+        // The approve buttons wait for a root; a retry that loads one turns them on.
+        if (packet.evidence_root) {
+          li.querySelectorAll("button[data-needs-root]").forEach((b) => {
+            if (b instanceof HTMLButtonElement) b.disabled = false;
+          });
+        }
+        const head = document.createElement("div");
+        head.className = "ny-ev-head";
+        const root = hashEl(packet.evidence_root, "ny-ev-root");
+        root.dataset.root = packet.evidence_root;
+        head.append("Evidence ", root);
+        box.appendChild(head);
+        if (!manifest.result && !shas.length) {
+          box.dataset.state = "empty";
+          const empty = document.createElement("span");
+          empty.className = "ny-ev-empty";
+          empty.textContent = "No evidence was handed over: no result and no linked artifacts.";
+          box.appendChild(empty);
+          renderDecider(li);
+          return;
+        }
+        box.dataset.state = "ready";
+        const list = document.createElement("ul");
+        list.className = "ny-ev-list";
+        box.appendChild(list);
+        if (manifest.result) {
+          const r = document.createElement("li");
+          r.className = "ny-ev-item";
+          r.dataset.ev = "result";
+          const kind = document.createElement("span");
+          kind.className = "ny-ev-kind";
+          kind.textContent = "result";
+          r.append(kind, hashEl(manifest.result.sha256, "ny-ev-hash"), " produced by ", personEl(manifest.result.produced_by, { avatar: false, tag: true }));
+          list.appendChild(r);
+        }
+        const rows = shas.map((sha) => {
+          const a = document.createElement("li");
+          a.className = "ny-ev-item";
+          a.dataset.ev = "artifact";
+          a.dataset.sha = sha;
+          a.setAttribute("aria-busy", "true");
+          a.appendChild(hashEl(sha, "ny-ev-hash"));
+          list.appendChild(a);
+          return a;
+        });
+        const metas = await Promise.all(shas.map(evidenceMeta));
+        shas.forEach((sha, i) => renderEvidenceArtifact(rows[i], sha, metas[i]));
+        renderDecider(li);
+      }
+
+      // Who uploaded the bytes and when, from the workspace's own metadata.
+      // Who linked them to the task is on the bearer tree only: the session
+      // proxy serves no read of a thread's links, and every page read goes
+      // through it.
+      function renderEvidenceArtifact(row, sha, read) {
+        row.removeAttribute("aria-busy");
+        row.replaceChildren();
+        if (read.why) {
+          row.classList.add("ny-ev-failed");
+          const err = document.createElement("span");
+          err.className = "ny-ev-err";
+          err.textContent = `${read.why}.`;
+          row.append(hashEl(sha, "ny-ev-hash"), " ", err);
+          return;
+        }
+        const meta = read.meta;
+        const kind = document.createElement("span");
+        kind.className = "ny-ev-kind";
+        kind.textContent = String(meta.kind || "artifact").replace(/_/g, " ");
+        const name = document.createElement("span");
+        name.className = "ny-ev-name";
+        name.textContent = meta.filename || "unnamed";
+        const size = document.createElement("span");
+        size.className = "ny-ev-size";
+        size.textContent = formatBytes(Number(meta.size_bytes));
+        row.append(kind, name, size, hashEl(sha, "ny-ev-hash"));
+        if (meta.uploaded_by) {
+          const by = document.createElement("span");
+          by.className = "ny-ev-by";
+          by.append("uploaded by ", personEl(meta.uploaded_by, { avatar: false, tag: true }), ` ${ago(meta.created_at)}`);
+          row.appendChild(by);
+        }
+      }
+
+      // Who decided, for each task this page saw a verdict on: from the
+      // review a decision returned, or a review_submitted event on the
+      // socket. Keyed by task, then reviewer, since a task can need two. A
+      // page loaded later does not know, because no session route lists
+      // reviews.
+      const decisions = new Map();
+
+      function noteDecision(tid, review) {
+        if (!tid || !review || !review.reviewer_id) return;
+        const byReviewer = decisions.get(tid) || new Map();
+        byReviewer.set(review.reviewer_id, {
+          reviewer_id: review.reviewer_id,
+          actor_id: review.actor_id || null,
+          decision: review.decision,
+        });
+        decisions.set(tid, byReviewer);
+        for (const row of document.querySelectorAll("#needs-you-list .ny-item")) {
+          if (row instanceof HTMLElement && row.dataset.threadId === tid) renderDecider(row);
+        }
+      }
+
+      // A live frame for a verdict on a task with a row here names who gave it.
+      function noteDecisionFrame(frame) {
+        if (!frame || frame.kind !== "review_submitted") return;
+        noteDecision(frame.thread_id, frame);
+      }
+
+      function renderDecider(li) {
+        const box = li.querySelector(".ny-evidence");
+        const byReviewer = decisions.get(li.dataset.threadId);
+        if (!box || !byReviewer) return;
+        box.querySelectorAll(".ny-ev-decider").forEach((el) => el.remove());
+        for (const d of byReviewer.values()) {
+          const line = document.createElement("div");
+          line.className = "ny-ev-decider";
+          line.dataset.decision = d.decision || "";
+          line.dataset.reviewer = d.reviewer_id;
+          line.append(
+            personEl(d.reviewer_id, { avatar: false }),
+            d.decision === "request_changes" ? " requested changes" : " approved",
+          );
+          if (d.actor_id && d.actor_id !== d.reviewer_id) {
+            line.append(", submitted by ", personEl(d.actor_id, { avatar: false }));
+          }
+          box.appendChild(line);
         }
       }
 
@@ -522,6 +740,13 @@ import { answerGate } from "./tools.js";
           return { ok: false, why: "Review not recorded: could not reach the server. Check the connection and try again." };
         }
         if (!res.ok) return { ok: false, why: await responseError(res, "Review not recorded") };
+        let review = null;
+        try {
+          review = await res.json();
+        } catch (_e) {
+          /* recorded; the decider line waits for the live event */
+        }
+        noteDecision(tid, review);
         return { ok: true };
       }
 
@@ -710,4 +935,4 @@ import { answerGate } from "./tools.js";
         document.getElementById("collab-panel").hidden = !selectedThreadId;
       }
 
-export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadNeedsYou, needsYou, needsYouGen, needsYouRow, nyKey, renderNeedsYou, renderThreadActions, reviewPacket, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };
+export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadEvidence, loadNeedsYou, needsYou, needsYouGen, needsYouRow, noteDecisionFrame, nyKey, renderNeedsYou, renderThreadActions, reviewPacket, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };

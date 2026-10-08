@@ -459,6 +459,18 @@
       .ny-title:hover { text-decoration: underline; }
       .ny-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; margin-top: 0.15rem; font-size: 0.78rem; color: var(--muted); }
       .ny-warn { color: var(--err); }
+      /* The evidence a review row approves: the packet's root, then one line per item. */
+      .ny-evidence { margin-top: 0.3rem; font-size: 0.76rem; color: var(--muted); }
+      .ny-evidence:empty { display: none; }
+      .ny-ev-head { font-weight: 600; }
+      .ny-evidence code { font-size: 0.72rem; color: var(--ink); background: #f4f4f5; border-radius: 0.25rem; padding: 0 0.25rem; }
+      .ny-ev-list { list-style: none; margin: 0.15rem 0 0; padding: 0; display: grid; gap: 0.1rem; }
+      .ny-ev-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.45rem; }
+      .ny-ev-kind { font-weight: 600; color: var(--ink); }
+      .ny-ev-name { color: var(--ink); overflow-wrap: anywhere; }
+      .ny-ev-err { color: var(--err); }
+      .ny-ev-retry { margin-left: 0.4rem; padding: 0.1rem 0.5rem; font-size: 0.74rem; }
+      .ny-ev-decider { margin-top: 0.2rem; color: #15803d; font-weight: 600; }
       .ny-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
       .ny-actions button { padding: 0.28rem 0.7rem; font-size: 0.8rem; }
       .ny-actions .done-note { color: #15803d; font-weight: 650; font-size: 0.8rem; }

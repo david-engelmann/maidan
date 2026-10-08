@@ -65,6 +65,20 @@ export interface Fixtures {
   lab_member_id: string;
   /** Rae Reviewer, a second human, so the member picker offers a human. */
   rae_member_id: string;
+  /** Rae's grant (workspace:read, thread:transition), so a second reviewer can decide. */
+  rae_token: string;
+  /** The `proof` channel: tasks handed to review with evidence linked, for the approval card. */
+  proof_channel_id: string;
+  /** A result plus a screenshot and a transcript; only looked at. */
+  proof_view_thread_id: string;
+  /** A result plus the transcript; a spec approves it. */
+  proof_decide_thread_id: string;
+  /** Needs the operator and Rae; Rae approves it while the operator watches. */
+  proof_live_thread_id: string;
+  /** Handed over with no result and no artifact. */
+  proof_empty_thread_id: string;
+  proof_screenshot_sha: string;
+  proof_transcript_sha: string;
   /** A second workspace: its Visitor (human), Outsider (agent) and the Visitor's token. */
   other_workspace_id: string;
   other_member_id: string;
