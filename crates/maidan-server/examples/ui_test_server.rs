@@ -12,6 +12,10 @@
 //! Env: `UI_TEST_PORT` (default 8899), `UI_TEST_FIXTURES` (default
 //! `ui-tests/.fixtures.json`). Run via `cargo run --example ui_test_server`.
 
+// The fixtures `json!` literal outgrew the default macro recursion limit once
+// the member-picker and feedback fixtures both landed.
+#![recursion_limit = "256"]
+
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
