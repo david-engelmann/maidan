@@ -2288,8 +2288,17 @@ pub trait MentionInboxStore: Send + Sync {
 #[async_trait]
 pub trait SocialStore: Send + Sync {
     async fn cast_vote(&self, new: NewVote) -> Result<(), StoreError>;
-    /// Cast a vote and append its `VoteCast` event atomically.
-    async fn cast_vote_with_event(&self, new: NewVote) -> Result<StoredEvent, StoreError>;
+    /// Cast a vote and append its events atomically: a `VoteRetracted` for the
+    /// opposing verdict it replaced, if any, then its `VoteCast`.
+    async fn cast_vote_with_event(&self, new: NewVote) -> Result<Vec<StoredEvent>, StoreError>;
+    /// Take back the member's vote of `kind`, appending `VoteRetracted`
+    /// atomically **iff** a row was removed. `(removed, event)`.
+    async fn retract_vote_with_event(
+        &self,
+        message_id: MessageId,
+        member_id: MemberId,
+        kind: VoteKind,
+    ) -> Result<(bool, Option<StoredEvent>), StoreError>;
     async fn list_votes_for_message(&self, message_id: MessageId) -> Result<Vec<Vote>, StoreError>;
 
     async fn add_reaction(&self, new: NewReaction) -> Result<(), StoreError>;

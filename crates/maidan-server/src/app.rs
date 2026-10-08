@@ -590,7 +590,9 @@ pub fn router(state: AppState) -> Router {
         .route("/messages/{id}/mentions", post(routes::create_mention))
         .route(
             "/messages/{id}/votes",
-            post(routes::cast_vote).merge(get(routes::list_votes)),
+            post(routes::cast_vote)
+                .merge(get(routes::list_votes))
+                .merge(delete(routes::retract_vote)),
         )
         .route(
             "/messages/{id}/reactions",

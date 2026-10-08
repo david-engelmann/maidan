@@ -31,6 +31,12 @@ Refs #1253
 - **Changed:** accepting an approval gate (`POST /approval-gates/{id}/answer`, `accept`) needs the member the token acts as to be a human, or the token to hold the new `approval:grant` capability. A delegate acting for a human passes. Before, `workspace:write` was enough, so one worker agent could accept another's gate with no human involved. Declining and cancelling are unchanged.
 - **Added:** `approval:grant`, an authority capability in no preset and never delegatable, for an automated approver an admin deliberately trusts.
 
+### A member holds one verdict on a message, and can take a vote back
+
+- **Changed:** `approve` and `request_changes` on a message replace each other for the same member. `ack` stands beside either. Before, a member could hold both verdicts at once, and a tally counted them twice. Migration 0143 keeps the later verdict where both existed and adds a unique index so it cannot recur.
+- **Added:** `DELETE /messages/{id}/votes` with `{"kind": …}` and the MCP tool `retract_vote` take back the caller's own vote. A second retract changes nothing.
+- **Added:** The `vote_retracted` event, appended when a vote is taken back or replaced, before the replacing `vote_cast`. It federates like `vote_cast`.
+
 ### A blocked agent reaches a human
 
 - **Added:** `set_thread_block` takes an optional `note` explaining why the thread is blocked. Setting a block emits `ThreadBlocked` (non-federatable, like `BlockedResolved`).

@@ -3370,7 +3370,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "cast_vote",
-            "description": "Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence.",
+            "description": "Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. You hold at most one verdict per message: approve replaces your request_changes and the other way round, and ack stands beside either. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence. retract_vote takes a vote back.",
             "annotations": {
                 "title": "Cast vote",
                 "readOnlyHint": false,
@@ -3384,6 +3384,25 @@ pub fn catalog() -> Vec<Value> {
                     "message_id": {"type": "string", "format": "uuid"},
                     "kind": {"type": "string", "enum": ["approve", "request_changes", "ack"], "description": "approve, request_changes, or ack. Any other kind is rejected"},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "optional confidence weight for weighted consensus"}
+                },
+                "required": ["message_id", "kind"]
+            }
+        }),
+        json!({
+            "name": "retract_vote",
+            "description": "Take back your own vote of one kind on a message. Removing a vote you do not hold changes nothing. Returns whether a vote was removed.",
+            "annotations": {
+                "title": "Retract vote",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message_id": {"type": "string", "format": "uuid"},
+                    "kind": {"type": "string", "enum": ["approve", "request_changes", "ack"], "description": "the kind of your vote to take back"}
                 },
                 "required": ["message_id", "kind"]
             }

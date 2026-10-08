@@ -340,7 +340,7 @@
       },
       "destructiveHint": {
         "value": true,
-        "reason": "ON CONFLICT (message_id, member_id, kind) DO UPDATE overwrites the caller's prior confidence; no un-vote tool"
+        "reason": "a verdict deletes the caller's opposing verdict, and ON CONFLICT (message_id, member_id, kind) DO UPDATE overwrites the caller's prior confidence"
       },
       "idempotentHint": {
         "value": false,
@@ -3446,6 +3446,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "decrypts with the server's at-rest key; no outbound call"
+      }
+    },
+    "retract_vote": {
+      "title": "Retract vote",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "retract_vote_with_event DELETEs the caller's vote row and appends VoteRetracted"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "removes only the caller's own vote, the sibling of cast_vote"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a second call finds no row, removes nothing and appends no event"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store"
       }
     },
     "revoke_delegation_grant": {

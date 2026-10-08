@@ -8490,6 +8490,38 @@ mod tests {
                 "{kind} was not rejected as an unknown vote kind: {refused:?}"
             );
         }
+        // A verdict replaces the caller's opposing one; a retract takes it back once.
+        server
+            .call_tool(
+                &auth,
+                "cast_vote",
+                &json!({ "message_id": msg.id.0, "kind": "request_changes" }),
+            )
+            .await
+            .unwrap();
+        let held = store.list_votes_for_message(msg.id).await.unwrap();
+        assert_eq!(held.len(), 1, "one verdict per member: {held:?}");
+        assert_eq!(held[0].kind, VoteKind::RequestChanges);
+        for removed in [true, false] {
+            let out = server
+                .call_tool(
+                    &auth,
+                    "retract_vote",
+                    &json!({ "message_id": msg.id.0, "kind": "request_changes" }),
+                )
+                .await
+                .unwrap();
+            let text = out["content"][0]["text"].as_str().unwrap();
+            assert_eq!(
+                serde_json::from_str::<Value>(text).unwrap()["removed"],
+                removed
+            );
+        }
+        assert!(store
+            .list_votes_for_message(msg.id)
+            .await
+            .unwrap()
+            .is_empty());
         server
             .call_tool(
                 &auth,
@@ -8554,6 +8586,7 @@ mod tests {
         let kinds: Vec<EventKind> = events.iter().map(|e| e.kind).collect();
         for expected in [
             EventKind::VoteCast,
+            EventKind::VoteRetracted,
             EventKind::ReactionAdded,
             EventKind::ReactionRemoved,
             EventKind::MessagePinned,
@@ -8562,6 +8595,16 @@ mod tests {
         ] {
             assert!(kinds.contains(&expected), "{expected:?}: {kinds:?}");
         }
+        // The switch retracted approve, the retract removed request_changes,
+        // and the second retract removed nothing.
+        assert_eq!(
+            kinds
+                .iter()
+                .filter(|k| **k == EventKind::VoteRetracted)
+                .count(),
+            2,
+            "{kinds:?}"
+        );
         // …and an MCP post with an @mention now publishes MentionRecorded for the mentioned member.
         assert!(
             kinds.contains(&EventKind::MentionRecorded),

@@ -476,6 +476,9 @@ fn apply_route_defaults(
     if path.contains("/reactions") && method == "POST" {
         return b.json(&json!({ "emoji": "thumbsup" }));
     }
+    if path.contains("/votes") && method == "DELETE" {
+        return b.json(&json!({ "kind": "approve" }));
+    }
     if path.contains("/votes") && method == "POST" {
         return b.json(&json!({ "kind": "approve" }));
     }

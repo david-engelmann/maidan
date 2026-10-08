@@ -37,6 +37,7 @@
     "maidan.event.thread_state_changed/1",
     "maidan.event.usage_reported/1",
     "maidan.event.vote_cast/1",
+    "maidan.event.vote_retracted/1",
     "maidan.event.wait_timed_out/1",
     "maidan.event.workspace_created/1",
     "maidan.slash.wasi-invoke/1",

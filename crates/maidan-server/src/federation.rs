@@ -677,6 +677,21 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             member_id,
             vote_kind,
         },
+        VoteRetracted {
+            occurred_at,
+            workspace_id: _,
+            thread_id,
+            message_id,
+            member_id,
+            vote_kind,
+        } => VoteRetracted {
+            occurred_at,
+            workspace_id,
+            thread_id,
+            message_id,
+            member_id,
+            vote_kind,
+        },
         ReactionAdded {
             occurred_at,
             workspace_id: _,

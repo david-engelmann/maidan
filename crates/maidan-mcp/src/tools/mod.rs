@@ -400,6 +400,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "tombstone_message" => Ok(MESSAGE_POST),
         "record_mention"
         | "cast_vote"
+        | "retract_vote"
         | "add_reaction"
         | "remove_reaction"
         | "pin_message"
@@ -860,6 +861,7 @@ async fn enforce_channel_access(
         "edit_message"
         | "record_mention"
         | "cast_vote"
+        | "retract_vote"
         | "add_reaction"
         | "remove_reaction"
         | "list_reactions"
@@ -1111,6 +1113,7 @@ pub async fn dispatch(
         "seed_from_message" => seed::seed_from_message(server, auth, args).await,
         "record_mention" => message::record_mention(server, args).await,
         "cast_vote" => social::cast_vote(server, auth, args).await,
+        "retract_vote" => social::retract_vote(server, auth, args).await,
         "add_reaction" => social::add_reaction(server, auth, args).await,
         "remove_reaction" => social::remove_reaction(server, auth, args).await,
         "list_reactions" => social::list_reactions(store, args).await,

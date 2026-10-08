@@ -194,6 +194,62 @@ pub async fn run_full_roundtrip(store: &dyn Store) {
     assert_eq!(votes.len(), 1);
     assert_eq!(votes[0].confidence, Some(0.4), "re-cast updated confidence");
 
+    // One verdict per member per message: request_changes replaces approve,
+    // retracting it first in the log; ack stands beside either.
+    let events = store
+        .cast_vote_with_event(NewVote {
+            message_id: msg1.id,
+            member_id: bot.id,
+            kind: VoteKind::RequestChanges,
+            confidence: None,
+        })
+        .await
+        .expect("change verdict");
+    let kinds: Vec<_> = events.iter().map(|e| e.kind).collect();
+    assert_eq!(kinds, [EventKind::VoteRetracted, EventKind::VoteCast]);
+    assert_eq!(
+        events[0].opened_payload().expect("payload")["vote_kind"],
+        "approve"
+    );
+    let events = store
+        .cast_vote_with_event(NewVote {
+            message_id: msg1.id,
+            member_id: bot.id,
+            kind: VoteKind::Ack,
+            confidence: None,
+        })
+        .await
+        .expect("ack");
+    assert_eq!(events.len(), 1, "an ack replaces nothing");
+    let mut held: Vec<_> = store
+        .list_votes_for_message(msg1.id)
+        .await
+        .expect("list votes")
+        .into_iter()
+        .map(|v| v.kind.as_str())
+        .collect();
+    held.sort_unstable();
+    assert_eq!(held, ["ack", "request_changes"]);
+
+    // A retract removes the caller's vote once, with one event.
+    let (removed, event) = store
+        .retract_vote_with_event(msg1.id, bot.id, VoteKind::RequestChanges)
+        .await
+        .expect("retract");
+    assert!(removed);
+    assert_eq!(event.expect("event").kind, EventKind::VoteRetracted);
+    let (removed, event) = store
+        .retract_vote_with_event(msg1.id, bot.id, VoteKind::RequestChanges)
+        .await
+        .expect("retract again");
+    assert!(!removed && event.is_none(), "a second retract is a no-op");
+    let votes = store
+        .list_votes_for_message(msg1.id)
+        .await
+        .expect("list votes");
+    assert_eq!(votes.len(), 1);
+    assert_eq!(votes[0].kind, VoteKind::Ack);
+
     let reference = store
         .add_reference(NewReference {
             src_kind: RefSide::Message,

@@ -1677,6 +1677,19 @@ pub fn cast_vote() {}
     ))]
 pub fn list_votes() {}
 
+/// Take back your vote
+#[utoipa::path(delete, path = "/messages/{id}/votes", tag = "messages",
+    params(("id" = Uuid, Path, description = "Message id")),
+    request_body = RetractVote,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn retract_vote() {}
+
 /// React to a message
 #[utoipa::path(post, path = "/messages/{id}/reactions", tag = "messages",
     params(("id" = Uuid, Path, description = "Message id")),
