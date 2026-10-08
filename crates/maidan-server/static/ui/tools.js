@@ -972,6 +972,7 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
       // The link approval_decide gave a person: #confirm-approval=<gate id>.<token>.
       // The token stays in the fragment, so it never reaches a server log.
       function confirmationFromHash() {
+        if (typeof location === "undefined") return null;
         const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
         const value = hash.startsWith("confirm-approval=") ? hash.slice("confirm-approval=".length) : null;
         if (!value) return null;

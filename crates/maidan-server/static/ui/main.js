@@ -874,7 +874,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         registerBrowserPush(authorId());
         // A confirmation link lands here, #confirm-approval=<gate>.<token>,
         // once the session has named its workspace.
-        if (location.hash.startsWith("#confirm-approval=")) openTool("approvals");
+        if (typeof location !== "undefined" && location.hash.startsWith("#confirm-approval=")) openTool("approvals");
       });
 
     
