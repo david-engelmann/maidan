@@ -14,6 +14,7 @@ as the [docs site](https://david-engelmann.github.io/maidan/) (mdBook).
 | [Integration](Integration.md) | How an agent or client connects, authenticates, subscribes and runs the waiter loop. **Start here** |
 | [Capability Map](Capability%20Map.md) | What each capability string allows, and the contract files that pin it |
 | [Protocols](Protocols.md) | MCP, A2A, REST, WebSocket or webhooks: which to use |
+| [Clients](Clients.md) | Connecting each MCP client, the release check by hand, and what counts as an attributed connect |
 | [Client Contract](Client%20Contract.md) | What the SDKs promise, operation by operation |
 | [Framework Integrations](Framework%20Integrations.md) | Wiring Maidan into agent frameworks over MCP |
 | [Result Delivery](Result%20Delivery.md) | How a waiter's result reaches GitHub and Slack |
