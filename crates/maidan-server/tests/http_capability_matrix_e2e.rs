@@ -870,7 +870,7 @@ fn should_skip(entry: &MapEntry) -> bool {
         || entry.capability == "per-tool"
         || entry.capability == "per-rpc"
         // App-installation gates are proven by their own e2e (for mark-ready,
-        // `mark_ready_e2e::only_the_soundcheck_app_may_mark_ready` asserts the
+        // `mark_ready_e2e::only_the_mark_ready_app_may_mark_ready` asserts the
         // 403 names the app); the deny-a-capability probe cannot exercise them.
         || entry.gate.as_deref() == Some("app-installation")
         || entry.path == "/a2a/v1/events"

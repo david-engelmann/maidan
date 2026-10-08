@@ -206,14 +206,11 @@ pub async fn submit_review(
     let thread_id = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     // The reviewer is the caller; an owner/assignee may submit but it won't count.
-    let note = body
-        .note
-        .as_deref()
-        .map(str::trim)
-        .filter(|n| !n.is_empty());
+    let note = maidan_types::review_note(body.decision, body.note.as_deref())
+        .map_err(ApiError::BadRequest)?;
     let submission = state
         .store
-        .submit_review(thread_id, auth.member_id, body.decision, note)
+        .submit_review(thread_id, auth.member_id, body.decision, note.as_deref())
         .await?;
     for stored in submission.events() {
         super::publish_stored(&state, stored.clone()).await;

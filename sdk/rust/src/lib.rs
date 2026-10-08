@@ -41,9 +41,14 @@ use serde_json::{json, Value};
 mod error;
 pub mod models;
 mod subscribe;
+mod usage;
 pub use error::{MaidanError, Problem, PROBLEM_BASE, PROBLEM_TYPES};
 pub use models::*;
 pub use subscribe::{Follow, Subscription};
+pub use usage::{
+    normalize_usage, usd_micros, NormalizedUsage, PriceSnapshot, TokenUsage, UsageError,
+    UsageEvidence, UsageOptions, USAGE_PROVIDERS,
+};
 
 /// The client version, tracked independently of the server.
 pub const VERSION: &str = "0.3.0";

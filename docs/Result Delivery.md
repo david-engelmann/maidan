@@ -308,7 +308,7 @@ API below, and an operator — not the agent — fixes an unblessed target.
 
 ## The change flow (`pi.change.result/1` → `github_branch`)
 
-A coding seat (Pi) edits a checkout but holds no GitHub write credential. It
+A coding seat (the producer's coding agent) edits a checkout but holds no GitHub write credential. It
 returns the commit it started from and a diff; Maidan, holding the operator's
 token, makes the commit and opens a **draft** pull request, and answers in the
 Slack thread the work started in.
@@ -318,9 +318,9 @@ envelope fields, Maidan reads:
 
 | Field | How Maidan uses it |
 |---|---|
-| `status` | `changed`, `no_change`, `seat_error` or `content_blocked` (Pi found a secret in the diff, title or summary, and sent none of it). Only `changed` writes to GitHub. Any other status records the `github_branch` target as skipped, with the status in the reason, makes no GitHub call, and the Slack reply says the status. |
+| `status` | `changed`, `no_change`, `seat_error` or `content_blocked` (the producer found a secret in the diff, title or summary, and sent none of it). Only `changed` writes to GitHub. Any other status records the `github_branch` target as skipped, with the status in the reason, makes no GitHub call, and the Slack reply says the status. |
 | `base_sha` | The full SHA (40 or 64 hex) the diff applies to, captured before any edit. The commit's parent. **Never** taken from thread metadata or the branch. |
-| `branch` | `pi.branch`, echoed verbatim. Must equal the target's `branch`, or the delivery is refused. |
+| `branch` | The branch the producer worked on, echoed verbatim. Must equal the target's `branch`, or the delivery is refused. |
 | `diff` | A git diff that applies with `git apply` to `base_sha`. |
 | `title`, `summary` | Optional. The commit subject and the draft pull request's title, and the commit and pull request body; mentions in `summary` are defused. Without `title`, Maidan uses the thread's opening message (the `!change` instructions), first line, cut at a word to 72 characters (the branch name if there is none). Without `summary`, the body names the Maidan thread and the commit SHA. Missing text never stops a delivery. |
 
@@ -344,7 +344,7 @@ blessed:
    (`GET /repos/{repo}/contents/{path}?ref={base_sha}`), applies the hunks, and
    refuses when one does not match. Supported: modified, added, deleted and
    renamed text files (a rename may arrive as a delete plus an add, which is
-   how Pi sends it, or as a git rename), `100644`/`100755` modes, `\ No newline at end of file`,
+   how some producers send it, or as a git rename), `100644`/`100755` modes, `\ No newline at end of file`,
    hunks that moved. Refused: binary patches, copies, symlinks, submodules,
    quoted paths, paths outside the repository or under `.git`.
 4. Commits through the Git Data API: one blob per changed file, a tree on the

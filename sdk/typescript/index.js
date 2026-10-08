@@ -503,4 +503,6 @@ function qs(query) {
   return s ? `?${s}` : "";
 }
 
+export { UsageError, USAGE_PROVIDERS, normalizeUsage, usdMicros } from "./usage.js";
+
 export default Client;

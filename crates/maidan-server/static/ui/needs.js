@@ -1,7 +1,7 @@
 // @ts-check
 import { api, apiReadPath, apiWritePath, headers, token, uiReadPath, wid, writeApi } from "./api.js";
 import { fetchPendingGatesByThread, pendingGateViews, renderResult, renderTeam, renderThreadHeader, scheduleBoardRefresh, selectThread, selectedThreadId, setAttention, threadsById } from "./board.js";
-import { keyActivates, responseError, setStatus } from "./feedback.js";
+import { keyActivates, responseError, showError } from "./feedback.js";
 import { ago, authorId, personEl } from "./people.js";
 import { sessionMemberId } from "./session.js";
 import { NY_KINDS, NY_RETRY_MAX_MS, NY_RETRY_MIN_MS } from "./state.js";
@@ -10,8 +10,9 @@ import { answerGate } from "./tools.js";
 
 
       // ---- Needs you -------------------------------------------------------
-      // The decisions agents are waiting on, from the waiting inbox of this member:
-      // reviews requested from them and open approval gates. Each row carries
+      // The decisions and actions agents are waiting on, from the waiting inbox
+      // of this member: reviews requested from them, open approval gates, and
+      // tasks blocked until a person clears them. Each row carries
       // its own buttons. The count also lands in the tab title and favicon, so
       // a waiting agent is visible from another tab.
       let needsYou = [];
@@ -181,7 +182,8 @@ import { answerGate } from "./tools.js";
         // A gate row leads with its question: that is what the human answers.
         // A review row leads with the task. (The task of a gate shows as context.)
         const isGate = item.kind === "open_gate";
-        title.textContent = isGate ? item.summary : (th && th.title) || item.summary;
+        const block = item.kind === "blocked" ? splitBlockSummary(item.summary) : null;
+        title.textContent = isGate ? item.summary : (th && th.title) || (block && block.title) || item.summary;
         if (item.thread_id) {
           title.onclick = () => selectThread(item.thread_id, (th && th.title) || title.textContent);
           keyActivates(title, "link"); // it opens the task
@@ -212,14 +214,19 @@ import { answerGate } from "./tools.js";
           changes.type = "button";
           changes.className = "ghost";
           changes.textContent = "Request changes";
-          changes.onclick = () => askForChanges(item, li);
-          actions.append(approve, changes);
-          if (item.kind === "unassigned_review") ownerActions(item, li, sub, approve, changes);
+          changes.onclick = () => askForNote(item, li, "request_changes");
+          const approveNoted = document.createElement("button");
+          approveNoted.type = "button";
+          approveNoted.className = "ghost";
+          approveNoted.textContent = "Approve with note";
+          approveNoted.onclick = () => askForNote(item, li, "approve");
+          actions.append(approve, changes, approveNoted);
+          if (item.kind === "unassigned_review") ownerActions(item, li, sub, [approve, approveNoted], changes);
         } else if (item.kind === "blocked") {
           // A human/gate block: show the reason and note, offer to clear it.
-          // The item.summary already carries "title — blocked (reason): note".
+          // The title is already the row's title, so it is not repeated here.
           const ctx = document.createElement("span");
-          ctx.textContent = item.summary;
+          ctx.textContent = block ? block.why : item.summary;
           sub.appendChild(ctx);
           sub.appendChild(when);
           const clear = document.createElement("button");
@@ -235,19 +242,19 @@ import { answerGate } from "./tools.js";
                 credentials: "include",
               });
             } catch (_e) {
-              showRowError(li, "Could not unblock: the server did not answer. Try again.");
+              showRowError(rowOnScreen(item, li), "Could not unblock: the server did not answer. Try again.");
               return;
             }
             if (!res.ok) {
-              showRowError(li, await responseError(res, "Could not unblock"));
+              showRowError(rowOnScreen(item, li), await responseError(res, "Could not unblock"));
               return;
             }
-            // Remove from state and re-render; schedule a board refresh so
-            // the card loses its blocked marker.
-            const idx = needsYou.findIndex((i) => i === item);
-            if (idx >= 0) needsYou.splice(idx, 1);
-            renderNeedsYou();
-            if (typeof scheduleBoardRefresh === "function") scheduleBoardRefresh();
+            // dropRow marks the row as leaving. A row that showed an error is
+            // otherwise kept across a re-render, so after a failed try and a
+            // good one the unblocked row stayed up under its old error.
+            dropRow(item, rowOnScreen(item, li));
+            // The card loses its blocked marker on the next board load.
+            scheduleBoardRefresh();
           };
           actions.append(clear);
         } else {
@@ -285,6 +292,16 @@ import { answerGate } from "./tools.js";
         return li;
       }
 
+      // A blocked item's summary is "title — blocked (reason): note", or
+      // "title — blocked: reason" with no note. The title leads the row, and
+      // the rest says why. A title of a channel not loaded yet comes from here.
+      function splitBlockSummary(summary) {
+        const s = String(summary || "");
+        const at = s.indexOf(" — blocked");
+        if (at < 0) return { title: s, why: s };
+        return { title: s.slice(0, at), why: s.slice(at + 3) };
+      }
+
       // Who handed the work off and what they reported, from the result. A
       // review can start with no result on a thread with no review gate; the
       // row says so, so nobody approves an empty hand-off without knowing.
@@ -316,9 +333,9 @@ import { answerGate } from "./tools.js";
       // requirement it may close the task itself, which the board then shows
       // as closed without review. With one, sending the work back is the
       // owner's move, and naming a reviewer is how it gets approved.
-      async function ownerActions(item, li, sub, approve, changes) {
+      async function ownerActions(item, li, sub, approvals, changes) {
         if (!(await viewerOwns(item.thread_id))) return;
-        approve.remove();
+        approvals.forEach((b) => b.remove());
         const rs = await reviewStatus(item.thread_id);
         if (rs && rs.required_count === 0) {
           const close = document.createElement("button");
@@ -440,9 +457,9 @@ import { answerGate } from "./tools.js";
         return { ok: true };
       }
 
-      async function approveFromInbox(item, li) {
+      async function approveFromInbox(item, li, reviewNote) {
         const actions = li.querySelector(".ny-actions");
-        const out = await submitReview(item.thread_id, "approve", undefined, actions.querySelectorAll("button"));
+        const out = await submitReview(item.thread_id, "approve", reviewNote, actions.querySelectorAll("button"));
         const row = rowOnScreen(item, li);
         const liveActions = row.querySelector(".ny-actions");
         if (!out.ok) {
@@ -478,17 +495,32 @@ import { answerGate } from "./tools.js";
         if (item.thread_id === selectedThreadId) renderThreadHeader();
       }
 
-      function askForChanges(item, li) {
-        if (li.querySelector(".ny-note")) return;
+      // A note row for a verdict. A change request says what to change, so
+      // there is nothing to send until the note does; an approval's note is
+      // optional.
+      function askForNote(item, li, decision) {
+        const open = li.querySelector(".ny-note");
+        if (open) {
+          if (open.dataset.decision === decision) return;
+          open.remove();
+        }
+        const changes = decision === "request_changes";
         const row = document.createElement("div");
         row.className = "ny-note";
+        row.dataset.decision = decision;
         const input = document.createElement("input");
-        input.placeholder = "What should change? The agent reads this.";
-        input.setAttribute("aria-label", "Change request note");
+        input.placeholder = changes
+          ? "What should change? The agent reads this."
+          : "Anything the agent should know? Optional.";
+        input.setAttribute("aria-label", changes ? "Change request note" : "Approval note");
         const send = document.createElement("button");
         send.type = "button";
         send.className = "primary";
-        send.textContent = "Send back";
+        send.textContent = changes ? "Send back" : "Approve";
+        send.disabled = changes;
+        input.oninput = () => {
+          send.disabled = changes && !input.value.trim();
+        };
         // The note is the decision for this row now, so Approve stops being the
         // filled button until the note is dismissed.
         li.querySelectorAll(".ny-actions button.primary").forEach((b) => {
@@ -497,7 +529,13 @@ import { answerGate } from "./tools.js";
         });
         const go = async () => {
           if (send.disabled) return;
-          const out = await submitReview(item.thread_id, "request_changes", input.value.trim(), send);
+          const note = input.value.trim() || undefined;
+          if (!changes) {
+            row.remove();
+            li.querySelectorAll("[data-restore-primary]").forEach((b) => b.classList.add("primary"));
+            return approveFromInbox(item, li, note);
+          }
+          const out = await submitReview(item.thread_id, "request_changes", note, send);
           if (!out.ok) {
             return showRowError(rowOnScreen(item, li), out.why);
           }
@@ -536,7 +574,7 @@ import { answerGate } from "./tools.js";
           approve.onclick = async () => {
             const out = await submitReview(th.id, "approve", undefined, approve);
             if (!out.ok) {
-              return setStatus(out.why, "err");
+              return showError(out.why);
             }
             await loadNeedsYou();
             renderThreadHeader();
@@ -550,7 +588,7 @@ import { answerGate } from "./tools.js";
           close.onclick = async () => {
             const out = await closeThread(th.id, close);
             if (!out.ok) {
-              return setStatus(out.why, "err");
+              return showError(out.why);
             }
             scheduleBoardRefresh();
           };
@@ -565,4 +603,4 @@ import { answerGate } from "./tools.js";
         document.getElementById("collab-panel").hidden = !selectedThreadId;
       }
 
-export { approveFromInbox, askForChanges, closeThread, dropRow, fillReviewContext, loadNeedsYou, needsYou, needsYouGen, needsYouRow, nyKey, renderNeedsYou, renderThreadActions, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };
+export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadNeedsYou, needsYou, needsYouGen, needsYouRow, nyKey, renderNeedsYou, renderThreadActions, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };

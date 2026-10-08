@@ -2028,7 +2028,7 @@ costs more than the shared cache saves.
 ### The change flow runs on the maintainer's PAT, behind hard guards in code (2026-10-03)
 
 **Decision.** A Slack `!change` becomes a draft PR.
-- Pi codes without any GitHub credential.
+- The coding agent codes without any GitHub credential.
 - Maidan commits the diff to the named branch and opens the draft PR.
 - The credential is David's personal PAT, as `MAIDAN_GITHUB_TOKEN`, with `contents:write` and `pull_requests:write` on the allowed repos.
 
@@ -2043,13 +2043,14 @@ The token is an admin's, so the guards live in Maidan's code, not in GitHub sett
 - The token is never logged.
 
 Agent PRs are authored as David, so nothing may depend on his approval. The
-flow stops at a draft PR, and Soundcheck asks Maidan to mark it ready. The
-shared Maidan runs in Pi's dev-tools compose stack, built from `main`, not
-on a hosted platform.
+flow stops at a draft PR, and the mark-ready app (the client the operator
+designates; see `MAIDAN_MARK_READY_APP_ID` in Production) asks Maidan to mark
+it ready. The shared Maidan runs in the maintainer's own dev-tools compose
+stack, built from `main`, not on a hosted platform.
 
 **Relaxation, 2026-10-06 (maidan#1253).** GitHub refuses
-`markPullRequestReadyForReview` to Soundcheck's fine-grained PAT, so the
-maintainer ruled: Maidan does the flip; Soundcheck stays without
+`markPullRequestReadyForReview` to the mark-ready app's fine-grained PAT, so
+the maintainer ruled: Maidan does the flip; the mark-ready app stays without
 `contents:write`. `POST /operator/github/mark-ready` flips a draft to ready,
 and only that:
 - only a draft whose head matches `^feature/agent-[a-z0-9][a-z0-9-]*$` and
@@ -2061,8 +2062,9 @@ and only that:
   through. The read and the PATCH are still two GitHub calls with no
   conditional write, so a retarget inside that one round trip is the accepted
   residual;
-- callable only by the Soundcheck app (the caller's app installation must
-  resolve to the `soundcheck` slug);
+- callable only by the mark-ready app (at first, the caller's app
+  installation had to resolve to a fixed app slug; on 2026-10-07 the gate
+  moved to the app id in `MAIDAN_MARK_READY_APP_ID`, below);
 - audited like other egress (`github.mark_ready` with repo, PR, head, base
   and outcome), and unlike other egress it audits refused calls too: this
   endpoint is the sole gate for a PR mutation.
@@ -2074,10 +2076,11 @@ app identity, not on a member capability, so no capability in the map would be
 honest: none of the known capabilities fits, inventing one would be
 speculative, and enforcing a redundant capability would add deployment
 coupling with no security gain. The map entry therefore carries
-`"gate": "app-installation"` with `"capability": "app:soundcheck"`, the
+`"gate": "app-installation"` with `"capability": "app:mark-ready"`, the
 contract test validates the marker, the capability matrix e2e skips it, and
-`mark_ready_e2e::only_the_soundcheck_app_may_mark_ready` proves the gate
-(member, other-app and missing tokens all 403 naming Soundcheck).
+`mark_ready_e2e::only_the_mark_ready_app_may_mark_ready` proves the gate
+(member, other-app and missing tokens all refused, the 403 naming the
+operator-designated app).
 
 **Audit failure, 2026-10-06 (repair).** The endpoint's audit is best-effort
 and never fails the request, matching the established pattern:
@@ -2086,8 +2089,8 @@ store failure). Refused calls are audited anyway because this endpoint is the
 sole gate for a PR mutation; other egress paths skip auth-failure audits.
 
 **Alternatives.** A GitHub App installation token (kept as optional Open Work
-Next 25); credentials in Pi's sandbox (refused: Pi holds no write credential
-by design).
+Next 25); credentials in the coding agent's sandbox (refused: the coding agent
+holds no write credential by design).
 
 **Status.** Open Work Next 1 (the delivery) and Next 2 (the from-`main`
 instance).
@@ -2098,7 +2101,7 @@ instance).
 - Hosting is hybrid, open source first. Self-hosting is the product. A hosted demo instance serves directory reviewers, with uptime and seeding obligations, and listing copy says plainly that production is self-hosted.
 - The OAuth authorization server is on hold. The program is lanes 1 to 7. Lane 8 is parked, not cancelled, and is revisited after the fast track ships and measures. The Claude full-OAuth and ChatGPT listings wait on that revisit. The Muse API-key and Claude static-headers paths are unaffected.
 - No enterprise track until the consumer lanes measure. Lane 12 stays parked, and a real customer in one ecosystem reopens its track early.
-- Muse shadows Dawn. Lane 6 waits on the outcome of the maintainer's Dawn submission, with its materials prepared. A Dawn rejection on the shared API-key auth model re-scopes Lane 6 to OAuth with PKCE or parks it. A rejection on Dawn-specific grounds changes nothing.
+- Muse shadows an earlier submission. Lane 6 waits on the outcome of the maintainer's earlier submission of another app, with its materials prepared. A rejection of that submission on the shared API-key auth model re-scopes Lane 6 to OAuth with PKCE or parks it. A rejection on grounds specific to that app changes nothing.
 
 On 2026-10-04 the maintainer added three rulings.
 - Nothing is published or submitted to any directory, catalog or registry until the maintainer says go, and every submission is a version with a validation record first. Lane 9's hint and title pass moves ahead of every submission.
@@ -2125,7 +2128,7 @@ On 2026-10-04 the maintainer added three rulings.
 **Decision.** The maintainer gave a go on Meta's Connector Terms §3.1(c), which license Meta to use connector content and user interaction data (queries, tool calls and outputs, which for Maidan include who approved what) to improve Muse.
 - The submission uses per-user scoped tokens, never one shared admin bearer, since Meta's guideline §4.4 asks each user's data to be isolated.
 - It lists a thin tool set Meta can classify as read, write or sensitive write, and uses a dedicated reviewer account.
-- It still shadows the outcome of the maintainer's Dawn submission, and it still needs Next 14's validation record and the maintainer's go to submit.
+- It still shadows the outcome of the maintainer's earlier submission of another app, and it still needs Next 14's validation record and the maintainer's go to submit.
 
 **Why.** The terms were the one blocking question for the lane. With the data use accepted, the remaining work is the shape Meta's guidelines already require.
 
@@ -2138,7 +2141,7 @@ On 2026-10-04 the maintainer added three rulings.
 - A client writes nowhere until it is given that list. Production builds it from the variable; with the variable unset, every GitHub write is refused and a boot warning says so. Reads still work.
 - Mark-ready is bound to `MAIDAN_MARK_READY_APP_ID`. App ids are unique across the instance, while app slugs are unique only within a workspace.
 
-**Why.** The mark-ready review of 2026-10-07 found that any workspace admin could create an app slugged `soundcheck` and allowlist any repository the token reached. That is harmless on a single-tenant stack and an escalation on any shared or demo instance. Failing closed when unset means a new deployment cannot inherit the hole by omission.
+**Why.** The mark-ready review of 2026-10-07 found that any workspace admin could create an app with the designated app's slug and allowlist any repository the token reached. That is harmless on a single-tenant stack and an escalation on any shared or demo instance. Failing closed when unset means a new deployment cannot inherit the hole by omission.
 
 **Record.** Open Work Next 8. Production names both variables.
 

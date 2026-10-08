@@ -2,14 +2,25 @@
 import { base } from "./api.js";
 
 
-      // Tell the user what to fix without stopping the page. The same message
-      // again refreshes the one on screen rather than stacking a copy, and
-      // says it again: a screen reader announces a change to an alert's
-      // text, not a new timer, and a change undone in the same task can be
-      // dropped, so the text is cleared now and put back in a later task.
-      function showError(message) {
+      // The page's one feedback surface. `severity` says how loud a message
+      // is: an "error" (the default) or a "warning" interrupts, as an alert;
+      // a "success" says something worked, politely, and leaves sooner. The
+      // region itself is a polite live region, so even a reader that misses
+      // the alert role hears the line.
+      //
+      // The same message again refreshes the one on screen rather than
+      // stacking a copy, and says it again: a screen reader announces a
+      // change to an alert's text, not a new timer, and a change undone in
+      // the same task can be dropped, so the text is cleared now and put back
+      // in a later task.
+      const SEVERITIES = ["error", "warning", "success"];
+
+      function showError(message, severity = "error") {
+        const level = SEVERITIES.includes(severity) ? severity : "error";
         const region = document.getElementById("toasts");
-        let toast = [...region.children].find((t) => t.dataset.message === message);
+        let toast = [...region.children].find(
+          (t) => t.dataset.message === message && t.dataset.severity === level,
+        );
         if (toast) {
           const text = toast.firstElementChild;
           clearTimeout(Number(toast.dataset.restore));
@@ -17,9 +28,10 @@ import { base } from "./api.js";
           toast.dataset.restore = String(setTimeout(() => (text.textContent = message), 100));
         } else {
           toast = document.createElement("div");
-          toast.className = "toast";
-          toast.setAttribute("role", "alert");
+          toast.className = `toast toast-${level}`;
+          toast.setAttribute("role", level === "success" ? "status" : "alert");
           toast.dataset.message = message;
+          toast.dataset.severity = level;
           const text = document.createElement("span");
           text.textContent = message;
           const close = document.createElement("button");
@@ -34,18 +46,13 @@ import { base } from "./api.js";
         }
         const shown = toast;
         clearTimeout(Number(toast.dataset.timer));
-        toast.dataset.timer = String(setTimeout(() => dropToast(shown), 8000));
+        toast.dataset.timer = String(setTimeout(() => dropToast(shown), level === "success" ? 5000 : 8000));
       }
 
       function dropToast(toast) {
         clearTimeout(Number(toast.dataset.timer));
         clearTimeout(Number(toast.dataset.restore));
         toast.remove();
-      }
-
-      function setStatus(msg, cls) {
-        document.getElementById("status").textContent = msg;
-        document.getElementById("status").className = cls || "";
       }
 
       function renderState(el, message, cls = "muted") {
@@ -68,15 +75,7 @@ import { base } from "./api.js";
       async function responseError(res, prefix = "") {
         let detail = "";
         try {
-          const raw = await res.text();
-          if (raw) {
-            try {
-              const problem = JSON.parse(raw);
-              detail = problem.detail || problem.error || problem.message || problem.title || "";
-            } catch (_e) {
-              detail = raw;
-            }
-          }
+          detail = problemDetail(await res.text());
         } catch (_e) {
           /* The status is still useful when the response body cannot be read. */
         }
@@ -88,25 +87,56 @@ import { base } from "./api.js";
         return `${lead}${said}`;
       }
 
+      // Which credential the page acts with, from GET /me: "session" (a
+      // sign-in, whose capabilities are fixed), "bearer" (a token, or the
+      // session made from one), "delegated" (a token working as a member
+      // under a delegation grant), or null until the page knows. An error
+      // sentence names the credential the person actually holds.
+      let identityMode = null;
+
+      function setIdentityMode(mode) {
+        identityMode = mode === "session" || mode === "bearer" || mode === "delegated" ? mode : null;
+      }
+export { setIdentityMode };
+
       // Say what went wrong and what to do about it. The server body is read
       // only so a missing capability can be named. It is not shown, and neither
       // is the status code. A 409 is a rule refusing the action.
-      function humanError(status, detail) {
+      function humanError(status, detail, mode = identityMode) {
         const needs = /(?:capability|needs?|requires?)[^a-z]*([a-z]+:[a-z_]+)/i.exec(detail || "");
-        if (status === 401) return "Your token or session was not accepted. Use Change to set a working one";
-        // Minting itself needs token:admin, so pointing at Tokens would loop.
-        if (status === 403 && needs && needs[1] === "token:admin")
-          return "Your token is not allowed to do this; it needs token:admin. Ask a workspace admin for a token (maidan init prints the first admin token)";
-        if (status === 403)
-          return needs
-            ? `Your token is not allowed to do this; it needs ${needs[1]}. Mint a token with it in Tokens`
-            : "Your token is not allowed to do this. Mint one with the right capability in Tokens";
+        if (status === 401) {
+          // A session cannot be fixed with Change alone: it ended, so sign in.
+          if (mode === "session") return "Your session was not accepted; it may have ended. Sign in again, or use Change to paste a token";
+          if (mode === "delegated") return "This delegated token was not accepted; it or its grant may have ended. Use Change to set a working one";
+          if (mode === "bearer") return "Your token was not accepted. Use Change to set a working one";
+          return "Your token or session was not accepted. Use Change to set a working one";
+        }
+        if (status === 403) return refusal(needs ? needs[1] : null, mode);
         if (status === 404) return "Not found. It may have been deleted, or it belongs to another workspace";
         if (status === 409) return "Refused";
         if (status === 413) return "That is too large for the server to accept";
         if (status === 429) return "Too many requests. Wait a moment, then try again";
         if (status >= 500) return "The server hit an error. Try again; if it keeps failing, check the server log";
         return "The request was not accepted";
+      }
+
+      // A 403 in the words of the credential that was refused. Minting itself
+      // needs token:admin, so pointing at Tokens would loop. A session cannot
+      // mint at all, and a delegated token holds only what its grant lends.
+      function refusal(cap, mode) {
+        const who = mode === "session" ? "Your session" : mode === "delegated" ? "This delegated token" : "Your token";
+        const lead = cap ? `${who} is not allowed to do this; it needs ${cap}.` : `${who} is not allowed to do this.`;
+        if (cap === "token:admin")
+          return `${lead} Ask a workspace admin for a token (maidan init prints the first admin token)`;
+        if (mode === "session")
+          return cap
+            ? `${lead} A session cannot mint tokens, so use Change to paste a token that has it`
+            : `${lead} Use Change to paste a token with the right capability`;
+        if (mode === "delegated")
+          return cap
+            ? `${lead} It holds only what its grant lends: ask for a grant that includes it`
+            : `${lead} It holds only what its grant lends: ask for a grant with the right capability`;
+        return cap ? `${lead} Mint a token with it in Tokens` : `${lead} Mint one with the right capability in Tokens`;
       }
 
       // A list row that acts on click is also a button for the keyboard: it
@@ -166,4 +196,24 @@ import { base } from "./api.js";
           : `Could not reach the server at ${base()}. Check that it is running and that API base is right.`;
       }
 
-export { appendLive, clearLoading, humanError, keyActivates, liveCount, renderState, responseError, setLoading, setOut, setStatus, setWsStatus, showError, toggleLiveFeed, unreachable };
+      // The part of an error reply worth reading for a capability name: the
+      // problem's detail, or the raw text when it is not JSON.
+      function problemDetail(raw) {
+        if (!raw) return "";
+        try {
+          const problem = JSON.parse(raw);
+          return problem.detail || problem.error || problem.message || problem.title || "";
+        } catch (_e) {
+          return raw;
+        }
+      }
+
+      // The same sentence as responseError, for a reply whose body the caller
+      // has already read (the raw output pane shows it).
+      function textError(status, raw, prefix = "") {
+        const detail = String(problemDetail(raw)).replace(/\s+/g, " ").trim().slice(0, 500);
+        const lead = prefix ? `${prefix}: ` : "";
+        return `${lead}${humanError(status, detail)}`;
+      }
+
+export { appendLive, clearLoading, humanError, keyActivates, liveCount, renderState, responseError, setLoading, setOut, setWsStatus, showError, textError, toggleLiveFeed, unreachable };

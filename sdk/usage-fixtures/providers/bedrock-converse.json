@@ -1,0 +1,35 @@
+{
+  "name": "bedrock-converse",
+  "provider": "bedrock-converse",
+  "source": "https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.html",
+  "recorded": "verbatim",
+  "note": "The Converse guide's example response, with the message text left out. A Converse response names no model, so it is passed in.",
+  "options": {
+    "model": "anthropic.claude-sonnet-5-5"
+  },
+  "response": {
+    "stopReason": "end_turn",
+    "usage": {
+      "inputTokens": 125,
+      "outputTokens": 60,
+      "totalTokens": 185
+    },
+    "metrics": {
+      "latencyMs": 1175
+    }
+  },
+  "expected": {
+    "model": "anthropic.claude-sonnet-5-5",
+    "tokens": {
+      "input": 125,
+      "output": 60,
+      "cache_read": 0,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "aws.bedrock"
+    }
+  },
+  "retrieved": "2026-10-07"
+}

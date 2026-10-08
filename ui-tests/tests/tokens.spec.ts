@@ -18,7 +18,7 @@ test("minting a token shows the secret once and revoke ends it", async ({ page, 
   await page.fill("#token-label", "ui-spec");
   await page.fill("#token-caps", "workspace:read");
   await page.click("#mint-member-token");
-  await expect(page.locator("#status")).toHaveText("Token minted");
+  await expect(page.locator("#toasts .toast-success", { hasText: "Token minted" })).toHaveAttribute("role", "status");
 
   const secret = await page.locator("#token").inputValue();
   expect(secret.length).toBeGreaterThan(20);
@@ -30,7 +30,7 @@ test("minting a token shows the secret once and revoke ends it", async ({ page, 
     el.value = "";
   });
   await page.click("#revoke-token");
-  await expect(page.locator("#status")).toHaveText("Token revoked");
+  await expect(page.locator("#toasts .toast-success", { hasText: "Token revoked" })).toHaveAttribute("role", "status");
 
   const me = await request.get(`${fx.base_url}/me`, {
     headers: { Authorization: `Bearer ${secret}` },

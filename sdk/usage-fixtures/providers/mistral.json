@@ -1,0 +1,36 @@
+{
+  "name": "mistral",
+  "provider": "mistral",
+  "source": "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching",
+  "recorded": "verbatim",
+  "note": "The guide's example: 'The billable uncached input tokens are prompt_tokens - cached_tokens.'",
+  "response": {
+    "id": "a4db7c530548494f8ff9986bcd2a7737",
+    "created": 1773840064,
+    "model": "mistral-large-latest",
+    "usage": {
+      "prompt_tokens": 1013,
+      "total_tokens": 1043,
+      "completion_tokens": 30,
+      "prompt_tokens_details": {
+        "cached_tokens": 1008
+      }
+    },
+    "object": "chat.completion",
+    "choices": []
+  },
+  "expected": {
+    "model": "mistral-large-latest",
+    "tokens": {
+      "input": 5,
+      "output": 30,
+      "cache_read": 1008,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "mistral_ai"
+    }
+  },
+  "retrieved": "2026-10-04"
+}

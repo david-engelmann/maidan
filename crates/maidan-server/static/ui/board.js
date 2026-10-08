@@ -725,7 +725,10 @@ import { loadMessages } from "./thread.js";
         if (channelId && channelId !== selectedChannelId) {
           focusChannel(channelId);
         } else if (!channelId) {
+          // The lookup can answer after the person has moved on to another
+          // channel or task; a late answer must not drag the board back.
           channelIdForThread(id).then((found) => {
+            if (selectedThreadId !== id) return;
             if (found && found !== selectedChannelId) focusChannel(found);
           });
         }

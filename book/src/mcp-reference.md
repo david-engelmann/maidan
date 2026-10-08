@@ -3604,7 +3604,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `submit_review`
 
-**Submit review.** Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. Every verdict appends a review_submitted event, and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.
+**Submit review.** Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. request_changes needs a note saying what to change; approve may carry one. Every verdict appends a review_submitted event (the note stays in the review history), and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -3621,6 +3621,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "note": {
+      "description": "what to change, required on request_changes; optional on approve",
       "type": "string"
     },
     "thread_id": {

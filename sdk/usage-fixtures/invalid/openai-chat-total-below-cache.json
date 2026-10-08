@@ -1,0 +1,16 @@
+{
+  "name": "openai-chat-total-below-cache",
+  "provider": "openai-chat",
+  "note": "An inclusive total smaller than the cache tiers it includes is refused, not stored as a negative count.",
+  "response": {
+    "model": "gpt-6-astra",
+    "usage": {
+      "prompt_tokens": 100,
+      "completion_tokens": 1,
+      "prompt_tokens_details": {
+        "cached_tokens": 400
+      }
+    }
+  },
+  "expected_error": "smaller than the cache tiers"
+}

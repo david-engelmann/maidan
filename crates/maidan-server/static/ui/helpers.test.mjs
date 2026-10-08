@@ -116,10 +116,11 @@ Object.defineProperty(globalThis, "navigator", {
 
 const { apiReadPath, apiWritePath, requireBearer } = await import("./api.js");
 const { humanError, showError } = await import("./feedback.js");
+const { setIdentityMode } = await import("./feedback.js");
 const { trimImageCache } = await import("./artifacts.js");
 const { registerBrowserPush } = await import("./push.js");
 const session = await import("./session.js");
-const { loadServerAuth, refreshSession, signOutPostsLogout } = session;
+const { credentialMode, loadServerAuth, refreshSession, signOutPostsLogout } = session;
 
 const BASE = "http://127.0.0.1:8080";
 
@@ -307,6 +308,66 @@ describe("board page helpers", { concurrency: 1 }, () => {
       assert.equal(said.includes(String(status)), false);
     }
   });
+
+  test("credentialMode reads session, bearer, or delegated from /me", () => {
+    assert.equal(credentialMode(null), null);
+    assert.equal(credentialMode({ is_bearer: false, delegation_grant_id: null }), "session");
+    assert.equal(credentialMode({ is_bearer: true, delegation_grant_id: null }), "bearer");
+    assert.equal(credentialMode({ is_bearer: true, delegation_grant_id: "grant_1" }), "delegated");
+  });
+
+  test("humanError names the credential in use and never says token to a session", () => {
+    const refusals = [
+      [401, "unauthorized"],
+      [403, "requires token:admin"],
+      [403, "needs capability thread:write"],
+      [403, "forbidden"],
+      [403, "This needs a bearer token. A signed-in session cannot call it."],
+    ];
+    for (const [status, detail] of refusals) {
+      const said = humanError(status, detail, "session");
+      assert.match(said, /^Your session /, said);
+      assert.doesNotMatch(said, /\byour token\b|\btoken or session\b|in Tokens/i, said);
+      assert.doesNotMatch(humanError(status, detail, "delegated"), /^Your token/, detail);
+      assert.match(humanError(status, detail, "delegated"), /^This delegated token /, detail);
+      assert.match(humanError(status, detail, "bearer"), /^Your token /, detail);
+    }
+    assert.equal(
+      humanError(401, "", "session"),
+      "Your session was not accepted; it may have ended. Sign in again, or use Change to paste a token",
+    );
+    assert.equal(
+      humanError(403, "needs capability thread:write", "session"),
+      "Your session is not allowed to do this; it needs thread:write. A session cannot mint tokens, so use Change to paste a token that has it",
+    );
+    assert.equal(
+      humanError(403, "needs capability thread:write", "delegated"),
+      "This delegated token is not allowed to do this; it needs thread:write. It holds only what its grant lends: ask for a grant that includes it",
+    );
+    assert.equal(humanError(401, "", "bearer"), "Your token was not accepted. Use Change to set a working one");
+    assert.equal(
+      humanError(403, "needs capability thread:write", "bearer"),
+      "Your token is not allowed to do this; it needs thread:write. Mint a token with it in Tokens",
+    );
+    // Not tied to the credential: the same words for everyone.
+    for (const mode of ["session", "bearer", "delegated"]) {
+      assert.equal(humanError(404, "", mode), humanError(404, "", null));
+      assert.equal(humanError(500, "", mode), humanError(500, "", null));
+    }
+  });
+
+  test("humanError follows the mode the page set, and forgets it on reset", () => {
+    setIdentityMode("session");
+    try {
+      assert.match(humanError(403, "forbidden"), /^Your session is not allowed/);
+      setIdentityMode("delegated");
+      assert.match(humanError(403, "forbidden"), /^This delegated token is not allowed/);
+      setIdentityMode("something else");
+      assert.equal(humanError(401, ""), "Your token or session was not accepted. Use Change to set a working one");
+    } finally {
+      setIdentityMode(null);
+    }
+  });
 });
 
 
@@ -329,6 +390,47 @@ describe("toasts, discovery, and the image cache", { concurrency: 1 }, () => {
     showError("Channel name required");
     t.mock.timers.tick(100);
     assert.equal(text.textContent, "Channel name required", "a pending restore is replaced, not stacked");
+    clearToasts();
+  });
+
+  test("showError takes a severity: an error alerts, a success is a polite status", (t) => {
+    clearToasts();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // The stub drops attributes and never detaches, so record the roles the
+    // toasts are given and let remove() take a toast out of the region.
+    const region = document.getElementById("toasts");
+    const roles = new Map();
+    const make = document.createElement;
+    t.mock.method(document, "createElement", (tag) => {
+      const el = make.call(document, tag);
+      el.setAttribute = (name, value) => {
+        if (name === "role") roles.set(el, value);
+      };
+      el.remove = () => {
+        const at = region.children.indexOf(el);
+        if (at >= 0) region.children.splice(at, 1);
+      };
+      return el;
+    });
+    showError("Could not post: The server hit an error");
+    showError("Token minted", "success");
+    showError("Attenuation: request exceeds your grant", "warning");
+    showError("Token minted");
+    showError("Odd severity", "shout");
+    const shown = region.children.map((toast) => [toast.dataset.message, toast.dataset.severity, toast.className, roles.get(toast)]);
+    assert.deepEqual(shown, [
+      ["Attenuation: request exceeds your grant", "warning", "toast toast-warning", "alert"],
+      ["Token minted", "error", "toast toast-error", "alert"],
+      ["Odd severity", "error", "toast toast-error", "alert"],
+    ], "three at most, oldest dropped first; an unknown severity is an error");
+    clearToasts();
+    showError("Token minted", "success");
+    assert.equal(roles.get(region.children[0]), "status", "a success does not interrupt");
+    assert.equal(region.children[0].className, "toast toast-success");
+    showError("Token minted", "success");
+    assert.equal(region.children.length, 1, "the same success again is one toast");
+    showError("Token minted");
+    assert.equal(region.children.length, 2, "an error with the same words is its own toast");
     clearToasts();
   });
 

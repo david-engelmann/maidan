@@ -92,6 +92,20 @@ pub const STATUS_NOTE_MAX_CHARS: usize = 280;
 /// A declaration's note, trimmed, or why it is refused: empty, more than one
 /// line, or longer than [`STATUS_NOTE_MAX_CHARS`]. REST and MCP both call
 /// this, so the two surfaces cannot drift.
+/// A review's note, trimmed, with an empty one counted as none. A change
+/// request names the change it asks for, so `request_changes` needs one: a
+/// verdict that sends work back without saying why leaves the worker guessing.
+pub fn review_note(
+    decision: crate::ReviewDecision,
+    note: Option<&str>,
+) -> Result<Option<String>, String> {
+    let note = note.map(str::trim).filter(|n| !n.is_empty());
+    if decision == crate::ReviewDecision::RequestChanges && note.is_none() {
+        return Err("request_changes needs a note saying what to change".into());
+    }
+    Ok(note.map(str::to_string))
+}
+
 pub fn status_note(note: &str) -> Result<String, String> {
     let note = note.trim();
     if note.is_empty() {
@@ -420,8 +434,8 @@ pub fn normalize_parent_run_id(raw: &str) -> Option<&str> {
 
 /// A thread's run lineage.
 ///
-/// `parent_run_id` is the **producer's** run identifier — the same string pi
-/// puts on the waiter envelope as `run_id`. Nested threads that share this
+/// `parent_run_id` is the **producer's** run identifier — the same string the
+/// producer puts on the waiter envelope as `run_id`. Nested threads that share this
 /// value are attributed together for occupancy. F7 thread mute is orthogonal: a
 /// mute never writes or clears this row.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

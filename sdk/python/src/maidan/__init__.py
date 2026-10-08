@@ -66,6 +66,7 @@ from .models import (
     TokenSummary,
     Workspace,
 )
+from .usage import USAGE_PROVIDERS, UsageError, normalize_usage, usd_micros
 
 __all__ = [
     "AcceptedDecision",
@@ -116,11 +117,15 @@ __all__ = [
     "UnauthorizedError",
     "UnknownProblemError",
     "UnsupportedMediaTypeError",
+    "USAGE_PROVIDERS",
+    "UsageError",
     "Workspace",
     "__version__",
     "event_type",
     "new_idempotency_key",
+    "normalize_usage",
     "parse_room_lsn",
     "problem_error",
     "retry_delay",
+    "usd_micros",
 ]

@@ -231,6 +231,7 @@ Not `token:admin`. `artifact:upload` only if the cookbook uploads.
 | `event_type(kind)` | `maidan.event.{kind}/1` |
 | `max_retries` | 0.3.0. Retry budget (default 2): TS `{ maxRetries }`, Python `max_retries=`, Go `Client.MaxRetries`, Rust `.with_max_retries(n)` |
 | `new_idempotency_key()` / `retry_delay(...)` | 0.3.0. Exported so callers can reuse the policy |
+| `normalize_usage(provider, response)` / `usd_micros(tokens, price)` | 0.3.0. Pure functions, no request: a provider response becomes the `model`, `tokens` and `evidence` of a `report_usage` body, and the charge the server checks. Every SDK and the server's ledger agree on `sdk/usage-fixtures/` (Integration, "Normalizing provider usage") |
 | Typed IDs | Thread id is not a channel id at the type level |
 | Typed responses | Each method in §1 returns the model for its OpenAPI response schema (`Thread`, `ClaimedThread`, `Message`, `ThreadContext`, `StoredEvent`, …). WS event frames stay JSON objects: their shape follows `kind` |
 | Unknown fields | Ignore on REST JSON and WS envelopes. A member a model does not declare must not fail the response (Python and Rust keep it in `extra`); a string enum accepts values it does not list |

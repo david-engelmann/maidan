@@ -23,7 +23,7 @@ test("a review nobody owns reaches an admin, and says no result was posted", asy
   await expect(ownerless.locator(".ny-kind")).toHaveText("Review");
   await expect(ownerless.locator(".ny-sub")).toContainText("no reviewer named");
   await expect(ownerless.locator(".ny-warn")).toHaveText("No result was posted");
-  await expect(ownerless.getByRole("button", { name: "Approve" })).toHaveClass(/primary/);
+  await expect(ownerless.getByRole("button", { name: "Approve", exact: true })).toHaveClass(/primary/);
   await expect(ownerless.locator("button.primary")).toHaveCount(1);
 });
 
@@ -36,7 +36,8 @@ test("the owner of a review nobody was named for can close it, and the board say
   await expect(owned.locator(".ny-sub")).toContainText("no reviewer named");
   const close = owned.getByRole("button", { name: "Close without review" });
   await expect(close).toHaveClass(/primary/);
-  await expect(owned.getByRole("button", { name: "Approve" })).toHaveCount(0);
+  await expect(owned.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
+  await expect(owned.getByRole("button", { name: "Approve with note" })).toHaveCount(0);
   await expect(owned.locator("button.primary")).toHaveCount(1);
   await expect(owned.locator(".ny-warn")).toHaveCount(0);
 

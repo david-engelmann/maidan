@@ -1280,7 +1280,7 @@ pub fn list_github_issue_links() {}
 )]
 pub fn unlink_github_issue() {}
 
-/// Flip a draft agent pull request to ready for review (Soundcheck only)
+/// Flip a draft agent pull request to ready for review (mark-ready app only)
 #[utoipa::path(
     post,
     path = "/operator/github/mark-ready",
@@ -1290,7 +1290,7 @@ pub fn unlink_github_issue() {}
     responses(
         (status = 200, description = "Flip attempted; `marked_ready` says whether the PR is now ready", body = crate::routes::MarkReadyResponse),
         (status = 400, description = "Bad repo or pull number", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 403, description = "Not the Soundcheck app, or the PR fails the change-flow guards", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, description = "Not the mark-ready app, or the PR fails the change-flow guards", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "No such pull request", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 502, description = "GitHub is unreachable or errored", body = ProblemDetails, content_type = "application/problem+json"),
     )
