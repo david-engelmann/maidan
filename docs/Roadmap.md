@@ -121,8 +121,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    Needs you splits decisions, actions and agents' questions (#1307), a change
    request names the change and a member holds one verdict (#1304 to #1306),
    and an approval binds the evidence it was shown, re-checked at close (#1309,
-   #1310, #1312), with the evidence on the card (#1316). Next: evidence tiers
-   on the card (Open Work Next 3), then screenshots captured by a script.
+   #1310, #1312), with the evidence on the card (#1316) and how far to trust
+   each piece (#1327). Next: screenshots captured by a script.
 6. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports

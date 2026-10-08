@@ -81,14 +81,13 @@ change.
   maintainer chooses, not per cluster, so some clusters were never tagged
   (v23–26, v78–100, v311, v350–401, v403, v411); their work ships in the next
   tag. `main` is well ahead of `v412.0.0`. Tagging is the maintainer's call.
-- **The queue is led by approvals.** Open Work Next 17 makes accepting a gate
-  a property of the credential (a browser session, `approval:grant`, or a
-  confirmation outside the model), because today the answer route accepts a
-  token whose member is a human (with `workspace:write`, the gate's
-  `request_state`, in the caller's workspace, and never the requester's own),
-  so a person's token in an agent's hands is enough. Then `approval_decide`,
-  which the maintainer chose on 2026-10-08, and the OAuth authorization server
-  (Next 23). Next 3's evidence tiers finish the approval card. Program C's C1
+- **The queue is led by approvals.** Accepting a gate is a property of the
+  credential since #1325: a signed-in browser session or `approval:grant`,
+  while a plain bearer, a delegate token or a session made from one can only
+  decline or cancel. Next is Open Work Next 17, a model-callable
+  `approval_decide` on that rule, which the maintainer chose on 2026-10-08,
+  and the OAuth authorization server (Next 23). The approval card shows each
+  piece of evidence with its attestation tier (#1327). Program C's C1
   to C4 shipped (C4, the SDK usage normalizers, in #1297 and #1299), and its
   pilot is planned under a runner-enforced cap. Most `wip/` branches hold work
   that has since shipped: check the Open Work row they name before building on
