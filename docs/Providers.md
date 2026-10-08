@@ -81,11 +81,14 @@ only if S3 interop is actually blocked.
 ## Auth (humans)
 
 Capability-scoped **bearer tokens** for agents. **OIDC** for humans
-(`MAIDAN_OIDC_ENABLED=1` + issuer discovery). Any reasonably standard
-IdP: Keycloak, Authentik, Auth0, Google, Okta.
+(`MAIDAN_OIDC_ENABLED=1` + issuer discovery). Any identity provider that
+speaks standard OIDC should work. A self-hosted Keycloak
+recipe, run end to end, is in [OIDC](OIDC.md) ("Recipe: Keycloak"): a
+realm file, SCIM pre-provisioning with sign-in linked by verified email,
+and a smoke script.
 
-No SAML, no SCIM. Document "use an IdP that speaks OIDC" rather than
-building enterprise SSO in-tree.
+People can be provisioned over SCIM 2.0 (`/scim/v2/`). No SAML. Document
+"use an IdP that speaks OIDC" rather than building enterprise SSO in-tree.
 
 ---
 
@@ -111,7 +114,7 @@ implies Postgres.
 - **I1 (done)** — this page; keep it true when env vars change. (written 2026-08-25)
 - **I2** — embedding: mock + optional Ollama/TEI compose.
 - **I3** — R2 / AWS S3 recipes next to MinIO.
-- **I4** — Keycloak + one SaaS OIDC recipe.
+- **I4** — Keycloak + one SaaS OIDC recipe. Keycloak done (2026-10-08, [OIDC](OIDC.md)); the SaaS recipe is open.
 - **I5** — written "Neon/RDS/Supabase: set `DATABASE_URL`, enable pgvector."
 - **I6** — LibSQL/Turso: measure sqlx SQLite URL, implement only if it is
   a driver flag.

@@ -748,6 +748,21 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         }
     }
 
+    // The bases mark-ready may flip each listed repository's agent pull
+    // requests into. A malformed value refuses boot: a typo that dropped a
+    // repository's pin would let its flips follow the allowlist alone.
+    if let Ok(raw) = std::env::var(maidan_types::MARK_READY_BASES_ENV) {
+        state.mark_ready_bases = maidan_types::MarkReadyBases::parse(&raw)?;
+        if !state.mark_ready_bases.is_empty() {
+            let bases: Vec<String> = state
+                .mark_ready_bases
+                .iter()
+                .map(|(repo, base)| format!("{repo}={base}"))
+                .collect();
+            tracing::info!(?bases, "mark-ready base pins configured");
+        }
+    }
+
     // Background projector-egress worker: drains the durable egress queue with
     // retry/backoff + dead-lettering. Runs whenever a projector sender is
     // configured — which is exactly when the projectors enqueue, so a

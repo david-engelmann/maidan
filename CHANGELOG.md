@@ -15,6 +15,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Writes go only to operator-named repositories.** `MAIDAN_GITHUB_WRITE_REPOS` lists the only repositories the instance's GitHub token may write to. The client refuses any other write before a request is made, whichever workspace asks, and with no list it writes nowhere. A workspace's egress allowlist narrows the list and can never widen it.
 - **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to an app slug, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
+- **Mark-ready bases are the operator's.** `MAIDAN_MARK_READY_BASES` (comma-separated `owner/name=branch`) pins the base each listed repository's agent pull requests may be marked ready into, replacing the table compiled into `maidan-types`. A repository not listed is held to no base there, and the workspace egress allowlist decides its flips, as before. A malformed entry, a `prod` base or a repository listed twice refuses boot.
 
 ### DMs are opened by picking people, not pasting ids
 
@@ -132,6 +133,11 @@ Refs #1253
 
 - **Added:** `docs/Clients.md` has a recipe for Claude Code, Cursor, Gemini CLI, GitHub Copilot CLI, a claude.ai custom connector and ChatGPT developer mode. It also covers the dev instance for clients that cannot send a token, the five-minute check a person makes before each release, and what counts as an attributed connect.
 - **Added:** `contracts/mcp-clients.json` is the client matrix as test config. `client_matrix_e2e` checks each row, checks that every client has a recipe, a matrix row and its release step, and connects to a real server with auth enabled the way each client authenticates.
+
+### People can sign in through a self-hosted Keycloak
+
+- **Added:** `docs/OIDC.md` has a Keycloak recipe, run end to end against Keycloak 26.8.0. `examples/keycloak/maidan-realm.json` is a realm with one public client that uses the code flow with S256 PKCE and has registration off. People are pre-provisioned over SCIM and linked on sign-in by verified email, with auto-provisioning left off. The recipe also shows minting a person's own scoped token with an expiry for their MCP client.
+- **Added:** `scripts/keycloak-oidc-smoke.sh` signs in through the realm's login form with curl and checks the PKCE challenge, the session cookie and that the session is a human member. `keycloak_recipe_contract` checks the realm's client settings, that every path the recipe and the script call is mounted, that the recipe's env names are ones the server reads, and that its token request is scoped and expires.
 
 ### MCP search names what it found
 
