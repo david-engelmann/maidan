@@ -17,9 +17,9 @@ test("a dead-lettered delivery can be replayed from the operator tab", async ({ 
   await expect(list).toContainText(fx.delivery_url);
   await expect(list).toContainText("DLQ");
   await list.getByRole("button", { name: "Replay" }).click();
-  await expect(page.locator("#status")).toContainText(
-    `Replayed webhook delivery #${fx.delivery_id}`,
-  );
+  await expect(
+    page.locator("#toasts .toast-success", { hasText: `Replayed webhook delivery #${fx.delivery_id}` }),
+  ).toHaveAttribute("role", "status");
   await expect(list).not.toContainText(fx.delivery_url);
 
   await page.selectOption("#op-deliv-status", "pending");

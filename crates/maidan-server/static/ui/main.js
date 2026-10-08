@@ -3,7 +3,7 @@ import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForW
 import { attachToSelectedThread, escapeHtml, uploadArtifact } from "./artifacts.js";
 import { loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChannelId, selectedThreadId } from "./board.js";
 import { loadDms, loadGroupDms, openDm, openGroupDm, sendDmMessage, sendGroupDmMessage } from "./dm.js";
-import { humanError, responseError, setOut, setStatus, showError, toggleLiveFeed, unreachable } from "./feedback.js";
+import { humanError, responseError, setOut, showError, textError, toggleLiveFeed, unreachable } from "./feedback.js";
 import { openConnect, openPalette, openTool } from "./palette.js";
 import { authorId, loadMembers } from "./people.js";
 import { registerBrowserPush } from "./push.js";
@@ -228,7 +228,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         document.getElementById("token").value = parsed.secret;
         persist();
         showSecretOnce("Admin token (once)", parsed.secret);
-        setStatus("Admin token minted", "ok");
+        showError("Admin token minted", "success");
       };
 
       document.getElementById("rotate-own-token").onclick = () => {
@@ -328,10 +328,9 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         const res = await api(url, { headers: headers(), credentials: "include" });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not load events"));
           return setOut(body);
         }
-        setStatus("OK", "ok");
         setOut(JSON.parse(body));
       };
 
@@ -361,7 +360,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           body = await res.text();
         } catch (e) {
           box.textContent = unreachable(e);
-          setStatus("Could not reach the server", "err");
+          showError(unreachable(e));
           return;
         }
         if (!res.ok) {
@@ -375,7 +374,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           detail = String(detail).replace(/\s+/g, " ").trim().slice(0, 500);
           const said = humanError(res.status, detail);
           box.textContent = detail ? `${said} — ${detail} (HTTP ${res.status})` : `${said} (HTTP ${res.status})`;
-          setStatus(said, "err");
+          showError(said);
           return;
         }
         let hits;
@@ -383,10 +382,9 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           hits = JSON.parse(body);
         } catch (e) {
           box.textContent = unreachable(e);
-          setStatus("Could not read the search results", "err");
+          showError("Could not read the search results");
           return;
         }
-        setStatus("OK", "ok");
         box.innerHTML = "";
         if (!hits.length) {
           box.textContent = "No hits";
@@ -416,11 +414,11 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not create the channel"));
           return setOut(body);
         }
         document.getElementById("new-channel-name").value = "";
-        setStatus("Channel created", "ok");
+        showError("Channel created", "success");
         setOut(JSON.parse(body));
         await loadChannels();
       };
@@ -442,12 +440,12 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         );
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not create the thread"));
           return setOut(body);
         }
         const parsed = JSON.parse(body);
         document.getElementById("new-thread-title").value = "";
-        setStatus("Thread created", "ok");
+        showError("Thread created", "success");
         setOut(parsed);
         await loadThreads();
         selectThread(parsed.id, parsed.title || parsed.id);
@@ -482,7 +480,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         }
         const body = await res.text();
         document.getElementById("compose-body").value = "";
-        setStatus("Posted", "ok");
+        showError("Posted", "success");
         setOut(JSON.parse(body));
         await loadMessages();
       };
@@ -529,10 +527,10 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not edit the message"));
           return setOut(body);
         }
-        setStatus("Edited", "ok");
+        showError("Edited", "success");
         const parsed = JSON.parse(body);
         setOut(parsed);
         await loadMessages();
@@ -559,7 +557,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           persist();
           const artifact = await uploadArtifact(fileInput.files[0], kind, null);
           if (!artifact) return;
-          setStatus("Artifact uploaded", "ok");
+          showError("Artifact uploaded", "success");
           setOut(artifact);
           const attach = document.getElementById("attach-artifact-next");
           if (attach && attach.checked) await attachToSelectedThread(artifact);
@@ -576,7 +574,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         event.preventDefault();
         if (!requireAuthForWrite()) return;
         if (!selectedThreadId) {
-          setStatus("Select a thread before pasting a file", "err");
+          showError("Select a thread before pasting a file");
           return;
         }
         persist();
@@ -596,10 +594,9 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not load the thread"));
           return setOut(body);
         }
-        setStatus("OK", "ok");
         setOut(JSON.parse(body));
       };
 
@@ -616,10 +613,10 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, `Could not apply ${action} to the thread`));
           return setOut(body);
         }
-        setStatus("OK", "ok");
+        showError(`Applied ${action} to the thread`, "success");
         setOut(JSON.parse(body));
       };
 
@@ -631,10 +628,9 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not load the messages"));
           return setOut(body);
         }
-        setStatus("OK", "ok");
         setOut(JSON.parse(body));
       };
 
@@ -649,14 +645,13 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         const box = document.getElementById("audit-list");
         if (!res.ok) {
           box.textContent = body;
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not load the audit log"));
           return;
         }
         const rows = JSON.parse(body);
         box.innerHTML = "";
         if (!rows.length) {
           box.textContent = "No audit rows";
-          setStatus("OK", "ok");
           return;
         }
         rows.forEach((r) => {
@@ -665,7 +660,6 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           div.textContent = `${r.occurred_at} · ${r.action} · actor=${r.actor_id || "—"}`;
           box.appendChild(div);
         });
-        setStatus("Audit loaded", "ok");
         setOut(rows);
       };
 
@@ -688,10 +682,10 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not purge the workspace"));
           return setOut(body);
         }
-        setStatus("Workspace purged", "ok");
+        showError("Workspace purged", "success");
         setOut(JSON.parse(body));
         document.getElementById("load-audit").click();
       };
@@ -713,11 +707,11 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not create the peer"));
           return setOut(body);
         }
         const parsed = JSON.parse(body);
-        setStatus("Peer created — copy secret now", "ok");
+        showError("Peer created — copy secret now", "success");
         setOut(parsed);
         await loadPeers();
       };
@@ -733,10 +727,10 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         });
         if (!res.ok) {
           const body = await res.text();
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not delete the peer"));
           return setOut(body);
         }
-        setStatus("Peer deleted", "ok");
+        showError("Peer deleted", "success");
         setOut({ deleted: pid });
         await loadPeers();
       };
@@ -764,7 +758,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
             warn.textContent =
               `Cannot widen your grant — these exceed your ceiling and will be rejected: ${excess.join(", ")}`;
             warn.hidden = false;
-            setStatus("Attenuation: request exceeds your grant", "err");
+            showError("Attenuation: request exceeds your grant", "warning");
             return;
           }
           warn.hidden = true;
@@ -775,14 +769,14 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           });
           const body = await res.text();
           if (!res.ok) {
-            setStatus(`HTTP ${res.status}`, "err");
+            showError(textError(res.status, body, "Could not mint the token"));
             return setOut(body);
           }
           const parsed = JSON.parse(body);
           document.getElementById("token").value = parsed.secret;
           document.getElementById("token-revoke-id").value = parsed.id;
           persist();
-          setStatus("Token minted", "ok");
+          showError("Token minted", "success");
           setOut(parsed);
         } finally {
           btn.disabled = false;
@@ -859,10 +853,10 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         });
         const body = await res.text();
         if (!res.ok) {
-          setStatus(`HTTP ${res.status}`, "err");
+          showError(textError(res.status, body, "Could not revoke the token"));
           return setOut(body);
         }
-        setStatus("Token revoked", "ok");
+        showError("Token revoked", "success");
         setOut(body ? JSON.parse(body) : { revoked: id });
       };
 

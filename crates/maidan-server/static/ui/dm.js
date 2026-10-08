@@ -1,6 +1,6 @@
 // @ts-check
 import { api, apiWritePath, base, headers, requireAuthForWrite, token, uiReadPath, wid, writeApi } from "./api.js";
-import { renderState, responseError, setStatus, showError, unreachable } from "./feedback.js";
+import { renderState, responseError, showError, unreachable } from "./feedback.js";
 import { authorId, loadMembers, memberName } from "./people.js";
 
 
@@ -119,7 +119,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
             return;
           }
           const opened = await res.json();
-          setStatus("DM opened", "ok");
+          showError("DM opened", "success");
           await loadMembers();
           await loadDms();
           selectDm(opened);
@@ -144,13 +144,13 @@ import { authorId, loadMembers, memberName } from "./people.js";
             body: JSON.stringify({ body }),
           });
           if (!res.ok) {
-            setStatus(await responseError(res), "err");
+            showError(await responseError(res));
             return;
           }
           document.getElementById("dm-body").value = "";
           await loadDmMessages(selectedDm.thread_id);
         } catch (e) {
-          setStatus(unreachable(e), "err");
+          showError(unreachable(e));
         }
       }
 
@@ -230,7 +230,7 @@ import { authorId, loadMembers, memberName } from "./people.js";
             return;
           }
           const opened = await res.json();
-          setStatus("Group DM opened", "ok");
+          showError("Group DM opened", "success");
           await loadMembers();
           await loadGroupDms();
           selectGroupDm(opened);
@@ -255,13 +255,13 @@ import { authorId, loadMembers, memberName } from "./people.js";
             body: JSON.stringify({ body }),
           });
           if (!res.ok) {
-            setStatus(await responseError(res), "err");
+            showError(await responseError(res));
             return;
           }
           document.getElementById("gdm-body").value = "";
           await loadGroupDmMessages(selectedGdm.thread_id);
         } catch (e) {
-          setStatus(unreachable(e), "err");
+          showError(unreachable(e));
         }
       }
 

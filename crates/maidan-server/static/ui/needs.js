@@ -1,7 +1,7 @@
 // @ts-check
 import { api, apiReadPath, apiWritePath, headers, token, uiReadPath, wid, writeApi } from "./api.js";
 import { fetchPendingGatesByThread, pendingGateViews, renderResult, renderTeam, renderThreadHeader, scheduleBoardRefresh, selectThread, selectedThreadId, setAttention, threadsById } from "./board.js";
-import { keyActivates, responseError, setStatus } from "./feedback.js";
+import { keyActivates, responseError, showError } from "./feedback.js";
 import { ago, authorId, personEl } from "./people.js";
 import { sessionMemberId } from "./session.js";
 import { NY_KINDS, NY_RETRY_MAX_MS, NY_RETRY_MIN_MS } from "./state.js";
@@ -554,7 +554,7 @@ import { answerGate } from "./tools.js";
           approve.onclick = async () => {
             const out = await submitReview(th.id, "approve", undefined, approve);
             if (!out.ok) {
-              return setStatus(out.why, "err");
+              return showError(out.why);
             }
             await loadNeedsYou();
             renderThreadHeader();
@@ -568,7 +568,7 @@ import { answerGate } from "./tools.js";
           close.onclick = async () => {
             const out = await closeThread(th.id, close);
             if (!out.ok) {
-              return setStatus(out.why, "err");
+              return showError(out.why);
             }
             scheduleBoardRefresh();
           };

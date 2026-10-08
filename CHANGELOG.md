@@ -830,6 +830,16 @@ Refs #1253
   the caller's trace after the request has finished. It is not part of the
   event content hash.
 
+### The `/ui` has one feedback surface
+
+- **Changed:** `showError(message, severity)` replaces `setStatus` and the
+  `#status` line at the bottom of More tools. An error or a warning is an
+  alert toast, a success a polite status toast that leaves sooner, and a
+  refused tools-panel request now says the `humanError` sentence instead of
+  `HTTP 403`. `#toasts` and `#session-status` are polite live regions, and
+  `ui_feedback_contract` fails if `setStatus` or `#status` comes back (Open
+  Work Next 4, second half).
+
 ### The `/ui` reports mistakes in the page
 
 - **Changed:** the 40 blocking `alert()` dialogs in the `/ui` are toasts: a
