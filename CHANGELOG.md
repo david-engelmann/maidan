@@ -1869,7 +1869,7 @@ Refs #1253
 ### Accepting an approval gate is a property of the credential
 
 - **Security:** `POST /approval-gates/:id/answer` with `accept` needs a token holding `approval:grant` (or a session made from one), or a browser session the person signed in to through the identity provider, sent from the console page with the strict origin check (`Sec-Fetch-Site: same-origin`, or a matching `Origin`; a request naming no origin is refused). A plain bearer token whose member is a human, a delegated token, and a session made from a plain token with `POST /auth/session/from-token` are refused with 403 `missing capability: approval:grant. …`, because they are the credentials a person hands an agent. Declining and cancelling are unchanged, and nobody accepts their own request. Next 17, part one.
-- **Changed:** The console says what accepting needs when a pasted token is refused, and still declines and cancels with it. `examples/recipes/approve.py` declines as the admin and accepts with a token in `MAIDAN_APPROVAL_TOKEN` that an admin granted `approval:grant`.
+- **Changed:** The console says what accepting needs when a pasted token is refused, and still declines and cancels with it. The admin token `maidan init` prints holds every capability, `approval:grant` included, so `examples/recipes/approve.py` still accepts with it; its docstring now says so and why that token never goes to an agent.
 
 ## [412.0.0] — 2026-09-28
 
