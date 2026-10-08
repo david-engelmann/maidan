@@ -3,6 +3,11 @@
     python approve.py            # accept every pending gate
     python approve.py --decline  # decline them
 
+It accepts with the admin token `maidan init` printed because that token holds
+every capability, `approval:grant` included. A plain token (one a person hands
+an agent) can decline or cancel a gate but not accept it, so never give this
+admin token to an agent.
+
 Each answer echoes the `request_state` the server signed when it listed the
 gate. The agent that asked cannot accept its own request, whatever token it holds.
 """

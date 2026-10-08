@@ -1,8 +1,10 @@
 //! The `/ui/api` approval-gate twins: the `/ui` Approvals tab lists pending
 //! gates and answers one over the session-proxy routes, which reuse the
 //! handlers under the `/ui` auth middleware. Driven here with a bearer (the
-//! middleware accepts session OR bearer); the DOM + accept flow is covered by
-//! the Playwright spec `ui-tests/tests/approvals.spec.ts`.
+//! middleware accepts session OR bearer), which declines: a plain bearer does
+//! not accept. Accepting through a signed-in session is in
+//! `approval_gate_e2e.rs`, and the DOM + accept flow in the Playwright spec
+//! `ui-tests/tests/approvals.spec.ts`.
 
 use std::{
     net::SocketAddr,
@@ -153,13 +155,13 @@ async fn ui_api_lists_and_answers_an_approval_gate() {
     let answered = client
         .post(format!("{base}/ui/api/approval-gates/{}/answer", gate.id))
         .bearer_auth(&token)
-        .json(&json!({ "request_state": request_state, "action": "accept" }))
+        .json(&json!({ "request_state": request_state, "action": "decline" }))
         .send()
         .await
         .unwrap();
     assert_eq!(answered.status(), StatusCode::OK);
     let body: Value = answered.json().await.unwrap();
-    assert_eq!(body["state"], json!("accepted"));
+    assert_eq!(body["state"], json!("declined"));
 
     // The resolved gate leaves the pending list.
     let after: Vec<Value> = client

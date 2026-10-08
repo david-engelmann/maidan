@@ -1872,6 +1872,11 @@ Refs #1253
 - **Fixed:** A close refused over REST (`POST /threads/:id`, a review requirement not met or an unresolved `refutes`) now notifies the thread's MCP resource subscribers of the notice message it posts, as the MCP `transition_thread` refusal already did. Subscribers in another workspace hear nothing.
 - **Added:** The server logs a warning at boot when `MAIDAN_MARK_READY_APP_ID` is set and `MAIDAN_MARK_READY_BASES` pins no base (unset or blank), because every mark-ready flip then follows the workspace egress allowlist alone. Boot still succeeds.
 
+### Accepting an approval gate is a property of the credential
+
+- **Security:** `POST /approval-gates/:id/answer` with `accept` needs a token holding `approval:grant` (or a session made from one), or a browser session the person signed in to through the identity provider, sent from the console page with the strict origin check (`Sec-Fetch-Site` must be `same-origin` when present; only when it is absent must `Origin` match the host; a request naming neither is refused). A plain bearer token whose member is a human, a delegated token, and a session made from a plain token with `POST /auth/session/from-token` are refused with 403 `missing capability: approval:grant. …`, because they are the credentials a person hands an agent. Declining and cancelling are unchanged, and nobody accepts their own request. Next 17, part one.
+- **Changed:** The console says what accepting needs when a pasted token is refused, and still declines and cancels with it. The admin token `maidan init` prints holds every capability, `approval:grant` included, so `examples/recipes/approve.py` still accepts with it; its docstring now says so and why that token never goes to an agent.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

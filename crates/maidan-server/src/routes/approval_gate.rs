@@ -6,8 +6,12 @@
 //! answer must echo a token the server actually issued, verified before the
 //! resolve. The resolve is a compare-and-set on `pending`, so a second answer —
 //! or a late answer after cancel — is a no-op (silence is not consent).
+//!
+//! Accepting is a property of the credential, not of the member: a bearer
+//! token whose member is a human is exactly the token a person hands an agent,
+//! so it proves nothing about who decided. See [`acceptance_credential`].
 
-use axum::{extract::State, Extension, Json};
+use axum::{extract::State, http::HeaderMap, Extension, Json};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
     capability::{APPROVAL_GRANT, WORKSPACE_READ, WORKSPACE_WRITE},
@@ -21,6 +25,7 @@ use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::*;
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
+use crate::session::{require_same_origin, SessionContext};
 use crate::state::AppState;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -42,6 +47,51 @@ fn verify_request_state(token: &str, gate_id: ApprovalGateId, secret: &[u8]) -> 
         (Ok(actual), Ok(want)) => actual.len() == want.len() && bool::from(actual.ct_eq(&want)),
         _ => false,
     }
+}
+
+/// What a refused accept says: the capability it lacks, in the words every
+/// capability refusal uses, then the other way in.
+const ACCEPT_NEEDS: &str = "missing capability: approval:grant. Accepting an approval gate \
+     needs a browser session a person signed in to, or a token holding approval:grant. A \
+     bearer token, or a session made from one, can decline or cancel a gate but not accept it";
+
+/// Whether this request's credential may accept a gate: a token (or a session
+/// made from one) holding `approval:grant`, or a browser session a person
+/// signed in to through the identity provider, sent from the console page.
+///
+/// A session made from a token does not count on its own. Anyone holding the
+/// token can make one with `POST /auth/session/from-token`, so it proves no
+/// more than the token; it carries that token's authority, `approval:grant`
+/// included or not. A signed-in session's cookie is `HttpOnly` and comes from
+/// the identity provider's redirect, which a model holding a person's token
+/// cannot complete. The origin check is the strict one: a request naming no
+/// origin is the non-browser client the cookie fallback exists for, and is
+/// refused here.
+async fn acceptance_credential(
+    state: &AppState,
+    auth: &AuthContext,
+    session: Option<&SessionContext>,
+    headers: &HeaderMap,
+) -> ApiResult<()> {
+    if auth.has_capability(APPROVAL_GRANT) {
+        return Ok(());
+    }
+    let signed_in = session.is_some_and(|s| s.token.is_none()) && auth.token_id.is_none();
+    if !signed_in {
+        return Err(ApiError::Forbidden(ACCEPT_NEEDS.into()));
+    }
+    require_same_origin(headers)?;
+    // A signed-in session is a person's, but the member it names is checked
+    // too: human-control state is answered by a human.
+    let member = state.store.get_member(auth.member_id).await?;
+    if member.kind != MemberKind::Human {
+        return Err(ApiError::Forbidden(
+            "an approval gate is accepted by a human member, or by a token granted \
+             approval:grant"
+                .into(),
+        ));
+    }
+    Ok(())
 }
 
 /// List a workspace's pending approval gates, each with its `request_state`.
@@ -79,11 +129,14 @@ pub async fn list_approval_gates(
 
 /// Answer a pending approval gate — accept / decline / cancel.
 /// `workspace:write`. The `request_state` is integrity-verified and the gate
-/// must be in the caller's workspace. Resolve is a CAS on `pending`, so a
-/// second answer is a no-op → `409`.
+/// must be in the caller's workspace. Accepting also needs the credential
+/// [`acceptance_credential`] names. Resolve is a CAS on `pending`, so a second
+/// answer is a no-op → `409`.
 pub async fn answer_approval_gate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
+    session: Option<Extension<SessionContext>>,
+    headers: HeaderMap,
     ApiPath(id): ApiPath<uuid::Uuid>,
     ApiJson(body): ApiJson<AnswerApprovalGate>,
 ) -> ApiResult<Json<ApprovalGate>> {
@@ -118,10 +171,9 @@ pub async fn answer_approval_gate(
     if !verify_request_state(&body.request_state, gate.id, secret) {
         return Err(ApiError::Forbidden("invalid request_state".into()));
     }
-    // An approval is borrowable — a delegate may answer for the member it acts
-    // as — but never by whoever asked for it, whichever identity they asked or
-    // answer under. Declining or cancelling your own request is not approving
-    // it, and stays open.
+    // Nobody accepts a gate they asked for, whichever identity they asked or
+    // answer under, and whatever credential they hold. Declining or
+    // cancelling your own request is not approving it, and stays open.
     if target == ApprovalGateState::Accepted && !auth.bypass {
         let asked = [Some(gate.requested_by), gate.requested_actor_id];
         let answering = [auth.member_id, auth.actor_id];
@@ -130,22 +182,11 @@ pub async fn answer_approval_gate(
                 "an approval cannot be granted by whoever requested it".into(),
             ));
         }
-        // An approval gate is human-control state: accepting needs the member
-        // the token acts as to be a human (a delegate acting for a human
-        // passes, since that member is the human), or a token an admin granted
-        // `approval:grant` for a trusted automated approver. Otherwise any
-        // worker, which holds `workspace:write`, could approve another
-        // worker's request with no human involved.
-        if !auth.has_capability(APPROVAL_GRANT) {
-            let member = state.store.get_member(auth.member_id).await?;
-            if member.kind != MemberKind::Human {
-                return Err(ApiError::Forbidden(
-                    "an approval gate is accepted by a human member, or by a token \
-                     granted approval:grant"
-                        .into(),
-                ));
-            }
-        }
+        // An approval gate is human-control state, and a worker holds the
+        // `workspace:write` this route asks for: without this, agent B could
+        // accept agent A's gate, and an agent holding a person's token could
+        // accept any gate with curl.
+        acceptance_credential(&state, &auth, session.as_deref(), &headers).await?;
     }
     match state
         .store
