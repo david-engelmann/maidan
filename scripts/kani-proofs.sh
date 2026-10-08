@@ -23,3 +23,6 @@ export KANI_HOME="${KANI_HOME:-$HOME/.kani}"
 
 echo "== maidan-types (cursor arithmetic) =="
 cargo kani -p maidan-types --output-format terse
+
+echo "== maidan-auth (capability containment) =="
+cargo kani -p maidan-auth --output-format terse

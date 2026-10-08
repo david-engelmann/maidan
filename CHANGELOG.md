@@ -1896,6 +1896,7 @@ Refs #1253
 
 - **Added:** Bounded Kani proofs, compiled only with `cfg(kani)`, of the subscribe cursor's gap rule (every `i64`, including a cursor at `i64::MAX`), of catch-up using that same rule, of a too-old body always saying to refetch, and of the room high-water never being negative. `scripts/kani-proofs.sh` runs them locally. They are not a CI job.
 - **Fixed:** `cursor_is_too_old` used `after_id + 1`, which overflows at `i64::MAX` and, in a release build, wraps to a negative id that looks like a pruned gap. The next id is now a checked add, and a cursor with no next id is not too old.
+- **Added:** Bounded Kani proofs that an installation grant and a holder-side attenuation contain the request. The check is `first_not_held`, which `validate_subset` and `attenuate` call; the proofs run it on `workspace:read` and `token:admin`, every subset. A repeated ask is kept once. Every known capability is work (delegatable) or authority, not both. The harnesses are `#[cfg(kani)]` and do not change what a token is granted.
 
 ## [412.0.0] — 2026-09-28
 

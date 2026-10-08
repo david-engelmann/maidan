@@ -156,13 +156,22 @@ pub fn validate_list(caps: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The first `requested` entry that is not in `held`, if any.
+///
+/// This is the containment check. Attenuation and an installation grant both
+/// call it; the Kani proofs call it on `&str` so they do not have to model
+/// `String`.
+pub(crate) fn first_not_held<'a>(held: &[&str], requested: &[&'a str]) -> Option<&'a str> {
+    requested.iter().copied().find(|cap| !held.contains(cap))
+}
+
 /// Ensures every requested capability is included in the installation grant.
 pub fn validate_subset(granted: &[String], requested: &[String]) -> Result<(), String> {
     validate_list(requested)?;
-    for cap in requested {
-        if !granted.iter().any(|g| g == cap) {
-            return Err(format!("capability {cap} exceeds app installation grant"));
-        }
+    let granted_refs: Vec<&str> = granted.iter().map(String::as_str).collect();
+    let requested_refs: Vec<&str> = requested.iter().map(String::as_str).collect();
+    if let Some(cap) = first_not_held(&granted_refs, &requested_refs) {
+        return Err(format!("capability {cap} exceeds app installation grant"));
     }
     Ok(())
 }
@@ -208,6 +217,83 @@ mod tests {
     fn no_authority_capability_is_delegatable() {
         for cap in AUTHORITY {
             assert!(!is_delegatable(cap), "{cap} must never be delegatable");
+        }
+    }
+}
+
+#[cfg(kani)]
+mod proofs {
+    use super::{
+        first_not_held, is_delegatable, APPROVAL_GRANT, AUDIT_READ_GLOBAL, CHANNEL_ADMIN,
+        FEDERATION_ADMIN, FEDERATION_INGEST, KNOWN, OPERATOR_GLOBAL, SECRET_ADMIN, SECRET_READ,
+        TOKEN_ADMIN, WORKSPACE_READ,
+    };
+
+    /// The same split the unit test lists, checked for every known
+    /// capability rather than by example. Authority is never delegatable.
+    const AUTHORITY: &[&str] = &[
+        TOKEN_ADMIN,
+        CHANNEL_ADMIN,
+        SECRET_READ,
+        SECRET_ADMIN,
+        FEDERATION_INGEST,
+        FEDERATION_ADMIN,
+        AUDIT_READ_GLOBAL,
+        OPERATOR_GLOBAL,
+        APPROVAL_GRANT,
+    ];
+
+    #[kani::proof]
+    #[kani::unwind(20)]
+    fn every_known_capability_is_work_or_authority_not_both() {
+        let index: usize = kani::any();
+        kani::assume(index < KNOWN.len());
+        let cap = KNOWN[index];
+        let work = is_delegatable(cap);
+        let authority = AUTHORITY.contains(&cap);
+        assert!(work ^ authority);
+        if authority {
+            assert!(!is_delegatable(cap));
+        }
+    }
+
+    /// An installation grant contains the request, or the request is refused.
+    /// Bound: one work capability and one authority capability, every subset.
+    /// A success never carries a capability the grant does not.
+    fn pair(read: bool, admin: bool) -> &'static [&'static str] {
+        match (read, admin) {
+            (false, false) => &[],
+            (true, false) => &[WORKSPACE_READ],
+            (false, true) => &[TOKEN_ADMIN],
+            (true, true) => &[WORKSPACE_READ, TOKEN_ADMIN],
+        }
+    }
+
+    /// Unwind covers the longer name (`workspace:read` is 15 bytes) and a
+    /// slice of two. No `Vec`: a vector's growth is what blew the memory.
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn a_request_outside_the_grant_is_never_contained() {
+        let grant_read: bool = kani::any();
+        let grant_admin: bool = kani::any();
+        let ask_read: bool = kani::any();
+        let ask_admin: bool = kani::any();
+        let granted = pair(grant_read, grant_admin);
+        let requested = pair(ask_read, ask_admin);
+        match first_not_held(granted, requested) {
+            None => {
+                if ask_read {
+                    assert!(grant_read);
+                }
+                if ask_admin {
+                    assert!(grant_admin);
+                }
+            }
+            Some(missing) => {
+                assert!((ask_read && !grant_read) || (ask_admin && !grant_admin));
+                assert!(!grant_read || missing != WORKSPACE_READ);
+                assert!(!grant_admin || missing != TOKEN_ADMIN);
+            }
         }
     }
 }
