@@ -167,6 +167,99 @@ test("an approval of an earlier hand-off, or a dismissed one, names no decider",
   await expect(r.locator(".ny-ev-decider")).toHaveCount(0);
 });
 
+test("a verdict that arrives while the reviews read is in flight is not dropped", async ({ page, request }) => {
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**/threads/${fx.proof_decided_thread_id}/reviews`, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await held;
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await signIn(page, fx.workspace_id, fx.live_token);
+  const r = row(page, fx.proof_decided_thread_id);
+  if ((await page.locator("#ws-status").textContent()) !== "connected") await page.click("#ws-connect");
+  await expect(page.locator("#ws-status")).toHaveText("connected");
+
+  const handed = await packet(request, fx.proof_decided_thread_id);
+  const res = await request.post(`/threads/${fx.proof_decided_thread_id}/reviews`, {
+    headers: bearer(fx.rae_token),
+    data: { decision: "approve", evidence_root: handed.evidence_root },
+  });
+  expect(res.ok()).toBeTruthy();
+  const decider = r.locator(`.ny-ev-decider[data-reviewer="${fx.rae_member_id}"]`);
+  await expect(decider).toHaveText("Rae Reviewer approved");
+
+  // Rae approved this task in the seed and approves it again here. The held
+  // snapshot comes back empty, standing in for one taken before her verdict:
+  // the row keeps the verdict it already saw.
+  release();
+  await expect(r.locator(".ny-evidence")).toHaveAttribute("data-state", "ready");
+  // The deciders are redrawn once the artifact lines are drawn, after the
+  // links and details come back.
+  await expect(r.locator('.ny-ev-item[data-ev="artifact"]')).toHaveCount(2);
+  await expect(r.locator(".ny-ev-item[aria-busy]")).toHaveCount(0);
+  await expect(decider).toHaveText("Rae Reviewer approved");
+});
+
+test("a dismissal saved after a live verdict wins over it", async ({ page, request }) => {
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**/threads/${fx.proof_decided_thread_id}/reviews`, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await held;
+    // Rae's review as saved after her verdict below: dismissed later.
+    const later = new Date(Date.now() + 60_000).toISOString();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          thread_id: fx.proof_decided_thread_id,
+          reviewer_id: fx.rae_member_id,
+          decision: "approve",
+          created_at: later,
+          updated_at: later,
+          dismissed_at: later,
+        },
+      ]),
+    });
+  });
+  await signIn(page, fx.workspace_id, fx.live_token);
+  const r = row(page, fx.proof_decided_thread_id);
+  if ((await page.locator("#ws-status").textContent()) !== "connected") await page.click("#ws-connect");
+  await expect(page.locator("#ws-status")).toHaveText("connected");
+
+  const handed = await packet(request, fx.proof_decided_thread_id);
+  const res = await request.post(`/threads/${fx.proof_decided_thread_id}/reviews`, {
+    headers: bearer(fx.rae_token),
+    data: { decision: "approve", evidence_root: handed.evidence_root },
+  });
+  expect(res.ok()).toBeTruthy();
+  const decider = r.locator(`.ny-ev-decider[data-reviewer="${fx.rae_member_id}"]`);
+  await expect(decider).toHaveText("Rae Reviewer approved");
+
+  release();
+  await expect(r.locator(".ny-evidence")).toHaveAttribute("data-state", "ready");
+  await expect(r.locator(".ny-ev-item[aria-busy]")).toHaveCount(0);
+  await expect(decider).toHaveCount(0);
+});
+
+test("a links answer that is not a list flags nothing", async ({ page }) => {
+  await page.route(`**/threads/${fx.proof_unlinked_thread_id}/artifacts`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: '"not a list"' }),
+  );
+  await signInAsPerson(page);
+  const evidence = row(page, fx.proof_unlinked_thread_id).locator(".ny-evidence");
+  await expect(evidence).toHaveAttribute("data-state", "ready");
+  await expect(evidence.locator(".ny-warn")).toHaveCount(0);
+  const by = evidence.locator(`.ny-ev-item[data-sha="${fx.proof_screenshot_sha}"] .ny-ev-by`);
+  await expect(by).toContainText("uploaded by");
+});
+
 test("a packet with no result and no artifact says nothing was handed over", async ({ page }) => {
   await signIn(page, fx.workspace_id, fx.review_token);
   const evidence = row(page, fx.proof_empty_thread_id).locator(".ny-evidence");

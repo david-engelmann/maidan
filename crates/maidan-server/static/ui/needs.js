@@ -522,8 +522,12 @@ import { answerGate } from "./tools.js";
             credentials: "include",
           });
           if (!res.ok) return null;
+          const body = await res.json();
+          if (!Array.isArray(body)) return null;
           const links = new Map();
-          for (const link of await res.json()) links.set(link.sha256, link);
+          for (const link of body) {
+            if (link && link.sha256) links.set(link.sha256, link);
+          }
           return links;
         } catch (_e) {
           return null;
@@ -583,9 +587,13 @@ import { answerGate } from "./tools.js";
         box.replaceChildren();
         box.dataset.state = "loading";
         box.setAttribute("aria-busy", "true");
+        // A verdict can land (the page's own decision, or a live frame) while
+        // this read is in flight. Anything recorded at or after this instant
+        // is newer than the snapshot and noteReviews keeps it.
+        const reviewsReadAt = Date.now();
         const [read, reviews] = await Promise.all([readReviewPacket(tid), threadReviews(tid)]);
         box.removeAttribute("aria-busy");
-        if (reviews) noteReviews(tid, reviews);
+        if (reviews) noteReviews(tid, reviews, reviewsReadAt);
         if (read.why) {
           delete li.dataset.evidenceRoot;
           box.dataset.state = "error";
@@ -762,22 +770,49 @@ import { answerGate } from "./tools.js";
       // two.
       const decisions = new Map();
 
-      function decisionOf(review) {
+      // A server time as milliseconds, 0 when absent or unreadable.
+      function serverTime(value) {
+        const ms = value ? Date.parse(value) : NaN;
+        return Number.isFinite(ms) ? ms : 0;
+      }
+
+      // seenAt is this page's clock when the verdict reached it; at is the
+      // server's time for it (a review's updated_at, a frame's occurred_at).
+      function decisionOf(review, seenAt) {
         return {
           reviewer_id: review.reviewer_id,
           actor_id: review.actor_id || null,
           decision: review.decision,
           evidence_root: review.evidence_root || null,
+          seenAt: seenAt || 0,
+          at: serverTime(review.updated_at || review.occurred_at || review.created_at),
         };
       }
 
-      // The reviews the server holds replace what this page knew of the
-      // task. A dismissed review is no verdict.
-      function noteReviews(tid, reviews) {
+      // The reviews the server holds replace what this page knew of the task.
+      // A verdict that reached the page while the read was in flight
+      // (readAt) may be newer than the snapshot: it stays unless the snapshot
+      // holds a later row for that reviewer, a dismissal included. A
+      // dismissed review is no verdict.
+      function noteReviews(tid, reviews, readAt) {
         const byReviewer = new Map();
+        const savedAt = new Map();
         for (const review of reviews) {
-          if (!review || !review.reviewer_id || review.dismissed_at) continue;
+          if (!review || !review.reviewer_id) continue;
+          savedAt.set(
+            review.reviewer_id,
+            Math.max(serverTime(review.updated_at), serverTime(review.dismissed_at)),
+          );
+          if (review.dismissed_at) continue;
           byReviewer.set(review.reviewer_id, decisionOf(review));
+        }
+        const prior = decisions.get(tid);
+        if (prior) {
+          for (const [id, known] of prior) {
+            if (known.seenAt < readAt) continue;
+            const saved = savedAt.get(id);
+            if (saved === undefined || !known.at || known.at > saved) byReviewer.set(id, known);
+          }
         }
         decisions.set(tid, byReviewer);
       }
@@ -785,7 +820,7 @@ import { answerGate } from "./tools.js";
       function noteDecision(tid, review) {
         if (!tid || !review || !review.reviewer_id) return;
         const byReviewer = decisions.get(tid) || new Map();
-        byReviewer.set(review.reviewer_id, decisionOf(review));
+        byReviewer.set(review.reviewer_id, decisionOf(review, Date.now()));
         decisions.set(tid, byReviewer);
         for (const row of document.querySelectorAll("#needs-you-list .ny-item")) {
           if (row instanceof HTMLElement && row.dataset.threadId === tid) renderDecider(row);
