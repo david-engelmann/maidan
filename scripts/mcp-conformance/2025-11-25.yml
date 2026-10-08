@@ -1,0 +1,40 @@
+# Expected failures for scripts/mcp-conformance.sh under the 2025-11-25 requirements,
+# grouped by reason. Each entry is one check (<scenario>:<check-id>). A listed check
+# that starts passing fails the run, so an entry goes the moment its reason does.
+# Baselined against @modelcontextprotocol/conformance 0.2.0-alpha.11 on 2026-10-07.
+server:
+  # These call the suite's reference fixtures (test_* tools and prompts, test:// resources, the tasks
+  # fixtures such as slow_compute and greet), which Maidan does not have. They exercise the
+  # reference server's content, not the protocol, or are skipped because a fixture is missing.
+  - elicitation-sep1034-defaults:elicitation-sep1034-general
+  - elicitation-sep1330-enums:elicitation-sep1330-general
+  - json-schema-2020-12:json-schema-2020-12-tool-found
+  - prompts-get-embedded-resource:prompts-get-embedded-resource
+  - prompts-get-simple:prompts-get-simple
+  - prompts-get-with-args:prompts-get-with-args
+  - prompts-get-with-image:prompts-get-with-image
+  - resources-read-binary:resources-read-binary
+  - resources-read-text:resources-read-text
+  - resources-templates-read:resources-templates-read
+  - tools-call-audio:tools-call-audio
+  - tools-call-elicitation:tools-call-elicitation
+  - tools-call-embedded-resource:tools-call-embedded-resource
+  - tools-call-error:tools-call-error
+  - tools-call-image:tools-call-image
+  - tools-call-mixed-content:tools-call-mixed-content
+  - tools-call-sampling:tools-call-sampling
+  - tools-call-simple-text:tools-call-simple-text
+  - tools-call-with-progress:tools-call-with-progress
+  # Maidan declares neither the logging nor the completions capability, so a client is not told
+  # it may send logging/setLevel or completion/complete.
+  - completion-complete:completion-complete
+  - logging-set-level:logging-set-level
+  - tools-call-with-logging:tools-call-with-logging
+  # Maidan is stateless from 2025-03-26 on and issues no session, so the suite warns that it
+  # cannot hold streams open on one.
+  - server-sse-multiple-streams:server-sse-multiple-streams-session
+  - server-sse-polling:server-sse-polling-session
+  # The suite has no credential, so it runs as the anonymous dev reader, which is refused
+  # subscriptions because every anonymous caller is one member.
+  - resources-subscribe:resources-subscribe
+  - resources-unsubscribe:resources-unsubscribe

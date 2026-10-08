@@ -84,6 +84,25 @@ contentKekPrevious: ""
 # envFrom. Keeps secret material out of values files / release history.
 existingSecret: ""
 
+# Secrets reach the server as files, not environment variables. The chart's
+# Secret, or existingSecret, and each source in `extra` are mounted read-only at
+# /run/secrets/maidan, one file per key, and the server reads each through
+# <KEY>_FILE (docs/Production.md, Environment). A value in an environment
+# variable shows in `kubectl describe pod` and in the process environment; a
+# mounted file does not. A key a source does not hold stops the pod before the
+# server starts. Every key must be one the server can read from a file, and no
+# key may come from two sources. Set `enabled: false` to pass the Secret through
+# envFrom instead.
+secretFiles:
+  enabled: true
+  # The keys existingSecret holds. The chart cannot read a Secret it did not
+  # render, so it mounts exactly these.
+  existingSecretKeys:
+    - DATABASE_URL
+    - MAIDAN_CONTENT_KEK
+  # More Secrets to mount as files: `name` (through tpl) and the `keys` it holds.
+  extra: []
+
 # More envFrom sources, read after the chart's ConfigMap and Secret, so a key
 # in one of them overrides `config` and `secrets`. Names go through tpl, so a
 # parent chart can name its release's resources: maidan-stack points this at

@@ -105,7 +105,9 @@ On `POST /mcp`, `tools/list` includes only tools your token can call. `POST /mcp
 
 /// Mark a result final. `2026-07-28` requires `resultType` on every result,
 /// and `"input_required"` is the multi-round-trip interim this server never
-/// sends; earlier clients ignore the field.
+/// sends. Earlier clients ignore the field, except in an empty result, which
+/// the official SDK reads strictly, so `ping` (gone from `2026-07-28`) is
+/// answered without it.
 fn complete(mut result: Value) -> Value {
     if let Some(object) = result.as_object_mut() {
         object
@@ -683,6 +685,7 @@ impl McpServer {
         )
         .await;
         let response = match result {
+            Ok(result) if request.method == "ping" => JsonRpcResponse::success(id, result),
             Ok(result) => JsonRpcResponse::success(id, complete(result)),
             Err(err) => {
                 tracing::debug!(method = %request.method, error = %err, "mcp dispatch error");
@@ -710,6 +713,8 @@ impl McpServer {
             // The client's post-initialize handshake notification is accepted
             // (and ignored) rather than treated as an unknown method.
             "notifications/initialized" | "notifications/cancelled" => Ok(json!({})),
+            // Either side may ping at any time, and the answer is an empty result.
+            "ping" => Ok(json!({})),
             "tools/list" => {
                 let (tools, hint) = match profile {
                     Some(profile) => (profile.catalog(), caching::PROFILE_TOOLS_LIST),

@@ -95,6 +95,9 @@ pub struct AppState {
     /// The caller an MCP `POST` with no credential reads as, on a dev instance
     /// that set `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` ([`crate::dev_anonymous`]).
     pub dev_anonymous_reader: Option<maidan_auth::AuthContext>,
+    /// Host names, besides loopback names and IP addresses, that a request with
+    /// no credential may name (`MAIDAN_ALLOWED_HOSTS`, [`crate::rebinding`]).
+    pub allowed_hosts: Vec<String>,
     /// Enables the explicit test-identity header used by in-process E2E
     /// harnesses. Never enabled by the server binary.
     pub test_identity_header: bool,
@@ -287,6 +290,7 @@ impl AppState {
             mcp,
             auth_disabled,
             dev_anonymous_reader: None,
+            allowed_hosts: Vec::new(),
             test_identity_header: false,
             bootstrap_enabled,
             federation,

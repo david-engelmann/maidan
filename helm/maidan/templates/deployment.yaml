@@ -41,23 +41,42 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "maidan.fullname" . }}-config
+            {{- if not .Values.secretFiles.enabled }}
             - secretRef:
                 name: {{ include "maidan.secretName" . }}
+            {{- end }}
             {{- with .Values.extraEnvFrom }}
             {{- tpl (toYaml .) $ | nindent 12 }}
             {{- end }}
-          # Named explicitly so a Secret without the content KEK stops the pod
-          # (CreateContainerConfigError) instead of starting a server that cannot
-          # seal message content.
           env:
+            {{- if .Values.secretFiles.enabled }}
+            # Each secret is a file under /run/secrets/maidan, named here. The
+            # mount lists every key, so a Secret without one (the content KEK
+            # included) stops the pod before the server starts.
+            {{- range (include "maidan.secretFileSources" . | fromJsonArray) }}
+            {{- range .keys }}
+            - name: {{ . }}_FILE
+              value: /run/secrets/maidan/{{ . }}
+            {{- end }}
+            {{- end }}
+            {{- else }}
+            # Named explicitly so a Secret without the content KEK stops the pod
+            # (CreateContainerConfigError) instead of starting a server that cannot
+            # seal message content.
             - name: MAIDAN_CONTENT_KEK
               valueFrom:
                 secretKeyRef:
                   name: {{ include "maidan.secretName" . }}
                   key: MAIDAN_CONTENT_KEK
+            {{- end }}
           volumeMounts:
             - name: artifact-data
               mountPath: /data
+            {{- if .Values.secretFiles.enabled }}
+            - name: secret-files
+              mountPath: /run/secrets/maidan
+              readOnly: true
+            {{- end }}
           # Startup + liveness use the SHALLOW /health/live (process alive);
           # readiness uses the DEEP /health/ready (dependencies OK). This keeps a
           # degraded dependency (DB blip) from failing liveness and triggering a
@@ -96,3 +115,19 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if .Values.secretFiles.enabled }}
+        # Readable by the server's group (fsGroup), by no one else.
+        - name: secret-files
+          projected:
+            defaultMode: 0440
+            sources:
+              {{- range (include "maidan.secretFileSources" . | fromJsonArray) }}
+              - secret:
+                  name: {{ .name }}
+                  items:
+                    {{- range .keys }}
+                    - key: {{ . }}
+                      path: {{ . }}
+                    {{- end }}
+              {{- end }}
+        {{- end }}

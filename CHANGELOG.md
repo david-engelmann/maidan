@@ -62,6 +62,22 @@ Refs #1253
 - **Added:** `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` names one workspace, which must be called `synthetic-…`. An MCP `POST` with no credential reads it as no member at all, holding `workspace:read` only, so it sees what is public there and nothing a membership, DM or grant gives. Its `tools/list` holds the read-only tools, each marked `"securitySchemes": [{ "type": "noauth" }]`. A tool that writes and a subscription are refused with a request for a token, an unknown tool or method gets the usual error, and an anonymous caller never gets a session. The server refuses to start with it under `MAIDAN_ENV=production` or beside `AUTH_DISABLED`.
 - **Added:** `AuthContext::anonymous_reader`, a context that is never a bypass.
 
+### A DNS-rebinding page gets nothing from an open mode
+
+- **Fixed:** A page on another site that points its own name at this machine could reach a server running with `AUTH_DISABLED`, or the anonymous MCP reader, and act as a caller with no credential. Such a request is now refused (403) when its `Host` is a dotted name that is neither a loopback name nor in the new `MAIDAN_ALLOWED_HOSTS` (an IP address and a name without a dot, such as a compose service, pass), and unless its `Origin` (if any) is its `Host`. A rebinding page presents a public name it controls, which always has a dot, so this holds on a server bound to every interface, as a container is. For the anonymous reader a request with a credential is not judged, so a reverse proxy keeps working. Under `AUTH_DISABLED` every request is, and a proxy's public name goes in `MAIDAN_ALLOWED_HOSTS`. The official conformance suite's DNS-rebinding check now passes.
+
+### The official MCP conformance suite runs against Maidan
+
+- **Added:** `scripts/mcp-conformance.sh` and the report-only `mcp conformance` CI job run the official suite's frozen requirement sets for `2025-11-25` and `2026-07-28` against a dev instance in the anonymous read-only mode. Every failing check is listed with its reason in `scripts/mcp-conformance/`. A new failure fails the job, and so does a listed check that starts passing.
+- **Fixed:** `ping` answered "method not found". It now answers an empty result with no `resultType`, which the official SDK reads strictly.
+- **Found:** real `2026-07-28` gaps (SEP-2575 per-request `_meta`, removed methods, SEP-2243 header mismatch, SEP-2663 `tasks/*`). Each is baselined with its reason and tracked in Open Work.
+
+### Every secret can come from a mounted file
+
+- **Added:** `<NAME>_FILE` now works for every secret the server and `maidan` read, not only the first seven. The new ones are `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`.
+- **Changed:** The Helm chart and `k8s/base` mount secrets as files under `/run/secrets/maidan` and name each in `<KEY>_FILE`, so no secret is in the pod's environment. An `existingSecret` is mounted with the keys in `secretFiles.existingSecretKeys`, and more Secrets go in `secretFiles.extra`. A key a Secret lacks stops the pod, and the render refuses a key the server cannot read from a file. `secretFiles.enabled: false` keeps envFrom. `maidan-stack` splits its datastores into a Secret, read as files, and a ConfigMap.
+- **Added:** `every_secret_the_server_reads_can_come_from_a_file` fails when a server variable whose name looks secret has no `_FILE` form, unless a reviewed list says why it is not a secret.
+
 ### Opening a group DM selects it and asks for three members
 
 - **Fixed:** The page accepted two members and left the new group DM unselected. It now refuses fewer than three before the request, says that refusal as a sentence, and selects the conversation the server returns, the same way a one-to-one DM is selected. A browser spec opens one and posts in it.
@@ -80,6 +96,10 @@ Refs #1253
 
 - **Added:** `docs/Clients.md` has a recipe for Claude Code, Cursor, Gemini CLI, GitHub Copilot CLI, a claude.ai custom connector and ChatGPT developer mode. It also covers the dev instance for clients that cannot send a token, the five-minute check a person makes before each release, and what counts as an attributed connect.
 - **Added:** `contracts/mcp-clients.json` is the client matrix as test config. `client_matrix_e2e` checks each row, checks that every client has a recipe, a matrix row and its release step, and connects to a real server with auth enabled the way each client authenticates.
+
+### MCP search names what it found
+
+- **Changed:** Each `search_messages` hit carries `channel_name`, `thread_title` and `author_handle` beside the ids. A name that no longer resolves is left out rather than failing the search. Found running Claude clients, which could only report UUIDs back to the person asking.
 
 ### A rotated token stays on the connection that asked for it
 

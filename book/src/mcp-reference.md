@@ -5626,7 +5626,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `search_messages`
 
-**Search messages.** Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets.
+**Search messages.** Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets, each naming its channel (channel_name), thread (thread_title) and author (author_handle) beside their ids.
 
 **Capability:** `search:query`
 

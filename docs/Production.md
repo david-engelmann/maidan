@@ -47,10 +47,11 @@ period is cut, and clients retry.
 |-----------------|----------|------------------------------------------------------|
 | `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite.                    |
 |                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
-| `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for `DATABASE_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_SESSION_SECRET`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN` and `MAIDAN_SLACK_SIGNING_SECRET` (a Docker or Kubernetes secret mount), so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8; the error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
+| `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for every secret the server reads (a Docker or Kubernetes secret mount). That is `DATABASE_URL`, `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SESSION_SECRET`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. A test fails when the server starts reading a new secret that cannot come from a file, so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8. The error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
 | `MAIDAN_GITHUB_WRITE_REPOS` | with a GitHub token | Comma-separated `owner/name`s, the only repositories the instance's GitHub token may write to (branches, commits, draft and ready pull requests, comments, reviews, check runs). Compared case-insensitively. Unset or empty, every GitHub write is refused and a boot warning says so. A workspace's egress allowlist narrows this list and can never widen it. |
 | `MAIDAN_MARK_READY_APP_ID` | for mark-ready | The id of the one app whose installations may call `POST /operator/github/mark-ready` (Soundcheck in the change flow). An app id is unique across the instance; an app slug is not, so the slug is never trusted. Unset, every mark-ready call is refused. A value that is not a UUID refuses boot. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED` outright.       |
+| `MAIDAN_ALLOWED_HOSTS` | no | Comma-separated host names, without ports, that a request with no credential may name under `AUTH_DISABLED` or the anonymous MCP reader, besides loopback names and IP addresses. A public dev instance lists its own name. See "DNS rebinding". |
 | `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` | no | Dev only. A workspace id whose name begins `synthetic-`, read by an MCP `POST` with no credential (read-only tools). Refused under `MAIDAN_ENV=production` and beside `AUTH_DISABLED`. See Integration, "Anonymous reading on a dev instance". |
 | `AUTH_DISABLED` | no       | Serve every request unauthenticated. **Fail-closed:** takes effect only when `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` is *also* set, and never when `MAIDAN_ENV=production` (either violation refuses boot). A stray `AUTH_DISABLED=1` alone now fails startup loudly instead of silently serving an open workspace. Dev/test/CI only. |
 | `MAIDAN_ALLOW_INSECURE_NO_AUTH` | no | Explicit acknowledgement required to honor `AUTH_DISABLED`. Never set in production. |
@@ -1028,6 +1029,10 @@ Every MCP request writes one `info` line on the `maidan_mcp::request` target, so
 
 Full frames are a developer tool, not a setting. Build with `--features mcp-frame-capture` and set `MAIDAN_LOG=info,maidan_mcp::frame=debug` to log each request and response. Secret-shaped keys are redacted at any depth, inside JSON result text too, and a tool that carries credentials (its name says secret, token, ticket or grant) has its arguments and result withheld. A release build that enables the feature fails to compile, so no published image can capture frames.
 
+### DNS rebinding
+
+A page on another site can point its own name at this machine and send requests past the browser's same-origin rule, with `Host` and `Origin` naming that site. It holds no bearer token and gets none of this server's cookies, so it gains only what a request with no credential may do. That is everything under `AUTH_DISABLED`, and reading under `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE`. In those two modes a request with no credential is refused (403) when its `Host` is a dotted name that is neither a loopback name (`localhost` or a name under `.localhost`) nor in `MAIDAN_ALLOWED_HOSTS`, and when it carries an `Origin` that is not its `Host`. A rebinding page presents a public name it controls, which always has a dot, so an IP address, a name without a dot (a compose service such as `maidan`) and a request with no `Host` pass. This holds however the server is bound, on every interface included. A public dev instance names itself in `MAIDAN_ALLOWED_HOSTS`. For the anonymous reader, a request with a credential is not judged by `Host`, since it takes the bearer path, so a reverse proxy that forwards a public `Host` keeps working. Under `AUTH_DISABLED` every request is judged, because no credential is checked there and a page can attach any header, so a proxy in front of such a server lists its name in `MAIDAN_ALLOWED_HOSTS`.
+
 ## Search (`GET /workspaces/:wid/search`)
 
 | Query param | Notes |
@@ -1130,6 +1135,12 @@ and verify its signature first (README, "Prebuilt image").
 Set `secrets.DATABASE_URL` in values (not a `MAIDAN_` prefix), or name an
 `existingSecret` that already holds it. Rendering does not check that Secret
 or its keys.
+
+The chart mounts every secret as a file under `/run/secrets/maidan` and names
+it in `<KEY>_FILE`, so no secret is in the pod's environment. An
+`existingSecret` is mounted with the keys in `secretFiles.existingSecretKeys`,
+and a key the Secret lacks stops the pod. `k8s/base` does the same for
+`maidan-secrets`. See `helm/maidan/README.md`, "Secrets are files".
 
 **The umbrella stack's own stores.** `maidan-stack` can run Postgres and MinIO as
 single-replica StatefulSets of its own (`postgresql.enabled`, `minio.enabled`;

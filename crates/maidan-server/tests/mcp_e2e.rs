@@ -709,6 +709,11 @@ async fn json_that_is_not_a_request_is_an_invalid_request_not_a_parse_error() {
         .unwrap();
     assert_eq!(batch[0]["error"]["code"], -32600, "{batch}");
     assert_eq!(batch[1]["id"], 2, "{batch}");
+    assert_eq!(
+        batch[1]["result"],
+        json!({}),
+        "ping answers with an empty result and nothing else: {batch}"
+    );
     server.abort();
 }
 
