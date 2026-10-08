@@ -1892,6 +1892,11 @@ Refs #1253
 - **Security:** Installing an app, and minting a token from an installation, grant only what the caller could mint directly. A `token:admin` holder without `operator:global` or `audit:read-global` could install an app with either capability and mint the bot a token that operated or read across every workspace. Both routes now answer 400 for a capability the caller cannot grant, including one an operator put in the installation's grant.
 - **Security:** The installed-app code exchange (`POST /oauth/app/token`) mints with no member behind it, so it never issues `operator:global` or `audit:read-global`, whatever the installation's grant says.
 
+### Kani proofs of cursor arithmetic
+
+- **Added:** Bounded Kani proofs, compiled only with `cfg(kani)`, of the subscribe cursor's gap rule (every `i64`, including a cursor at `i64::MAX`), of catch-up using that same rule, of a too-old body always saying to refetch, and of the room high-water never being negative. `scripts/kani-proofs.sh` runs them locally. They are not a CI job.
+- **Fixed:** `cursor_is_too_old` used `after_id + 1`, which overflows at `i64::MAX` and, in a release build, wraps to a negative id that looks like a pruned gap. The next id is now a checked add, and a cursor with no next id is not too old.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

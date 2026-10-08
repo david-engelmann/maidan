@@ -51,6 +51,7 @@ Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 | [Decisions](Decisions.md) | The load-bearing decisions and what each rejected |
 | [Conventions](Conventions.md) | Branches, commits, PRs and every CI job |
 | [Operations](Operations.md) | The PR flow, CI, closing a cluster, cutting a release |
+| [Kani](Kani.md) | The local Kani proofs of capability containment and cursor arithmetic |
 | [Dependencies](Dependencies.md) | Dependency currency and the `deny.toml` policy |
 
 ## State
