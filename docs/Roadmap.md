@@ -48,8 +48,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    newest release, no chart renders a default credential or the `dev` image,
    and a contract keeps the pins from drifting (both #1156). What remains: the
    pins name `v412.0.0`, from before the week's cross-tenant fixes, until the
-   next tag, and the stack's bundled Postgres and MinIO images no longer exist
-   (in flight). This is the **Before anyone deploys** section of Open Work, and
+   next tag. The stack's bundled Postgres and MinIO run in the chart since
+   #1172. This is the **Before anyone deploys** section of Open Work, and
    it comes first.
 1. **A Slack message becomes a reviewed PR.** David's agent loop, decided on
    2026-10-03: a `!change` in Slack opens a Maidan thread, Pi does the coding
@@ -144,7 +144,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    second workspace with `POST /operator/workspaces`, without `MAIDAN_BOOTSTRAP` (#1208).
    Signup and a hosted console are not started.
    The connected-apps program is the discovery half. The maintainer chose its fast track on 2026-10-03, lanes 1 to 7 with no authorization server (a Gemini CLI extension, a Copilot CLI plugin, the MCP registries and catalogs, a listing asset pack with a demo instance for reviewers, connect recipes, Muse behind the Dawn outcome, and Cursor). Nothing is submitted until the maintainer says go, and every submission is validated first. Self-hosting stays the product, and no enterprise track starts until the consumer lanes measure (Open Work Next 9 to Next 16). The maintainer chose on 2026-10-08 to build the authorization server, at full OAuth 2.1 scope with consent in the console, which the ChatGPT and full-OAuth Claude listings need (Open Work Next 23).
-   The connected-app dev and test program comes first among the listings work. ChatGPT developer mode and claude.ai accept a server with no authentication, so Maidan is tested inside each client from a dev instance before anything is listed. An approval may be decided by a model (decided 2026-10-08), and accepting a gate becomes a property of the credential, a browser session, `approval:grant`, or a confirmation outside the model, so an agent holding a person's token cannot accept one on its own (Open Work Next 17). The provider research of 2026-10-06 points the fast track at surfaces that need no directory first (CLI plugins, custom connectors and install links), while the Muse lane, now cleared on Meta's data terms (2026-10-06), still waits on the Dawn outcome, the validation record and the maintainer's go to submit, and the ChatGPT and Claude directories wait on the authorization server.
+   The connected-app dev and test program comes first among the listings work. ChatGPT developer mode and claude.ai accept a server with no authentication, so Maidan is tested inside each client from a dev instance before anything is listed. An approval may be decided by a model (decided 2026-10-08), and accepting a gate becomes a property of the credential, a browser session, `approval:grant`, or a confirmation outside the model, so that, once Next 17 lands, an agent holding a person's token cannot accept one on its own. Until then it can (Open Work Next 17, Known risks). The provider research of 2026-10-06 points the fast track at surfaces that need no directory first (CLI plugins, custom connectors and install links), while the Muse lane, now cleared on Meta's data terms (2026-10-06), still waits on the Dawn outcome, the validation record and the maintainer's go to submit, and the ChatGPT and Claude directories wait on the authorization server.
 
 ## What Maidan will not become
 
