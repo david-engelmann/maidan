@@ -127,8 +127,9 @@ sign-in.
    refuses the variable under `MAIDAN_ENV=production`.
 3. Give it a public HTTPS address, and allow `160.79.104.0/21` if a firewall
    fronts it.
-4. Name that address in `MAIDAN_ALLOWED_HOSTS`, without the port. A request
-   with no credential naming any other dotted host is refused, so a page on
+4. Name its host in `MAIDAN_ALLOWED_HOSTS`, as a bare host name such as
+   `dev.example.com`, with no scheme and no port. A request with no credential
+   naming a dotted host not in `MAIDAN_ALLOWED_HOSTS` is refused, so a page on
    another site cannot rebind its name to the instance (see "DNS rebinding" in
    [Production](Production.md)).
 5. Record the image digest, or the commit it was built from, at the top of
