@@ -563,31 +563,111 @@ pub fn change_allowlist_selector(repo: &str, base: &str) -> String {
     format!("{repo}@{base}")
 }
 
-/// The change flow's per-repository base map for the mark-ready flip
-/// (maidan#1253): these repositories open agent pull requests only into the
-/// mapped base. Hard-coded on purpose, like [`PROTECTED_BRANCHES`]: the token
-/// the flow runs with can push anywhere, so the guard has to be in this code,
-/// not in configuration or in GitHub's settings.
-const MARK_READY_BASES: [(&str, &str); 5] = [
-    ("bgv3", "dev"),
-    ("relay", "dev"),
-    ("dawn", "dev"),
-    ("wax", "dev"),
-    ("agent-skills", "main"),
-];
+/// The environment variable an operator names the mark-ready base map in.
+pub const MARK_READY_BASES_ENV: &str = "MAIDAN_MARK_READY_BASES";
+
+/// Why a [`MARK_READY_BASES_ENV`] value was refused. Boot fails on any of
+/// these: a typo silently dropping a repository's pin would let its agent
+/// pull requests flip into whatever base its allowlist happens to bless.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum MarkReadyBasesError {
+    #[error("{MARK_READY_BASES_ENV}: `{0}` is not `owner/name=branch`")]
+    NotAPair(String),
+    #[error("{MARK_READY_BASES_ENV}: `{0}` is not an `owner/name` repository")]
+    BadRepo(String),
+    #[error("{MARK_READY_BASES_ENV}: `{repo}` names `{base}`, which is not a branch name")]
+    BadBase { repo: String, base: String },
+    #[error(
+        "{MARK_READY_BASES_ENV}: `{repo}` names `{FORBIDDEN_CHANGE_BASE}`, which is never a change pull request's base"
+    )]
+    ForbiddenBase { repo: String },
+    #[error("{MARK_READY_BASES_ENV}: `{0}` is listed twice")]
+    Duplicate(String),
+}
+
+/// The mark-ready flip's per-repository base map, from
+/// [`MARK_READY_BASES_ENV`]: a listed repository's agent pull requests are
+/// marked ready only when they target its listed base. It is the operator's,
+/// read once at boot, for the same reason `MAIDAN_GITHUB_WRITE_REPOS` is:
+/// the GitHub token belongs to the instance, so no workspace may move the pin.
+/// A repository not listed is pinned to no base here; the workspace egress
+/// allowlist (`owner/name@base`, fail-closed) still decides its flips.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MarkReadyBases {
+    /// Lowercased `owner/name` to base, as written. GitHub compares
+    /// repository names case-insensitively; branch names are compared
+    /// case-insensitively by [`check_mark_ready_target`], like the other
+    /// change-flow base rules.
+    bases: std::collections::BTreeMap<String, String>,
+}
+
+impl MarkReadyBases {
+    /// Read a comma-separated list of `owner/name=branch` pairs. Whitespace
+    /// around each part is trimmed and blank entries are skipped, as for
+    /// `MAIDAN_GITHUB_WRITE_REPOS`; anything else malformed is an error.
+    pub fn parse(raw: &str) -> Result<Self, MarkReadyBasesError> {
+        let mut bases = std::collections::BTreeMap::new();
+        for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+            let Some((repo, base)) = entry.split_once('=') else {
+                return Err(MarkReadyBasesError::NotAPair(entry.to_string()));
+            };
+            let (repo, base) = (repo.trim(), base.trim());
+            if base.contains('=') {
+                return Err(MarkReadyBasesError::NotAPair(entry.to_string()));
+            }
+            if !is_github_repo(repo) {
+                return Err(MarkReadyBasesError::BadRepo(repo.to_string()));
+            }
+            if base.eq_ignore_ascii_case(FORBIDDEN_CHANGE_BASE) {
+                return Err(MarkReadyBasesError::ForbiddenBase {
+                    repo: repo.to_string(),
+                });
+            }
+            if !is_branch_name(base) {
+                return Err(MarkReadyBasesError::BadBase {
+                    repo: repo.to_string(),
+                    base: base.to_string(),
+                });
+            }
+            let key = repo.to_ascii_lowercase();
+            if bases.insert(key, base.to_string()).is_some() {
+                return Err(MarkReadyBasesError::Duplicate(repo.to_string()));
+            }
+        }
+        Ok(Self { bases })
+    }
+
+    /// The base `repo` (`owner/name`) is pinned to, if it is listed.
+    pub fn base_for(&self, repo: &str) -> Option<&str> {
+        self.bases
+            .get(&repo.to_ascii_lowercase())
+            .map(String::as_str)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bases.is_empty()
+    }
+
+    /// Every pin as `(owner/name lowercased, base)`, in name order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.bases.iter().map(|(r, b)| (r.as_str(), b.as_str()))
+    }
+}
 
 /// The mark-ready half of the base guard: the shape rules from
-/// [`check_change_target`], plus the per-repository base map. A repository in
-/// [`MARK_READY_BASES`] flips only into its mapped base; a repository outside
-/// the map is governed by the workspace egress allowlist, which fails closed.
-pub fn check_mark_ready_target(repo: &str, branch: &str, base: &str) -> Result<(), String> {
+/// [`check_change_target`], plus the operator's per-repository base map. A
+/// repository listed in `bases` flips only into its listed base; a repository
+/// not listed is governed by the workspace egress allowlist, which fails
+/// closed.
+pub fn check_mark_ready_target(
+    bases: &MarkReadyBases,
+    repo: &str,
+    branch: &str,
+    base: &str,
+) -> Result<(), String> {
     check_change_target(branch, base)?;
-    let name = repo.rsplit('/').next().unwrap_or(repo);
-    match MARK_READY_BASES
-        .iter()
-        .find(|(r, _)| r.eq_ignore_ascii_case(name))
-    {
-        Some((_, want)) if !base.eq_ignore_ascii_case(want) => Err(format!(
+    match bases.base_for(repo) {
+        Some(want) if !base.eq_ignore_ascii_case(want) => Err(format!(
             "`{repo}` opens agent pull requests only into `{want}`; `{base}` is not its base"
         )),
         _ => Ok(()),
@@ -1447,31 +1527,128 @@ mod tests {
         }
     }
 
+    fn example_bases() -> MarkReadyBases {
+        MarkReadyBases::parse("example-org/example-repo=dev, Example-Org/Example-Skills = main,")
+            .unwrap()
+    }
+
     #[test]
     fn the_mark_ready_base_map_names_its_repo_and_base() {
-        // Mapped repos flip only into their mapped base, whatever the owner.
-        for (name, base) in MARK_READY_BASES {
-            let repo = format!("example-org/{name}");
+        let bases = example_bases();
+        // Listed repos flip only into their listed base, compared as GitHub
+        // compares names.
+        for (repo, base) in [
+            ("example-org/example-repo", "dev"),
+            ("EXAMPLE-ORG/example-repo", "DEV"),
+            ("example-org/example-skills", "main"),
+        ] {
             assert!(
-                check_mark_ready_target(&repo, "feature/agent-x", base).is_ok(),
+                check_mark_ready_target(&bases, repo, "feature/agent-x", base).is_ok(),
                 "{repo} -> {base}"
             );
         }
-        // A mapped repo into any other base names the mapped base.
+        // A listed repo into any other base names the listed base.
         for (repo, base, want) in [
-            ("example-org/relay", "main", "dev"),
-            ("example-org/relay", "staging", "dev"),
-            ("example-org/agent-skills", "dev", "main"),
+            ("example-org/example-repo", "main", "dev"),
+            ("example-org/example-repo", "staging", "dev"),
+            ("example-org/example-skills", "dev", "main"),
         ] {
-            let err = check_mark_ready_target(repo, "feature/agent-x", base).unwrap_err();
+            let err = check_mark_ready_target(&bases, repo, "feature/agent-x", base).unwrap_err();
             assert!(err.contains(want), "{repo} -> {base}: {err}");
             assert!(err.contains("only into"), "{repo} -> {base}: {err}");
         }
+        // The pin is per `owner/name`: the same name under another owner is
+        // not listed.
+        assert!(check_mark_ready_target(
+            &bases,
+            "other-org/example-repo",
+            "feature/agent-x",
+            "main"
+        )
+        .is_ok());
         // Outside the map the shape rules still apply and the allowlist
         // governs: a well-formed target passes here.
-        assert!(check_mark_ready_target("o/repo", "feature/agent-x", "dev").is_ok());
-        assert!(check_mark_ready_target("o/repo", "feature/agent-x", "prod").is_err());
-        assert!(check_mark_ready_target("o/repo", "hotfix/x", "dev").is_err());
+        let none = MarkReadyBases::default();
+        assert!(check_mark_ready_target(&none, "o/repo", "feature/agent-x", "dev").is_ok());
+        assert!(check_mark_ready_target(&none, "o/repo", "feature/agent-x", "prod").is_err());
+        assert!(check_mark_ready_target(&none, "o/repo", "hotfix/x", "dev").is_err());
+        assert!(
+            check_mark_ready_target(&bases, "example-org/example-repo", "hotfix/x", "dev").is_err()
+        );
+    }
+
+    #[test]
+    fn the_mark_ready_base_map_reads_owner_name_equals_branch_pairs() {
+        let bases = example_bases();
+        assert_eq!(
+            bases.iter().collect::<Vec<_>>(),
+            vec![
+                ("example-org/example-repo", "dev"),
+                ("example-org/example-skills", "main"),
+            ]
+        );
+        assert_eq!(bases.base_for("Example-Org/Example-Repo"), Some("dev"));
+        assert_eq!(bases.base_for("example-org/other"), None);
+        for blank in ["", "  ", ",", " , ,"] {
+            assert!(
+                MarkReadyBases::parse(blank).unwrap().is_empty(),
+                "{blank:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_malformed_mark_ready_base_map_is_refused_and_names_the_entry() {
+        for (raw, want) in [
+            (
+                "example-org/example-repo",
+                MarkReadyBasesError::NotAPair("example-org/example-repo".into()),
+            ),
+            (
+                "example-repo=dev",
+                MarkReadyBasesError::BadRepo("example-repo".into()),
+            ),
+            ("=dev", MarkReadyBasesError::BadRepo(String::new())),
+            (
+                "example-org/example-repo/x=dev",
+                MarkReadyBasesError::BadRepo("example-org/example-repo/x".into()),
+            ),
+            (
+                "example-org/example-repo=",
+                MarkReadyBasesError::BadBase {
+                    repo: "example-org/example-repo".into(),
+                    base: String::new(),
+                },
+            ),
+            (
+                "example-org/example-repo=de v",
+                MarkReadyBasesError::BadBase {
+                    repo: "example-org/example-repo".into(),
+                    base: "de v".into(),
+                },
+            ),
+            (
+                "example-org/example-repo=dev=main",
+                MarkReadyBasesError::NotAPair("example-org/example-repo=dev=main".into()),
+            ),
+            (
+                "example-org/example-repo=Prod",
+                MarkReadyBasesError::ForbiddenBase {
+                    repo: "example-org/example-repo".into(),
+                },
+            ),
+            (
+                "example-org/example-repo=dev,Example-Org/Example-Repo=main",
+                MarkReadyBasesError::Duplicate("Example-Org/Example-Repo".into()),
+            ),
+        ] {
+            let err = MarkReadyBases::parse(raw).unwrap_err();
+            assert_eq!(err, want, "{raw:?}");
+            assert!(
+                err.to_string().starts_with("MAIDAN_MARK_READY_BASES: "),
+                "{err}"
+            );
+        }
     }
 
     #[test]
