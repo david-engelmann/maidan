@@ -762,6 +762,18 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
             tracing::info!(?bases, "mark-ready base pins configured");
         }
     }
+    // Not a boot refusal: no pins is a valid setup. But a deploy that names the
+    // mark-ready app and drops the bases (they were built in until #1315) lets
+    // every flip follow the workspace allowlist alone, and nothing says so.
+    if let Some(app_id) = &state.mark_ready_app_id {
+        if state.mark_ready_bases.is_empty() {
+            tracing::warn!(
+                app_id = %app_id.0,
+                "MAIDAN_MARK_READY_APP_ID is set but MAIDAN_MARK_READY_BASES pins no base: \
+                 mark-ready flips follow the workspace egress allowlist alone"
+            );
+        }
+    }
 
     // Background projector-egress worker: drains the durable egress queue with
     // retry/backoff + dead-lettering. Runs whenever a projector sender is

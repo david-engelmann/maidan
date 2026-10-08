@@ -1867,6 +1867,11 @@ Refs #1253
 - **Changed:** Only an approval bound to the thread's latest packet counts toward a review requirement, in `review_status` and at close, and a close is refused while the evidence differs from what that packet pinned. A comment after an approval does not undo it, since the evidence root covers the result and linked artifacts, not messages. This is the third part of evidence-bound approvals (Open Work Next 3).
 - **Changed:** Needs you in the console approves the packet the row showed, so evidence that changed after the row was drawn is refused with a reason instead of approved.
 
+### A refused close reaches MCP subscribers, and an unpinned mark-ready app is named at boot
+
+- **Fixed:** A close refused over REST (`POST /threads/:id`, a review requirement not met or an unresolved `refutes`) now notifies the thread's MCP resource subscribers of the notice message it posts, as the MCP `transition_thread` refusal already did. Subscribers in another workspace hear nothing.
+- **Added:** The server logs a warning at boot when `MAIDAN_MARK_READY_APP_ID` is set and `MAIDAN_MARK_READY_BASES` pins no base (unset or blank), because every mark-ready flip then follows the workspace egress allowlist alone. Boot still succeeds.
+
 ### An approval card says how far to trust each piece of evidence
 
 - **Added:** A review packet records an attestation tier for each piece of evidence, judged once at the hand-off: `verified` for a land-gate pass the close gate would accept (its own `land_gate` item, with the pass's `artifact_sha` and recorder), `attached` for a result or artifact from a member who never worked the thread, and `self_reported` for a worker's own result or link. A delegate that worked the thread and links with someone else's token is judged as itself, so its link is still self-reported (migration 0147 records a link's and a result's delegate actor). The packet's `self_reported_only` is true when it holds evidence and every item is self-reported. Both appear on `get_review_packet`, `GET /threads/:id/review-packet` and `GET /ui/api/threads/:tid/review-packet`. This is the fourth part of evidence-bound approvals (Open Work Next 3).
