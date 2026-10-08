@@ -2,7 +2,7 @@
 import { pastedToken, persist, token, wid, wsUrl } from "./api.js";
 import { loadThreads, markSeen, markSeenFromFrame, noteRefusalFromFrame, refreshTeamSoon, scheduleBoardRefresh, selectedChannelId, selectedThreadId } from "./board.js";
 import { appendLive, setWsStatus, showError } from "./feedback.js";
-import { loadNeedsYou } from "./needs.js";
+import { loadNeedsYou, noteDecisionFrame } from "./needs.js";
 import { authorId, memberName } from "./people.js";
 import { oidcLoginPath, sessionMemberId } from "./session.js";
 import { LIVE_POLL_MS, THREAD_BOARD_KINDS, wsResumeKey } from "./state.js";
@@ -228,6 +228,7 @@ import { loadApprovals } from "./tools.js";
             if (liveFrameTargetsOpenThread(v)) scheduleLiveRefresh();
             if (THREAD_BOARD_KINDS.has(kind)) scheduleBoardRefresh();
             if (kind === "message_posted") noteRefusalFromFrame(v);
+            if (kind === "review_submitted") noteDecisionFrame(v);
             return;
           }
           if (v.kind) {

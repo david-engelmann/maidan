@@ -3,6 +3,9 @@
 //! the file's shape, checks that `docs/Clients.md` gives every client a recipe,
 //! a matrix row and (where flagged) a step in the release check, and then
 //! connects to a real server with auth enabled the way each client does.
+//! `gemini-extension.json` at the repository root is checked here too: it
+//! parses, names no host of its own, reads the instance and the token from the
+//! environment, and reaches a real server once those are filled in.
 
 use std::{
     collections::HashSet,
@@ -144,6 +147,121 @@ fn every_client_has_a_recipe_a_matrix_row_and_its_release_step() {
     assert!(found.is_empty(), "{}", found.join("\n"));
 }
 
+fn gemini_extension() -> Value {
+    let text = std::fs::read_to_string(repo().join("gemini-extension.json"))
+        .expect("gemini-extension.json at the repository root");
+    serde_json::from_str(&text).expect("gemini-extension.json is JSON")
+}
+
+/// The one URL and header the extension sends, as Gemini CLI fills them in
+/// from the environment.
+const GEMINI_URL_PREFIX: &str = "${MAIDAN_URL}";
+const GEMINI_AUTHORIZATION: &str = "Bearer ${MAIDAN_TOKEN}";
+
+#[test]
+fn the_gemini_extension_names_the_users_own_instance_and_an_environment_token() {
+    let manifest = gemini_extension();
+    let gemini = clients(&matrix())
+        .into_iter()
+        .find(|c| c["id"] == "gemini-cli")
+        .expect("a gemini-cli row in the matrix");
+    let endpoint = gemini["endpoint"].as_str().unwrap_or_default();
+    let mut found = Vec::new();
+
+    // Gemini CLI's extension reference: lowercase letters, numbers and dashes,
+    // matching the directory the extension is installed under
+    // (~/.gemini/extensions/<name>), which is the repository's name.
+    let name = manifest["name"].as_str().unwrap_or_default();
+    if name != "maidan"
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        found.push(format!(
+            "name {name:?} is not the repository's name, `maidan`"
+        ));
+    }
+    if manifest["version"]
+        .as_str()
+        .is_none_or(|v| v.trim().is_empty())
+    {
+        found.push("no version, which Gemini CLI refuses to load".into());
+    }
+    if let Some(context) = manifest.get("contextFileName") {
+        match context.as_str() {
+            Some(file)
+                if !file.contains("..")
+                    && !file.starts_with('/')
+                    && repo().join(file).is_file() => {}
+            _ => found.push(format!(
+                "contextFileName {context} is not a file in the repository"
+            )),
+        }
+    }
+
+    let servers = manifest["mcpServers"]
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    if servers.len() != 1 || !servers.contains_key("maidan") {
+        found.push("mcpServers is not the one `maidan` server".into());
+    }
+    for (key, server) in &servers {
+        let fields: HashSet<&str> = server
+            .as_object()
+            .map(|o| o.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        if fields != HashSet::from(["httpUrl", "headers"]) {
+            found.push(format!(
+                "{key}: has {fields:?}, not just httpUrl and headers (no url, which the \
+                 documentation calls SSE, no command, and no trust)"
+            ));
+        }
+        let url = server["httpUrl"].as_str().unwrap_or_default();
+        if url != format!("{GEMINI_URL_PREFIX}{endpoint}") {
+            found.push(format!(
+                "{key}: httpUrl is {url:?}, not the user's instance at {GEMINI_URL_PREFIX}{endpoint}"
+            ));
+        }
+        let headers = server["headers"].as_object().cloned().unwrap_or_default();
+        if headers.len() != 1 || headers.get("Authorization") != Some(&json!(GEMINI_AUTHORIZATION))
+        {
+            found.push(format!(
+                "{key}: headers are {headers:?}, not one Authorization header read from MAIDAN_TOKEN"
+            ));
+        }
+    }
+    // A fixed endpoint anywhere in the file would send someone's token to a
+    // host they did not choose.
+    let text = manifest.to_string();
+    if text.contains("://") || text.contains("localhost") || text.contains("127.0.0.1") {
+        found.push("the manifest names a host".into());
+    }
+    assert!(found.is_empty(), "{}", found.join("\n"));
+}
+
+#[test]
+fn the_gemini_cli_recipe_documents_the_extension_install_and_its_fallback() {
+    let doc = std::fs::read_to_string(repo().join("docs/Clients.md")).expect("docs/Clients.md");
+    let recipe = section(&doc, "### Gemini CLI").expect("a Gemini CLI recipe");
+    let recipe = recipe.split_whitespace().collect::<Vec<_>>().join(" ");
+    for needle in [
+        "gemini extensions install https://github.com/david-engelmann/maidan",
+        "gemini extensions list",
+        "gemini mcp list",
+        "MAIDAN_URL",
+        "MAIDAN_TOKEN",
+        "gemini-extension.json",
+        // The manifest cannot refuse plain http, so the recipe says to use https.
+        "`https://` address for any instance that is not on your own machine",
+    ] {
+        assert!(
+            recipe.contains(needle),
+            "the Gemini CLI recipe does not mention {needle}"
+        );
+    }
+}
+
 struct Server {
     base: String,
     client: reqwest::Client,
@@ -261,6 +379,31 @@ impl Server {
         assert_eq!(response.status(), StatusCode::OK, "{method} on {endpoint}");
         response.json().await.unwrap()
     }
+}
+
+#[tokio::test]
+async fn the_gemini_extension_reaches_a_real_server_once_the_environment_fills_it_in() {
+    let server = spawn().await;
+    let manifest = gemini_extension();
+    let entry = &manifest["mcpServers"]["maidan"];
+    let endpoint = entry["httpUrl"]
+        .as_str()
+        .and_then(|u| u.strip_prefix(GEMINI_URL_PREFIX))
+        .expect("httpUrl starts with the instance URL");
+    let bearer = entry["headers"]["Authorization"]
+        .as_str()
+        .map(|h| h.replace("${MAIDAN_TOKEN}", &server.bearer))
+        .and_then(|h| h.strip_prefix("Bearer ").map(str::to_string))
+        .expect("a bearer header");
+    let listed = server
+        .rpc(endpoint, Some(&bearer), "tools/list", json!({}))
+        .await;
+    assert!(
+        listed["result"]["tools"]
+            .as_array()
+            .is_some_and(|t| t.iter().any(|t| t["name"] == "whoami")),
+        "the extension's server lists Maidan's tools: {listed}"
+    );
 }
 
 #[tokio::test]

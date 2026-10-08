@@ -30,6 +30,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Refs #1253
 
+### Gemini CLI installs Maidan as an extension
+
+- **Changed:** `gemini-extension.json` connects to `${MAIDAN_URL}/mcp/streamable` over Streamable HTTP (`httpUrl`) with `Authorization: Bearer ${MAIDAN_TOKEN}`, both read from the environment, and loads `gemini-extension.md` as model context. Before, it posted to the bare instance URL with a plain `url`. `docs/Clients.md` documents `gemini extensions install https://github.com/david-engelmann/maidan`, and `client_matrix_e2e` checks the manifest names no host and reaches a real server (Open Work Next 9).
+
 ### A board harness fails when the page writes
 
 - **Tests:** the seven inline Node harnesses in `crates/maidan-server/tests/ui_js_contract.rs` now start from one shared prelude that stubs `api` and `writeApi`. A write through `writeApi`, or a non-GET through `api`, is recorded and refused, and the harness exits non-zero naming each write, even when the page function catches the error and paints a sentence. Before, `writeApi` was undefined there, so a page function that wrote and caught its own failure passed. A contract test checks that every inline harness in the file runs with the prelude (Open Work, "Found reviewing #1273 to #1275").
@@ -1832,6 +1836,10 @@ Refs #1253
 - **Changed:** a blank thread title is refused before the request leaves the page, and the server answers 422 `problems/unprocessable-entity` for one that arrives anyway. Omitting the title still makes an untitled thread.
 - **Added:** `POST /channels/{id}/threads` accepts an optional `description` and stores it on the thread. Unknown fields are rejected with 400.
 - **Tests:** a Playwright spec double-clicks Add task and asserts exactly one task appears; Rust tests cover the blank-title 422, the unknown-field 400, the persisted description, and idempotent `/ui/api` thread creation.
+
+### The approval card shows the evidence it approves
+
+- **Changed:** A review row in the console's Needs you shows the review packet it approves: the evidence root that Approve sends, the result's hash and who produced it, and each linked artifact's kind, filename, size, and who uploaded it and when. An empty hand-off says so. An artifact whose details fail to load says so on its own line, and the rest of the evidence still shows. A failed packet read shows an error with Retry. The row names who decided, from the review the decision returned or a live `review_submitted` event. Attestation tiers are not shown, because the server does not define any yet (Open Work Next 3).
 
 ### An agent's question reaches a person
 

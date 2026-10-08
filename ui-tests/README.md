@@ -58,6 +58,7 @@ Specs that drive a real page, and what is still missing.
 | Needs you when a load fails (refused, unreachable, recovery) | `needs-you-truth.spec.ts` | |
 | Needs you blocked tasks (Unblock, its failures, a second workspace) | `needs-you-blocked.spec.ts` | Blocks the seeded `hold` task itself and clears it after each test |
 | Needs you questions (an agent's `needs_input`, its heading, Answer and the reply that clears it) | `needs-you-question.spec.ts` | Asks the question on the seeded `ask` task itself, as the deployer; the reply clears it |
+| The approval card's evidence (packet root, result, artifacts, empty, failed reads, root sent, decider, a second workspace) | `approval-evidence.spec.ts` | Seeded `proof` tasks; the decide test approves `proof_decide`, and Rae approves `proof_live` |
 | Prefs (delivery mode, email, mute, follow) | `prefs.spec.ts` | |
 | Slash commands (register, revoke) | `slash.spec.ts` | MCP tool handler. An http handler needs an encryption key the harness does not set |
 | Delivery replay | `deliveries.spec.ts` | One seeded dead-letter webhook |

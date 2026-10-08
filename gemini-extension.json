@@ -4,10 +4,11 @@
   "version": "0.1.0",
   "mcpServers": {
     "maidan": {
-      "url": "${MAIDAN_URL}",
+      "httpUrl": "${MAIDAN_URL}/mcp/streamable",
       "headers": {
         "Authorization": "Bearer ${MAIDAN_TOKEN}"
       }
     }
-  }
+  },
+  "contextFileName": "gemini-extension.md"
 }
