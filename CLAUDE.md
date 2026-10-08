@@ -82,8 +82,9 @@ change.
   (v23–26, v78–100, v311, v350–401, v403, v411); their work ships in the next
   tag. `main` is well ahead of `v412.0.0`. Tagging is the maintainer's call.
 - **The queue is led by approvals.** Accepting a gate is a property of the
-  credential since #1325: a signed-in browser session or `approval:grant`,
-  while a plain bearer, a delegate token or a session made from one can only
+  credential since #1325: a browser session the person signed in to, sent
+  from the console page, or `approval:grant`, and nobody accepts their own
+  request, while a plain bearer, a delegate token or a session made from one can only
   decline or cancel. Next is Open Work Next 17, a model-callable
   `approval_decide` on that rule, which the maintainer chose on 2026-10-08,
   and the OAuth authorization server (Next 23). The approval card shows each
