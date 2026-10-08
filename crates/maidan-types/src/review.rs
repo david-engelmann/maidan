@@ -75,6 +75,11 @@ pub struct ThreadReview {
     /// or worked the thread is not counted, whoever it reviews as.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<MemberId>,
+    /// The evidence root of the review packet this verdict was given against.
+    /// Only an approval bound to the thread's latest packet counts toward its
+    /// close.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_root: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     /// Set on an approval when a change request sent the thread back for
@@ -148,15 +153,15 @@ pub struct ResultEvidence {
     pub produced_by: MemberId,
 }
 
-/// What a thread put in front of its reviewers when it went to review: its
-/// version, its result and its linked artifacts, each by content hash. No
-/// timestamps, so recomputing it from unchanged content gives the same root on
-/// either backend.
+/// The evidence a thread put in front of its reviewers when it went to review:
+/// its result and its linked artifacts, each by content hash. Messages are the
+/// conversation around the evidence, not the evidence, so a comment after an
+/// approval does not undo it. No timestamps, so recomputing it from unchanged
+/// evidence gives the same root on either backend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EvidenceManifest {
     pub thread_id: ThreadId,
-    pub thread_version: i64,
     pub result: Option<ResultEvidence>,
     /// Linked artifacts' sha256 hashes, sorted.
     pub artifacts: Vec<String>,
@@ -198,6 +203,9 @@ pub struct ReviewPacket {
     pub id: uuid::Uuid,
     pub thread_id: ThreadId,
     pub requested_by: MemberId,
+    /// The thread's version at the hand-off: how many writes its content had
+    /// seen, messages included. A later version means the thread moved on.
+    pub thread_version: i64,
     pub manifest: EvidenceManifest,
     pub evidence_root: String,
     pub created_at: DateTime<Utc>,
@@ -210,7 +218,6 @@ mod packet_tests {
     fn manifest() -> EvidenceManifest {
         EvidenceManifest {
             thread_id: ThreadId(uuid::Uuid::nil()),
-            thread_version: 3,
             result: Some(ResultEvidence {
                 sha256: result_sha256(&serde_json::json!({"b": 1, "a": [true, null]})).unwrap(),
                 produced_by: MemberId(uuid::Uuid::nil()),
@@ -236,13 +243,11 @@ mod packet_tests {
         let root = base.root().unwrap();
         assert_eq!(root.len(), 64);
         assert_eq!(root, manifest().root().unwrap(), "deterministic");
-        let mut later = manifest();
-        later.thread_version = 4;
         let mut other_result = manifest();
         other_result.result = None;
         let mut more = manifest();
         more.artifacts.push("bb".repeat(32));
-        for changed in [later, other_result, more] {
+        for changed in [other_result, more] {
             assert_ne!(changed.root().unwrap(), root, "{changed:?}");
         }
     }

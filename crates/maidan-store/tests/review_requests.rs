@@ -146,7 +146,7 @@ async fn run_suite(store: &dyn Store) {
     );
 
     store
-        .submit_review(a, human, ReviewDecision::Approve, None)
+        .submit_review(a, human, ReviewDecision::Approve, None, None)
         .await
         .expect("approve a");
     assert_eq!(
@@ -160,7 +160,13 @@ async fn run_suite(store: &dyn Store) {
     );
 
     store
-        .submit_review(b, human, ReviewDecision::RequestChanges, Some("add a test"))
+        .submit_review(
+            b,
+            human,
+            ReviewDecision::RequestChanges,
+            Some("add a test"),
+            None,
+        )
         .await
         .expect("request changes on b");
     assert!(
@@ -178,12 +184,18 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("name bystander on d");
     store
-        .submit_review(d, human, ReviewDecision::Approve, None)
+        .submit_review(d, human, ReviewDecision::Approve, None, None)
         .await
         .expect("human approves d");
     assert!(!requested(store, ws, human).await.iter().any(|t| t.id == d));
     store
-        .submit_review(d, bystander, ReviewDecision::RequestChanges, Some("rework"))
+        .submit_review(
+            d,
+            bystander,
+            ReviewDecision::RequestChanges,
+            Some("rework"),
+            None,
+        )
         .await
         .expect("bystander requests changes on d");
     store.claim_thread(d, worker).await.expect("reclaim d");
@@ -201,7 +213,7 @@ async fn run_suite(store: &dyn Store) {
         "a dismissed approval does not count: the human is asked again"
     );
     store
-        .submit_review(d, human, ReviewDecision::Approve, None)
+        .submit_review(d, human, ReviewDecision::Approve, None, None)
         .await
         .expect("human approves d again");
     assert!(
@@ -303,7 +315,7 @@ async fn run_unassigned_suite(store: &dyn Store) {
     );
 
     store
-        .submit_review(ownerless, admin, ReviewDecision::Approve, None)
+        .submit_review(ownerless, admin, ReviewDecision::Approve, None, None)
         .await
         .expect("admin approves");
     assert!(
@@ -403,7 +415,7 @@ async fn run_closed_without_review_suite(store: &dyn Store) {
         .expect("an ungated close needs no approval");
     let approved = handed_to_review(store, ws, worker).await;
     store
-        .submit_review(approved, human, ReviewDecision::Approve, None)
+        .submit_review(approved, human, ReviewDecision::Approve, None, None)
         .await
         .expect("approve");
     store

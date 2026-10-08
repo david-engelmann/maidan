@@ -87,16 +87,22 @@ async fn run_suite(store: &dyn Store) {
     // Open review (no named set): r1 approves → 1; owner + assignee approvals do
     // NOT count (SoD); r2 approves → 2 → met.
     store
-        .submit_review(thread.id, r1.id, ReviewDecision::Approve, Some("lgtm"))
+        .submit_review(
+            thread.id,
+            r1.id,
+            ReviewDecision::Approve,
+            Some("lgtm"),
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(store.review_status(thread.id).await.unwrap().approvals, 1);
     store
-        .submit_review(thread.id, owner.id, ReviewDecision::Approve, None)
+        .submit_review(thread.id, owner.id, ReviewDecision::Approve, None, None)
         .await
         .unwrap();
     store
-        .submit_review(thread.id, assignee.id, ReviewDecision::Approve, None)
+        .submit_review(thread.id, assignee.id, ReviewDecision::Approve, None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -105,7 +111,7 @@ async fn run_suite(store: &dyn Store) {
         "owner + assignee self-approvals don't count"
     );
     store
-        .submit_review(thread.id, r2.id, ReviewDecision::Approve, None)
+        .submit_review(thread.id, r2.id, ReviewDecision::Approve, None, None)
         .await
         .unwrap();
     let s = store.review_status(thread.id).await.unwrap();
@@ -114,13 +120,13 @@ async fn run_suite(store: &dyn Store) {
 
     // r1 changes their mind → request_changes → back to 1 → not met.
     store
-        .submit_review(thread.id, r1.id, ReviewDecision::RequestChanges, None)
+        .submit_review(thread.id, r1.id, ReviewDecision::RequestChanges, None, None)
         .await
         .unwrap();
     assert!(!store.review_status(thread.id).await.unwrap().approvals_met);
     // Flip back.
     store
-        .submit_review(thread.id, r1.id, ReviewDecision::Approve, None)
+        .submit_review(thread.id, r1.id, ReviewDecision::Approve, None, None)
         .await
         .unwrap();
     assert!(store.review_status(thread.id).await.unwrap().approvals_met);

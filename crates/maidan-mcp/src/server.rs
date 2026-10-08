@@ -1264,6 +1264,17 @@ mod tests {
     use maidan_types::*;
     use sqlx::sqlite::SqlitePoolOptions;
 
+    /// The evidence root of what the thread was last handed to review with,
+    /// which an approval names.
+    async fn handed_root(store: &Arc<dyn Store>, thread_id: ThreadId) -> String {
+        store
+            .latest_review_packet(thread_id)
+            .await
+            .unwrap()
+            .expect("handed to review")
+            .evidence_root
+    }
+
     async fn mk_server() -> (McpServer, ThreadId, MemberId) {
         let pool = SqlitePoolOptions::new()
             .max_connections(4)
@@ -7282,12 +7293,22 @@ mod tests {
         assert_eq!(s0["required_count"], 1);
         assert_eq!(s0["approvals_met"], json!(false));
 
-        // The reviewer approves (as themselves) → status flips to met.
+        // Handed to review with a result, the reviewer approves what it was
+        // shown (as themselves) → status flips to met.
+        store
+            .set_thread_result(thread.id, owner.id, &json!({ "status": "done" }))
+            .await
+            .unwrap();
+        store
+            .transition_thread(thread.id, owner.id, maidan_fsm::ThreadAction::StartReview)
+            .await
+            .unwrap();
+        let root = handed_root(&store, thread.id).await;
         server
             .call_tool(
                 &rev,
                 "submit_review",
-                &json!({ "thread_id": tid, "decision": "approve", "note": "lgtm" }),
+                &json!({ "thread_id": tid, "decision": "approve", "note": "lgtm", "evidence_root": root }),
             )
             .await
             .unwrap();
@@ -7527,8 +7548,15 @@ mod tests {
         );
         assert_eq!(note.author_id, owner_auth.member_id);
 
+        let root = handed_root(&store, thread.id).await;
         store
-            .submit_review(thread.id, reviewer.id, ReviewDecision::Approve, None)
+            .submit_review(
+                thread.id,
+                reviewer.id,
+                ReviewDecision::Approve,
+                None,
+                Some(&root),
+            )
             .await
             .unwrap();
         let closed = content(
@@ -7850,11 +7878,12 @@ mod tests {
             "MCP-set critical result must block close, got {blocked:?}"
         );
 
+        let root = handed_root(&store, thread.id).await;
         server
             .call_tool(
                 &human_auth,
                 "submit_review",
-                &json!({ "thread_id": tid, "decision": "approve" }),
+                &json!({ "thread_id": tid, "decision": "approve", "evidence_root": root }),
             )
             .await
             .unwrap();
@@ -8123,11 +8152,12 @@ mod tests {
             ("request_changes", Some("handle the empty list"), true),
             ("approve", None, false),
         ] {
+            let root = handed_root(&store, thread.id).await;
             server
                 .call_tool(
                     &rev,
                     "submit_review",
-                    &json!({ "thread_id": thread.id.0, "decision": decision, "note": note }),
+                    &json!({ "thread_id": thread.id.0, "decision": decision, "note": note, "evidence_root": root }),
                 )
                 .await
                 .unwrap();

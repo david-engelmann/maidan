@@ -126,6 +126,8 @@ struct SubmitReviewArgs {
     decision: ReviewDecision,
     #[serde(default)]
     note: Option<String>,
+    #[serde(default)]
+    evidence_root: Option<String>,
 }
 
 /// Submit a review decision as the caller. An owner/assignee may submit but it
@@ -140,10 +142,18 @@ pub(super) async fn submit_review(
     let a: SubmitReviewArgs = crate::tools::parse_args(args)?;
     let note = maidan_types::review_note(a.decision, a.note.as_deref())
         .map_err(McpError::InvalidParams)?;
+    let root = maidan_types::review_evidence(a.decision, a.evidence_root.as_deref())
+        .map_err(McpError::InvalidParams)?;
     let thread_id = ThreadId(a.thread_id);
     let submission = server
         .store
-        .submit_review(thread_id, auth.member_id, a.decision, note.as_deref())
+        .submit_review(
+            thread_id,
+            auth.member_id,
+            a.decision,
+            note.as_deref(),
+            root.as_deref(),
+        )
         .await?;
     for stored in submission.events() {
         server.publish_stored(stored).await;

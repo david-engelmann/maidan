@@ -69,6 +69,10 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
         .expect("none yet")
         .is_none());
 
+    store
+        .set_review_requirement(thread, 1)
+        .await
+        .expect("one approval to close");
     store.claim_thread(thread, worker).await.expect("claim");
     let result = json!({"status": "done", "files": ["a.rs"]});
     store
@@ -92,10 +96,13 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
         .expect("a packet");
     assert_eq!(first.requested_by, worker);
     assert_eq!(
+        first.thread_version,
+        store.thread_version(thread).await.expect("version")
+    );
+    assert_eq!(
         first.manifest,
         EvidenceManifest {
             thread_id: thread,
-            thread_version: store.thread_version(thread).await.expect("version"),
             result: Some(ResultEvidence {
                 sha256: result_sha256(&result).expect("hash"),
                 produced_by: worker,
@@ -117,6 +124,7 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
             reviewer,
             ReviewDecision::RequestChanges,
             Some("cover the empty list"),
+            None,
         )
         .await
         .expect("send back");
@@ -138,8 +146,128 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
         .expect("read")
         .expect("a packet");
     assert_ne!(second.id, first.id);
-    assert!(second.manifest.thread_version > first.manifest.thread_version);
+    assert!(second.thread_version > first.thread_version);
     assert_ne!(second.evidence_root, first.evidence_root);
+
+    // An approval names the packet it was shown. The first hand-off's root is
+    // stale now.
+    let stale = store
+        .submit_review(
+            thread,
+            reviewer,
+            ReviewDecision::Approve,
+            None,
+            Some(&first.evidence_root),
+        )
+        .await;
+    assert!(
+        matches!(&stale, Err(StoreError::Conflict(m)) if m.contains("stale evidence")),
+        "{stale:?}"
+    );
+    // An approval bound to nothing is kept, but does not count once the
+    // thread has been handed over.
+    store
+        .submit_review(thread, reviewer, ReviewDecision::Approve, None, None)
+        .await
+        .expect("unbound");
+    assert_eq!(
+        store.review_status(thread).await.expect("status").approvals,
+        0
+    );
+    store
+        .submit_review(
+            thread,
+            reviewer,
+            ReviewDecision::Approve,
+            None,
+            Some(&second.evidence_root),
+        )
+        .await
+        .expect("bound");
+    assert_eq!(
+        store.review_status(thread).await.expect("status").approvals,
+        1
+    );
+
+    // A comment after the approval is conversation, not evidence: the
+    // approval still stands.
+    store
+        .post_message(NewMessage {
+            thread_id: thread,
+            author_id: worker,
+            body: "thanks".into(),
+            metadata: json!({}),
+            content: None,
+        })
+        .await
+        .expect("post after approval");
+    assert_eq!(
+        store.review_status(thread).await.expect("status").approvals,
+        1
+    );
+    // New evidence after the approval: the close is refused, and so is an
+    // approval of what is there now under the old root.
+    const LATE: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    store.record_artifact_ref(ws, LATE).await.expect("held");
+    store
+        .link_thread_artifact(thread, LATE, worker)
+        .await
+        .expect("late evidence");
+    let close = store
+        .transition_thread(thread, reviewer, ThreadAction::Close)
+        .await;
+    assert!(
+        matches!(&close, Err(StoreError::Conflict(m)) if m.contains("evidence changed")),
+        "{close:?}"
+    );
+    let again = store
+        .submit_review(
+            thread,
+            reviewer,
+            ReviewDecision::Approve,
+            None,
+            Some(&second.evidence_root),
+        )
+        .await;
+    assert!(
+        matches!(&again, Err(StoreError::Conflict(m)) if m.contains("evidence changed")),
+        "{again:?}"
+    );
+
+    // Sent back and handed over again, an approval of the new packet closes.
+    store
+        .submit_review(
+            thread,
+            reviewer,
+            ReviewDecision::RequestChanges,
+            Some("review the late artifact too"),
+            None,
+        )
+        .await
+        .expect("send back");
+    store
+        .transition_thread(thread, worker, ThreadAction::StartReview)
+        .await
+        .expect("third hand-off");
+    let third = store
+        .latest_review_packet(thread)
+        .await
+        .expect("read")
+        .expect("a packet");
+    store
+        .submit_review(
+            thread,
+            reviewer,
+            ReviewDecision::Approve,
+            None,
+            Some(&third.evidence_root),
+        )
+        .await
+        .expect("bound to the latest");
+    store
+        .transition_thread(thread, reviewer, ThreadAction::Close)
+        .await
+        .expect("closes on a bound approval of unchanged evidence");
 
     first.id
 }
@@ -160,7 +288,7 @@ async fn every_hand_off_to_review_records_an_immutable_packet_on_sqlite() {
         .fetch_one(&pool)
         .await
         .expect("count");
-    assert_eq!(count, 2, "both hand-offs are kept");
+    assert_eq!(count, 3, "every hand-off is kept");
     let refused = sqlx::query("UPDATE maidan_review_packets SET evidence_root = 'x' WHERE id = ?")
         .bind(first)
         .execute(&pool)
@@ -204,7 +332,7 @@ async fn every_hand_off_to_review_records_an_immutable_packet_on_postgres() {
         .fetch_one(&pool)
         .await
         .expect("count");
-    assert_eq!(count, 2, "both hand-offs are kept");
+    assert_eq!(count, 3, "every hand-off is kept");
     let refused = sqlx::query("UPDATE maidan_review_packets SET evidence_root = 'x' WHERE id = $1")
         .bind(first)
         .execute(&pool)

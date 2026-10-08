@@ -283,6 +283,10 @@ pub struct SubmitReview {
     pub decision: ReviewDecision,
     #[serde(default)]
     pub note: Option<String>,
+    /// The `evidence_root` of the review packet being decided on
+    /// (`GET /threads/{id}/review-packet`). Required to approve.
+    #[serde(default)]
+    pub evidence_root: Option<String>,
 }
 
 /// Record a LandGate pointer. `land` is optional — a fail is always red; a pass

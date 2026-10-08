@@ -3729,7 +3729,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `submit_review`
 
-**Submit review.** Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. request_changes needs a note saying what to change; approve may carry one. Every verdict appends a review_submitted event (the note stays in the review history), and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.
+**Submit review.** Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. request_changes needs a note saying what to change; approve may carry one. approve also needs evidence_root, the root from get_review_packet of what you were shown: it is refused when the thread was handed over again or changed since, and only an approval bound to the latest packet counts toward the close. Every verdict appends a review_submitted event (the note stays in the review history), and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -3743,6 +3743,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "approve",
         "request_changes"
       ],
+      "type": "string"
+    },
+    "evidence_root": {
+      "description": "the evidence_root from get_review_packet you are deciding on, required on approve",
       "type": "string"
     },
     "note": {

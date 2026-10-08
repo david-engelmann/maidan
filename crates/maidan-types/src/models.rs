@@ -106,6 +106,33 @@ pub fn review_note(
     Ok(note.map(str::to_string))
 }
 
+/// The evidence root a verdict is bound to, lowercase. An approval names the
+/// root of the review packet it was shown (`get_review_packet`), so it can
+/// only count for that evidence; a change request may name one.
+pub fn review_evidence(
+    decision: crate::ReviewDecision,
+    evidence_root: Option<&str>,
+) -> Result<Option<String>, String> {
+    let root = evidence_root
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .map(str::to_ascii_lowercase);
+    if let Some(r) = &root {
+        if r.len() != 64 || !r.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(
+                "evidence_root must be the 64-hex-character root from get_review_packet".into(),
+            );
+        }
+    }
+    if decision == crate::ReviewDecision::Approve && root.is_none() {
+        return Err(
+            "approve needs the evidence_root it approves: read get_review_packet and pass its evidence_root"
+                .into(),
+        );
+    }
+    Ok(root)
+}
+
 pub fn status_note(note: &str) -> Result<String, String> {
     let note = note.trim();
     if note.is_empty() {

@@ -2018,8 +2018,17 @@ macro_rules! store_delegations {
                 reviewer_id: MemberId,
                 decision: ReviewDecision,
                 note: Option<&str>,
+                evidence_root: Option<&str>,
             ) -> Result<maidan_types::ReviewSubmission, StoreError> {
-                reviews::submit_review(self.pool(), thread_id, reviewer_id, decision, note).await
+                reviews::submit_review(
+                    self.pool(),
+                    thread_id,
+                    reviewer_id,
+                    decision,
+                    note,
+                    evidence_root,
+                )
+                .await
             }
 
             async fn list_reviews(

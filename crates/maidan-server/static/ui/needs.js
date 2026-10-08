@@ -237,6 +237,11 @@ import { answerGate } from "./tools.js";
             sub.insertBefore(none, when);
           }
           fillReviewContext(item.thread_id, sub, when);
+          // The approval names what this row showed: the packet as it stood
+          // when the row was drawn.
+          reviewPacket(item.thread_id).then((packet) => {
+            if (packet) li.dataset.evidenceRoot = packet.evidence_root;
+          });
           const approve = document.createElement("button");
           approve.type = "button";
           approve.className = "primary";
@@ -470,17 +475,43 @@ import { answerGate } from "./tools.js";
       // Reviews and closes are thread transitions. An OIDC session carries
       // thread:transition; a token uses its own grant. The store still refuses
       // a self-approval, including one made with a borrowed token.
-      async function submitReview(tid, decision, note, button) {
+      // What the thread was handed to review with, or null before any review.
+      async function reviewPacket(tid) {
+        try {
+          const res = await api(apiReadPath(`/threads/${tid}/review-packet`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          return res.ok ? await res.json() : null;
+        } catch (_e) {
+          return null;
+        }
+      }
+
+      // An approval names the evidence it approves: the root of the packet the
+      // row showed, or, without one, the packet as it stands when clicked.
+      async function evidenceRootFor(tid, decision, shown) {
+        if (shown || decision !== "approve") return shown;
+        const packet = await reviewPacket(tid);
+        return packet && packet.evidence_root;
+      }
+
+      async function submitReview(tid, decision, note, button, evidenceRoot) {
         if (!token() && !sessionMemberId) {
           return { ok: false, why: "Sign in to approve." };
         }
+        const root = await evidenceRootFor(tid, decision, evidenceRoot);
+        if (decision === "approve" && !root) {
+          return { ok: false, why: "Nothing was handed to review yet, so there is nothing to approve." };
+        }
+        const body = { decision, ...(note && { note }), ...(root && { evidence_root: root }) };
         let res;
         try {
           res = await writeApi(button || null, apiWritePath(`/threads/${tid}/reviews`), {
             method: "POST",
             headers: headers(true),
             credentials: "include",
-            body: JSON.stringify(note ? { decision, note } : { decision }),
+            body: JSON.stringify(body),
           });
         } catch (e) {
           return { ok: false, why: "Review not recorded: could not reach the server. Check the connection and try again." };
@@ -519,7 +550,13 @@ import { answerGate } from "./tools.js";
 
       async function approveFromInbox(item, li, reviewNote) {
         const actions = li.querySelector(".ny-actions");
-        const out = await submitReview(item.thread_id, "approve", reviewNote, actions.querySelectorAll("button"));
+        const out = await submitReview(
+          item.thread_id,
+          "approve",
+          reviewNote,
+          actions.querySelectorAll("button"),
+          li.dataset.evidenceRoot,
+        );
         const row = rowOnScreen(item, li);
         const liveActions = row.querySelector(".ny-actions");
         if (!out.ok) {
@@ -663,4 +700,4 @@ import { answerGate } from "./tools.js";
         document.getElementById("collab-panel").hidden = !selectedThreadId;
       }
 
-export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadNeedsYou, needsYou, needsYouGen, needsYouRow, nyKey, renderNeedsYou, renderThreadActions, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };
+export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadNeedsYou, needsYou, needsYouGen, needsYouRow, nyKey, renderNeedsYou, renderThreadActions, reviewPacket, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };

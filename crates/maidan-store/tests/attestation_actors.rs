@@ -46,6 +46,16 @@ fn directly(member: MemberId) -> Option<Attribution> {
     })
 }
 
+/// The root of the thread's latest review packet, which an approval binds to;
+/// `None` before the thread was handed to review.
+async fn handed_root(store: &dyn Store, thread_id: maidan_types::ThreadId) -> Option<String> {
+    store
+        .latest_review_packet(thread_id)
+        .await
+        .expect("packet")
+        .map(|p| p.evidence_root)
+}
+
 async fn run_suite(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace { name: "a".into() })
@@ -126,7 +136,13 @@ async fn run_suite(store: &dyn Store) {
         .unwrap();
     let own = with_attribution(
         acting_as(orchestrator, reviewer),
-        store.submit_review(worked.id, reviewer, ReviewDecision::Approve, None),
+        store.submit_review(
+            worked.id,
+            reviewer,
+            ReviewDecision::Approve,
+            None,
+            handed_root(store, worked.id).await.as_deref(),
+        ),
     )
     .await
     .unwrap()
@@ -142,7 +158,13 @@ async fn run_suite(store: &dyn Store) {
     );
     let independent = with_attribution(
         acting_as(outsider, reviewer),
-        store.submit_review(worked.id, reviewer, ReviewDecision::Approve, None),
+        store.submit_review(
+            worked.id,
+            reviewer,
+            ReviewDecision::Approve,
+            None,
+            handed_root(store, worked.id).await.as_deref(),
+        ),
     )
     .await
     .unwrap()
@@ -151,7 +173,13 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(store.review_status(worked.id).await.unwrap().approvals, 1);
     let direct = with_attribution(
         directly(reviewer),
-        store.submit_review(worked.id, reviewer, ReviewDecision::Approve, None),
+        store.submit_review(
+            worked.id,
+            reviewer,
+            ReviewDecision::Approve,
+            None,
+            handed_root(store, worked.id).await.as_deref(),
+        ),
     )
     .await
     .unwrap()

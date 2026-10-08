@@ -143,7 +143,13 @@ async fn run_suite(store: &dyn Store) {
     thread(store, ch).await;
     let t = work(store, ch, worker, true).await;
     let sent = store
-        .submit_review(t, reviewer, ReviewDecision::RequestChanges, Some("tests"))
+        .submit_review(
+            t,
+            reviewer,
+            ReviewDecision::RequestChanges,
+            Some("tests"),
+            None,
+        )
         .await
         .expect("request changes");
     let event = submitted(&sent.submitted, ws, ch, t);
@@ -177,7 +183,7 @@ async fn run_suite(store: &dyn Store) {
         work(store, ch, worker, true).await
     };
     let approved = store
-        .submit_review(t, reviewer, ReviewDecision::Approve, None)
+        .submit_review(t, reviewer, ReviewDecision::Approve, None, None)
         .await
         .expect("approve");
     let event = submitted(&approved.submitted, ws, ch, t);
@@ -188,7 +194,7 @@ async fn run_suite(store: &dyn Store) {
 
     // A change request that sends nothing back is still announced.
     let recorded = store
-        .submit_review(t, worker, ReviewDecision::RequestChanges, None)
+        .submit_review(t, worker, ReviewDecision::RequestChanges, None, None)
         .await
         .expect("implementer's own change request");
     let event = submitted(&recorded.submitted, ws, ch, t);
@@ -201,7 +207,7 @@ async fn run_suite(store: &dyn Store) {
     let t = work(store, ch, worker, false).await;
     assert_eq!(work(store, ch, second, true).await, t);
     let sent = store
-        .submit_review(t, reviewer, ReviewDecision::RequestChanges, None)
+        .submit_review(t, reviewer, ReviewDecision::RequestChanges, None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -210,7 +216,7 @@ async fn run_suite(store: &dyn Store) {
     );
     assert_eq!(work(store, ch, worker, true).await, t);
     let sent = store
-        .submit_review(t, reviewer, ReviewDecision::RequestChanges, None)
+        .submit_review(t, reviewer, ReviewDecision::RequestChanges, None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -242,7 +248,7 @@ async fn run_suite(store: &dyn Store) {
             subject_id: reviewer,
             grant_id: Some(DelegationGrantId(uuid::Uuid::now_v7())),
         }),
-        store.submit_review(t, reviewer, ReviewDecision::RequestChanges, None),
+        store.submit_review(t, reviewer, ReviewDecision::RequestChanges, None, None),
     )
     .await
     .unwrap();
@@ -255,7 +261,7 @@ async fn run_suite(store: &dyn Store) {
     let ch = channel(store, ws).await;
     let t = thread(store, ch).await;
     let lone = store
-        .submit_review(t, reviewer, ReviewDecision::Approve, None)
+        .submit_review(t, reviewer, ReviewDecision::Approve, None, None)
         .await
         .unwrap();
     assert_eq!(submitted(&lone.submitted, ws, ch, t).worker_id, None);

@@ -26,6 +26,17 @@ async fn review_gate_in_tx(
            (SELECT COUNT(*) FROM maidan_thread_reviews r
               JOIN maidan_threads t ON t.id = r.thread_id
               WHERE r.thread_id = $1 AND r.decision = 'approve' AND r.dismissed_at IS NULL
+                -- Bound to what the current review was handed.
+                -- A thread never handed over has no packet to bind to; once it has
+                -- one, an approval given before or for another hand-off counts no more.
+                AND (
+                  NOT EXISTS (SELECT 1 FROM maidan_review_packets p WHERE p.thread_id = r.thread_id)
+                  OR r.evidence_root = (
+                    SELECT p.evidence_root FROM maidan_review_packets p
+                    WHERE p.thread_id = r.thread_id
+                    ORDER BY p.created_at DESC, p.id DESC LIMIT 1
+                  )
+                )
                 AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
                 AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
                 -- And never held it. `assignee_id` is the live
@@ -55,6 +66,13 @@ async fn review_gate_in_tx(
     .await?;
     let required: i64 = row.get("required_count");
     let approvals: i64 = row.get("approvals");
+    if required > 0 {
+        // Approvals count only for what they were shown: content changed since
+        // the hand-off makes them approvals of something else.
+        if let Some(root) = super::review_packets::latest_root_in_tx(tx, thread_id).await? {
+            super::review_packets::ensure_unchanged_in_tx(tx, thread_id, &root).await?;
+        }
+    }
     if required > 0 && approvals < required {
         return Err(StoreError::Conflict(format!(
             "review requirement not met: {approvals} of {required} required approvals. \

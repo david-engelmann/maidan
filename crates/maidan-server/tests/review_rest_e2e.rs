@@ -72,6 +72,36 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
     (addr, reqwest::Client::new(), store)
 }
 
+/// Hand the thread to review with a result, and read over REST the evidence
+/// root a reviewer approves.
+async fn hand_off(
+    store: &Arc<dyn Store>,
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    thread: maidan_types::ThreadId,
+    by: maidan_types::MemberId,
+) -> String {
+    store
+        .set_thread_result(thread, by, &json!({ "status": "done" }))
+        .await
+        .unwrap();
+    store
+        .transition_thread(thread, by, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .unwrap();
+    let packet: Value = client
+        .get(format!("{base}/threads/{}/review-packet", thread.0))
+        .header("Authorization", token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    packet["evidence_root"].as_str().unwrap().to_string()
+}
+
 #[tokio::test]
 async fn required_reviewers_over_http() {
     let (addr, client, store) = spawn().await;
@@ -185,11 +215,12 @@ async fn required_reviewers_over_http() {
     assert_eq!(status0["approvals"], 0);
     assert_eq!(status0["approvals_met"], false);
 
-    // The reviewer submits an approval (as themselves).
+    // Handed to review, the reviewer approves what it was shown (as themselves).
+    let root = hand_off(&store, &client, &base, &rev_h, thread.id, operator.id).await;
     let review = client
         .post(format!("{base}/threads/{tid}/reviews"))
         .header("Authorization", &rev_h)
-        .json(&json!({ "decision": "approve", "note": "lgtm" }))
+        .json(&json!({ "decision": "approve", "note": "lgtm", "evidence_root": root }))
         .send()
         .await
         .unwrap();
@@ -322,11 +353,12 @@ async fn decision_history_over_http() {
     );
     let tid = thread.id.0;
 
+    let root = hand_off(&store, &client, &base, &rev_h, thread.id, operator.id).await;
     for (decision, note) in [("approve", "lgtm"), ("request_changes", "missed a case")] {
         let r = client
             .post(format!("{base}/threads/{tid}/reviews"))
             .header("Authorization", &rev_h)
-            .json(&json!({ "decision": decision, "note": note }))
+            .json(&json!({ "decision": decision, "note": note, "evidence_root": root }))
             .send()
             .await
             .unwrap();

@@ -138,8 +138,9 @@ report() { # report <token> <tid> <message> <result json>
   mcp "$1" set_thread_result "$(jq -nc --arg t "$2" --argjson r "$4" '{thread_id:$t,result:$r}')" >/dev/null
   mcp "$1" transition_thread "{\"thread_id\":\"$2\",\"action\":\"start_review\"}" | jq -r .state
 }
-approve_close() { # approve_close <tid>
-  mcp "$HT" submit_review "{\"thread_id\":\"$1\",\"decision\":\"approve\"}" >/dev/null
+approve_close() { # approve_close <tid>: approve what the review was handed, then close
+  local root; root=$(mcp "$HT" get_review_packet "{\"thread_id\":\"$1\"}" | jq -r .evidence_root)
+  mcp "$HT" submit_review "$(jq -nc --arg t "$1" --arg r "$root" '{thread_id:$t,decision:"approve",evidence_root:$r}')" >/dev/null
   rest "$HT" POST "/threads/$1" '{"action":"close"}' | jq -r .state
 }
 gate() { # one human approval before close. The reviewer is named only when asked.

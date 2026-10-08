@@ -278,12 +278,47 @@ impl World {
         status["approvals"].as_i64().unwrap()
     }
 
+    /// Approve what the thread was handed to review with, handing it over
+    /// first when nobody has: an approval names the packet it was shown.
     async fn approve(&self, token: &str, thread: ThreadId) -> Value {
+        if self
+            .store
+            .latest_review_packet(thread)
+            .await
+            .unwrap()
+            .is_none()
+        {
+            // The same hand-off `close` makes, so the evidence it later re-posts
+            // is the evidence approved here.
+            self.client
+                .put(format!("{}/threads/{}/result", self.base, thread.0))
+                .bearer_auth(&self.worker_tok)
+                .json(&json!({ "result": { "status": "done" } }))
+                .send()
+                .await
+                .unwrap();
+            let started = self
+                .client
+                .post(format!("{}/threads/{}", self.base, thread.0))
+                .bearer_auth(&self.worker_tok)
+                .json(&json!({ "action": "start_review" }))
+                .send()
+                .await
+                .unwrap();
+            assert!(started.status().is_success(), "{}", started.status());
+        }
+        let root = self
+            .store
+            .latest_review_packet(thread)
+            .await
+            .unwrap()
+            .expect("handed to review")
+            .evidence_root;
         self.call(
             reqwest::Method::POST,
             token,
             &format!("/threads/{}/reviews", thread.0),
-            json!({ "decision": "approve" }),
+            json!({ "decision": "approve", "evidence_root": root }),
         )
         .await
     }

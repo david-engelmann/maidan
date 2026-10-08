@@ -34,6 +34,7 @@ fn row_to_review(row: &sqlx::sqlite::SqliteRow) -> Result<ThreadReview, StoreErr
         decision,
         note: row.get::<Option<String>, _>("note"),
         actor_id: row.get::<Option<Uuid>, _>("actor_id").map(MemberId),
+        evidence_root: row.get::<Option<String>, _>("evidence_root"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
         dismissed_at: row.get::<Option<DateTime<Utc>>, _>("dismissed_at"),
@@ -41,7 +42,7 @@ fn row_to_review(row: &sqlx::sqlite::SqliteRow) -> Result<ThreadReview, StoreErr
 }
 
 const REVIEW_COLS: &str =
-    "thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, dismissed_at";
+    "thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, dismissed_at, evidence_root";
 
 pub async fn set_requirement(
     pool: &SqlitePool,
@@ -183,9 +184,18 @@ pub async fn submit_review(
     reviewer_id: MemberId,
     decision: ReviewDecision,
     note: Option<&str>,
+    evidence_root: Option<&str>,
 ) -> Result<ReviewSubmission, StoreError> {
     let mut tx = pool.begin().await?;
-    let submission = submit_review_on(&mut tx, thread_id, reviewer_id, decision, note).await?;
+    let submission = submit_review_on(
+        &mut tx,
+        thread_id,
+        reviewer_id,
+        decision,
+        note,
+        evidence_root,
+    )
+    .await?;
     tx.commit().await?;
     Ok(submission)
 }
@@ -199,16 +209,21 @@ async fn submit_review_on(
     reviewer_id: MemberId,
     decision: ReviewDecision,
     note: Option<&str>,
+    evidence_root: Option<&str>,
 ) -> Result<ReviewSubmission, StoreError> {
+    if let Some(root) = evidence_root {
+        super::review_packets::verify_root_in_tx(tx, thread_id, root).await?;
+    }
     let actor_id = crate::attribution::delegate_acting_for(reviewer_id);
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_thread_reviews
-             (thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+             (thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, evidence_root)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (thread_id, reviewer_id) DO UPDATE SET
              decision = excluded.decision, note = excluded.note, updated_at = excluded.updated_at,
-             actor_id = excluded.actor_id, dismissed_at = NULL
+             actor_id = excluded.actor_id, dismissed_at = NULL,
+             evidence_root = excluded.evidence_root
          RETURNING {REVIEW_COLS}"
     ))
     .bind(thread_id.0)
@@ -218,14 +233,15 @@ async fn submit_review_on(
     .bind(&now)
     .bind(&now)
     .bind(actor_id.map(|m| m.0))
+    .bind(evidence_root)
     .fetch_one(&mut **tx)
     .await?;
     let review = row_to_review(&row)?;
     // The history keeps every verdict; the row above keeps only the latest.
     sqlx::query(
         "INSERT INTO maidan_thread_review_verdicts
-             (thread_id, reviewer_id, decision, note, actor_id, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?)",
+             (thread_id, reviewer_id, decision, note, actor_id, recorded_at, evidence_root)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(thread_id.0)
     .bind(reviewer_id.0)
@@ -233,6 +249,7 @@ async fn submit_review_on(
     .bind(note)
     .bind(actor_id.map(|m| m.0))
     .bind(&now)
+    .bind(evidence_root)
     .execute(&mut **tx)
     .await?;
     let mut reopened = None;
@@ -364,6 +381,17 @@ pub async fn review_status(
          WHERE r.thread_id = ?
            AND r.decision = 'approve'
            AND r.dismissed_at IS NULL
+           -- Bound to what the current review was handed, as the close gate counts.
+           -- A thread never handed over has no packet to bind to; once it has
+           -- one, an approval given before or for another hand-off counts no more.
+           AND (
+             NOT EXISTS (SELECT 1 FROM maidan_review_packets p WHERE p.thread_id = r.thread_id)
+             OR r.evidence_root = (
+               SELECT p.evidence_root FROM maidan_review_packets p
+               WHERE p.thread_id = r.thread_id
+               ORDER BY p.created_at DESC, p.id DESC LIMIT 1
+             )
+           )
            AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
            AND (t.assignee_id IS NULL OR r.reviewer_id <> t.assignee_id)
            -- And never worked it. The live `assignee_id` above
@@ -438,6 +466,7 @@ pub async fn apply_critical_review_decision(
         reviewer_id,
         decision,
         Some(CRITICAL_REVIEW_NOTE),
+        None,
     )
     .await?;
     if get_requirement_on(&mut tx, thread_id).await?.is_none() {
