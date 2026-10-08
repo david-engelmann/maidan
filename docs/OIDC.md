@@ -206,10 +206,10 @@ importing the file.
 # The distribution (Java 21), which is what the recipe was run with:
 cp examples/keycloak/maidan-realm.json keycloak-26.8.0/data/import/
 KC_BOOTSTRAP_ADMIN_USERNAME=admin KC_BOOTSTRAP_ADMIN_PASSWORD=... \
-  keycloak-26.8.0/bin/kc.sh start-dev --http-port 8081 --import-realm
+  keycloak-26.8.0/bin/kc.sh start-dev --http-host 127.0.0.1 --http-port 8081 --import-realm
 
 # The same server as a container (not run for this recipe):
-docker run --rm -p 8081:8080 \
+docker run --rm -p 127.0.0.1:8081:8080 \
   -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=... \
   -v "$PWD/examples/keycloak:/opt/keycloak/data/import:ro" \
   quay.io/keycloak/keycloak:26.8.0 start-dev --import-realm
@@ -226,17 +226,23 @@ name, and mark the email verified. Keycloak 26 asks a user with no first or
 last name to complete their profile on first sign-in.
 
 ```sh
+# Sign the admin CLI in to the local server once; it asks for the admin password.
+kcadm.sh config credentials --server http://127.0.0.1:8081 --realm master --user admin
 kcadm.sh create users -r maidan -s username=grace -s email=grace@example.com \
   -s emailVerified=true -s enabled=true -s firstName=Grace -s lastName=Hopper
 kcadm.sh set-password -r maidan --username grace --new-password ...
 ```
 
 **3. Give each person a member.** Create the member through SCIM, with the
-person's verified email as the handle. A `token:admin` bearer can do it:
+person's verified email as the handle. A `token:admin` bearer can do it. The
+examples keep the bearer out of curl's arguments, where other local users
+could read it, by passing it in a header file:
 
 ```sh
+auth=$(mktemp) && trap 'rm -f "$auth"' EXIT     # mktemp makes it 0600
+printf 'authorization: Bearer %s\n' "$ADMIN_TOKEN" >"$auth"
 curl -sS -X POST "$MAIDAN_URL/scim/v2/Users" \
-  -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/scim+json' \
+  -H @"$auth" -H 'content-type: application/scim+json' \
   -d '{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
        "userName":"grace@example.com","displayName":"Grace Hopper","active":true}'
 ```
@@ -247,16 +253,17 @@ verified. A user with no member is refused ("OIDC user is not provisioned in
 this workspace"). Leave `MAIDAN_OIDC_AUTO_PROVISION` off. With it on, every
 enabled user in the realm gets a member in the workspace on first sign-in.
 
-**4. Point Maidan at the realm.**
+**4. Point Maidan at the realm.** Export these in the shell that starts
+the Maidan server, or set them in its service environment:
 
 ```sh
-MAIDAN_SESSION_SECRET=...                       # 32 random bytes or more
-MAIDAN_OIDC_ENABLED=1
-MAIDAN_OIDC_ISSUER=http://127.0.0.1:8081/realms/maidan
-MAIDAN_OIDC_CLIENT_ID=maidan
-MAIDAN_OIDC_REDIRECT_URI=http://127.0.0.1:8080/auth/oidc/callback
-MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI=http://127.0.0.1:8080/ui/
-MAIDAN_OIDC_LINK_EMAIL=1
+export MAIDAN_SESSION_SECRET=...                # 32 random bytes or more
+export MAIDAN_OIDC_ENABLED=1
+export MAIDAN_OIDC_ISSUER=http://127.0.0.1:8081/realms/maidan
+export MAIDAN_OIDC_CLIENT_ID=maidan
+export MAIDAN_OIDC_REDIRECT_URI=http://127.0.0.1:8080/auth/oidc/callback
+export MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI=http://127.0.0.1:8080/ui/
+export MAIDAN_OIDC_LINK_EMAIL=1
 ```
 
 Boot runs discovery against the issuer, so Keycloak has to be up first. The
@@ -276,13 +283,15 @@ KC_USERNAME=grace KC_PASSWORD=... ./scripts/keycloak-oidc-smoke.sh
 
 **6. A token for the person's own MCP client.** A console session does not work
 on MCP, which takes bearer tokens only. An admin mints the person a token of
-their own, scoped to what the client needs and with an expiry:
+their own, scoped to what the client needs and with an expiry. Pick the
+expiry when you mint, here seven days out:
 
 ```sh
+EXPIRES=$(date -u -d '+7 days' +%Y-%m-%dT%H:%M:%SZ)   # macOS: date -u -v+7d +%Y-%m-%dT%H:%M:%SZ
 curl -sS -X POST "$MAIDAN_URL/workspaces/$WS/members/$MEMBER_ID/tokens" \
-  -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
+  -H @"$auth" -H 'content-type: application/json' \
   -d '{"label":"grace-mcp-client","capabilities":["workspace:read","message:post"],
-       "expires_at":"2026-10-15T00:00:00Z"}'
+       "expires_at":"'"$EXPIRES"'"}'
 ```
 
 `whoami` with that token answers as the person's member with exactly those

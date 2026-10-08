@@ -81,8 +81,8 @@ only if S3 interop is actually blocked.
 ## Auth (humans)
 
 Capability-scoped **bearer tokens** for agents. **OIDC** for humans
-(`MAIDAN_OIDC_ENABLED=1` + issuer discovery). Any reasonably standard
-IdP: Keycloak, Authentik, Auth0, Google, Okta. A self-hosted Keycloak
+(`MAIDAN_OIDC_ENABLED=1` + issuer discovery). Any identity provider that
+speaks standard OIDC should work. A self-hosted Keycloak
 recipe, run end to end, is in [OIDC](OIDC.md) ("Recipe: Keycloak"): a
 realm file, SCIM pre-provisioning with sign-in linked by verified email,
 and a smoke script.

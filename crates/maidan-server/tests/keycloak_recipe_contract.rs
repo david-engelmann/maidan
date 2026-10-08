@@ -42,17 +42,18 @@ fn recipe() -> String {
     rest[..end].to_string()
 }
 
-/// `KEY=value` lines of the recipe's Maidan env block, the fenced block that
-/// sets `MAIDAN_OIDC_ENABLED` (values up to whitespace).
+/// `export KEY=value` lines of the recipe's Maidan env block, the fenced block
+/// that sets `MAIDAN_OIDC_ENABLED` (values up to whitespace).
 fn recipe_env() -> Vec<(String, String)> {
     let recipe = recipe();
     let block = recipe
         .split("```")
-        .find(|b| b.contains("\nMAIDAN_OIDC_ENABLED="))
+        .find(|b| b.contains("\nexport MAIDAN_OIDC_ENABLED="))
         .expect("recipe has a Maidan env block")
         .to_string();
     block
         .lines()
+        .filter_map(|l| l.strip_prefix("export "))
         .filter(|l| l.starts_with("MAIDAN_"))
         .filter_map(|l| {
             let (k, v) = l.split_once('=')?;
@@ -266,7 +267,15 @@ fn the_recipe_names_its_files_and_the_script_is_executable() {
 
 #[test]
 fn the_token_request_in_the_recipe_is_a_valid_scoped_expiring_mint() {
+    // The recipe computes the expiry at mint time and splices it into the
+    // single-quoted body; stand a fixed instant in for the splice.
+    let splice = "'\"$EXPIRES\"'";
     let recipe = recipe();
+    assert!(
+        recipe.contains("EXPIRES=$(date -u") && recipe.contains(splice),
+        "the recipe picks the token's expiry when it mints"
+    );
+    let recipe = recipe.replace(splice, "2030-01-01T00:00:00Z");
     let start = recipe
         .find("-d '{\"label\"")
         .expect("recipe shows a token mint body")

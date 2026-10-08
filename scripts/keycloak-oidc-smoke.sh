@@ -45,8 +45,10 @@ action=$(grep -o 'id="kc-form-login"[^>]*action="[^"]*"' <<<"$form" | sed -E 's/
 echo "2. Keycloak shows its login form"
 
 # 3. The person signs in; Keycloak sends the browser back with a code.
+# The password goes to curl through a file in the private temp dir, not argv.
+(umask 077; printf '%s' "$KC_PASSWORD" >"$jar_dir/password")
 callback=$(location -c "$idp_jar" -b "$idp_jar" \
-  --data-urlencode "username=$KC_USERNAME" --data-urlencode "password=$KC_PASSWORD" \
+  --data-urlencode "username=$KC_USERNAME" --data-urlencode "password@$jar_dir/password" \
   --data-urlencode "credentialId=" "$action")
 case "$callback" in
   "$BASE/auth/oidc/callback?"*"code="*) ;;
