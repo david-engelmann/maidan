@@ -71,7 +71,11 @@ pub async fn link(
     .bind(sha256)
     .bind(linked_by.0)
     // A delegate linking with a borrowed token: a hand-off judges it too.
-    .bind(crate::attribution::delegate_acting_for(linked_by).map(|m| m.0))
+    .bind(
+        crate::attribution::delegate_acting_for(linked_by)
+            .unwrap_or(linked_by)
+            .0,
+    )
     .execute(&mut *tx)
     .await?
     .rows_affected()

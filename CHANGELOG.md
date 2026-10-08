@@ -1887,6 +1887,11 @@ Refs #1253
 - **Changed:** The tiers are inside the evidence root, so the same evidence handed over again under different tiers is a new root, and an approval names the tiers it was shown. Packets from before tiers keep their roots and carry no tiers. A close compares the evidence with what the packet pinned rather than judging the tiers again, so a land-gate pass or a membership change after the hand-off neither moves a packet nor refuses a close.
 - **Added:** Needs you in the console shows each item's tier on the approval card, a land-gate pass as its own line with its recorder, and warns when the server says the approval would rest on self-reported evidence only.
 
+### An evidence tier comes from the same read as the evidence, and an unrecorded actor is not shown independent
+
+- **Fixed:** A hand-off read each result and linked artifact twice, once for the review packet's manifest and once for who put it there. A concurrent write between the two reads could pair one version's hash with another version's author and tier. Each row is now read once, and the manifest and its tiers are built from that one read.
+- **Fixed:** Evidence written before migration 0147 has no recorded actor, so evidence a delegate wrote with another member's token could read as `attached`. Every write now records who acted (the delegate, or the member itself). At a hand-off, a row with no actor from a member who never delegated counts as the member's own act. A row from a member who has delegated counts as `self_reported`, because its independence cannot be shown. This addresses CodeRabbit's two concerns on #1327.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
