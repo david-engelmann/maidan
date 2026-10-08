@@ -661,6 +661,78 @@ async fn main() {
         }
         proof_threads.push(t);
     }
+    // `decided` needs the operator and Rae, and Rae approved it before the
+    // page loaded: the row names her from the task's reviews. `unlinked` had
+    // the screenshot dropped after the hand-off, and Rae linked the log, so
+    // the row says who linked what and flags the hash the task lost.
+    for title in [
+        "Evidence: Rae approved before you looked",
+        "Evidence: a screenshot dropped after the hand-off",
+    ] {
+        let t = store
+            .create_thread(NewThread {
+                channel_id: proof.id,
+                parent_thread_id: None,
+                title: Some(title.into()),
+                description: None,
+            })
+            .await
+            .expect("proof thread");
+        store.claim_thread(t.id, requester.id).await.expect("claim");
+        store
+            .set_thread_result(
+                t.id,
+                requester.id,
+                &serde_json::json!({ "status": "fixed" }),
+            )
+            .await
+            .expect("proof result");
+        store
+            .link_thread_artifact(t.id, &screenshot, requester.id)
+            .await
+            .expect("link screenshot");
+        store
+            .link_thread_artifact(t.id, &transcript, rae.id)
+            .await
+            .expect("link log");
+        store
+            .transition_thread(t.id, requester.id, ThreadAction::StartReview)
+            .await
+            .expect("proof review");
+        let decided = proof_threads.len() == 4;
+        store
+            .set_review_requirement(t.id, if decided { 2 } else { 1 })
+            .await
+            .expect("requirement");
+        store.add_reviewer(t.id, member.id).await.expect("reviewer");
+        if decided {
+            store
+                .add_reviewer(t.id, rae.id)
+                .await
+                .expect("second reviewer");
+            let packet = store
+                .latest_review_packet(t.id)
+                .await
+                .expect("packet read")
+                .expect("packet");
+            store
+                .submit_review(
+                    t.id,
+                    rae.id,
+                    ReviewDecision::Approve,
+                    None,
+                    Some(&packet.evidence_root),
+                )
+                .await
+                .expect("rae approves");
+        } else {
+            store
+                .unlink_thread_artifact(t.id, &screenshot)
+                .await
+                .expect("unlink screenshot");
+        }
+        proof_threads.push(t);
+    }
     let rae_secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -1119,6 +1191,8 @@ async fn main() {
         "proof_decide_thread_id": proof_threads[1].id.0.to_string(),
         "proof_live_thread_id": proof_threads[2].id.0.to_string(),
         "proof_empty_thread_id": proof_threads[3].id.0.to_string(),
+        "proof_decided_thread_id": proof_threads[4].id.0.to_string(),
+        "proof_unlinked_thread_id": proof_threads[5].id.0.to_string(),
         "proof_screenshot_sha": screenshot,
         "proof_transcript_sha": transcript,
         "other_workspace_id": other_ws.id.0.to_string(),
