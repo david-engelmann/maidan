@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `2308af8f` (2026-10-07).
+on a decision. Last reconciled against `main` at `447a481e` (2026-10-07).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -56,7 +56,7 @@ CI ran.
 | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
 | #1287 | Connect recipes for six MCP clients, the client matrix as test config, the release check and the attributed-connect definition (Next 17, F) | In review | — |
 | #1294 | Sends the `maidan` CLI's logs to stderr, so `mcp-stdio` writes nothing but JSON-RPC to stdout (found running a desktop MCP client) | In review | — |
-| #1304 | A change request has to say what to change, over MCP, REST and the console (Next 2, first part) | In review | — |
+| #1305 | A member holds one verdict on a message and can take a vote back, with a `vote_retracted` event (Next 2, second part) | In review | — |
 | #1302 | Holds a `2026-07-28` request to its revision: `_meta` and routing headers validated, removed methods 404 with -32601, earlier revisions unchanged. The conformance suite passes 102 of 167 `2026-07-28` checks (Next 8) | In review | — |
 
 ## Next: ranked
@@ -69,7 +69,7 @@ whose dispositions are recorded below.
 | # | Item | Size | Acceptance criteria | Open because | Depends on |
 |---|---|---|---|---|---|
 | 1 | **Split the waiting states** (P1-9) | S | Needs-you shows needs-your-decision, needs-your-action, and agent-asked-a-question, each with #1's error and stale states | `NY_KINDS` is review requests and gates only (`ui/state.js:88`) | None. Its inputs shipped in #1258, #1260 and #1273 |
-| 2 | **Vote integrity** (P1-11) | M | `request_changes` needs a note (#1304). The note stays in the review history and `change_requests`, not in `ReviewSubmitted`, because #1132 kept free text out of the immutable log (decided 2026-10-07). Approve can carry one in the UI; a retract path with an event; one verdict per member per message on `cast_vote`; a per-reviewer tally | The event has no note (`events.rs:606-623`); votes key on kind, so approve and request_changes coexist (`postgres/votes.rs:13`); there is no retract | — |
+| 2 | **Vote integrity** (P1-11) | M | `request_changes` needs a note (#1304, landed). One verdict per member per message and a retract path with an event are in review (#1305), and a count of each kind then counts each member once, so no separate tally is needed (decided 2026-10-07). The note stays in the review history and `change_requests`, not in `ReviewSubmitted`, because #1132 kept free text out of the immutable log (decided 2026-10-07). Approve can carry one in the UI; a retract path with an event; one verdict per member per message on `cast_vote`; a per-reviewer tally | The event has no note (`events.rs:606-623`); votes key on kind, so approve and request_changes coexist (`postgres/votes.rs:13`); there is no retract | — |
 | 3 | **Evidence-bound approval cards** (P1-10, with the P2 artifact link and transition read) | L, three stacked PRs | A thread `state_version` bumped by every content write; a thread↔artifact link; an immutable review request with an evidence manifest pinned by content hash and an evidence-root hash; a decision POST that echoes version and hash, re-verified at decision and execution (409 on mismatch); the card shows evidence with attestation tiers, a weakest-tier warning, and the decider | No review-request row, version or evidence hash exists; artifacts reach a thread only through message metadata (`thread_context.rs:218-227`); an approval binds nothing it was shown | #4 |
 | 4 | **Identity mode and one feedback surface** (P1-8, P1-16; thread 40) | S + M, two PRs | A header badge for session, bearer or delegated; mode-aware error sentences; `showError` with severity replaces `setStatus` and `#status`; `#session-status` and the feedback line are live regions; a contract that `setStatus(` is gone | The credential kind shows only in the Session panel (`ui/tools.js:1113`); `humanError` says "your token" to a session (`ui/feedback.js:80`); `#status` and `#session-status` are plain paragraphs (`index.html:650`, `:25`) | — |
 | 5 | **DM member picker** (P1-7) | S–M | A searchable member picker with agent and human badges replaces the UUID inputs for DMs and group DMs; Playwright for both | `index.html:493` and `:514` ask for raw UUIDs; the member list route exists (`app.rs:1075`) | — |
