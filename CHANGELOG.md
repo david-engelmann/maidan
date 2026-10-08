@@ -15,6 +15,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Writes go only to operator-named repositories.** `MAIDAN_GITHUB_WRITE_REPOS` lists the only repositories the instance's GitHub token may write to. The client refuses any other write before a request is made, whichever workspace asks, and with no list it writes nowhere. A workspace's egress allowlist narrows the list and can never widen it.
 - **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to an app slug, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
+- **Mark-ready bases are the operator's.** `MAIDAN_MARK_READY_BASES` (comma-separated `owner/name=branch`) pins the base each listed repository's agent pull requests may be marked ready into, replacing the table compiled into `maidan-types`. A repository not listed is held to no base there, and the workspace egress allowlist decides its flips, as before. A malformed entry, a `prod` base or a repository listed twice refuses boot.
 
 ### DMs are opened by picking people, not pasting ids
 
@@ -1865,6 +1866,11 @@ Refs #1253
 - **Changed:** `submit_review` with `approve` needs `evidence_root`, the root from `get_review_packet` (REST 400, MCP -32602 without it). It is refused with 409 when the root is stale, when nothing was handed to review, or when the result or linked artifacts changed after the hand-off. Each review and each verdict in the history records the root it was given against.
 - **Changed:** Only an approval bound to the thread's latest packet counts toward a review requirement, in `review_status` and at close, and a close is refused while the evidence differs from what that packet pinned. A comment after an approval does not undo it, since the evidence root covers the result and linked artifacts, not messages. This is the third part of evidence-bound approvals (Open Work Next 3).
 - **Changed:** Needs you in the console approves the packet the row showed, so evidence that changed after the row was drawn is refused with a reason instead of approved.
+
+### A refused close reaches MCP subscribers, and an unpinned mark-ready app is named at boot
+
+- **Fixed:** A close refused over REST (`POST /threads/:id`, a review requirement not met or an unresolved `refutes`) now notifies the thread's MCP resource subscribers of the notice message it posts, as the MCP `transition_thread` refusal already did. Subscribers in another workspace hear nothing.
+- **Added:** The server logs a warning at boot when `MAIDAN_MARK_READY_APP_ID` is set and `MAIDAN_MARK_READY_BASES` pins no base (unset or blank), because every mark-ready flip then follows the workspace egress allowlist alone. Boot still succeeds.
 
 ### Accepting an approval gate is a property of the credential
 

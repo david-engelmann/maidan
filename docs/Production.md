@@ -50,6 +50,7 @@ period is cut, and clients retry.
 | `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for every secret the server reads (a Docker or Kubernetes secret mount). That is `DATABASE_URL`, `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SESSION_SECRET`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. A test fails when the server starts reading a new secret that cannot come from a file, so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8. The error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
 | `MAIDAN_GITHUB_WRITE_REPOS` | with a GitHub token | Comma-separated `owner/name`s, the only repositories the instance's GitHub token may write to (branches, commits, draft and ready pull requests, comments, reviews, check runs). Compared case-insensitively. Unset or empty, every GitHub write is refused and a boot warning says so. A workspace's egress allowlist narrows this list and can never widen it. |
 | `MAIDAN_MARK_READY_APP_ID` | for mark-ready | The id of the one app whose installations may call `POST /operator/github/mark-ready`: the **mark-ready app**, the client in the change flow that asks Maidan to flip its draft pull requests to ready. An app id is unique across the instance; an app slug is not, so the slug is never trusted. Unset, every mark-ready call is refused. A value that is not a UUID refuses boot. |
+| `MAIDAN_MARK_READY_BASES` | no | Comma-separated `owner/name=branch` pairs: the only base each listed repository's agent pull requests may be marked ready into, for example `example-org/example-repo=dev,example-org/example-skills=main`. Repository names compare case-insensitively, as in `MAIDAN_GITHUB_WRITE_REPOS`. A repository not listed is pinned to no base; the workspace egress allowlist (`owner/name@base`) decides its flips alone. Blank entries are skipped. An entry that is not `owner/name=branch`, a branch name git would refuse, `prod`, or a repository listed twice refuses boot. With `MAIDAN_MARK_READY_APP_ID` set and no pins, boot logs a warning. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED` outright.       |
 | `MAIDAN_ALLOWED_HOSTS` | no | Comma-separated host names, without ports, that a request with no credential may name under `AUTH_DISABLED` or the anonymous MCP reader, besides loopback names and IP addresses. A public dev instance lists its own name. See "DNS rebinding". |
 | `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` | no | Dev only. A workspace id whose name begins `synthetic-`, read by an MCP `POST` with no credential (read-only tools). Refused under `MAIDAN_ENV=production` and beside `AUTH_DISABLED`. See Integration, "Anonymous reading on a dev instance". |
@@ -426,7 +427,10 @@ to in `MAIDAN_GITHUB_WRITE_REPOS`, for example
 `MAIDAN_GITHUB_WRITE_REPOS=example/app,example/skills`. A write to any other
 repository is refused before a request is made, whichever workspace asks. To
 let the mark-ready app mark agent pull requests ready, set `MAIDAN_MARK_READY_APP_ID`
-to the id of that app (`GET /workspaces/{wid}/apps` lists it).
+to the id of that app (`GET /workspaces/{wid}/apps` lists it). To pin a
+repository's flips to one base whatever its allowlist blesses, list it in
+`MAIDAN_MARK_READY_BASES`, for example
+`MAIDAN_MARK_READY_BASES=example/app=dev,example/skills=main`.
 
 **4. The services.** Auth is on: nothing sets `AUTH_DISABLED`, and
 `MAIDAN_ENV=production` refuses it and the development KEK outright. With
@@ -471,6 +475,7 @@ services:
       MAIDAN_GITHUB_TOKEN_FILE: /run/secrets/github_token
       MAIDAN_GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
       MAIDAN_GITHUB_WRITE_REPOS: example/app,example/skills
+      MAIDAN_MARK_READY_BASES: example/app=dev,example/skills=main
       MAIDAN_SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
       MAIDAN_SLACK_SIGNING_SECRET_FILE: /run/secrets/slack_signing_secret
     secrets:

@@ -66,7 +66,8 @@ pub enum MarkReadyGuard {
 
 /// The one guard path for the mark-ready flip (Decisions, 2026-10-06): a
 /// single fresh pull brief, every guard evaluated against it — the PR-shape
-/// rules, the per-repository base map, the workspace egress allowlist — and
+/// rules, the operator's per-repository base map (`bases`, from
+/// `MAIDAN_MARK_READY_BASES`), the workspace egress allowlist — and
 /// only then the `markPullRequestReadyForReview` mutation, keyed on the
 /// brief's node id. There is deliberately no second read: the allowlist
 /// check used to run on an earlier brief than the write's, so a base retarget
@@ -81,6 +82,7 @@ pub async fn flip_pull_ready_guarded(
     store: &dyn maidan_store::Store,
     workspace_id: WorkspaceId,
     git: &dyn GithubGit,
+    bases: &maidan_types::MarkReadyBases,
     repo: &str,
     pull_number: i64,
 ) -> Result<MarkReadyOutcome, MarkReadyGuard> {
@@ -89,7 +91,7 @@ pub async fn flip_pull_ready_guarded(
         .await
         .map_err(MarkReadyGuard::Github)?;
     // Shape rules and the per-repository base map, on the fresh read.
-    maidan_types::check_mark_ready_target(repo, &brief.head, &brief.base)
+    maidan_types::check_mark_ready_target(bases, repo, &brief.head, &brief.base)
         .map_err(MarkReadyGuard::Refused)?;
     // A fork's branch can carry a `feature/agent-*` name too; only the change
     // flow's own branches, which live in the base repository, are flipped.
@@ -329,6 +331,7 @@ pub async fn mark_pull_ready(
         state.store.as_ref(),
         auth.workspace_id,
         git,
+        &state.mark_ready_bases,
         &repo,
         pull_number,
     )
