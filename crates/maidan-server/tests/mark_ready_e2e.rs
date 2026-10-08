@@ -32,8 +32,8 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EgressSurface, MemberKind, NewApiToken, NewApp, NewAppInstallation, NewEgressTarget, NewMember,
-    NewWorkspace,
+    EgressSurface, MarkReadyBases, MemberKind, NewApiToken, NewApp, NewAppInstallation,
+    NewEgressTarget, NewMember, NewWorkspace,
 };
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -344,6 +344,7 @@ struct Harness {
     store: Arc<dyn Store>,
     fake: Shared,
     workspace_id: maidan_types::WorkspaceId,
+    mark_ready_app_id: maidan_types::AppId,
     mark_ready_bearer: String,
     other_app_bearer: String,
     member_bearer: String,
@@ -462,13 +463,16 @@ async fn spawn() -> Harness {
 
     let mark_ready_install = install_app(&store, ws.id, bot.id, "mark-ready-app").await;
     // The operator designates the mark-ready app by id (MAIDAN_MARK_READY_APP_ID).
-    state.mark_ready_app_id = Some(
-        store
-            .get_app_installation(mark_ready_install)
-            .await
-            .unwrap()
-            .app_id,
-    );
+    let mark_ready_app_id = store
+        .get_app_installation(mark_ready_install)
+        .await
+        .unwrap()
+        .app_id;
+    state.mark_ready_app_id = Some(mark_ready_app_id);
+    // The operator pins two repositories' bases (MAIDAN_MARK_READY_BASES).
+    state.mark_ready_bases =
+        MarkReadyBases::parse("example-org/example-repo=dev,example-org/example-skills=main")
+            .unwrap();
     let other_install = install_app(&store, ws.id, bot.id, "other-app").await;
     let mark_ready_secret = TokenSecret::generate();
     let other_secret = TokenSecret::generate();
@@ -506,6 +510,7 @@ async fn spawn() -> Harness {
         store,
         fake,
         workspace_id: ws.id,
+        mark_ready_app_id,
         mark_ready_bearer,
         other_app_bearer,
         member_bearer,
@@ -754,17 +759,22 @@ async fn mark_ready_checks_the_allowlist_against_the_fresh_base() {
 #[tokio::test]
 async fn mark_ready_enforces_the_per_repo_base_map() {
     let h = spawn().await;
-    // relay is mapped to dev, so it flips only into dev, even with the
-    // allowlist blessing main.
-    allow(&h, "example-org/relay@main").await;
+    // example-repo is pinned to dev, so it flips only into dev, even with
+    // the allowlist blessing main.
+    allow(&h, "example-org/example-repo@main").await;
     h.fake
         .lock()
         .unwrap()
         .pulls
         .insert(13, draft_pull(13, "feature/agent-x", "main"));
 
-    let (status, body) =
-        post_mark_ready(&h, Some(&h.mark_ready_bearer), "example-org/relay", 13).await;
+    let (status, body) = post_mark_ready(
+        &h,
+        Some(&h.mark_ready_bearer),
+        "example-org/example-repo",
+        13,
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("only into `dev`"), "{body}");
     assert!(
@@ -772,8 +782,8 @@ async fn mark_ready_enforces_the_per_repo_base_map() {
         "a refused flip writes nothing"
     );
 
-    // agent-skills flips only into main.
-    allow(&h, "david-engelmann/agent-skills@dev").await;
+    // example-skills is pinned to main.
+    allow(&h, "example-org/example-skills@dev").await;
     h.fake
         .lock()
         .unwrap()
@@ -783,7 +793,7 @@ async fn mark_ready_enforces_the_per_repo_base_map() {
     let (status, body) = post_mark_ready(
         &h,
         Some(&h.mark_ready_bearer),
-        "david-engelmann/agent-skills",
+        "example-org/example-skills",
         14,
     )
     .await;
@@ -793,6 +803,125 @@ async fn mark_ready_enforces_the_per_repo_base_map() {
         h.fake.lock().unwrap().graphql.is_empty(),
         "a refused flip writes nothing"
     );
+
+    // Into its pinned base, with the allowlist blessing it, the flip lands.
+    allow(&h, "example-org/example-repo@dev").await;
+    h.fake
+        .lock()
+        .unwrap()
+        .pulls
+        .insert(15, draft_pull(15, "feature/agent-x", "dev"));
+    let (status, body) = post_mark_ready(
+        &h,
+        Some(&h.mark_ready_bearer),
+        "example-org/example-repo",
+        15,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["marked_ready"], json!(true));
+
+    // A repository the operator did not pin is held to no base here: the
+    // allowlist alone decides, so `o/repo@main` flips once blessed.
+    allow(&h, "o/repo@main").await;
+    h.fake
+        .lock()
+        .unwrap()
+        .pulls
+        .insert(16, draft_pull(16, "feature/agent-x", "main"));
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 16).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(h.fake.lock().unwrap().graphql.len(), 2, "two flips landed");
+}
+
+#[tokio::test]
+async fn the_base_map_does_not_carry_one_workspaces_allowlist_into_another() {
+    let h = spawn().await;
+    // Workspace A blesses the pinned repository into its pinned base.
+    allow(&h, "example-org/example-repo@dev").await;
+    h.fake
+        .lock()
+        .unwrap()
+        .pulls
+        .insert(21, draft_pull(21, "feature/agent-x", "dev"));
+
+    // Workspace B runs an installation of the same designated app, so it
+    // passes the caller check, and the operator's pin admits the base. It has
+    // no allowlist entry of its own and must see nothing of A's.
+    let ws_b = h
+        .store
+        .create_workspace(NewWorkspace { name: "b".into() })
+        .await
+        .unwrap();
+    let bot_b = h
+        .store
+        .create_member(NewMember {
+            workspace_id: ws_b.id,
+            handle: "bot-b".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let install_b = h
+        .store
+        .create_app_installation(NewAppInstallation {
+            app_id: h.mark_ready_app_id,
+            workspace_id: ws_b.id,
+            bot_member_id: bot_b.id,
+            granted_capabilities: vec![capability::WORKSPACE_READ.into()],
+        })
+        .await
+        .unwrap()
+        .id;
+    let secret_b = TokenSecret::generate();
+    let bearer_b = mint(
+        &h.store,
+        ws_b.id,
+        bot_b.id,
+        Some(install_b),
+        secret_b.as_str(),
+    )
+    .await;
+
+    let (status, body) = post_mark_ready(&h, Some(&bearer_b), "example-org/example-repo", 21).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(
+        body.to_string()
+            .contains("`example-org/example-repo@dev` is not in the workspace egress allowlist"),
+        "{body}"
+    );
+    assert!(
+        h.fake.lock().unwrap().graphql.is_empty(),
+        "workspace B writes nothing on workspace A's blessing"
+    );
+    // B's refusal is audited in B, and A's audit log holds none of it.
+    let b_events = h.store.list_audit_for_workspace(ws_b.id, 10).await.unwrap();
+    assert!(
+        b_events
+            .iter()
+            .any(|e| e.action == "github.mark_ready" && e.metadata["outcome"] == json!("refused")),
+        "B's refusal is in B's audit log"
+    );
+    let a_events = h
+        .store
+        .list_audit_for_workspace(h.workspace_id, 10)
+        .await
+        .unwrap();
+    assert!(
+        a_events.iter().all(|e| e.action != "github.mark_ready"),
+        "A's audit log holds nothing of B's call: {a_events:?}"
+    );
+
+    // A's own flip still lands.
+    let (status, body) = post_mark_ready(
+        &h,
+        Some(&h.mark_ready_bearer),
+        "example-org/example-repo",
+        21,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
 }
 
 #[tokio::test]

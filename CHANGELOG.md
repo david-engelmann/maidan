@@ -15,6 +15,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Writes go only to operator-named repositories.** `MAIDAN_GITHUB_WRITE_REPOS` lists the only repositories the instance's GitHub token may write to. The client refuses any other write before a request is made, whichever workspace asks, and with no list it writes nowhere. A workspace's egress allowlist narrows the list and can never widen it.
 - **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to an app slug, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
+- **Mark-ready bases are the operator's.** `MAIDAN_MARK_READY_BASES` (comma-separated `owner/name=branch`) pins the base each listed repository's agent pull requests may be marked ready into, replacing the table compiled into `maidan-types`. A repository not listed is held to no base there, and the workspace egress allowlist decides its flips, as before. A malformed entry, a `prod` base or a repository listed twice refuses boot.
 
 ### DMs are opened by picking people, not pasting ids
 
