@@ -40,7 +40,7 @@ top_pages=(
   "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "FAQ" "Comparison"
   "Architecture" "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"
-  "Dependencies" "Open Work" "Roadmap" "README" "Claims"
+  "Dependencies" "Open Work" "Roadmap" "OAuth" "README" "Claims"
   "Providers" "Protocols" "Clients"
   "Framework Integrations" "Harness Caching" "WASI-Handlers"
 )
