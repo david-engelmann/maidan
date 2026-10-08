@@ -112,4 +112,4 @@ tempfile = "3"
 tokio-tungstenite = "0.24"
 # Generates the throwaway GitHub App key the tests sign with, so no private key
 # is committed. Already in the tree through rustls.
-aws-lc-rs = "1"
+aws-lc-rs = { version = "1", default-features = false, features = ["aws-lc-sys", "alloc"] }
