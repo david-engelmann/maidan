@@ -26,9 +26,10 @@ use maidan_fsm::ThreadAction;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    BlockedReason, MemberKind, NewApiToken, NewApprovalGate, NewChannel, NewMember, NewMessage,
-    NewThread, NewWebhookSubscription, NewWorkspace, ReviewDecision,
+    ArtifactKind, BlockedReason, MemberKind, NewApiToken, NewApprovalGate, NewArtifact, NewChannel,
+    NewMember, NewMessage, NewThread, NewWebhookSubscription, NewWorkspace, ReviewDecision,
 };
+use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::main]
@@ -553,6 +554,125 @@ async fn main() {
         .await
         .expect("rae");
 
+    // An evidence desk: tasks the deployer handed to review with evidence
+    // linked, each naming the operator as a reviewer, for the approval card.
+    // `view` is only looked at, `decide` is approved by a spec, `live` is
+    // approved by Rae while the operator watches, and `empty` was handed
+    // over with no result and no artifact. Its own channel, so deciding here
+    // moves no other spec's row.
+    let proof = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "proof".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("proof channel");
+    let evidence = |name: &str, kind: ArtifactKind, body: &[u8]| {
+        let store = store.clone();
+        let new = NewArtifact {
+            sha256: hex::encode(Sha256::digest(body)),
+            size_bytes: i64::try_from(body.len()).expect("size"),
+            mime_type: Some("application/octet-stream".into()),
+            filename: Some(name.into()),
+            kind,
+            uploaded_by: Some(requester.id),
+        };
+        async move {
+            store
+                .upsert_artifact_with_event(new, Some(ws.id))
+                .await
+                .expect("evidence artifact")
+                .0
+                .sha256
+        }
+    };
+    let screenshot = evidence("login-after.png", ArtifactKind::Screenshot, &[7u8; 2048]).await;
+    let transcript = evidence(
+        "test-run.log",
+        ArtifactKind::Transcript,
+        b"500 runs, 0 failures\n",
+    )
+    .await;
+    let mut proof_threads = Vec::new();
+    for (title, result, artifacts, reviewers) in [
+        (
+            "Evidence: the login fix, with a screenshot and a log",
+            Some(serde_json::json!({ "runs": 500, "failures": 0 })),
+            vec![screenshot.clone(), transcript.clone()],
+            1,
+        ),
+        (
+            "Evidence: approve this one",
+            Some(serde_json::json!({ "status": "fixed" })),
+            vec![transcript.clone()],
+            1,
+        ),
+        (
+            "Evidence: two reviewers",
+            Some(serde_json::json!({ "status": "fixed" })),
+            vec![screenshot.clone()],
+            2,
+        ),
+        ("Evidence: nothing handed over", None, vec![], 1),
+    ] {
+        let t = store
+            .create_thread(NewThread {
+                channel_id: proof.id,
+                parent_thread_id: None,
+                title: Some(title.into()),
+                description: None,
+            })
+            .await
+            .expect("proof thread");
+        store.claim_thread(t.id, requester.id).await.expect("claim");
+        if let Some(result) = result {
+            store
+                .set_thread_result(t.id, requester.id, &result)
+                .await
+                .expect("proof result");
+        }
+        for sha in &artifacts {
+            store
+                .link_thread_artifact(t.id, sha, requester.id)
+                .await
+                .expect("link evidence");
+        }
+        store
+            .transition_thread(t.id, requester.id, ThreadAction::StartReview)
+            .await
+            .expect("proof review");
+        store
+            .set_review_requirement(t.id, reviewers)
+            .await
+            .expect("requirement");
+        store.add_reviewer(t.id, member.id).await.expect("reviewer");
+        if reviewers > 1 {
+            store
+                .add_reviewer(t.id, rae.id)
+                .await
+                .expect("second reviewer");
+        }
+        proof_threads.push(t);
+    }
+    let rae_secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: rae.id,
+            app_installation_id: None,
+            token_hash: hash_secret(rae_secret.as_str()),
+            label: Some("ui-test-rae".into()),
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::THREAD_TRANSITION.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .expect("rae token");
+
     // A second workspace with its own people and token. The member picker and
     // the DM lists signed in here must show nothing of the first workspace,
     // and the first must show nothing of this one.
@@ -801,6 +921,14 @@ async fn main() {
         "lab_thread_id": lab_thread.id.0.to_string(),
         "lab_member_id": mallory.id.0.to_string(),
         "rae_member_id": rae.id.0.to_string(),
+        "rae_token": rae_secret.as_str(),
+        "proof_channel_id": proof.id.0.to_string(),
+        "proof_view_thread_id": proof_threads[0].id.0.to_string(),
+        "proof_decide_thread_id": proof_threads[1].id.0.to_string(),
+        "proof_live_thread_id": proof_threads[2].id.0.to_string(),
+        "proof_empty_thread_id": proof_threads[3].id.0.to_string(),
+        "proof_screenshot_sha": screenshot,
+        "proof_transcript_sha": transcript,
         "other_workspace_id": other_ws.id.0.to_string(),
         "other_member_id": visitor.id.0.to_string(),
         "outsider_member_id": outsider.id.0.to_string(),
