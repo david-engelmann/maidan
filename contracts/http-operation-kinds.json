@@ -211,6 +211,7 @@
   {"method":"DELETE","path":"/threads/{id}/required-skills/{skill}","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/result","kind":"reads"},
   {"method":"PUT","path":"/threads/{id}/result","kind":"changes"},
+  {"method":"GET","path":"/threads/{id}/review-packet","kind":"reads"},
   {"method":"DELETE","path":"/threads/{id}/review-requirement","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/review-requirement","kind":"reads"},
   {"method":"PUT","path":"/threads/{id}/review-requirement","kind":"changes"},

@@ -1064,6 +1064,24 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "get_review_packet",
+            "description": "What the thread's current review was handed, recorded when it went to review: the thread version, the result's content hash and the linked artifacts' hashes, with the evidence root over them. Null before any review. Requires workspace:read.",
+            "annotations": {
+                "title": "Get review packet",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"}
+                },
+                "required": ["thread_id"]
+            }
+        }),
+        json!({
             "name": "list_thread_artifacts",
             "description": "The artifacts linked to the thread as evidence, in the order they were linked, each with who linked it. Requires workspace:read.",
             "annotations": {

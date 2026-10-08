@@ -1843,6 +1843,10 @@ Refs #1253
 - **Added:** A thread's version (`get_thread_version`, `GET /threads/:id/version`) counts the writes to its messages, result, title and description, and linked artifacts. Database triggers move it, so no write path can change that content without it. It is the first part of evidence-bound approvals (Open Work Next 3), where a decision names the version it was shown.
 - **Added:** `link_thread_artifact`, `unlink_thread_artifact` and `list_thread_artifacts` (REST `PUT`, `DELETE` and `GET` under `/threads/:id/artifacts`) attach an artifact to a thread as evidence. Only an artifact the thread's workspace holds can be linked, and a hash is stored as lowercase hex.
 
+### A hand-off to review records what the reviewers were handed
+
+- **Added:** Each `start_review` records a review packet in its own transaction, holding the thread's version, its result's content hash and its linked artifacts' hashes, with an evidence root over them. `get_review_packet` (REST `GET /threads/:id/review-packet`) returns the latest. The database refuses any update to a packet, and a later hand-off writes a new one. This is the second part of evidence-bound approvals (Open Work Next 3).
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

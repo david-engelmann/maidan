@@ -261,3 +261,87 @@ async fn linking_evidence_moves_the_version_and_stays_in_its_workspace() {
     .await;
     assert_eq!(s, StatusCode::NOT_FOUND, "nothing left to unlink");
 }
+
+#[tokio::test]
+async fn a_hand_off_to_review_pins_what_was_handed_over() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let (ws, worker, token, thread) = tenant(store.as_ref(), "a").await;
+    let (_, _, other_token, _) = tenant(store.as_ref(), "b").await;
+    let t = thread.0;
+    let held = HELD.to_ascii_lowercase();
+    store.record_artifact_ref(ws, &held).await.unwrap();
+
+    let (s, _) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{t}/review-packet"),
+        &token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "nothing handed over yet");
+
+    store.claim_thread(thread, worker).await.unwrap();
+    let result = json!({"status": "done"});
+    store
+        .set_thread_result(thread, worker, &result)
+        .await
+        .unwrap();
+    store
+        .link_thread_artifact(thread, &held, worker)
+        .await
+        .unwrap();
+    store
+        .transition_thread(thread, worker, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .unwrap();
+
+    let (s, packet) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{t}/review-packet"),
+        &token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{packet}");
+    let version = store.thread_version(thread).await.unwrap();
+    assert_eq!(packet["manifest"]["thread_version"], version);
+    assert_eq!(packet["manifest"]["artifacts"], json!([held]));
+    assert_eq!(
+        packet["manifest"]["result"]["sha256"],
+        maidan_types::result_sha256(&result).unwrap()
+    );
+    assert_eq!(packet["requested_by"], json!(worker.0));
+    let manifest: maidan_types::EvidenceManifest =
+        serde_json::from_value(packet["manifest"].clone()).unwrap();
+    assert_eq!(packet["evidence_root"], manifest.root().unwrap());
+
+    let (s, _) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{t}/review-packet"),
+        &other_token,
+    )
+    .await;
+    assert!(
+        matches!(s, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+        "another workspace reads no packet: {s}"
+    );
+
+    let resp: Value = client
+        .post(format!("{base}/mcp"))
+        .header("Authorization", &token)
+        .json(&json!({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "get_review_packet", "arguments": {"thread_id": t}}
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let text = resp["result"]["content"][0]["text"].as_str().unwrap();
+    let via_mcp: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(via_mcp["evidence_root"], packet["evidence_root"]);
+}
