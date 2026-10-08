@@ -125,9 +125,13 @@ fn main() -> anyhow::Result<()> {
 
 async fn run() -> anyhow::Result<()> {
     let unknown_env = unknown_env()?;
+    // Logs go to stderr. stdout is the command's output, and for `mcp-stdio` it
+    // is the protocol itself, where any line that is not a JSON-RPC message
+    // breaks the client.
     tracing_subscriber::fmt()
         .with_env_filter(std::env::var("MAIDAN_LOG").unwrap_or_else(|_| "info,sqlx=warn".into()))
         .with_target(false)
+        .with_writer(std::io::stderr)
         .init();
     if !unknown_env.is_empty() {
         tracing::warn!(

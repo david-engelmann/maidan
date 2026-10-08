@@ -78,6 +78,10 @@ Refs #1253
 - **Changed:** The Helm chart and `k8s/base` mount secrets as files under `/run/secrets/maidan` and name each in `<KEY>_FILE`, so no secret is in the pod's environment. An `existingSecret` is mounted with the keys in `secretFiles.existingSecretKeys`, and more Secrets go in `secretFiles.extra`. A key a Secret lacks stops the pod, and the render refuses a key the server cannot read from a file. `secretFiles.enabled: false` keeps envFrom. `maidan-stack` splits its datastores into a Secret, read as files, and a ConfigMap.
 - **Added:** `every_secret_the_server_reads_can_come_from_a_file` fails when a server variable whose name looks secret has no `_FILE` form, unless a reviewed list says why it is not a secret.
 
+### `maidan mcp-stdio` speaks only JSON-RPC on stdout
+
+- **Fixed:** The `maidan` CLI wrote its log lines to stdout. For `mcp-stdio`, stdout is the protocol, so every stdio client got lines that were not JSON-RPC messages, one more per tool call since the request log. Logs now go to stderr for every `maidan` command, and `every_line_on_stdout_is_a_json_rpc_message` fails if one reaches stdout. Found running Maidan under a desktop MCP client.
+
 ### Opening a group DM selects it and asks for three members
 
 - **Fixed:** The page accepted two members and left the new group DM unselected. It now refuses fewer than three before the request, says that refusal as a sentence, and selects the conversation the server returns, the same way a one-to-one DM is selected. A browser spec opens one and posts in it.
