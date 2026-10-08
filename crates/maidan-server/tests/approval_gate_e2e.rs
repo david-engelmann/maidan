@@ -448,22 +448,22 @@ async fn token_session(client: &reqwest::Client, base: &str, token: &str) -> Str
     set_cookie.split(';').next().unwrap().to_string()
 }
 
-/// How a request authenticates, and what it says about where it came from.
+/// What a session request says about where it came from.
 #[derive(Clone, Copy)]
-enum Origin {
+enum Sent {
     /// What a browser sends for a fetch from the console page.
-    ConsolePage,
+    FromConsole,
     /// A same-origin `Origin` and no `Sec-Fetch-Site` (an older browser).
-    MatchingOrigin,
+    WithOriginOnly,
     /// Neither header: curl holding the cookie.
-    None,
+    Bare,
     /// `Sec-Fetch-Site: none`, which a request typed into the address bar sends.
-    UserTyped,
+    Typed,
 }
 
 enum Cred<'a> {
     Bearer(&'a str),
-    Cookie(&'a str, Origin),
+    Cookie(&'a str, Sent),
 }
 
 struct Api {
@@ -481,17 +481,17 @@ impl Api {
         let b = self.client.request(method, format!("{}{path}", self.base));
         match cred {
             Cred::Bearer(token) => b.bearer_auth(token),
-            Cred::Cookie(cookie, origin) => {
+            Cred::Cookie(cookie, sent) => {
                 let b = b.header(reqwest::header::COOKIE, *cookie);
-                match origin {
-                    Origin::ConsolePage => b
+                match sent {
+                    Sent::FromConsole => b
                         .header("sec-fetch-site", "same-origin")
                         .header(reqwest::header::ORIGIN, self.base.clone()),
                     // reqwest sends the URL's authority as Host, which is
                     // what the Origin names.
-                    Origin::MatchingOrigin => b.header(reqwest::header::ORIGIN, self.base.clone()),
-                    Origin::None => b,
-                    Origin::UserTyped => b.header("sec-fetch-site", "none"),
+                    Sent::WithOriginOnly => b.header(reqwest::header::ORIGIN, self.base.clone()),
+                    Sent::Bare => b,
+                    Sent::Typed => b.header("sec-fetch-site", "none"),
                 }
             }
         }
@@ -648,7 +648,7 @@ async fn a_session_made_from_a_token_accepts_only_with_the_tokens_approval_grant
     .await;
 
     let plain_cookie = token_session(&client, &base, &plain).await;
-    let from_plain = Cred::Cookie(&plain_cookie, Origin::ConsolePage);
+    let from_plain = Cred::Cookie(&plain_cookie, Sent::FromConsole);
     let gate = open_gate(store.as_ref(), ws.id, agent).await;
     let state = api.request_state(ws.id, &gate, &from_plain).await;
     assert_refused_with(
@@ -666,7 +666,7 @@ async fn a_session_made_from_a_token_accepts_only_with_the_tokens_approval_grant
     assert_pending(store.as_ref(), &gate).await;
 
     let granted_cookie = token_session(&client, &base, &granted).await;
-    let from_granted = Cred::Cookie(&granted_cookie, Origin::ConsolePage);
+    let from_granted = Cred::Cookie(&granted_cookie, Sent::FromConsole);
     let accepted = api.answer(&gate, &state, "accept", &from_granted).await;
     assert_eq!(accepted.status(), StatusCode::OK);
     let accepted: Value = accepted.json().await.unwrap();
@@ -694,13 +694,13 @@ async fn a_signed_in_session_accepts_from_the_console_page_and_not_without_it() 
     let human = member(store.as_ref(), ws.id, "oncall", MemberKind::Human).await;
     let agent = member(store.as_ref(), ws.id, "deployer", MemberKind::Agent).await;
     let cookie = signed_in(store.as_ref(), ws.id, human).await;
-    let page = Cred::Cookie(&cookie, Origin::ConsolePage);
+    let page = Cred::Cookie(&cookie, Sent::FromConsole);
 
     let gate = open_gate(store.as_ref(), ws.id, agent).await;
     let state = api.request_state(ws.id, &gate, &page).await;
-    for origin in [Origin::None, Origin::UserTyped] {
+    for sent in [Sent::Bare, Sent::Typed] {
         assert_refused_with(
-            api.answer(&gate, &state, "accept", &Cred::Cookie(&cookie, origin))
+            api.answer(&gate, &state, "accept", &Cred::Cookie(&cookie, sent))
                 .await,
             "from the console page",
         )
@@ -722,7 +722,7 @@ async fn a_signed_in_session_accepts_from_the_console_page_and_not_without_it() 
             &second,
             &state,
             "accept",
-            &Cred::Cookie(&cookie, Origin::MatchingOrigin),
+            &Cred::Cookie(&cookie, Sent::WithOriginOnly),
         )
         .await;
     assert_eq!(accepted.status(), StatusCode::OK);
@@ -735,7 +735,7 @@ async fn a_signed_in_session_accepts_from_the_console_page_and_not_without_it() 
             &third,
             &state,
             "decline",
-            &Cred::Cookie(&cookie, Origin::None),
+            &Cred::Cookie(&cookie, Sent::Bare),
         )
         .await;
     assert_eq!(declined.status(), StatusCode::OK);
@@ -769,7 +769,7 @@ async fn no_credential_lets_the_requester_accept_its_own_gate() {
     let gate = open_gate(store.as_ref(), ws.id, asker).await;
     for cred in [
         Cred::Bearer(&granted),
-        Cred::Cookie(&cookie, Origin::ConsolePage),
+        Cred::Cookie(&cookie, Sent::FromConsole),
     ] {
         let state = api.request_state(ws.id, &gate, &cred).await;
         assert_refused_with(
@@ -799,7 +799,7 @@ async fn a_signed_in_session_for_an_agent_member_cannot_accept() {
     let bot = member(store.as_ref(), ws.id, "bot", MemberKind::Agent).await;
     let agent = member(store.as_ref(), ws.id, "deployer", MemberKind::Agent).await;
     let cookie = signed_in(store.as_ref(), ws.id, bot).await;
-    let page = Cred::Cookie(&cookie, Origin::ConsolePage);
+    let page = Cred::Cookie(&cookie, Sent::FromConsole);
     let gate = open_gate(store.as_ref(), ws.id, agent).await;
     let state = api.request_state(ws.id, &gate, &page).await;
     assert_refused_with(
@@ -849,7 +849,7 @@ async fn another_workspaces_session_or_approval_grant_cannot_see_or_accept_a_gat
 
     for cred in [
         Cred::Bearer(&grant_b),
-        Cred::Cookie(&cookie_b, Origin::ConsolePage),
+        Cred::Cookie(&cookie_b, Sent::FromConsole),
     ] {
         let listed = api.list(ws_a.id, &cred).await;
         assert!(
@@ -872,7 +872,7 @@ async fn another_workspaces_session_or_approval_grant_cannot_see_or_accept_a_gat
     // The same credentials do accept in their own workspace, so the refusal
     // above is the tenant boundary, not a broken credential.
     let gate_b = open_gate(store.as_ref(), ws_b.id, agent_b).await;
-    let page_b = Cred::Cookie(&cookie_b, Origin::ConsolePage);
+    let page_b = Cred::Cookie(&cookie_b, Sent::FromConsole);
     let state_b = api.request_state(ws_b.id, &gate_b, &page_b).await;
     let accepted = api.answer(&gate_b, &state_b, "accept", &page_b).await;
     assert_eq!(accepted.status(), StatusCode::OK);
