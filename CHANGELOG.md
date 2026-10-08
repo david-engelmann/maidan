@@ -1867,6 +1867,12 @@ Refs #1253
 - **Changed:** Only an approval bound to the thread's latest packet counts toward a review requirement, in `review_status` and at close, and a close is refused while the evidence differs from what that packet pinned. A comment after an approval does not undo it, since the evidence root covers the result and linked artifacts, not messages. This is the third part of evidence-bound approvals (Open Work Next 3).
 - **Changed:** Needs you in the console approves the packet the row showed, so evidence that changed after the row was drawn is refused with a reason instead of approved.
 
+### An approval card says how far to trust each piece of evidence
+
+- **Added:** A review packet records an attestation tier for each piece of evidence, judged once at the hand-off: `verified` for a land-gate pass the close gate would accept (its own `land_gate` item, with the pass's `artifact_sha` and recorder), `attached` for a result or artifact from a member who never worked the thread, and `self_reported` for a worker's own result or link. A delegate that worked the thread and links with someone else's token is judged as itself, so its link is still self-reported (migration 0147 records a link's and a result's delegate actor). The packet's `self_reported_only` is true when it holds evidence and every item is self-reported. Both appear on `get_review_packet`, `GET /threads/:id/review-packet` and `GET /ui/api/threads/:tid/review-packet`. This is the fourth part of evidence-bound approvals (Open Work Next 3).
+- **Changed:** The tiers are inside the evidence root, so the same evidence handed over again under different tiers is a new root, and an approval names the tiers it was shown. Packets from before tiers keep their roots and carry no tiers. A close compares the evidence with what the packet pinned rather than judging the tiers again, so a land-gate pass or a membership change after the hand-off neither moves a packet nor refuses a close.
+- **Added:** Needs you in the console shows each item's tier on the approval card, a land-gate pass as its own line with its recorder, and warns when the server says the approval would rest on self-reported evidence only.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

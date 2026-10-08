@@ -16,7 +16,7 @@ use crate::attestation::{attest, Author};
 use crate::error::StoreError;
 
 fn row_to_packet(row: &sqlx::postgres::PgRow) -> Result<ReviewPacket, StoreError> {
-    Ok(ReviewPacket {
+    Ok(with_warning(ReviewPacket {
         id: row.get::<Uuid, _>("id"),
         thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
         requested_by: MemberId(row.get::<Uuid, _>("requested_by")),
@@ -25,8 +25,7 @@ fn row_to_packet(row: &sqlx::postgres::PgRow) -> Result<ReviewPacket, StoreError
         evidence_root: row.get("evidence_root"),
         self_reported_only: false,
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
-    })
-    .map(with_warning)
+    }))
 }
 
 /// The server's warning, from the tiers the packet pinned.

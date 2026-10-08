@@ -304,6 +304,60 @@ async fn run_suite(store: &dyn Store) {
         .all(|a| a.tier == AttestationTier::SelfReported));
     assert!(own_pass.self_reported_only);
 
+    // The usual order: the gate is armed, the work is handed over before any
+    // pass exists, the reviewer approves, then the verifier passes it. The
+    // close checks the evidence the approval named and does not judge the
+    // tiers again, so the pass recorded after the hand-off does not refuse
+    // it. A delegate that worked the thread posts the result with a
+    // non-worker's token: still self-reported.
+    let usual = store
+        .create_thread(new_thread("usual"))
+        .await
+        .expect("thread")
+        .id;
+    store.set_review_requirement(usual, 1).await.expect("req");
+    store.require_land_gate(usual).await.expect("arm");
+    store.claim_thread(usual, outsider).await.expect("claim");
+    with_attribution(
+        acting_as(outsider, reviewer),
+        store.set_thread_result(usual, reviewer, &result),
+    )
+    .await
+    .expect("delegate result");
+    store
+        .transition_thread(usual, outsider, ThreadAction::StartReview)
+        .await
+        .expect("hand off");
+    let handed = packet(store, usual).await;
+    assert_eq!(
+        tiers(&handed),
+        vec![(
+            EvidenceKind::Result,
+            Some(result_sha.as_str()),
+            AttestationTier::SelfReported
+        )],
+        "a delegate that worked the thread does not launder the result"
+    );
+    assert_eq!(handed.manifest.attestations[0].attested_by, reviewer);
+    store
+        .submit_review(
+            usual,
+            verifier,
+            ReviewDecision::Approve,
+            None,
+            Some(&handed.evidence_root),
+        )
+        .await
+        .expect("approve");
+    store
+        .set_land_gate_pointer(usual, verifier, LandGateStatus::Pass, None, None)
+        .await
+        .expect("pass after the hand-off");
+    store
+        .transition_thread(usual, owner, ThreadAction::Close)
+        .await
+        .expect("a pass after the hand-off does not refuse the close");
+
     // A member who links evidence and only later works the thread: the packet
     // already handed keeps the link as attached.
     let later = store
