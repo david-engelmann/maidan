@@ -950,6 +950,116 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
       }
 
 
+      // A model's live request to accept a gate, as the card says it.
+      function modelRequestLine(request) {
+        if (!request) return null;
+        const who = request.client_name
+          ? `a model asked via ${request.client_name}${request.client_version ? " " + request.client_version : ""}`
+          : "a model asked via an unidentified MCP client";
+        return `${who}, waiting for you to confirm`;
+      }
+
+      // How a decided gate says who decided it.
+      function decidedViaLine(gate) {
+        const via = gate.decided_via;
+        if (!via || !via.model_asked) return null;
+        const who = via.client_name
+          ? `decided via ${via.client_name}${via.client_version ? " " + via.client_version : ""}`
+          : "decided via an unidentified MCP client";
+        return `${who}, requested by a model`;
+      }
+
+      // The link approval_decide gave a person: #confirm-approval=<gate id>.<token>.
+      // The token stays in the fragment, so it never reaches a server log.
+      function confirmationFromHash() {
+        const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+        const value = hash.startsWith("confirm-approval=") ? hash.slice("confirm-approval=".length) : null;
+        if (!value) return null;
+        const dot = value.indexOf(".");
+        if (dot < 1) return null;
+        return { gateId: value.slice(0, dot), token: value.slice(dot + 1) };
+      }
+
+      // The confirmation page: the gate, who asked, and one Confirm button.
+      // Nothing here can be done by the model that holds the token; the
+      // request goes out on the signed-in session, from this page.
+      async function openConfirmation() {
+        const link = confirmationFromHash();
+        if (!link) return;
+        history.replaceState(null, "", location.pathname + location.search);
+        const list = document.getElementById("approval-list");
+        const panel = document.createElement("li");
+        panel.className = "approval-row confirmation";
+        panel.textContent = "Loading the approval a model asked you to confirm…";
+        list.prepend(panel);
+        const ws = document.getElementById("workspace").value.trim();
+        let view = null;
+        if (ws) {
+          try {
+            const res = await api(uiReadPath(`/workspaces/${ws}/approval-gates`), {
+              headers: headers(),
+              credentials: "include",
+            });
+            if (res.ok) {
+              const views = await res.json();
+              view = views.find((v) => v.gate && v.gate.id === link.gateId) || null;
+            }
+          } catch (e) {
+            // The link itself is what confirms; the details are a courtesy.
+          }
+        }
+        panel.textContent = "";
+        const heading = document.createElement("span");
+        heading.textContent = view
+          ? view.gate.prompt
+          : "A model asked you to confirm accepting an approval.";
+        panel.appendChild(heading);
+        if (view && view.model_request) {
+          const asked = document.createElement("span");
+          asked.className = "model-request";
+          asked.textContent = modelRequestLine(view.model_request);
+          panel.appendChild(asked);
+        }
+        const confirm = document.createElement("button");
+        confirm.type = "button";
+        confirm.className = "primary gate-confirm";
+        confirm.textContent = "Confirm";
+        confirm.onclick = async () => {
+          let res;
+          try {
+            // The session cookie alone: a bearer here would be the very
+            // credential the model holds, and the server refuses it.
+            res = await writeApi(confirm, uiReadPath("/approval-confirmations/confirm"), {
+              method: "POST",
+              headers: { Accept: "application/json", "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ gate_id: link.gateId, token: link.token }),
+            });
+          } catch (e) {
+            showError(unreachable(e));
+            return;
+          }
+          if (!res.ok) {
+            showError(await responseError(res, "Could not confirm the approval"));
+            return;
+          }
+          const gate = await res.json();
+          panel.textContent = "";
+          const done = document.createElement("span");
+          done.textContent = `Confirmed: ${gate.prompt || "the approval"} was accepted.`;
+          panel.appendChild(done);
+          const how = decidedViaLine(gate);
+          if (how) {
+            const via = document.createElement("span");
+            via.className = "model-request";
+            via.textContent = how;
+            panel.appendChild(via);
+          }
+          await loadApprovals(false);
+        };
+        panel.appendChild(confirm);
+      }
+
       async function loadApprovals(showLoading = true) {
         const list = document.getElementById("approval-list");
         const ws = document.getElementById("workspace").value.trim();
@@ -996,6 +1106,13 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
           const prompt = document.createElement("span");
           prompt.textContent = gate.prompt;
           li.appendChild(prompt);
+          const asked = modelRequestLine(v.model_request);
+          if (asked) {
+            const note = document.createElement("span");
+            note.className = "model-request";
+            note.textContent = asked;
+            li.appendChild(note);
+          }
           for (const action of ["accept", "decline", "cancel"]) {
             const btn = document.createElement("button");
             btn.type = "button";
@@ -1300,4 +1417,4 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
         });
       }
 
-export { answerGate, approvalsLoading, capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadPrefsFollows, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkChannels, loadWorkDepth, loadWorkSchedules, loadWorkThreads, markAllNotificationsRead, markNotificationRead, myCapabilities, parseCaps, pollReindex, prefsWrite, registerSlashCommand, renderApprovals, renderCapList, renderDeliveries, renderNotifications, renderReindexJob, renderSession, replayDelivery, revokeSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, showWorkThread, startReindex, unfollowTarget };
+export { answerGate, approvalsLoading, decidedViaLine, modelRequestLine, openConfirmation, capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadPrefsFollows, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkChannels, loadWorkDepth, loadWorkSchedules, loadWorkThreads, markAllNotificationsRead, markNotificationRead, myCapabilities, parseCaps, pollReindex, prefsWrite, registerSlashCommand, renderApprovals, renderCapList, renderDeliveries, renderNotifications, renderReindexJob, renderSession, replayDelivery, revokeSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, showWorkThread, startReindex, unfollowTarget };
