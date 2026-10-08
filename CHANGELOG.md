@@ -1874,7 +1874,7 @@ Refs #1253
 
 ### The compose recipes' MCP calls meet the 2026-07-28 revision
 
-- **Fixed:** `examples/recipes/maidan_http.py` sent `MCP-Protocol-Version: 2026-07-28` with nothing else the revision requires, so since the revision hold (#1302) the server refused every recipe tool call with `params._meta must carry io.modelcontextprotocol/protocolVersion`, and the deploy recipe's agent could not open or read its gate. The helper now states the revision in `params._meta` beside the client's capabilities and sends the `Mcp-Method` and `Mcp-Name` headers. `crates/maidan-server/tests/recipes_mcp_e2e.rs` runs the deploy recipe's agent against a real server with auth on, so the recipes' MCP calls are tested on every CI run.
+- **Fixed:** `examples/recipes/maidan_http.py` sent `MCP-Protocol-Version: 2026-07-28` with nothing else the revision requires, so since the revision hold (#1302) the server refused every recipe tool call with `params._meta must carry io.modelcontextprotocol/protocolVersion`, and the deploy recipe's agent could not open or read its gate. The helper now states the revision in `params._meta` beside the client's capabilities and sends the `Mcp-Method` and `Mcp-Name` headers. `crates/maidan-server/tests/recipes_mcp_e2e.rs` runs the deploy recipe's agent against a real server with auth on, so the recipes' MCP calls are tested in the integration-test job whenever code changes.
 
 ## [412.0.0] — 2026-09-28
 
