@@ -127,7 +127,11 @@ sign-in.
    refuses the variable under `MAIDAN_ENV=production`.
 3. Give it a public HTTPS address, and allow `160.79.104.0/21` if a firewall
    fronts it.
-4. Record the image digest, or the commit it was built from, at the top of
+4. Name that address in `MAIDAN_ALLOWED_HOSTS`, without the port. A request
+   with no credential naming any other dotted host is refused, so a page on
+   another site cannot rebind its name to the instance (see "DNS rebinding" in
+   [Production](Production.md)).
+5. Record the image digest, or the commit it was built from, at the top of
    every test log. `scripts/mcp-inspector.sh` and `scripts/mcp-conformance.sh`
    print the commit they built.
 
