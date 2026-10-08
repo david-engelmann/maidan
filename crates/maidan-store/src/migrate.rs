@@ -218,8 +218,10 @@ const POSTGRES_UP_V144: &str =
     include_str!("../../../migrations/postgres/0144_thread_state_version.sql");
 const POSTGRES_UP_V145: &str = include_str!("../../../migrations/postgres/0145_review_packets.sql");
 const POSTGRES_UP_V146: &str = include_str!("../../../migrations/postgres/0146_bound_verdicts.sql");
-const POSTGRES_UP_V147: &str =
-    include_str!("../../../migrations/postgres/0147_evidence_actors.sql");
+const POSTGRES_UP_V150: &str =
+    include_str!("../../../migrations/postgres/0150_oauth_clients_codes_grants.sql");
+const POSTGRES_UP_V151: &str =
+    include_str!("../../../migrations/postgres/0151_oauth_pending_requests.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -395,7 +397,10 @@ const SQLITE_UP_V144: &str =
     include_str!("../../../migrations/sqlite/0144_thread_state_version.sql");
 const SQLITE_UP_V145: &str = include_str!("../../../migrations/sqlite/0145_review_packets.sql");
 const SQLITE_UP_V146: &str = include_str!("../../../migrations/sqlite/0146_bound_verdicts.sql");
-const SQLITE_UP_V147: &str = include_str!("../../../migrations/sqlite/0147_evidence_actors.sql");
+const SQLITE_UP_V150: &str =
+    include_str!("../../../migrations/sqlite/0150_oauth_clients_codes_grants.sql");
+const SQLITE_UP_V151: &str =
+    include_str!("../../../migrations/sqlite/0151_oauth_pending_requests.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -598,7 +603,8 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 144, POSTGRES_UP_V144).await?;
     apply_postgres(pool, 145, POSTGRES_UP_V145).await?;
     apply_postgres(pool, 146, POSTGRES_UP_V146).await?;
-    apply_postgres(pool, 147, POSTGRES_UP_V147).await?;
+    apply_postgres(pool, 150, POSTGRES_UP_V150).await?;
+    apply_postgres(pool, 151, POSTGRES_UP_V151).await?;
     Ok(())
 }
 
@@ -759,7 +765,8 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 144, SQLITE_UP_V144).await?;
     apply_sqlite(pool, 145, SQLITE_UP_V145).await?;
     apply_sqlite(pool, 146, SQLITE_UP_V146).await?;
-    apply_sqlite(pool, 147, SQLITE_UP_V147).await?;
+    apply_sqlite(pool, 150, SQLITE_UP_V150).await?;
+    apply_sqlite(pool, 151, SQLITE_UP_V151).await?;
     Ok(())
 }
 

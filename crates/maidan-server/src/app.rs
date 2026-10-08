@@ -22,8 +22,8 @@ use crate::bootstrap;
 use crate::{
     a2a_agent, agui_stream, app_oauth, apps, auth, automation_deliveries, consistency,
     delivery_ops, dm, federation, fsm_hooks, github, group_dm, health, load_shed, mcp,
-    mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi, panic_guard, quota,
-    rate_limit, reindex_ops, request_id, room_lsn, routes,
+    mcp_notifications, mcp_stream, mcp_streamable, metrics, oauth, oidc, openapi, panic_guard,
+    quota, rate_limit, reindex_ops, request_id, room_lsn, routes,
     routing::{delete, get, patch, post, put, ProblemFallbacks},
     scim, scim_groups, session, share_consumer, slack, slash_commands,
     state::AppState,
@@ -249,6 +249,10 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{wid}/apps/{app_id}/oauth/authorize",
             post(app_oauth::authorize_app_install),
         )
+        // OAuth 2.1 authorization endpoint: the member's browser lands here
+        // to consent. Behind the bearer middleware, so `auth` is the
+        // consenting member whose capabilities bound the grant.
+        .route("/oauth/authorize", get(oauth::authorize::authorize))
         .route(
             "/workspaces/{wid}/app-installations",
             get(apps::list_app_installations),
@@ -907,6 +911,11 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             consistency::middleware,
+        ))
+        // Outermost, so it sees the auth layer's 401.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            oauth::challenge,
         ));
 
     let a2a = Router::new()
@@ -1061,7 +1070,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/auth/session/mint",
-            post(session::mint_first_admin_token).layer(session_auth),
+            post(session::mint_first_admin_token).layer(session_auth.clone()),
         );
 
     let ui_api_read = Router::new()
@@ -1335,7 +1344,18 @@ pub fn router(state: AppState) -> Router {
         .route("/.well-known/maidan.json", get(federation::well_known))
         .route("/.well-known/maidan-room", get(routes::well_known_room))
         .route("/.well-known/agent-card.json", get(a2a_agent::agent_card))
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(oauth::oauth_protected_resource),
+        )
+        .route(
+            "/.well-known/oauth-protected-resource/mcp/streamable",
+            get(oauth::oauth_protected_resource),
+        )
         .route("/oauth/app/token", post(app_oauth::exchange_app_code))
+        // OAuth 2.1 token endpoint (public; the client authenticates with
+        // its secret and the PKCE verifier).
+        .route("/oauth/token", post(oauth::token::token))
         // Slack projector ingress: unauthed — Slack authenticates via its
         // request signature (verified in-handler), not a Maidan bearer. Returns
         // 404 unless the projector is configured.
@@ -1348,6 +1368,19 @@ pub fn router(state: AppState) -> Router {
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
         .route("/ui/static/{name}", get(ui_asset))
+        // OAuth 2.1 consent page: the member approves or denies a pending
+        // authorization request. Signed-in session only (never a bearer);
+        // the handler checks `SessionContext::token.is_none()`.
+        .route(
+            "/ui/oauth/consent",
+            get(oauth::consent::consent_page).layer(session_auth.clone()),
+        )
+        // OAuth 2.1 consent decision: same-origin POST on the signed-in
+        // session. Consumes the pending request (single use).
+        .route(
+            "/ui/api/oauth/consent",
+            post(oauth::consent::decide_consent).layer(session_auth.clone()),
+        )
         .route("/llms.txt", get(llms_txt))
         .merge({
             #[cfg(feature = "bootstrap")]

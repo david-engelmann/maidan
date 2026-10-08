@@ -107,6 +107,31 @@ pub fn mint_auth_session_token() {}
 )]
 pub fn session_from_token() {}
 
+/// Exchange an OAuth authorization code for an access token
+///
+/// The OAuth 2.1 token endpoint. The form carries the code, the redirect URI
+/// it was issued for, the client id, and the PKCE verifier; confidential
+/// clients also send their secret. The code is validated before it is
+/// consumed, so a wrong guess cannot burn the real client's code. The
+/// minted token is capability-scoped from the member's grant and never
+/// carries `approval:grant`.
+#[utoipa::path(
+    post,
+    path = "/oauth/token",
+    tag = "auth",
+    request_body(
+        content = crate::oauth::token::OAuthTokenRequest,
+        content_type = "application/x-www-form-urlencoded",
+    ),
+    security(()),
+    responses(
+        (status = 200, body = crate::oauth::token::OAuthTokenResponse),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+    )
+)]
+pub fn oauth_token() {}
+
 /// List a workspace's events (console)
 #[utoipa::path(
     get,

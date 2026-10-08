@@ -2788,10 +2788,125 @@ pub trait OAuthCodeStore: Send + Sync {
     /// stored — `code_hash` is its SHA-256 digest.
     async fn insert_oauth_code(&self, new: NewOAuthCode) -> Result<(), StoreError>;
 
+    /// Read a non-expired authorization code by hash, without consuming it.
+    /// Returns `None` if the code is unknown or expired. Use this to validate
+    /// before consuming: a failed validation must not burn the code.
+    async fn get_oauth_code(&self, code_hash: &str) -> Result<Option<OAuthCode>, StoreError>;
+
     /// Atomically consume (delete) a non-expired authorization code by hash.
     /// Returns `None` if the code is unknown, already consumed, or expired —
     /// guaranteeing single use across replicas.
     async fn consume_oauth_code(&self, code_hash: &str) -> Result<Option<OAuthCode>, StoreError>;
+}
+
+#[async_trait]
+pub trait OAuthAsStore: Send + Sync {
+    /// Register a pre-registered OAuth 2.1 client. There is no dynamic client
+    /// registration: rows are inserted by the operator, never by the protocol.
+    async fn create_oauth_client(&self, new: NewOAuthClient) -> Result<OAuthClient, StoreError>;
+
+    /// A live (not revoked) client by its `client_id`, or `None`.
+    async fn get_oauth_client_by_client_id(
+        &self,
+        client_id: &str,
+    ) -> Result<Option<OAuthClient>, StoreError>;
+
+    /// Persist an OAuth 2.1 authorization code. Only the SHA-256 hash of the
+    /// code is stored; the plaintext is shown once, in the redirect.
+    async fn create_oauth_authorization_code(
+        &self,
+        new: NewOAuthAuthorizationCode,
+    ) -> Result<(), StoreError>;
+
+    /// A code by its hash, regardless of expiry or use. The token endpoint
+    /// validates everything against this read first, so a wrong guess cannot
+    /// burn a live code (see `docs/OAuth.md`, P3).
+    async fn get_oauth_authorization_code(
+        &self,
+        code_hash: &str,
+    ) -> Result<Option<OAuthAuthorizationCode>, StoreError>;
+
+    /// Atomically mark a live (unexpired, unused) code used and return it.
+    /// Returns `None` if the code is unknown, expired, or already used — the
+    /// single statement is what makes double exchange impossible across
+    /// replicas. Call only after the code validated (see
+    /// [`Self::get_oauth_authorization_code`]).
+    async fn consume_oauth_authorization_code(
+        &self,
+        code_hash: &str,
+    ) -> Result<Option<OAuthAuthorizationCode>, StoreError>;
+
+    /// Record a member's grant to a client.
+    async fn create_oauth_grant(&self, new: NewOAuthGrant) -> Result<OAuthGrant, StoreError>;
+
+    /// [`Self::create_oauth_grant`] with its audit row in the same
+    /// transaction (D-A).
+    async fn create_oauth_grant_audited(
+        &self,
+        new: NewOAuthGrant,
+        audit: crate::AuditFor<OAuthGrant>,
+    ) -> Result<OAuthGrant, StoreError>;
+
+    /// A live (not revoked) grant by id, or `None`.
+    async fn get_oauth_grant(
+        &self,
+        grant_id: OAuthGrantId,
+    ) -> Result<Option<OAuthGrant>, StoreError>;
+
+    /// The live grant for this client, member, workspace and scope set, if
+    /// one exists — so a second exchange reuses the grant instead of piling
+    /// up duplicates. `scope` must be sorted before calling.
+    async fn find_oauth_grant(
+        &self,
+        client_id: &str,
+        member_id: MemberId,
+        workspace_id: WorkspaceId,
+        scope: &[String],
+    ) -> Result<Option<OAuthGrant>, StoreError>;
+
+    /// Revoke a grant. Tokens minted under it stop authenticating on their
+    /// next use (see the grant-liveness check in `get_active_by_hash`).
+    async fn revoke_oauth_grant(&self, grant_id: OAuthGrantId) -> Result<(), StoreError>;
+
+    /// Mint a token under an OAuth grant: the row carries `oauth_grant_id`,
+    /// and `approval:grant` is stripped from the capabilities even if a
+    /// caller passed it through — an OAuth token never accepts an approval
+    /// gate (Next 23, #1325).
+    async fn mint_oauth_token(
+        &self,
+        new: NewApiToken,
+        grant_id: OAuthGrantId,
+    ) -> Result<ApiToken, StoreError>;
+
+    /// [`Self::mint_oauth_token`] with its audit row in the same transaction
+    /// (D-A). Request handlers use this form.
+    async fn mint_oauth_token_audited(
+        &self,
+        new: NewApiToken,
+        grant_id: OAuthGrantId,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError>;
+
+    /// Store a validated authorize request while the member decides on the
+    /// consent page. The member_id comes from the session, binding the
+    /// request to the member who must approve it.
+    async fn create_oauth_pending_request(
+        &self,
+        new: NewOAuthPendingRequest,
+    ) -> Result<OAuthPendingRequest, StoreError>;
+
+    /// A pending request by id, or `None`. The consent handlers check expiry
+    /// and member binding themselves.
+    async fn get_oauth_pending_request(
+        &self,
+        id: OAuthPendingRequestId,
+    ) -> Result<Option<OAuthPendingRequest>, StoreError>;
+
+    /// Delete a pending request (single use: the consent POST consumes it).
+    async fn delete_oauth_pending_request(
+        &self,
+        id: OAuthPendingRequestId,
+    ) -> Result<(), StoreError>;
 }
 
 #[async_trait]
@@ -3654,6 +3769,7 @@ pub trait Store:
     + IntegrityStore
     + AppStore
     + OAuthCodeStore
+    + OAuthAsStore
     + IdempotencyStore
     + McpSubscriptionStore
     + ReindexStore
@@ -3714,6 +3830,7 @@ impl<
             + IntegrityStore
             + AppStore
             + OAuthCodeStore
+            + OAuthAsStore
             + IdempotencyStore
             + McpSubscriptionStore
             + ReindexStore
