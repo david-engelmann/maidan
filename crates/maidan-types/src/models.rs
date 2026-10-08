@@ -92,6 +92,20 @@ pub const STATUS_NOTE_MAX_CHARS: usize = 280;
 /// A declaration's note, trimmed, or why it is refused: empty, more than one
 /// line, or longer than [`STATUS_NOTE_MAX_CHARS`]. REST and MCP both call
 /// this, so the two surfaces cannot drift.
+/// A review's note, trimmed, with an empty one counted as none. A change
+/// request names the change it asks for, so `request_changes` needs one: a
+/// verdict that sends work back without saying why leaves the worker guessing.
+pub fn review_note(
+    decision: crate::ReviewDecision,
+    note: Option<&str>,
+) -> Result<Option<String>, String> {
+    let note = note.map(str::trim).filter(|n| !n.is_empty());
+    if decision == crate::ReviewDecision::RequestChanges && note.is_none() {
+        return Err("request_changes needs a note saying what to change".into());
+    }
+    Ok(note.map(str::to_string))
+}
+
 pub fn status_note(note: &str) -> Result<String, String> {
     let note = note.trim();
     if note.is_empty() {

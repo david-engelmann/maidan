@@ -221,6 +221,23 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
         "{refused}"
     );
 
+    // A change request has to say what to change.
+    for body in [
+        json!({"decision": "request_changes"}),
+        json!({"decision": "request_changes", "note": "   "}),
+    ] {
+        let (s, refused) = call(
+            &client,
+            Method::POST,
+            format!("{base}/threads/{tid}/reviews"),
+            &reviewer_h,
+            Some(body),
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{refused}");
+        assert!(refused.to_string().contains("needs a note"), "{refused}");
+    }
+
     // The reviewer sends it back with a note.
     let (s, review) = call(
         &client,
